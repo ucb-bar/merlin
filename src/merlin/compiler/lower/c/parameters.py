@@ -63,12 +63,20 @@ class ApplicationParameters:
             node = source.node(key)
             width = DT_BYTES.get(node.type.dtype)
             if (
-                node.op != "input" or node.effect != "input" or key not in dict(source.input_storages)
-                or type(entry.arg_index) is not int or entry.arg_index < 0
-                or tuple(entry.shape) != node.type.shape or width is None or entry.dtype not in DTYPE_BYTES
+                node.op != "input"
+                or node.effect != "input"
+                or key not in dict(source.input_storages)
+                or type(entry.arg_index) is not int
+                or entry.arg_index < 0
+                or tuple(entry.shape) != node.type.shape
+                or width is None
+                or entry.dtype not in DTYPE_BYTES
                 or not any(dtype[0] == node.type.dtype and dtype[1] == entry.dtype for dtype in _WEIGHT_DTYPES.values())
-                or type(entry.offset) is not int or entry.offset < 0 or entry.offset % width
-                or type(entry.nbytes) is not int or entry.nbytes != prod(node.type.shape) * width
+                or type(entry.offset) is not int
+                or entry.offset < 0
+                or entry.offset % width
+                or type(entry.nbytes) is not int
+                or entry.nbytes != prod(node.type.shape) * width
                 or entry.offset + entry.nbytes > self.payload_bytes
             ):
                 raise ValueError("model parameter offsets, types or source ports differ")
@@ -76,7 +84,11 @@ class ApplicationParameters:
             for other in self.entries[:i]:
                 if entry.offset < other.offset + other.nbytes and other.offset < entry.offset + entry.nbytes:
                     if (entry.name, entry.offset, entry.nbytes, entry.dtype, entry.shape) != (
-                        other.name, other.offset, other.nbytes, other.dtype, other.shape
+                        other.name,
+                        other.offset,
+                        other.nbytes,
+                        other.dtype,
+                        other.shape,
                     ):
                         raise ValueError("model parameter spans overlap without an identical stored tensor")
 
@@ -89,8 +101,7 @@ class ApplicationParameters:
             "payload_sha256": self.payload_sha256,
             "payload_bytes": self.payload_bytes,
             "path": "handoff/parameters.bin",
-            "ports": [{"node_id": key, **vars(entry)}
-                      for key, entry in zip(self.node_ids, self.entries, strict=True)],
+            "ports": [{"node_id": key, **vars(entry)} for key, entry in zip(self.node_ids, self.entries, strict=True)],
             "ownership": "caller-owned immutable bytes through completion and recovery",
             "validation": "SHA256 at bind; immutable lifetime required after bind",
         }
@@ -149,19 +160,31 @@ def bind_application_parameters(directory, staged, source):
     if not declared:
         return None
     root = Path(directory)
-    entries = tuple(entry for entry in pack(root / "weights.safetensors.manifest.json", root / "weights.safetensors")
-                    if entry.arg_index in declared)
+    entries = tuple(
+        entry
+        for entry in pack(root / "weights.safetensors.manifest.json", root / "weights.safetensors")
+        if entry.arg_index in declared
+    )
     if {entry.arg_index for entry in entries} != set(declared):
         raise ValueError("weight argument table omits a declared model parameter")
     for entry in entries:
         row = declared[entry.arg_index]
-        if (entry.name != row["weight"] or entry.shape != row["shape"]
-                or source.node(f"arg{entry.arg_index}").type.dtype != row["dtype"]):
+        if (
+            entry.name != row["weight"]
+            or entry.shape != row["shape"]
+            or source.node(f"arg{entry.arg_index}").type.dtype != row["dtype"]
+        ):
             raise ValueError("weight argument table differs from the staged parameter signature")
     info = checked_payload(root / "weights.safetensors", archive_sha256=staged.weights_sha256)
-    result = ApplicationParameters(source.digest(), staged.program_sha256, staged.weights_sha256,
-                                   info["payload_sha256"], info["payload_bytes"], entries,
-                                   root / "weights.safetensors")
+    result = ApplicationParameters(
+        source.digest(),
+        staged.program_sha256,
+        staged.weights_sha256,
+        info["payload_sha256"],
+        info["payload_bytes"],
+        entries,
+        root / "weights.safetensors",
+    )
     result.check(source)
     return result
 

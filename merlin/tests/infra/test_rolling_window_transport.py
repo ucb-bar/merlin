@@ -14,9 +14,11 @@ from xdsl.printer import Printer
 
 from merlin.compiler.schedule.llvm_program import FnBuilderControlAdapter
 from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.rolling_window import emit_rolling_window_lookup
-from merlin.compiler.schedule.rolling_window import materialize_rolling_window
-from merlin.compiler.schedule.rolling_window import propose_rolling_window
+from merlin.compiler.schedule.rolling_window import (
+    emit_rolling_window_lookup,
+    materialize_rolling_window,
+    propose_rolling_window,
+)
 from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.llvmlower.host_builder import PTR, FnBuilder
 from merlin.llvmlower.rolling_window import emit_cached_spatial_row_panel, emit_host_rolling_window
@@ -141,10 +143,8 @@ def test_native_counted_initial_frontier_and_modulo_lookup_match_independent_ori
 def test_native_cached_dense_panels_keep_original_k_order_and_pool_border_duplication(tmp_path, factor_channel_guards):
     from merlin.compiler.schedule.blocks import SpatialMaxReadout
     from merlin.compiler.schedule.rolling_spatial import RollingPackedSpatialPlan
-    from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan
-    from merlin.compiler.schedule.spatial_producer import SpatialProducerPlan
-    from merlin.compiler.schedule.spatial_readout import RoundedReadout
-    from merlin.compiler.schedule.spatial_readout import SpatialReadoutChain
+    from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
+    from merlin.compiler.schedule.spatial_readout import RoundedReadout, SpatialReadoutChain
     from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
 
     tools = Path("/work/merlin/toolchains/llvm-a47bddcc/install/bin")
@@ -249,10 +249,8 @@ def test_factored_channel_run_actual_pointer_coverage_and_padding(channels, inva
 
     from merlin.compiler.schedule.blocks import SpatialMaxReadout
     from merlin.compiler.schedule.rolling_spatial import RollingPackedSpatialPlan
-    from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan
-    from merlin.compiler.schedule.spatial_producer import SpatialProducerPlan
-    from merlin.compiler.schedule.spatial_readout import RoundedReadout
-    from merlin.compiler.schedule.spatial_readout import SpatialReadoutChain
+    from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
+    from merlin.compiler.schedule.spatial_readout import RoundedReadout, SpatialReadoutChain
     from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
     from merlin.perf.finite_pointer_trace import ArgumentAddress, project_finite_pointer_trace
 
@@ -260,8 +258,12 @@ def test_factored_channel_run_actual_pointer_coverage_and_padding(channels, inva
     producer = CountedConvolutionPlan(window, 5, 4, 4, 4, min(4, channels), 64, 128, 0, 8, 3, True)
     chain = SpatialReadoutChain(RoundedReadout((0.5,), True), RoundedReadout((0.75,)), None)
     source = SpatialProducerPlan(
-        producer, SpatialMaxReadout(window.output_spatial, (3, 3), (2, 2), (1, 1, 1, 1), -128),
-        (chain, chain), 1, readout_mode="staged_readouts", intermediate=AddressWindow("old", 0, 128),
+        producer,
+        SpatialMaxReadout(window.output_spatial, (3, 3), (2, 2), (1, 1, 1, 1), -128),
+        (chain, chain),
+        1,
+        readout_mode="staged_readouts",
+        intermediate=AddressWindow("old", 0, 128),
     )
     packed = PackedSpatialProducerPlan(source, 4, AddressWindow("owned", 16, 65536), 8)
     plan = RollingPackedSpatialPlan(packed)
@@ -278,21 +280,36 @@ def test_factored_channel_run_actual_pointer_coverage_and_padding(channels, inva
                 for channel in range(channels):
                     output = (row * 6 + ky * 2 + kx) * channels + channel
                     if row < 3 and 0 <= y < window.output_spatial[0] and 0 <= iy < 5 and 0 <= ix < 6:
-                        offset = (plan.rolling.cache.start
-                                  + ((y + ky * 2) % plan.rolling.slots) * plan.rolling.row_stride_bytes
-                                  + ix * channels + channel)
+                        offset = (
+                            plan.rolling.cache.start
+                            + ((y + ky * 2) % plan.rolling.slots) * plan.rolling.row_stride_bytes
+                            + ix * channels
+                            + channel
+                        )
                         expected.append(("load", ArgumentAddress(0, offset)))
                     expected.append(("store", ArgumentAddress(1, output)))
     branches = []
     for factored in (False, True):
         builder = FnBuilder([PTR, PTR])
         emit_cached_spatial_row_panel(
-            plan, builder, *builder.entry.args, producer_y=y, output_x=0, output_pixels=1,
-            first_halo_column=0, rows=4, cache_destination_disjoint=True,
-            maximum_panel_bytes=4 * 6 * channels, factor_channel_guards=factored,
+            plan,
+            builder,
+            *builder.entry.args,
+            producer_y=y,
+            output_x=0,
+            output_pixels=1,
+            first_halo_column=0,
+            rows=4,
+            cache_destination_disjoint=True,
+            maximum_panel_bytes=4 * 6 * channels,
+            factor_channel_guards=factored,
         )
-        fn = llvm.FuncOp("pack", llvm.LLVMFunctionType([PTR, PTR], llvm.LLVMVoidType()),
-                         linkage=llvm.LinkageAttr("external"), body=builder.finish())
+        fn = llvm.FuncOp(
+            "pack",
+            llvm.LLVMFunctionType([PTR, PTR], llvm.LLVMVoidType()),
+            linkage=llvm.LinkageAttr("external"),
+            body=builder.finish(),
+        )
         counts = Counter()
 
         def observe(op, args):

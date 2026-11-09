@@ -12,12 +12,10 @@ from test_selected_spill_contracts import emit_copy, inputs
 from test_selected_storage_contracts import native  # noqa: F401
 
 from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
-from merlin.compiler.schedule.pointwise_source import PointwiseBindings
-from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
+from merlin.compiler.schedule.pointwise_source import PointwiseBindings, compile_source_pointwise
 from merlin.compiler.schedule.program_limits import AddressWindow
 from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
-from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
-from merlin.compiler.schedule.temporary_storage import TemporaryObject
+from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable, TemporaryObject
 from merlin.sched.ir import Kernel, TensorArg
 
 INCREMENT = b"""builtin.module {func.func @step(%x:i8)->i8 {
@@ -58,12 +56,18 @@ def case(tmp_path, *, m=1, n=47, width=16, register_slots=1, word_format="<BBBQQ
         facts["byte_bits"] = 8
         software["scheduling"]["fusion"] = dict(
             schema="merlin.physical_fusion_contract.v1",
-            elementwise={"increment": dict(
-                scalar_ir=INCREMENT.decode(), elements=[{"argument": "size"}],
-                element_bits=[{"fact": ["facts", "byte_bits"]}] * 2,
-                stages=["increment"], byte_orders=["little"] * 2,
-                readout=None, execution="contiguous_read_then_write",
-            )}, readouts={},
+            elementwise={
+                "increment": dict(
+                    scalar_ir=INCREMENT.decode(),
+                    elements=[{"argument": "size"}],
+                    element_bits=[{"fact": ["facts", "byte_bits"]}] * 2,
+                    stages=["increment"],
+                    byte_orders=["little"] * 2,
+                    readout=None,
+                    execution="contiguous_read_then_write",
+                )
+            },
+            readouts={},
         )
         if mutate:
             mutate(facts, software, storage)
@@ -74,35 +78,65 @@ def case(tmp_path, *, m=1, n=47, width=16, register_slots=1, word_format="<BBBQQ
     a, b, c = 32, 96, 160
     tail = count - 2 * width
     calls = (
-        command("copy", 0, a, width, 2, 0), command("increment", a, a, width),
-        command("copy", width, b, width, 2, 0), command("increment", b, b, width),
-        command("copy", b, width, width, 0, 3), command("copy", 2 * width, c, tail, 2, 0),
-        command("increment", c, c, tail), command("copy", c, 2 * width, tail, 0, 3),
+        command("copy", 0, a, width, 2, 0),
+        command("increment", a, a, width),
+        command("copy", width, b, width, 2, 0),
+        command("increment", b, b, width),
+        command("copy", b, width, width, 0, 3),
+        command("copy", 2 * width, c, tail, 2, 0),
+        command("increment", c, c, tail),
+        command("copy", c, 2 * width, tail, 0, 3),
         command("copy", a, 0, width, 0, 3),
     )
-    objects = tuple(TemporaryObject(name, SPACES[0], address, size) for name, address, size in (
-        ("a", a, width), ("b", b, width), ("tail", c, tail),
-    ))
+    objects = tuple(
+        TemporaryObject(name, SPACES[0], address, size)
+        for name, address, size in (
+            ("a", a, width),
+            ("b", b, width),
+            ("tail", c, tail),
+        )
+    )
     if manual:
         reload = 224
-        calls = (*calls[:2], command("copy", a, 0, width, 0, 1), *calls[2:-1],
-                 command("copy", 0, reload, width, 1, 0), command("copy", reload, 0, width, 0, 3))
-        objects += (TemporaryObject("saved_a", SPACES[1], 0, width),
-                    TemporaryObject("reloaded_a", SPACES[0], reload, width))
-    kernel = Kernel(original.name, (TensorArg("input", (m, n), "i8", "read"),
-                                    TensorArg("output", (m, n), "i8", "write")), calls)
-    return dict(kernel=kernel, objects=objects, adapter=adapter, encoding=codec, limits=limits,
-                selected_contracts=selected, private_ownership=True,
-                bindings=PointwiseBindings((AddressWindow("input", 0, count),),
-                                           AddressWindow("output", 0, count), ("little", "little"), True),
-                fusion_qualification_identity="neutral-native-byte-increment-v1",
-                spill_emitters={"vector_values": emit_copy},
-                spill_qualification_identity="neutral-independent-device-spills-v1")
+        calls = (
+            *calls[:2],
+            command("copy", a, 0, width, 0, 1),
+            *calls[2:-1],
+            command("copy", 0, reload, width, 1, 0),
+            command("copy", reload, 0, width, 0, 3),
+        )
+        objects += (
+            TemporaryObject("saved_a", SPACES[1], 0, width),
+            TemporaryObject("reloaded_a", SPACES[0], reload, width),
+        )
+    kernel = Kernel(
+        original.name, (TensorArg("input", (m, n), "i8", "read"), TensorArg("output", (m, n), "i8", "write")), calls
+    )
+    return dict(
+        kernel=kernel,
+        objects=objects,
+        adapter=adapter,
+        encoding=codec,
+        limits=limits,
+        selected_contracts=selected,
+        private_ownership=True,
+        bindings=PointwiseBindings(
+            (AddressWindow("input", 0, count),), AddressWindow("output", 0, count), ("little", "little"), True
+        ),
+        fusion_qualification_identity="neutral-native-byte-increment-v1",
+        spill_emitters={"vector_values": emit_copy},
+        spill_qualification_identity="neutral-independent-device-spills-v1",
+    )
 
 
 @pytest.mark.parametrize("m,n,width,word_format", [(1, 8, 3, "<BBBQQQ"), (1, 47, 16, ">BBBIII")])
 def test_source_spill_repair_matches_legal_baseline_and_complete_native_state(
-    tmp_path, native, m, n, width, word_format  # noqa: F811
+    tmp_path,
+    native,
+    m,
+    n,
+    width,
+    word_format,  # noqa: F811
 ):
     module, operation = source_program(source_text(m, n))
     results = []
@@ -110,9 +144,11 @@ def test_source_spill_repair_matches_legal_baseline_and_complete_native_state(
         path = tmp_path / str(manual)
         path.mkdir()
         kwargs = case(path, m=m, n=n, width=width, word_format=word_format, manual=manual)
-        results.append(compile_source_pointwise(
-            module, operation, budgets=ScheduleBudgets(max_fusions=0, eliminate_copies=False), **kwargs
-        ))
+        results.append(
+            compile_source_pointwise(
+                module, operation, budgets=ScheduleBudgets(max_fusions=0, eliminate_copies=False), **kwargs
+            )
+        )
     baseline, repaired = results
     assert baseline.images() == repaired.images()
     assert baseline.compiled.report["repair_rounds"] == 0
@@ -124,31 +160,57 @@ def test_source_spill_repair_matches_legal_baseline_and_complete_native_state(
     carried = bytearray([91] * length)
     for _ in range(3):
         expected = bytearray(carried)
-        expected[:m * n] = bytes((value + 1) % 256 for value in data[:m * n])
+        expected[: m * n] = bytes((value + 1) % 256 for value in data[: m * n])
         for result in results:
             current, output = bytearray(data), bytearray(carried)
             first, spill = bytearray([167] * 3 * width), bytearray([199] * 3 * width)
-            counts = native(b"".join(result.images()), first, spill, current, output,
-                            width=8 if word_format.endswith("Q") else 4,
-                            big=word_format[0] == ">", separate=True)
+            counts = native(
+                b"".join(result.images()),
+                first,
+                spill,
+                current,
+                output,
+                width=8 if word_format.endswith("Q") else 4,
+                big=word_format[0] == ">",
+                separate=True,
+            )
             assert output == expected and current == data
             assert first[width:] == bytes([167] * 2 * width)
             assert spill[width:] == bytes([199] * 2 * width)
-            assert counts[:3] == tuple(result.conformance[key] for key in (
-                "actual_commands", "requested_read_bytes", "requested_write_bytes"))
-            assert counts[:3] == (11, 11 * width - 3 * (3 * width - m * n),
-                                  11 * width - 3 * (3 * width - m * n))
+            assert counts[:3] == tuple(
+                result.conformance[key] for key in ("actual_commands", "requested_read_bytes", "requested_write_bytes")
+            )
+            assert counts[:3] == (11, 11 * width - 3 * (3 * width - m * n), 11 * width - 3 * (3 * width - m * n))
         data, carried = bytearray(expected), expected
     # Declared effects cannot establish the native implementation's correctness.
     faulty = bytearray([91] * length)
-    native(b"".join(repaired.images()), bytearray(3 * width), bytearray(3 * width), data, faulty,
-           width=8 if word_format.endswith("Q") else 4, big=word_format[0] == ">", separate=True,
-           faulty_spill=1)
-    assert faulty[:m * n] != bytes((value + 1) % 256 for value in data[:m * n])
+    native(
+        b"".join(repaired.images()),
+        bytearray(3 * width),
+        bytearray(3 * width),
+        data,
+        faulty,
+        width=8 if word_format.endswith("Q") else 4,
+        big=word_format[0] == ">",
+        separate=True,
+        faulty_spill=1,
+    )
+    assert faulty[: m * n] != bytes((value + 1) % 256 for value in data[: m * n])
 
 
-@pytest.mark.parametrize("fault", ["source_offset", "destination_offset", "missing_tail", "tail_arithmetic",
-                                  "overwrite", "shifted_arithmetic", "shifted_copy", "computed_prefix"])
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "source_offset",
+        "destination_offset",
+        "missing_tail",
+        "tail_arithmetic",
+        "overwrite",
+        "shifted_arithmetic",
+        "shifted_copy",
+        "computed_prefix",
+    ],
+)
 def test_wrong_fragment_dataflow_cannot_escape_source_check(tmp_path, fault):
     module, operation = source_program(source_text())
     kwargs = case(tmp_path, register_slots=2)
@@ -211,9 +273,15 @@ def test_exact_byte_copies_can_reassemble_one_computed_fragment(tmp_path):
     module, operation = source_program(source_text())
     kwargs = case(tmp_path, register_slots=2)
     body = kwargs["kernel"].body
-    kwargs["kernel"] = replace(kwargs["kernel"], body=(
-        *body[:4], command("copy", 96, 16, 7, 0, 3), command("copy", 103, 23, 9, 0, 3), *body[5:],
-    ))
+    kwargs["kernel"] = replace(
+        kwargs["kernel"],
+        body=(
+            *body[:4],
+            command("copy", 96, 16, 7, 0, 3),
+            command("copy", 103, 23, 9, 0, 3),
+            *body[5:],
+        ),
+    )
     result = compile_source_pointwise(
         module, operation, budgets=ScheduleBudgets(max_fusions=0, eliminate_copies=False), **kwargs
     )
@@ -291,20 +359,22 @@ def test_wide_source_fragments_preserve_element_coordinates(tmp_path, execute, m
     text = text.replace('"linalg.yield"(%result)', '"linalg.yield"(%a)')
     module, operation = source_program(text)
     kwargs = wide_case(tmp_path, m=1, n=15, separate=True)
-    kwargs["bindings"] = PointwiseBindings((AddressWindow("x", 0, 60),), AddressWindow("y", 0, 60),
-                                           ("little", "little"), True)
+    kwargs["bindings"] = PointwiseBindings(
+        (AddressWindow("x", 0, 60),), AddressWindow("y", 0, 60), ("little", "little"), True
+    )
     body, objects = [], []
     for index, (offset, elements) in enumerate(((0, 8), (32, 7))):
         private = 3072 + 64 * index
         objects.append(TemporaryObject(f"stage_{index}", "stage", private, 4 * elements, 4))
-        body += [vector_command("readout", m=1, n=elements, src=3, dst=1,
-                                source=offset, destination=private),
-                 vector_command("readout", m=1, n=elements, src=1, dst=9,
-                                source=private, destination=offset)]
+        body += [
+            vector_command("readout", m=1, n=elements, src=3, dst=1, source=offset, destination=private),
+            vector_command("readout", m=1, n=elements, src=1, dst=9, source=private, destination=offset),
+        ]
     if misaligned:
         body[0] = vector_command("readout", m=1, n=8, src=3, dst=1, source=1, destination=3072)
-    kwargs["kernel"] = Kernel("wide_fragments", (TensorArg("x", (1, 15), "i32", "read"),
-                                               TensorArg("y", (1, 15), "i32", "write")), tuple(body))
+    kwargs["kernel"] = Kernel(
+        "wide_fragments", (TensorArg("x", (1, 15), "i32", "read"), TensorArg("y", (1, 15), "i32", "write")), tuple(body)
+    )
     kwargs["objects"] = tuple(objects)
     if misaligned:
         with pytest.raises(ValueError, match="alignment"):

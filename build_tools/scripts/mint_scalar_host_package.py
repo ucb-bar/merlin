@@ -18,9 +18,11 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from merlin.common.paths import artifacts_dir  # noqa: E402
-from merlin.compiler.backend.isa import require_host_isa  # noqa: E402
 from merlin.compiler.backend.host import load_host_package  # noqa: E402
-from merlin.compiler.backend.isa import split_isa  # noqa: E402
+from merlin.compiler.backend.isa import (
+    require_host_isa,  # noqa: E402
+    split_isa,  # noqa: E402
+)
 
 
 def mint(recipe_path: Path) -> Path:

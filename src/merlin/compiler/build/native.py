@@ -40,8 +40,10 @@ def compile_report(args, *, load_request, load_limits, write_status):
     )
 
     try:
-        if (getattr(args, "application_state", None)
-                or getattr(args, "application_parameters", "embedded") != "embedded"):
+        if (
+            getattr(args, "application_state", None)
+            or getattr(args, "application_parameters", "embedded") != "embedded"
+        ):
             raise ValueError("application state and external parameters require --application")
         binding = load_native_target_binding(args.support)
         snapshot = open_native_snapshot(Path(args.snapshot))
@@ -50,7 +52,9 @@ def compile_report(args, *, load_request, load_limits, write_status):
         request, source_kind, source_operations, precision_plan = load_selected_request(
             args,
             target_identity=snapshot.profile.target_identity,
-            mode=args.mode, binding=binding, load_request=load_request,
+            mode=args.mode,
+            binding=binding,
+            load_request=load_request,
         )
         request, layout_document = bind_physical_layouts(args, request, precision_plan)
         ordered = prepare_ordered_request(args, binding, request, precision_plan)
@@ -88,14 +92,21 @@ def compile_report(args, *, load_request, load_limits, write_status):
             )
             if precision_plan is not None:
                 manifest = publish_precision_plan(
-                    staged, manifest, precision_plan, binding=binding,
+                    staged,
+                    manifest,
+                    precision_plan,
+                    binding=binding,
                     staged_root=getattr(args, "compile_inputs", None),
                 )
             if layout_document is not None:
                 manifest = publish_layout(staged, manifest, layout_document)
             manifest = publish_ordered_records(
-                staged, manifest, source_request=ordered.source, k_source_request=ordered.k_source,
-                ordered_mn_record=ordered.mn_record, ordered_k_record=ordered.k_record,
+                staged,
+                manifest,
+                source_request=ordered.source,
+                k_source_request=ordered.k_source,
+                ordered_mn_record=ordered.mn_record,
+                ordered_k_record=ordered.k_record,
             )
             verify_native_publication(
                 staged,

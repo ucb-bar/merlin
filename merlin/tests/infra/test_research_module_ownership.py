@@ -18,8 +18,11 @@ def _logical_research_modules():
     modules = set()
     for path in (root / "src").rglob("*.py"):
         name = ".".join(path.relative_to(root / "src").with_suffix("").parts).removesuffix(".__init__")
-        if any(name in fields["modules"] or any(name == prefix or name.startswith(prefix + ".")
-                                               for prefix in fields["namespaces"]) for fields in policy.values()):
+        if any(
+            name in fields["modules"]
+            or any(name == prefix or name.startswith(prefix + ".") for prefix in fields["namespaces"])
+            for fields in policy.values()
+        ):
             modules.add(name)
     assert modules
     return modules
@@ -94,8 +97,11 @@ def test_research_imports_require_only_their_owner(distribution, modules, tmp_pa
     root = repo_root()
     owner = root / "src"
     fields = json.loads((root / "build_tools/logical_components.json").read_text())["research"][distribution]
-    assert all(name in fields["modules"] or any(name == prefix or name.startswith(prefix + ".")
-                                               for prefix in fields["namespaces"]) for name in modules)
+    assert all(
+        name in fields["modules"]
+        or any(name == prefix or name.startswith(prefix + ".") for prefix in fields["namespaces"])
+        for name in modules
+    )
     # Disable all site/editable packages. No sibling checkout or extension may
     # make this ownership check pass, and these readers must be import-light.
     script = """
@@ -190,21 +196,40 @@ assert not any(name.startswith(('aet', 'torch', 'merlin_experiments',
     # importing the evaluator's research re-export or reporting disconnected data.
     chain = (
         ("compile_cli.py", "_route_before_build", "compile.route_before_build", "plan_before_build", None),
-        ("compile/route_before_build.py", "plan_before_build", "merlin.compiler.planning.reports",
-         "group_reports", None),
+        (
+            "compile/route_before_build.py",
+            "plan_before_build",
+            "merlin.compiler.planning.reports",
+            "group_reports",
+            None,
+        ),
         ("compiler/planning/reports.py", "group_reports", "merlin.targetgen", "group_capsule_entries", "entries"),
     )
     for path, function, imported_from, imported, method in chain:
         tree = ast.parse((repo_root() / "src/merlin" / path).read_text(encoding="utf-8"))
-        assert any(isinstance(node, ast.ImportFrom) and node.module == imported_from
-                   and any(alias.name == imported for alias in node.names) for node in ast.walk(tree)), path
+        assert any(
+            isinstance(node, ast.ImportFrom)
+            and node.module == imported_from
+            and any(alias.name == imported for alias in node.names)
+            for node in ast.walk(tree)
+        ), path
         owner = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == function)
         calls = [node.func for node in ast.walk(owner) if isinstance(node, ast.Call)]
-        assert any((isinstance(call, ast.Name) and call.id == imported) if method is None else
-                   (isinstance(call, ast.Attribute) and call.attr == method
-                    and isinstance(call.value, ast.Name) and call.value.id == imported) for call in calls), path
-        assert not any(isinstance(node, ast.ImportFrom) and
-                       any(alias.name == "group_capsules" for alias in node.names) for node in ast.walk(tree)), path
+        assert any(
+            (isinstance(call, ast.Name) and call.id == imported)
+            if method is None
+            else (
+                isinstance(call, ast.Attribute)
+                and call.attr == method
+                and isinstance(call.value, ast.Name)
+                and call.value.id == imported
+            )
+            for call in calls
+        ), path
+        assert not any(
+            isinstance(node, ast.ImportFrom) and any(alias.name == "group_capsules" for alias in node.names)
+            for node in ast.walk(tree)
+        ), path
 
 
 def test_core_grouping_executes_without_any_optional_distribution(tmp_path):
@@ -269,9 +294,9 @@ def test_group_research_reexports_exact_core_entries_and_retains_grader_identity
     for module in (group_capsules, store_probe):
         assert module.__name__ in access.declared_modules("grader")
         item = next(item for item in access.MODULE_ACCESS if module.__name__ in item.modules)
-        assert repo_root() / "src" / (
-            module.__name__.replace(".", "/") + ".py"
-        ) in access.module_locations(repo_root(), item)
+        assert repo_root() / "src" / (module.__name__.replace(".", "/") + ".py") in access.module_locations(
+            repo_root(), item
+        )
 
 
 def test_capacity_probe_keeps_measurement_geometry_without_loading_evaluators(tmp_path):

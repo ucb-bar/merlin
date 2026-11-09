@@ -4,6 +4,7 @@ Motion is within one counted body only. Actual qualified state reads, writes,
 clobbers and unknown effects are barriers; loops and execution/state metadata
 are never crossed. No instruction is deleted and no target law is supplied.
 """
+
 from dataclasses import replace
 
 from merlin.compiler.schedule.configuration import ConfigurationResult
@@ -12,8 +13,9 @@ from merlin.sched.ir import Call, Loop
 
 
 def _crosses(setter, earlier, effects):
-    if type(earlier) is not Call or any((earlier.unit, earlier.produces, earlier.awaits,
-                                       earlier.stages, earlier.sets, earlier.assumes)):
+    if type(earlier) is not Call or any(
+        (earlier.unit, earlier.produces, earlier.awaits, earlier.stages, earlier.sets, earlier.assumes)
+    ):
         return False
     state = effects[id(earlier)]
     if state is None or not state.ordered or state.pure_write:
@@ -44,8 +46,9 @@ def verify_configuration_motion(original, actual, adapter, *, max_calls=4096, ma
                     raise ValueError("configuration motion changed an original loop domain")
                 compare(original_loop.body, statement.body)
                 continue
-            match = next((i for i, call in enumerate(pending)
-                          if type(call) is Call and _same_call(call, statement)), None)
+            match = next(
+                (i for i, call in enumerate(pending) if type(call) is Call and _same_call(call, statement)), None
+            )
             if match is None:
                 raise ValueError("configuration motion introduced or changed an original call")
             selected = pending[match]
@@ -64,9 +67,12 @@ def verify_configuration_motion(original, actual, adapter, *, max_calls=4096, ma
 
     compare(original.body, actual.body)
     return {
-        "schema": "merlin.configuration_motion.v1", "moved_static_calls": moved,
-        "crossed_static_effects": crossings, "source_sha256": original.digest(),
-        "kernel_sha256": actual.digest(), "adapter": adapter.record(),
+        "schema": "merlin.configuration_motion.v1",
+        "moved_static_calls": moved,
+        "crossed_static_effects": crossings,
+        "source_sha256": original.digest(),
+        "kernel_sha256": actual.digest(),
+        "adapter": adapter.record(),
         "scope": "qualified functional state commutation; no deletion, completion, target or timing grant",
     }
 

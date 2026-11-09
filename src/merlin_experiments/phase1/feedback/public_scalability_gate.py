@@ -30,8 +30,11 @@ def require_complete(result):
     """Stop before expensive grading, without changing the selected policy."""
     if result.get("required") is False:
         return
-    if (result.get("required") is True and result.get("resource_complete") is True
-        and result.get("status") == "accepted"):
+    if (
+        result.get("required") is True
+        and result.get("resource_complete") is True
+        and result.get("status") == "accepted"
+    ):
         return
     raise PublicResourceGateError(
         "Required public codegen resource gate incomplete; numerical grading was not started. "
@@ -54,10 +57,16 @@ def selected_budget(owner):
 def run_gate(*, run_dir, candidate, context, capsules_root, contract, facts_path):
     """Run the complete selected public ladder under its archived profile owner."""
     from merlin_experiments.corpus.preparation import private_json
+
     from .snapshot_execution import selected
+
     if selected():
-        result = {"status": "not_selected", "required": False, "resource_complete": False,
-                  "scope": "legacy whole-corpus proof ladder is not selected; independent per-emission bounds remain"}
+        result = {
+            "status": "not_selected",
+            "required": False,
+            "resource_complete": False,
+            "scope": "legacy whole-corpus proof ladder is not selected; independent per-emission bounds remain",
+        }
         private_json(Path(run_dir) / "public_codegen_resources.json", result)
         return result
 
@@ -66,13 +75,22 @@ def run_gate(*, run_dir, candidate, context, capsules_root, contract, facts_path
     try:
         owner = compiler_profile_runtime.functional_service(run_dir)
         result, _ = _observe(
-            owner=owner, candidate=candidate, context=context, capsules_root=capsules_root,
-            contract=contract, facts_path=facts_path,
+            owner=owner,
+            candidate=candidate,
+            context=context,
+            capsules_root=capsules_root,
+            contract=contract,
+            facts_path=facts_path,
             work_root=Path(run_dir).absolute() / "grading_public_scalability",
         )
     except Exception as error:  # noqa: BLE001 -- preparation failure cannot skip a selected prerequisite
-        result = {"status": "unavailable", "required": True, "resource_complete": False,
-                  "reason": type(error).__name__, "error": _exception_record(error)}
+        result = {
+            "status": "unavailable",
+            "required": True,
+            "resource_complete": False,
+            "reason": type(error).__name__,
+            "error": _exception_record(error),
+        }
     private_json(Path(run_dir) / "public_codegen_resources.json", result)
     return result
 
@@ -85,31 +103,48 @@ def _observe(*, owner, candidate, context, capsules_root, contract, facts_path, 
     policy = selected_policy(owner) if owner is not None else None
     if policy is None:
         return {"status": "not_selected", "required": False, "resource_complete": False}, None
-    result = {"status": "unavailable", "required": policy["required"], "resource_complete": False,
-              "selection": policy, "compiler_tool_profile_sha256": owner.profile["sha256"],
-              "scope": "original public emission resource acceptance only; no numerical or RTL credit"}
+    result = {
+        "status": "unavailable",
+        "required": policy["required"],
+        "resource_complete": False,
+        "selection": policy,
+        "compiler_tool_profile_sha256": owner.profile["sha256"],
+        "scope": "original public emission resource acceptance only; no numerical or RTL credit",
+    }
     before = exact_tree_record(Path(candidate))["sha256"]
     result["candidate_sha256"] = before
     actual = None
     try:
         actual = compile_only.run(
-            submission=Path(candidate), target_experiment=load_target_experiment(context.descriptor),
-            capsules_root=capsules_root, contract=contract, facts_path=facts_path, common_service=owner,
+            submission=Path(candidate),
+            target_experiment=load_target_experiment(context.descriptor),
+            capsules_root=capsules_root,
+            contract=contract,
+            facts_path=facts_path,
+            common_service=owner,
             work_root=work_root,
-            timeout_s=policy["timeout_s"], selected=",".join(policy["capsules"]), scale_probe=True,
+            timeout_s=policy["timeout_s"],
+            selected=",".join(policy["capsules"]),
+            scale_probe=True,
             ir_budget=DeviceIRBudget(**policy["device_ir_budget"]),
         )
         owner._verify()
-        if (exact_tree_record(Path(candidate))["sha256"] != before
+        if (
+            exact_tree_record(Path(candidate))["sha256"] != before
             or actual.get("candidate_sha256") != before
-            or actual.get("compiler_tool_profile_sha256") != owner.profile["sha256"]):
+            or actual.get("compiler_tool_profile_sha256") != owner.profile["sha256"]
+        ):
             raise ValueError("public scalability source or original profile changed")
         report = work_root / "public_compile_only.json"
         if json.loads(report.read_bytes()) != actual:
             raise ValueError("public scalability lost its actual protected observation")
         accepted = resources_complete(actual, policy)
-        result.update(status="accepted" if accepted else "incomplete", resource_complete=accepted,
-                      candidate_sha256=before, report={"path": str(report), "sha256": sha256_file(report)})
+        result.update(
+            status="accepted" if accepted else "incomplete",
+            resource_complete=accepted,
+            candidate_sha256=before,
+            report={"path": str(report), "sha256": sha256_file(report)},
+        )
     except Exception as error:  # noqa: BLE001 -- resource refusal cannot become a numerical verdict
         result["reason"] = type(error).__name__
         result["error"] = _exception_record(error)
@@ -125,21 +160,33 @@ def observe_authoring(*, owner, candidate, context, capsules_root, contract, fac
     artifact paths. A missing original selection performs no compiler work.
     """
     from .author_disclosure import restricted
+
     if restricted():
-        return {"status": "UNKNOWN", "ran": False, "all_pass": False,
-                "reason": "author disclosure policy withholds fact-derived probe inputs"}
+        return {
+            "status": "UNKNOWN",
+            "ran": False,
+            "all_pass": False,
+            "reason": "author disclosure policy withholds fact-derived probe inputs",
+        }
     from .snapshot_execution import selected
+
     if selected():
         return None
     result, actual = _observe(
-        owner=owner, candidate=candidate, context=context, capsules_root=capsules_root,
-        contract=contract, facts_path=facts_path, work_root=work_root,
+        owner=owner,
+        candidate=candidate,
+        context=context,
+        capsules_root=capsules_root,
+        contract=contract,
+        facts_path=facts_path,
+        work_root=work_root,
     )
     if result["status"] == "not_selected":
         return None
     public = {
         "schema": "merlin.phase1.public_codegen_resources.v1",
-        "status": result["status"], "required": result["required"],
+        "status": result["status"],
+        "required": result["required"],
         "resource_complete": result["resource_complete"],
         "selection": result["selection"],
         "compiler_tool_profile_sha256": result["compiler_tool_profile_sha256"],
@@ -154,9 +201,19 @@ def observe_authoring(*, owner, candidate, context, capsules_root, contract, fac
         for row in actual["cases"]:
             sample = {name: row.get(name) for name in ("member", "scale", "variant", "lowering_status", "wall_seconds")}
             growth = row.get("code_growth") or {}
-            sample["code_growth"] = {name: growth[name] for name in (
-                "bytes", "function_code_bytes", "lines", "inline_asm_sites", "call_sites", "functions", "basic_blocks"
-            ) if name in growth}
+            sample["code_growth"] = {
+                name: growth[name]
+                for name in (
+                    "bytes",
+                    "function_code_bytes",
+                    "lines",
+                    "inline_asm_sites",
+                    "call_sites",
+                    "functions",
+                    "basic_blocks",
+                )
+                if name in growth
+            }
             sample["resource_budget"] = row.get("resource_budget")
             if row.get("reason"):
                 sample["reason"] = "emission unavailable or original aggregate deadline exhausted"
@@ -183,8 +240,12 @@ def _producer_sources(selection):
     revision = selection["implementation_revision"]
     records = selection["implementation_sources"]
     names = {"public_scalability_gate.py", "compiler_profile_runtime.py"}
-    if (len(revision) != 40 or any(c not in "0123456789abcdef" for c in revision)
-        or len(records) != 2 or {Path(row["path"]).name for row in records} != names):
+    if (
+        len(revision) != 40
+        or any(c not in "0123456789abcdef" for c in revision)
+        or len(records) != 2
+        or {Path(row["path"]).name for row in records} != names
+    ):
         raise ValueError("retained resource producer source selection is incomplete")
     sources = []
     for row in records:
@@ -228,12 +289,17 @@ def verify_retained_resource_observation(run_dir, *, selection_path, verdict_pat
     run_dir = _plain(run_dir)
     selection, selection_pin = _read_observation(selection_path)
     verdict, verdict_pin = _read_observation(verdict_path)
-    if (selection.get("schema") != "merlin.operator.resource_only_probe.v1"
-        or selection.get("original_run") != str(run_dir) or verdict.get("selection") != selection_pin
-        or verdict.get("candidate_unchanged") is not True):
+    if (
+        selection.get("schema") != "merlin.operator.resource_only_probe.v1"
+        or selection.get("original_run") != str(run_dir)
+        or verdict.get("selection") != selection_pin
+        or verdict.get("candidate_unchanged") is not True
+    ):
         raise ValueError("retained resources lost their original run or selected observation")
-    for role, path in (("original_environment", run_dir / "environment.yaml"),
-                       ("original_archive", run_dir / "input_bundle_manifest.yaml")):
+    for role, path in (
+        ("original_environment", run_dir / "environment.yaml"),
+        ("original_archive", run_dir / "input_bundle_manifest.yaml"),
+    ):
         if selection[role] != _pin(path):
             raise ValueError("retained resource original inputs changed")
     config_path = selection["original_config"]["path"]
@@ -247,8 +313,10 @@ def verify_retained_resource_observation(run_dir, *, selection_path, verdict_pat
         if policy is None:
             raise ValueError("retained resource observation has no selected original policy")
         candidate = _plain(selection["candidate"]["path"])
-        if (hash_tree(candidate) != selection["candidate"]["hash_tree"]
-            or hash_tree(run_dir / "submission")["sha256"] != selection["candidate"]["hash_tree"]["sha256"]):
+        if (
+            hash_tree(candidate) != selection["candidate"]["hash_tree"]
+            or hash_tree(run_dir / "submission")["sha256"] != selection["candidate"]["hash_tree"]["sha256"]
+        ):
             raise ValueError("retained resource compiler differs from the original graded source")
         result = verdict["result"]
         require_complete(result)
@@ -256,13 +324,18 @@ def verify_retained_resource_observation(run_dir, *, selection_path, verdict_pat
             raise ValueError("retained resource observation is incomplete")
         report, report_pin = _read_observation(result["report"]["path"])
         facts = bwrap.frozen_selected_rtl_facts(owner.workspace, owner.bundle, repo=owner.repo)
-        if (result["report"] != report_pin or result.get("selection") != policy or selection.get("policy") != policy
+        if (
+            result["report"] != report_pin
+            or result.get("selection") != policy
+            or selection.get("policy") != policy
             or result.get("candidate_sha256") != exact_tree_record(candidate)["sha256"]
             or report.get("candidate_sha256") != result["candidate_sha256"]
             or result.get("compiler_tool_profile_sha256") != owner.profile["sha256"]
             or report.get("compiler_tool_profile_sha256") != owner.profile["sha256"]
-            or selection.get("facts") != _pin(facts) or report.get("facts_sha256") != _pin(facts)["sha256"]
-            or not resources_complete(report, policy)):
+            or selection.get("facts") != _pin(facts)
+            or report.get("facts_sha256") != _pin(facts)["sha256"]
+            or not resources_complete(report, policy)
+        ):
             raise ValueError("retained resource report changed its selected policy/compiler/facts")
         public, contract = run_dir / "private_corpus_input/public", run_dir / "private_corpus_input/contract"
         if selection.get("public") != str(public) or selection.get("contract") != str(contract):
@@ -270,25 +343,47 @@ def verify_retained_resource_observation(run_dir, *, selection_path, verdict_pat
         descriptor = _pin(selection["descriptor"]["path"])
         environment = yaml.safe_load((run_dir / "environment.yaml").read_bytes())
         argv = environment["run_config"]["launcher_argv"]
-        if (descriptor != selection["descriptor"] or argv.count("--descriptor") != 1
-            or descriptor["path"] != argv[argv.index("--descriptor") + 1]):
+        if (
+            descriptor != selection["descriptor"]
+            or argv.count("--descriptor") != 1
+            or descriptor["path"] != argv[argv.index("--descriptor") + 1]
+        ):
             raise ValueError("retained resource descriptor changed")
         facts_document = json.loads(facts.read_bytes())
-        edges = {row["cols"] for row in facts_document.get("facts", {}).get("arrays", [])
-                 if type(row.get("cols")) is int and row["cols"] > 0}
+        edges = {
+            row["cols"]
+            for row in facts_document.get("facts", {}).get("arrays", [])
+            if type(row.get("cols")) is int and row["cols"] > 0
+        }
         capsules = capsule_runner.discover_capsules(str(public), labels={"public", "dev"}, contract=contract)
         cases, manifest = public_scale_sources.derive(
-            capsules, selected=",".join(policy["capsules"]), index_bits=owner.profile["host_index_bits"],
+            capsules,
+            selected=",".join(policy["capsules"]),
+            index_bits=owner.profile["host_index_bits"],
             tile_edge=next(iter(edges)) if len(edges) == 1 else None,
         )
         if manifest != report["source_manifest"]:
             raise ValueError("retained resource cases differ from the original public producer")
-        fields = ("lowering_status", "compilation_status", "code_growth", "resource_budget",
-                  "emission_invocation_sha256", "translation_invocation_sha256", "static_obligations")
+        fields = (
+            "lowering_status",
+            "compilation_status",
+            "code_growth",
+            "resource_budget",
+            "emission_invocation_sha256",
+            "translation_invocation_sha256",
+            "static_obligations",
+        )
         invocations, products = {}, {}
-        candidate_sources = [_pin(candidate / name) for name, kind, _mode in source_inventory(
-            candidate, max_bytes=32 << 20, max_files=8192, exclude_generated=True,
-        )["entries"] if kind == "file"]
+        candidate_sources = [
+            _pin(candidate / name)
+            for name, kind, _mode in source_inventory(
+                candidate,
+                max_bytes=32 << 20,
+                max_files=8192,
+                exclude_generated=True,
+            )["entries"]
+            if kind == "file"
+        ]
         for index, (case, row) in enumerate(zip(cases, report["cases"], strict=True)):
             root = Path(report_pin["path"]).parent
             source = root / "sources" / f"case-{index:03d}.mlir"
@@ -302,28 +397,52 @@ def verify_retained_resource_observation(run_dir, *, selection_path, verdict_pat
             emission = [record for _, record in records if record["stage"] == "public_scale_source_lowering"]
             translation = [record for _, record in records if record["stage"] == "public_scale_llvm_translation"]
             custody = [record for _, record in records if record["stage"] == "ordinary_source_emission"]
-            if (len(emission) != 1 or len(translation) != 1 or emission[0]["inputs"] != [_pin(source)]
+            if (
+                len(emission) != 1
+                or len(translation) != 1
+                or emission[0]["inputs"] != [_pin(source)]
                 or translation[0]["inputs"] != [_pin(output / "generated/lowered.llvm.mlir")]
                 or translation[0]["outputs"] != [_pin(output / "generated/lowered.ll")]
-                or translation[0]["argv"] != [translation[0]["executable"]["path"], "--mlir-to-llvmir",
-                                               str(output / "generated/lowered.llvm.mlir"), "-o",
-                                               str(output / "generated/lowered.ll")]
+                or translation[0]["argv"]
+                != [
+                    translation[0]["executable"]["path"],
+                    "--mlir-to-llvmir",
+                    str(output / "generated/lowered.llvm.mlir"),
+                    "-o",
+                    str(output / "generated/lowered.ll"),
+                ]
                 or translation[0]["executable"]["sha256"] != config["runtime_pins"]["mlir_translate"]["sha256"]
-                or len(custody) != 1 or any(pin not in custody[0]["dependencies"] for pin in candidate_sources)):
+                or len(custody) != 1
+                or any(pin not in custody[0]["dependencies"] for pin in candidate_sources)
+            ):
                 raise ValueError("retained scale invocations do not bind the original source and measured LLVM")
             products[str(source)] = _pin(source)
             for pin, record in records:
                 invocations[pin["path"]] = pin
                 for product in record["outputs"]:
                     products[product["path"]] = product
-        for pin in (selection_pin, verdict_pin, report_pin, descriptor, selection["original_config"],
-                    selection["original_environment"], selection["original_archive"], selection["facts"],
-                    *invocations.values(), *products.values()):
+        for pin in (
+            selection_pin,
+            verdict_pin,
+            report_pin,
+            descriptor,
+            selection["original_config"],
+            selection["original_environment"],
+            selection["original_archive"],
+            selection["facts"],
+            *invocations.values(),
+            *products.values(),
+        ):
             if _pin(pin["path"]) != pin:
                 raise ValueError("retained resource evidence changed during verification")
         owner._verify()
-    return {"selection": selection_pin, "verdict": verdict_pin, "report": report_pin, "result": result,
-            "products": sorted(products.values(), key=lambda pin: pin["path"]),
-            "invocations": sorted(invocations.values(), key=lambda pin: pin["path"]),
-            "producer_sources": producer_sources,
-            "scope": "reopened original resource observations; no new execution or historical grade promotion"}
+    return {
+        "selection": selection_pin,
+        "verdict": verdict_pin,
+        "report": report_pin,
+        "result": result,
+        "products": sorted(products.values(), key=lambda pin: pin["path"]),
+        "invocations": sorted(invocations.values(), key=lambda pin: pin["path"]),
+        "producer_sources": producer_sources,
+        "scope": "reopened original resource observations; no new execution or historical grade promotion",
+    }

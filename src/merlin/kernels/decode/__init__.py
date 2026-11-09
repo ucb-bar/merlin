@@ -68,8 +68,8 @@ def decode_for_endpoint(raws, target: str, endpoint):
         # than from RTL. Same decoder; only the provenance of the codes differs.
         from pathlib import Path as _Path
 
-        from merlin.common import provenance as _prov
         from merlin.analysis import rocc_commands as _rocc
+        from merlin.common import provenance as _prov
         from merlin.kernels import asm_audit as _aa
         from merlin.targetgen.rtl.circt_introspect import _functs_from_headers
 

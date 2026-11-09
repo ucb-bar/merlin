@@ -100,7 +100,8 @@ def test_changed_build_owner_invalidates_original_build_selection(tmp_path, monk
     module = f"merlin.compiler.build.{implementation}"
     owner.write_bytes(original_source_path(module).read_bytes())
     monkeypatch.setattr(
-        B, "module_source_path",
+        B,
+        "module_source_path",
         lambda name: owner if name == module else original_source_path(name),
     )
     frozen = request.getfixturevalue("frozen")

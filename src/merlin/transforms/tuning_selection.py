@@ -126,9 +126,11 @@ def select_settings(domain, *, identity, trials, minimum_relative_improvement=0.
     settings for differences below its selected decision tolerance. This is
     a promotion policy, not a claim about the timing provider's accuracy.
     """
-    if (type(minimum_relative_improvement) not in (int, float)
-            or not isfinite(minimum_relative_improvement)
-            or not 0 <= minimum_relative_improvement < 1):
+    if (
+        type(minimum_relative_improvement) not in (int, float)
+        or not isfinite(minimum_relative_improvement)
+        or not 0 <= minimum_relative_improvement < 1
+    ):
         raise ValueError("tuning improvement tolerance must be finite and in [0, 1)")
     if type(domain) is not MappingProposalKey:
         raise ValueError("settings selection needs an explicit semantic/shape/hardware/numerical domain")
@@ -170,8 +172,10 @@ def select_settings(domain, *, identity, trials, minimum_relative_improvement=0.
     if baseline_observed is not None:
         status = "baseline_retained"
         best_cycles = ranking["ranked"][0][1][0] if ranking["ranked"] else baseline_observed.cycles
-        if (best_cycles < baseline_observed.cycles and
-                (baseline_observed.cycles-best_cycles)/baseline_observed.cycles >= minimum_relative_improvement):
+        if (
+            best_cycles < baseline_observed.cycles
+            and (baseline_observed.cycles - best_cycles) / baseline_observed.cycles >= minimum_relative_improvement
+        ):
             digest = ranking["ranked"][0][0]
             winner = next(member for member in programs[digest] if member.error is None)
             selected, status = winner.settings, "cycle_improvement"

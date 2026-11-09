@@ -757,8 +757,7 @@ def _rewrite_groups_to_device(
     from xdsl.ir import Region
 
     from merlin.compiler.ir import contraction_shapes
-    from merlin.compiler.ir.contraction_shapes import ContractionShape
-    from merlin.compiler.ir.contraction_shapes import observe_contractions
+    from merlin.compiler.ir.contraction_shapes import ContractionShape, observe_contractions
     from merlin.system.offload import device_dtype_triples
     from merlin.xdsl_dialects.lowering import compute_groups as CG
     from merlin.xdsl_dialects.lowering import group_command as GC
@@ -1005,7 +1004,7 @@ def _rewrite_groups_to_device(
                 entry = {key: value for key, value in entry.items() if key not in ("M", "K")}
                 entry.update({"op": "conv2d", **gather["window"]})
                 restated = True
-            from .constant_panel_layout import constant_panel_request, constant_panel_minimum_input_channels
+            from .constant_panel_layout import constant_panel_minimum_input_channels, constant_panel_request
 
             operands, constants, roles, why = _logical_group_call(
                 group,
@@ -1048,7 +1047,12 @@ def _rewrite_groups_to_device(
                     operands[index] = matrix[-1].results[0]
                 elementwise = True
             relayout, call_type, why = _device_result(
-                group, members, entry, result_type, elementwise=elementwise, batch=tuple(stated.batch_shape),
+                group,
+                members,
+                entry,
+                result_type,
+                elementwise=elementwise,
+                batch=tuple(stated.batch_shape),
                 transposed=stated.transposed,
             )
             if why:
@@ -1120,8 +1124,7 @@ def _rewrite_groups_to_device(
                 # The legacy datapath triple repeats the input format for a unary
                 # operation; its actual arity is in signatures/arg_access.
                 dtypes=tuple(  # type: ignore[arg-type]
-                    _element_token(t)
-                    for t in (operands[0].type, operands[min(1, len(operands) - 1)].type, result_type)
+                    _element_token(t) for t in (operands[0].type, operands[min(1, len(operands) - 1)].type, result_type)
                 ),
                 fqn=str(entry.get("source_reference", "")),
                 group=int(group.index),

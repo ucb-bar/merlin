@@ -18,6 +18,7 @@ from pathlib import Path
 
 import composition_fixtures as F
 import pytest
+
 from merlin_experiments.phase1.feedback import next_steps as N
 from merlin_experiments.phase1.feedback import performance_brief as PB
 from merlin_experiments.phase1.feedback import performance_headline as H
@@ -94,9 +95,16 @@ def workspace(tmp_path):
     (tmp_path / "submission").mkdir()
     (tmp_path / "submission" / "backend.py").write_text("import json\n")
     (tmp_path / ".agents" / "skills" / "ab-library-pass").mkdir(parents=True)
-    (tmp_path / 'PUBLIC_CAPABILITIES.json').write_text(json.dumps({
-        'schema': 'merlin.public_capability_inventory.v1',
-        'members': {name: {'workload_role': 'connected'} for name in ('MM_case', 'CV_case', 'CHAIN_case', 'MD_case')}}))
+    (tmp_path / "PUBLIC_CAPABILITIES.json").write_text(
+        json.dumps(
+            {
+                "schema": "merlin.public_capability_inventory.v1",
+                "members": {
+                    name: {"workload_role": "connected"} for name in ("MM_case", "CV_case", "CHAIN_case", "MD_case")
+                },
+            }
+        )
+    )
     return tmp_path
 
 
@@ -126,7 +134,7 @@ def test_a_fence_bound_product_is_not_pointed_at_a_convolution_readout_cache(wor
                             {"role": "input", "shape": [1, 2048]},
                         ],
                     }
-                }
+                },
             }
         )
     )
@@ -357,32 +365,40 @@ def test_the_catalogue_describes_both_epoch_mechanisms_as_fence_removal():
 
 
 def test_missing_adapter_is_a_concrete_construction_task_not_an_optional_catalogue(workspace):
-    step = _choose(workspace, entry('MM_case'))
-    assert step['construction_task']['kind'] == 'bind_source_effects'
-    assert 'construct shared source/effect adapter' in step['choice_text']
-    assert 'parallel_schedule_recipe.py --adapter AUTHORED_OWNER.py' in step['construction_task']['command']
-    (workspace/'submission'/'tools').mkdir()
-    (workspace/'submission'/'tools'/'library_pass_adapter.py').write_text('not_imported = True')
-    step = _choose(workspace, entry('MM_case'))
-    assert step['construction_task']['kind'] == 'declare_alternatives'
-    assert 'declare finite legal alternatives' in step['choice_text']
+    step = _choose(workspace, entry("MM_case"))
+    assert step["construction_task"]["kind"] == "bind_source_effects"
+    assert "construct shared source/effect adapter" in step["choice_text"]
+    assert "parallel_schedule_recipe.py --adapter AUTHORED_OWNER.py" in step["construction_task"]["command"]
+    (workspace / "submission" / "tools").mkdir()
+    (workspace / "submission" / "tools" / "library_pass_adapter.py").write_text("not_imported = True")
+    step = _choose(workspace, entry("MM_case"))
+    assert step["construction_task"]["kind"] == "declare_alternatives"
+    assert "declare finite legal alternatives" in step["choice_text"]
 
 
 def test_printed_progress_is_only_for_the_reply_source_and_model(workspace):
     from merlin_experiments.phase1.feedback import idle_tuning as U
 
-    model = dict(selection_sha256='s', model_sha256='m', timing_mode='untuned', timing_epoch=0)
-    progress = dict(source_sha256='current', ready_baselines=2, declared_candidates=3,
-        outstanding_candidate_cases=4, requests_in_flight=2, status='running', model_domains=[model])
-    (workspace/'qa').mkdir()
-    (workspace/U.LEDGER).write_text(json.dumps(dict(source_sha256='current', progress=progress)))
-    rows = [dict(capsule='MM_case', performance=model)]
-    document = dict(submission_sha256='current')
-    brief = dict(largest_headroom=[entry('MM_case')])
+    model = dict(selection_sha256="s", model_sha256="m", timing_mode="untuned", timing_epoch=0)
+    progress = dict(
+        source_sha256="current",
+        ready_baselines=2,
+        declared_candidates=3,
+        outstanding_candidate_cases=4,
+        requests_in_flight=2,
+        status="running",
+        model_domains=[model],
+    )
+    (workspace / "qa").mkdir()
+    (workspace / U.LEDGER).write_text(json.dumps(dict(source_sha256="current", progress=progress)))
+    rows = [dict(capsule="MM_case", performance=model)]
+    document = dict(submission_sha256="current")
+    brief = dict(largest_headroom=[entry("MM_case")])
     result = N.block(document, rows, brief, workspace=workspace)
-    assert ('2 ready baselines, 3 candidates, 4 candidate/case checks outstanding, '
-            '2 requests in flight') in result['lines'][0]
-    assert result['idle_sweep_progress'] == progress
-    rows[0]['performance'] = {**model, 'model_sha256': 'older'}
+    assert ("2 ready baselines, 3 candidates, 4 candidate/case checks outstanding, 2 requests in flight") in result[
+        "lines"
+    ][0]
+    assert result["idle_sweep_progress"] == progress
+    rows[0]["performance"] = {**model, "model_sha256": "older"}
     result = N.block(document, rows, brief, workspace=workspace)
-    assert result['lines'][0] == N.HEADER and 'idle_sweep_progress' not in result
+    assert result["lines"][0] == N.HEADER and "idle_sweep_progress" not in result

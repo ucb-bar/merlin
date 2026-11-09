@@ -7,7 +7,6 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
-
 _DOMAIN = 4096
 
 SCHEMA = "merlin.derived_effects.v1"

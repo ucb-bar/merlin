@@ -254,9 +254,17 @@ def semantic_staging_buffers(
     for key in request.outputs:
         ends[key] = len(regions) + 1
     return tuple(
-        Buffer(key, storage, extents[key], births[key], ends[key], fixed_start=fixed.get(key),
-               persistent=source[key].effect in {"input", "constant"})
-        for key in source if key in births
+        Buffer(
+            key,
+            storage,
+            extents[key],
+            births[key],
+            ends[key],
+            fixed_start=fixed.get(key),
+            persistent=source[key].effect in {"input", "constant"},
+        )
+        for key in source
+        if key in births
     )
 
 

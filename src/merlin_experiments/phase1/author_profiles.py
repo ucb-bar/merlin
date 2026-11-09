@@ -4,6 +4,7 @@ The judge's compiler_tool_profile remains a host-owned execution input. This sep
 selection controls supplied author sources, advice and broker capabilities. It never
 changes numerical, ISA, timing or privacy gates and never forbids independently authored code.
 """
+
 from __future__ import annotations
 
 import copy
@@ -21,33 +22,71 @@ NO_EXPERT_NAMES = tuple("xs-el-no-expert-v1/el" + str(level) for level in range(
 RAW_RTL_NAMES = tuple("xs-el-raw-rtl-v2/el" + str(level) for level in range(1, 4))
 from . import fresh10_profiles as F10
 
-NAMES = (*SCRATCH_NAMES, *SEEDED_NAMES, *F10.NAMES, *F10.COVERAGE_NAMES, *F10.RAW_ORIGINALS_NAMES,
-         *NO_EXPERT_NAMES, *RAW_RTL_NAMES)
+NAMES = (
+    *SCRATCH_NAMES,
+    *SEEDED_NAMES,
+    *F10.NAMES,
+    *F10.COVERAGE_NAMES,
+    *F10.RAW_ORIGINALS_NAMES,
+    *NO_EXPERT_NAMES,
+    *RAW_RTL_NAMES,
+)
 RECORD = "AUTHOR_PROFILE.json"
 CPP_ENTRIES = tuple("merlin.targetgen.generate." + name for name in ("mlir_scaffold", "llvm_plan", "target_repo"))
-LIGHT_ENTRIES = (*CPP_ENTRIES, "merlin.targetgen.generate.xdsl", *(
-    "merlin.targetgen.oot_starterkit." + name
-    for name in ("iface", "dialect", "llvm_context", "cmdbuf", "verify")))
+LIGHT_ENTRIES = (
+    *CPP_ENTRIES,
+    "merlin.targetgen.generate.xdsl",
+    *("merlin.targetgen.oot_starterkit." + name for name in ("iface", "dialect", "llvm_context", "cmdbuf", "verify")),
+)
 # Exact reviewed support modules, not compiler-directory grants. Component preparation
 # computes dependencies first, then fails if a future edit crosses this copy boundary.
-LIGHT_SUPPORT = frozenset((
-    "merlin", "merlin.common", "merlin.common.access", "merlin.common.artifacts",
-    "merlin.common.paths", "merlin.common.yaml", "merlin.common.ir_lock",
-    "merlin.common.dense_float_ir", "merlin.common.stimulus", "merlin.targetgen",
-    "merlin.targetgen.generate", "merlin.targetgen.generate.typed_mlir",
-    "merlin.targetgen.oot_starterkit", "merlin.targetgen.contract",
-    "merlin.targetgen.contract.interface_emit", "merlin.targetgen.contract.linalg_iface",
-    "merlin.compile", "merlin.compile.logical_abi", "merlin.runtime",
-    "merlin.runtime.commandbuffer", "merlin.runtime.tensor", "merlin.xdsl_dialects",
-    "merlin.xdsl_dialects._common", "merlin.xdsl_dialects.fp8", "merlin.xdsl_dialects.interface",
-    # Interface tensors may carry a physical storage map; its checker is pure layout arithmetic.
-    "merlin.perf", "merlin.perf.storage_encoding", "merlin.perf.strided_layout", "merlin.perf.factored_storage",
-))
-CPP_SUPPORT = frozenset((
-    "merlin", "merlin.common", "merlin.common.access", "merlin.common.artifacts",
-    "merlin.common.paths", "merlin.common.yaml", "merlin.targetgen",
-    "merlin.targetgen.generate", "merlin.targetgen.generate.typed_mlir",
-))
+LIGHT_SUPPORT = frozenset(
+    (
+        "merlin",
+        "merlin.common",
+        "merlin.common.access",
+        "merlin.common.artifacts",
+        "merlin.common.paths",
+        "merlin.common.yaml",
+        "merlin.common.ir_lock",
+        "merlin.common.dense_float_ir",
+        "merlin.common.stimulus",
+        "merlin.targetgen",
+        "merlin.targetgen.generate",
+        "merlin.targetgen.generate.typed_mlir",
+        "merlin.targetgen.oot_starterkit",
+        "merlin.targetgen.contract",
+        "merlin.targetgen.contract.interface_emit",
+        "merlin.targetgen.contract.linalg_iface",
+        "merlin.compile",
+        "merlin.compile.logical_abi",
+        "merlin.runtime",
+        "merlin.runtime.commandbuffer",
+        "merlin.runtime.tensor",
+        "merlin.xdsl_dialects",
+        "merlin.xdsl_dialects._common",
+        "merlin.xdsl_dialects.fp8",
+        "merlin.xdsl_dialects.interface",
+        # Interface tensors may carry a physical storage map; its checker is pure layout arithmetic.
+        "merlin.perf",
+        "merlin.perf.storage_encoding",
+        "merlin.perf.strided_layout",
+        "merlin.perf.factored_storage",
+    )
+)
+CPP_SUPPORT = frozenset(
+    (
+        "merlin",
+        "merlin.common",
+        "merlin.common.access",
+        "merlin.common.artifacts",
+        "merlin.common.paths",
+        "merlin.common.yaml",
+        "merlin.targetgen",
+        "merlin.targetgen.generate",
+        "merlin.targetgen.generate.typed_mlir",
+    )
+)
 
 
 @dataclass(frozen=True)
@@ -96,11 +135,14 @@ class AuthorProfile:
         """
         if not self.raw_rtl_study:
             return None
-        return dict(raw_rtl=True, rtl_facts=self.level == 3,
-                    software_spec=self.level == 3,
-                    derived_target_contract=self.level == 3,
-                    derived_test_metadata=self.level == 3,
-                    input_format="neutral_math_v1" if self.level == 1 else "shared_interface_v1")
+        return dict(
+            raw_rtl=True,
+            rtl_facts=self.level == 3,
+            software_spec=self.level == 3,
+            derived_target_contract=self.level == 3,
+            derived_test_metadata=self.level == 3,
+            input_format="neutral_math_v1" if self.level == 1 else "shared_interface_v1",
+        )
 
     @property
     def raw_kernel_references(self):
@@ -119,9 +161,11 @@ class AuthorProfile:
             return None  # The complete current reviewed public compiler (seeded or from scratch).
         if self.fresh10:
             from . import fresh10_sources
+
             return fresh10_sources.entry_modules(self.name)
         if self.raw_rtl_study and self.level == 2:
             from . import raw_interface_sources
+
             return raw_interface_sources.ENTRIES
         return () if self.level == 1 else CPP_ENTRIES if self.level == 2 else LIGHT_ENTRIES if self.level == 3 else None
 
@@ -131,8 +175,15 @@ class AuthorProfile:
             return F10.TOOLS
         if self.raw_rtl_study and self.level == 2:
             return ()
-        return (("isa_tools",) if self.seeded else ("isa_tools", "cca_tools") if self.level == 4
-                else ("cpp_oot_generators",) if self.level > 1 else ())
+        return (
+            ("isa_tools",)
+            if self.seeded
+            else ("isa_tools", "cca_tools")
+            if self.level == 4
+            else ("cpp_oot_generators",)
+            if self.level > 1
+            else ()
+        )
 
     @property
     def modern(self):
@@ -140,41 +191,73 @@ class AuthorProfile:
 
     def record(self):
         if self.fresh10:
-            return dict(schema=SCHEMA, name=self.name, level=self.level,
-                        source_scope=("current_reviewed_full_public" if self.current_library
-                                      else "reviewed_fresh10_capability_removal"),
-                        baseline_source_revision=None if self.current_library else F10.BASE_REVISION,
-                        entry_modules=None if self.entries is None else list(self.entries), tools=list(self.tools),
-                        capabilities=F10.resolve(self.name).record(),
-                        optimization_guidance=self.allows("catalog_advice"), live_cca=False,
-                        prior_reference_tasks=False, historical_levels_unchanged=True,
-                        **({"seeded": True, "raw_reference_sha256": sorted(F10.COVERAGE_RAW_REFERENCE_SHA256)}
-                           if self.coverage and self.bank_sha256 is None else {}),
-                        # A bank arm's raw grant is exactly its pinned bank's raw list, no other original.
-                        **({"seeded": True} if self.coverage and self.bank_sha256 is not None else {}),
-                        **({"raw_reference_grant": "cca_bank_raw_list_only",
-                            "cca_bank_sha256": self.bank_sha256, "cca_bank_grant": BANK_GRANT,
-                            "cca_bank_service": "precomputed_selected_units_only"}
-                           if self.bank_sha256 is not None else {}),
-                        # From scratch: every granted file by bytes, the 23 pinned originals (for the
-                        # bank arm also exactly its all-originals bank's raw list plus the manifest).
-                        **({"raw_reference_sha256": sorted(F10.COVERAGE_RAW_REFERENCE_SHA256),
-                            "reference_map": False}
-                           | ({} if self.bank_sha256 is not None
-                              else {"raw_reference_grant": "pinned_originals_only"})
-                           if self.raw_originals else {}))
-        return dict(schema=SCHEMA, name=self.name, level=self.level,
-                    source_scope="explicit_semantic_input_readers" if self.raw_rtl_study and self.level == 2
-                    else "explicit_inherited_closure" if self.seeded else "none" if self.level == 1
-                    else "full_public" if self.modern else "component_closure",
-                    entry_modules=None if self.entries is None else list(self.entries), tools=list(self.tools),
-                    optimization_guidance=self.modern, live_cca=self.modern, prior_reference_tasks=False,
-                    historical_levels_unchanged=True,
-                    **({"raw_kernel_references": False, "expert_kernel_policy": "withheld"}
-                       if self.name in (*NO_EXPERT_NAMES, *RAW_RTL_NAMES) else {}),
-                    **({"disclosure": self.disclosure,
-                        "definition_status": "defined"}
-                       if self.raw_rtl_study else {}))
+            return dict(
+                schema=SCHEMA,
+                name=self.name,
+                level=self.level,
+                source_scope=(
+                    "current_reviewed_full_public" if self.current_library else "reviewed_fresh10_capability_removal"
+                ),
+                baseline_source_revision=None if self.current_library else F10.BASE_REVISION,
+                entry_modules=None if self.entries is None else list(self.entries),
+                tools=list(self.tools),
+                capabilities=F10.resolve(self.name).record(),
+                optimization_guidance=self.allows("catalog_advice"),
+                live_cca=False,
+                prior_reference_tasks=False,
+                historical_levels_unchanged=True,
+                **(
+                    {"seeded": True, "raw_reference_sha256": sorted(F10.COVERAGE_RAW_REFERENCE_SHA256)}
+                    if self.coverage and self.bank_sha256 is None
+                    else {}
+                ),
+                # A bank arm's raw grant is exactly its pinned bank's raw list, no other original.
+                **({"seeded": True} if self.coverage and self.bank_sha256 is not None else {}),
+                **(
+                    {
+                        "raw_reference_grant": "cca_bank_raw_list_only",
+                        "cca_bank_sha256": self.bank_sha256,
+                        "cca_bank_grant": BANK_GRANT,
+                        "cca_bank_service": "precomputed_selected_units_only",
+                    }
+                    if self.bank_sha256 is not None
+                    else {}
+                ),
+                # From scratch: every granted file by bytes, the 23 pinned originals (for the
+                # bank arm also exactly its all-originals bank's raw list plus the manifest).
+                **(
+                    {"raw_reference_sha256": sorted(F10.COVERAGE_RAW_REFERENCE_SHA256), "reference_map": False}
+                    | ({} if self.bank_sha256 is not None else {"raw_reference_grant": "pinned_originals_only"})
+                    if self.raw_originals
+                    else {}
+                ),
+            )
+        return dict(
+            schema=SCHEMA,
+            name=self.name,
+            level=self.level,
+            source_scope="explicit_semantic_input_readers"
+            if self.raw_rtl_study and self.level == 2
+            else "explicit_inherited_closure"
+            if self.seeded
+            else "none"
+            if self.level == 1
+            else "full_public"
+            if self.modern
+            else "component_closure",
+            entry_modules=None if self.entries is None else list(self.entries),
+            tools=list(self.tools),
+            optimization_guidance=self.modern,
+            live_cca=self.modern,
+            prior_reference_tasks=False,
+            historical_levels_unchanged=True,
+            **(
+                {"raw_kernel_references": False, "expert_kernel_policy": "withheld"}
+                if self.name in (*NO_EXPERT_NAMES, *RAW_RTL_NAMES)
+                else {}
+            ),
+            **({"disclosure": self.disclosure, "definition_status": "defined"} if self.raw_rtl_study else {}),
+        )
 
 
 def resolve(name):
@@ -185,8 +268,9 @@ def resolve(name):
     levels = dict(zip((*SCRATCH_NAMES, *SEEDED_NAMES), range(1, 7), strict=True))
     levels.update(zip(NO_EXPERT_NAMES, range(1, 4), strict=True))
     levels.update(zip(RAW_RTL_NAMES, range(1, 4), strict=True))
-    return AuthorProfile(name, 4 if name in (*F10.NAMES, *F10.RAW_ORIGINALS_NAMES, *F10.coverage_names())
-                         else levels[name])
+    return AuthorProfile(
+        name, 4 if name in (*F10.NAMES, *F10.RAW_ORIGINALS_NAMES, *F10.coverage_names()) else levels[name]
+    )
 
 
 def current():
@@ -224,8 +308,9 @@ def validate_options(options):
         # The pinned bank is the whole service: no operator packet, prior tasks, guidance or map.
         if options.reference_experiments:
             raise ValueError("a CCA bank arm serves only its pinned bank; reference experiments stay off")
-    elif profile.allows("reference_analysis") and (not options.reference_experiments
-                                                   or options.reference_experiments_tasks != "off"):
+    elif profile.allows("reference_analysis") and (
+        not options.reference_experiments or options.reference_experiments_tasks != "off"
+    ):
         raise ValueError("EL4 requires live CCA with prior reference tasks withheld")
     return profile
 
@@ -256,10 +341,12 @@ def verify_sources(profile, selection, *, bundle=None):
         raise ValueError("compiler inventory belongs to another author profile")
     if profile.raw_rtl_study and profile.level == 2:
         from . import raw_interface_sources
+
         raw_interface_sources.verify_sources(selection)
         return
     if profile.fresh10:
         from . import fresh10_sources
+
         fresh10_sources.verify_sources(profile.name, selection)
         return
     if profile.entries is not None:
@@ -280,8 +367,9 @@ def prepare_sources(repo, destination, *, profile, review_id, source_selection=N
         raise ValueError("source preparation requires an explicit author profile")
     if profile.seeded and not profile.coverage:
         if isinstance(source_selection, dict):
-            source_selection = full.select(**{key: source_selection[key]
-                for key in ("root", "manifest_path", "manifest_sha256")})
+            source_selection = full.select(
+                **{key: source_selection[key] for key in ("root", "manifest_path", "manifest_sha256")}
+            )
         verify_sources(profile, source_selection)
         return source_selection
     if source_selection is not None:
@@ -290,19 +378,28 @@ def prepare_sources(repo, destination, *, profile, review_id, source_selection=N
         return None
     if profile.current_library:
         from . import fresh10_sources
+
         F10.require_preparable(profile.name)
-        selection = full.prepare(repo, destination, review_id=review_id,
-                                 extra_modules=fresh10_sources.coverage_extra_modules(repo))
+        selection = full.prepare(
+            repo, destination, review_id=review_id, extra_modules=fresh10_sources.coverage_extra_modules(repo)
+        )
     elif profile.fresh10:
         from . import fresh10_sources
+
         selection = fresh10_sources.prepare_sources(repo, destination, profile.name, review_id)
     elif profile.raw_rtl_study and profile.level == 2:
         from . import raw_interface_sources
+
         selection = raw_interface_sources.prepare(repo, destination, review_id=review_id)
     else:
-        selection = full.prepare(repo, destination, review_id=review_id, modules=profile.entries,
-                             include_runtime_support=profile.modern,
-                             extra_modules=LIGHT_ENTRIES if profile.modern else ())
+        selection = full.prepare(
+            repo,
+            destination,
+            review_id=review_id,
+            modules=profile.entries,
+            include_runtime_support=profile.modern,
+            extra_modules=LIGHT_ENTRIES if profile.modern else (),
+        )
     manifest = selection.manifest_path
     document = json.loads(manifest.read_bytes())
     document["author_profile"] = profile.record()
@@ -327,13 +424,27 @@ def _source_package(path):
     return False
 
 
-_EXPERT_REFERENCE_COMPONENTS = frozenset({
-    "reference-kernels", "public-references", "reference-map.json", "reference_map.json",
-    "reference-manifest.json", "reference-experiments", "reference-analysis",
-    "reference-tasks", "reference_task_cards", "cca-artifacts", "cca-reports",
-    "performance-baselines", "performance_baselines", "expert-targets", "expert_targets",
-    "seed_performance", "cca-evidence",
-})
+_EXPERT_REFERENCE_COMPONENTS = frozenset(
+    {
+        "reference-kernels",
+        "public-references",
+        "reference-map.json",
+        "reference_map.json",
+        "reference-manifest.json",
+        "reference-experiments",
+        "reference-analysis",
+        "reference-tasks",
+        "reference_task_cards",
+        "cca-artifacts",
+        "cca-reports",
+        "performance-baselines",
+        "performance_baselines",
+        "expert-targets",
+        "expert_targets",
+        "seed_performance",
+        "cca-evidence",
+    }
+)
 
 
 def expert_reference_grant(row):
@@ -347,8 +458,7 @@ def expert_reference_grant(row):
             continue
         path = Path(value)
         variants = (path, path.resolve()) if path.is_absolute() else (path,)
-        if any({p.casefold() for p in candidate.parts} & _EXPERT_REFERENCE_COMPONENTS
-               for candidate in variants):
+        if any({p.casefold() for p in candidate.parts} & _EXPERT_REFERENCE_COMPONENTS for candidate in variants):
             return True
         if path.is_absolute() and path.is_dir() and (path / "reference-manifest.json").is_file():
             return True
@@ -359,8 +469,11 @@ def _verify_no_expert_grants(bundle):
     allowed = bundle.get("allowed", ())
     if any(expert_reference_grant(row) for row in allowed):
         raise ValueError("no-expert author profile exposes supplied reference material")
-    withheld = [Path(row["path"]).resolve() for row in bundle.get("host_inputs", ())
-                if row.get("path") and expert_reference_grant(row)]
+    withheld = [
+        Path(row["path"]).resolve()
+        for row in bundle.get("host_inputs", ())
+        if row.get("path") and expert_reference_grant(row)
+    ]
     for row in allowed:
         public = Path(row["path"]).resolve()
         if any(public == secret or public in secret.parents for secret in withheld):
@@ -471,10 +584,11 @@ def _verify_bank_grant(bundle, row, raw, pin, *, content):
     try:
         from merlin.mining.reference_subsets import verify_bank
     except ImportError as error:
-        raise ValueError("coverage bank verification requires Merlin's mining workflow "
-                         "(install 'merlin[mining]') on the preparation PYTHONPATH") from error
-    if (not (root / "bank.json").is_file()
-            or hashlib.sha256((root / "bank.json").read_bytes()).hexdigest() != pin):
+        raise ValueError(
+            "coverage bank verification requires Merlin's mining workflow "
+            "(install 'merlin[mining]') on the preparation PYTHONPATH"
+        ) from error
+    if not (root / "bank.json").is_file() or hashlib.sha256((root / "bank.json").read_bytes()).hexdigest() != pin:
         raise ValueError("coverage bank grant differs from the profile's pinned bank")
     try:
         bank = verify_bank(root)
@@ -494,8 +608,11 @@ def bank_raw_sha256(root):
     from collections import Counter
 
     rows = json.loads((Path(root) / "bank.json").read_bytes()).get("raw")
-    if (not isinstance(rows, list) or not rows
-            or any(not isinstance(row, dict) or not F10._sha256(row.get("sha256")) for row in rows)):
+    if (
+        not isinstance(rows, list)
+        or not rows
+        or any(not isinstance(row, dict) or not F10._sha256(row.get("sha256")) for row in rows)
+    ):
         raise ValueError("coverage bank lists no raw originals")
     found = sorted(row["sha256"] for row in rows)
     pinned = Counter(F10.COVERAGE_RAW_REFERENCE_SHA256)
@@ -520,8 +637,7 @@ def materialize_bundle(bundle, *, profile, common_allowed, source_selection=None
     verify_tool_profile(bundle)
     if not isinstance(common_allowed, (list, tuple)) or not common_allowed:
         raise ValueError("profile preparation requires an explicit common input allowlist")
-    if any(not isinstance(row, dict) or not row.get("path") or _source_package(row["path"])
-           for row in common_allowed):
+    if any(not isinstance(row, dict) or not row.get("path") or _source_package(row["path"]) for row in common_allowed):
         raise ValueError("common inputs cannot expose compiler SDK packages")
     selected = copy.deepcopy(bundle)
     selected["allowed"] = copy.deepcopy(list(common_allowed))
@@ -539,17 +655,22 @@ def materialize_bundle(bundle, *, profile, common_allowed, source_selection=None
     if judge is None:
         raise ValueError("versioned author profiles require an independent versioned judge profile")
     judge["treatment_tools"] = list(profile.tools)
-    judge["sha256"] = hashlib.sha256(json.dumps(
-        {key: value for key, value in judge.items() if key != "sha256"},
-        sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+    judge["sha256"] = hashlib.sha256(
+        json.dumps(
+            {key: value for key, value in judge.items() if key != "sha256"},
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode()
+    ).hexdigest()
     verify_tool_profile(selected, tools=profile.tools)
     if not profile.raw_kernel_references:
         _verify_no_expert_grants(selected)
     if profile.coverage or profile.raw_originals:
-        _verify_coverage_references(selected, bank_sha256=profile.bank_sha256,
-                                    all_originals=profile.raw_originals)
+        _verify_coverage_references(selected, bank_sha256=profile.bank_sha256, all_originals=profile.raw_originals)
     if profile.raw_rtl_study:
         from . import raw_rtl_inputs
+
         raw_rtl_inputs.verify(selected, profile=profile)
     return selected
 
@@ -564,10 +685,12 @@ def verify_bundle(profile, bundle):
         _verify_no_expert_grants(bundle)
     if profile.coverage or profile.raw_originals:
         # Content was pinned when the release was prepared; a sealed bundle may be reopened elsewhere.
-        _verify_coverage_references(bundle, content=False, bank_sha256=profile.bank_sha256,
-                                    all_originals=profile.raw_originals)
+        _verify_coverage_references(
+            bundle, content=False, bank_sha256=profile.bank_sha256, all_originals=profile.raw_originals
+        )
     if profile.raw_rtl_study:
         from . import raw_rtl_inputs
+
         raw_rtl_inputs.verify(bundle, profile=profile)
 
 
@@ -577,8 +700,12 @@ def check_broker_action(action):
         if not F10.broker_allowed(profile.name, action):
             raise FileNotFoundError("service is withheld by the selected fresh10 capability profile")
         return
-    if not modern_advice() and action in {"common-transform", "common-check", "reference-analysis",
-                                         "candidate-diagnostics"}:
+    if not modern_advice() and action in {
+        "common-transform",
+        "common-check",
+        "reference-analysis",
+        "candidate-diagnostics",
+    }:
         raise FileNotFoundError("analysis/optimization assistance is withheld by the selected author profile")
 
 
@@ -600,87 +727,115 @@ def stage_record(workspace, run_dir, profile, selection):
 def task(profile):
     if profile.fresh10:
         from . import fresh10_disclosure
+
         return fresh10_disclosure.capability_text(profile.name)
     if profile.raw_rtl_study:
         return raw_rtl_task(profile)
     language = "C++/MLIR" if profile.level < 3 else "Python/xDSL or C++/MLIR"
-    supplied = ("Keep the complete explicitly pinned inherited compiler and its library. "
-                "Only the separately selected bounded consumer differs across the matched pair; "
-                "current SDK refreshes, current catalogs and CCA are not supplied." if profile.seeded else {
-        1: "Ordinary toolchains and public contracts are supplied. Implement the compiler without Merlin authoring tools.",
-        2: "The selected compiler_library supplies C++ OOT scaffolding generators and their support dependencies only.",
-        3: "The selected compiler_library supplies lightweight Python/xDSL dialect, parser, verifier and emission plumbing, "
-           "including its generic logical-ABI, command-buffer and tensor/numerical support dependencies. "
-           "Author all target lowerings, transformations and scheduling policies yourself.",
-        4: "The complete reviewed public Merlin compiler sources, scheduling dialect, pass library and analysis tools "
-           "are available. Use live reference analysis where useful; no prior generated task cards are supplied.",
-    }[profile.level])
-    origin = ("Continue the supplied reviewed compiler and preserve its working behavior. " if profile.seeded
-              else "Start with an empty target backend. ")
-    return ("# Compiler construction ablation\n\n"
-            "Build one general compiler in submission/ for every selected public xs capsule. "
-            + origin + "Preserve the admitted source semantics, precision, "
-            "fusion boundaries and every live output. Implement the manifest and required entrypoints "
-            "from the common backend contract.\n\n"
-            + supplied + "\nLanguage/tooling environment: " + language + ".\n"
-            + ("Declare language: cpp and a real C++/MLIR build block in manifest.yaml.\n" if profile.level < 3 else "")
-            + ("Read AUTHOR_PROFILE.json for the exact API inventory. Import supplied components with "
-               "submission/compiler_library on the Python module search path.\n" if profile.level in (2, 3) else "")
-            + ("The source-only components have no packaged schema copy. Select the already supplied public "
-               "schemas/command_buffer.schema.json explicitly with the schema_path argument to "
-               "CommandBufferBuilder or verify.validate. You can include an identical copy of that public "
-               "data file in the compiler package; workspace aliases are not candidate execution paths.\n"
-               if profile.level == 3 else "")
-            + "\n"
-            + ("Expert kernel sources, ELFs, disassemblies, reference maps and CCA-derived artifacts "
-               "are not supplied. Author all target kernel implementations yourself.\n"
-               if not profile.raw_kernel_references else "")
-            + ("Raw hardware and ordering evidence and the independent numerical/ISA/timing judge "
-               if not profile.raw_kernel_references else
-               "Raw hardware, ordering and reference evidence and the independent numerical/ISA/timing judge ")
-            + "are common across profiles. Use only the granted inputs; hidden data and prior implementations "
-            "are withheld. Production decisions derive from semantics, shapes and hardware facts, never case names.\n\n"
-            "Use python agent_selfcheck.py for focused numerical and timing checks, immutable variants for "
-            "alternatives and the supplied request/attach interfaces. Check qa/verdict.json source identities. "
-            "A model estimate is provisional; unknown checks remain unknown. Keep working within the selected "
-            "clock and helper/CPU limits. Freeze the compiler before final offline evaluation.\n")
+    supplied = (
+        "Keep the complete explicitly pinned inherited compiler and its library. "
+        "Only the separately selected bounded consumer differs across the matched pair; "
+        "current SDK refreshes, current catalogs and CCA are not supplied."
+        if profile.seeded
+        else {
+            1: "Ordinary toolchains and public contracts are supplied. Implement the compiler without Merlin authoring tools.",
+            2: "The selected compiler_library supplies C++ OOT scaffolding generators and their support dependencies only.",
+            3: "The selected compiler_library supplies lightweight Python/xDSL dialect, parser, verifier and emission plumbing, "
+            "including its generic logical-ABI, command-buffer and tensor/numerical support dependencies. "
+            "Author all target lowerings, transformations and scheduling policies yourself.",
+            4: "The complete reviewed public Merlin compiler sources, scheduling dialect, pass library and analysis tools "
+            "are available. Use live reference analysis where useful; no prior generated task cards are supplied.",
+        }[profile.level]
+    )
+    origin = (
+        "Continue the supplied reviewed compiler and preserve its working behavior. "
+        if profile.seeded
+        else "Start with an empty target backend. "
+    )
+    return (
+        "# Compiler construction ablation\n\n"
+        "Build one general compiler in submission/ for every selected public xs capsule. "
+        + origin
+        + "Preserve the admitted source semantics, precision, "
+        "fusion boundaries and every live output. Implement the manifest and required entrypoints "
+        "from the common backend contract.\n\n"
+        + supplied
+        + "\nLanguage/tooling environment: "
+        + language
+        + ".\n"
+        + ("Declare language: cpp and a real C++/MLIR build block in manifest.yaml.\n" if profile.level < 3 else "")
+        + (
+            "Read AUTHOR_PROFILE.json for the exact API inventory. Import supplied components with "
+            "submission/compiler_library on the Python module search path.\n"
+            if profile.level in (2, 3)
+            else ""
+        )
+        + (
+            "The source-only components have no packaged schema copy. Select the already supplied public "
+            "schemas/command_buffer.schema.json explicitly with the schema_path argument to "
+            "CommandBufferBuilder or verify.validate. You can include an identical copy of that public "
+            "data file in the compiler package; workspace aliases are not candidate execution paths.\n"
+            if profile.level == 3
+            else ""
+        )
+        + "\n"
+        + (
+            "Expert kernel sources, ELFs, disassemblies, reference maps and CCA-derived artifacts "
+            "are not supplied. Author all target kernel implementations yourself.\n"
+            if not profile.raw_kernel_references
+            else ""
+        )
+        + (
+            "Raw hardware and ordering evidence and the independent numerical/ISA/timing judge "
+            if not profile.raw_kernel_references
+            else "Raw hardware, ordering and reference evidence and the independent numerical/ISA/timing judge "
+        )
+        + "are common across profiles. Use only the granted inputs; hidden data and prior implementations "
+        "are withheld. Production decisions derive from semantics, shapes and hardware facts, never case names.\n\n"
+        "Use python agent_selfcheck.py for focused numerical and timing checks, immutable variants for "
+        "alternatives and the supplied request/attach interfaces. Check qa/verdict.json source identities. "
+        "A model estimate is provisional; unknown checks remain unknown. Keep working within the selected "
+        "clock and helper/CPU limits. Freeze the compiler before final offline evaluation.\n"
+    )
 
 
 def raw_rtl_task(profile):
     """State the external task without prescribing a target implementation."""
-    supplied = ({
-        1:
-        "You receive the selected tests, ordinary compiler toolchain, runtime interface, "
+    supplied = {
+        1: "You receive the selected tests, ordinary compiler toolchain, runtime interface, "
         "general input/output requirements and raw elaborated RTL. No Merlin implementation "
         "sources, dialect implementations, pass library, scheduling support, extraction tools, "
         "extracted RTL facts or software specification are supplied. Derive the target's "
         "instruction behavior from the RTL.\n",
-        2:
-        "The existing frontend is provided through already-lowered test inputs in the shared "
+        2: "The existing frontend is provided through already-lowered test inputs in the shared "
         "interface format. compiler_library contains only its listed semantic input readers "
         "and support dependencies, not an author-callable upstream lowering pipeline. The "
         "Python/xDSL parser dependency belongs to that frontend. Build the target dialect "
         "and target lowering in C++. No C++ scaffold generators, target dialect builders, "
         "pass library, scheduling support, extracted RTL facts or software specification "
         "are supplied. Optional storage-encoding helpers are unavailable.\n",
-        3:
-        "The selected compiler_library supplies the explicitly listed lightweight xDSL "
+        3: "The selected compiler_library supplies the explicitly listed lightweight xDSL "
         "interface, parser, verifier and emission support. Its exact source inventory is in "
         "AUTHOR_PROFILE.json. The selected RTL facts and software declaration are also "
-        "available. Author all target lowerings, transformations and scheduling policies.\n"
-    }[profile.level])
+        "available. Author all target lowerings, transformations and scheduling policies.\n",
+    }[profile.level]
     return (
         "# Compiler construction ablation\n\n"
         "Given the selected input programs, tests, runtime interface and target RTL, build "
         "one general compiler in submission/. Start with an empty target backend. Preserve "
         "the mathematical program, precision, numerical behavior, required placement and "
         "every live output. Implement the manifest, build and entrypoints in the shared "
-        "input/output protocol.\n\n" + supplied + "\n"
-        + ("Declare language: cpp and a C++/MLIR build block in manifest.yaml. Build your "
-           "target dialect and lowering in C++.\n" if profile.level < 3 else
-           "Use Python/xDSL or C++/MLIR. Import supplied components through "
-           "submission/compiler_library and select schemas/command_buffer.schema.json "
-           "explicitly when a support API requires schema_path.\n")
+        "input/output protocol.\n\n"
+        + supplied
+        + "\n"
+        + (
+            "Declare language: cpp and a C++/MLIR build block in manifest.yaml. Build your "
+            "target dialect and lowering in C++.\n"
+            if profile.level < 3
+            else "Use Python/xDSL or C++/MLIR. Import supplied components through "
+            "submission/compiler_library and select schemas/command_buffer.schema.json "
+            "explicitly when a support API requires schema_path.\n"
+        )
         + "\nExpert kernel sources, archives, ELFs, disassemblies, reference maps and "
         "CCA-derived artifacts are withheld. Implement target kernels yourself.\n\n"
         "Use python agent_selfcheck.py to evaluate your own candidate. The external judge "
@@ -752,8 +907,7 @@ def withheld_simulator_roots(target, bundle):
     harness = TC.curated_harness_dir(target)
     for value in (*TC._sim(target).bind_paths, *((harness,) if harness else ())):
         path = Path(value)
-        if (not path.is_absolute() or ".." in path.parts or path == Path("/")
-                or "\0" in str(path)):
+        if not path.is_absolute() or ".." in path.parts or path == Path("/") or "\0" in str(path):
             raise ValueError("target simulator adapter declares an unsafe asset root")
         roots.update((path, path.resolve()))
     return tuple(sorted(roots))
@@ -780,8 +934,11 @@ def runtime_masks(argv, bundle, *, target=None):
     names = ("merlin", "merlin_experiments", *(("xdsl",) if no_xdsl else ()))
     surfaces = []
     for path in withheld_simulator_roots(target, bundle):
-        surfaces.append(AnswerSurface("author profile withheld simulator asset", path,
-                                      "file" if path.is_file() else "dir", "hidden"))
+        surfaces.append(
+            AnswerSurface(
+                "author profile withheld simulator asset", path, "file" if path.is_file() else "dir", "hidden"
+            )
+        )
     for name in names:
         spec = importlib.util.find_spec(name)
         if spec is None:
@@ -789,15 +946,22 @@ def runtime_masks(argv, bundle, *, target=None):
         roots = spec.submodule_search_locations or (() if spec.origin is None else (spec.origin,))
         # Historical exports can retain extended namespace paths.
         import sys
+
         roots = getattr(sys.modules.get(name), "__path__", roots)
         for root in roots:
             path = Path(root).resolve()
             if path.exists():
-                surfaces.append(AnswerSurface("author profile withheld runtime package", path,
-                                              "dir" if path.is_dir() else "file", "hidden"))
+                surfaces.append(
+                    AnswerSurface(
+                        "author profile withheld runtime package", path, "dir" if path.is_dir() else "file", "hidden"
+                    )
+                )
     for path in _mounted_python_packages(argv, names):
-        surfaces.append(AnswerSurface("author profile withheld bound-runtime package", path,
-                                      "dir" if path.is_dir() else "file", "hidden"))
+        surfaces.append(
+            AnswerSurface(
+                "author profile withheld bound-runtime package", path, "dir" if path.is_dir() else "file", "hidden"
+            )
+        )
     return BW.apply_answer_masks(argv, surfaces)
 
 
@@ -810,8 +974,7 @@ def canonical_common(bundle, te, variant):
     from merlin.targetgen.generate_bundles import _shared_allow
 
     legacy_task = te.experiment_resource("task").rstrip("/")
-    wanted = {row["path"] for row in _shared_allow(te, variant)
-              if row["path"].rstrip("/") != legacy_task}
+    wanted = {row["path"] for row in _shared_allow(te, variant) if row["path"].rstrip("/") != legacy_task}
     facts = bundle.get("selected_rtl_facts_file")
     facts_root = str(Path(facts).parent) if facts else None
     software = ((bundle.get("compiler_tool_profile") or {}).get("semantic_inputs") or {}).get("software_spec")
@@ -826,8 +989,11 @@ def canonical_common(bundle, te, variant):
         # retaining their public role adds no compiler or formal authoring API.
         runtime = row.get("note") == "selected ordinary OS runtime; not formal authoring capability"
         semantics = row.get("note") == "admitted software semantics"
-        if semantics and (not isinstance(software, dict) or path != software.get("path")
-                or hashlib.sha256(Path(path).read_bytes()).hexdigest() != software.get("sha256")):
+        if semantics and (
+            not isinstance(software, dict)
+            or path != software.get("path")
+            or hashlib.sha256(Path(path).read_bytes()).hexdigest() != software.get("sha256")
+        ):
             raise ValueError("common software semantics differ from the exact admitted declaration")
         if direct or llvm or public or raw_facts or runtime or semantics:
             chosen.append(copy.deepcopy(row))
@@ -856,6 +1022,7 @@ def stage_release_bundles(experiment, te, *, profile, source_selection, common_i
         base = yaml.safe_load(path.read_text())
         if profile.fresh10:
             from . import fresh10_sources
+
             common = fresh10_sources.common_allowed(base, profile.name)
         else:
             common = canonical_common(base, te, base.get("variant", "public_v0"))
@@ -863,11 +1030,16 @@ def stage_release_bundles(experiment, te, *, profile, source_selection, common_i
                 common = [row for row in common if not expert_reference_grant(row)]
             if profile.raw_rtl_study:
                 from . import raw_rtl_inputs
+
                 base, common = raw_rtl_inputs.prepare(
-                    base, common, profile=profile, experiment=experiment, repo=te._source_root(),
-                    corpus_paths=(te.corpus_rel(), *te.corpus_siblings()))
-        selected = materialize_bundle(base, profile=profile, common_allowed=common,
-                                      source_selection=source_selection)
+                    base,
+                    common,
+                    profile=profile,
+                    experiment=experiment,
+                    repo=te._source_root(),
+                    corpus_paths=(te.corpus_rel(), *te.corpus_siblings()),
+                )
+        selected = materialize_bundle(base, profile=profile, common_allowed=common, source_selection=source_selection)
         path.write_text(yaml.safe_dump(selected, sort_keys=False))
         directory = path.parent
         for key, name in (("allowed", "allowed_files.txt"), ("denied", "denied_files.txt")):
@@ -880,8 +1052,14 @@ def stage_release_bundles(experiment, te, *, profile, source_selection, common_i
             # full-model TASK path does not append it. Do not retain old CCA or
             # full-SDK advertisements outside the selected TASK disclosure.
             (directory / "TASK_ADDENDUM.md").write_text(task(profile))
-        records.append(dict(bundle_id=selected["bundle_id"], profile=profile.record(),
-                            common_inputs=common_inputs, public_paths=[row["path"] for row in common]))
+        records.append(
+            dict(
+                bundle_id=selected["bundle_id"],
+                profile=profile.record(),
+                common_inputs=common_inputs,
+                public_paths=[row["path"] for row in common],
+            )
+        )
     if not records:
         raise ValueError("profile release has no newly generated bundles")
     return records

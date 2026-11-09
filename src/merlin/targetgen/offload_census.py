@@ -101,8 +101,13 @@ def _payload_elements(buffer: Mapping[str, Any]) -> tuple[int, int]:
 
 
 def host_compute_row(
-    name: str, buffer: Mapping[str, Any], artifact_text: str, outcome: str,
-    *, input_preparation=None, target=None,
+    name: str,
+    buffer: Mapping[str, Any],
+    artifact_text: str,
+    outcome: str,
+    *,
+    input_preparation=None,
+    target=None,
 ) -> dict[str, Any]:
     """The host-compute audit of one emitted program (:mod:`merlin.verify.host_compute_audit`).
 
@@ -135,9 +140,13 @@ def host_compute_row(
     placement = HA.HOST if outcome in ("host_only", "declined", "silent") else "accelerator"
     rows = [
         HA.audit_group(
-            HA.GroupSite(group=0, placement=placement, symbol=symbol, elements=elements, element_bytes=width), function,
-            input_preparation=(input_preparation if input_preparation is not None
-                               and input_preparation["entry_symbol"] == symbol else None),
+            HA.GroupSite(group=0, placement=placement, symbol=symbol, elements=elements, element_bytes=width),
+            function,
+            input_preparation=(
+                input_preparation
+                if input_preparation is not None and input_preparation["entry_symbol"] == symbol
+                else None
+            ),
             target=target,
         )
         for symbol, function in functions.items()
@@ -183,8 +192,12 @@ def _source_host_compute(name, capsule, buffer, artifact, outcome, *, target):
         # An unavailable source binding grants no exemption from the original audit.
         preparation = None
     return host_compute_row(
-        name, buffer, artifact, outcome,
-        input_preparation=preparation, target=target,
+        name,
+        buffer,
+        artifact,
+        outcome,
+        input_preparation=preparation,
+        target=target,
     )
 
 
@@ -212,8 +225,14 @@ def instruction_use(artifacts: Iterable[str], *, target: str) -> dict[str, Any]:
     return {"status": "measured", **report}
 
 
-def _summary(*, target: str, rows: list[dict[str, Any]], artifacts: list[str],
-             audits: list[dict[str, Any]], execution: dict[str, Any]) -> dict[str, Any]:
+def _summary(
+    *,
+    target: str,
+    rows: list[dict[str, Any]],
+    artifacts: list[str],
+    audits: list[dict[str, Any]],
+    execution: dict[str, Any],
+) -> dict[str, Any]:
     outcomes: dict[str, int] = {}
     for row in rows:
         outcomes[row["outcome"]] = outcomes.get(row["outcome"], 0) + 1
@@ -237,8 +256,9 @@ def _summary(*, target: str, rows: list[dict[str, Any]], artifacts: list[str],
     }
 
 
-def census_from_graded_artifacts(*, target: str, capsules: Iterable[Mapping[str, Any]],
-                                 suite_runs: str | Path) -> dict[str, Any]:
+def census_from_graded_artifacts(
+    *, target: str, capsules: Iterable[Mapping[str, Any]], suite_runs: str | Path
+) -> dict[str, Any]:
     """Read the current public grade's own emitted buffers, without running a compiler again.
 
     The caller owns the grade's source identity and public-corpus selection. Missing or malformed
@@ -248,10 +268,12 @@ def census_from_graded_artifacts(*, target: str, capsules: Iterable[Mapping[str,
     """
     root = Path(suite_runs)
     all_capsules = [dict(capsule) for capsule in capsules]
-    model_capsules = [str(capsule.get("name")) for capsule in all_capsules
-                      if capsule.get("interface_mlir") and capsule.get("kind") == "model"]
-    selected = [capsule for capsule in all_capsules
-                if capsule.get("interface_mlir") and capsule.get("kind") != "model"]
+    model_capsules = [
+        str(capsule.get("name"))
+        for capsule in all_capsules
+        if capsule.get("interface_mlir") and capsule.get("kind") == "model"
+    ]
+    selected = [capsule for capsule in all_capsules if capsule.get("interface_mlir") and capsule.get("kind") != "model"]
     rows: list[dict[str, Any]] = []
     artifacts: list[str] = []
     audits: list[dict[str, Any]] = []
@@ -261,15 +283,28 @@ def census_from_graded_artifacts(*, target: str, capsules: Iterable[Mapping[str,
         buffer_path, artifact_path = generated / "command_buffer.json", generated / "lowered.llvm.mlir"
         try:
             result_path = root / name / "capsule_result.json"
-            if (not name or name in (".", "..") or "/" in name or "\\" in name
-                    or root.is_symlink() or (root / name).is_symlink() or generated.is_symlink()
-                    or buffer_path.is_symlink() or artifact_path.is_symlink() or result_path.is_symlink()):
+            if (
+                not name
+                or name in (".", "..")
+                or "/" in name
+                or "\\" in name
+                or root.is_symlink()
+                or (root / name).is_symlink()
+                or generated.is_symlink()
+                or buffer_path.is_symlink()
+                or artifact_path.is_symlink()
+                or result_path.is_symlink()
+            ):
                 raise ValueError("graded artifact path is indirect or invalid")
             if not result_path.is_file():
                 raise FileNotFoundError("graded capsule result is absent")
             result = json.loads(result_path.read_text(encoding="utf-8"))
-            if (not isinstance(result, dict) or result.get("capsule") != name
-                    or result.get("kind") != capsule.get("kind") or result.get("status") != "pass"):
+            if (
+                not isinstance(result, dict)
+                or result.get("capsule") != name
+                or result.get("kind") != capsule.get("kind")
+                or result.get("status") != "pass"
+            ):
                 raise ValueError("graded capsule result does not prove a passing matching capsule")
             if result.get("kind") == "model_slice" and not buffer_path.is_file():
                 # Provided host code has no candidate command buffer. Count it as host only
@@ -282,27 +317,51 @@ def census_from_graded_artifacts(*, target: str, capsules: Iterable[Mapping[str,
                 lane = result.get("lane_report")
                 tiers = result.get("tiers")
                 scan = lane.get("elf_scan") if isinstance(lane, dict) else None
-                if (not isinstance(eligibility, dict) or eligibility.get("n_eligible") != 0
-                        or not isinstance(completeness, dict)
-                        or completeness.get("inventory_status") != "verified_against_parsed_contractions"
-                        or completeness.get("unmatched_contraction_macs") != 0
-                        or completeness.get("n_unpriceable_contractions") != 0
-                        or completeness.get("unverified_operand_format_contractions") != []
-                        or completeness.get("caveats") != []
-                        or not isinstance(host_check, dict) or host_check.get("status") != "pass"
-                        or not isinstance(lane, dict) or lane.get("required") != []
-                        or lane.get("violated") != [] or "on_mesh" not in lane.get("forbidden", [])
-                        or not isinstance(scan, dict) or scan.get("status") != "measured"
-                        or scan.get("n_hits") != 0 or not isinstance(tiers, dict)
-                        or any(not isinstance(tiers.get(tier), dict)
-                               or tiers[tier].get("status") != "pass" for tier in ("L0", "L1", "L2", "L3"))):
+                if (
+                    not isinstance(eligibility, dict)
+                    or eligibility.get("n_eligible") != 0
+                    or not isinstance(completeness, dict)
+                    or completeness.get("inventory_status") != "verified_against_parsed_contractions"
+                    or completeness.get("unmatched_contraction_macs") != 0
+                    or completeness.get("n_unpriceable_contractions") != 0
+                    or completeness.get("unverified_operand_format_contractions") != []
+                    or completeness.get("caveats") != []
+                    or not isinstance(host_check, dict)
+                    or host_check.get("status") != "pass"
+                    or not isinstance(lane, dict)
+                    or lane.get("required") != []
+                    or lane.get("violated") != []
+                    or "on_mesh" not in lane.get("forbidden", [])
+                    or not isinstance(scan, dict)
+                    or scan.get("status") != "measured"
+                    or scan.get("n_hits") != 0
+                    or not isinstance(tiers, dict)
+                    or any(
+                        not isinstance(tiers.get(tier), dict) or tiers[tier].get("status") != "pass"
+                        for tier in ("L0", "L1", "L2", "L3")
+                    )
+                ):
                     raise ValueError("provided host result lacks passing source/placement/execution evidence")
-                rows.append({"program": name, "outcome": "host_only", "commands": 0,
-                             "routed_macs": 0, "host_regions": 1, "unit_regions": 0,
-                             "contraction_offload_fraction": 0.0, "placement_declared": True,
-                             "placement_basis": "provided_host_qualification"})
-                audits.append({"program": name, "verdict": "declared_host",
-                               "why": "passing provided-host qualification and linked ELF device-work scan"})
+                rows.append(
+                    {
+                        "program": name,
+                        "outcome": "host_only",
+                        "commands": 0,
+                        "routed_macs": 0,
+                        "host_regions": 1,
+                        "unit_regions": 0,
+                        "contraction_offload_fraction": 0.0,
+                        "placement_declared": True,
+                        "placement_basis": "provided_host_qualification",
+                    }
+                )
+                audits.append(
+                    {
+                        "program": name,
+                        "verdict": "declared_host",
+                        "why": "passing provided-host qualification and linked ELF device-work scan",
+                    }
+                )
                 continue
             if not buffer_path.is_file():
                 raise FileNotFoundError("graded command buffer is absent")
@@ -312,8 +371,11 @@ def census_from_graded_artifacts(*, target: str, capsules: Iterable[Mapping[str,
             row = program_row(name, buffer)
             if row["outcome"] == "declined":
                 refusal = result.get("expected_refusal")
-                if (not isinstance(refusal, dict) or refusal.get("status") != "met"
-                        or result.get("declined") != buffer.get("declined")):
+                if (
+                    not isinstance(refusal, dict)
+                    or refusal.get("status") != "met"
+                    or result.get("declined") != buffer.get("declined")
+                ):
                     raise ValueError("graded refusal is not a matching expected refusal")
                 rows.append(row)
                 continue
@@ -322,20 +384,29 @@ def census_from_graded_artifacts(*, target: str, capsules: Iterable[Mapping[str,
             artifact = artifact_path.read_text(encoding="utf-8")
             audit = _source_host_compute(name, capsule, buffer, artifact, row["outcome"], target=target)
         except Exception as failure:  # noqa: BLE001 -- an unreadable artifact cannot establish offload
-            rows.append({
-                "program": name, "outcome": "error",
-                "reason": f"graded emission unavailable: {type(failure).__name__}: {str(failure)[:160]}",
-            })
+            rows.append(
+                {
+                    "program": name,
+                    "outcome": "error",
+                    "reason": f"graded emission unavailable: {type(failure).__name__}: {str(failure)[:160]}",
+                }
+            )
             continue
         rows.append(row)
         artifacts.append(artifact)
         audits.append(audit)
     return _summary(
-        target=target, rows=rows, artifacts=artifacts, audits=audits,
-        execution={"mode": "same_grade_artifacts", "programs_requested": len(selected),
-                   "programs_observed": sum(row["outcome"] != "error" for row in rows),
-                   "emitted_artifacts": len(artifacts),
-                   "model_capsules_separate_gate": model_capsules},
+        target=target,
+        rows=rows,
+        artifacts=artifacts,
+        audits=audits,
+        execution={
+            "mode": "same_grade_artifacts",
+            "programs_requested": len(selected),
+            "programs_observed": sum(row["outcome"] != "error" for row in rows),
+            "emitted_artifacts": len(artifacts),
+            "model_capsules_separate_gate": model_capsules,
+        },
     )
 
 
@@ -381,8 +452,11 @@ def census(
     def error_row(name, failure):
         if isinstance(failure, BackendDeclined):
             return {"program": name, "outcome": "declined", "reason": failure.reason, "commands": 0, "routed_macs": 0}
-        detail = (f"{failure.plane}: {failure.detail[:200]}" if isinstance(failure, CertFailure)
-                  else f"{type(failure).__name__}: {str(failure)[:200]}")
+        detail = (
+            f"{failure.plane}: {failure.detail[:200]}"
+            if isinstance(failure, CertFailure)
+            else f"{type(failure).__name__}: {str(failure)[:200]}"
+        )
         return {"program": name, "outcome": "error", "reason": detail}
 
     with tempfile.TemporaryDirectory(prefix="offcensus_") as scratch:
@@ -407,8 +481,10 @@ def census(
             try:
                 with cpu_pool.shared_compute_pool():
                     paths = make_run_paths(
-                        Path(scratch) / f"case-{index:05d}" / "runs", name,
-                        suite=f"{target}-offload-census", target=target,
+                        Path(scratch) / f"case-{index:05d}" / "runs",
+                        name,
+                        suite=f"{target}-offload-census",
+                        target=target,
                         dtype=str(capsule.get("dtype") or "unknown"),
                         benchmark=str(capsule.get("kind") or "capsule"),
                     )
@@ -438,8 +514,10 @@ def census(
             completed = [owned_case(index, capsule) for index, capsule in enumerate(selected)]
         else:
             with ThreadPoolExecutor(max_workers=workers) as pool:
-                pending = [pool.submit(copy_context().run, owned_case, index, capsule)
-                           for index, capsule in enumerate(selected)]
+                pending = [
+                    pool.submit(copy_context().run, owned_case, index, capsule)
+                    for index, capsule in enumerate(selected)
+                ]
                 completed = [future.result() for future in pending]
         for row, artifact, audit in completed:
             rows.append(row)
@@ -449,7 +527,10 @@ def census(
                 audits.append(audit)
 
     return _summary(
-        target=target, rows=rows, artifacts=artifacts, audits=audits,
+        target=target,
+        rows=rows,
+        artifacts=artifacts,
+        audits=audits,
         execution={"workers": workers, "programs_requested": len(selected)},
     )
 
@@ -479,7 +560,11 @@ VETO_CATEGORY = "host_compute_in_accelerator_group"
 
 
 def apply_host_compute_veto(
-    results: list[dict[str, Any]], suite_runs: Path, *, capsules=None, target=None,
+    results: list[dict[str, Any]],
+    suite_runs: Path,
+    *,
+    capsules=None,
+    target=None,
 ) -> list[dict[str, Any]]:
     """Fail every PASSING capsule whose program does the unit's arithmetic on the host.
 
@@ -511,7 +596,11 @@ def apply_host_compute_veto(
 
 
 def _apply_host_compute_veto_here(
-    results: list[dict[str, Any]], suite_runs: Path, *, capsules=None, target=None,
+    results: list[dict[str, Any]],
+    suite_runs: Path,
+    *,
+    capsules=None,
+    target=None,
 ) -> list[dict[str, Any]]:
     """:func:`apply_host_compute_veto`, evaluated with the audit this process imported."""
     import json
@@ -532,8 +621,12 @@ def _apply_host_compute_veto_here(
             buffer = json.loads(buffer_path.read_text(encoding="utf-8"))
             row = program_row(str(result.get("capsule")), buffer)
             audit = _source_host_compute(
-                str(result.get("capsule")), originals.get(result.get("capsule"), {}),
-                buffer, artifact_path.read_text(encoding="utf-8"), row["outcome"], target=target,
+                str(result.get("capsule")),
+                originals.get(result.get("capsule"), {}),
+                buffer,
+                artifact_path.read_text(encoding="utf-8"),
+                row["outcome"],
+                target=target,
             )
         except Exception:  # noqa: BLE001 -- an unreadable artifact is not evidence of host compute
             continue
@@ -549,8 +642,11 @@ def _apply_host_compute_veto_here(
         result["status"] = "fail"
         # With no value arithmetic and no memory traffic, nothing shows tensor compute: the veto
         # rests on integer work that could not be proven to be command orchestration.
-        unproven = (audit.get("command_only_refusal") and audit.get("host_value_arithmetic") == 0
-                    and audit.get("host_payload_bytes") == 0)
+        unproven = (
+            audit.get("command_only_refusal")
+            and audit.get("host_value_arithmetic") == 0
+            and audit.get("host_payload_bytes") == 0
+        )
         lead = (
             "the program passes numerics; its host integer work is not proven to be command orchestration"
             if unproven
@@ -585,12 +681,17 @@ def is_recorded_veto(before: Mapping[str, Any], after: Mapping[str, Any]) -> boo
     if not isinstance(before, Mapping) or not isinstance(after, Mapping):
         return False
     failure = after.get("failure")
-    if (after.get("status") != "fail" or after.get(VETO_PRIOR_STATUS) != before.get("status")
-            or not isinstance(failure, Mapping) or failure.get("category") != VETO_CATEGORY):
+    if (
+        after.get("status") != "fail"
+        or after.get(VETO_PRIOR_STATUS) != before.get("status")
+        or not isinstance(failure, Mapping)
+        or failure.get("category") != VETO_CATEGORY
+    ):
         return False
     untouched = (*VETO_FIELDS, VETO_PRIOR_STATUS)
-    return ({k: v for k, v in before.items() if k not in untouched}
-            == {k: v for k, v in after.items() if k not in untouched})
+    return {k: v for k, v in before.items() if k not in untouched} == {
+        k: v for k, v in after.items() if k not in untouched
+    }
 
 
 def _record_veto(path: Path, result: Mapping[str, Any]) -> None:

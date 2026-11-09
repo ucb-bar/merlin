@@ -32,17 +32,23 @@ from merlin.compiler.backend.proposal import MatrixExtension
 from merlin.compiler.backend.proposal import MatrixRouting as MatrixRouting
 from merlin.compiler.build.zephyr.config import (
     cpu_disable_overlay as _cpu_disable_overlay,
+)
+from merlin.compiler.build.zephyr.config import (
     image_cpus as image_cpus,
+)
+from merlin.compiler.build.zephyr.config import (
     project_config,
     vector_max_len_bits,
 )
-from merlin.compiler.build.zephyr.tree import TreeConfiguration
 from merlin.compiler.build.zephyr.memory import (
     ZephyrBuildError as ZephyrModelError,
+)
+from merlin.compiler.build.zephyr.memory import (
     memory_plan,
     ram_for_weights,
     require_external_arena,
 )
+from merlin.compiler.build.zephyr.tree import TreeConfiguration
 
 from ...llvmlower import c_runtime, toolchain
 from ...llvmlower.lower import lower_model_file
@@ -50,12 +56,13 @@ from ...llvmlower.masked_contraction import MaskEffectContract
 from ...llvmlower.source_expression_interval import IntervalEffectContract
 from ...llvmlower.source_scalar_carrier_binding import host_admitted
 from . import spike as _spike
-from .firesim_runner import FireSimRunner
-
 from ._model_statistics import (
-    out_hash_fnv1a32 as out_hash_fnv1a32,
     _sustained_stats as _sustained_stats,
 )
+from ._model_statistics import (
+    out_hash_fnv1a32 as out_hash_fnv1a32,
+)
+from .firesim_runner import FireSimRunner
 
 # clang flags for the model object. medany keeps it position-tolerant;
 # -ffreestanding/-fno-builtin so it needs only the symbols mlir_runtime.c + libc(picolibc)
@@ -409,7 +416,10 @@ def _prepare_model_mlir(
         from ...llvmlower.host_graph_policy import prepare_group_layout
 
         module = prepare_group_layout(
-            module, composed_host_layout, work / "pre_group_layout", projected_source=mlir_path,
+            module,
+            composed_host_layout,
+            work / "pre_group_layout",
+            projected_source=mlir_path,
         )
     # Same first step as the interpreter path (dispatch_runtime.run_model): torchao's
     # choose_qparams/quantize arrive as opaque calls to externs nothing defines, and the two paths
@@ -494,7 +504,8 @@ def _prepare_model_mlir(
     # Restrict a sole static observer before assigning any complete device ABI.
     # Source-projected routes have already bound their original graph and use
     # this same callable explicitly before constructing that source selection.
-    from ...llvmlower.contraction_row_slice import prepare_contraction_row_slices, selected as row_slice_selected
+    from ...llvmlower.contraction_row_slice import prepare_contraction_row_slices
+    from ...llvmlower.contraction_row_slice import selected as row_slice_selected
 
     if row_slice_selected():
         module, row_slice_report = prepare_contraction_row_slices(module, bundle_dir=bundle_dir)
@@ -891,10 +902,11 @@ def prepare_for_lowering(
     _closed = _normalize(features)
     _lanes = _vec_lanes(_closed)
     _max_rank = _vec_max_rank(_closed)
+    from merlin.compiler.quantization.scope import FEATURE as _CAPTURED_QUANT_SCOPE
+
     from ...llvmlower.impr_features import NAMED_INT8_CONTRACTION_NAME, QUANTIZE_BEFORE_GATHER_NAME
     from ...llvmlower.quant_hoist import FEATURE as _HOIST_WEIGHT_INVARIANT_QUANTIZE
     from ...llvmlower.quant_round import FEATURE as _FUSE_QUANT_ROUND
-    from merlin.compiler.quantization.scope import FEATURE as _CAPTURED_QUANT_SCOPE
     from ...llvmlower.reduce_vec import FEATURE as _VEC_AMAX_REDUCTION
 
     _op_counts: dict[str, int] = {}
@@ -2189,9 +2201,7 @@ def build_app(
         # bogus ParseError on valid IR, which read as a broken build rather than a race.
         with IR_LOCK:
             peak = int(activation_peak_bytes(model_dir / "model.mlir") or 0) or None
-        linked_region = ram_for_weights(
-            weights_size, peak, alloc_total, default_ram_bytes=brd.zephyr_default_ram_bytes
-        )
+        linked_region = ram_for_weights(weights_size, peak, alloc_total, default_ram_bytes=brd.zephyr_default_ram_bytes)
     layout = memory_plan(brd, weights_size, linked_region or 0, ram_bytes_override)
     external = layout.external
     weights_base = layout.weights_base

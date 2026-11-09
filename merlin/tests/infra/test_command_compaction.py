@@ -5,8 +5,7 @@ from dataclasses import replace
 import pytest
 from test_llvm_index_program import ExecutingBuilder
 
-from merlin.compiler.schedule.command_compaction import compact_command_stream
-from merlin.compiler.schedule.command_compaction import verify_command_compaction
+from merlin.compiler.schedule.command_compaction import compact_command_stream, verify_command_compaction
 from merlin.compiler.schedule.llvm_program import emit_index_program
 from merlin.sched.ir import Call, Const, Kernel, Loop, Var
 

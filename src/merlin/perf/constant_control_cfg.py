@@ -297,8 +297,14 @@ def _loop_trips(loop, entry, values):
 
 
 def constant_control_counts(
-    function, *, max_blocks=MAX_BLOCK_VISITS, max_operations=MAX_OPERATIONS, summarize_loops=True,
-    observe=None, observed_operations=None, summarizable_assembly=(),
+    function,
+    *,
+    max_blocks=MAX_BLOCK_VISITS,
+    max_operations=MAX_OPERATIONS,
+    summarize_loops=True,
+    observe=None,
+    observed_operations=None,
+    summarizable_assembly=(),
 ):
     """Prove execution counts by terminating bounded constant-only CFG traversal.
 
@@ -326,8 +332,10 @@ def constant_control_counts(
     block_set = frozenset(blocks)
     watched = None if observed_operations is None else frozenset(observed_operations)
     assembly = frozenset(summarizable_assembly)
-    if any(op.name != "llvm.inline_asm" or op.results or op.regions
-           or op.parent_block() not in block_set for op in assembly):
+    if any(
+        op.name != "llvm.inline_asm" or op.results or op.regions or op.parent_block() not in block_set
+        for op in assembly
+    ):
         raise ValueError("summarized assembly must be original result-free instructions")
     if watched is not None and (observe is None or any(op.parent_block() not in block_set for op in watched)):
         raise ValueError("constant control observation roster leaves the original function")
@@ -341,19 +349,28 @@ def constant_control_counts(
                 if any(use.operation.parent_block() not in nodes for use in item.uses):
                     return False
             for op in block.ops:
-                if (op in watched or op.regions or op.name in {"llvm.call", "llvm.invoke"}
-                        or op.name == "llvm.inline_asm" and op not in assembly):
+                if (
+                    op in watched
+                    or op.regions
+                    or op.name in {"llvm.call", "llvm.invoke"}
+                    or op.name == "llvm.inline_asm"
+                    and op not in assembly
+                ):
                     return False
                 # A count-only summary cannot discharge arithmetic assertions or
                 # possible division/shift poison that the scalar visitor checks.
-                if (_poison_flags(op) or op.properties.get("nonNeg") is not None
-                        or op.name in {"llvm.udiv", "llvm.urem", "llvm.sdiv", "llvm.srem"}):
+                if (
+                    _poison_flags(op)
+                    or op.properties.get("nonNeg") is not None
+                    or op.name in {"llvm.udiv", "llvm.urem", "llvm.sdiv", "llvm.srem"}
+                ):
                     return False
                 if op.name in {"llvm.shl", "llvm.lshr", "llvm.ashr"}:
                     amount = constant_integer(op.operands[1])
                     if amount is None or not 0 <= amount < _width(op.operands[0]):
                         return False
         return True
+
     predecessors = {}
     for source in blocks:
         for destination in source.last_op.successors if source.last_op is not None else ():
@@ -364,10 +381,13 @@ def constant_control_counts(
         from merlin.verification.input_copy_batch import execute as batch_control
         from merlin.verification.input_copy_loops import control_dependencies, copy_regions, region_cost
 
-        batched_regions = {**control_regions(function, include_rectangular=watched is not None),
-                           **copy_regions(function)}
-        batched_regions = {header: region for header, region in batched_regions.items()
-                           if unobserved_closed(region[0].nodes)}
+        batched_regions = {
+            **control_regions(function, include_rectangular=watched is not None),
+            **copy_regions(function),
+        }
+        batched_regions = {
+            header: region for header, region in batched_regions.items() if unobserved_closed(region[0].nodes)
+        }
     else:
         batched_regions = {}
     control_cones, count_cache = {}, OrderedDict()
@@ -412,8 +432,9 @@ def constant_control_counts(
                     raise ValueError("constant control rectangular proof budget exhausted")
                 counts.update(rectangular)
                 values.update((arg, None) for member in region[0].nodes for arg in member.args)
-                values.update((result, None) for member in region[0].nodes
-                              for op in member.ops for result in op.results)
+                values.update(
+                    (result, None) for member in region[0].nodes for op in member.ops for result in op.results
+                )
                 block, incoming = region[0].exit, ()
                 continue
             cost = region_cost(region)

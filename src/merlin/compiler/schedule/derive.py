@@ -9,9 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from merlin.targetgen.address_space import ADDRESSABLE, accumulator_kind, operand_store
-
 from merlin.compiler.schedule.blocks import BlockScheduleError, Geometry
+from merlin.targetgen.address_space import ADDRESSABLE, accumulator_kind, operand_store
 
 __all__ = ["geometry_from_address_space", "geometry_from_machine"]
 

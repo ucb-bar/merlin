@@ -220,8 +220,6 @@ def _observations(accounting: Mapping | None, declaration_id: str) -> list[dict]
     return observations
 
 
-
-
 def _operation_eligibility(
     spec: Mapping, declaration: dict, matches: list[dict], accounting: Mapping | None
 ) -> list[dict]:

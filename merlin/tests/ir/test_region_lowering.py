@@ -62,9 +62,15 @@ def test_region_target_receipt_is_checked_before_return(tmp_path, monkeypatch, k
 
     monkeypatch.setattr(capsule_common, "lower_interface", invoke)
     artifact, digest, _ = lower_region(
-        package, tmp_path / "input", tmp_path, timeout=1,
-        check_inputs=lambda: events.append("input"), target_kind=kind, target=target,
-        target_is_current=current, revalidate_target=validate,
+        package,
+        tmp_path / "input",
+        tmp_path,
+        timeout=1,
+        check_inputs=lambda: events.append("input"),
+        target_kind=kind,
+        target=target,
+        target_is_current=current,
+        revalidate_target=validate,
     )
     assert artifact == "artifact"
     assert digest == hashlib.sha256(receipt).hexdigest()
@@ -85,8 +91,14 @@ def test_changed_original_target_refuses_artifact(tmp_path, monkeypatch, changed
     monkeypatch.setattr(capsule_common, "lower_interface", invoke)
     with pytest.raises(ValueError, match="target configuration context changed"):
         lower_region(
-            object(), tmp_path / "input", tmp_path, timeout=1, check_inputs=lambda: None,
-            target_kind="target_schedule", target=object(), target_is_current=lambda: current,
+            object(),
+            tmp_path / "input",
+            tmp_path,
+            timeout=1,
+            check_inputs=lambda: None,
+            target_kind="target_schedule",
+            target=object(),
+            target_is_current=lambda: current,
             revalidate_target=lambda *args, **kwargs: pytest.fail("stale target reached receipt validation"),
         )
     assert bool(invoked) is not changed_before

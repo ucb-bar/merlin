@@ -57,12 +57,16 @@ class PreparedStaticInput:
 
     def __post_init__(self) -> None:
         if (
-            not self.role.isidentifier() or type(self.address) is not int or self.address < 0
+            not self.role.isidentifier()
+            or type(self.address) is not int
+            or self.address < 0
             or not isinstance(self.source, DeclaredStaticTensor)
             or self.source.role != self.role
             or (self.payload is None) == (self.blocker is None)
-            or self.payload is not None and (not isinstance(self.payload, bytes) or not self.payload)
-            or self.blocker is not None and (not isinstance(self.blocker, str) or not self.blocker)
+            or self.payload is not None
+            and (not isinstance(self.payload, bytes) or not self.payload)
+            or self.blocker is not None
+            and (not isinstance(self.blocker, str) or not self.blocker)
         ):
             raise ValueError("prepared static input needs exactly one payload or blocker")
 
@@ -74,8 +78,11 @@ class PreparedStaticInput:
         }
         if self.payload is not None:
             return {
-                **row, "status": "packed", "path": f"constants/{self.role}.bin",
-                "bytes": len(self.payload), "sha256": hashlib.sha256(self.payload).hexdigest(),
+                **row,
+                "status": "packed",
+                "path": f"constants/{self.role}.bin",
+                "bytes": len(self.payload),
+                "sha256": hashlib.sha256(self.payload).hexdigest(),
             }
         return {**row, "status": "blocked", "reason": self.blocker}
 
@@ -98,7 +105,9 @@ def _f32_shape(value) -> tuple[int, ...]:
 
 
 def _trace_argument(
-    program: str, entry: str, source_ref: SourceValueRef,
+    program: str,
+    entry: str,
+    source_ref: SourceValueRef,
 ) -> tuple[int, tuple[tuple[int, ...], ...]] | None:
     module = parse_mlir_text(program)
     module.verify()
@@ -140,16 +149,16 @@ def _trace_argument(
 
 
 def load_declared_static_operand(
-    staged_directory: str | Path, plan: DiagnosticMatmulTile, role: str,
+    staged_directory: str | Path,
+    plan: DiagnosticMatmulTile,
+    role: str,
 ) -> DeclaredStaticTensor | None:
     """Load a declared parameter for one tile operand, or None for a runtime producer.
 
     The returned array has the *source operand* shape. Target conversion and
     physical packing are separate steps owned by the selected target binding.
     """
-    if not isinstance(plan, DiagnosticMatmulTile) or role not in {
-        item.source_role for item in plan.inputs
-    }:
+    if not isinstance(plan, DiagnosticMatmulTile) or role not in {item.source_role for item in plan.inputs}:
         raise ValueError("declared operand needs a source-bound tile input role")
     staged = load_compile_inputs(staged_directory)
     if (
@@ -179,9 +188,11 @@ def load_declared_static_operand(
     key = entry.get("weight")
     shape = entry.get("shape")
     if (
-        not isinstance(key, str) or not key
+        not isinstance(key, str)
+        or not key
         or entry.get("dtype") not in {"float32", "f32"}
-        or not isinstance(shape, list) or len(shape) < 2
+        or not isinstance(shape, list)
+        or len(shape) < 2
         or any(type(size) is not int or size <= 0 for size in shape)
     ):
         raise ValueError("declared parameter has an invalid key, dtype or shape")
@@ -208,5 +219,11 @@ def load_declared_static_operand(
         raise ValueError("declared parameter views differ from source operand shape")
     value.setflags(write=False)
     return DeclaredStaticTensor(
-        role, index, key, views, value, actual_sha, hashlib.sha256(value.tobytes()).hexdigest(),
+        role,
+        index,
+        key,
+        views,
+        value,
+        actual_sha,
+        hashlib.sha256(value.tobytes()).hexdigest(),
     )

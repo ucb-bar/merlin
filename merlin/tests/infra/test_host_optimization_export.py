@@ -31,17 +31,24 @@ def test_export_is_reviewable_and_retains_exact_algorithm_sources(tmp_path, monk
     )
     for module, name, owner in (
         ("merlin.compile.host_optimizations", "rewrite_tensor_module", host),
-        ("merlin.compile.host_optimization_export", "export_host_optimizations",
-         importlib.import_module("merlin.compiler.passes.hostexport")),
+        (
+            "merlin.compile.host_optimization_export",
+            "export_host_optimizations",
+            importlib.import_module("merlin.compiler.passes.hostexport"),
+        ),
         ("merlin.llvmlower.finite_integer_math", "rewrite_native_module", host_integer_math),
     ):
         assert pickle.loads(f"c{module}\n{name}\n.".encode()) is getattr(owner, name)
     with monkeypatch.context() as patched:
-        patched.setattr(host, "tensor_rewrite_source", lambda: (
-            "def _merlin_optimize_host_tensors(ctx, module, choices):\n    return choices\n"
-        ))
+        patched.setattr(
+            host,
+            "tensor_rewrite_source",
+            lambda: "def _merlin_optimize_host_tensors(ctx, module, choices):\n    return choices\n",
+        )
         assert host.rewrite_tensor_module(None, None, contractions=False) == {
-            "contraction": False, "squared_sum": True, "broadcast_math": True,
+            "contraction": False,
+            "squared_sum": True,
+            "broadcast_math": True,
         }
 
     output = tmp_path / "host-library"
@@ -73,9 +80,19 @@ for leaf in ('host_contraction', 'host_reduction', 'host_broadcast', 'host_integ
 assert 'merlin.targetgen' not in sys.modules
 """
     subprocess.run(
-        [sys.executable, "-I", "-c", program, str(output),
-         "b116c5ce1c7eb9d70417df629efd9f6e7ecd833270877d88dd4a28669c9a8342"],
-        cwd=tmp_path, capture_output=True, text=True, check=True, timeout=30,
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            program,
+            str(output),
+            "b116c5ce1c7eb9d70417df629efd9f6e7ecd833270877d88dd4a28669c9a8342",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
     )
     for module in ("merlin.compiler.passes.hostexport", "merlin.compile.host_optimization_export"):
         # Both command paths execute the actual exporter, including explicit resources.
@@ -87,9 +104,21 @@ sys.argv = [module, '--output-dir', directory, '--license-directory', licenses]
 runpy.run_module(module, run_name='__main__')
 """
         run = subprocess.run(
-            [sys.executable, "-I", "-c", command, str(repo_root() / "src"), module,
-             str(tmp_path / module.rsplit('.', 1)[1]), str(repo_root())],
-            cwd=tmp_path, capture_output=True, text=True, check=True, timeout=30,
+            [
+                sys.executable,
+                "-I",
+                "-c",
+                command,
+                str(repo_root() / "src"),
+                module,
+                str(tmp_path / module.rsplit(".", 1)[1]),
+                str(repo_root()),
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
         )
         assert json.loads(run.stdout) == manifest
 

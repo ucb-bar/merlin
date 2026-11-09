@@ -113,8 +113,11 @@ def test_memory_build_receipt_rechecks_selected_transport_and_header_bytes(monke
     receipt = verified()
     packet = transport in ("coherent_packet_v1", "coherent_packet_v2")
     assert receipt["schema"] == (
-        "merlin_readback_build_v4" if transport == "coherent_packet_v2"
-        else "merlin_readback_build_v3" if packet else "merlin_readback_build_v2"
+        "merlin_readback_build_v4"
+        if transport == "coherent_packet_v2"
+        else "merlin_readback_build_v3"
+        if packet
+        else "merlin_readback_build_v2"
     )
     assert bool(receipt["staged_codec_sha256"]) == packet
     assert recipe["readback_transport"] == policy.record()
@@ -810,25 +813,26 @@ def test_preexecution_observer_sees_fresh_build_and_can_abort_without_simulation
     backend = SimpleNamespace(run_elf=lambda *args, **kwargs: dispatched.append(args))
     from merlin.runtime.backends import base as backends
 
-    monkeypatch.setattr(backends, 'get_backend', lambda target: backend)
+    monkeypatch.setattr(backends, "get_backend", lambda target: backend)
 
     def build(cb, lowered, work, **kwargs):
-        elf = Path(work) / 'package_kernel.elf'
-        elf.write_bytes(b'fresh actual program')
+        elf = Path(work) / "package_kernel.elf"
+        elf.write_bytes(b"fresh actual program")
         built.append(elf)
         return elf
 
-    monkeypatch.setattr(compiler, 'compile_lowered_to_elf', build)
+    monkeypatch.setattr(compiler, "compile_lowered_to_elf", build)
 
     class Reused(Exception):
         pass
 
     def inspect(elf):
-        assert built == [elf] and elf.read_bytes() == b'fresh actual program'
+        assert built == [elf] and elf.read_bytes() == b"fresh actual program"
         raise Reused()
 
     with pytest.raises(Reused):
-        compiler.run_on_oracle({}, 'lowered', simulator='fixture', target='fixture', workdir=tmp_path,
-                               before_execution=inspect)
+        compiler.run_on_oracle(
+            {}, "lowered", simulator="fixture", target="fixture", workdir=tmp_path, before_execution=inspect
+        )
     assert dispatched == []
-    assert not (tmp_path / 'oracle_console.log').exists()
+    assert not (tmp_path / "oracle_console.log").exists()

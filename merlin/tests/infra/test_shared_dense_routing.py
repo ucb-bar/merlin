@@ -142,9 +142,16 @@ void {bridge}(const neutral_descriptor *a,const neutral_descriptor *b,neutral_de
         from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 
         return FreshTensorWriterContract(
-            symbol, 2, (2,), "borrowed_" + symbol, 32,
+            symbol,
+            2,
+            (2,),
+            "borrowed_" + symbol,
+            32,
             borrowed_effects=BorrowedBufferEffects(
-                "reviewed-neutral-dense-model-ABI-lifetime-v1", True, True, True,
+                "reviewed-neutral-dense-model-ABI-lifetime-v1",
+                True,
+                True,
+                True,
             ),
         )
 

@@ -8,12 +8,13 @@ from test_loop_schedule import SOURCE, trace
 from test_scf_commands import record
 
 from merlin.compiler.schedule.compact_dense import emit_compact_dense
-from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
-from merlin.compiler.schedule.loop_schedule import tile_loop_nest_transforms
+from merlin.compiler.schedule.loop_schedule import propose_loop_transforms, tile_loop_nest_transforms
 from merlin.compiler.schedule.scf_commands import materialize_scf_commands
-from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+from merlin.compiler.schedule.schedule_ir import (
+    dense_schedule_text,
+    make_dense_schedule_plan,
+    parse_dense_schedule_plan,
+)
 from merlin.sched.ir import Kernel, Ptr, TensorArg, Var, call, loop, select
 from merlin.sched.primitives import NotApplicable
 from merlin.transforms.dense_planning import dense_blocks
@@ -23,9 +24,23 @@ def pointwise(extents=(6, 12)):
     return Kernel(
         "pointwise",
         (TensorArg("x", extents, "i8", "read"),),
-        (loop("i", extents[0], loop("j", extents[1],
-            call("consume", source=Ptr("x", Var("i") * extents[1] + Var("j")),
-                 row=Var("i"), col=Var("j"), last=select("j", extents[1] - 1, 1, 0)))),),
+        (
+            loop(
+                "i",
+                extents[0],
+                loop(
+                    "j",
+                    extents[1],
+                    call(
+                        "consume",
+                        source=Ptr("x", Var("i") * extents[1] + Var("j")),
+                        row=Var("i"),
+                        col=Var("j"),
+                        last=select("j", extents[1] - 1, 1, 0),
+                    ),
+                ),
+            ),
+        ),
     )
 
 
@@ -40,8 +55,13 @@ def test_compound_current_paths_preserve_every_point_and_pointer(order):
     assert len(trace(actual)) == 72
     # Original byte-addressed pointer operands survive the composed index
     # substitutions. The separate SCF family intentionally accepts indices only.
-    index_original = replace(original, args=(), body=(loop("i", 6, loop("j", 12,
-        call("consume", offset=Var("i") * 12 + Var("j"), last=select("j", 11, 1, 0)))),))
+    index_original = replace(
+        original,
+        args=(),
+        body=(
+            loop("i", 6, loop("j", 12, call("consume", offset=Var("i") * 12 + Var("j"), last=select("j", 11, 1, 0)))),
+        ),
+    )
     index_requests = tile_loop_nest_transforms(index_original, ("i",), factors=(2, 3), outer_order=order)
     scf = materialize_scf_commands(propose_loop_transforms(index_original, index_requests))
     calls = record(scf)
@@ -51,9 +71,12 @@ def test_compound_current_paths_preserve_every_point_and_pointer(order):
 
 def test_two_tile_orders_are_real_distinct_emitter_inputs_not_just_analysis_orders():
     original = pointwise()
-    alternatives = [propose_loop_transforms(original,
-        tile_loop_nest_transforms(original, ("i",), factors=(2, 3), outer_order=order))
-        for order in ((0, 1), (1, 0))]
+    alternatives = [
+        propose_loop_transforms(
+            original, tile_loop_nest_transforms(original, ("i",), factors=(2, 3), outer_order=order)
+        )
+        for order in ((0, 1), (1, 0))
+    ]
     assert alternatives[0].digest() != alternatives[1].digest()
     assert trace(alternatives[0]) != trace(alternatives[1])
     assert sorted(map(repr, trace(alternatives[0]))) == sorted(map(repr, trace(alternatives[1])))
@@ -66,10 +89,24 @@ def test_real_dense_dialect_final_verifier_and_scf_emission_consume_composed_req
     block = next(b for b in dense_blocks(p, r) if (b.m, b.k, b.n) == (1, 1, 1))
     raw = emit_compact_dense(p, block, s, ADAPTER, name="dense", dtypes=("i8", "i8", "i32"))
     requests = tile_loop_nest_transforms(raw, ("outer_m",), factors=(2, 2), outer_order=order)
+
     def plan(transforms):
-        return parse_dense_schedule_plan(dense_schedule_text(make_dense_schedule_plan(
-            p, r, s, ADAPTER, source_identity=SOURCE, dtypes=("i8", "i8", "i32"), static_budget=80,
-            block_tiles=(1, 1, 1), loop_transforms=transforms)))
+        return parse_dense_schedule_plan(
+            dense_schedule_text(
+                make_dense_schedule_plan(
+                    p,
+                    r,
+                    s,
+                    ADAPTER,
+                    source_identity=SOURCE,
+                    dtypes=("i8", "i8", "i32"),
+                    static_budget=80,
+                    block_tiles=(1, 1, 1),
+                    loop_transforms=transforms,
+                )
+            )
+        )
+
     ordinary = schedule(p, r, s, schedule_plan=plan(()), source_identity=SOURCE)
     actual = schedule(p, r, s, schedule_plan=plan(requests), source_identity=SOURCE)
     actual.revalidate()  # unchanged arithmetic, local lifetime and output cover checker
@@ -110,8 +147,9 @@ def test_nonperfect_bounds_invalid_permutations_static_budget_refuse_and_closed_
             tile_loop_nest_transforms(original, ("i",), factors=(2, 3), outer_order=order)
     with pytest.raises(NotApplicable, match="budget"):
         tile_loop_nest_transforms(original, ("i",), factors=(2, 3), max_static_operations=4)
-    asynchronous = Kernel("async", (), (loop("i", 4, loop("j", 6,
-        call("launch", produces="done"), call("wait", awaits="done"))),))
+    asynchronous = Kernel(
+        "async", (), (loop("i", 4, loop("j", 6, call("launch", produces="done"), call("wait", awaits="done"))),)
+    )
     requests = tile_loop_nest_transforms(asynchronous, ("i",), factors=(2, 3))
     actual = propose_loop_transforms(asynchronous, requests)
     assert trace(actual) == trace(asynchronous)

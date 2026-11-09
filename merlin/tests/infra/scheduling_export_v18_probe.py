@@ -5,25 +5,26 @@ from dataclasses import replace
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, i64
 
-from merlin.compiler.schedule.blocks import Compute
-from merlin.compiler.schedule.blocks import Load
-from merlin.compiler.schedule.blocks import Preload
-from merlin.compiler.schedule.blocks import Store
-from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
-from merlin.compiler.schedule.compact_dense import DenseLoopStorage
-from merlin.compiler.schedule.compact_dense import DenseMemoryView
-from merlin.compiler.schedule.dense_panel_pipeline import DensePanelOverlapAdmission
-from merlin.compiler.schedule.dense_panel_pipeline import DenseReadoutComputeAdmission
-from merlin.compiler.schedule.dense_panel_pipeline import DenseRetainedReductionAdmission
+from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
+from merlin.compiler.schedule.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
+from merlin.compiler.schedule.dense_panel_pipeline import (
+    DensePanelOverlapAdmission,
+    DenseReadoutComputeAdmission,
+    DenseRetainedReductionAdmission,
+)
 from merlin.compiler.schedule.dense_readout_overlap import schedule_dense_readout_overlap
-from merlin.compiler.schedule.dense_segmented_pipeline import DenseSegmentedAdmission
-from merlin.compiler.schedule.dense_segmented_pipeline import batch_dense_segmented_readouts
-from merlin.compiler.schedule.dense_segmented_pipeline import schedule_dense_segmented_pipeline
+from merlin.compiler.schedule.dense_segmented_pipeline import (
+    DenseSegmentedAdmission,
+    batch_dense_segmented_readouts,
+    schedule_dense_segmented_pipeline,
+)
 from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
-from merlin.compiler.schedule.scf_commands import emit_scf_commands
-from merlin.compiler.schedule.scf_commands import materialize_scf_commands
-from merlin.compiler.schedule.scf_commands import unroll_small_command_loops
-from merlin.compiler.schedule.scf_commands import verify_scf_commands
+from merlin.compiler.schedule.scf_commands import (
+    emit_scf_commands,
+    materialize_scf_commands,
+    unroll_small_command_loops,
+    verify_scf_commands,
+)
 from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.sched.ir import Call, Const, Kernel, Loop, Var, as_expr
@@ -37,8 +38,7 @@ def encode(op):
         name = op.role + "_load"
     elif type(op) is Preload:
         names = ("weight", "k", "n", "acc", "continue", "rows", "cols", "depth")
-        values = (op.weight_row, *op.weight_block, op.accumulator_row, op.accumulate,
-                  op.rows, op.cols, op.weight_rows)
+        values = (op.weight_row, *op.weight_block, op.accumulator_row, op.accumulate, op.rows, op.cols, op.weight_rows)
         name = "preload"
     elif type(op) is Compute:
         names = ("lhs", "m", "k", "rows", "depth")
@@ -55,11 +55,18 @@ def encode(op):
 def project(call):
     a = dict(call.args)
     if call.instr in ("lhs_load", "weight_load"):
-        return Load(call.instr.removesuffix("_load"), (a["a"], a["b"]),
-                    a["src_row"], a["src_col"], a["rows"], a["cols"], a["dst"], a["step"])
+        return Load(
+            call.instr.removesuffix("_load"),
+            (a["a"], a["b"]),
+            a["src_row"],
+            a["src_col"],
+            a["rows"],
+            a["cols"],
+            a["dst"],
+            a["step"],
+        )
     if call.instr == "preload":
-        return Preload(a["weight"], (a["k"], a["n"]), a["acc"], a["continue"],
-                       a["rows"], a["cols"], a["depth"])
+        return Preload(a["weight"], (a["k"], a["n"]), a["acc"], a["continue"], a["rows"], a["cols"], a["depth"])
     if call.instr == "compute":
         return Compute(a["lhs"], (a["m"], a["k"]), a["rows"], a["depth"], True)
     if call.instr == "store":
@@ -78,10 +85,15 @@ def llvm_module(module, name, *, persistent=False):
 
     report = emit_scf_commands(module, bridge, lower, allow_persistent_state=persistent)
     function = llvm.FuncOp(name, llvm.LLVMFunctionType([], llvm.LLVMVoidType()), body=builder.finish())
-    output = ModuleOp([
-        *(llvm.FuncOp(n, llvm.LLVMFunctionType([i64] * count, llvm.LLVMVoidType()))
-          for n, count in declarations.items()), function,
-    ])
+    output = ModuleOp(
+        [
+            *(
+                llvm.FuncOp(n, llvm.LLVMFunctionType([i64] * count, llvm.LLVMVoidType()))
+                for n, count in declarations.items()
+            ),
+            function,
+        ]
+    )
     output.verify()
     assert any(type(op) is llvm.CallOp for op in function.walk())
     return output, report, annotations
@@ -95,32 +107,65 @@ def run():
         DenseMemoryView("rhs", "right_sram", 4, 3, 48),
         DenseMemoryView("acc", "acc_sram", 16, 1, 64),
     )
-    resources = DenseResources(256 * 3 + 48 * 4, 64 * 16, 2, 2, 2,
-                               partial_output_tiles=True, partial_output_blocks=True)
+    resources = DenseResources(
+        256 * 3 + 48 * 4, 64 * 16, 2, 2, 2, partial_output_tiles=True, partial_output_blocks=True
+    )
     block = next(b for b in dense_blocks(p, resources) if (b.m, b.k, b.n) == (2, 2, 2))
     args = (adapter.configuration_identity, adapter.numerical_policy_identity)
     overlap = DensePanelOverlapAdmission(*args, "TEST-ONLY-disjoint-input-epochs", 4096, 4096, 2, 2)
     reduction = DenseRetainedReductionAdmission(*args, "TEST-ONLY-ordered-reductions", 4096, 4096, 2, 2)
     law = DenseSegmentedAdmission(overlap, reduction, "TEST-ONLY-explicit-conjunction")
     plan = make_dense_schedule_plan(
-        p, resources, storage, adapter, source_identity="b" * 64, dtypes=("i8", "i8", "i32"),
-        static_budget=128, block_tiles=(2, 2, 2), pipeline_kind="retained_lhs_segmented_k",
+        p,
+        resources,
+        storage,
+        adapter,
+        source_identity="b" * 64,
+        dtypes=("i8", "i8", "i32"),
+        static_budget=128,
+        block_tiles=(2, 2, 2),
+        pipeline_kind="retained_lhs_segmented_k",
         pipeline_prefetch=True,
     )
     original = schedule_dense_segmented_pipeline(
-        p, resources, storage, adapter, law, name="exported_segmented", dtypes=("i8", "i8", "i32"),
-        schedule_plan=plan, source_identity="b" * 64, external_buffers_disjoint=True,
+        p,
+        resources,
+        storage,
+        adapter,
+        law,
+        name="exported_segmented",
+        dtypes=("i8", "i8", "i32"),
+        schedule_plan=plan,
+        source_identity="b" * 64,
+        external_buffers_disjoint=True,
     )
+
     def store(component):
-        return replace(component, max_issued_readouts=4, pending_readouts=2,
-                       readout_configuration="ordered_snapshot_before_store_issue")
+        return replace(
+            component,
+            max_issued_readouts=4,
+            pending_readouts=2,
+            readout_configuration="ordered_snapshot_before_store_issue",
+        )
+
     law = replace(law, overlap=store(law.overlap), reduction=store(law.reduction))
     original = batch_dense_segmented_readouts(original, p, block, resources, storage, adapter, law)
     capability = DenseReadoutComputeAdmission(
-        *args, "TEST-ONLY-disjoint-ACC-completion", "TEST-ONLY-store-snapshot", 4, 2,
+        *args,
+        "TEST-ONLY-disjoint-ACC-completion",
+        "TEST-ONLY-store-snapshot",
+        4,
+        2,
     )
     result = schedule_dense_readout_overlap(
-        original, p, block, resources, storage, adapter, capability, group_path=("outer_m", "outer_n"),
+        original,
+        p,
+        block,
+        resources,
+        storage,
+        adapter,
+        capability,
+        group_path=("outer_m", "outer_n"),
     )
     assert result.realization["source"]["output_tiles"] == p.tiles[0] * p.tiles[2]
     assert result.realization["transformations"][0]["odd_tail"] == 1
@@ -131,12 +176,24 @@ def run():
     assert "merlin_dense_panel_drain" in str(output)
     result.revalidate()
 
-    state_kernel = Kernel("persistent", (), (
-        Call("configure", (), sets=(("mode", Const(-7)),)),
-        Loop("m", 3, (Loop("n", 2, (
-            Call("consume", (("index", Var("m") * 2 + Var("n")),), assumes=(("mode", Const(-7)),)),
-        )),)),
-    ))
+    state_kernel = Kernel(
+        "persistent",
+        (),
+        (
+            Call("configure", (), sets=(("mode", Const(-7)),)),
+            Loop(
+                "m",
+                3,
+                (
+                    Loop(
+                        "n",
+                        2,
+                        (Call("consume", (("index", Var("m") * 2 + Var("n")),), assumes=(("mode", Const(-7)),)),),
+                    ),
+                ),
+            ),
+        ),
+    )
     try:
         materialize_scf_commands(state_kernel)
     except ValueError as error:

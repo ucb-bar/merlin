@@ -20,7 +20,13 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["catalog_source_contractions", "device_contraction_ranks", "device_dtype_triples", "offloadable_contractions", "why_not"]
+__all__ = [
+    "catalog_source_contractions",
+    "device_contraction_ranks",
+    "device_dtype_triples",
+    "offloadable_contractions",
+    "why_not",
+]
 
 
 def _mlir(token: str) -> str | None:

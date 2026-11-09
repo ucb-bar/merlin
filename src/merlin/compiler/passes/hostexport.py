@@ -45,8 +45,16 @@ IMPLEMENTATION_MODULES = (
     "merlin.llvmlower.constant_float_clamp",
     "merlin.llvmlower.constant_fma_packet",
 )
-NAMESPACES = ("merlin", "merlin.common", "merlin.compiler", "merlin.compiler.ir", "merlin.compiler.transforms",
-              "merlin.compile", "merlin.llvmlower", "merlin.runtime")
+NAMESPACES = (
+    "merlin",
+    "merlin.common",
+    "merlin.compiler",
+    "merlin.compiler.ir",
+    "merlin.compiler.transforms",
+    "merlin.compile",
+    "merlin.llvmlower",
+    "merlin.runtime",
+)
 
 
 def _licenses(source_root, selected):
@@ -64,8 +72,11 @@ def _licenses(source_root, selected):
         raise ValueError("host library licenses require the distribution owning the actual exporter")
     result = []
     for name in ("LICENSE", "NOTICE"):
-        matches = [path for path in files if path.name == name and path.parent.name == "licenses"
-                   and path.parent.parent.name.endswith(".dist-info")]
+        matches = [
+            path
+            for path in files
+            if path.name == name and path.parent.name == "licenses" and path.parent.parent.name.endswith(".dist-info")
+        ]
         if len(matches) != 1:
             raise ValueError(f"installed host library requires exactly one packaged {name}")
         result.append(Path(installed.locate_file(matches[0])))

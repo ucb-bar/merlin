@@ -66,20 +66,26 @@ def _convert_export(exported, inputs, out):
         raise RuntimeError("traced exported capture requires static shapes; dynamic guards are not materialized")
     if any(not isinstance(value, torch.Tensor) for value in inputs):
         raise RuntimeError("traced exported capture requires flat positional tensor inputs")
-    if (len(outputs) != 1 or outputs[0].kind != OutputKind.USER_OUTPUT or
-            not isinstance(outputs[0].arg, TensorArgument)):
-        raise RuntimeError("traced exported capture requires one tensor output and no mutation outputs; "
-                           "the bundle reference writer stores only one output")
-    result = m2m.convert(exported, inputs, backend="fx_importer", capture_trace=True,
-                         weights_path=str(out / "weights.safetensors"))
+    if len(outputs) != 1 or outputs[0].kind != OutputKind.USER_OUTPUT or not isinstance(outputs[0].arg, TensorArgument):
+        raise RuntimeError(
+            "traced exported capture requires one tensor output and no mutation outputs; "
+            "the bundle reference writer stores only one output"
+        )
+    result = m2m.convert(
+        exported, inputs, backend="fx_importer", capture_trace=True, weights_path=str(out / "weights.safetensors")
+    )
     if not result.ok or result.module is None:
         raise RuntimeError(f"exported frontend conversion failed: {result.diagnostics}")
     if any(isinstance(op, CallOp) for op in result.module.walk()):
         raise RuntimeError("exported frontend conversion contains unresolved opaque calls")
     trace = result.capture_trace
     digest = hashlib.sha256(result.mlir_text.encode("utf-8")).hexdigest()
-    if (not isinstance(trace, dict) or trace.get("status") != "complete" or
-            trace.get("blockers") or trace.get("mlir", {}).get("sha256") != digest):
+    if (
+        not isinstance(trace, dict)
+        or trace.get("status") != "complete"
+        or trace.get("blockers")
+        or trace.get("mlir", {}).get("sha256") != digest
+    ):
         raise RuntimeError("exported frontend conversion lacks complete byte-bound correspondence")
     return result
 
@@ -134,8 +140,15 @@ def main(argv=None) -> int:
     # an MLIR/manifest that names constants absent from extra.npz.
     if quant is None:
         conversion = _convert_export(exported, inputs, out)
-        written = write_bundle(model, inputs, str(out), source_path=src, exported_program=exported,
-                               conversion_result=conversion, capture_trace=True)
+        written = write_bundle(
+            model,
+            inputs,
+            str(out),
+            source_path=src,
+            exported_program=exported,
+            conversion_result=conversion,
+            capture_trace=True,
+        )
     else:
         written = write_bundle(model, inputs, str(out), quant=quant, source_path=src, exported_program=exported)
 

@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from merlin.verification import completed_model as C
-from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.llvmlower.compilation_recipe import CompilationRecipe
 from merlin.model_check.chain_image_objects import completed_program
+from merlin.runtime.modelinputs import strict_tree_sha256
+from merlin.verification import completed_model as C
 
 
 @pytest.fixture
@@ -35,10 +35,23 @@ def original(tmp_path, request):
         from merlin.llvmlower.host_storage_policy import prepare, recheck
 
         software = tmp_path / "software.json"
-        software.write_text(json.dumps(dict(schema="merlin.software_spec.v1", status="reviewed", target="neutral",
-            host_optimization=dict(schema=POLICY_SCHEMA, permitted_stages=["llvm"],
-                permitted_optimizations=["static_arena"], sequential_execution=True,
-                successful_allocations=True, non_reentrant_entry=True))))
+        software.write_text(
+            json.dumps(
+                dict(
+                    schema="merlin.software_spec.v1",
+                    status="reviewed",
+                    target="neutral",
+                    host_optimization=dict(
+                        schema=POLICY_SCHEMA,
+                        permitted_stages=["llvm"],
+                        permitted_optimizations=["static_arena"],
+                        sequential_execution=True,
+                        successful_allocations=True,
+                        non_reentrant_entry=True,
+                    ),
+                )
+            )
+        )
         policy = read_host_graph_policy(software, target="neutral", entry="forward")
         ll = build / "input.ll"
         ll.write_text("define void @forward() {\n  ret void\n}\n")
@@ -51,11 +64,25 @@ def original(tmp_path, request):
         from merlin.llvmlower.host_optimization_request import POLICY_SCHEMA
 
         software = tmp_path / "software.json"
-        software.write_text(json.dumps(dict(schema="merlin.software_spec.v1", status="reviewed", target="neutral",
-            host_optimization=dict(schema=POLICY_SCHEMA, permitted_stages=["logical_host"],
-                permitted_optimizations=["propagate_layout"], independent_element_order_unobserved=True))))
+        software.write_text(
+            json.dumps(
+                dict(
+                    schema="merlin.software_spec.v1",
+                    status="reviewed",
+                    target="neutral",
+                    host_optimization=dict(
+                        schema=POLICY_SCHEMA,
+                        permitted_stages=["logical_host"],
+                        permitted_optimizations=["propagate_layout"],
+                        independent_element_order_unobserved=True,
+                    ),
+                )
+            )
+        )
         policy = read_host_graph_policy(software, target="neutral", entry="forward", column_reduction_layout=True)
-        module = parse_mlir_text("module {func.func @forward(%x:tensor<2x3xi8>)->tensor<2x3xi8> {return %x:tensor<2x3xi8>}}")
+        module = parse_mlir_text(
+            "module {func.func @forward(%x:tensor<2x3xi8>)->tensor<2x3xi8> {return %x:tensor<2x3xi8>}}"
+        )
         prepare_group_layout(module, policy, build / "pre_group_layout")
         products = recheck_host_graph_artifacts(build / "pre_group_layout", policy)
         for role, pin in products.items():
@@ -66,6 +93,7 @@ def original(tmp_path, request):
         def run(argv):
             output.write_bytes(data)
             return subprocess.CompletedProcess(argv, 0)
+
         return run
 
     objects = [build / name for name in ("model.o", "model_call.o", "model_main.o", "weights_blob.o")]
@@ -77,14 +105,31 @@ def original(tmp_path, request):
     catalog, dts, sidecar = (tmp_path / name for name in ("catalog", "dts", "sidecar.json"))
     for path in (catalog, dts, sidecar):
         path.write_text("original")
-    receipt = dict(schema="merlin.baremetal-saved-model.v1", status="failed", failure=C._FAILURE,
-        inputs=dict(run="none", target="neutral", capture=str(roots["capture"]), capture_tree=strict_tree_sha256(roots["capture"]),
-            package=str(roots["host"]), package_tree=strict_tree_sha256(roots["host"]),
+    receipt = dict(
+        schema="merlin.baremetal-saved-model.v1",
+        status="failed",
+        failure=C._FAILURE,
+        inputs=dict(
+            run="none",
+            target="neutral",
+            capture=str(roots["capture"]),
+            capture_tree=strict_tree_sha256(roots["capture"]),
+            package=str(roots["host"]),
+            package_tree=strict_tree_sha256(roots["host"]),
             device=dict(package=str(roots["device"]), package_tree=strict_tree_sha256(roots["device"])),
-            board_catalog=str(catalog), board_catalog_sha256=C._pin(catalog)["sha256"],
-            dts=str(dts), dts_sha256=C._pin(dts)["sha256"]),
-        output=dict(elf=str(elf), elf_sha256=C._pin(elf)["sha256"], compilation_recipe=C._pin(recipe.path),
-            device_sidecar=C._pin(sidecar), host_artifacts=dict(object=C._pin(objects[0]))))
+            board_catalog=str(catalog),
+            board_catalog_sha256=C._pin(catalog)["sha256"],
+            dts=str(dts),
+            dts_sha256=C._pin(dts)["sha256"],
+        ),
+        output=dict(
+            elf=str(elf),
+            elf_sha256=C._pin(elf)["sha256"],
+            compilation_recipe=C._pin(recipe.path),
+            device_sidecar=C._pin(sidecar),
+            host_artifacts=dict(object=C._pin(objects[0])),
+        ),
+    )
     if storage is not None:
         receipt["inputs"]["device"]["intermediate_storage"] = storage[0]
         receipt["output"]["intermediate_storage"] = storage[1]
@@ -95,8 +140,18 @@ def original(tmp_path, request):
     failed, evidence, recovery = (tmp_path / name for name in ("failed.json", "restoration.json", "recovery.json"))
     failed.write_text(json.dumps(receipt))
     evidence.write_text('{"extra_generated_artifacts_preserved":true}')
-    return dict(failed=failed, evidence=evidence, recovery=recovery, roots=roots, objects=objects, elf=elf,
-                source=source, sidecar=sidecar, recipe=recipe.path, receipt=receipt)
+    return dict(
+        failed=failed,
+        evidence=evidence,
+        recovery=recovery,
+        roots=roots,
+        objects=objects,
+        elf=elf,
+        source=source,
+        sidecar=sidecar,
+        recipe=recipe.path,
+        receipt=receipt,
+    )
 
 
 def finalize(original):
@@ -117,7 +172,9 @@ def test_restored_link_uses_original_recipe_and_preserves_failed_record(original
         completed_program(C._pin(original["failed"]))
 
 
-@pytest.mark.parametrize("member", ["device", "capture", "host", "elf", "objects", "source", "sidecar", "recipe", "evidence"])
+@pytest.mark.parametrize(
+    "member", ["device", "capture", "host", "elf", "objects", "source", "sidecar", "recipe", "evidence"]
+)
 def test_revalidation_reopens_every_original_tree_product_and_evidence(original, member):
     finalize(original)
     if member in original["roots"]:

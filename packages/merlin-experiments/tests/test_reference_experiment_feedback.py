@@ -11,13 +11,13 @@ import threading
 from pathlib import Path
 
 import pytest
+
+from merlin.verify.lean_contract import document_digest
 from merlin_experiments.phase1 import compiler_library
 from merlin_experiments.phase1.brokers import selfcheck as broker
 from merlin_experiments.phase1.brokers import selfcheck_tuning as tuning
 from merlin_experiments.phase1.feedback import brief, next_steps
 from merlin_experiments.phase1.feedback import reference_experiments as reference
-
-from merlin.verify.lean_contract import document_digest
 
 
 def _write(path, value):
@@ -31,81 +31,171 @@ def _fixture(tmp_path, *, visibility="reference_guided"):
     submission.mkdir()
     (submission / "backend.py").write_text("pass\n")
     compiler = broker._submission_digest(submission)
-    context = dict(compiler_sha256=compiler, source_sha256="b" * 64,
-                   environment_sha256="c" * 64, reference_sha256="d" * 64,
-                   visibility=visibility, evaluator=dict(identity="owned-evaluator", sha256="e" * 64),
-                   tuning=dict(current=dict(retain=False), domains=dict(retain=dict(values=[False, True]))))
+    context = dict(
+        compiler_sha256=compiler,
+        source_sha256="b" * 64,
+        environment_sha256="c" * 64,
+        reference_sha256="d" * 64,
+        visibility=visibility,
+        evaluator=dict(identity="owned-evaluator", sha256="e" * 64),
+        tuning=dict(current=dict(retain=False), domains=dict(retain=dict(values=[False, True]))),
+    )
     identity = document_digest(context)
-    request = dict(request_id="bounded-retention-trial", role="variant", submission="submission",
-                   argv=["python3", "agent_selfcheck.py", "--submission", "submission",
-                         "--capsules", "declared-case", "--sim", "spike", "--tiers", "L2"],
-                   settings=dict(retain=True), settings_sha256=document_digest(dict(retain=True)),
-                   tuning_overrides=dict(retain=True), changed_factors=["retain"], capsule="declared-case",
-                   split="public", context_identity=identity, baseline_compiler_sha256=compiler,
-                   sim="spike", tiers="L2")
-    task = dict(task_id="reuse-lhs", kind="mechanism_experiment", goals=["reuse.lhs"], status="ready",
-                summary="Check whether retained input survives the complete output sweep.",
-                evidence=[dict(status="observed", pointer="schedule/operand-traffic")],
-                hypotheses=[dict(summary="Retaining input may reduce reloading.", basis="inferred")],
-                prior_attempts=[dict(status="failed", reason="previous emitted kernel reloaded input")],
-                requests=[request], acceptance=dict(mechanism_checks=["complete input traffic checked"],
-                    performance=dict(required="paired complete-region cycles"), held_out_required=True),
-                next_action=dict(route="existing_selfcheck_tuning_broker", depends_on=[], gaps=[]))
+    request = dict(
+        request_id="bounded-retention-trial",
+        role="variant",
+        submission="submission",
+        argv=[
+            "python3",
+            "agent_selfcheck.py",
+            "--submission",
+            "submission",
+            "--capsules",
+            "declared-case",
+            "--sim",
+            "spike",
+            "--tiers",
+            "L2",
+        ],
+        settings=dict(retain=True),
+        settings_sha256=document_digest(dict(retain=True)),
+        tuning_overrides=dict(retain=True),
+        changed_factors=["retain"],
+        capsule="declared-case",
+        split="public",
+        context_identity=identity,
+        baseline_compiler_sha256=compiler,
+        sim="spike",
+        tiers="L2",
+    )
+    task = dict(
+        task_id="reuse-lhs",
+        kind="mechanism_experiment",
+        goals=["reuse.lhs"],
+        status="ready",
+        summary="Check whether retained input survives the complete output sweep.",
+        evidence=[dict(status="observed", pointer="schedule/operand-traffic")],
+        hypotheses=[dict(summary="Retaining input may reduce reloading.", basis="inferred")],
+        prior_attempts=[dict(status="failed", reason="previous emitted kernel reloaded input")],
+        requests=[request],
+        acceptance=dict(
+            mechanism_checks=["complete input traffic checked"],
+            performance=dict(required="paired complete-region cycles"),
+            held_out_required=True,
+        ),
+        next_action=dict(route="existing_selfcheck_tuning_broker", depends_on=[], gaps=[]),
+    )
     packet = dict(schema=reference.PACKET_SCHEMA, context=context, execution_context_identity=identity, tasks=[task])
     packet["identity"] = document_digest(packet)
     packet_path = tmp_path / "packet.json"
     packet_sha = _write(packet_path, packet)
-    selection = dict(schema=reference.SCHEMA, packet=dict(path=str(packet_path), sha256=packet_sha),
-                     current_context=context)
+    selection = dict(
+        schema=reference.SCHEMA, packet=dict(path=str(packet_path), sha256=packet_sha), current_context=context
+    )
     path = tmp_path / "selection.json"
     sha = _write(path, selection)
-    return dict(path=path, sha=sha, packet=packet, selection=selection, compiler=compiler,
-                packet_path=packet_path, workspace=tmp_path)
+    return dict(
+        path=path,
+        sha=sha,
+        packet=packet,
+        selection=selection,
+        compiler=compiler,
+        packet_path=packet_path,
+        workspace=tmp_path,
+    )
 
 
 def _request(fixture):
     planned = fixture["packet"]["tasks"][0]["requests"][0]
     metadata = {key: planned[key] for key in ("request_id", "context_identity")}
     metadata.update(task_id="reuse-lhs", packet_identity=fixture["packet"]["identity"])
-    return dict(submission="submission", capsules="declared-case", sim="spike", tiers="L2",
-                tuning_overrides=dict(retain=True), tuning_experiment=dict(reference_experiment=metadata))
+    return dict(
+        submission="submission",
+        capsules="declared-case",
+        sim="spike",
+        tiers="L2",
+        tuning_overrides=dict(retain=True),
+        tuning_experiment=dict(reference_experiment=metadata),
+    )
 
 
 def _repin(fixture):
-    fixture["packet"]["identity"] = document_digest({key: value for key, value in fixture["packet"].items()
-                                                       if key != "identity"})
+    fixture["packet"]["identity"] = document_digest(
+        {key: value for key, value in fixture["packet"].items() if key != "identity"}
+    )
     fixture["selection"]["packet"]["sha256"] = _write(fixture["packet_path"], fixture["packet"])
     fixture["sha"] = _write(fixture["path"], fixture["selection"])
 
 
 def _response(request, compiler, *, raw=None):
-    return broker._decorate_response(json.dumps(raw or dict(all_pass=True, sim="spike", n_capsules=1, per_capsule=[
-        dict(capsule="declared-case", status="passed", numerical_execution_passed=True, cycles=123)])),
-        request, "owned-request", compiler,
-        started_ns=1, completed_ns=2)
+    return broker._decorate_response(
+        json.dumps(
+            raw
+            or dict(
+                all_pass=True,
+                sim="spike",
+                n_capsules=1,
+                per_capsule=[
+                    dict(capsule="declared-case", status="passed", numerical_execution_passed=True, cycles=123)
+                ],
+            )
+        ),
+        request,
+        "owned-request",
+        compiler,
+        started_ns=1,
+        completed_ns=2,
+    )
 
 
 def _live_fixture(tmp_path):
     from merlin.compiler.selection import knobs as tuning_knobs
 
     fixture = _fixture(tmp_path)
-    _write(tmp_path / "submission" / tuning_knobs.DECLARATION, dict(schema=tuning_knobs.SCHEMA,
-        settings_file="settings.json", knobs=dict(retain=dict(values=[False, True], goals=["memory.reuse"]))))
+    _write(
+        tmp_path / "submission" / tuning_knobs.DECLARATION,
+        dict(
+            schema=tuning_knobs.SCHEMA,
+            settings_file="settings.json",
+            knobs=dict(retain=dict(values=[False, True], goals=["memory.reuse"])),
+        ),
+    )
     _write(tmp_path / "submission/settings.json", dict(retain=False))
     fixture["compiler"] = broker._submission_digest(tmp_path / "submission")
     context = fixture["packet"]["context"]
     context["compiler_sha256"] = fixture["compiler"]
     context["baseline"] = dict(submission="submission")
     context["tuning"]["domains"]["retain"]["goals"] = ["memory.reuse"]
-    context["capsules"] = [dict(id="declared-case", goals=["memory.reuse"],
-        selfcheck_argv=["python3", "agent_selfcheck.py", "--submission", "{submission}",
-                       "--capsules", "declared-case", "--sim", "spike", "--tiers", "L2"])]
+    context["capsules"] = [
+        dict(
+            id="declared-case",
+            goals=["memory.reuse"],
+            selfcheck_argv=[
+                "python3",
+                "agent_selfcheck.py",
+                "--submission",
+                "{submission}",
+                "--capsules",
+                "declared-case",
+                "--sim",
+                "spike",
+                "--tiers",
+                "L2",
+            ],
+        )
+    ]
     identity = document_digest(context)
     fixture["packet"]["execution_context_identity"] = identity
     fixture["packet"]["tasks"][0]["requests"][0]["context_identity"] = identity
     _repin(fixture)
-    report = dict(kind="reference_candidate_comparison", cca=dict(status="compared",
-        compared_axes=["memory.reuse"], divergences=[dict(axis="memory.reuse", expert=True, ours=False)]))
+    report = dict(
+        kind="reference_candidate_comparison",
+        cca=dict(
+            status="compared",
+            compared_axes=["memory.reuse"],
+            divergences=[dict(axis="memory.reuse", expert=True, ours=False)],
+        ),
+    )
     return fixture, report
 
 
@@ -140,23 +230,30 @@ def test_missing_comparison_evidence_reaches_feedback_as_a_native_diagnostic(tmp
     from merlin_experiments.phase1.feedback import reference_analysis
 
     fixture, _ = _live_fixture(tmp_path)
-    report = dict(kind="reference_candidate_comparison", semantic_compatibility="unknown",
-        schedule_consumption="unknown", cca=dict(status="compared",
-            compared_axes=["dispatch.loop_offloaded"], divergences=[],
-            unknowns=[dict(axis="compute.op", reason="value_unavailable", missing_sides=["expert", "ours"])]))
+    report = dict(
+        kind="reference_candidate_comparison",
+        semantic_compatibility="unknown",
+        schedule_consumption="unknown",
+        cca=dict(
+            status="compared",
+            compared_axes=["dispatch.loop_offloaded"],
+            divergences=[],
+            unknowns=[dict(axis="compute.op", reason="value_unavailable", missing_sides=["expert", "ours"])],
+        ),
+    )
     with reference.invocation(fixture["path"], fixture["sha"], tasks=False):
         generated = reference.record_analysis(report, workspace=tmp_path, compiler_sha256=fixture["compiler"])
         found = reference.project(current_compiler_sha256=fixture["compiler"])
         assert not reference.pending_requests(fixture["compiler"])
     assert found["task_status"] == "blocked" and found["qualification_issued"] is False
-    diagnostic, = found["next_action"]["diagnostics"]
+    (diagnostic,) = found["next_action"]["diagnostics"]
     assert diagnostic["argv"][-1] == "--candidate-diagnostics"
     assert diagnostic["argv"][diagnostic["argv"].index("--capsules") + 1] == "declared-case"
     assert not found["required_selfchecks"] and not found["observed_requests"]
     assert found["lines"][0].startswith("reference evidence")
     assert any(line.startswith("emission diagnostic:") and "--candidate-diagnostics" in line for line in found["lines"])
     summary = reference_analysis._analysis_summary(dict(kind=report["kind"], experiment=generated))
-    compact_diagnostic, = summary["experiment"]["tasks"][0]["next_action"]["diagnostics"]
+    (compact_diagnostic,) = summary["experiment"]["tasks"][0]["next_action"]["diagnostics"]
     assert compact_diagnostic["command"] == diagnostic["command"]
 
 
@@ -175,11 +272,15 @@ def test_source_drift_withholds_requests_until_fresh_analysis(tmp_path):
 
 def test_changed_candidate_analysis_artifact_invalidates_live_requests(tmp_path):
     fixture, report = _live_fixture(tmp_path)
-    artifact = tmp_path / 'artifacts' / 'commands.json'
+    artifact = tmp_path / "artifacts" / "commands.json"
     artifact.parent.mkdir()
     artifact.write_text("{}")
-    report["candidate"] = dict(input=dict(path=(Path('artifacts') / 'commands.json').as_posix(),
-        sha256=hashlib.sha256(artifact.read_bytes()).hexdigest()))
+    report["candidate"] = dict(
+        input=dict(
+            path=(Path("artifacts") / "commands.json").as_posix(),
+            sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(),
+        )
+    )
     with reference.invocation(fixture["path"], fixture["sha"], tasks=False):
         reference.record_analysis(report, workspace=tmp_path, compiler_sha256=fixture["compiler"])
         assert reference.pending_requests(fixture["compiler"])
@@ -208,8 +309,7 @@ def test_removed_declaration_does_not_inherit_old_executable_alternatives(tmp_pa
 def test_default_is_inert_even_with_candidate_packet_or_completion(tmp_path, monkeypatch):
     fixture = _fixture(tmp_path)
     monkeypatch.setenv("MERLIN_REFERENCE_EXPERIMENTS", str(fixture["path"]))
-    document = dict(submission_sha256=fixture["compiler"], task_complete=True,
-                    reference_packet=str(fixture["path"]))
+    document = dict(submission_sha256=fixture["compiler"], task_complete=True, reference_packet=str(fixture["path"]))
     original = copy.deepcopy(document)
     assert reference.attach(document) is None
     assert document == original
@@ -262,8 +362,7 @@ def test_staged_tasks_are_compact_prior_only_and_join_existing_treatment_seal(tm
 
 def test_selected_feedback_is_structured_executable_and_advisory(tmp_path):
     fixture = _fixture(tmp_path)
-    document = dict(submission_sha256=fixture["compiler"], all_pass=True,
-                    next_steps=dict(lines=["ordinary priority"]))
+    document = dict(submission_sha256=fixture["compiler"], all_pass=True, next_steps=dict(lines=["ordinary priority"]))
     with reference.invocation(fixture["path"], fixture["sha"]):
         found = reference.attach(document)
         assert found["status"] == "pending_experiment"
@@ -315,8 +414,13 @@ def test_source_drift_preserves_bounded_reference_intent_without_rebasing_result
         assert prior["goals"] == ["reuse.lhs"]
         assert prior["scope"] == "prior_reference_context"
         assert prior["current_status"] == "unverified"
-        assert prior["evidence"][0] == dict(scope="prior_reference_context", current_status="unknown",
-            prior_status="observed", pointer="schedule/operand-traffic", sha256="a" * 64)
+        assert prior["evidence"][0] == dict(
+            scope="prior_reference_context",
+            current_status="unknown",
+            prior_status="observed",
+            pointer="schedule/operand-traffic",
+            sha256="a" * 64,
+        )
         assert prior["hypotheses"][0]["basis"] == "inferred"
         assert prior["hypotheses"][0]["current_status"] == "unknown"
         assert prior["prior_action"]["action"] == task["next_action"]["action"]
@@ -327,14 +431,19 @@ def test_source_drift_preserves_bounded_reference_intent_without_rebasing_result
         assert found["executable_requests_allowed"] is found["outcome_join_allowed"] is False
         assert found["task_complete"] is found["qualification_issued"] is False
         assert reference.pending_requests("f" * 64, include_observed=True) == ()
-        assert reference.observe_result(_request(fixture), dict(submission_sha256="f" * 64),
-                                        base_compiler_sha256="f" * 64) is None
+        assert (
+            reference.observe_result(_request(fixture), dict(submission_sha256="f" * 64), base_compiler_sha256="f" * 64)
+            is None
+        )
         encoded = json.dumps(found)
         assert "raw-evidence-payload" not in encoded
         assert "old-executable-command-token" not in encoded
         assert "bounded-retention-trial" not in encoded
         assert [row["kind"] for row in found["diagnostic_workflow"]] == [
-            "candidate_diagnostics", "compile_only", "selfcheck"]
+            "candidate_diagnostics",
+            "compile_only",
+            "selfcheck",
+        ]
         assert all("{public_capsule}" in row["argv_template"] for row in found["diagnostic_workflow"])
         assert "schedule_ir" in found["library_guidance"]["scheduling_api"]
 
@@ -375,10 +484,15 @@ def test_prior_guidance_size_is_bounded_and_omissions_are_explicit(tmp_path):
     tasks = []
     for ordinal in range(16):
         task = copy.deepcopy(template)
-        task.update(task_id=str(ordinal), requests=[], status="blocked", summary="s" * 10000,
-                    goals=["goal" + str(i) + "g" * 1000 for i in range(20)],
-                    evidence=[dict(status="observed", pointer="p" * 2000, value="v" * 10000)] * 5,
-                    hypotheses=[dict(summary="h" * 1000, hypothesis_id="i" * 1000)] * 5)
+        task.update(
+            task_id=str(ordinal),
+            requests=[],
+            status="blocked",
+            summary="s" * 10000,
+            goals=["goal" + str(i) + "g" * 1000 for i in range(20)],
+            evidence=[dict(status="observed", pointer="p" * 2000, value="v" * 10000)] * 5,
+            hypotheses=[dict(summary="h" * 1000, hypothesis_id="i" * 1000)] * 5,
+        )
         tasks.append(task)
     fixture["packet"]["tasks"] = tasks
     _repin(fixture)
@@ -406,8 +520,10 @@ def test_selected_input_fails_preflight_before_author_work(tmp_path, mutation):
         if mutation == "packet_identity":
             fixture["packet"]["tasks"][0]["summary"] = "tampered task content"
         elif mutation == "context":
-            fixture["selection"]["current_context"] = {**fixture["selection"]["current_context"],
-                                                        "compiler_sha256": "f" * 64}
+            fixture["selection"]["current_context"] = {
+                **fixture["selection"]["current_context"],
+                "compiler_sha256": "f" * 64,
+            }
         else:
             fixture["packet"]["context"]["visibility"] = "operator_only"
             unsigned = {key: value for key, value in fixture["packet"].items() if key != "identity"}
@@ -466,7 +582,8 @@ def test_existing_worker_thread_receives_original_selection(tmp_path):
     observed = []
     with reference.invocation(fixture["path"], fixture["sha"]):
         worker, joined = compiler_library.background_target(
-            lambda: observed.extend(reference.pending_requests(fixture["compiler"])))
+            lambda: observed.extend(reference.pending_requests(fixture["compiler"]))
+        )
         thread = threading.Thread(target=worker)
         thread.start()
         thread.join()
@@ -487,16 +604,19 @@ main()
 """
     with reference.invocation(fixture["path"], fixture["sha"]):
         arguments = compiler_library.child_arguments()
-    child = subprocess.run([sys.executable, "-c", script, *arguments, fixture["compiler"]],
-                           check=True, capture_output=True, text=True)
+    child = subprocess.run(
+        [sys.executable, "-c", script, *arguments, fixture["compiler"]], check=True, capture_output=True, text=True
+    )
     assert json.loads(child.stdout)[0]["request_id"] == "bounded-retention-trial"
     assert reference.child_arguments() == ()
 
 
 def test_reference_worker_failure_propagates_at_existing_join(tmp_path):
     fixture = _fixture(tmp_path)
+
     def fail():
         raise RuntimeError("actual worker failure")
+
     with reference.invocation(fixture["path"], fixture["sha"]):
         worker, joined = compiler_library.background_target(fail)
         thread = threading.Thread(target=worker)
@@ -534,8 +654,11 @@ def test_existing_next_steps_and_round_brief_receive_selected_experiment(tmp_pat
 def test_owned_result_is_observed_but_never_proves_mechanism_or_completes_task(tmp_path, all_pass, selection):
     fixture = _fixture(tmp_path)
     root = tmp_path / "submission"
-    (root / "TUNING_KNOBS.json").write_text(json.dumps(dict(schema=tuning.SCHEMA,
-        settings_file="settings.json", knobs=dict(retain=dict(values=[False, True])))))
+    (root / "TUNING_KNOBS.json").write_text(
+        json.dumps(
+            dict(schema=tuning.SCHEMA, settings_file="settings.json", knobs=dict(retain=dict(values=[False, True])))
+        )
+    )
     (root / "settings.json").write_text(json.dumps(dict(retain=False)))
     # The source identity is captured after declaring the actual settings input.
     fixture["compiler"] = broker._submission_digest(root)
@@ -544,8 +667,9 @@ def test_owned_result_is_observed_but_never_proves_mechanism_or_completes_task(t
     fixture["packet"]["execution_context_identity"] = execution
     planned = fixture["packet"]["tasks"][0]["requests"][0]
     planned.update(context_identity=execution, baseline_compiler_sha256=fixture["compiler"])
-    fixture["packet"]["identity"] = document_digest({key: value for key, value in fixture["packet"].items()
-                                                       if key != "identity"})
+    fixture["packet"]["identity"] = document_digest(
+        {key: value for key, value in fixture["packet"].items() if key != "identity"}
+    )
     fixture["selection"]["packet"]["sha256"] = _write(fixture["packet_path"], fixture["packet"])
     fixture["sha"] = _write(fixture["path"], fixture["selection"])
     proposed = _request(fixture)
@@ -554,10 +678,16 @@ def test_owned_result_is_observed_but_never_proves_mechanism_or_completes_task(t
         proposed["reference_experiment_request_id"] = planned["request_id"]
     request = tuning.apply_request(root, proposed, digest=broker._submission_digest)
     with reference.invocation(fixture["path"], fixture["sha"]):
-        response = _response(request, fixture["compiler"], raw=dict(
-            all_pass=all_pass, sim="spike", n_capsules=1, per_capsule=[dict(
-                capsule="declared-case", status="incomplete", numerical_execution_passed=True)],
-        ))
+        response = _response(
+            request,
+            fixture["compiler"],
+            raw=dict(
+                all_pass=all_pass,
+                sim="spike",
+                n_capsules=1,
+                per_capsule=[dict(capsule="declared-case", status="incomplete", numerical_execution_passed=True)],
+            ),
+        )
         result = response["reference_experiment_result"]
         assert result["executed_compiler_sha256"] == broker._submission_digest(root)
         assert result["base_compiler_sha256"] == fixture["compiler"]
@@ -594,8 +724,9 @@ def test_owned_result_is_observed_but_never_proves_mechanism_or_completes_task(t
 def test_candidate_workspace_ledger_cannot_suppress_trusted_request(tmp_path):
     fixture = _fixture(tmp_path)
     (tmp_path / "qa").mkdir()
-    (tmp_path / "qa" / "idle_tuning.json").write_text(json.dumps(dict(
-        request_id="bounded-retention-trial", task_complete=True, mechanism_status="observed")))
+    (tmp_path / "qa" / "idle_tuning.json").write_text(
+        json.dumps(dict(request_id="bounded-retention-trial", task_complete=True, mechanism_status="observed"))
+    )
     with reference.invocation(fixture["path"], fixture["sha"]):
         assert reference.pending_requests(fixture["compiler"])
         found = reference.project(current_compiler_sha256=fixture["compiler"])
@@ -614,18 +745,34 @@ def test_changed_private_journal_is_unknown_and_never_completion(tmp_path):
         assert reference.pending_requests(fixture["compiler"]) == ()
 
 
-@pytest.mark.parametrize("mismatch", [
-    "metadata", "source", "capsule", "sim", "suite", "tiers", "overrides", "variant_source",
-    "unknown_plain_id", "plain_id_overrides", "conflicting_id",
-])
+@pytest.mark.parametrize(
+    "mismatch",
+    [
+        "metadata",
+        "source",
+        "capsule",
+        "sim",
+        "suite",
+        "tiers",
+        "overrides",
+        "variant_source",
+        "unknown_plain_id",
+        "plain_id_overrides",
+        "conflicting_id",
+    ],
+)
 def test_result_metadata_is_never_authority_without_actual_join(tmp_path, mismatch):
     fixture = _fixture(tmp_path)
     request = _request(fixture)
     # APPLIED_KEY is host-produced; no applied observation means no trusted variant.
     request[tuning.APPLIED_KEY] = dict(settings_file="settings.json", overrides=dict(retain=True), sha256="f" * 64)
     compiler = fixture["compiler"]
-    raw = dict(all_pass=True, sim="spike", per_capsule=[dict(capsule="declared-case", status="passed")],
-               reference_experiment_result=dict(task_complete=True))
+    raw = dict(
+        all_pass=True,
+        sim="spike",
+        per_capsule=[dict(capsule="declared-case", status="passed")],
+        reference_experiment_result=dict(task_complete=True),
+    )
     if mismatch == "metadata":
         request["tuning_experiment"]["reference_experiment"]["packet_identity"] = "f" * 64
     elif mismatch == "source":
@@ -643,7 +790,8 @@ def test_result_metadata_is_never_authority_without_actual_join(tmp_path, mismat
     elif mismatch in ("unknown_plain_id", "plain_id_overrides"):
         request.pop("tuning_experiment")
         request["reference_experiment_request_id"] = (
-            "unknown-request" if mismatch == "unknown_plain_id" else "bounded-retention-trial")
+            "unknown-request" if mismatch == "unknown_plain_id" else "bounded-retention-trial"
+        )
         if mismatch == "plain_id_overrides":
             request["tuning_overrides"] = dict(retain=False)
     elif mismatch == "conflicting_id":
@@ -658,10 +806,18 @@ def test_result_metadata_is_never_authority_without_actual_join(tmp_path, mismat
 
 def _scoped_program(elf="1" * 64, **changes):
     """Original evaluator projection; no author-provided effect claims."""
-    return dict(schema="merlin.phase1.joint_performance.v1", complete_event_accounting=True,
-                capsule_sha256="2" * 64, selection_sha256="3" * 64, model_sha256="4" * 64,
-                comparison_domain_sha256="5" * 64, scope_sha256="6" * 64, elf_sha256=elf,
-                feature_counts={"target.class.load": 2048}, **changes)
+    return dict(
+        schema="merlin.phase1.joint_performance.v1",
+        complete_event_accounting=True,
+        capsule_sha256="2" * 64,
+        selection_sha256="3" * 64,
+        model_sha256="4" * 64,
+        comparison_domain_sha256="5" * 64,
+        scope_sha256="6" * 64,
+        elf_sha256=elf,
+        feature_counts={"target.class.load": 2048},
+        **changes,
+    )
 
 
 def _observed_pair(tmp_path, *, before=None, after=None, variant_first=False):
@@ -669,20 +825,27 @@ def _observed_pair(tmp_path, *, before=None, after=None, variant_first=False):
     responses = {}
     with reference.invocation(fixture["path"], fixture["sha"], tasks=False):
         fixture["generated"] = reference.record_analysis(
-            report, workspace=tmp_path, compiler_sha256=fixture["compiler"])
+            report, workspace=tmp_path, compiler_sha256=fixture["compiler"]
+        )
         plans = reference.pending_requests(fixture["compiler"])
         assert {p["role"] for p in plans} == {"baseline", "variant"}
         order = sorted(plans, key=lambda p: p["role"] == ("baseline" if variant_first else "variant"))
         for plan in order:
             import shutil
+
             snapshot = tmp_path / ("private-" + plan["role"]) / "submission"
             shutil.copytree(tmp_path / "submission", snapshot)
             request = dict(plan["broker_payload"], reference_experiment_request_id=plan["request_id"])
             request = tuning.apply_request(snapshot, request, digest=broker._submission_digest)
             record = before if plan["role"] == "baseline" else after
-            raw = dict(all_pass=True, sim="spike", per_capsule=[dict(capsule="declared-case", status="passed",
-                numerical_execution_passed=True, performance=record)],
-                candidate_sha256=(request.get(tuning.APPLIED_KEY) or {}).get("sha256", fixture["compiler"]))
+            raw = dict(
+                all_pass=True,
+                sim="spike",
+                per_capsule=[
+                    dict(capsule="declared-case", status="passed", numerical_execution_passed=True, performance=record)
+                ],
+                candidate_sha256=(request.get(tuning.APPLIED_KEY) or {}).get("sha256", fixture["compiler"]),
+            )
             responses[plan["role"]] = _response(request, fixture["compiler"], raw=raw)
         projected = reference.project(current_compiler_sha256=fixture["compiler"])
     return fixture, responses, projected
@@ -690,10 +853,11 @@ def _observed_pair(tmp_path, *, before=None, after=None, variant_first=False):
 
 @pytest.mark.parametrize("variant_first", [False, True])
 def test_owned_identical_scoped_elf_surfaces_advisory_construction_gap(tmp_path, variant_first):
-    fixture, responses, projected = _observed_pair(tmp_path, before=_scoped_program(),
-        after=_scoped_program(), variant_first=variant_first)
+    fixture, responses, projected = _observed_pair(
+        tmp_path, before=_scoped_program(), after=_scoped_program(), variant_first=variant_first
+    )
     assert projected["experiment_status"] == "requested_but_no_emitted_change"
-    effect, = projected["emitted_effects"]
+    (effect,) = projected["emitted_effects"]
     assert effect["reason"] == "identical_matched_emitted_program"
     assert effect["application_status"] == "optimization_did_not_apply_emitted_fallback"
     assert effect["fallback_scope"] == "retained_baseline_program"
@@ -713,12 +877,18 @@ def test_owned_identical_scoped_elf_surfaces_advisory_construction_gap(tmp_path,
         assert persisted["emitted_effects"] == projected["emitted_effects"]
 
 
-@pytest.mark.parametrize("change", ["missing", "capsule", "selection", "model", "domain", "scope",
-                                   "counts", "incomplete"])
+@pytest.mark.parametrize(
+    "change", ["missing", "capsule", "selection", "model", "domain", "scope", "counts", "incomplete"]
+)
 def test_noop_needs_matching_complete_owned_scope_not_just_same_elf(tmp_path, change):
     before, after = _scoped_program(), _scoped_program()
-    key = {"capsule": "capsule_sha256", "selection": "selection_sha256", "model": "model_sha256",
-           "domain": "comparison_domain_sha256", "scope": "scope_sha256"}.get(change)
+    key = {
+        "capsule": "capsule_sha256",
+        "selection": "selection_sha256",
+        "model": "model_sha256",
+        "domain": "comparison_domain_sha256",
+        "scope": "scope_sha256",
+    }.get(change)
     if key:
         after[key] = "7" * 64
     elif change == "missing":
@@ -735,7 +905,7 @@ def test_noop_needs_matching_complete_owned_scope_not_just_same_elf(tmp_path, ch
 
 def test_changed_elf_and_equal_counts_do_not_prove_requested_mechanism(tmp_path):
     _, _, projected = _observed_pair(tmp_path, before=_scoped_program(), after=_scoped_program("8" * 64))
-    effect, = projected["emitted_effects"]
+    (effect,) = projected["emitted_effects"]
     assert effect["status"] == "emitted_program_changed"
     assert effect["mechanism_status"] == "unknown" and not effect["qualification_issued"]
     assert projected["experiment_status"] == "observed_mechanism_unresolved"
@@ -756,19 +926,30 @@ def test_effect_pair_cannot_borrow_another_execution_context(tmp_path, mismatch)
     task = fixture["generated"]["tasks"][0]
     outcomes = {row["request_id"]: copy.deepcopy(row) for row in projected["observed_requests"]}
     variant = next(row for row in outcomes.values() if row["role"] == "variant")
-    key, value = {"engine": ("sim", "gsim"), "source": ("executed_compiler_sha256", "9" * 64),
-                  "context": ("context_identity", "9" * 64), "suite": ("suite", "programs"),
-                  "tiers": ("tiers", "L3")}[mismatch]
+    key, value = {
+        "engine": ("sim", "gsim"),
+        "source": ("executed_compiler_sha256", "9" * 64),
+        "context": ("context_identity", "9" * 64),
+        "suite": ("suite", "programs"),
+        "tiers": ("tiers", "L3"),
+    }[mismatch]
     variant[key] = value
-    effect, = reference._emitted_effects(task, outcomes)
+    (effect,) = reference._emitted_effects(task, outcomes)
     assert effect["status"] == "unknown" and not effect["qualification_issued"]
 
 
 def test_emitted_program_advice_is_inert_without_reference_selection(tmp_path):
     fixture = _fixture(tmp_path)
     request = _request(fixture)
-    response = _response(request, fixture["compiler"], raw=dict(all_pass=True, sim="spike",
-        per_capsule=[dict(capsule="declared-case", status="passed", performance=_scoped_program())]))
+    response = _response(
+        request,
+        fixture["compiler"],
+        raw=dict(
+            all_pass=True,
+            sim="spike",
+            per_capsule=[dict(capsule="declared-case", status="passed", performance=_scoped_program())],
+        ),
+    )
     assert reference.KEY not in response and "reference_experiment_result" not in response
     assert response["all_pass"] is True
 
@@ -793,13 +974,22 @@ def test_immediate_effect_feedback_uses_exact_observed_task_not_first_pending(tm
                 request = dict(plan["broker_payload"], reference_experiment_request_id=plan["request_id"])
                 request = tuning.apply_request(snapshot, request, digest=broker._submission_digest)
                 changed = second_changes_program and task is second and plan["role"] == "variant"
-                raw = dict(all_pass=True, sim="spike", candidate_sha256=(request.get(tuning.APPLIED_KEY) or {}).get(
-                    "sha256", fixture["compiler"]), per_capsule=[dict(capsule="declared-case", status="passed",
-                    performance=_scoped_program("8" * 64 if changed else "1" * 64))])
+                raw = dict(
+                    all_pass=True,
+                    sim="spike",
+                    candidate_sha256=(request.get(tuning.APPLIED_KEY) or {}).get("sha256", fixture["compiler"]),
+                    per_capsule=[
+                        dict(
+                            capsule="declared-case",
+                            status="passed",
+                            performance=_scoped_program("8" * 64 if changed else "1" * 64),
+                        )
+                    ],
+                )
                 latest = _response(request, fixture["compiler"], raw=raw)
         feedback = latest[reference.KEY]
         assert feedback["latest_observation"]["task_id"] == second["task_id"]
-        effect, = feedback["emitted_effects"]
+        (effect,) = feedback["emitted_effects"]
         assert effect["task_id"] == second["task_id"]
         if second_changes_program:
             assert feedback["experiment_status"] == "observed_mechanism_unresolved"

@@ -44,10 +44,12 @@ def test_preview_rechecks_checker_source_after_actual_independent_verification(t
     monkeypatch.setattr(checker, "__file__", str(copied))
     source, _, _, _ = roster(tmp_path)
     original = region.verify_region_preview
+
     def verify(*args, **kwargs):
         receipt = original(*args, **kwargs)
         copied.write_bytes(copied.read_bytes() + b"\n# changed during preview\n")
         return receipt
+
     monkeypatch.setattr(region, "verify_region_preview", verify)
     with pytest.raises(ValueError, match="implementation bytes changed"):
         region.preview_region(source.module, source.entry, source.operations, symbol="preview")
@@ -59,10 +61,12 @@ def test_materialization_rechecks_actual_preview_callback_binding(tmp_path, monk
     source, _, cpu, device = roster(tmp_path)
     selected = select_execution(source, (*cpu, *device), preferred_providers=("vector", "array"))
     original = regions.preview_region
+
     def preview(*args, **kwargs):
         result = original(*args, **kwargs)
         monkeypatch.setattr(regions, "preview_region", original)
         return result
+
     monkeypatch.setattr(regions, "preview_region", preview)
     with pytest.raises(ValueError, match="implementation callable changed"):
         partition_execution(selected)
@@ -80,13 +84,20 @@ def test_region_preview_reuses_full_source_beta_expansion_and_keeps_dead_operati
     product = next(op for op in function.walk() if op.name == "arith.muli")
     product.attributes["required.changed_meaning"] = builtin.UnitAttr()
     with pytest.raises(ValueError, match="beta-expansion"):
-        verify_region_preview(source.module, actual, entry=source.entry, operations=source.operations,
-                              inputs=preview.inputs, outputs=preview.outputs)
+        verify_region_preview(
+            source.module,
+            actual,
+            entry=source.entry,
+            operations=source.operations,
+            inputs=preview.inputs,
+            outputs=preview.outputs,
+        )
     with pytest.raises(ValueError, match="contiguous"):
         preview_region(source.module, source.entry, (source.operations[0], source.operations[2]), symbol="bad")
     function = source.module.body.block.first_op
     function.properties["arg_attrs"] = builtin.ArrayAttr(
-        builtin.DictionaryAttr({"merlin.input_domain": builtin.StringAttr("unproved")}) for _ in function.args)
+        builtin.DictionaryAttr({"merlin.input_domain": builtin.StringAttr("unproved")}) for _ in function.args
+    )
     with pytest.raises(ValueError, match="inherited.*signature"):
         preview_region(source.module, source.entry, source.operations, symbol="bad")
 

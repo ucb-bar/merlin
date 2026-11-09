@@ -139,7 +139,9 @@ def _materialization_identity(module, dispatches) -> str:
 
     return json.dumps(
         {"module": ir_digest(module), "dispatches": [asdict(info) for info in dispatches]},
-        sort_keys=True, separators=(",", ":"), allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
     )
 
 

@@ -66,6 +66,7 @@ class ContractionShape:
         if not isinstance(self.dtypes, tuple) or any(not str(d) for d in self.dtypes):
             raise ValueError(f"dtypes must be a tuple of non-empty tokens, got {self.dtypes!r}")
 
+
 #: Named ops whose iteration space is (parallel..., reduction...) with the LAST TWO parallel dims
 #: being the register-blocked pair. Value = number of leading BATCH (parallel) dims.
 _NAMED: dict[str, int] = {

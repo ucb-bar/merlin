@@ -239,7 +239,9 @@ def test_same_typed_external_binding_substitution_refuses_original_context(tmp_p
         ip.verify_bounded_match(mutated, expected_source=rewritten.source_identity, expected_bindings=original)
 
 
-@pytest.mark.parametrize("placement", ["outer", "same_block", "late", "sibling", "isolated", "source_scope", "malformed"])
+@pytest.mark.parametrize(
+    "placement", ["outer", "same_block", "late", "sibling", "isolated", "source_scope", "malformed"]
+)
 def test_weight_views_are_retained_only_as_valid_dominating_captures(tmp_path, placement):
     # The ordinary model route hoists immutable weight reshapes above a loop,
     # while activation gathering and the contraction remain inside its body.
@@ -257,8 +259,7 @@ def test_weight_views_are_retained_only_as_valid_dominating_captures(tmp_path, p
         "iter_args(%carry = %e0) -> (tensor<3x21xi32>) {\n    %c0 =",
     ).replace(
         "    func.return %mm : tensor<3x21xi32>",
-        "    scf.yield %mm : tensor<3x21xi32>\n    }\n"
-        "    func.return %result : tensor<3x21xi32>",
+        "    scf.yield %mm : tensor<3x21xi32>\n    }\n    func.return %result : tensor<3x21xi32>",
     )
     module = mq.parse(source)
     operation = [op for op in module.walk() if type(op) is GenericOp][-1]

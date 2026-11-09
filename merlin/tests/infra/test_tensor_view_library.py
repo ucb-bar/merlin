@@ -1,8 +1,8 @@
 """Next-library view normalization is explicit, source-closed and discoverable."""
+
 import importlib.util
 
 import pytest
-from merlin_experiments.phase2.compiler_library_guidance import selected_inventory
 
 from merlin.common.paths import repo_root
 from merlin.compiler.schedule.export import export_shared_scheduling
@@ -12,6 +12,7 @@ from merlin.targetgen.compiler_library import (
     freeze_compiler_library,
     scoped_compiler_library,
 )
+from merlin_experiments.phase2.compiler_library_guidance import selected_inventory
 
 ROOT = repo_root()
 SPEC = importlib.util.spec_from_file_location(
@@ -41,14 +42,17 @@ def test_exact_view_source_is_admitted_and_has_callable_inventory(tmp_path):
     manifest = export_shared_scheduling(root, version=20, source_binding=True)
     sources = tuple((row["path"], row["module"]) for row in manifest["members"])
     requested = PREP.reviewed_view_modules(
-        (), existing=manifest["public_modules"],
-        source_modules={module for _, module in sources}, enabled=True,
+        (),
+        existing=manifest["public_modules"],
+        source_modules={module for _, module in sources},
+        enabled=True,
     )
     additions = PREP.reviewed_modules(requested, existing=manifest["public_modules"])
     for path in additions:
         (root / path).write_bytes((ROOT / "src" / path).read_bytes())
     contract = freeze_compiler_library(
-        root, review_id="editable-generic-compiler-v1:tensor-view-test",
+        root,
+        review_id="editable-generic-compiler-v1:tensor-view-test",
         public_modules=(*manifest["public_modules"], *additions.values()),
         sources=(*sources, *additions.items()),
     )
@@ -66,5 +70,6 @@ def test_exact_view_source_is_admitted_and_has_callable_inventory(tmp_path):
     assert entry["source_sha256"] == member.sha256
     assert inventory["target_adapter_applicability"].startswith("UNKNOWN")
     assert set(row.module for row in contract.members) == {
-        *(module for _, module in sources), LEAF,
+        *(module for _, module in sources),
+        LEAF,
     }

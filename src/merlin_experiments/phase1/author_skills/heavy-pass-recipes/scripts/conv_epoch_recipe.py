@@ -407,8 +407,9 @@ class Commands:
             self._emit("descriptor", ops)
             self._emit("compute", self._access([0, 0], C["read"], f["lhs_row"], f["rows"], f["depth"], "scratchpad"))
         elif kind == "store":
-            self._emit("readout", self._access([0, 0], R["read"], f["accumulator_row"], f["rows"], f["columns"],
-                                               "accumulator"))
+            self._emit(
+                "readout", self._access([0, 0], R["read"], f["accumulator_row"], f["rows"], f["columns"], "accumulator")
+            )
         else:
             raise ValueError(f"no command role for effect {kind}")
         if self.every:
@@ -442,9 +443,18 @@ def residual(result, record):
 
 
 # ------------------------------------------------------------------------------- routes
-def verify_readout_application(schedule, readout_law, receipt, *, rhs=None, input_rows=None,
-                               output_group=None, array_law=None, readout_transfer_law=None,
-                               grouped_transport=False):
+def verify_readout_application(
+    schedule,
+    readout_law,
+    receipt,
+    *,
+    rhs=None,
+    input_rows=None,
+    output_group=None,
+    array_law=None,
+    readout_transfer_law=None,
+    grouped_transport=False,
+):
     """Match the actual convolution consumer receipt to the requested opt-in.
 
     A source import, default emitter call or driver-local option is insufficient.
@@ -453,44 +463,60 @@ def verify_readout_application(schedule, readout_law, receipt, *, rhs=None, inpu
     """
     from dataclasses import asdict
 
-    from merlin.compiler.schedule.convolution_exploration import ConvolutionRhsPhases
-    from merlin.compiler.schedule.convolution_exploration import ConvolutionRhsResidency
-    from merlin.compiler.schedule.convolution_exploration import ConvolutionSchedule
+    from merlin.compiler.schedule.convolution_exploration import (
+        ConvolutionRhsPhases,
+        ConvolutionRhsResidency,
+        ConvolutionSchedule,
+    )
     from merlin.compiler.schedule.window_transfer import ConvolutionReadoutEpochLaw
 
-    if (type(schedule) is not ConvolutionSchedule or not schedule.choice.load_issue
-        or schedule.choice.compute_pairs <= 1):
+    if (
+        type(schedule) is not ConvolutionSchedule
+        or not schedule.choice.load_issue
+        or schedule.choice.compute_pairs <= 1
+    ):
         raise ValueError("readout application requires the original issued convolution epoch schedule")
     schedule.verify_current()
     if type(readout_law) is not ConvolutionReadoutEpochLaw:
         raise ValueError("readout application requires its separate typed selected source law")
-    if (readout_law.hardware_identity != schedule.epoch_law.hardware_identity
-        or readout_law.numerical_policy_identity != schedule.epoch_law.numerical_policy_identity):
+    if (
+        readout_law.hardware_identity != schedule.epoch_law.hardware_identity
+        or readout_law.numerical_policy_identity != schedule.epoch_law.numerical_policy_identity
+    ):
         raise ValueError("readout application selects different source contracts")
     expected = schedule.summary()
-    if (not isinstance(receipt, dict)
-        or any(_digest(receipt.get(k)) != _digest(v) for k, v in expected.items())):
+    if not isinstance(receipt, dict) or any(_digest(receipt.get(k)) != _digest(v) for k, v in expected.items()):
         raise ValueError("requested convolution readout epoch was not applied by the original consumer")
     if rhs is not None:
         if type(rhs) not in (ConvolutionRhsResidency, ConvolutionRhsPhases):
             raise ValueError("readout application requires the original complete RHS owner")
         rhs.verify_current()
-        if (rhs.schedule.identity != schedule.identity
-            or receipt.get("realization_sha256") != rhs.identity):
+        if rhs.schedule.identity != schedule.identity or receipt.get("realization_sha256") != rhs.identity:
             raise ValueError("requested convolution readout RHS owner was not applied")
     if type(rhs) is ConvolutionRhsPhases:
         children = receipt.get("phase_emissions")
-        if (not isinstance(children, list) or len(children) != len(rhs.phases)
-            or _digest(receipt.get("rhs_phases")) != _digest(rhs.summary())):
+        if (
+            not isinstance(children, list)
+            or len(children) != len(rhs.phases)
+            or _digest(receipt.get("rhs_phases")) != _digest(rhs.summary())
+        ):
             raise ValueError("requested convolution readout phases were not applied completely")
         realized = []
         for phase, child in zip(rhs.phases, children, strict=True):
             columns = {column for column, _ in phase.column_intervals}
-            blocks = tuple(part for block in schedule.column_blocks
-                if (part := tuple(t for t in block if t.output_column in columns)))
-            phase_expected = dict(expected, column_blocks=[[asdict(t) for t in block] for block in blocks],
-                partial_original_column_intervals=phase.column_intervals, whole_invocation=False,
-                rhs_residency=phase.summary(), realization_sha256=phase.identity)
+            blocks = tuple(
+                part
+                for block in schedule.column_blocks
+                if (part := tuple(t for t in block if t.output_column in columns))
+            )
+            phase_expected = dict(
+                expected,
+                column_blocks=[[asdict(t) for t in block] for block in blocks],
+                partial_original_column_intervals=phase.column_intervals,
+                whole_invocation=False,
+                rhs_residency=phase.summary(),
+                realization_sha256=phase.identity,
+            )
             realized.append((blocks, child, phase_expected))
     else:
         if receipt.get("phase_emissions") is not None:
@@ -498,11 +524,14 @@ def verify_readout_application(schedule, readout_law, receipt, *, rhs=None, inpu
         realized = [(schedule.column_blocks, receipt, expected)]
         if rhs is not None and _digest(receipt.get("rhs_residency")) != _digest(rhs.summary()):
             raise ValueError("requested convolution readout RHS owner was not applied")
+
     def semantic_sha(value):
         return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
     groups = (None,) * len(realized)
     if output_group is not None or array_law is not None:
         from merlin.compiler.schedule.convolution_output_groups import plan_rolling_convolution_output_group
+
         if output_group is None or array_law is None or rhs is None:
             raise ValueError("spatial group requires complete resident RHS and separate array admission")
         groups = output_group if type(rhs) is ConvolutionRhsPhases else (output_group,)
@@ -517,12 +546,16 @@ def verify_readout_application(schedule, readout_law, receipt, *, rhs=None, inpu
         for block in blocks:
             readout_law.require(schedule.source.plan, schedule.source.plan.row_tile, block)
         if group is not None:
-            selected = plan_rolling_convolution_output_group(schedule, owner, input_rows,
-                max_row_blocks=group.row_blocks, max_output_rows=group.output_rows)
+            selected = plan_rolling_convolution_output_group(
+                schedule, owner, input_rows, max_row_blocks=group.row_blocks, max_output_rows=group.output_rows
+            )
             if selected != group:
                 raise ValueError("requested spatial group differs from original source/residency")
-            group_expected = dict(layout=asdict(group), group_sha256=semantic_sha(asdict(group)),
-                array_law_sha256=semantic_sha(asdict(array_law)))
+            group_expected = dict(
+                layout=asdict(group),
+                group_sha256=semantic_sha(asdict(group)),
+                array_law_sha256=semantic_sha(asdict(array_law)),
+            )
             actual_group = child.get("spatial_output_group") or {}
             if any(actual_group.get(k) != v for k, v in group_expected.items()):
                 raise ValueError("requested spatial output group was not applied by the original consumer")
@@ -530,52 +563,113 @@ def verify_readout_application(schedule, readout_law, receipt, *, rhs=None, inpu
             raise ValueError("spatial output group receipt needs its actual requested owner")
         rolling = child.get("rolling_transport") or {}
         if grouped_transport and group is not None:
-            from merlin.compiler.schedule.rolling_window import materialize_grouped_rolling_window
-            from merlin.compiler.schedule.rolling_window import verify_grouped_rolling_window
+            from merlin.compiler.schedule.rolling_window import (
+                materialize_grouped_rolling_window,
+                verify_grouped_rolling_window,
+            )
+
             ring = input_rows.rolling_plan()
-            transport = verify_grouped_rolling_window(materialize_grouped_rolling_window(
-                ring, output_rows=group.output_rows), ring, output_rows=group.output_rows)
+            transport = verify_grouped_rolling_window(
+                materialize_grouped_rolling_window(ring, output_rows=group.output_rows),
+                ring,
+                output_rows=group.output_rows,
+            )
             if any(rolling.get(k) != v for k, v in transport.items()):
                 raise ValueError("requested grouped transport was not applied by the original consumer")
         elif "output_rows_per_group" in rolling:
             raise ValueError("grouped transport receipt needs its actual requested owner")
         if readout_transfer_law is not None:
-            from merlin.compiler.schedule.window_transfer import ConvolutionOutputTile
-            from merlin.compiler.schedule.window_transfer import plan_convolution_readout_transfers
-            transfer_blocks = blocks if group is None else tuple(tuple(
-                ConvolutionOutputTile(t.output_column, t.columns, schedule.source.plan.accumulator_row
-                    + group.accumulator_row(0, n, active_column_blocks=len(block)))
-                for n, t in enumerate(block)) for block in blocks)
-            expected_transfer = dict(law_sha256=semantic_sha(asdict(readout_transfer_law)),
-                blocks=[[[dict(output_column=t.output_column, columns=t.columns, accumulator_row=t.accumulator_row)
-                    for t in group] for group in plan_convolution_readout_transfers(schedule.source.plan,
-                        block, readout_transfer_law, rows=schedule.source.plan.row_tile)] for block in transfer_blocks],
-                original_stores_per_spatial_tile=sum(map(len,blocks)),
-                physical_stores_per_spatial_tile=sum(len(plan_convolution_readout_transfers(schedule.source.plan,
-                    block,readout_transfer_law,rows=schedule.source.plan.row_tile))for block in transfer_blocks))
-            actual_transfer=child.get("readout_transfers")or{}
-            if any(actual_transfer.get(k)!=v for k,v in expected_transfer.items()):
+            from merlin.compiler.schedule.window_transfer import (
+                ConvolutionOutputTile,
+                plan_convolution_readout_transfers,
+            )
+
+            transfer_blocks = (
+                blocks
+                if group is None
+                else tuple(
+                    tuple(
+                        ConvolutionOutputTile(
+                            t.output_column,
+                            t.columns,
+                            schedule.source.plan.accumulator_row
+                            + group.accumulator_row(0, n, active_column_blocks=len(block)),
+                        )
+                        for n, t in enumerate(block)
+                    )
+                    for block in blocks
+                )
+            )
+            expected_transfer = dict(
+                law_sha256=semantic_sha(asdict(readout_transfer_law)),
+                blocks=[
+                    [
+                        [
+                            dict(output_column=t.output_column, columns=t.columns, accumulator_row=t.accumulator_row)
+                            for t in group
+                        ]
+                        for group in plan_convolution_readout_transfers(
+                            schedule.source.plan, block, readout_transfer_law, rows=schedule.source.plan.row_tile
+                        )
+                    ]
+                    for block in transfer_blocks
+                ],
+                original_stores_per_spatial_tile=sum(map(len, blocks)),
+                physical_stores_per_spatial_tile=sum(
+                    len(
+                        plan_convolution_readout_transfers(
+                            schedule.source.plan, block, readout_transfer_law, rows=schedule.source.plan.row_tile
+                        )
+                    )
+                    for block in transfer_blocks
+                ),
+            )
+            actual_transfer = child.get("readout_transfers") or {}
+            if any(actual_transfer.get(k) != v for k, v in expected_transfer.items()):
                 raise ValueError("requested wide readout transfers were not applied by the original consumer")
-        elif child.get("readout_transfers")is not None:
+        elif child.get("readout_transfers") is not None:
             raise ValueError("wide readout receipt needs its actual requested source map")
-        completion=("full drain after each checked spatial group before input/ACC/RHS reuse" if group is not None else
-            "full drain after each original output block before input/ACC/RHS reuse")
-        if (not isinstance(child, dict)
+        completion = (
+            "full drain after each checked spatial group before input/ACC/RHS reuse"
+            if group is not None
+            else "full drain after each original output block before input/ACC/RHS reuse"
+        )
+        if (
+            not isinstance(child, dict)
             or any(_digest(child.get(k)) != _digest(v) for k, v in child_expected.items())
             or child.get("readout_epoch") != asdict(readout_law)
-            or child.get("completion") != completion):
+            or child.get("completion") != completion
+        ):
             raise ValueError("requested convolution readout epoch was not applied by the original consumer")
-    return dict(status="consumer_receipt_matches", source_sha256=expected["source_sha256"],
-        law_sha256=_digest(asdict(readout_law)), pending_readouts=readout_law.pending_readouts,
-        complete_rhs_phases=len(realized), spatial_group_applied=any(g is not None for g in groups),
+    return dict(
+        status="consumer_receipt_matches",
+        source_sha256=expected["source_sha256"],
+        law_sha256=_digest(asdict(readout_law)),
+        pending_readouts=readout_law.pending_readouts,
+        complete_rhs_phases=len(realized),
+        spatial_group_applied=any(g is not None for g in groups),
         grouped_transport_applied=grouped_transport,
         wide_readouts_applied=readout_transfer_law is not None,
-        independent_target_execution="required", numerical_qualification="UNKNOWN", cycles="UNKNOWN")
+        independent_target_execution="required",
+        numerical_qualification="UNKNOWN",
+        cycles="UNKNOWN",
+    )
 
 
-def emit_checked_readout_epoch(schedule, builder, lower, *, complete, readout_law,
-                               rhs=None, input_rows=None, output_group=None, array_law=None,
-                               readout_transfer_law=None, grouped_transport=False):
+def emit_checked_readout_epoch(
+    schedule,
+    builder,
+    lower,
+    *,
+    complete,
+    readout_law,
+    rhs=None,
+    input_rows=None,
+    output_group=None,
+    array_law=None,
+    readout_transfer_law=None,
+    grouped_transport=False,
+):
     """Adapter seam: retain your encoder, bind the separate law and check use.
 
     The caller supplies selected source proofs for ACC RAW/result visibility,
@@ -589,12 +683,30 @@ def emit_checked_readout_epoch(schedule, builder, lower, *, complete, readout_la
 
     if type(readout_law) is not ConvolutionReadoutEpochLaw:
         raise ValueError("readout application requires its separate typed selected source law")
-    receipt = emit_convolution_schedule(schedule, builder, lower, complete=complete,
-        rhs=rhs, input_rows=input_rows, readout_law=readout_law, output_group=output_group,
-        array_law=array_law, readout_transfer_law=readout_transfer_law, grouped_transport=grouped_transport)
-    application = verify_readout_application(schedule, readout_law, receipt, rhs=rhs, input_rows=input_rows,
-        output_group=output_group, array_law=array_law, readout_transfer_law=readout_transfer_law,
-        grouped_transport=grouped_transport)
+    receipt = emit_convolution_schedule(
+        schedule,
+        builder,
+        lower,
+        complete=complete,
+        rhs=rhs,
+        input_rows=input_rows,
+        readout_law=readout_law,
+        output_group=output_group,
+        array_law=array_law,
+        readout_transfer_law=readout_transfer_law,
+        grouped_transport=grouped_transport,
+    )
+    application = verify_readout_application(
+        schedule,
+        readout_law,
+        receipt,
+        rhs=rhs,
+        input_rows=input_rows,
+        output_group=output_group,
+        array_law=array_law,
+        readout_transfer_law=readout_transfer_law,
+        grouped_transport=grouped_transport,
+    )
     return dict(emission=receipt, application=application)
 
 
@@ -606,26 +718,30 @@ def generated_effect_callbacks(create, append, value, *, effects, completions):
     extent. This supplies no instructions, layouts, target laws or schedule.
     Use your own callback when an effect needs several target instructions.
     """
+
     def bind(table, kind, fields):
         if kind not in table:
             raise ValueError(f"missing generated instruction binding: {kind}")
         instruction, operands = table[kind]
         if set(operands.values()) != set(fields) or len(operands) != len(fields):
             raise ValueError(f"generated binding must preserve every original field: {kind}")
-        op = create(instruction, operands={name: value(fields[field]) for name, field in operands.items()},
-            immediates={})
+        op = create(
+            instruction, operands={name: value(fields[field]) for name, field in operands.items()}, immediates={}
+        )
         if op.results:
             raise ValueError("effect binding cannot discard generated instruction results")
         append(op)
-    return (lambda kind, fields: bind(effects, kind, fields),
-            lambda kind, fields: bind(completions, kind, fields))
+
+    return (lambda kind, fields: bind(effects, kind, fields), lambda kind, fields: bind(completions, kind, fields))
 
 
 def _laws(source, flags, identity, pairs):
     from merlin.compiler.schedule.convolution_exploration import ConvolutionRhsResidencyLaw
-    from merlin.compiler.schedule.window_transfer import ConvolutionComputeEpochLaw
-    from merlin.compiler.schedule.window_transfer import ConvolutionInputRetentionLaw
-    from merlin.compiler.schedule.window_transfer import ConvolutionLoadIssueLaw
+    from merlin.compiler.schedule.window_transfer import (
+        ConvolutionComputeEpochLaw,
+        ConvolutionInputRetentionLaw,
+        ConvolutionLoadIssueLaw,
+    )
 
     ids = (identity, NUMERICS, source.identity, "completion-order-check-and-host-integers")
     retention = ConvolutionInputRetentionLaw(
@@ -648,16 +764,20 @@ def _laws(source, flags, identity, pairs):
 
 
 def routes(source, caps, record, r, flags, identity, pairs, image, weights, expected, check_order=True):
-    from merlin.compiler.schedule.convolution_exploration import convolution_pass_space
-    from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
-    from merlin.compiler.schedule.convolution_exploration import explore_convolution_schedules
+    from merlin.compiler.schedule.convolution_exploration import (
+        convolution_pass_space,
+        emit_convolution_schedule,
+        explore_convolution_schedules,
+    )
     from merlin.transforms.pass_exploration import EmittedProgram
     from merlin.transforms.pipeline_state import PipelineContext
 
     S, W = _load("recipe_support"), _load("conv_window_recipe")
     retention, rhs_law, issue, epoch = _laws(source, flags, identity, pairs)
-    masks = {k: (1 << max(1, (caps[v]["rows"] - 1).bit_length())) - 1 for k, v in
-             (("scratchpad", "operand"), ("accumulator", "accumulator"))}
+    masks = {
+        k: (1 << max(1, (caps[v]["rows"] - 1).bit_length())) - 1
+        for k, v in (("scratchpad", "operand"), ("accumulator", "accumulator"))
+    }
     checker, model = None, None
     if r is not None and check_order:
         try:  # the checker the grader runs; absent from some staged libraries
@@ -700,12 +820,20 @@ def routes(source, caps, record, r, flags, identity, pairs, image, weights, expe
         if machine.hazards:
             problems.append(f"writes local rows twice before a compute reads them: {machine.hazards[:4]}")
         computes = machine.counts["compute"]
-        fences = drains + (sum(machine.counts[k] for k in ("input_multi_row", "input_one_row", "input_zero_rows",
-                                                            "weight_loads", "compute", "store"))
-                           if synchronous else 0)
+        fences = drains + (
+            sum(
+                machine.counts[k]
+                for k in ("input_multi_row", "input_one_row", "input_zero_rows", "weight_loads", "compute", "store")
+            )
+            if synchronous
+            else 0
+        )
         row = dict(
-            route="synchronous" if synchronous else "epochs" if schedule.choice.compute_pairs > 1 else
-            "drain_per_compute",
+            route="synchronous"
+            if synchronous
+            else "epochs"
+            if schedule.choice.compute_pairs > 1
+            else "drain_per_compute",
             compute_pairs=schedule.choice.compute_pairs,
             resident_weights=rhs is not None,
             effects=machine.counts,
@@ -774,8 +902,16 @@ def default_pairs(source, structure, r):
     block = kh * kw * -(-p.window.input_shape[-1] // p.channel_tile) * live
     if block < 2:
         return ()
-    e = ((((structure.get("command_classes") or {}).get("classes") or {}).get(r["compute"]["queue"]) or {})
-         .get("entries") or {}) if r else {}
+    e = (
+        (
+            (((structure.get("command_classes") or {}).get("classes") or {}).get(r["compute"]["queue"]) or {}).get(
+                "entries"
+            )
+            or {}
+        )
+        if r
+        else {}
+    )
     held = e.get("value") // 2 if e.get("status") == "derived" and type(e.get("value")) is int else 0
     return tuple(sorted({block} | ({held} if 1 < held < block else set())))
 
@@ -832,9 +968,7 @@ def recipe(facts=None, geometry=None, numerics=True, ordering=None, pairs=None, 
             if base and best
             else None
         ),
-        "verified": (
-            "every route reproduced the source convolution" if numerics else "numerics skipped (--count-only)"
-        )
+        "verified": ("every route reproduced the source convolution" if numerics else "numerics skipped (--count-only)")
         + "; no local row written twice before use"
         + ("; ordering checked per route (see check_scope)" if r and check_order else "; ordering unchecked"),
         "check_scope": CHECK_SCOPE,
@@ -866,8 +1000,12 @@ def main(argv=None) -> int:
         description=__doc__.splitlines()[0], epilog="See the heavy-pass-recipes skill, reference/convolution.md."
     )
     ap.add_argument("--facts", default=None, help="RTL facts JSON (default: rtl_facts/facts.json if present)")
-    ap.add_argument("--ordering", default=None, help=f"command_ordering selection/facts JSON (default: ${SELECTION_ENV} "
-                    "pin, else the facts file's own section)")
+    ap.add_argument(
+        "--ordering",
+        default=None,
+        help=f"command_ordering selection/facts JSON (default: ${SELECTION_ENV} "
+        "pin, else the facts file's own section)",
+    )
     ap.add_argument("--shape", default=None, help="B,H,W,C,COUT (default: derived from the array edge)")
     ap.add_argument("--kernel", default="3,3", help="KH,KW")
     ap.add_argument("--stride", default="1,1", help="SH,SW")
@@ -887,8 +1025,9 @@ def main(argv=None) -> int:
     if a.adapter_contract:
         if not a.output:
             ap.error("--adapter-contract requires --output")
-        out = _load("conv_adapter_example").run(json.loads(Path(a.adapter_contract).read_text()), a.output,
-            sys.modules[__name__])
+        out = _load("conv_adapter_example").run(
+            json.loads(Path(a.adapter_contract).read_text()), a.output, sys.modules[__name__]
+        )
         print(json.dumps(out, indent=1))
         return 0
     geometry = None

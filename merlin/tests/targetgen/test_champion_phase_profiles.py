@@ -270,9 +270,23 @@ def test_export_cli_preserves_declared_service_and_original_evidence(phase1, out
     frozen = O.commit_candidate(repo, package, label="declared service", when="20260929T120000Z", run_id=run.name)
     O.tag(repo, O.FROZEN_TAG, frozen.commit)
     evidence = _capsule_evidence(run, frozen)
-    arguments = ["export", "--target", TARGET, "--repo", str(repo), "--phase", "1",
-                 "--package-id", "cli_champion", "--run-dir", str(run),
-                 "--stage-root", str(run / "explicit-exports"), "--artifacts-root", str(out_root / "artifacts")]
+    arguments = [
+        "export",
+        "--target",
+        TARGET,
+        "--repo",
+        str(repo),
+        "--phase",
+        "1",
+        "--package-id",
+        "cli_champion",
+        "--run-dir",
+        str(run),
+        "--stage-root",
+        str(run / "explicit-exports"),
+        "--artifacts-root",
+        str(out_root / "artifacts"),
+    ]
     files = {}
     for name, document in evidence.items():
         path = tmp_path / (name + ".json")
@@ -286,8 +300,11 @@ def test_export_cli_preserves_declared_service_and_original_evidence(phase1, out
     assert (destination / "pyproject.toml").read_bytes() == (package / "pyproject.toml").read_bytes()
     assert (destination / "unloaded_fixture_provider.py").read_text() == guard
     assert report["services"] == {
-        "scope": "preserved_project_metadata_only", "status": "declared", "compatibility": "not_checked",
-        "installed_by_export": False, "code_loaded_by_inspection": False,
+        "scope": "preserved_project_metadata_only",
+        "status": "declared",
+        "compatibility": "not_checked",
+        "installed_by_export": False,
+        "code_loaded_by_inspection": False,
         "providers": [{"name": "fixture", "entry_point": "unloaded_fixture_provider"}],
     }
     assert O.tree_digest(repo, O.FROZEN_TAG) == frozen.package_digest

@@ -381,8 +381,8 @@ def dynamic_integerization_projection(
     Do not publish the private recipe, graph, workload names, source paths or tensor values.
     The receipt owner still has to bind all three artifacts to their exact bytes.
     """
-    from merlin.compiler.quantization.recipe import DYNAMIC, digest
     from merlin.compiler.quantization.dynamic import site_agreement_of
+    from merlin.compiler.quantization.recipe import DYNAMIC, digest
 
     recipe = meta.get("recipe")
     if not (isinstance(recipe, dict) and recipe.get("recipe_sha256") == meta.get("recipe_sha256") == digest(recipe)):

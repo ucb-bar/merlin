@@ -45,8 +45,14 @@ def test_preprocessing_keeps_optional_numerical_rewrite_between_observed_stages(
     monkeypatch.setattr(ir_inspection, "record_stage", observe)
     counts = passes_xdsl._preprocess_module(original_module, audit=audit, on_quant_rewrite=original_callback)
     assert events == [
-        "xdsl-parsed", "prune", "xdsl-pruned", "quant", "xdsl-quant-lowered",
-        *(["reassociate"] if selected else []), "interface", "xdsl-c-interface",
+        "xdsl-parsed",
+        "prune",
+        "xdsl-pruned",
+        "quant",
+        "xdsl-quant-lowered",
+        *(["reassociate"] if selected else []),
+        "interface",
+        "xdsl-c-interface",
     ]
     assert counts == {
         "dead_tensor_ops_pruned": 2,

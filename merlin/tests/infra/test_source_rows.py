@@ -14,9 +14,7 @@ from test_selected_row_contracts import independent_reference, inputs
 from xdsl.dialects import arith, builtin, func, scf, tensor
 from xdsl.ir import Block, Region
 
-from merlin.compiler.schedule.row_softmax import RowSoftmaxUnavailable
-from merlin.compiler.schedule.row_softmax import compile_source_rows
-from merlin.compiler.schedule.row_softmax import read_source_rows
+from merlin.compiler.schedule.row_softmax import RowSoftmaxUnavailable, compile_source_rows, read_source_rows
 from merlin.llvmlower.cpu_softmax import CPU_SOFTMAX_F32_AVX2_POLICY, build_cpu_softmax_lastdim
 
 
@@ -138,8 +136,9 @@ def test_changed_source_algorithm_cannot_reuse_selected_row_primitives(fault):
     source = read(final)
     if fault == "underflow_sign":
         constant = next(
-            op for op in original.walk() if type(op) is arith.ConstantOp
-            and isinstance(op.value, builtin.FloatAttr) and op.value.value.data == 0.0
+            op
+            for op in original.walk()
+            if type(op) is arith.ConstantOp and isinstance(op.value, builtin.FloatAttr) and op.value.value.data == 0.0
         )
         constant.properties["value"] = builtin.FloatAttr(-0.0, builtin.f32)
     elif fault == "tree":
@@ -229,9 +228,19 @@ def test_invalid_source_pass_order_rejects_before_any_encoding(tmp_path):
     assert not calls
 
 
-@pytest.mark.parametrize("fault", [
-    "source", "facts", "software", "schedule", "index", "index_stamp", "source_binding", "policy",
-])
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "source",
+        "facts",
+        "software",
+        "schedule",
+        "index",
+        "index_stamp",
+        "source_binding",
+        "policy",
+    ],
+)
 def test_source_row_results_expire_with_current_inputs(tmp_path, fault):
     selected, _, original, final, kwargs = case(tmp_path)
     result = compile_source_rows(original, final, **kwargs)
@@ -264,8 +273,14 @@ def test_replacing_a_still_valid_selection_cannot_reuse_checked_rows(tmp_path, r
     second.mkdir()
     selected, _, original, final, kwargs = case(first)
     result = compile_source_rows(original, final, **kwargs)
-    other, _ = inputs(second, dtype="f32", separate=True, columns=19, rows=2,
-                      mutate=lambda facts, software, row: row["support"].update(partial_chunks=False))
+    other, _ = inputs(
+        second,
+        dtype="f32",
+        separate=True,
+        columns=19,
+        rows=2,
+        mutate=lambda facts, software, row: row["support"].update(partial_chunks=False),
+    )
     assert other.hardware_identity == selected.hardware_identity and other.software_bytes != selected.software_bytes
     changed = replace(result.compiled, selected_contracts=other if replacement == "software" else None)
     with pytest.raises(ValueError, match="RTL/software contracts changed"):

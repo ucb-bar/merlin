@@ -35,12 +35,12 @@ from .concat_dps import ensure_registered as _register_concat_dps
 # whole-model backend imports to lower, so by the time a feature set is normalized for a lowering the
 # entry exists. Idempotent, so a second import is a no-op.
 from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
+from .guarded_zero_contraction import ensure_registered as _register_guarded_zero_contraction
 from .im2col_pack import ensure_registered as _register_im2col_panel_pack
 from .masked_contraction import MaskEffectContract
 from .named_broadcast_fold import ensure_registered as _register_named_broadcast_fold
 from .pipeline import lower_to_llvm_ir
 from .prov_cse import ensure_registered as _register_cse_through_provenance
-from .guarded_zero_contraction import ensure_registered as _register_guarded_zero_contraction
 from .source_expression_interval import IntervalEffectContract
 from .source_scalar_carrier_binding import host_admitted
 from .tensor_provenance_cse import ensure_registered as _register_tensor_preparation_cse
@@ -237,7 +237,8 @@ def lower_model(
         from .descriptor_result_preparation import DescriptorResultPreparation
 
         descriptor_preparation = DescriptorResultPreparation(
-            descriptor_result_identities, effects=descriptor_result_effects, additional_calls=borrowed_buffer_calls)
+            descriptor_result_identities, effects=descriptor_result_effects, additional_calls=borrowed_buffer_calls
+        )
         descriptor_check = descriptor_preparation.revalidate
         if (
             shared_source_lowerings
@@ -494,7 +495,9 @@ def lower_model(
         from .broadcast_divisor_hoisting import UNIT_FEATURE as broadcast_unit_divisor_feature
 
         divisor_features = {
-            broadcast_divisor_feature, broadcast_unit_divisor_feature, broadcast_sum_unit_divisor_feature,
+            broadcast_divisor_feature,
+            broadcast_unit_divisor_feature,
+            broadcast_sum_unit_divisor_feature,
             broadcast_power_two_feature,
         }
         if divisor_features & set(features or ()):
@@ -504,14 +507,22 @@ def lower_model(
             selected_power_two = broadcast_power_two_feature in (features or ())
             selected_sum_proof = selected_power_two or broadcast_sum_unit_divisor_feature in (features or ())
             selected_unit_guard = selected_sum_proof or broadcast_unit_divisor_feature in (features or ())
-            mlir_text, rewrites = rewrite_text(mlir_text, unit_guard=selected_unit_guard,
-                                             sum_unit_proof=selected_sum_proof,
-                                             power_two_guard=selected_power_two)
+            mlir_text, rewrites = rewrite_text(
+                mlir_text,
+                unit_guard=selected_unit_guard,
+                sum_unit_proof=selected_sum_proof,
+                power_two_guard=selected_power_two,
+            )
             broadcast_divisor_report = {
-                "schema": ("merlin.broadcast_power_two_divisor_guard.v1" if selected_power_two
-                           else "merlin.broadcast_sum_unit_divisor_guard.v1" if selected_sum_proof
-                           else "merlin.broadcast_unit_divisor_guard.v1" if selected_unit_guard
-                           else "merlin.broadcast_divisor_hoisting.v1"),
+                "schema": (
+                    "merlin.broadcast_power_two_divisor_guard.v1"
+                    if selected_power_two
+                    else "merlin.broadcast_sum_unit_divisor_guard.v1"
+                    if selected_sum_proof
+                    else "merlin.broadcast_unit_divisor_guard.v1"
+                    if selected_unit_guard
+                    else "merlin.broadcast_divisor_hoisting.v1"
+                ),
                 "source_sha256": before_divisors,
                 "output_sha256": sha256_text(mlir_text),
                 "rewrites": rewrites,
@@ -519,11 +530,11 @@ def lower_model(
                     "Exact same-tensor ordinary row sum and positive normal power-of-two divisor "
                     "with normal exact reciprocal permit the identical rounded multiplication; "
                     "unit-copy and literal original divide fallback remain"
-                    if selected_power_two else
-                    "Positive-unit divisor and finite-row certificate (same-tensor sum or word scan) "
+                    if selected_power_two
+                    else "Positive-unit divisor and finite-row certificate (same-tensor sum or word scan) "
                     "permit exact copy in every rounding mode; literal original divide fallback"
-                    if selected_sum_proof else
-                    "Positive-unit divisor and finite-word row scan permit exact copy in every "
+                    if selected_sum_proof
+                    else "Positive-unit divisor and finite-word row scan permit exact copy in every "
                     "rounding mode; original divide fallback; immutable tensor value semantics"
                     if selected_unit_guard
                     else "unchanged original divide; immutable tensor value semantics"
@@ -679,9 +690,7 @@ def lower_model(
             # and the `.ll` is byte-identical to the frozen baseline.
             from .arena_bind import bind_arena
 
-            ll_text, arena_report = bind_arena(
-                ll_text, borrowed_lifetime=next(iter(borrowed_arena_lifetimes), None)
-            )
+            ll_text, arena_report = bind_arena(ll_text, borrowed_lifetime=next(iter(borrowed_arena_lifetimes), None))
             stats["static_arena"] = arena_report.to_dict()
         # MLIR's C wrapper expands each memref pointer into the implementation's flattened descriptor
         # ABI.  An external call can make LLVM decline to inline a hundreds-of-arguments boundary,

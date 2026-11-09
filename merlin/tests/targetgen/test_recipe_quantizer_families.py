@@ -209,7 +209,7 @@ def test_grouped_matmul_observer_and_integer_reference_use_output_axis():
     python = os.environ.get("MERLIN_M2M_PYTHON")
     if not python or not Path(python).is_file():
         pytest.skip("the model2MLIR torch interpreter is not configured")
-    script = r'''
+    script = r"""
 import json, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(sys.argv[1]).parent))
@@ -237,6 +237,6 @@ assert axes == [1], axes
 assert receipt["matmul_integerized"] == 1, receipt
 assert torch.equal(integer(*inputs), reference.output)
 print(json.dumps({"axes":axes, "matmul_integerized":receipt["matmul_integerized"]}))
-'''
+"""
     completed = subprocess.run([python, "-c", script, str(_SOURCE)], capture_output=True, text=True, timeout=120)
     assert completed.returncode == 0, completed.stderr[-5000:]

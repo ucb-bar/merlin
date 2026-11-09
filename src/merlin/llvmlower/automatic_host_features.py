@@ -68,7 +68,7 @@ def choices(features):
     }
     table_choice = selection.state("finite-integer-math")
     if table_choice is True or (table_choice is None and os.environ.get("MERLIN_FINITE_INTEGER_MATH", "0") == "1"):
-        result['finite_integer_math'] = True
+        result["finite_integer_math"] = True
     return result
 
 

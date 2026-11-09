@@ -4,8 +4,7 @@ import os
 import subprocess
 import sys
 
-from merlin.compiler.schedule.export import export_shared_scheduling
-from merlin.compiler.schedule.export import public_modules
+from merlin.compiler.schedule.export import export_shared_scheduling, public_modules
 
 
 def test_constant_panel_source_preparation_has_closed_sdk_export(tmp_path):
@@ -34,6 +33,8 @@ assert storage.unpack_bytes(packed.tobytes(),max_storage_bytes=original.nbytes) 
     result = subprocess.run(
         [sys.executable, "-I", "-B", "-c", program, str(root)],
         env={k: v for k, v in os.environ.items() if k != "PYTHONPATH"},
-        text=True, capture_output=True, check=False,
+        text=True,
+        capture_output=True,
+        check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr

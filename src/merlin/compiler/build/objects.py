@@ -14,7 +14,9 @@ def compile_llvm_object(source, destination, *, compiler, flags, run, timeout_s=
     source, destination = Path(source), Path(destination)
     run(
         [compiler, *flags, "-c", source, "-o", destination],
-        timeout_s=timeout_s, inputs=(source,), outputs=(destination,),
+        timeout_s=timeout_s,
+        inputs=(source,),
+        outputs=(destination,),
     )
     compile_trace.artifact("object", [destination], pipeline="codegen")
     return destination

@@ -6,8 +6,7 @@ import subprocess
 import numpy as np
 import pytest
 
-from merlin.compiler.schedule.dense_contracts import DenseIntegerReadout
-from merlin.compiler.schedule.dense_contracts import DenseLogicalPointerABI
+from merlin.compiler.schedule.dense_contracts import DenseIntegerReadout, DenseLogicalPointerABI
 from merlin.llvmlower.abi import HostModel
 from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.llvmlower.integer_matmul_calls import lower_integer_matmul_program, prepare_integer_matmul_calls
@@ -25,7 +24,10 @@ READOUT = DenseIntegerReadout(
       %l=arith.maxsi %x,%lo:i32
       %h=arith.minsi %l,%hi:i32
       %r=arith.trunci %h:i32 to i8
-      return %r:i8 }}""", "i8", "neutral_saturated_store", (),
+      return %r:i8 }}""",
+    "i8",
+    "neutral_saturated_store",
+    (),
 )
 
 
@@ -119,7 +121,9 @@ def split_epilogue():
  linalg.yield %selected:i32
  }} -> tensor<3x5xi32>
 """
-    return text + """
+    return (
+        text
+        + """
  %e=tensor.empty():tensor<3x5xi8>
  %y=linalg.generic {indexing_maps=[affine_map<(m,n)->(m,n)>,affine_map<(m,n)->(m,n)>],
  iterator_types=["parallel","parallel"]} ins(%upper:tensor<3x5xi32>) outs(%e:tensor<3x5xi8>) {
@@ -129,6 +133,7 @@ def split_epilogue():
  } -> tensor<3x5xi8>
  return %y:tensor<3x5xi8>
 }}"""
+    )
 
 
 @pytest.mark.parametrize("text", [source(), split_epilogue()])
@@ -141,17 +146,24 @@ def test_exact_scalar_readout_is_proved_and_host_epilogue_removed(text):
     assert '"arith.trunci"' not in prepared.source
 
 
-@pytest.mark.parametrize("text", [
-    source(extra_return=True),
-    source().replace("constant -128", "constant -127"),
-    source().replace("%low,%hi:i32", "%v,%hi:i32"),
-    source().replace("arith.maxsi", "arith.maxui"),
-    source().replace("%high:i32 to i8", "%v:i32 to i8"),
-    split_epilogue().replace("cmpi slt", "cmpi ult"),
-    source().replace(" %empty=", " func.call @observe() : () -> ()\n %empty=").replace(
-        "module {", "module {func.func private @observe()\n", 1,
-    ),
-])
+@pytest.mark.parametrize(
+    "text",
+    [
+        source(extra_return=True),
+        source().replace("constant -128", "constant -127"),
+        source().replace("%low,%hi:i32", "%v,%hi:i32"),
+        source().replace("arith.maxsi", "arith.maxui"),
+        source().replace("%high:i32 to i8", "%v:i32 to i8"),
+        split_epilogue().replace("cmpi slt", "cmpi ult"),
+        source()
+        .replace(" %empty=", " func.call @observe() : () -> ()\n %empty=")
+        .replace(
+            "module {",
+            "module {func.func private @observe()\n",
+            1,
+        ),
+    ],
+)
 def test_other_observers_changed_numerics_and_intervening_effects_keep_raw_output(text):
     prepared = prepare(text, output_readout=READOUT)
     assert prepared.calls[0].output_dtype == "i32"
@@ -166,7 +178,10 @@ def test_backend_may_decline_narrow_readout_and_unknown_attributes_are_retained(
     from merlin.transforms.certificates import ir_text
 
     prepared = prepare_integer_matmul_calls(
-        source(), select=lambda call: call.output_dtype == "i32", borrowed_effects=EFFECTS, output_readout=READOUT,
+        source(),
+        select=lambda call: call.output_dtype == "i32",
+        borrowed_effects=EFFECTS,
+        output_readout=READOUT,
     )
     assert prepared.calls[0].output_dtype == "i32" and not prepared.readout_proofs
     for name in ("tensor.splat", "arith.constant", "linalg.yield", "arith.trunci"):
@@ -201,7 +216,12 @@ def test_a_fill_that_reads_its_initializer_cannot_supply_a_zero_seed():
 @pytest.mark.parametrize("fuse", [False, True])
 @pytest.mark.parametrize("inline_helpers", [False, True, None])
 def test_complete_native_outputs_and_live_raw_user(
-    tmp_path, upstream_host_tools, shape, extra_return, fuse, inline_helpers,
+    tmp_path,
+    upstream_host_tools,
+    shape,
+    extra_return,
+    fuse,
+    inline_helpers,
 ):
     from merlin.llvmlower.tensor_helper_inlining import FEATURE
 
@@ -216,31 +236,45 @@ def test_complete_native_outputs_and_live_raw_user(
     call = prepared.calls[0]
     capability = LogicalBorrowedABI(
         DenseLogicalPointerABI(
-            "dense_row_major", (1, 1, 4), ("read_only", "read_only", "fully_written"),
-            "logical_elements", "synchronous",
-        ), EFFECTS, "neutral test raw signed product", 1 << 20,
+            "dense_row_major",
+            (1, 1, 4),
+            ("read_only", "read_only", "fully_written"),
+            "logical_elements",
+            "synchronous",
+        ),
+        EFFECTS,
+        "neutral test raw signed product",
+        1 << 20,
         readout_format_qualification_identity="neutral synchronous saturation implementation" if fuse else None,
     )
     adapter = tmp_path / "adapter.c"
-    adapter.write_text("#include <stdint.h>\n" + f"""
+    adapter.write_text(
+        "#include <stdint.h>\n"
+        + f"""
 void {call.kernel_symbol}(void *aa,void *bb,void *cc) {{
- const int8_t *a=aa,*b=bb;{'int8_t' if call.output_dtype == 'i8' else 'int32_t'} *c=cc;
+ const int8_t *a=aa,*b=bb;{"int8_t" if call.output_dtype == "i8" else "int32_t"} *c=cc;
  for(int i=0;i<{m};i++)for(int j=0;j<{n};j++) {{
    int32_t sum=0;for(int p=0;p<{k};p++)sum+=(int32_t)a[i*{k}+p]*b[p*{n}+j];
-   c[i*{n}+j]={'sum < -128 ? -128 : sum > 127 ? 127 : sum' if call.output_dtype == 'i8' else 'sum'};
+   c[i*{n}+j]={"sum < -128 ? -128 : sum > 127 ? 127 : sum" if call.output_dtype == "i8" else "sum"};
  }}
 }}
-""")
+"""
+    )
     implementation = tmp_path / "implementation.ll"
     subprocess.run(
         [str(clang()), "-O2", "-S", "-emit-llvm", str(adapter), "-o", str(implementation)],
-        check=True, capture_output=True, timeout=30,
+        check=True,
+        capture_output=True,
+        timeout=30,
     )
     pins = ((adapter, hashlib.sha256(adapter.read_bytes()).hexdigest()),)
     program = lower_integer_matmul_program(
-        source(m, k, n, extra_return=extra_return), tmp_path / "composed",
-        select=lambda call: True, emit_kernel=lambda call: (implementation.read_text(), pins),
-        logical_abi=capability, data_layout=_query(clang(), ("-O2", "-fPIC")),
+        source(m, k, n, extra_return=extra_return),
+        tmp_path / "composed",
+        select=lambda call: True,
+        emit_kernel=lambda call: (implementation.read_text(), pins),
+        logical_abi=capability,
+        data_layout=_query(clang(), ("-O2", "-fPIC")),
         output_readout=readout,
         host_features=None if inline_helpers is None else (FEATURE,) if inline_helpers else (),
     )
@@ -250,9 +284,20 @@ void {call.kernel_symbol}(void *aa,void *bb,void *cc) {{
         assert "@malloc" not in program.host.ll_path.read_text()
     library = tmp_path / f"model_{m}_{k}_{n}_{extra_return}.so"
     subprocess.run(
-        [str(clang()), "-O2", "-shared", "-fPIC", str(program.host.ll_path),
-         *map(str, program.kernels), *map(str, program.bridges), "-o", str(library)],
-        check=True, capture_output=True, timeout=30,
+        [
+            str(clang()),
+            "-O2",
+            "-shared",
+            "-fPIC",
+            str(program.host.ll_path),
+            *map(str, program.kernels),
+            *map(str, program.bridges),
+            "-o",
+            str(library),
+        ],
+        check=True,
+        capture_output=True,
+        timeout=30,
     )
     invoke = HostModel.load(str(library))
     left = ((np.arange(m * k, dtype=np.int32) * 53 + 128) % 256 - 128).astype(np.int8).reshape(m, k)

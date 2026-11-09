@@ -16,32 +16,34 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from merlin.compiler.schedule import AXES
-from merlin.compiler.schedule import BANK_ALIGNED
-from merlin.compiler.schedule import CONTIGUOUS
-from merlin.compiler.schedule import LHS
-from merlin.compiler.schedule import NEST
-from merlin.compiler.schedule import OPPOSITE_END
-from merlin.compiler.schedule import ROLE
-from merlin.compiler.schedule import WEIGHT
-from merlin.compiler.schedule import BlockScheduleError
-from merlin.compiler.schedule import Compute
-from merlin.compiler.schedule import Contraction
-from merlin.compiler.schedule import ConvContraction
-from merlin.compiler.schedule import Geometry
-from merlin.compiler.schedule import K
-from merlin.compiler.schedule import Knobs
-from merlin.compiler.schedule import Load
-from merlin.compiler.schedule import M
-from merlin.compiler.schedule import N
-from merlin.compiler.schedule import Preload
-from merlin.compiler.schedule import Store
-from merlin.compiler.schedule import check_residency
-from merlin.compiler.schedule import execute
-from merlin.compiler.schedule import geometry_from_address_space
-from merlin.compiler.schedule import schedule_contraction
-from merlin.compiler.schedule import schedule_convolution
-from merlin.compiler.schedule import schedule_interface_program
+from merlin.compiler.schedule import (
+    AXES,
+    BANK_ALIGNED,
+    CONTIGUOUS,
+    LHS,
+    NEST,
+    OPPOSITE_END,
+    ROLE,
+    WEIGHT,
+    BlockScheduleError,
+    Compute,
+    Contraction,
+    ConvContraction,
+    Geometry,
+    K,
+    Knobs,
+    Load,
+    M,
+    N,
+    Preload,
+    Store,
+    check_residency,
+    execute,
+    geometry_from_address_space,
+    schedule_contraction,
+    schedule_convolution,
+    schedule_interface_program,
+)
 from merlin.targetgen.address_space import derive_address_space
 
 
@@ -211,8 +213,7 @@ def test_fixed_capacity_rebanking_changes_only_bank_relative_placement(name):
     # Only a uniform relocation of the private weight region changes. Preserve
     # every original source block, reduction, transfer and output instruction.
     assert relative_ops(before) == relative_ops(after)
-    controls = [schedule_contraction(source, geometry, Knobs(placement=OPPOSITE_END))
-                for geometry in (old, new)]
+    controls = [schedule_contraction(source, geometry, Knobs(placement=OPPOSITE_END)) for geometry in (old, new)]
     assert controls[0].ops == controls[1].ops
     rng = np.random.default_rng(37)
     lhs = rng.integers(-4, 5, (source.m, source.k), dtype=np.int64)
@@ -588,8 +589,11 @@ def test_the_pass_module_imports_nothing_from_merlin_so_a_backend_can_vendor_it(
         np.testing.assert_array_equal(blocks.execute(selected, lhs, rhs), lhs @ rhs)
         np.testing.assert_array_equal(module.execute(standalone, lhs, rhs), lhs @ rhs)
         assert len(selected.ops) == len(standalone.ops)
-        definitions = {node.name: ast.dump(node, include_attributes=False)
-                       for node in ast.parse(source).body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+        definitions = {
+            node.name: ast.dump(node, include_attributes=False)
+            for node in ast.parse(source).body
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef))
+        }
         for owner in OWNERS:
             import importlib
             from pathlib import Path

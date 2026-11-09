@@ -72,8 +72,11 @@ def _check_positive_zero_init(init, *, rank: int = 2) -> None:
     fill = getattr(init, "owner", None)
     if getattr(fill, "name", None) == "tensor.splat":
         if (
-            len(fill.operands) != 1 or len(fill.results) != 1 or fill.results[0] is not init
-            or fill.properties or any(not key.startswith("prov.") for key in fill.attributes)
+            len(fill.operands) != 1
+            or len(fill.results) != 1
+            or fill.results[0] is not init
+            or fill.properties
+            or any(not key.startswith("prov.") for key in fill.attributes)
         ):
             raise LinalgBridgeError("precision preflight requires a closed tensor.splat reset")
         scalar = fill.operands[0]
@@ -134,8 +137,7 @@ def check_source_bound_f32_matmuls(
         raise LinalgBridgeError("precision policy differs from captured source identity")
     decisions = policy.get("matmul_regions")
     if not isinstance(decisions, dict) or any(
-        not isinstance(key, str) or not key or not isinstance(value, dict)
-        for key, value in decisions.items()
+        not isinstance(key, str) or not key or not isinstance(value, dict) for key, value in decisions.items()
     ):
         raise LinalgBridgeError("precision policy needs one decision object per matmul region")
     module = parse_mlir_text(program)
@@ -166,9 +168,7 @@ def check_source_bound_f32_matmuls(
         lhs_shape, rhs_shape, init_shape, result_shape = (
             _f32_shape(value) for value in (*op.inputs, op.outputs[0], op.results[0])
         )
-        if lhs_shape[1] != rhs_shape[0] or init_shape != result_shape or result_shape != (
-            lhs_shape[0], rhs_shape[1]
-        ):
+        if lhs_shape[1] != rhs_shape[0] or init_shape != result_shape or result_shape != (lhs_shape[0], rhs_shape[1]):
             raise LinalgBridgeError("precision preflight matmul shapes differ")
         _check_positive_zero_init(op.outputs[0])
         _check_matmul_body(op)
@@ -178,10 +178,18 @@ def check_source_bound_f32_matmuls(
         region_id = region_attr.data if region_attr is not None else f"matmul#{len(regions)}"
         if any(region.region_id == region_id for region in regions):
             raise LinalgBridgeError(f"duplicate source matmul region {region_id!r}")
-        regions.append(SourceMatmulRegion(
-            region_id, ordinal, lhs_shape, rhs_shape, result_shape,
-            source(op.inputs[0]), source(op.inputs[1]), source(op.results[0]),
-        ))
+        regions.append(
+            SourceMatmulRegion(
+                region_id,
+                ordinal,
+                lhs_shape,
+                rhs_shape,
+                result_shape,
+                source(op.inputs[0]),
+                source(op.inputs[1]),
+                source(op.results[0]),
+            )
+        )
     source_ids = {region.region_id for region in regions}
     if source_ids != decisions.keys():
         missing = sorted(source_ids - decisions.keys())
@@ -201,7 +209,9 @@ def inventory_source_f32_batched_matmuls(program: str, *, entry: str) -> tuple[S
 
 
 def survey_source_f32_batched_matmuls(
-    program: str, *, entry: str,
+    program: str,
+    *,
+    entry: str,
 ) -> tuple[tuple[SourceBatchedMatmulRegion, ...], tuple[tuple[int, str], ...]]:
     """Inventory batched contractions without refusing the noncanonical ones.
 
@@ -215,7 +225,10 @@ def survey_source_f32_batched_matmuls(
 
 
 def _batched_matmul_inventory(
-    program: str, *, entry: str, strict: bool,
+    program: str,
+    *,
+    entry: str,
+    strict: bool,
 ) -> tuple[tuple[SourceBatchedMatmulRegion, ...], tuple[tuple[int, str], ...]]:
     from xdsl.dialects.linalg.attrs import IteratorType
 
@@ -238,7 +251,9 @@ def _batched_matmul_inventory(
     refused: list[tuple[int, str]] = []
     for ordinal, op in enumerate(operations):
         if (
-            op.name != "linalg.generic" or len(op.inputs) != 2 or len(op.results) != 1
+            op.name != "linalg.generic"
+            or len(op.inputs) != 2
+            or len(op.results) != 1
             or not isinstance(op.results[0].type, TensorType)
             or len(op.results[0].type.get_shape()) < 3
             or str(op.results[0].type.element_type) != "f32"
@@ -249,9 +264,7 @@ def _batched_matmul_inventory(
         try:
             lhs, rhs, init, _, scalar_add_order = _source_f32_batched_matmul(op)
             _check_positive_zero_init(init, rank=rank)
-            lhs_shape, rhs_shape, result_shape = (
-                _f32_shape(value, rank=rank) for value in (lhs, rhs, op.results[0])
-            )
+            lhs_shape, rhs_shape, result_shape = (_f32_shape(value, rank=rank) for value in (lhs, rhs, op.results[0]))
         except LinalgBridgeError as error:
             if strict:
                 raise
@@ -263,10 +276,20 @@ def _batched_matmul_inventory(
         region_id = region_attr.data if region_attr is not None else f"batch_matmul#{len(regions)}"
         if any(region.region_id == region_id for region in regions):
             raise LinalgBridgeError(f"duplicate source batched matmul region {region_id!r}")
-        regions.append(SourceBatchedMatmulRegion(
-            region_id, ordinal, result_shape[:-2], lhs_shape, rhs_shape, result_shape,
-            source(lhs), source(rhs), source(op.results[0]), scalar_add_order,
-        ))
+        regions.append(
+            SourceBatchedMatmulRegion(
+                region_id,
+                ordinal,
+                result_shape[:-2],
+                lhs_shape,
+                rhs_shape,
+                result_shape,
+                source(lhs),
+                source(rhs),
+                source(op.results[0]),
+                scalar_add_order,
+            )
+        )
     return tuple(regions), tuple(refused)
 
 
@@ -282,8 +305,7 @@ def check_source_bound_f32_batched_matmuls(
         raise LinalgBridgeError("batched precision policy differs from captured source identity")
     decisions = policy.get("batched_matmul_regions")
     if not isinstance(decisions, dict) or any(
-        not isinstance(key, str) or not key or not isinstance(value, dict)
-        for key, value in decisions.items()
+        not isinstance(key, str) or not key or not isinstance(value, dict) for key, value in decisions.items()
     ):
         raise LinalgBridgeError("batched precision policy needs one decision object per region")
     regions = inventory_source_f32_batched_matmuls(program, entry=entry)

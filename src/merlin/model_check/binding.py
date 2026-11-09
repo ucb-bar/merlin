@@ -89,16 +89,14 @@ def toolchain_engine(
     target: str, host_package: Path, *, dram_base: int, dram_bytes: int, work: Path, timeout: float
 ) -> Engine:
     """The real engine: the host package's replay toolchain, the device compiler and the bound Spike."""
-    from merlin.llvmlower import toolchain as LT
     from merlin.compiler.backend.host import load_host_package
+    from merlin.llvmlower import toolchain as LT
     from merlin.model_check import replay as RP
     from merlin.runtime.backends import spike_model as SM
 
     toolchain = RP.toolchain_for(host_package)
     target_flag = [f for f in toolchain.device_cflags if f.startswith("--target=")] or [SM.CLANG_TARGET]
-    marches = [
-        f.removeprefix("-march=") for f in load_host_package(host_package).cflags if f.startswith("-march=")
-    ]
+    marches = [f.removeprefix("-march=") for f in load_host_package(host_package).cflags if f.startswith("-march=")]
     work.mkdir(parents=True, exist_ok=True)
 
     def canonical(isa: str) -> list[str]:

@@ -31,7 +31,9 @@ def publish_graph_bridge(linalg, entry, *, compiled, device_symbol, out) -> tupl
         if not isinstance(compilation, dict):
             raise ValueError("native compilation manifest must be an object")
         verify_native_publication(
-            compiled, compilation, engine="merlin_native",
+            compiled,
+            compilation,
+            engine="merlin_native",
             request_digest=compilation.get("request_digest"),
             target_identity=compilation.get("target_identity"),
         )
@@ -47,9 +49,14 @@ def publish_graph_bridge(linalg, entry, *, compiled, device_symbol, out) -> tupl
             json.loads((compiled / layouts_name).read_text()) if layouts_name in stage_artifacts else None
         )
         record, text = diagnostic_whole_graph_host_bridge(
-            Path(linalg).read_bytes().decode("utf-8"), entry, device_symbol=device_symbol,
-            compilation=compilation, selection=selection, precision_plan=precision_plan,
-            execution_plan=execution_plan, physical_layouts=physical_layouts,
+            Path(linalg).read_bytes().decode("utf-8"),
+            entry,
+            device_symbol=device_symbol,
+            compilation=compilation,
+            selection=selection,
+            precision_plan=precision_plan,
+            execution_plan=execution_plan,
+            physical_layouts=physical_layouts,
         )
         output.mkdir(parents=True)
         (output / "host-bridge.mlir").write_text(text)
@@ -59,8 +66,16 @@ def publish_graph_bridge(linalg, entry, *, compiled, device_symbol, out) -> tupl
         return 0, {"status": record["status"], "out": str(output)}
     except (OSError, ValueError, RuntimeError, TypeError, KeyError, UnicodeError) as error:
         output.mkdir(parents=True, exist_ok=True)
-        (output / "manifest.json").write_text(json.dumps({
-            "schema": "merlin.diagnostic_whole_graph_host_bridge.v1",
-            "status": "compile_error", "reason": str(error),
-        }, sort_keys=True, indent=2) + "\n")
+        (output / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "schema": "merlin.diagnostic_whole_graph_host_bridge.v1",
+                    "status": "compile_error",
+                    "reason": str(error),
+                },
+                sort_keys=True,
+                indent=2,
+            )
+            + "\n"
+        )
         return 2, {"status": "compile_error", "reason": str(error), "out": str(output)}

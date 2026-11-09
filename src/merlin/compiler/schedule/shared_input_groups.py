@@ -33,7 +33,8 @@ class SharedInputGroup:
 
     def verify_current(self, module, *, max_source_operations=10_000, max_source_elements=64 << 20):
         groups = find_shared_input_groups(
-            module, max_source_operations=max_source_operations, max_source_elements=max_source_elements)
+            module, max_source_operations=max_source_operations, max_source_elements=max_source_elements
+        )
         if not any(self == prefix for group in groups for prefix in grow_shared_input_group(group)):
             raise ValueError("shared-input group differs from complete current typed source")
 
@@ -49,8 +50,12 @@ def grow_shared_input_group(group):
 
     for count in range(2, len(group.widths) + 1):
         last = group.contraction_ordinals[count - 1]
-        yield replace(group, source_op_indices=tuple(i for i in group.source_op_indices if i <= last),
-                      contraction_ordinals=group.contraction_ordinals[:count], widths=group.widths[:count])
+        yield replace(
+            group,
+            source_op_indices=tuple(i for i in group.source_op_indices if i <= last),
+            contraction_ordinals=group.contraction_ordinals[:count],
+            widths=group.widths[:count],
+        )
 
 
 def find_shared_input_groups(module, *, max_source_operations=10_000, max_source_elements=64 << 20):

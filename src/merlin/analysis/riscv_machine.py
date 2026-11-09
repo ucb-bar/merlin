@@ -4,7 +4,6 @@ Observations retain their exact supported domain and explicit unknowns.
 No accelerator semantics, execution multiplicity or hardware law is inferred.
 """
 
-
 from collections import Counter, deque
 
 from .riscv_control import (
@@ -389,6 +388,7 @@ def register_facts(rows, *, max_steps=2_000_000, entry_state=None, call_summarie
     observations, analysis, _ = _analyze(rows, max_steps, entry_state, call_summaries)
     return observations, analysis
 
+
 def summarize_function(rows, *, entry_state=None, call_summaries=None, max_steps=2_000_000):
     """Return-register values of one function body under its entry state.
 
@@ -452,9 +452,3 @@ def summarize_function(rows, *, entry_state=None, call_summaries=None, max_steps
         terminates=terminates,
         **base,
     )
-
-
-
-
-
-

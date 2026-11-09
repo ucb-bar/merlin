@@ -100,9 +100,8 @@ def schedule_shared_input(
     Counts are not physical traffic/cycles. This finite family declines when
     a full-K LHS stripe does not fit; it emits no compact machine loop or fence.
     """
-    from merlin.transforms.dense_planning import DenseResources
-
     from merlin.compiler.schedule.shared_input_verification import verify_shared_input
+    from merlin.transforms.dense_planning import DenseResources
 
     if type(group) is not SharedInputGroup or type(resources) is not DenseResources:
         raise ValueError("shared-input scheduling requires a current source group and selected resources")

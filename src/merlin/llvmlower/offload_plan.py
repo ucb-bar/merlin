@@ -101,7 +101,8 @@ def _read(module, entry, max_operations, *, graph_mode="outlined", semantics=Non
             or operation.successors
             or operation.regions
             and not structured
-            or semantics is None and any(not key.startswith("prov.") for key in operation.attributes)
+            or semantics is None
+            and any(not key.startswith("prov.") for key in operation.attributes)
             or "library_call" in operation.properties
         ):
             raise OffloadPlanUnavailable("source offload has unknown effects, required placement or nested control")
@@ -198,16 +199,24 @@ class OffloadSource:
             "source binding changed; replan",
         )
         if self._semantics is None:
-            _require("source_semantics" not in self._session._analyses,
-                     "original source semantic admission owner changed")
+            _require(
+                "source_semantics" not in self._session._analyses, "original source semantic admission owner changed"
+            )
         else:
-            _require(self._session.analysis("source_semantics") is self._semantics,
-                     "original source semantic admission owner changed")
+            _require(
+                self._session.analysis("source_semantics") is self._semantics,
+                "original source semantic admission owner changed",
+            )
         operations, ordinals, _, graph = (
             _read(self.module, self.entry, self.max_operations)
             if self.graph_mode == "outlined" and self._semantics is None
-            else _read(self.module, self.entry, self.max_operations, graph_mode=self.graph_mode,
-                       **({"semantics": self._semantics} if self._semantics is not None else {}))
+            else _read(
+                self.module,
+                self.entry,
+                self.max_operations,
+                graph_mode=self.graph_mode,
+                **({"semantics": self._semantics} if self._semantics is not None else {}),
+            )
         )
         _require(
             operations == self.operations and ordinals == self.operation_ordinals,
@@ -223,8 +232,9 @@ class OffloadSource:
         return None if self._semantics is None else self._semantics.record()
 
 
-def bind_source(module, *, entry, context, max_operations=4096, graph_mode="outlined",
-                validate_source=None, source_options=None):
+def bind_source(
+    module, *, entry, context, max_operations=4096, graph_mode="outlined", validate_source=None, source_options=None
+):
     """Bind every entry operation without pruning, under an explicit graph contract.
 
     The default preserves existing offload dispatch semantics. ``graph_mode="ssa"``
@@ -237,14 +247,20 @@ def bind_source(module, *, entry, context, max_operations=4096, graph_mode="outl
     context_record = _context(context)
     if validate_source is None and source_options is not None:
         raise ValueError("source semantic options require original-caller validation")
-    semantics = (None if validate_source is None
-                 else BoundSourceSemantics(module, entry, validate_source, source_options))
+    semantics = (
+        None if validate_source is None else BoundSourceSemantics(module, entry, validate_source, source_options)
+    )
     frozen_context = PipelineContext(**asdict(context))
     operations, ordinals, _, program = (
         _read(module, entry, max_operations)
         if graph_mode == "outlined" and semantics is None
-        else _read(module, entry, max_operations, graph_mode=graph_mode,
-                   **({"semantics": semantics} if semantics is not None else {}))
+        else _read(
+            module,
+            entry,
+            max_operations,
+            graph_mode=graph_mode,
+            **({"semantics": semantics} if semantics is not None else {}),
+        )
     )
     session = PipelineSession(module, context=frozen_context, ir_level="linalg", max_repairs=0)
     stamp = session.stamp()

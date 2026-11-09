@@ -88,8 +88,8 @@ def _assembler_bridge(target: str, endpoint) -> dict:
         import importlib.util
         import inspect
 
-        from merlin.common import provenance as _prov
         from merlin.analysis import compute_endpoints as _ep
+        from merlin.common import provenance as _prov
         from merlin.targetgen import isa_model as _IM
 
         block = (_ep._spec().get("endpoints") or {}).get(getattr(endpoint, "name", "")) or {}

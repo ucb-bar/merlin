@@ -3,6 +3,7 @@
 Syntax and CFG/SCC observations retain their established owners. Unknown pointer
 uses, escaping storage and insufficient per-island budgets remain refusals.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict

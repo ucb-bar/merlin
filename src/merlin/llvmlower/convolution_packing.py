@@ -123,8 +123,7 @@ def emit_nhwc_window_panel(
     if panel_bytes > maximum_panel_bytes:
         raise ValueError("window panel exceeds caller-selected packing capacity")
     if _emit_complete_unit_window(builder, window, source, destination, row_start, rows):
-        return dict(_panel_receipt(rows, reduction, panel_bytes),
-                    transport="complete_unit_window_row_spans")
+        return dict(_panel_receipt(rows, reduction, panel_bytes), transport="complete_unit_window_row_spans")
     ops = _WindowBuilder(builder)
     oh, ow = window.output_spatial
     start_valid = ops.cmp("ult", row_start, window.input_shape[0] * oh * ow)
@@ -145,8 +144,12 @@ def _emit_complete_unit_window(builder, window, source, destination, row_start, 
     No alignment or target memory-operation implementation is assumed.
     """
     start = getattr(row_start.owner, "value", None)
-    if (window.kernel != (1, 1) or window.stride != (1, 1)
-            or not isinstance(start, IntegerAttr) or start.value.data != 0):
+    if (
+        window.kernel != (1, 1)
+        or window.stride != (1, 1)
+        or not isinstance(start, IntegerAttr)
+        or start.value.data != 0
+    ):
         return False
     b, h, w, c = window.input_shape
     oh, ow = window.output_spatial
@@ -160,15 +163,27 @@ def _emit_complete_unit_window(builder, window, source, destination, row_start, 
 
     def fill(offset, count):
         if count:
-            builder.add(llvm.CallIntrinsicOp("llvm.memset.p0.i64", [
-                pointer(destination, offset), builder.const(0, i8), builder.const(count), builder.const(0, i1)
-            ], []))
+            builder.add(
+                llvm.CallIntrinsicOp(
+                    "llvm.memset.p0.i64",
+                    [pointer(destination, offset), builder.const(0, i8), builder.const(count), builder.const(0, i1)],
+                    [],
+                )
+            )
 
     def copy(source_offset, destination_offset, count):
-        builder.add(llvm.CallIntrinsicOp("llvm.memcpy.p0.p0.i64", [
-            pointer(destination, destination_offset), pointer(source, source_offset),
-            builder.const(count), builder.const(0, i1)
-        ], []))
+        builder.add(
+            llvm.CallIntrinsicOp(
+                "llvm.memcpy.p0.p0.i64",
+                [
+                    pointer(destination, destination_offset),
+                    pointer(source, source_offset),
+                    builder.const(count),
+                    builder.const(0, i1),
+                ],
+                [],
+            )
+        )
 
     if not any(window.padding):
         copy(0, 0, b * h * w * c)

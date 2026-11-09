@@ -10,6 +10,7 @@ Pass ``logical_abi(selected_public_path)`` or
 path uses the ordinary explicitly selected contract directory; this module does
 not invent a default argument order when that declaration is unavailable.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -155,9 +155,11 @@ def test_native_compile_reports_the_target_binding_failure_status(
     monkeypatch.setattr(snapshot_module, "open_native_snapshot", lambda _root: _Snapshot())
     monkeypatch.setattr(target_binding, "load_native_target_binding", lambda _name: _Binding())
     original_loader, loaded = cli._load_native_request, []
+
     def selected_loader(*args, **kwargs):
         loaded.append(kwargs)
         return original_loader(*args, **kwargs)
+
     monkeypatch.setattr(cli, "_load_native_request", selected_loader)
     request_path, abi_path = tmp_path / "request.json", tmp_path / "abi.json"
     request_path.write_text(json.dumps(request.record()))

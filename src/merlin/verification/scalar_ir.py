@@ -185,8 +185,16 @@ def _encode_function(funcs, name, inputs, active):
                 if not isinstance(predicate, IntegerAttr) or _width(op.results[0].type) != 1:
                     raise UnsupportedScalarIR("comparison requires an integer predicate and i1 result")
                 predicates = (
-                    left == right, left != right, left < right, left <= right, left > right, left >= right,
-                    z3.ULT(left, right), z3.ULE(left, right), z3.UGT(left, right), z3.UGE(left, right),
+                    left == right,
+                    left != right,
+                    left < right,
+                    left <= right,
+                    left > right,
+                    left >= right,
+                    z3.ULT(left, right),
+                    z3.ULE(left, right),
+                    z3.UGT(left, right),
+                    z3.UGE(left, right),
                 )
                 code = predicate.value.data
                 if not 0 <= code < len(predicates):
@@ -196,8 +204,10 @@ def _encode_function(funcs, name, inputs, active):
                 if _width(op.results[0].type) != left.size():
                     raise UnsupportedScalarIR("integer min/max changes result width")
                 minimum, unsigned = "min" in op.name, op.name.endswith("ui")
-                condition = (z3.ULT(left, right) if minimum else z3.UGT(left, right)) if unsigned else (
-                    left < right if minimum else left > right
+                condition = (
+                    (z3.ULT(left, right) if minimum else z3.UGT(left, right))
+                    if unsigned
+                    else (left < right if minimum else left > right)
                 )
                 result = (z3.If(condition, left, right),)
         elif op.name == "arith.select":

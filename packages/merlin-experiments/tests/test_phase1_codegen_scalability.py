@@ -13,9 +13,8 @@ import pytest
 
 @pytest.fixture
 def probe(monkeypatch):
-    from merlin_experiments.phase1.feedback import codegen_scalability as S
-
     from merlin.targetgen import capability_probes, corpora, corpus_spec, lowering_coverage
+    from merlin_experiments.phase1.feedback import codegen_scalability as S
 
     monkeypatch.setattr(corpora, "experiment_for", lambda _target: object())
     monkeypatch.setattr(
@@ -89,9 +88,11 @@ def test_explicit_build_measurement_keeps_emission_and_grade_advisory(probe, mon
 
     monkeypatch.setattr(lowering_coverage, "probe_shape", emit)
     monkeypatch.setattr(S, "_selected_build_inputs", lambda *_args: {"selected": "fixture"})
-    monkeypatch.setattr(S, "_compile_observation", lambda artifact, work, **kwargs: {
-        "status": "compiled", "object_bytes": 12, "artifact_sha256": "a" * 64
-    })
+    monkeypatch.setattr(
+        S,
+        "_compile_observation",
+        lambda artifact, work, **kwargs: {"status": "compiled", "object_bytes": 12, "artifact_sha256": "a" * 64},
+    )
     result = S.run("candidate", target="synthetic", build_service=SelectedBuild(), build_timeout_s=2)
     assert observed == [32, 64, 128, 256]
     assert result["scope"] == "public_emit_and_build_only"
@@ -121,9 +122,8 @@ def test_build_failure_and_large_source_are_advisory_not_success(probe, monkeypa
 
 
 def test_build_selection_change_cannot_report_compiled(monkeypatch, tmp_path):
-    from merlin_experiments.phase1.feedback import codegen_scalability as S
-
     from merlin.targetgen.contract import compile as compiler
+    from merlin_experiments.phase1.feedback import codegen_scalability as S
 
     selections = iter(({"tool": "before"}, {"tool": "after"}))
     monkeypatch.setattr(S, "_selected_build_inputs", lambda *_args: next(selections))
@@ -134,9 +134,8 @@ def test_build_selection_change_cannot_report_compiled(monkeypatch, tmp_path):
 
 
 def test_smaller_looped_emission_does_not_revoke_a_passing_round(probe, monkeypatch, tmp_path):
-    from merlin_experiments.phase1.feedback import loop_grading as L
-
     from merlin.targetgen import lowering_coverage as LC
+    from merlin_experiments.phase1.feedback import loop_grading as L
 
     monkeypatch.setattr(LC, "tile_edge", lambda _target: 32)
     monkeypatch.setattr(
@@ -213,27 +212,30 @@ def test_neutral_straight_line_and_bounded_loop_have_measured_objects(tmp_path):
     """A neutral generated artifact makes expansion visible without a size-based grade."""
     import hashlib
 
-    from merlin_experiments.phase1.feedback import codegen_scalability as S
-
     from merlin.llvmlower import toolchain
     from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelStackFramePolicy
     from merlin.targetgen.contract.build_service import BuildOnlyService
+    from merlin_experiments.phase1.feedback import codegen_scalability as S
 
     clang, translator = toolchain.clang(), toolchain.mlir_translate()
     compiler = tmp_path / "selected-compiler"
     compiler.symlink_to(clang)
     # The object-only service uses the recipe's ISA/ABI and stack policy, not its C compiler.
     recipe = HarnessBuildRecipe(
-        compiler=compiler, include_roots=(), support_sources=(), link_script=tmp_path / "unused.ld",
-        load_address=0, cflags=("-march=rv64gc", "-mabi=lp64d"),
+        compiler=compiler,
+        include_roots=(),
+        support_sources=(),
+        link_script=tmp_path / "unused.ld",
+        load_address=0,
+        cflags=("-march=rv64gc", "-mabi=lp64d"),
         kernel_stack_frame=KernelStackFramePolicy("fixture_entry", 4096),
     )
 
     def source_artifact(kind: str) -> tuple[str, BuildOnlyService]:
         body = (
             "\n".join(f"  acc += {index}ULL;" for index in range(4096))
-            if kind == "straight_line" else
-            "  for (unsigned long long i = 0; i < 4096; ++i) acc += i;"
+            if kind == "straight_line"
+            else "  for (unsigned long long i = 0; i < 4096; ++i) acc += i;"
         )
         source = tmp_path / f"{kind}.c"
         source.write_text(
@@ -243,16 +245,32 @@ def test_neutral_straight_line_and_bounded_loop_have_measured_objects(tmp_path):
         llvm_ir = tmp_path / f"{kind}.ll"
         llvm_mlir = tmp_path / f"{kind}.mlir"
         subprocess.run(
-            [str(clang), "--target=riscv64-unknown-elf", "-march=rv64gc", "-mabi=lp64d",
-             "-O0", "-S", "-emit-llvm", str(source), "-o", str(llvm_ir)],
-            check=True, capture_output=True, timeout=20,
+            [
+                str(clang),
+                "--target=riscv64-unknown-elf",
+                "-march=rv64gc",
+                "-mabi=lp64d",
+                "-O0",
+                "-S",
+                "-emit-llvm",
+                str(source),
+                "-o",
+                str(llvm_ir),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=20,
         )
         subprocess.run(
             [str(translator), "--import-llvm", str(llvm_ir), "-o", str(llvm_mlir)],
-            check=True, capture_output=True, timeout=20,
+            check=True,
+            capture_output=True,
+            timeout=20,
         )
         service = BuildOnlyService(
-            "fixture", recipe, lambda *_args, **_kwargs: "",
+            "fixture",
+            recipe,
+            lambda *_args, **_kwargs: "",
             tuple(
                 (str(path), hashlib.sha256(path.read_bytes()).hexdigest())
                 for path in (source, Path(__file__).resolve())
@@ -261,10 +279,14 @@ def test_neutral_straight_line_and_bounded_loop_have_measured_objects(tmp_path):
         # Clang's imported module-flag carrier is outside the selected xDSL
         # scanner's grammar. The recipe above binds ABI/ISA for this neutral
         # object-only fixture; candidate artifacts are never rewritten here.
-        artifact = "\n".join(
-            line for line in llvm_mlir.read_text().splitlines()
-            if not line.lstrip().startswith("llvm.module_flags ")
-        ) + "\n"
+        artifact = (
+            "\n".join(
+                line
+                for line in llvm_mlir.read_text().splitlines()
+                if not line.lstrip().startswith("llvm.module_flags ")
+            )
+            + "\n"
+        )
         return artifact, service
 
     measured = {}
@@ -277,5 +299,9 @@ def test_neutral_straight_line_and_bounded_loop_have_measured_objects(tmp_path):
         assert measured[kind]["object_sha256"] and measured[kind]["build_selection"]["clang"]["sha256"]
     assert measured["straight_line"]["artifact_bytes"] > measured["bounded_loop"]["artifact_bytes"] * 8
     assert measured["straight_line"]["object_bytes"] > measured["bounded_loop"]["object_bytes"] * 4
-    print({kind: {key: row[key] for key in ("artifact_bytes", "object_bytes", "compile_wall_s", "object_sha256")}
-           for kind, row in measured.items()})
+    print(
+        {
+            kind: {key: row[key] for key in ("artifact_bytes", "object_bytes", "compile_wall_s", "object_sha256")}
+            for kind, row in measured.items()
+        }
+    )

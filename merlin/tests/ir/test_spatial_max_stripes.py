@@ -12,13 +12,19 @@ from merlin.sched.ir import evaluate, instances
 @pytest.mark.parametrize("scale", [0.5, -0.5, 2.0])
 def test_every_staged_byte_and_readout_matches_original_pool(height, width, channels, batches, scale):
     source = SpatialMaxReadout((height, width), (3, 3), (2, 2), (1, 1, 1, 1), -128)
-    plan = plan_striped_spatial_max(source, batches=batches, channels=channels, channel_block=16,
-                                   transfer_rows=4, capacity_rows=256)
+    plan = plan_striped_spatial_max(
+        source, batches=batches, channels=channels, channel_block=16, transfer_rows=4, capacity_rows=256
+    )
     count = batches * height * width * channels
     tensor = Tensor((batches * height * width, channels), [(i * 53 % 256) - 128 for i in range(count)], "i8")
     readout = tensor.requant_acc_scale(scale).to_i8()
-    expected = readout.maxpool2d_rows(in_dims=source.input_hw, pool_size=source.window,
-                                    pool_stride=source.stride, pool_padding=source.padding, pad_value=-128)
+    expected = readout.maxpool2d_rows(
+        in_dims=source.input_hw,
+        pool_size=source.window,
+        pool_stride=source.stride,
+        pool_padding=source.padding,
+        pad_value=-128,
+    )
     actual = [None] * len(expected.data)
     cells = {}
     calls = 0
@@ -33,14 +39,13 @@ def test_every_staged_byte_and_readout_matches_original_pool(height, width, chan
                 assert 0 <= source_row < batches * height * width
                 assert 0 <= local < plan.temporary_rows
                 assert local not in cells  # no duplicate private write in this lifetime
-                cells[local] = readout.data[source_row * channels + first:source_row * channels + first + columns]
+                cells[local] = readout.data[source_row * channels + first : source_row * channels + first + columns]
         else:
             assert set(cells) == set(range(plan.temporary_rows))
             for x in range(source.output_hw[1]):
                 # Decode the selected reader's source-independent rectangular
                 # address equation; never recover indices from requested loads.
-                rows = [ky * plan.stripe_hw[1] + x * source.stride[1] + kx
-                        for ky in range(3) for kx in range(3)]
+                rows = [ky * plan.stripe_hw[1] + x * source.stride[1] + kx for ky in range(3) for kx in range(3)]
                 for col in range(columns):
                     offset = (args["output_row"] + x) * channels + first + col
                     assert actual[offset] is None
@@ -54,8 +59,9 @@ def test_every_staged_byte_and_readout_matches_original_pool(height, width, chan
 
 def test_large_shape_stays_counted_and_retains_complete_read_windows():
     source = SpatialMaxReadout((112, 112), (3, 3), (2, 2), (1, 1, 1, 1), -128)
-    plan = plan_striped_spatial_max(source, batches=1, channels=64, channel_block=16,
-                                   transfer_rows=16, capacity_rows=1024)
+    plan = plan_striped_spatial_max(
+        source, batches=1, channels=64, channel_block=16, transfer_rows=16, capacity_rows=1024
+    )
     assert plan.stripe_hw == (3, 113)
     assert plan.temporary_rows == 339
     assert plan.dynamic_calls == 5600  # 5376 staged LOAD calls + 224 complete strip readouts
@@ -64,8 +70,7 @@ def test_large_shape_stays_counted_and_retains_complete_read_windows():
 
 def test_changed_actual_program_and_capacity_refuse():
     source = SpatialMaxReadout((5, 5), (3, 3), (2, 2), (1, 1, 1, 1), -128)
-    plan = plan_striped_spatial_max(source, batches=1, channels=3, channel_block=16,
-                                   transfer_rows=16, capacity_rows=64)
+    plan = plan_striped_spatial_max(source, batches=1, channels=3, channel_block=16, transfer_rows=16, capacity_rows=64)
     with pytest.raises(ValueError, match="original source"):
         replace(plan, kernel=replace(plan.kernel, body=())).revalidate()
     # Move the real first border staging destination one row: it now aliases
@@ -85,5 +90,6 @@ def test_changed_actual_program_and_capacity_refuse():
     with pytest.raises(ValueError, match="capacity"):
         replace(plan, capacity_rows=1).revalidate()
     with pytest.raises(ValueError, match="minimum-valued"):
-        plan_striped_spatial_max(replace(source, pad_value=0), batches=1, channels=3,
-                                channel_block=16, transfer_rows=16, capacity_rows=64)
+        plan_striped_spatial_max(
+            replace(source, pad_value=0), batches=1, channels=3, channel_block=16, transfer_rows=16, capacity_rows=64
+        )

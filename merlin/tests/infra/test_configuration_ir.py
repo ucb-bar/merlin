@@ -17,8 +17,7 @@ from test_selected_schedule_contracts import inputs
 from xdsl.dialects import arith, builtin, func
 from xdsl.ir import Block, Region
 
-from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection
-from merlin.compiler.schedule.configuration_ir import verify_configuration_ir
+from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection, verify_configuration_ir
 from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
 from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction
 from merlin.transforms.certificates import ir_text

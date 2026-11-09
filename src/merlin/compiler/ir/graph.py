@@ -22,7 +22,6 @@ def type_layout(value_type) -> str | None:
     return None
 
 
-
 def _program_graph(module, digest: str) -> dict:
     from merlin.common import mlir_query as mq
 
@@ -121,4 +120,3 @@ def _program_graph(module, digest: str) -> dict:
         "edges": edges,
         "scope": "exact parsed SSA uses; block-argument binding is not an inferred runtime transfer",
     }
-

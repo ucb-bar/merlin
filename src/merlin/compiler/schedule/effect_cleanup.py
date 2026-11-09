@@ -24,8 +24,10 @@ class Effect:
             or any(type(n) is not int for n in self.value)
             or type(self.protected) is not bool
             or (self.kind == "configuration") != bool(self.state and self.value)
-            or self.kind != "configuration" and (self.state or self.value)
-            or self.protected and self.kind != "barrier"
+            or self.kind != "configuration"
+            and (self.state or self.value)
+            or self.protected
+            and self.kind != "barrier"
         ):
             raise ValueError("cleanup requires closed typed effects")
 
@@ -88,5 +90,9 @@ def verify_cleanup(effects, retained, *, maximum=65536):
             pending = True
             if effect.kind == "unknown":
                 live.clear()
-    return {"source_operations": len(effects), "retained_operations": len(retained),
-            "removed_operations": len(effects) - len(retained), "execution_qualification": "NOT_ESTABLISHED"}
+    return {
+        "source_operations": len(effects),
+        "retained_operations": len(retained),
+        "removed_operations": len(effects) - len(retained),
+        "execution_qualification": "NOT_ESTABLISHED",
+    }

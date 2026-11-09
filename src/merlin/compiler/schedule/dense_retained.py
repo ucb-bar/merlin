@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 from math import prod
-from merlin.sched.ir import Call, Const, Loop, Scaled, Select, Sum, Var, check_structure
-from merlin.sched.ir.integer_domain import check_integer_domain
+
 from merlin.compiler.schedule.blocks import Compute, InitializeAccumulator, Load, Preload, Store
 from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout, TiledIntegerStore
 from merlin.compiler.schedule.dense_panel_ir import DRAIN, _calls, _loops, _serial_projection
+from merlin.sched.ir import Call, Const, Loop, Scaled, Select, Sum, Var, check_structure
+from merlin.sched.ir.integer_domain import check_integer_domain
 
 
 @dataclass(frozen=True)
@@ -96,8 +97,6 @@ def dense_m_panel_capacity(problem, resources, storage, *, n_tiles):
         profitability="unknown",
         array_weight_retention="requires_separate_selected_array_law",
     )
-
-
 
 
 def dense_retained_choices(problem, resources, storage, *, roles=("lhs", "weight"), n_choices=None):

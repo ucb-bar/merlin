@@ -211,9 +211,11 @@ def two_window(p, s, r, max_blocks):
 def schedule(p, s, r, a, block, admission, epoch_law, name):
     S = _load("recipe_support")
     from merlin.compiler.schedule.dense_ready_readout import schedule_dense_pipeline
-    from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-    from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-    from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+    from merlin.compiler.schedule.schedule_ir import (
+        dense_schedule_text,
+        make_dense_schedule_plan,
+        parse_dense_schedule_plan,
+    )
 
     plan = make_dense_schedule_plan(
         p,
@@ -267,8 +269,7 @@ def counts(kernel, adapter):
 # ------------------------------------------------------------------------------- execution
 def _effects(kernel, adapter):
     """(projected operation or None for a drain) per dynamic call, in issue order; preload/compute paired."""
-    from merlin.compiler.schedule.blocks import Compute
-    from merlin.compiler.schedule.blocks import Preload
+    from merlin.compiler.schedule.blocks import Compute, Preload
     from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
     from merlin.sched.ir import evaluate, instances
 

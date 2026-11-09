@@ -94,13 +94,18 @@ def child_arguments():
     selected = _current()
     if selected is None:
         return ()
-    return ("--reference-experiments-selection", str(selected.path),
-            "--reference-experiments-selection-sha256", selected.sha256,
-            *(() if selected.tasks else ("--reference-experiments-selection-tasks", "off")))
+    return (
+        "--reference-experiments-selection",
+        str(selected.path),
+        "--reference-experiments-selection-sha256",
+        selected.sha256,
+        *(() if selected.tasks else ("--reference-experiments-selection-tasks", "off")),
+    )
 
 
 def selected_child(function):
     """Consume only the explicit original host child's selected packet arguments."""
+
     @wraps(function)
     def call(argv=None, *args, **kwargs):
         parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
@@ -121,6 +126,7 @@ def selected_child(function):
             return function(remaining, *args, **kwargs)
         with invocation(path, sha, tasks=tasks):
             return function(remaining, *args, **kwargs)
+
     return call
 
 
@@ -130,29 +136,39 @@ def background_target(function):
     if selected is None:
         return function, None
     failures = []
+
     def body():
         try:
             with invocation(selected.path, selected.sha256, tasks=selected.tasks):
                 return function()
         except BaseException as error:
             failures.append(error)
+
     def joined():
         _current()
         _load(selected)
         if failures:
             raise RuntimeError("reference experiment background owner failed") from failures[0]
+
     return body, joined
 
 
 def _read(path, sha, *, limit=_MAX_BYTES):
     path = Path(path)
-    if (not _sha(sha) or not path.is_absolute() or path.is_symlink() or path.resolve() != path
-            or any(parent.is_symlink() for parent in path.parents) or not path.is_file()
-            or path.stat().st_size > limit):
+    if (
+        not _sha(sha)
+        or not path.is_absolute()
+        or path.is_symlink()
+        or path.resolve() != path
+        or any(parent.is_symlink() for parent in path.parents)
+        or not path.is_file()
+        or path.stat().st_size > limit
+    ):
         raise ValueError("selected_input_unavailable")
     raw = path.read_bytes()
     if len(raw) > limit or hashlib.sha256(raw).hexdigest() != sha:
         raise ValueError("selected_input_changed")
+
     def pairs(values):
         record = {}
         for key, value in values:
@@ -160,27 +176,40 @@ def _read(path, sha, *, limit=_MAX_BYTES):
                 raise ValueError("duplicate_packet_field")
             record[key] = value
         return record
-    return json.loads(raw, object_pairs_hook=pairs,
-                      parse_constant=lambda value: (_ for _ in ()).throw(ValueError("nonfinite_packet_field")))
+
+    return json.loads(
+        raw,
+        object_pairs_hook=pairs,
+        parse_constant=lambda value: (_ for _ in ()).throw(ValueError("nonfinite_packet_field")),
+    )
 
 
 def _load_single(selected, selection=None):
     selection = _read(selected.path, selected.sha256) if selection is None else selection
-    if (not isinstance(selection, dict) or selection.get("schema") != SCHEMA
-            or not {"packet", "current_context"} <= set(selection)):
+    if (
+        not isinstance(selection, dict)
+        or selection.get("schema") != SCHEMA
+        or not {"packet", "current_context"} <= set(selection)
+    ):
         raise ValueError("unsupported_reference_selection")
     pin, context = selection["packet"], selection["current_context"]
-    if (not isinstance(pin, dict) or set(pin) != {"path", "sha256"} or not isinstance(context, dict)
-            or any(not _sha(context.get(key)) for key in _CONTEXT_FIELDS)):
+    if (
+        not isinstance(pin, dict)
+        or set(pin) != {"path", "sha256"}
+        or not isinstance(context, dict)
+        or any(not _sha(context.get(key)) for key in _CONTEXT_FIELDS)
+    ):
         raise ValueError("incomplete_reference_context")
     evaluator = context.get("evaluator")
-    if (not isinstance(evaluator, dict) or not evaluator.get("identity") or not _sha(evaluator.get("sha256"))):
+    if not isinstance(evaluator, dict) or not evaluator.get("identity") or not _sha(evaluator.get("sha256")):
         raise ValueError("incomplete_evaluator_context")
     packet = _read(pin["path"], pin["sha256"])
-    if (not isinstance(packet, dict) or packet.get("schema") != PACKET_SCHEMA
-            or packet.get("identity") != document_digest(
-                {key: value for key, value in packet.items() if key != "identity"})
-            or document_digest(packet.get("context")) != document_digest(context)):
+    if (
+        not isinstance(packet, dict)
+        or packet.get("schema") != PACKET_SCHEMA
+        or packet.get("identity") != document_digest({key: value for key, value in packet.items() if key != "identity"})
+        or document_digest(packet.get("context")) != document_digest(context)
+    ):
         raise ValueError("packet_identity_or_context_changed")
     if context.get("visibility") not in ("reference_guided", "public"):
         raise ValueError("packet_not_selected_for_author_visibility")
@@ -194,8 +223,13 @@ def _load_single(selected, selection=None):
         # Context leaves need not be JSON. Byte custody is rechecked before any
         # selected task text can reach the author.
         path = Path(item["path"])
-        if (not path.is_absolute() or path.is_symlink() or path.resolve() != path or not path.is_file()
-                or path.stat().st_size > 256 << 20):
+        if (
+            not path.is_absolute()
+            or path.is_symlink()
+            or path.resolve() != path
+            or not path.is_file()
+            or path.stat().st_size > 256 << 20
+        ):
             raise ValueError("context_input_changed")
         with path.open("rb") as stream:
             if hashlib.file_digest(stream, "sha256").hexdigest() != item["sha256"]:
@@ -206,27 +240,36 @@ def _load_single(selected, selection=None):
     task_ids, request_ids = set(), set()
     for task in tasks:
         task_id = task.get("task_id")
-        if (not isinstance(task_id, str) or task_id in task_ids or not isinstance(task.get("acceptance"), dict)
-                or task.get("status") not in ("ready", "blocked", "unranked", "rejected", "resolved")
-                or not isinstance(task.get("goals", []), list)
-                or any(not isinstance(goal, str) for goal in task.get("goals", []))):
+        if (
+            not isinstance(task_id, str)
+            or task_id in task_ids
+            or not isinstance(task.get("acceptance"), dict)
+            or task.get("status") not in ("ready", "blocked", "unranked", "rejected", "resolved")
+            or not isinstance(task.get("goals", []), list)
+            or any(not isinstance(goal, str) for goal in task.get("goals", []))
+        ):
             raise ValueError("invalid_reference_task_contract")
         task_ids.add(task_id)
         for field in ("evidence", "hypotheses", "prior_attempts"):
-            if (not isinstance(task.get(field, []), list)
-                    or any(not isinstance(row, dict) for row in task.get(field, []))):
+            if not isinstance(task.get(field, []), list) or any(
+                not isinstance(row, dict) for row in task.get(field, [])
+            ):
                 raise ValueError("invalid_reference_task_evidence")
         requests = task.get("requests", [])
         if not isinstance(requests, list):
             raise ValueError("invalid_reference_requests")
         for request in requests:
-            if (not isinstance(request, dict) or not isinstance(request.get("request_id"), str)
-                    or request["request_id"] in request_ids
-                    or request.get("context_identity") != packet["execution_context_identity"]
-                    or not isinstance(request.get("settings"), dict)
-                    or request.get("settings_sha256") != document_digest(request["settings"])
-                    or not isinstance(request.get("argv"), list) or not 1 <= len(request["argv"]) <= 64
-                    or any(not isinstance(value, str) for value in request["argv"])):
+            if (
+                not isinstance(request, dict)
+                or not isinstance(request.get("request_id"), str)
+                or request["request_id"] in request_ids
+                or request.get("context_identity") != packet["execution_context_identity"]
+                or not isinstance(request.get("settings"), dict)
+                or request.get("settings_sha256") != document_digest(request["settings"])
+                or not isinstance(request.get("argv"), list)
+                or not 1 <= len(request["argv"]) <= 64
+                or any(not isinstance(value, str) for value in request["argv"])
+            ):
                 raise ValueError("invalid_reference_request_contract")
             request_ids.add(request["request_id"])
             if len(request_ids) > 32:
@@ -240,15 +283,24 @@ def _load(selected):
     if not isinstance(selection, dict) or selection.get("schema") != SHARDS_SCHEMA:
         return _load_single(selected, selection)
     shards, total = selection.get("shards"), selection.get("tasks")
-    if (selection.get("complete") is not True or type(total) is not int or not 0 <= total <= 16 * _MAX_SHARDS
-            or not isinstance(shards, list) or not 1 <= len(shards) <= _MAX_SHARDS):
+    if (
+        selection.get("complete") is not True
+        or type(total) is not int
+        or not 0 <= total <= 16 * _MAX_SHARDS
+        or not isinstance(shards, list)
+        or not 1 <= len(shards) <= _MAX_SHARDS
+    ):
         raise ValueError("incomplete_reference_shard_index")
     packets, tasks, origins = [], [], {}
     packet_ids, task_ids, request_ids, selectors = set(), set(), set(), set()
     context, offset, byte_count = None, 0, 0
     for shard in shards:
-        if (not isinstance(shard, dict) or set(shard) != {"packet", "selection", "selection_sha256"}
-                or not isinstance(shard["selection"], str) or not isinstance(shard["packet"], str)):
+        if (
+            not isinstance(shard, dict)
+            or set(shard) != {"packet", "selection", "selection_sha256"}
+            or not isinstance(shard["selection"], str)
+            or not isinstance(shard["packet"], str)
+        ):
             raise ValueError("invalid_reference_shard_pin")
         child = _Selection(Path(shard["selection"]), shard["selection_sha256"], selected.process)
         if child.path in selectors:
@@ -270,12 +322,16 @@ def _load(selected):
         packet_ids.add(identity)
         coverage = packet.get("coverage")
         end = offset + len(packet["tasks"])
-        if ((not packet["tasks"] and (total != 0 or len(shards) != 1))
-                or not isinstance(coverage, dict) or any(type(coverage.get(key)) is not int for key in
-                                                ("selected_start", "selected_end", "total_diagnoses"))
-                or coverage["selected_start"] != offset or coverage["selected_end"] != end
-                or coverage["total_diagnoses"] != total or end > total
-                or coverage.get("next_offset") != (end if end < total else None)):
+        if (
+            (not packet["tasks"] and (total != 0 or len(shards) != 1))
+            or not isinstance(coverage, dict)
+            or any(type(coverage.get(key)) is not int for key in ("selected_start", "selected_end", "total_diagnoses"))
+            or coverage["selected_start"] != offset
+            or coverage["selected_end"] != end
+            or coverage["total_diagnoses"] != total
+            or end > total
+            or coverage.get("next_offset") != (end if end < total else None)
+        ):
             raise ValueError("reference_shard_coverage_incomplete")
         offset = end
         for task in packet["tasks"]:
@@ -293,10 +349,15 @@ def _load(selected):
         raise ValueError("reference_shard_coverage_incomplete")
     # Host-only view, authenticated transitively by the pinned index and every
     # original bounded packet. No producer packet or task identity is rewritten.
-    aggregate = dict(schema=SHARDS_SCHEMA, context=context, tasks=tasks,
-                     execution_context_identity=packet["execution_context_identity"],
-                     selected_index_sha256=selected.sha256, source_packet_identities=packets,
-                     task_packet_identities=origins)
+    aggregate = dict(
+        schema=SHARDS_SCHEMA,
+        context=context,
+        tasks=tasks,
+        execution_context_identity=packet["execution_context_identity"],
+        selected_index_sha256=selected.sha256,
+        source_packet_identities=packets,
+        task_packet_identities=origins,
+    )
     aggregate["identity"] = document_digest(aggregate)
     return aggregate, context
 
@@ -314,11 +375,21 @@ def _journal_limit(packet):
 
 
 def _unknown(reason):
-    return dict(schema=FEEDBACK_SCHEMA, status="unknown", advisory_only=True, qualification_issued=False,
-                reason=reason, next_action=dict(route="acquire_new_evidence",
-                    action="Rebuild the reference experiment packet from the current trusted compiler and evidence."),
-                lines=["reference experiment (advisory): context unavailable; acquire current evidence.",
-                       "No experiment is marked tested or complete from this packet."])
+    return dict(
+        schema=FEEDBACK_SCHEMA,
+        status="unknown",
+        advisory_only=True,
+        qualification_issued=False,
+        reason=reason,
+        next_action=dict(
+            route="acquire_new_evidence",
+            action="Rebuild the reference experiment packet from the current trusted compiler and evidence.",
+        ),
+        lines=[
+            "reference experiment (advisory): context unavailable; acquire current evidence.",
+            "No experiment is marked tested or complete from this packet.",
+        ],
+    )
 
 
 @contextmanager
@@ -340,20 +411,32 @@ def _journal(selected):
 
 def _read_store(selected, packet, path):
     if not path.exists() and not path.is_symlink():
-        return dict(schema="merlin.reference_experiment_observations.v1", selection_sha256=selected.sha256,
-                    packet_identity=packet["identity"], context_identity=packet["execution_context_identity"],
-                    outcomes={})
-    if (path.is_symlink() or not path.is_file() or path.stat().st_mode & 0o077
-            or path.stat().st_uid != os.geteuid() or path.stat().st_size > _journal_limit(packet)):
+        return dict(
+            schema="merlin.reference_experiment_observations.v1",
+            selection_sha256=selected.sha256,
+            packet_identity=packet["identity"],
+            context_identity=packet["execution_context_identity"],
+            outcomes={},
+        )
+    if (
+        path.is_symlink()
+        or not path.is_file()
+        or path.stat().st_mode & 0o077
+        or path.stat().st_uid != os.geteuid()
+        or path.stat().st_size > _journal_limit(packet)
+    ):
         raise ValueError("reference_observation_store_unavailable")
     raw = path.read_bytes()
     document = _read(path, hashlib.sha256(raw).hexdigest(), limit=_journal_limit(packet))
-    if (not isinstance(document, dict) or document.get("schema") != "merlin.reference_experiment_observations.v1"
-            or document.get("selection_sha256") != selected.sha256
-            or document.get("packet_identity") != packet["identity"]
-            or document.get("context_identity") != packet["execution_context_identity"]
-            or document.get("identity") != document_digest({key: value for key, value in document.items()
-                                                            if key != "identity"})):
+    if (
+        not isinstance(document, dict)
+        or document.get("schema") != "merlin.reference_experiment_observations.v1"
+        or document.get("selection_sha256") != selected.sha256
+        or document.get("packet_identity") != packet["identity"]
+        or document.get("context_identity") != packet["execution_context_identity"]
+        or document.get("identity")
+        != document_digest({key: value for key, value in document.items() if key != "identity"})
+    ):
         raise ValueError("reference_observation_store_changed")
     return document
 
@@ -363,19 +446,30 @@ def _read_outcomes(selected, packet, path):
     outcomes = document.get("outcomes")
     if not isinstance(outcomes, dict) or len(outcomes) > _request_limit(packet):
         raise ValueError("reference_observation_roster_invalid")
-    requests = {request["request_id"]: (task["task_id"], request)
-                for task in packet["tasks"] for request in task.get("requests", [])}
+    requests = {
+        request["request_id"]: (task["task_id"], request)
+        for task in packet["tasks"]
+        for request in task.get("requests", [])
+    }
     for key, outcome in outcomes.items():
         if not isinstance(outcome, dict) or key not in requests:
             raise ValueError("reference_observation_request_unknown")
         task_id, request = requests[key]
-        expected = dict(request_id=key, task_id=task_id, packet_identity=_task_packet_identity(packet, task_id),
-                        context_identity=packet["execution_context_identity"],
-                        settings_sha256=request["settings_sha256"],
-                        base_compiler_sha256=packet["context"]["compiler_sha256"])
-        if (any(outcome.get(field) != value for field, value in expected.items())
-                or outcome.get("task_complete") is not False or outcome.get("qualification_issued") is not False
-                or outcome.get("mechanism_status") != "unknown" or not _sha(outcome.get("executed_compiler_sha256"))):
+        expected = dict(
+            request_id=key,
+            task_id=task_id,
+            packet_identity=_task_packet_identity(packet, task_id),
+            context_identity=packet["execution_context_identity"],
+            settings_sha256=request["settings_sha256"],
+            base_compiler_sha256=packet["context"]["compiler_sha256"],
+        )
+        if (
+            any(outcome.get(field) != value for field, value in expected.items())
+            or outcome.get("task_complete") is not False
+            or outcome.get("qualification_issued") is not False
+            or outcome.get("mechanism_status") != "unknown"
+            or not _sha(outcome.get("executed_compiler_sha256"))
+        ):
             raise ValueError("reference_observation_join_changed")
     return outcomes
 
@@ -427,13 +521,15 @@ def _effective(selected, compiler_sha256):
         return selected, packet, context
     pin = active.get("selection", {})
     current_path = Path(pin.get("path", ""))
-    if (current_path.parent != selected.path.parent or not current_path.name.startswith(
-            ".reference-analysis-" + selected.sha256 + "-") or not _sha(pin.get("sha256"))):
+    if (
+        current_path.parent != selected.path.parent
+        or not current_path.name.startswith(".reference-analysis-" + selected.sha256 + "-")
+        or not _sha(pin.get("sha256"))
+    ):
         raise ValueError("current_reference_analysis_selection_invalid")
     current = _Selection(current_path, pin["sha256"], os.getpid())
     generated, fresh = _load(current)
-    if (fresh.get("compiler_sha256") != compiler_sha256
-            or active.get("compiler_sha256") != compiler_sha256):
+    if fresh.get("compiler_sha256") != compiler_sha256 or active.get("compiler_sha256") != compiler_sha256:
         return selected, packet, context
     if any(fresh.get(key) != value for key, value in context.items() if key not in ("compiler_sha256", "tuning")):
         raise ValueError("current_reference_analysis_context_changed")
@@ -509,20 +605,33 @@ def record_analysis(report, *, workspace, compiler_sha256):
     pins = _analysis_pins(report, workspace)
     pins.extend((fresh.get("tuning") or {}).get("artifacts", []))
     original = _read(selected.path, selected.sha256)
-    prefix = ".reference-analysis-" + selected.sha256 + "-" + document_digest(
-        dict(packet=generated["identity"], inputs=pins))
+    prefix = (
+        ".reference-analysis-"
+        + selected.sha256
+        + "-"
+        + document_digest(dict(packet=generated["identity"], inputs=pins))
+    )
     generated_path = selected.path.parent / (prefix + ".packet.json")
     selection_path = selected.path.parent / (prefix + ".selection.json")
     generated_sha = _write_private(generated_path, generated)
-    selection_sha = _write_private(selection_path, dict(schema=SCHEMA,
-        packet=dict(path=str(generated_path), sha256=generated_sha), current_context=fresh,
-        context_pins=[*original.get("context_pins", []), *pins]))
+    selection_sha = _write_private(
+        selection_path,
+        dict(
+            schema=SCHEMA,
+            packet=dict(path=str(generated_path), sha256=generated_sha),
+            current_context=fresh,
+            context_pins=[*original.get("context_pins", []), *pins],
+        ),
+    )
     current = _Selection(selection_path, selection_sha, os.getpid())
     _load(current)
     with _journal(selected) as path:
         document = _read_store(selected, packet, path)
-        document["current_analysis"] = dict(selection=dict(path=str(selection_path), sha256=selection_sha),
-            compiler_sha256=compiler_sha256, report_identity=document_digest(report))
+        document["current_analysis"] = dict(
+            selection=dict(path=str(selection_path), sha256=selection_sha),
+            compiler_sha256=compiler_sha256,
+            report_identity=document_digest(report),
+        )
         _write_store(path, document)
     return generated
 
@@ -538,14 +647,26 @@ def _emitted_program(document, *, capsule, compiler_sha256):
     if len(rows) != 1 or document.get("candidate_sha256", compiler_sha256) != compiler_sha256:
         return None
     value = rows[0].get("performance") or {}
-    fields = ("capsule_sha256", "selection_sha256", "model_sha256", "comparison_domain_sha256",
-              "scope_sha256", "elf_sha256")
-    if (not isinstance(value, dict) or value.get("schema") != "merlin.phase1.joint_performance.v1"
-            or value.get("complete_event_accounting") is not True
-            or any(not _sha(value.get(key)) for key in fields)):
+    fields = (
+        "capsule_sha256",
+        "selection_sha256",
+        "model_sha256",
+        "comparison_domain_sha256",
+        "scope_sha256",
+        "elf_sha256",
+    )
+    if (
+        not isinstance(value, dict)
+        or value.get("schema") != "merlin.phase1.joint_performance.v1"
+        or value.get("complete_event_accounting") is not True
+        or any(not _sha(value.get(key)) for key in fields)
+    ):
         return None
-    return dict(compiler_sha256=compiler_sha256, **{key: value[key] for key in fields},
-                counts_sha256=document_digest(value.get("feature_counts", {})))
+    return dict(
+        compiler_sha256=compiler_sha256,
+        **{key: value[key] for key in fields},
+        counts_sha256=document_digest(value.get("feature_counts", {})),
+    )
 
 
 def _emitted_effects(task, outcomes):
@@ -561,78 +682,121 @@ def _emitted_effects(task, outcomes):
         status, reason = "unknown", "paired_scoped_emitted_program_witness_missing"
         if isinstance(before, dict) and isinstance(after, dict):
             keys = ("capsule_sha256", "selection_sha256", "model_sha256", "comparison_domain_sha256", "scope_sha256")
-            matched = (baseline.get("role") == "baseline" and baseline.get("task_id") == variant.get("task_id")
-                and all(baseline.get(k) == variant.get(k) for k in
-                        ("context_identity", "base_compiler_sha256", "capsule", "sim", "suite", "tiers"))
+            matched = (
+                baseline.get("role") == "baseline"
+                and baseline.get("task_id") == variant.get("task_id")
+                and all(
+                    baseline.get(k) == variant.get(k)
+                    for k in ("context_identity", "base_compiler_sha256", "capsule", "sim", "suite", "tiers")
+                )
                 and baseline.get("settings_sha256") != variant.get("settings_sha256")
                 and all(_sha(before.get(k)) and before[k] == after.get(k) for k in keys)
                 and before.get("compiler_sha256") == baseline.get("executed_compiler_sha256")
                 and after.get("compiler_sha256") == variant.get("executed_compiler_sha256")
                 and before.get("compiler_sha256") != after.get("compiler_sha256")
-                and all(_sha(row.get("elf_sha256")) for row in (before, after)))
+                and all(_sha(row.get("elf_sha256")) for row in (before, after))
+            )
             if matched:
                 same = before["elf_sha256"] == after["elf_sha256"]
                 if not same or before.get("counts_sha256") == after.get("counts_sha256"):
                     status = "requested_but_no_emitted_change" if same else "emitted_program_changed"
                     reason = "identical_matched_emitted_program" if same else "goal_specific_mechanism_still_unknown"
-        effects.append(dict(task_id=task["task_id"], request_id=request["request_id"],
-            baseline_request_id=request.get("baseline_request_id"),
-            capsule=request.get("capsule"),
-            status=status, reason=reason, goals=task.get("goals", []),
-            application_status=("optimization_did_not_apply_emitted_fallback"
-                if status == "requested_but_no_emitted_change" else "emitted_change_requires_mechanism_check"
-                if status == "emitted_program_changed" else "unknown"),
-            application_scope="requested_variant_relative_to_matched_baseline",
-            fallback_scope="retained_baseline_program" if status == "requested_but_no_emitted_change" else None,
-            baseline=copy.deepcopy(before), candidate=copy.deepcopy(after),
-            advisory_only=True, mechanism_status="unknown", qualification_issued=False))
+        effects.append(
+            dict(
+                task_id=task["task_id"],
+                request_id=request["request_id"],
+                baseline_request_id=request.get("baseline_request_id"),
+                capsule=request.get("capsule"),
+                status=status,
+                reason=reason,
+                goals=task.get("goals", []),
+                application_status=(
+                    "optimization_did_not_apply_emitted_fallback"
+                    if status == "requested_but_no_emitted_change"
+                    else "emitted_change_requires_mechanism_check"
+                    if status == "emitted_program_changed"
+                    else "unknown"
+                ),
+                application_scope="requested_variant_relative_to_matched_baseline",
+                fallback_scope="retained_baseline_program" if status == "requested_but_no_emitted_change" else None,
+                baseline=copy.deepcopy(before),
+                candidate=copy.deepcopy(after),
+                advisory_only=True,
+                mechanism_status="unknown",
+                qualification_issued=False,
+            )
+        )
     return effects
 
 
 def _construction_action(task):
-    return dict(route="construction_gap", action="inspect_applicability_and_library_route", task_id=task["task_id"],
-                gaps=["construction.requested_but_no_emitted_change"],
-                library_routes=copy.deepcopy((task.get("next_action") or {}).get("library_routes", [])))
+    return dict(
+        route="construction_gap",
+        action="inspect_applicability_and_library_route",
+        task_id=task["task_id"],
+        gaps=["construction.requested_but_no_emitted_change"],
+        library_routes=copy.deepcopy((task.get("next_action") or {}).get("library_routes", [])),
+    )
 
 
 def _attempt_text(value):
     if isinstance(value, dict) and value.get("schema") == "merlin.reference_experiment_observation.v1":
         outcome = {"pass": "passed", "fail": "failed"}.get(value.get("numerical_status"), "unknown")
-        return (_text(value.get("request_id")) + ": numerical check " + outcome
-                + "; emitted mechanism remains unresolved")
+        return (
+            _text(value.get("request_id")) + ": numerical check " + outcome + "; emitted mechanism remains unresolved"
+        )
     return _text(value)
 
 
 def _compact_prior_task(task):
     """Bounded author guidance; omit raw evidence values, settings, requests and outcomes."""
+
     def identifier(value, limit):
         # Identity fields remain exact or absent; shortening them could create
         # a different goal or a false provenance pointer.
         return value if isinstance(value, str) and len(value.encode()) <= limit else ""
+
     evidence = []
     for row in task.get("evidence", [])[:3]:
         status = row.get("status")
-        item = dict(scope="prior_reference_context", current_status="unknown",
-                    prior_status=status if status in ("observed", "inferred", "unknown") else "unknown",
-                    pointer=identifier(row.get("pointer", ""), 240))
+        item = dict(
+            scope="prior_reference_context",
+            current_status="unknown",
+            prior_status=status if status in ("observed", "inferred", "unknown") else "unknown",
+            pointer=identifier(row.get("pointer", ""), 240),
+        )
         if row.get("pointer") and not item["pointer"]:
             item["omitted_pointer_sha256"] = document_digest(row["pointer"])
         if _sha(row.get("sha256")):
             item["sha256"] = row["sha256"]
         evidence.append(item)
-    hypotheses = [dict(scope="prior_reference_context", current_status="unknown", basis="inferred",
-                       summary=_text(row.get("summary", "")),
-                       hypothesis_id=identifier(row.get("hypothesis_id", ""), 160))
-                  for row in task.get("hypotheses", [])[:2]]
+    hypotheses = [
+        dict(
+            scope="prior_reference_context",
+            current_status="unknown",
+            basis="inferred",
+            summary=_text(row.get("summary", "")),
+            hypothesis_id=identifier(row.get("hypothesis_id", ""), 160),
+        )
+        for row in task.get("hypotheses", [])[:2]
+    ]
     action = task.get("next_action") or {}
     if not isinstance(action, dict):
         action = {}
     goals = [goal for goal in task.get("goals", [])[:8] if identifier(goal, 160)]
-    return dict(task_id=identifier(task["task_id"], 160), source_task_id_sha256=document_digest(task["task_id"]),
-                scope="prior_reference_context", current_status="unverified", prior_task_status=task["status"],
-                goals=goals, omitted_goal_count=len(task.get("goals", [])) - len(goals),
-                summary=_text(task.get("summary", task["task_id"])), evidence=evidence, hypotheses=hypotheses,
-                prior_action=dict(route=_text(action.get("route", ""), 160), action=_text(action.get("action", ""))))
+    return dict(
+        task_id=identifier(task["task_id"], 160),
+        source_task_id_sha256=document_digest(task["task_id"]),
+        scope="prior_reference_context",
+        current_status="unverified",
+        prior_task_status=task["status"],
+        goals=goals,
+        omitted_goal_count=len(task.get("goals", [])) - len(goals),
+        summary=_text(task.get("summary", task["task_id"])),
+        evidence=evidence,
+        hypotheses=hypotheses,
+        prior_action=dict(route=_text(action.get("route", ""), 160), action=_text(action.get("action", ""))),
+    )
 
 
 def _advisory_tasks(packet):
@@ -643,15 +807,20 @@ def _advisory_tasks(packet):
         return pending + resolved
     result = []
     for pool in (pending, resolved):
-        ordered = sorted(pool, key=lambda task: 0 if task.get("kind") == "adapter_gap"
-                         else 1 if task.get("kind") == "representation_gap" else 2)
+        ordered = sorted(
+            pool,
+            key=lambda task: (
+                0 if task.get("kind") == "adapter_gap" else 1 if task.get("kind") == "representation_gap" else 2
+            ),
+        )
         seen, unique, repeated = set(), [], []
         for task in ordered:
             action = task.get("next_action") or {}
             if not isinstance(action, dict):
                 action = {}
-            signature = document_digest(dict(goals=sorted(task.get("goals", [])),
-                route=action.get("route"), action=action.get("action")))
+            signature = document_digest(
+                dict(goals=sorted(task.get("goals", [])), route=action.get("route"), action=action.get("action"))
+            )
             (repeated if signature in seen else unique).append(task)
             seen.add(signature)
         result.extend([*unique, *repeated])
@@ -664,54 +833,103 @@ def _prior_guidance(packet, context, current_compiler_sha256):
     ranked = _advisory_tasks(packet)
     prior = [_compact_prior_task(task) for task in ranked[:4]]
     goals = list(dict.fromkeys(goal for task in prior for goal in task["goals"]))[:16]
-    workflow = [dict(kind=kind, scope="current_compiler", status="required_new_evidence",
-                     argv_template=["python3", "agent_selfcheck.py", "--submission", "submission",
-                                    "--capsules", "{public_capsule}", *flags])
-                for kind, flags in (("candidate_diagnostics", ["--candidate-diagnostics"]),
-                                    ("compile_only", ["--compile-only"]), ("selfcheck", []))]
-    lines = ["reference guidance (prior only; current evidence unknown): "
-             + (prior[0]["summary"] if prior else "selected reference goals remain advisory.")]
+    workflow = [
+        dict(
+            kind=kind,
+            scope="current_compiler",
+            status="required_new_evidence",
+            argv_template=[
+                "python3",
+                "agent_selfcheck.py",
+                "--submission",
+                "submission",
+                "--capsules",
+                "{public_capsule}",
+                *flags,
+            ],
+        )
+        for kind, flags in (
+            ("candidate_diagnostics", ["--candidate-diagnostics"]),
+            ("compile_only", ["--compile-only"]),
+            ("selfcheck", []),
+        )
+    ]
+    lines = [
+        "reference guidance (prior only; current evidence unknown): "
+        + (prior[0]["summary"] if prior else "selected reference goals remain advisory.")
+    ]
     if goals:
         lines[0] += "; goals: " + ", ".join(_text(goal, 90) for goal in goals[:3])
-    lines.append("required current evidence: use current library/scheduling APIs; run agent_selfcheck.py "
-                 "--candidate-diagnostics, then --compile-only and a selfcheck for a declared public capsule; "
-                 "use --reference-analysis inventory/lift/candidate to reanalyze visible inputs and new emitted bytes.")
+    lines.append(
+        "required current evidence: use current library/scheduling APIs; run agent_selfcheck.py "
+        "--candidate-diagnostics, then --compile-only and a selfcheck for a declared public capsule; "
+        "use --reference-analysis inventory/lift/candidate to reanalyze visible inputs and new emitted bytes."
+    )
     if prior and prior[0]["hypotheses"]:
         lines.append("prior hypothesis (unverified for current compiler): " + prior[0]["hypotheses"][0]["summary"])
     if prior and prior[0]["evidence"]:
         item = prior[0]["evidence"][0]
-        lines.append("prior evidence: " + item["pointer"] + " (" + _text(item["prior_status"], 40)
-                     + "; selected packet " + packet["identity"][:12] + ").")
+        lines.append(
+            "prior evidence: "
+            + item["pointer"]
+            + " ("
+            + _text(item["prior_status"], 40)
+            + "; selected packet "
+            + packet["identity"][:12]
+            + ")."
+        )
     if prior and prior[0]["prior_action"]["action"]:
         lines.append("prior action to reassess with current APIs: " + prior[0]["prior_action"]["action"])
-    lines.append("Current checks must establish source/fusion equivalence and emitted mechanisms; "
-                 "performance requires fresh paired complete-region cycles and held-out shapes.")
+    lines.append(
+        "Current checks must establish source/fusion equivalence and emitted mechanisms; "
+        "performance requires fresh paired complete-region cycles and held-out shapes."
+    )
     actual = current_compiler_sha256 if _sha(current_compiler_sha256) else None
-    return dict(schema=FEEDBACK_SCHEMA, status="prior_reference_guidance", advisory_only=True,
-                reason="current_compiler_differs_from_reference_context" if actual else "current_compiler_not_observed",
-                current_evidence_status="unknown", current_compiler_sha256=actual,
-                packet_identity=packet["identity"],
-                prior_execution_context_identity=packet["execution_context_identity"],
-                prior_context={key: context[key] for key in _CONTEXT_FIELDS},
-                prior_tasks=prior, pending_goals=goals, total_prior_tasks=len(tasks),
-                omitted_prior_tasks=len(tasks) - len(prior),
-                observed=[], observed_requests=[], prior_attempts=[], required_selfchecks=[],
-                mechanism_status="unknown", performance_status="unknown", inherited_results_applied=False,
-                executable_requests_allowed=False, outcome_join_allowed=False, task_complete=False,
-                qualification_issued=False, diagnostic_workflow=workflow,
-                library_guidance=dict(inventory="OPTIMIZATION_SUGGESTIONS.json",
-                    skill=".agents/skills/pass-library/SKILL.md",
-                    scheduling_api="merlin.compile.scheduling.schedule_ir",
-                    reference_analysis="python agent_selfcheck.py --reference-analysis inventory; "
-                        "use lift with reference-kernels/FILE or candidate with "
-                        "submission/build/CASE/kernel.dis (build with inspect-kernel --out first)",
-                    action="Inspect current supported transformation APIs and express decisions through the scheduling "
-                           "dialect; inspect the emitted kernel before claiming that a mechanism was applied."),
-                next_action=dict(route="acquire_current_candidate_evidence",
-                    action="Use the prior goals to guide current library transformations, resolve a capsule from the "
-                           "current public inventory, then collect diagnostics, compilation and numerical selfcheck "
-                           "evidence for the current compiler.",
-                    capsule_binding="current declared public inventory; no inherited experiment request"), lines=lines)
+    return dict(
+        schema=FEEDBACK_SCHEMA,
+        status="prior_reference_guidance",
+        advisory_only=True,
+        reason="current_compiler_differs_from_reference_context" if actual else "current_compiler_not_observed",
+        current_evidence_status="unknown",
+        current_compiler_sha256=actual,
+        packet_identity=packet["identity"],
+        prior_execution_context_identity=packet["execution_context_identity"],
+        prior_context={key: context[key] for key in _CONTEXT_FIELDS},
+        prior_tasks=prior,
+        pending_goals=goals,
+        total_prior_tasks=len(tasks),
+        omitted_prior_tasks=len(tasks) - len(prior),
+        observed=[],
+        observed_requests=[],
+        prior_attempts=[],
+        required_selfchecks=[],
+        mechanism_status="unknown",
+        performance_status="unknown",
+        inherited_results_applied=False,
+        executable_requests_allowed=False,
+        outcome_join_allowed=False,
+        task_complete=False,
+        qualification_issued=False,
+        diagnostic_workflow=workflow,
+        library_guidance=dict(
+            inventory="OPTIMIZATION_SUGGESTIONS.json",
+            skill=".agents/skills/pass-library/SKILL.md",
+            scheduling_api="merlin.compile.scheduling.schedule_ir",
+            reference_analysis="python agent_selfcheck.py --reference-analysis inventory; "
+            "use lift with reference-kernels/FILE or candidate with "
+            "submission/build/CASE/kernel.dis (build with inspect-kernel --out first)",
+            action="Inspect current supported transformation APIs and express decisions through the scheduling "
+            "dialect; inspect the emitted kernel before claiming that a mechanism was applied.",
+        ),
+        next_action=dict(
+            route="acquire_current_candidate_evidence",
+            action="Use the prior goals to guide current library transformations, resolve a capsule from the "
+            "current public inventory, then collect diagnostics, compilation and numerical selfcheck "
+            "evidence for the current compiler.",
+            capsule_binding="current declared public inventory; no inherited experiment request",
+        ),
+        lines=lines,
+    )
 
 
 def project(document=None, *, current_compiler_sha256=None):
@@ -738,14 +956,28 @@ def project(document=None, *, current_compiler_sha256=None):
     tasks = packet["tasks"]
     task = next((row for row in tasks if row.get("status") in ("ready", "blocked", "unranked", "rejected")), None)
     if task is None:
-        return dict(schema=FEEDBACK_SCHEMA, status="no_pending_experiment", packet_identity=packet["identity"],
-                    advisory_only=True, qualification_issued=False, lines=[])
+        return dict(
+            schema=FEEDBACK_SCHEMA,
+            status="no_pending_experiment",
+            packet_identity=packet["identity"],
+            advisory_only=True,
+            qualification_issued=False,
+            lines=[],
+        )
     if not isinstance(task.get("task_id"), str) or not isinstance(task.get("acceptance"), dict):
         return _unknown("selected_task_contract_incomplete")
     requests = task.get("requests") or []
-    if (not isinstance(requests, list) or len(requests) > 32 or any(not isinstance(row, dict) for row in requests)
-            or any(not isinstance(row.get("argv"), list) or len(row["argv"]) > 64
-                   or any(type(value) is not str for value in row["argv"]) for row in requests)):
+    if (
+        not isinstance(requests, list)
+        or len(requests) > 32
+        or any(not isinstance(row, dict) for row in requests)
+        or any(
+            not isinstance(row.get("argv"), list)
+            or len(row["argv"]) > 64
+            or any(type(value) is not str for value in row["argv"])
+            for row in requests
+        )
+    ):
         return _unknown("selected_experiment_request_incomplete")
     hypotheses = task.get("hypotheses") or []
     attempts = task.get("prior_attempts") or []
@@ -758,8 +990,7 @@ def project(document=None, *, current_compiler_sha256=None):
     action = task.get("next_action") or {}
     diagnostics = action.get("diagnostics") or []
     label = "reference evidence" if action.get("phase") == "evidence_collection" else "reference experiment"
-    lines = [label + " (advisory; verify the emitted result): "
-             + _text(task.get("summary", task["task_id"]))]
+    lines = [label + " (advisory; verify the emitted result): " + _text(task.get("summary", task["task_id"]))]
     if evidence:
         lines.append("observed/inferred: " + _text(evidence[0]))
     if hypotheses:
@@ -767,36 +998,64 @@ def project(document=None, *, current_compiler_sha256=None):
     if attempts:
         lines.append("previous trial: " + _attempt_text(attempts[-1]))
     if no_effect:
-        lines.append("construction gap: requested settings produced the same matched emitted program; "
-                     "inspect applicability and the library route before another trial.")
+        lines.append(
+            "construction gap: requested settings produced the same matched emitted program; "
+            "inspect applicability and the library route before another trial."
+        )
     if requests:
         command = shlex.join(requests[0]["argv"])
-        lines.append("required selfcheck: " + (command if len(command.encode()) <= 600
-                     else "use the complete required_selfchecks[0].argv in the response JSON"))
+        lines.append(
+            "required selfcheck: "
+            + (
+                command
+                if len(command.encode()) <= 600
+                else "use the complete required_selfchecks[0].argv in the response JSON"
+            )
+        )
     elif diagnostics and not no_effect:
         command = shlex.join(diagnostics[0]["argv"])
-        lines.append("emission diagnostic: " + (command if len(command.encode()) <= 600
-                     else "use the complete next_action.diagnostics[0].argv in the response JSON"))
+        lines.append(
+            "emission diagnostic: "
+            + (
+                command
+                if len(command.encode()) <= 600
+                else "use the complete next_action.diagnostics[0].argv in the response JSON"
+            )
+        )
     elif observed_requests and not no_effect:
         lines.append("required evidence: inspect the executed mechanism and paired complete-region performance.")
     elif not no_effect:
         action = (task.get("next_action") or {}).get("action", "acquire new evidence")
         lines.append("required evidence: " + _text(action))
-    lines.append("acceptance: executable mechanism checks, unchanged numerics, comparable complete-region cycles, "
-                 "held-out shapes.")
-    return dict(schema=FEEDBACK_SCHEMA, status="pending_experiment",
-                packet_identity=_task_packet_identity(packet, task["task_id"]),
-                execution_context_identity=packet.get("execution_context_identity"), task_id=task["task_id"],
-                task_status=task.get("status"), observed=copy.deepcopy(evidence), hypotheses=copy.deepcopy(hypotheses),
-                prior_attempts=copy.deepcopy(attempts), required_selfchecks=copy.deepcopy(requests),
-                experiment_status="requested_but_no_emitted_change" if no_effect else
-                                  "observed_mechanism_unresolved" if observed_requests else "pending",
-                emitted_effects=effects,
-                observed_requests=copy.deepcopy(observed_requests),
-                acceptance=copy.deepcopy(task["acceptance"]),
-                next_action=_construction_action(task) if no_effect else copy.deepcopy(task.get("next_action")),
-                advisory_only=True, qualification_issued=False, completion_authority="trusted evaluator closure only",
-                lines=lines)
+    lines.append(
+        "acceptance: executable mechanism checks, unchanged numerics, comparable complete-region cycles, "
+        "held-out shapes."
+    )
+    return dict(
+        schema=FEEDBACK_SCHEMA,
+        status="pending_experiment",
+        packet_identity=_task_packet_identity(packet, task["task_id"]),
+        execution_context_identity=packet.get("execution_context_identity"),
+        task_id=task["task_id"],
+        task_status=task.get("status"),
+        observed=copy.deepcopy(evidence),
+        hypotheses=copy.deepcopy(hypotheses),
+        prior_attempts=copy.deepcopy(attempts),
+        required_selfchecks=copy.deepcopy(requests),
+        experiment_status="requested_but_no_emitted_change"
+        if no_effect
+        else "observed_mechanism_unresolved"
+        if observed_requests
+        else "pending",
+        emitted_effects=effects,
+        observed_requests=copy.deepcopy(observed_requests),
+        acceptance=copy.deepcopy(task["acceptance"]),
+        next_action=_construction_action(task) if no_effect else copy.deepcopy(task.get("next_action")),
+        advisory_only=True,
+        qualification_issued=False,
+        completion_authority="trusted evaluator closure only",
+        lines=lines,
+    )
 
 
 def attach(document, *, current_compiler_sha256=None):
@@ -847,13 +1106,18 @@ def pending_requests(compiler_sha256, *, include_observed=False):
             for request in task.get("requests") or ():
                 if request.get("request_id") in outcomes and not include_observed:
                     continue
-                if (not isinstance(request, dict)
-                        or request.get("context_identity") != packet["execution_context_identity"]
-                        or not isinstance(request.get("request_id"), str)
-                        or request.get("settings_sha256") != document_digest(request.get("settings"))):
+                if (
+                    not isinstance(request, dict)
+                    or request.get("context_identity") != packet["execution_context_identity"]
+                    or not isinstance(request.get("request_id"), str)
+                    or request.get("settings_sha256") != document_digest(request.get("settings"))
+                ):
                     return ()
-                entry = {**copy.deepcopy(request), "task_id": task["task_id"],
-                         "packet_identity": _task_packet_identity(packet, task["task_id"])}
+                entry = {
+                    **copy.deepcopy(request),
+                    "task_id": task["task_id"],
+                    "packet_identity": _task_packet_identity(packet, task["task_id"]),
+                }
                 if include_observed:
                     entry["owner_observed"] = request["request_id"] in outcomes
                 requests.append(entry)
@@ -882,22 +1146,26 @@ def observe_result(request, document, *, base_compiler_sha256):
             request_id = selected_id
         else:
             return None
-        planned = next((row for row in pending_requests(base_compiler_sha256)
-                        if row["request_id"] == request_id), None)
+        planned = next((row for row in pending_requests(base_compiler_sha256) if row["request_id"] == request_id), None)
         if planned is not None and metadata is None:
             # A pasted ID only proposes the lookup. All authority and the full
             # context come from the original selected packet, never its echo.
             metadata = {key: planned[key] for key in ("task_id", "packet_identity", "context_identity")}
-        if planned is None or any(metadata.get(key) != planned.get(key) for key in
-                                  ("task_id", "packet_identity", "context_identity")):
+        if planned is None or any(
+            metadata.get(key) != planned.get(key) for key in ("task_id", "packet_identity", "context_identity")
+        ):
             return None
-        if (request.get("submission", "submission") != planned.get("submission", "submission")
-                or planned.get("baseline_compiler_sha256", base_compiler_sha256) != base_compiler_sha256):
+        if (
+            request.get("submission", "submission") != planned.get("submission", "submission")
+            or planned.get("baseline_compiler_sha256", base_compiler_sha256) != base_compiler_sha256
+        ):
             return None
+
         def flag(name):
             argv = planned.get("argv", [])
             positions = [index for index, value in enumerate(argv) if value == name]
             return argv[positions[0] + 1] if len(positions) == 1 and positions[0] + 1 < len(argv) else None
+
         capsule = planned.get("capsule")
         selector = request.get("capsules")
         cases = selector.split(",") if isinstance(selector, str) else selector
@@ -921,9 +1189,11 @@ def observe_result(request, document, *, base_compiler_sha256):
             expected = {key: value for key, value in planned["settings"].items() if current_settings.get(key) != value}
         variant = document.get("variant") or {}
         if expected:
-            if (variant.get("applied") is not True
-                    or document_digest(variant.get("tuning_overrides")) != document_digest(expected)
-                    or not _sha(variant.get("sha256"))):
+            if (
+                variant.get("applied") is not True
+                or document_digest(variant.get("tuning_overrides")) != document_digest(expected)
+                or not _sha(variant.get("sha256"))
+            ):
                 return None
             executed_source = variant["sha256"]
         else:
@@ -932,26 +1202,46 @@ def observe_result(request, document, *, base_compiler_sha256):
             executed_source = base_compiler_sha256
         if document.get("submission_sha256") != base_compiler_sha256:
             return None
-        observations = [dict(capsule=row.get("capsule", row.get("name")), status=row.get("status"),
-                             failure_plane=row.get("failure_plane"), cycles=row.get("cycles"))
-                        for row in document.get("per_capsule", document.get("cases", ())) if isinstance(row, dict)]
+        observations = [
+            dict(
+                capsule=row.get("capsule", row.get("name")),
+                status=row.get("status"),
+                failure_plane=row.get("failure_plane"),
+                cycles=row.get("cycles"),
+            )
+            for row in document.get("per_capsule", document.get("cases", ()))
+            if isinstance(row, dict)
+        ]
         if any(row["capsule"] != capsule for row in observations) or not observations:
             return None
         from ..construction_actions import report_projection
 
         numerical = report_projection(document)["requested_numerical_screen"]
-        result = dict(schema="merlin.reference_experiment_observation.v1", task_id=planned["task_id"],
-                      request_id=planned["request_id"], packet_identity=planned["packet_identity"],
-                      context_identity=packet["execution_context_identity"],
-                      role=planned.get("role"), status="observed", task_complete=False,
-                      mechanism_status="unknown", base_compiler_sha256=base_compiler_sha256,
-                      executed_compiler_sha256=executed_source, settings_sha256=planned["settings_sha256"],
-                      capsule=capsule, sim=actual_sim, suite=request.get("suite", "core"),
-                      tiers=request.get("tiers"), observations=observations,
-                      emitted_program=_emitted_program(document, capsule=capsule, compiler_sha256=executed_source),
-                      all_pass=document.get("all_pass"), numerical_status=numerical, qualification_issued=False,
-                      required_next="Check emitted mechanism and paired complete-region performance "
-                                    "before accepting the hypothesis.")
+        result = dict(
+            schema="merlin.reference_experiment_observation.v1",
+            task_id=planned["task_id"],
+            request_id=planned["request_id"],
+            packet_identity=planned["packet_identity"],
+            context_identity=packet["execution_context_identity"],
+            role=planned.get("role"),
+            status="observed",
+            task_complete=False,
+            mechanism_status="unknown",
+            base_compiler_sha256=base_compiler_sha256,
+            executed_compiler_sha256=executed_source,
+            settings_sha256=planned["settings_sha256"],
+            capsule=capsule,
+            sim=actual_sim,
+            suite=request.get("suite", "core"),
+            tiers=request.get("tiers"),
+            observations=observations,
+            emitted_program=_emitted_program(document, capsule=capsule, compiler_sha256=executed_source),
+            all_pass=document.get("all_pass"),
+            numerical_status=numerical,
+            qualification_issued=False,
+            required_next="Check emitted mechanism and paired complete-region performance "
+            "before accepting the hypothesis.",
+        )
         result["selfcheck_request_id"] = document.get("selfcheck_request_id")
         result["graded_at_unix_ns"] = document.get("graded_at_unix_ns")
         _record_outcome(selected, packet, result)
@@ -963,20 +1253,34 @@ def observe_result(request, document, *, base_compiler_sha256):
             effects = _emitted_effects(task, _outcomes(selected, packet))
             no_effect = any(row["status"] == "requested_but_no_emitted_change" for row in effects)
             feedback["emitted_effects"] = effects
-            feedback["experiment_status"] = ("requested_but_no_emitted_change" if no_effect
-                                             else "observed_mechanism_unresolved")
+            feedback["experiment_status"] = (
+                "requested_but_no_emitted_change" if no_effect else "observed_mechanism_unresolved"
+            )
             feedback["completion_authority"] = "trusted evaluator closure and executable mechanism proof required"
-            feedback["next_action"] = _construction_action(task) if no_effect else dict(
-                route="inspect_emitted_mechanism",
-                action="Inspect the executed kernel and compare a paired baseline before accepting the hypothesis.")
+            feedback["next_action"] = (
+                _construction_action(task)
+                if no_effect
+                else dict(
+                    route="inspect_emitted_mechanism",
+                    action="Inspect the executed kernel and compare a paired baseline before accepting the hypothesis.",
+                )
+            )
             steps = document.get("next_steps")
             if isinstance(steps, dict):
                 outcome = {"pass": "passed", "fail": "failed"}.get(numerical, "unresolved")
                 line = "observed reference trial: " + _text(planned["request_id"], 100)
-                line += "; numerical check " + outcome + ("; construction gap: requested settings produced the "
-                    "same matched emitted program; optimization did not apply; emitted fallback for "
-                    + _text(capsule, 100) + "; inspect applicability and the library route."
-                    if no_effect else "; emitted mechanism remains unresolved.")
+                line += (
+                    "; numerical check "
+                    + outcome
+                    + (
+                        "; construction gap: requested settings produced the "
+                        "same matched emitted program; optimization did not apply; emitted fallback for "
+                        + _text(capsule, 100)
+                        + "; inspect applicability and the library route."
+                        if no_effect
+                        else "; emitted mechanism remains unresolved."
+                    )
+                )
                 previous = steps.get("reference_experiment_lines", [])
                 retained = [value for value in steps.get("lines", []) if value not in previous]
                 shown = [previous[0], line] if previous else [line]
@@ -993,6 +1297,7 @@ def brief_lines(workspace):
     if _current() is None:
         return []
     from ..brokers.selfcheck import _submission_digest
+
     try:
         compiler = _submission_digest(Path(workspace) / "submission")
     except (OSError, ValueError):
@@ -1075,14 +1380,20 @@ def guidance_block(*, tasks: bool, reference_map: bool) -> str:
     if reference_map:
         head += _MAP_TEXT
     if tasks:
-        use = ("Use these tasks from the first turn, including missing fusion, representation and adapter work. "
-               "They describe prior evidence; establish applicability from current source semantics, shapes, "
-               "layouts, numerics and resource facts. ")
-        after = ("After edits, retain prior goals and collect current evidence; never replay an old exact request "
-                 "against different source bytes. ")
+        use = (
+            "Use these tasks from the first turn, including missing fusion, representation and adapter work. "
+            "They describe prior evidence; establish applicability from current source semantics, shapes, "
+            "layouts, numerics and resource facts. "
+        )
+        after = (
+            "After edits, retain prior goals and collect current evidence; never replay an old exact request "
+            "against different source bytes. "
+        )
     else:
-        use = ("Establish a reference technique's applicability from current source semantics, shapes, "
-               "layouts, numerics and resource facts. ")
+        use = (
+            "Establish a reference technique's applicability from current source semantics, shapes, "
+            "layouts, numerics and resource facts. "
+        )
         after = ""
     return head + _OBJECTIVE_TEXT + _ANALYSIS_TEXT + use + _TOOLS_TEXT + after + _CLOSING_TEXT
 
@@ -1110,16 +1421,25 @@ def stage_guidance(workspace, run_dir):
         return
     packet, context = _load(selected)
     prior = _advisory_tasks(packet) if packet.get("schema") == SHARDS_SCHEMA else packet["tasks"]
-    guidance = dict(schema="merlin.reference_experiment_guidance.v1", packet_identity=packet["identity"],
-                    prior_execution_context_identity=packet["execution_context_identity"],
-                    prior_compiler_sha256=context["compiler_sha256"],
-                    scope="prior_reference_context", current_evidence_status="unverified",
-                    advisory_only=True, qualification_issued=False, executable_requests_allowed=False,
-                    tasks=[_compact_prior_task(task) for task in prior[:16]])
+    guidance = dict(
+        schema="merlin.reference_experiment_guidance.v1",
+        packet_identity=packet["identity"],
+        prior_execution_context_identity=packet["execution_context_identity"],
+        prior_compiler_sha256=context["compiler_sha256"],
+        scope="prior_reference_context",
+        current_evidence_status="unverified",
+        advisory_only=True,
+        qualification_issued=False,
+        executable_requests_allowed=False,
+        tasks=[_compact_prior_task(task) for task in prior[:16]],
+    )
     if packet.get("schema") == SHARDS_SCHEMA:
-        guidance.update(total_prior_tasks=len(packet["tasks"]), omitted_prior_tasks=max(0, len(packet["tasks"]) - 16),
-                        task_roster_identity=document_digest([task["task_id"] for task in packet["tasks"]]),
-                        source_packet_count=len(packet["source_packet_identities"]))
+        guidance.update(
+            total_prior_tasks=len(packet["tasks"]),
+            omitted_prior_tasks=max(0, len(packet["tasks"]) - 16),
+            task_roster_identity=document_digest([task["task_id"] for task in packet["tasks"]]),
+            source_packet_count=len(packet["source_packet_identities"]),
+        )
     data = json.dumps(guidance, sort_keys=True, indent=2, allow_nan=False) + "\n"
     if len(data.encode()) > 64 << 10:
         raise ValueError("reference author guidance exceeds 64 KiB")

@@ -93,7 +93,8 @@ class StagedPreparation:
         staged = self.stage.revalidate()
         self.bound.revalidate(self.stage.directory, staged)
         record = {
-            "schema": "merlin.staged-preparation.v1", "directory": str(self.stage.directory),
+            "schema": "merlin.staged-preparation.v1",
+            "directory": str(self.stage.directory),
             "preparation_sha256": _sha(self.stage._manifest),
             "preparation_member": "compile-inputs.json",
             "numerical_policy_sha256": staged.precision_policy_sha256,
@@ -102,7 +103,7 @@ class StagedPreparation:
             "bound_source_sha256": self.bound.record["bound_program_sha256"],
             "members": dict(self.stage._members),
             "scope": "compiler staging/preparation identity only; numerical admission and calibration/reference "
-                     "qualification are independent",
+            "qualification are independent",
         }
         if self.stage.freeze_readonly_buffers:
             record["buffer_freeze"] = self.bound.record["buffer_freeze"]
@@ -134,12 +135,14 @@ class StagedPreparation:
         staged = self.stage.revalidate()
         self.bound.revalidate(self.stage.directory, staged)
         record = self.record()
-        if (self.stage.freeze_readonly_buffers is not ("buffer_freeze" in record)
-                or str(self.stage.directory) != record["directory"]
-                or staged.precision_policy_document != self._policy
-                or staged.precision_policy_sha256 != record["numerical_policy_sha256"]
-                or _sha(self.stage._manifest) != record["preparation_sha256"]
-                or _sha(self.bound.program.encode()) != record["bound_source_sha256"]):
+        if (
+            self.stage.freeze_readonly_buffers is not ("buffer_freeze" in record)
+            or str(self.stage.directory) != record["directory"]
+            or staged.precision_policy_document != self._policy
+            or staged.precision_policy_sha256 != record["numerical_policy_sha256"]
+            or _sha(self.stage._manifest) != record["preparation_sha256"]
+            or _sha(self.bound.program.encode()) != record["bound_source_sha256"]
+        ):
             raise ValueError("original staged preparation identity changed")
         if source is not None and (source.kind != "mlir" or source.text != self.bound.program):
             raise ValueError("prepared request differs from its original bound source")
@@ -153,8 +156,12 @@ def prepare(program: StagedProgram, *, max_initialization_bytes):
     if type(program) is not StagedProgram:
         raise ValueError("staged preparation requires an explicit StagedProgram")
     staged = program.revalidate()
-    bound = bind_lifted_arguments(program.directory, staged, max_initialization_bytes=max_initialization_bytes,
-                                 freeze_readonly_buffers=program.freeze_readonly_buffers)
+    bound = bind_lifted_arguments(
+        program.directory,
+        staged,
+        max_initialization_bytes=max_initialization_bytes,
+        freeze_readonly_buffers=program.freeze_readonly_buffers,
+    )
     binding = StagedPreparation(program, bound)
     source = Source(bound.program, origin=str(program.directory / "program.mlir"))
     binding.revalidate(source)

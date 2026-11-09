@@ -10,13 +10,13 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
+
+from merlin.common.paths import module_source_path, repo_root
 from merlin_experiments import access_policy
 from merlin_experiments.phase1 import session as S
 from merlin_experiments.phase1 import source_inputs as SI
 from merlin_experiments.phase1 import treatments as T
 from merlin_experiments.spec import SpecError
-
-from merlin.common.paths import module_source_path, repo_root
 
 
 @pytest.fixture
@@ -141,7 +141,8 @@ def test_shared_inventory_and_fingerprint_have_one_owner(native_sources):
         ("experiment_schema", package / "resources/experiment.schema.json"),
     ):
         assert record["inputs"]["phase1:startup:" + key] == {
-            "path": str(source.resolve()), "sha256": SI.fingerprint(source),
+            "path": str(source.resolve()),
+            "sha256": SI.fingerprint(source),
         }
     assert (package / "spec.py").resolve() != module_source_path("merlin.development.definition").resolve()
     command = {

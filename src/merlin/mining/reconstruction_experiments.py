@@ -166,16 +166,26 @@ def _captured_library_routes(goal):
     from merlin.compiler.schedule.api_catalog import scheduling_capabilities
 
     names = {
-        "dispatch.role.load": ("exact_final_wide_loads", "segmented_k_retained_operand_pipeline",
-                               "capacity_derived_m_panels_with_rhs_reuse"),
+        "dispatch.role.load": (
+            "exact_final_wide_loads",
+            "segmented_k_retained_operand_pipeline",
+            "capacity_derived_m_panels_with_rhs_reuse",
+        ),
         "dispatch.n_dispatches": ("exact_final_wide_loads",),
         "dispatch.n_fences": ("checked_dense_pipeline_entry", "final_k_causal_accumulator_readout_frontier"),
         "dispatch.config_fraction": ("declared_persistent_scalar_state_in_scf",),
     }.get(goal, ())
     catalog = scheduling_capabilities(24)
     selected = {row["name"]: row for row in catalog["capabilities"]}
-    return [dict(capability=name, catalog="merlin.compile.scheduling.api_catalog:scheduling_capabilities",
-                 symbols=selected[name]["symbols"], authority=catalog["authority"]) for name in names]
+    return [
+        dict(
+            capability=name,
+            catalog="merlin.compile.scheduling.api_catalog:scheduling_capabilities",
+            symbols=selected[name]["symbols"],
+            authority=catalog["authority"],
+        )
+        for name in names
+    ]
 
 
 def _analysis_diagnoses(index):
@@ -190,30 +200,59 @@ def _analysis_diagnoses(index):
     reference = index.get("reference", {})
     candidate = index.get("candidate", {}).get("captured_reference_axes", {})
     capture_scope, candidate_scope = reference.get("count_scope"), candidate.get("count_scope")
-    captured_counts = (captured and index.get("declared_contraction_alignment") == "matches"
-        and isinstance(capture_scope, str) and bool(capture_scope) and capture_scope == candidate_scope
+    captured_counts = (
+        captured
+        and index.get("declared_contraction_alignment") == "matches"
+        and isinstance(capture_scope, str)
+        and bool(capture_scope)
+        and capture_scope == candidate_scope
         and reference.get("schedule_model", {}).get("complete") is True
-        and candidate.get("status") == "observed_counted_emission")
+        and candidate.get("status") == "observed_counted_emission"
+    )
     pins = {key: index[key] for key in ("input", "inputs", "selected_facts") if key in index}
     for side in ("reference", "candidate"):
         if isinstance(index.get(side), dict):
-            pins[side] = {key: index[side][key] for key in ("input", "inputs", "selected_facts", "capture", "selection")
-                          if key in index[side]}
+            pins[side] = {
+                key: index[side][key]
+                for key in ("input", "inputs", "selected_facts", "capture", "selection")
+                if key in index[side]
+            }
 
-    def diagnosis(kind, goals, summary, pointer, value, *, scope, status="unknown",
-                  route="evidence_or_legality", action="acquire_current_execution_witnesses"):
+    def diagnosis(
+        kind,
+        goals,
+        summary,
+        pointer,
+        value,
+        *,
+        scope,
+        status="unknown",
+        route="evidence_or_legality",
+        action="acquire_current_execution_witnesses",
+    ):
         evidence = _evidence(pointer, value, status=status)
         evidence.update(scope=scope, input_pins=pins)
         if captured:
             evidence["unresolved"] = dict(
                 semantic_equivalence=index.get("semantic_equivalence", "unknown"),
-                completion=index.get("completion", "unknown"), overlap=index.get("overlap", "unknown"),
+                completion=index.get("completion", "unknown"),
+                overlap=index.get("overlap", "unknown"),
                 candidate_traffic=candidate.get("traffic", "unknown"),
                 candidate_residency=candidate.get("residency", "unknown"),
-                reference_unknowns=reference.get("schedule_model", {}).get("unknowns", []))
-        return dict(kind=kind, goals=goals, summary=summary, evidence=[evidence], route=route, action=action,
-                    evidence_collection=(kind in ("missing_evidence", "adapter_gap", "semantic_mismatch")
-                                         and route in ("evidence_or_legality", "adapter_or_preservation")))
+                reference_unknowns=reference.get("schedule_model", {}).get("unknowns", []),
+            )
+        return dict(
+            kind=kind,
+            goals=goals,
+            summary=summary,
+            evidence=[evidence],
+            route=route,
+            action=action,
+            evidence_collection=(
+                kind in ("missing_evidence", "adapter_gap", "semantic_mismatch")
+                and route in ("evidence_or_legality", "adapter_or_preservation")
+            ),
+        )
 
     if kind == "static_instruction_analysis":
         for i, region in enumerate(index.get("regions", ())):
@@ -221,31 +260,53 @@ def _analysis_diagnoses(index):
             missing = projection.get("missing", [])
             if projection.get("status") not in (None, "unknown") and not missing:
                 continue
-            row = diagnosis("adapter_gap", ["evidence.runtime_operand_projection"],
-                "machine projection still needs " + ", ".join(missing) if missing else
-                "listed instruction sites do not establish runtime operand mechanisms",
-                (f"/regions/{i}/mechanism_projection/missing" if missing else
-                 f"/regions/{i}/mechanism_projection" if "mechanism_projection" in region else f"/regions/{i}"),
+            row = diagnosis(
+                "adapter_gap",
+                ["evidence.runtime_operand_projection"],
+                "machine projection still needs " + ", ".join(missing)
+                if missing
+                else "listed instruction sites do not establish runtime operand mechanisms",
+                (
+                    f"/regions/{i}/mechanism_projection/missing"
+                    if missing
+                    else f"/regions/{i}/mechanism_projection"
+                    if "mechanism_projection" in region
+                    else f"/regions/{i}"
+                ),
                 missing if missing else projection if "mechanism_projection" in region else region,
                 scope="listed_instruction_sites",
-                route="adapter_or_preservation", action=projection.get("next_action") or
-                "bind_selected_decoder_and_runtime_operand_projection")
+                route="adapter_or_preservation",
+                action=projection.get("next_action") or "bind_selected_decoder_and_runtime_operand_projection",
+            )
             if "region_id" in region:
                 row["region_id"] = region["region_id"]
             yield row
-    elif kind in ("reference_candidate_comparison", "captured_reference_candidate_comparison",
-                  "emitted_instruction_comparison"):
+    elif kind in (
+        "reference_candidate_comparison",
+        "captured_reference_candidate_comparison",
+        "emitted_instruction_comparison",
+    ):
         comparison = index.get("cca", {})
         roles = index.get("command_role_comparison", {}) if captured else {}
         load = roles.get("load", {})
-        if (captured_counts and load.get("status") == "compared_function_body_counts"
-                and all(type(load.get(side)) is int and load[side] >= 0 for side in ("reference", "candidate"))
-                and load["candidate"] > load["reference"]):
-            row = diagnosis("scoped_mechanism_difference", ["dispatch.role.load"],
+        if (
+            captured_counts
+            and load.get("status") == "compared_function_body_counts"
+            and all(type(load.get(side)) is int and load[side] >= 0 for side in ("reference", "candidate"))
+            and load["candidate"] > load["reference"]
+        ):
+            row = diagnosis(
+                "scoped_mechanism_difference",
+                ["dispatch.role.load"],
                 f"candidate has {load['candidate']} load issues versus {load['reference']} in the reference; "
                 "test legal wider transfers or operand reuse; traffic and residency remain unknown",
-                "/command_role_comparison/load", load, scope=capture_scope, status="observed_counted_commands",
-                route="library_parameters_or_order", action="inspect_library_contracts_construct_and_reanalyze")
+                "/command_role_comparison/load",
+                load,
+                scope=capture_scope,
+                status="observed_counted_commands",
+                route="library_parameters_or_order",
+                action="inspect_library_contracts_construct_and_reanalyze",
+            )
             row["library_routes"] = _captured_library_routes("dispatch.role.load")
             yield row
         for i, difference in enumerate(comparison.get("divergences", ())):
@@ -262,9 +323,12 @@ def _analysis_diagnoses(index):
                 supported = False
             if captured:
                 supported &= bool(captured_counts)
-                if (axis == "dispatch.n_fences" and type(difference.get("ours")) is int
-                        and type(difference.get("expert")) is int
-                        and difference["ours"] <= difference["expert"]):
+                if (
+                    axis == "dispatch.n_fences"
+                    and type(difference.get("ours")) is int
+                    and type(difference.get("expert")) is int
+                    and difference["ours"] <= difference["expert"]
+                ):
                     continue
                 if axis == "dispatch.config_fraction":
                     configurations = roles.get("configure", {})
@@ -272,80 +336,148 @@ def _analysis_diagnoses(index):
                     if absolute and configurations["reference"] >= configurations["candidate"]:
                         continue  # A changed denominator does not establish changed configuration work.
                     supported &= absolute
-            row = diagnosis("scoped_mechanism_difference" if supported else "missing_evidence",
+            row = diagnosis(
+                "scoped_mechanism_difference" if supported else "missing_evidence",
                 [axis] if supported else ["evidence.cca_comparison"],
-                "scoped structural CCA difference on " + axis if supported else
-                "CCA difference lacks a supported comparison scope",
-                f"/cca/divergences/{i}", difference,
+                "scoped structural CCA difference on " + axis
+                if supported
+                else "CCA difference lacks a supported comparison scope",
+                f"/cca/divergences/{i}",
+                difference,
                 scope=capture_scope if captured_counts else index.get("count_basis", "static_structure"),
                 status="observed_structural" if supported else "unknown",
                 route="library_parameters_or_order" if supported else "evidence_or_legality",
-                action=("inspect_library_contracts_construct_and_reanalyze" if captured else
-                        "compare_declared_mechanism_alternatives") if supported else
-                "recover_compatible_cca_axis_witnesses")
+                action=(
+                    "inspect_library_contracts_construct_and_reanalyze"
+                    if captured
+                    else "compare_declared_mechanism_alternatives"
+                )
+                if supported
+                else "recover_compatible_cca_axis_witnesses",
+            )
             if captured and supported:
                 row["library_routes"] = _captured_library_routes(axis)
                 if axis == "dispatch.n_fences":
-                    row["summary"] = (f"candidate has {difference.get('ours')} function-body fences versus "
+                    row["summary"] = (
+                        f"candidate has {difference.get('ours')} function-body fences versus "
                         f"{difference.get('expert')} in the reference; construct a checked completion schedule, "
-                        "preserving every original target law and storage lifetime")
+                        "preserving every original target law and storage lifetime"
+                    )
             yield row
         if comparison.get("unknowns"):
             unknowns, pointer = comparison["unknowns"], "/cca/unknowns"
             if captured:
                 # Full unknowns remain in the original report. Do not duplicate
                 # every absent backend facet into each bounded experiment packet.
-                position = next((i for i, row in enumerate(unknowns)
-                    if "ours" in row.get("missing_sides", ()) and "expert" not in row.get("missing_sides", ())), 0)
+                position = next(
+                    (
+                        i
+                        for i, row in enumerate(unknowns)
+                        if "ours" in row.get("missing_sides", ()) and "expert" not in row.get("missing_sides", ())
+                    ),
+                    0,
+                )
                 value, pointer = unknowns[position], pointer + "/" + str(position)
             else:
                 value = unknowns
-            row = diagnosis("missing_evidence", ["evidence.cca_comparison"],
-                "uncompared CCA axes remain unknown", pointer, value,
-                scope="structural_comparison", action="recover_compatible_cca_axis_witnesses")
+            row = diagnosis(
+                "missing_evidence",
+                ["evidence.cca_comparison"],
+                "uncompared CCA axes remain unknown",
+                pointer,
+                value,
+                scope="structural_comparison",
+                action="recover_compatible_cca_axis_witnesses",
+            )
             if captured:
                 row["evidence"][0]["complete_unknowns"] = dict(
-                    report_pointer="/cca/unknowns", sha256=digest(unknowns), axes=len(unknowns))
+                    report_pointer="/cca/unknowns", sha256=digest(unknowns), axes=len(unknowns)
+                )
             yield row
-        obligations = (("semantic_compatibility", "source.complete_fused_region"),
-                       ("schedule_consumption", "scheduling.schedule_consumption"))
+        obligations = (
+            ("semantic_compatibility", "source.complete_fused_region"),
+            ("schedule_consumption", "scheduling.schedule_consumption"),
+        )
         if captured:
-            obligations += (("semantic_equivalence", "source.complete_fused_region"),
-                            ("completion", "scheduling.completion"))
+            obligations += (
+                ("semantic_equivalence", "source.complete_fused_region"),
+                ("completion", "scheduling.completion"),
+            )
         for field, goal in obligations:
             if index.get(field) == "unknown":
-                yield diagnosis("missing_evidence", [goal], field.replace("_", " ") + " remains unknown",
-                    "/" + field, index[field], scope="structural_comparison")
+                yield diagnosis(
+                    "missing_evidence",
+                    [goal],
+                    field.replace("_", " ") + " remains unknown",
+                    "/" + field,
+                    index[field],
+                    scope="structural_comparison",
+                )
     elif kind == "source_syntax":
-        yield diagnosis("missing_evidence", ["source.complete_fused_region"],
+        yield diagnosis(
+            "missing_evidence",
+            ["source.complete_fused_region"],
             "source syntax does not bind the complete mathematical and numerical region",
-            "/semantic_region_status", index.get("semantic_region_status"), scope="source_syntax",
-            action="recover_source_shapes_layouts_fusion_liveouts_and_numerics")
+            "/semantic_region_status",
+            index.get("semantic_region_status"),
+            scope="source_syntax",
+            action="recover_source_shapes_layouts_fusion_liveouts_and_numerics",
+        )
     elif kind in ("interface_source_analysis", "declared_semantic_region", "declared_semantic_comparison"):
         if kind == "declared_semantic_comparison" and index.get("declared_contracts", {}).get("status") == "mismatch":
-            yield diagnosis("semantic_mismatch", ["source.complete_fused_region"],
+            yield diagnosis(
+                "semantic_mismatch",
+                ["source.complete_fused_region"],
                 "declared source contracts differ; reconcile them before reconstruction",
-                "/declared_contracts", index["declared_contracts"], scope="declared_source_contract",
-                status="observed_declaration", action="reconcile_declared_source_contracts")
-        yield diagnosis("adapter_gap", ["evidence.source_to_emission_binding"],
+                "/declared_contracts",
+                index["declared_contracts"],
+                scope="declared_source_contract",
+                status="observed_declaration",
+                action="reconcile_declared_source_contracts",
+            )
+        yield diagnosis(
+            "adapter_gap",
+            ["evidence.source_to_emission_binding"],
             "declared source contract needs its checked schedule and emitted artifact binding",
-            "", index, scope="declared_source_contract", status="observed_declaration",
-            route="adapter_or_preservation", action="bind_source_to_checked_schedule_and_emitted_artifacts")
+            "",
+            index,
+            scope="declared_source_contract",
+            status="observed_declaration",
+            route="adapter_or_preservation",
+            action="bind_source_to_checked_schedule_and_emitted_artifacts",
+        )
     elif kind in ("upstream_ir_analysis", "emitted_ir_analysis"):
-        yield diagnosis("adapter_gap", ["evidence.source_to_emission_binding"],
+        yield diagnosis(
+            "adapter_gap",
+            ["evidence.source_to_emission_binding"],
             "parsed source or emission needs original producer correspondence and complete semantics",
-            "", index, scope="observed_artifact_structure", status="observed_structural",
-            route="adapter_or_preservation", action="bind_source_to_checked_schedule_and_emitted_artifacts")
+            "",
+            index,
+            scope="observed_artifact_structure",
+            status="observed_structural",
+            route="adapter_or_preservation",
+            action="bind_source_to_checked_schedule_and_emitted_artifacts",
+        )
     elif kind in ("representation_bundle", "representation_comparison"):
         field = "producer_correspondence" if kind == "representation_comparison" else "emitted_correspondence"
-        yield diagnosis("adapter_gap", ["evidence.source_to_emission_binding"],
+        yield diagnosis(
+            "adapter_gap",
+            ["evidence.source_to_emission_binding"],
             "pinned representation views still need a checked source-to-binary correspondence",
-            "/" + field, index.get(field, "unknown"), scope="pinned_representation_views",
-            route="adapter_or_preservation", action="bind_original_source_schedule_emission_and_binary_producers")
-        children = ([(f"/views/{name}", view) for name, view in index.get("views", {}).items()]
-                    if kind == "representation_bundle" else
-                    [("/machine_comparison", index.get("machine_comparison")),
-                     ("/emitted_comparison", index.get("emitted_comparison"))])
+            "/" + field,
+            index.get(field, "unknown"),
+            scope="pinned_representation_views",
+            route="adapter_or_preservation",
+            action="bind_original_source_schedule_emission_and_binary_producers",
+        )
+        children = (
+            [(f"/views/{name}", view) for name, view in index.get("views", {}).items()]
+            if kind == "representation_bundle"
+            else [
+                ("/machine_comparison", index.get("machine_comparison")),
+                ("/emitted_comparison", index.get("emitted_comparison")),
+            ]
+        )
         for pointer, child in children:
             if not isinstance(child, dict):
                 continue
@@ -354,19 +486,37 @@ def _analysis_diagnoses(index):
                     evidence["pointer"] = pointer + evidence["pointer"]
                 yield row
     elif kind == "schedule_decisions" and index.get("realized") is not True:
-        yield diagnosis("adapter_gap", ["scheduling.schedule_consumption"],
+        yield diagnosis(
+            "adapter_gap",
+            ["scheduling.schedule_consumption"],
             "schedule dialect decisions are intent until the emission consumer is witnessed",
-            "/realized", index.get("realized"), scope="schedule_intent",
-            route="adapter_or_preservation", action="consume_schedule_plan_and_reanalyze_emitted_artifacts")
+            "/realized",
+            index.get("realized"),
+            scope="schedule_intent",
+            route="adapter_or_preservation",
+            action="consume_schedule_plan_and_reanalyze_emitted_artifacts",
+        )
     elif kind == "artifact_cross_view_analysis" and index.get("schedule_consumption") == "unknown":
-        yield diagnosis("adapter_gap", ["scheduling.schedule_consumption"],
+        yield diagnosis(
+            "adapter_gap",
+            ["scheduling.schedule_consumption"],
             "joined source and emitted views do not establish schedule consumption",
-            "/schedule_consumption", index["schedule_consumption"], scope="cross_view_diagnostic",
-            route="adapter_or_preservation", action="bind_checked_schedule_consumer_receipt")
+            "/schedule_consumption",
+            index["schedule_consumption"],
+            scope="cross_view_diagnostic",
+            route="adapter_or_preservation",
+            action="bind_checked_schedule_consumer_receipt",
+        )
     elif kind == "artifact_cross_view_comparison" and index.get("declared_source_join") != "identical_bytes":
-        yield diagnosis("missing_evidence", ["source.complete_fused_region"],
+        yield diagnosis(
+            "missing_evidence",
+            ["source.complete_fused_region"],
             "cross-view comparison has no identical declared source binding",
-            "", index, scope="cross_view_diagnostic", action="recover_or_match_semantic_region")
+            "",
+            index,
+            scope="cross_view_diagnostic",
+            action="recover_or_match_semantic_region",
+        )
 
 
 def _diagnoses(index, context, history):
@@ -389,8 +539,9 @@ def _diagnoses(index, context, history):
     for diagnosis in _gap_tasks(index, context):
         if index.get("kind") in ("artifact_cross_view_analysis", "artifact_cross_view_comparison"):
             for evidence in diagnosis["evidence"]:
-                evidence.update(status="observed_diagnostic", scope="cross_view_diagnostic",
-                                input_pins=index.get("inputs", {}))
+                evidence.update(
+                    status="observed_diagnostic", scope="cross_view_diagnostic", input_pins=index.get("inputs", {})
+                )
             if diagnosis["kind"] == "scoped_mechanism_difference":
                 diagnosis["route"] = "library_parameters_or_order"
                 # An observed difference is not a failed reconstruction search.
@@ -445,8 +596,12 @@ def _diagnoses(index, context, history):
             "provisional_unchanged",
         ):
             continue
-        if row["outcome"] in ("measured_improvement", "provisional_improvement", "measured_unchanged",
-                              "provisional_unchanged"):
+        if row["outcome"] in (
+            "measured_improvement",
+            "provisional_improvement",
+            "measured_unchanged",
+            "provisional_unchanged",
+        ):
             if row.get("next_action") != "qualification_needed":
                 continue
         changed = [item.get("name") if isinstance(item, dict) else item for item in row.get("changed_factors") or []]
@@ -510,19 +665,29 @@ def _goal_bindings(task, context):
     rows = []
     for goal in task["goals"]:
         selected = [row for row in capsules if goal in row.get("goals", ())]
-        applicable = [row for row in selected if "region_id" not in task
-                      or row.get("region_id") == task["region_id"]
-                      or task["region_id"] in row.get("region_ids", ())]
-        rows.append(dict(goal=goal,
-            declared_knobs=[name for name, row in sorted(domains.items()) if goal in row.get("goals", ())],
-            selected_capsules=[row["id"] for row in selected],
-            development_capsules=[row["id"] for row in applicable if row.get("split", "training") != "held_out"],
-            held_out_capsules=[row["id"] for row in applicable if row.get("split") == "held_out"]))
-    return dict(goals=rows,
+        applicable = [
+            row
+            for row in selected
+            if "region_id" not in task
+            or row.get("region_id") == task["region_id"]
+            or task["region_id"] in row.get("region_ids", ())
+        ]
+        rows.append(
+            dict(
+                goal=goal,
+                declared_knobs=[name for name, row in sorted(domains.items()) if goal in row.get("goals", ())],
+                selected_capsules=[row["id"] for row in selected],
+                development_capsules=[row["id"] for row in applicable if row.get("split", "training") != "held_out"],
+                held_out_capsules=[row["id"] for row in applicable if row.get("split") == "held_out"],
+            )
+        )
+    return dict(
+        goals=rows,
         next_action="Bind the same diagnosed goal to an implemented finite knob and an explicitly selected "
-                    "development capsule, including its region when required. Review source semantics, "
-                    "numerics and the actual consumer before changing declarations.",
-        authority="declared bindings only; missing applicability is not inferred or granted")
+        "development capsule, including its region when required. Review source semantics, "
+        "numerics and the actual consumer before changing declarations.",
+        authority="declared bindings only; missing applicability is not inferred or granted",
+    )
 
 
 def _analysis_requests(context):
@@ -544,15 +709,23 @@ def _analysis_requests(context):
             continue
         argv = argv if "--candidate-diagnostics" in argv else [*argv, "--candidate-diagnostics"]
         command = shlex.join(argv)
-        diagnostics.append(dict(capsule=capsule["id"],
-            argv=argv, command=command if len(command) <= 600 else "Read the complete diagnostic argv in the detail.",
-            scope="selected public capsule emission; reference applicability remains unproved",
-            purpose="Collect current source, logical input, emitted artifact and original producer observations.",
-            authority="diagnostic only; no numerical, mechanism, timing or experiment-completion credit"))
+        diagnostics.append(
+            dict(
+                capsule=capsule["id"],
+                argv=argv,
+                command=command if len(command) <= 600 else "Read the complete diagnostic argv in the detail.",
+                scope="selected public capsule emission; reference applicability remains unproved",
+                purpose="Collect current source, logical input, emitted artifact and original producer observations.",
+                authority="diagnostic only; no numerical, mechanism, timing or experiment-completion credit",
+            )
+        )
         if len(diagnostics) == 2:
             break
-    return diagnostics, (["evidence.current_source_and_emission_observations"] if diagnostics
-                         else ["binding.development_diagnostic_command"])
+    return diagnostics, (
+        ["evidence.current_source_and_emission_observations"]
+        if diagnostics
+        else ["binding.development_diagnostic_command"]
+    )
 
 
 def _requests(task, context, identity, budget, remaining, variant_remaining):
@@ -562,8 +735,11 @@ def _requests(task, context, identity, budget, remaining, variant_remaining):
     capsules = [row for row in context.get("capsules", []) if set(task["goals"]) & set(row.get("goals", []))]
     missing = ["execution." + key for key in _PINS if not _sha(context.get(key))]
     if "region_id" in task:
-        capsules = [row for row in capsules if row.get("region_id") == task["region_id"]
-                    or task["region_id"] in row.get("region_ids", ())]
+        capsules = [
+            row
+            for row in capsules
+            if row.get("region_id") == task["region_id"] or task["region_id"] in row.get("region_ids", ())
+        ]
         if not capsules:
             missing.append("binding.region_capsule_applicability")
     evaluator = context.get("evaluator", {})
@@ -588,8 +764,7 @@ def _requests(task, context, identity, budget, remaining, variant_remaining):
             if not _same(value, current[name]):
                 settings = dict(current, **{name: value})
                 variants.append((name, value, settings, set(task["goals"]) & set(domain.get("goals", []))))
-    shared_goal = any(goals & set(capsule.get("goals", []))
-                      for _, _, _, goals in variants for capsule in eligible)
+    shared_goal = any(goals & set(capsule.get("goals", [])) for _, _, _, goals in variants for capsule in eligible)
     for capsule in eligible:
         if len(requests) >= remaining:
             break
@@ -818,7 +993,7 @@ def build_experiment_packet(reconstruction_index, *, context, history=(), budget
             unique[key]["evidence"].extend(diagnosis["evidence"])
         else:
             unique[key] = diagnosis
-    selected = list(unique.items())[diagnosis_offset:diagnosis_offset + budget.max_tasks]
+    selected = list(unique.items())[diagnosis_offset : diagnosis_offset + budget.max_tasks]
     for key, diagnosis in selected:
         task = dict(
             task_id=digest(dict(context=identity, diagnosis=key))[:24],
@@ -872,9 +1047,16 @@ def build_experiment_packet(reconstruction_index, *, context, history=(), budget
                 ),
             )
         task["next_action"]["gaps"] = missing
-        if any(gap in missing for gap in ("binding.mechanism_to_declared_knob",
-                "binding.public_capsule_applicability", "binding.region_capsule_applicability",
-                "binding.development_capsule", "binding.shared_goal_applicability")):
+        if any(
+            gap in missing
+            for gap in (
+                "binding.mechanism_to_declared_knob",
+                "binding.public_capsule_applicability",
+                "binding.region_capsule_applicability",
+                "binding.development_capsule",
+                "binding.shared_goal_applicability",
+            )
+        ):
             task["next_action"]["binding_requirements"] = _goal_bindings(task, context)
         if diagnosis.get("library_routes"):
             task["next_action"]["library_routes"] = diagnosis["library_routes"]
@@ -908,7 +1090,8 @@ def build_experiment_packet(reconstruction_index, *, context, history=(), budget
             task["next_action"]["depends_on"] = [
                 row["task_id"]
                 for row in tasks
-                if row["kind"] in ("semantic_mismatch", "missing_evidence") and row["status"] != "resolved"
+                if row["kind"] in ("semantic_mismatch", "missing_evidence")
+                and row["status"] != "resolved"
                 and row.get("region_id") == task.get("region_id")
             ]
     packet = dict(
@@ -921,10 +1104,12 @@ def build_experiment_packet(reconstruction_index, *, context, history=(), budget
             diagnoses=len(diagnoses),
             truncated=diagnosis_offset + len(selected) < len(unique),
         ),
-        coverage=dict(total_diagnoses=len(unique), selected_start=diagnosis_offset,
-                      selected_end=diagnosis_offset + len(selected),
-                      next_offset=(diagnosis_offset + len(selected)
-                                   if diagnosis_offset + len(selected) < len(unique) else None)),
+        coverage=dict(
+            total_diagnoses=len(unique),
+            selected_start=diagnosis_offset,
+            selected_end=diagnosis_offset + len(selected),
+            next_offset=(diagnosis_offset + len(selected) if diagnosis_offset + len(selected) < len(unique) else None),
+        ),
     )
     packet["identity"] = packet_identity(packet)
     return _json(packet)

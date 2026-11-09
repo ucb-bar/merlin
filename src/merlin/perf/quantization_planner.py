@@ -5,6 +5,7 @@ accuracy policy, and a complete ordered program graph.  It selects no approximat
 without policy/corpus evidence, never converts structural byte deletion into a cycle claim, and
 leaves target emission as an explicit downstream obligation.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -32,13 +33,15 @@ REGION_SCHEMA = "target_neutral_maximal_accelerator_regions_v1"
 
 # Semantic roles, not implementation paths.  The agent-guidance layer joins these to an immutable,
 # host-verified compiler inventory before returning any editable coordinate.
-EDIT_REQUIREMENT_ROLES = frozenset({
-    "source_epilogue_semantics",
-    "global_quant_domain_planner",
-    "target_epilogue_emitter",
-    "target_residual_region_emitter",
-    "target_encoding_and_residency",
-})
+EDIT_REQUIREMENT_ROLES = frozenset(
+    {
+        "source_epilogue_semantics",
+        "global_quant_domain_planner",
+        "target_epilogue_emitter",
+        "target_residual_region_emitter",
+        "target_encoding_and_residency",
+    }
+)
 
 __all__ = [
     "EDIT_REQUIREMENT_ROLES",
@@ -133,21 +136,16 @@ class ResidualDomainSite:
             raise ValueError("a residual predecessor edge requires exact carry bytes")
         if self.resident_working_set_bytes is not None and self.resident_working_set_bytes <= 0:
             raise ValueError("resident working set must be positive when supplied")
-        if self.saturation_scope not in {
-            "unproven", "universal_no_saturation", "heldout_no_saturation"
-        }:
+        if self.saturation_scope not in {"unproven", "universal_no_saturation", "heldout_no_saturation"}:
             raise ValueError("unknown source-quantizer saturation scope")
-        if (self.saturation_scope == "heldout_no_saturation") != (
-            self.saturation_corpus_id is not None
-        ):
+        if (self.saturation_scope == "heldout_no_saturation") != (self.saturation_corpus_id is not None):
             raise ValueError("heldout saturation scope and corpus id disagree")
         if self.external_input_error_lsb < 0:
             raise ValueError("external input error bound must be nonnegative")
         has_provenance = (
             isinstance(self.external_error_provenance_sha256, str)
             and len(self.external_error_provenance_sha256) == 64
-            and all(character in "0123456789abcdef"
-                    for character in self.external_error_provenance_sha256.lower())
+            and all(character in "0123456789abcdef" for character in self.external_error_provenance_sha256.lower())
         )
         if (self.external_input_error_lsb > 0) != has_provenance:
             raise ValueError("nonzero external input error requires exact provenance SHA-256")
@@ -191,9 +189,9 @@ class _ResidualAccuracyBudgetUnsatisfiable(ValueError):
     pass
 
 
-def _residual_graph(problem: ResidualDomainProblem) -> tuple[
-    dict[str, QuantizationDomain], dict[int, ResidualDomainSite], list[list[int]]
-]:
+def _residual_graph(
+    problem: ResidualDomainProblem,
+) -> tuple[dict[str, QuantizationDomain], dict[int, ResidualDomainSite], list[list[int]]]:
     domains = {domain.name: domain for domain in problem.domains}
     if len(domains) != len(problem.domains):
         raise ValueError("quantization domain names must be unique")
@@ -209,9 +207,7 @@ def _residual_graph(problem: ResidualDomainProblem) -> tuple[
                 raise ValueError("residual predecessor must be an earlier topological site")
             successors[site.predecessor].append(site.index)
     if any(len(items) > 1 for items in successors.values()):
-        raise _UnsupportedResidualTopology(
-            "correlated residual fanout requires a DAG-aware error-budget solver"
-        )
+        raise _UnsupportedResidualTopology("correlated residual fanout requires a DAG-aware error-budget solver")
     roots = sorted(index for index, site in sites.items() if site.predecessor is None)
     chains: list[list[int]] = []
     seen: set[int] = set()
@@ -228,9 +224,7 @@ def _residual_graph(problem: ResidualDomainProblem) -> tuple[
     return domains, sites, chains
 
 
-def _carry_bound(
-    source: QuantizationDomain, target: QuantizationDomain, upstream_error: int
-) -> int | None:
+def _carry_bound(source: QuantizationDomain, target: QuantizationDomain, upstream_error: int) -> int | None:
     if source.scale is None or target.scale is None:
         return None
     return int(ceil((upstream_error + 0.5) * source.scale / target.scale))
@@ -271,10 +265,7 @@ def _chain_choice(
     problem: ResidualDomainProblem,
     policy: AccuracyPolicy | None,
 ) -> _ResidualChoice:
-    budget = (
-        0 if policy is None or not policy.opt_in
-        else policy.budget.max_accumulated_error_lsb
-    )
+    budget = 0 if policy is None or not policy.opt_in else policy.budget.max_accumulated_error_lsb
     policy_blockers = _policy_refusals(policy)
     states = [_ResidualChoice(0, 0, 0, 0, ())]
     for position, index in enumerate(chain):
@@ -306,22 +297,20 @@ def _chain_choice(
                 alignment_options.append(True)
             for carry, input_error, carry_bytes in carry_options:
                 for alignment in alignment_options:
-                    output_error = (
-                        site.external_input_error_lsb + input_error + int(alignment)
-                    )
+                    output_error = site.external_input_error_lsb + input_error + int(alignment)
                     if output_error > budget:
                         continue
                     alignment_bytes = site.branch_materialization_bytes if alignment else 0
                     eliminated = carry_bytes + alignment_bytes
-                    trials.append(_ResidualChoice(
-                        output_error=output_error,
-                        materialization_bytes=state.materialization_bytes + eliminated,
-                        boundary_traffic_bytes=state.boundary_traffic_bytes + eliminated * 2,
-                        host_operations=state.host_operations + (
-                            len(site.host_operation_ids) if alignment else 0
-                        ),
-                        decisions=(*state.decisions, (index, carry, alignment, output_error)),
-                    ))
+                    trials.append(
+                        _ResidualChoice(
+                            output_error=output_error,
+                            materialization_bytes=state.materialization_bytes + eliminated,
+                            boundary_traffic_bytes=state.boundary_traffic_bytes + eliminated * 2,
+                            host_operations=state.host_operations + (len(site.host_operation_ids) if alignment else 0),
+                            decisions=(*state.decisions, (index, carry, alignment, output_error)),
+                        )
+                    )
         by_error: dict[int, _ResidualChoice] = {}
         for trial in trials:
             incumbent = by_error.get(trial.output_error)
@@ -335,9 +324,7 @@ def _chain_choice(
     return max(states, key=lambda choice: choice.rank)
 
 
-def plan_residual_domains(
-    problem: ResidualDomainProblem, policy: AccuracyPolicy | None = None
-) -> dict[str, Any]:
+def plan_residual_domains(problem: ResidualDomainProblem, policy: AccuracyPolicy | None = None) -> dict[str, Any]:
     """Select a globally bounded residual rewrite plan, without claiming target emission."""
     try:
         domains, sites, chains = _residual_graph(problem)
@@ -354,9 +341,9 @@ def plan_residual_domains(
             },
             "sites": [],
             "selected_chains": [],
-            "remaining_host_operations": sorted({
-                operation for site in problem.sites for operation in site.host_operation_ids
-            }),
+            "remaining_host_operations": sorted(
+                {operation for site in problem.sites for operation in site.host_operation_ids}
+            ),
             "refusal_histogram": {reason: len(problem.sites)},
             "global_refusal": str(exc),
             "claim_boundary": "no approximation or target lowering selected",
@@ -376,17 +363,15 @@ def plan_residual_domains(
             },
             "sites": [],
             "selected_chains": [],
-            "remaining_host_operations": sorted({
-                operation for site in problem.sites for operation in site.host_operation_ids
-            }),
+            "remaining_host_operations": sorted(
+                {operation for site in problem.sites for operation in site.host_operation_ids}
+            ),
             "refusal_histogram": {reason: 1},
             "global_refusal": str(exc),
             "claim_boundary": "no approximation or target lowering selected",
         }
     selected = {
-        index: (carry, alignment, error)
-        for choice in choices
-        for index, carry, alignment, error in choice.decisions
+        index: (carry, alignment, error) for choice in choices for index, carry, alignment, error in choice.decisions
     }
     policy_reasons = _policy_refusals(policy)
     refusal_histogram: Counter[str] = Counter()
@@ -394,14 +379,11 @@ def plan_residual_domains(
     for index in sorted(sites):
         site = sites[index]
         carry, alignment, error = selected.get(index, (False, False, 0))
-        missing_capabilities = sorted(
-            set(site.required_capabilities) - problem.available_capabilities
-        )
+        missing_capabilities = sorted(set(site.required_capabilities) - problem.available_capabilities)
         alignment_reasons: list[str] = []
         if not alignment:
             alignment_reasons.extend(policy_reasons)
-            if (policy is not None and policy.opt_in
-                    and policy.budget.max_accumulated_error_lsb < 1):
+            if policy is not None and policy.opt_in and policy.budget.max_accumulated_error_lsb < 1:
                 alignment_reasons.append("one_code_alignment_error_exceeds_budget")
             if missing_capabilities:
                 alignment_reasons.append("missing_target_capability")
@@ -428,48 +410,43 @@ def plan_residual_domains(
                 "selected": carry,
                 "source_domain": source.name,
                 "target_domain": target.name,
-                "scale_ratio": (
-                    None if source.scale is None or target.scale is None
-                    else source.scale / target.scale
-                ),
+                "scale_ratio": (None if source.scale is None or target.scale is None else source.scale / target.scale),
                 "bound": "ceil((upstream_code_delta + 0.5) * source_scale / target_scale)",
                 "saturation_scope": site.saturation_scope,
                 "saturation_corpus_id": site.saturation_corpus_id,
-                "materialization_bytes_eliminated_if_selected": (
-                    site.carry_materialization_bytes
-                ),
+                "materialization_bytes_eliminated_if_selected": (site.carry_materialization_bytes),
                 "refusal_reasons": list(dict.fromkeys(carry_reasons)),
             }
             refusal_histogram.update(carry_row["refusal_reasons"])
         alignment_reasons = list(dict.fromkeys(alignment_reasons))
         refusal_histogram.update(alignment_reasons)
-        rows.append({
-            "index": site.index,
-            "site_id": site.site_id,
-            "source_operation_ids": list(site.source_operation_ids),
-            "host_operation_ids": list(site.host_operation_ids),
-            "output_domain": domains[site.output_domain].to_dict(),
-            "bounded_output_code_delta": error,
-            "external_input_error_lsb": site.external_input_error_lsb,
-            "external_error_provenance_sha256": site.external_error_provenance_sha256,
-            "carry_from_predecessor": carry_row,
-            "alignment": {
-                "selected": alignment,
-                "local_max_output_code_delta": 1,
-                "proof": "abs(round(a)+round(b)-round(a+b))<=1; final clamp is nonexpansive",
-                "wide_intermediate": True,
-                "branch_clamp_before_add": False,
-                "required_capabilities": list(site.required_capabilities),
-                "missing_capabilities": missing_capabilities,
-                "resident_working_set_bytes": site.resident_working_set_bytes,
-                "resident_capacity_bytes": problem.resident_capacity_bytes,
-                "capacity_semantics": "target-supplied full live set at this program point",
-                "branch_materialization_bytes_eliminated_if_selected": (
-                    site.branch_materialization_bytes
-                ),
-                "refusal_reasons": alignment_reasons,
-            },
-        })
+        rows.append(
+            {
+                "index": site.index,
+                "site_id": site.site_id,
+                "source_operation_ids": list(site.source_operation_ids),
+                "host_operation_ids": list(site.host_operation_ids),
+                "output_domain": domains[site.output_domain].to_dict(),
+                "bounded_output_code_delta": error,
+                "external_input_error_lsb": site.external_input_error_lsb,
+                "external_error_provenance_sha256": site.external_error_provenance_sha256,
+                "carry_from_predecessor": carry_row,
+                "alignment": {
+                    "selected": alignment,
+                    "local_max_output_code_delta": 1,
+                    "proof": "abs(round(a)+round(b)-round(a+b))<=1; final clamp is nonexpansive",
+                    "wide_intermediate": True,
+                    "branch_clamp_before_add": False,
+                    "required_capabilities": list(site.required_capabilities),
+                    "missing_capabilities": missing_capabilities,
+                    "resident_working_set_bytes": site.resident_working_set_bytes,
+                    "resident_capacity_bytes": problem.resident_capacity_bytes,
+                    "capacity_semantics": "target-supplied full live set at this program point",
+                    "branch_materialization_bytes_eliminated_if_selected": (site.branch_materialization_bytes),
+                    "refusal_reasons": alignment_reasons,
+                },
+            }
+        )
 
     rows_by_index = {row["index"]: row for row in rows}
     selected_chains: list[dict[str, Any]] = []
@@ -482,10 +459,7 @@ def plan_residual_domains(
                     selected_chains.append({"site_indices": current})
                     current = []
                 continue
-            carry_selected = bool(
-                row["carry_from_predecessor"]
-                and row["carry_from_predecessor"]["selected"]
-            )
+            carry_selected = bool(row["carry_from_predecessor"] and row["carry_from_predecessor"]["selected"])
             if current and not carry_selected:
                 selected_chains.append({"site_indices": current})
                 current = []
@@ -494,36 +468,30 @@ def plan_residual_domains(
             selected_chains.append({"site_indices": current})
     for chain_index, chain in enumerate(selected_chains):
         chain_rows = [rows_by_index[index] for index in chain["site_indices"]]
-        chain.update({
-            "chain_index": chain_index,
-            "site_ids": [row["site_id"] for row in chain_rows],
-            "source_operation_ids": sorted({
-                operation for row in chain_rows for operation in row["source_operation_ids"]
-            }),
-            "maximum_bounded_output_code_delta": max(
-                row["bounded_output_code_delta"] for row in chain_rows
-            ),
-            "retained_internal_quantized_edges": sum(
-                bool(row["carry_from_predecessor"] and row["carry_from_predecessor"]["selected"])
-                for row in chain_rows
-            ),
-        })
+        chain.update(
+            {
+                "chain_index": chain_index,
+                "site_ids": [row["site_id"] for row in chain_rows],
+                "source_operation_ids": sorted(
+                    {operation for row in chain_rows for operation in row["source_operation_ids"]}
+                ),
+                "maximum_bounded_output_code_delta": max(row["bounded_output_code_delta"] for row in chain_rows),
+                "retained_internal_quantized_edges": sum(
+                    bool(row["carry_from_predecessor"] and row["carry_from_predecessor"]["selected"])
+                    for row in chain_rows
+                ),
+            }
+        )
     selected_carries = sum(
-        bool(row["carry_from_predecessor"] and row["carry_from_predecessor"]["selected"])
-        for row in rows
+        bool(row["carry_from_predecessor"] and row["carry_from_predecessor"]["selected"]) for row in rows
     )
     selected_alignments = sum(row["alignment"]["selected"] for row in rows)
     selected_materialization = sum(choice.materialization_bytes for choice in choices)
     selected_traffic = sum(choice.boundary_traffic_bytes for choice in choices)
     selected_host_operations = {
-        operation
-        for row in rows
-        if row["alignment"]["selected"]
-        for operation in row["host_operation_ids"]
+        operation for row in rows if row["alignment"]["selected"] for operation in row["host_operation_ids"]
     }
-    all_host_operations = {
-        operation for row in rows for operation in row["host_operation_ids"]
-    }
+    all_host_operations = {operation for row in rows for operation in row["host_operation_ids"]}
     return {
         "schema": RESIDUAL_SCHEMA,
         "status": (
@@ -553,8 +521,9 @@ def plan_residual_domains(
         },
         "refusal_histogram": dict(sorted(refusal_histogram.items())),
         "accuracy_scope": (
-            "exact only" if policy_reasons else
-            "globally accumulated output-code bound under explicit policy; heldout saturation "
+            "exact only"
+            if policy_reasons
+            else "globally accumulated output-code bound under explicit policy; heldout saturation "
             "facts remain empirical"
         ),
     }
@@ -622,8 +591,7 @@ class QuantizedProgramEdge:
         has_provenance = (
             isinstance(self.error_bound_provenance_sha256, str)
             and len(self.error_bound_provenance_sha256) == 64
-            and all(character in "0123456789abcdef"
-                    for character in self.error_bound_provenance_sha256.lower())
+            and all(character in "0123456789abcdef" for character in self.error_bound_provenance_sha256.lower())
         )
         if (self.consumer_error_bound_lsb is not None) != has_provenance:
             raise ValueError("edge error bound and provenance SHA-256 must be supplied together")
@@ -641,8 +609,7 @@ class QuantizedRegionProblem:
 
     def __post_init__(self) -> None:
         if len(self.normalized_source_sha256) != 64 or any(
-            character not in "0123456789abcdef"
-            for character in self.normalized_source_sha256.lower()
+            character not in "0123456789abcdef" for character in self.normalized_source_sha256.lower()
         ):
             raise ValueError("quantized program requires normalized source SHA-256")
         if self.resident_capacity_bytes is not None and self.resident_capacity_bytes <= 0:
@@ -655,9 +622,7 @@ def _requirement(role: str, reasons: Sequence[str], *, status: str = "required")
     return {"role": role, "status": status, "reason_codes": sorted(set(reasons))}
 
 
-def plan_quantized_regions(
-    problem: QuantizedRegionProblem, policy: AccuracyPolicy | None = None
-) -> dict[str, Any]:
+def plan_quantized_regions(problem: QuantizedRegionProblem, policy: AccuracyPolicy | None = None) -> dict[str, Any]:
     """Admit epilogues, solve residuals, and form maximal legal accelerator regions."""
     nodes = {node.index: node for node in problem.nodes}
     if len(nodes) != len(problem.nodes) or set(nodes) != set(range(len(nodes))):
@@ -669,12 +634,11 @@ def plan_quantized_regions(
     host_owners = [operation for node in problem.nodes for operation in node.host_operation_ids]
     if len(source_owners) != len(set(source_owners)):
         raise ValueError("program nodes must uniquely own every supplied source operation")
-    if (len(host_owners) != len(set(host_owners))
-            or set(host_owners).intersection(problem.unassigned_host_operation_ids)):
+    if len(host_owners) != len(set(host_owners)) or set(host_owners).intersection(
+        problem.unassigned_host_operation_ids
+    ):
         raise ValueError("program nodes and unassigned list must uniquely own host operations")
-    referenced_epilogues = [
-        node.epilogue_site_id for node in problem.nodes if node.epilogue_site_id is not None
-    ]
+    referenced_epilogues = [node.epilogue_site_id for node in problem.nodes if node.epilogue_site_id is not None]
     if set(referenced_epilogues) != set(epilogues) or len(referenced_epilogues) != len(epilogues):
         raise ValueError("every epilogue site must be referenced by exactly one program node")
     for node in problem.nodes:
@@ -682,19 +646,11 @@ def plan_quantized_regions(
             site = epilogues[node.epilogue_site_id]
             if site.source_operation_index not in node.source_operation_ids:
                 raise ValueError("epilogue source producer is not owned by its program node")
-    residual_sites = (
-        {} if problem.residuals is None else
-        {site.index: site for site in problem.residuals.sites}
-    )
-    referenced_residuals = [
-        node.residual_site_index for node in problem.nodes
-        if node.residual_site_index is not None
-    ]
-    if (set(referenced_residuals) != set(residual_sites)
-            or len(referenced_residuals) != len(residual_sites)):
+    residual_sites = {} if problem.residuals is None else {site.index: site for site in problem.residuals.sites}
+    referenced_residuals = [node.residual_site_index for node in problem.nodes if node.residual_site_index is not None]
+    if set(referenced_residuals) != set(residual_sites) or len(referenced_residuals) != len(residual_sites):
         raise ValueError("every residual site must be referenced by exactly one program node")
-    if (problem.residuals is not None
-            and problem.residuals.resident_capacity_bytes != problem.resident_capacity_bytes):
+    if problem.residuals is not None and problem.residuals.resident_capacity_bytes != problem.resident_capacity_bytes:
         raise ValueError("residual and program resident-capacity facts disagree")
     for node in problem.nodes:
         if node.residual_site_index is not None:
@@ -711,8 +667,7 @@ def plan_quantized_regions(
             raise ValueError("program edge fanout disagrees with the complete supplied graph")
         if nodes[edge.producer].output_encoding != edge.producer_encoding:
             raise ValueError("program edge producer encoding disagrees with its node")
-        if (edge.residual_carry_site_index is not None
-                and edge.residual_carry_site_index not in residual_sites):
+        if edge.residual_carry_site_index is not None and edge.residual_carry_site_index not in residual_sites:
             raise ValueError("program edge names an unknown residual carry site")
 
     admissions: dict[str, EpilogueAdmission] = {}
@@ -728,16 +683,14 @@ def plan_quantized_regions(
             exact_proof=site.exact_proof,
         )
     epilogue_node_admissions = {
-        node.index: admissions[node.epilogue_site_id]
-        for node in problem.nodes if node.epilogue_site_id is not None
+        node.index: admissions[node.epilogue_site_id] for node in problem.nodes if node.epilogue_site_id is not None
     }
     composition_refusals_by_node: dict[int, list[str]] = {}
     residual_problem = problem.residuals
     if residual_problem is not None:
         adjusted_sites = []
         residual_consumers = {
-            node.residual_site_index: node.index
-            for node in problem.nodes if node.residual_site_index is not None
+            node.residual_site_index: node.index for node in problem.nodes if node.residual_site_index is not None
         }
         for site in residual_problem.sites:
             consumer = residual_consumers[site.index]
@@ -760,8 +713,7 @@ def plan_quantized_regions(
                 approximate_producers.append(edge.producer)
                 external_error += edge.consumer_error_bound_lsb
                 provenance.append(edge.error_bound_provenance_sha256 or "")
-            if (policy is not None and policy.opt_in
-                    and external_error > policy.budget.max_accumulated_error_lsb):
+            if policy is not None and policy.opt_in and external_error > policy.budget.max_accumulated_error_lsb:
                 for producer in approximate_producers:
                     composition_refusals_by_node.setdefault(producer, []).append(
                         "downstream_accumulated_error_budget_exceeded"
@@ -770,27 +722,28 @@ def plan_quantized_regions(
                 # exact fallback rather than letting a rejected path poison the legal plan.
                 external_error = site.external_input_error_lsb
                 provenance = (
-                    [] if site.external_error_provenance_sha256 is None
-                    else [site.external_error_provenance_sha256]
+                    [] if site.external_error_provenance_sha256 is None else [site.external_error_provenance_sha256]
                 )
-            adjusted_sites.append(replace(
-                site,
-                external_input_error_lsb=external_error,
-                external_error_provenance_sha256=(
-                    None if external_error == 0 else canonical_sha256({
-                        "consumer_residual_site": site.index,
-                        "component_error_provenance_sha256": provenance,
-                        "composition": "sum of input L-infinity code bounds in consumer domain",
-                    })
-                ),
-            ))
+            adjusted_sites.append(
+                replace(
+                    site,
+                    external_input_error_lsb=external_error,
+                    external_error_provenance_sha256=(
+                        None
+                        if external_error == 0
+                        else canonical_sha256(
+                            {
+                                "consumer_residual_site": site.index,
+                                "component_error_provenance_sha256": provenance,
+                                "composition": "sum of input L-infinity code bounds in consumer domain",
+                            }
+                        )
+                    ),
+                )
+            )
         residual_problem = replace(residual_problem, sites=tuple(adjusted_sites))
-    residual = (
-        None if residual_problem is None else plan_residual_domains(residual_problem, policy)
-    )
-    residual_rows = {
-        row["index"]: row for row in (() if residual is None else residual.get("sites", ()))
-    }
+    residual = None if residual_problem is None else plan_residual_domains(residual_problem, policy)
+    residual_rows = {row["index"]: row for row in (() if residual is None else residual.get("sites", ()))}
 
     node_rows: list[dict[str, Any]] = []
     refusal_histogram: Counter[str] = Counter()
@@ -817,45 +770,50 @@ def plan_quantized_regions(
             elif not residual_row["alignment"]["selected"]:
                 reasons.extend(residual_row["alignment"]["refusal_reasons"])
         if node.accelerator_eligible:
-            if (node.resident_working_set_bytes is None
-                    or problem.resident_capacity_bytes is None):
+            if node.resident_working_set_bytes is None or problem.resident_capacity_bytes is None:
                 reasons.append("node_resident_capacity_unproven")
             elif node.resident_working_set_bytes > problem.resident_capacity_bytes:
                 reasons.append("node_resident_capacity_exceeded")
-        if (admission is not None and admission.selected and not admission.exact
-                and residual_row is not None and residual_row["alignment"]["selected"]):
+        if (
+            admission is not None
+            and admission.selected
+            and not admission.exact
+            and residual_row is not None
+            and residual_row["alignment"]["selected"]
+        ):
             reasons.append("combined_epilogue_residual_error_composition_unproven")
         reasons = list(dict.fromkeys(reasons))
         if not reasons:
             selected_nodes.add(index)
         refusal_histogram.update(reasons)
-        node_rows.append({
-            "index": index,
-            "source_operation_ids": list(node.source_operation_ids),
-            "host_operation_ids_eliminated_if_lowered": list(node.host_operation_ids),
-            "selected_for_accelerator_region": not reasons,
-            "accelerator_eligible_before_quantized_gates": node.accelerator_eligible,
-            "output_encoding": node.output_encoding,
-            "resident_working_set_bytes": node.resident_working_set_bytes,
-            "resident_capacity_bytes": problem.resident_capacity_bytes,
-            "epilogue_site_id": node.epilogue_site_id,
-            "epilogue_admission": (
-                None if admission is None else {
-                    "selected": admission.selected,
-                    "exact": admission.exact,
-                    "proof_scope": admission.proof_scope,
-                    "max_observed_error_lsb": admission.max_observed_error_lsb,
-                }
-            ),
-            "residual_site_index": node.residual_site_index,
-            "refusal_reasons": reasons,
-        })
+        node_rows.append(
+            {
+                "index": index,
+                "source_operation_ids": list(node.source_operation_ids),
+                "host_operation_ids_eliminated_if_lowered": list(node.host_operation_ids),
+                "selected_for_accelerator_region": not reasons,
+                "accelerator_eligible_before_quantized_gates": node.accelerator_eligible,
+                "output_encoding": node.output_encoding,
+                "resident_working_set_bytes": node.resident_working_set_bytes,
+                "resident_capacity_bytes": problem.resident_capacity_bytes,
+                "epilogue_site_id": node.epilogue_site_id,
+                "epilogue_admission": (
+                    None
+                    if admission is None
+                    else {
+                        "selected": admission.selected,
+                        "exact": admission.exact,
+                        "proof_scope": admission.proof_scope,
+                        "max_observed_error_lsb": admission.max_observed_error_lsb,
+                    }
+                ),
+                "residual_site_index": node.residual_site_index,
+                "refusal_reasons": reasons,
+            }
+        )
 
     residual_carries = {
-        row["index"]: bool(
-            row.get("carry_from_predecessor")
-            and row["carry_from_predecessor"].get("selected")
-        )
+        row["index"]: bool(row.get("carry_from_predecessor") and row["carry_from_predecessor"].get("selected"))
         for row in residual_rows.values()
     }
     edge_rows: list[dict[str, Any]] = []
@@ -870,9 +828,8 @@ def plan_quantized_regions(
             reasons.append("physical_encoding_unknown")
         elif edge.producer_encoding != edge.consumer_encoding:
             reasons.append("physical_encoding_transition_required")
-        if (
-            edge.residual_carry_site_index is not None
-            and not residual_carries.get(edge.residual_carry_site_index, False)
+        if edge.residual_carry_site_index is not None and not residual_carries.get(
+            edge.residual_carry_site_index, False
         ):
             reasons.append("quantized_residual_carry_not_selected")
         reasons = list(dict.fromkeys(reasons))
@@ -883,23 +840,24 @@ def plan_quantized_regions(
         elif edge.producer in selected_nodes and edge.consumer in selected_nodes:
             incompatible_consumers.add(edge.consumer)
         refusal_histogram.update(
-            reason for reason in reasons
-            if reason != "endpoint_not_selected_for_accelerator_region"
+            reason for reason in reasons if reason != "endpoint_not_selected_for_accelerator_region"
         )
-        edge_rows.append({
-            "producer": edge.producer,
-            "consumer": edge.consumer,
-            "value_id": edge.value_id,
-            "logical_bytes": edge.logical_bytes,
-            "fanout": edge.fanout,
-            "producer_encoding": edge.producer_encoding,
-            "consumer_encoding": edge.consumer_encoding,
-            "direct_internal_boundary": compatible,
-            "residual_carry_site_index": edge.residual_carry_site_index,
-            "consumer_error_bound_lsb": edge.consumer_error_bound_lsb,
-            "error_bound_provenance_sha256": edge.error_bound_provenance_sha256,
-            "refusal_reasons": reasons,
-        })
+        edge_rows.append(
+            {
+                "producer": edge.producer,
+                "consumer": edge.consumer,
+                "value_id": edge.value_id,
+                "logical_bytes": edge.logical_bytes,
+                "fanout": edge.fanout,
+                "producer_encoding": edge.producer_encoding,
+                "consumer_encoding": edge.consumer_encoding,
+                "direct_internal_boundary": compatible,
+                "residual_carry_site_index": edge.residual_carry_site_index,
+                "consumer_error_bound_lsb": edge.consumer_error_bound_lsb,
+                "error_bound_provenance_sha256": edge.error_bound_provenance_sha256,
+                "refusal_reasons": reasons,
+            }
+        )
 
     regions: list[dict[str, Any]] = []
     current: list[int] = []
@@ -916,27 +874,26 @@ def plan_quantized_regions(
     for region_index, region in enumerate(regions):
         region_nodes = set(region["node_indices"])
         internal_edges = [
-            row for row in edge_rows
-            if row["producer"] in region_nodes and row["consumer"] in region_nodes
-            and row["direct_internal_boundary"]
+            row
+            for row in edge_rows
+            if row["producer"] in region_nodes and row["consumer"] in region_nodes and row["direct_internal_boundary"]
         ]
         rows = [node_rows[index] for index in region["node_indices"]]
-        region.update({
-            "region_index": region_index,
-            "source_operation_ids": sorted({
-                operation for row in rows for operation in row["source_operation_ids"]
-            }),
-            "host_operation_ids_eliminated_if_lowered": sorted({
-                operation
-                for row in rows
-                for operation in row["host_operation_ids_eliminated_if_lowered"]
-            }),
-            "internal_boundaries": internal_edges,
-            "numeric_admission": sorted({
-                row["epilogue_admission"]["proof_scope"]
-                for row in rows if row["epilogue_admission"] is not None
-            }),
-        })
+        region.update(
+            {
+                "region_index": region_index,
+                "source_operation_ids": sorted(
+                    {operation for row in rows for operation in row["source_operation_ids"]}
+                ),
+                "host_operation_ids_eliminated_if_lowered": sorted(
+                    {operation for row in rows for operation in row["host_operation_ids_eliminated_if_lowered"]}
+                ),
+                "internal_boundaries": internal_edges,
+                "numeric_admission": sorted(
+                    {row["epilogue_admission"]["proof_scope"] for row in rows if row["epilogue_admission"] is not None}
+                ),
+            }
+        )
     selected_host_ops = {
         operation
         for row in node_rows
@@ -951,13 +908,9 @@ def plan_quantized_regions(
     requirements: list[dict[str, Any]] = []
     selected_epilogues = [admission for admission in admissions.values() if admission.selected]
     if selected_epilogues:
-        requirements.append(_requirement(
-            "target_epilogue_emitter", ["selected_epilogue_plan_not_yet_lowered"]
-        ))
+        requirements.append(_requirement("target_epilogue_emitter", ["selected_epilogue_plan_not_yet_lowered"]))
     if residual is not None and residual["selection"]["selected_residual_alignments"]:
-        requirements.append(_requirement(
-            "target_residual_region_emitter", ["selected_residual_plan_not_yet_lowered"]
-        ))
+        requirements.append(_requirement("target_residual_region_emitter", ["selected_residual_plan_not_yet_lowered"]))
     encoding_reasons = [
         reason
         for row in edge_rows
@@ -968,30 +921,25 @@ def plan_quantized_regions(
         requirements.append(_requirement("target_encoding_and_residency", encoding_reasons))
         requirements.append(_requirement("global_quant_domain_planner", encoding_reasons))
     node_encoding_reasons = [
-        reason for row in node_rows for reason in row["refusal_reasons"]
-        if reason in {"physical_output_encoding_unknown", "node_resident_capacity_unproven",
-                      "node_resident_capacity_exceeded"}
+        reason
+        for row in node_rows
+        for reason in row["refusal_reasons"]
+        if reason
+        in {"physical_output_encoding_unknown", "node_resident_capacity_unproven", "node_resident_capacity_exceeded"}
     ]
     if node_encoding_reasons and not any(
-            requirement["role"] == "target_encoding_and_residency"
-            for requirement in requirements):
-        requirements.append(_requirement(
-            "target_encoding_and_residency", node_encoding_reasons
-        ))
-    composition_reasons = [
-        reason for reasons in composition_refusals_by_node.values() for reason in reasons
-    ]
+        requirement["role"] == "target_encoding_and_residency" for requirement in requirements
+    ):
+        requirements.append(_requirement("target_encoding_and_residency", node_encoding_reasons))
+    composition_reasons = [reason for reasons in composition_refusals_by_node.values() for reason in reasons]
     if composition_reasons and not any(
-            requirement["role"] == "global_quant_domain_planner"
-            for requirement in requirements):
-        requirements.append(_requirement(
-            "global_quant_domain_planner", composition_reasons
-        ))
-    if any("exact_candidate_not_provided" in admission.receipt.get("reason_codes", ())
-           for admission in admissions.values()):
-        requirements.append(_requirement(
-            "source_epilogue_semantics", ["exact_epilogue_candidate_or_proof_missing"]
-        ))
+        requirement["role"] == "global_quant_domain_planner" for requirement in requirements
+    ):
+        requirements.append(_requirement("global_quant_domain_planner", composition_reasons))
+    if any(
+        "exact_candidate_not_provided" in admission.receipt.get("reason_codes", ()) for admission in admissions.values()
+    ):
+        requirements.append(_requirement("source_epilogue_semantics", ["exact_epilogue_candidate_or_proof_missing"]))
     protected_blockers = []
     if policy is None:
         protected_blockers.append("accuracy_policy_not_provided")
@@ -1009,9 +957,7 @@ def plan_quantized_regions(
         "status": "selected_framework_plan" if selected_nodes else "no_legal_accelerator_region",
         "normalized_source_sha256": problem.normalized_source_sha256,
         "policy": None if policy is None else policy.to_dict(),
-        "epilogue_admissions": {
-            site_id: admission.receipt for site_id, admission in sorted(admissions.items())
-        },
+        "epilogue_admissions": {site_id: admission.receipt for site_id, admission in sorted(admissions.items())},
         "residual_domain_plan": residual,
         "nodes": node_rows,
         "edges": edge_rows,

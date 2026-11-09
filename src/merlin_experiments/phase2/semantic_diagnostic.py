@@ -15,8 +15,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from merlin.targetgen.contract.linalg_iface import is_linalg_on_tensors, parse_linalg_mlir
 from merlin.target.spec.instructions import validate_normalized_instruction_model
+from merlin.targetgen.contract.linalg_iface import is_linalg_on_tensors, parse_linalg_mlir
 from merlin.targetgen.semantic_search import SearchLimits, search_linalg_inventory
 
 from . import contracts as C

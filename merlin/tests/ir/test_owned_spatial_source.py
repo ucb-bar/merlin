@@ -150,28 +150,42 @@ def test_in_memory_selection_cannot_enable_an_undeclared_frozen_source(tmp_path)
 
 
 def _private_source(tmp_path):
-    selected = {"schema": "merlin.owned_spatial_source.v2", "stack_budget_bytes": 8192,
-                "effects_basis": "original conditional source premise"}
+    selected = {
+        "schema": "merlin.owned_spatial_source.v2",
+        "stack_budget_bytes": 8192,
+        "effects_basis": "original conditional source premise",
+    }
     for role in ("source", "plan", "source_graph", "source_rewrite"):
         path = tmp_path / (role + ".json")
         path.write_text('{"original":"' + role + '"}')
         selected[role] = {"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-    declaration = {"name": "original_region", "kind": "model_slice", "label": "hidden",
-                   "model": "synthetic_owner_model", "source_role": "model_derived",
-                   "owned_host_source": selected, "operation": {"op": "spatial_producer_pool"},
-                   "semantic": {"must_accelerate": True}}
+    declaration = {
+        "name": "original_region",
+        "kind": "model_slice",
+        "label": "hidden",
+        "model": "synthetic_owner_model",
+        "source_role": "model_derived",
+        "owned_host_source": selected,
+        "operation": {"op": "spatial_producer_pool"},
+        "semantic": {"must_accelerate": True},
+    }
     raw = yaml.safe_dump(declaration).encode()
     (tmp_path / "capsule.yaml").write_bytes(raw)
     return declaration, raw
 
 
 def test_private_source_intake_requires_scoped_exact_owner_selection(tmp_path):
-    from merlin.compiler.build.spatial import SpatialSourceDiagnostic, _source_visibility_selected, scoped_spatial_source_diagnostic
+    from merlin.compiler.build.spatial import (
+        SpatialSourceDiagnostic,
+        _source_visibility_selected,
+        scoped_spatial_source_diagnostic,
+    )
 
     declaration, raw = _private_source(tmp_path)
     assert not _source_visibility_selected(declaration, raw)
     selected = SpatialSourceDiagnostic.from_frozen_capsule(
-        tmp_path, declaration_sha256=hashlib.sha256(raw).hexdigest(),
+        tmp_path,
+        declaration_sha256=hashlib.sha256(raw).hexdigest(),
     )
     with scoped_spatial_source_diagnostic(selected):
         assert _source_visibility_selected(declaration, raw)
@@ -180,9 +194,16 @@ def test_private_source_intake_requires_scoped_exact_owner_selection(tmp_path):
         # Even a matching trusted selection cannot relabel the in-memory original.
         with pytest.raises(ValueError, match="differs from its frozen"):
             emit(
-                {**declaration, "model": "another_model", "__dir__": str(tmp_path)}, "", {}, tmp_path / "out",
-                target="fixture", candidate_package=tmp_path, binding=None, compile_flags=(),
-                completion_symbol="complete", entry_symbol="entry",
+                {**declaration, "model": "another_model", "__dir__": str(tmp_path)},
+                "",
+                {},
+                tmp_path / "out",
+                target="fixture",
+                candidate_package=tmp_path,
+                binding=None,
+                compile_flags=(),
+                completion_symbol="complete",
+                entry_symbol="entry",
             )
     assert not _source_visibility_selected(declaration, raw)
 
@@ -205,7 +226,8 @@ def test_private_source_selection_cannot_grant_unknown_or_changed_source(tmp_pat
         (tmp_path / "capsule.yaml").write_bytes(raw)
     with pytest.raises(ValueError):
         SpatialSourceDiagnostic.from_frozen_capsule(
-            tmp_path, declaration_sha256="0" * 64 if mutation == "wrong_pin" else hashlib.sha256(raw).hexdigest(),
+            tmp_path,
+            declaration_sha256="0" * 64 if mutation == "wrong_pin" else hashlib.sha256(raw).hexdigest(),
         )
 
 

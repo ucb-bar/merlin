@@ -19,7 +19,8 @@ def test_native_export_worker_preserves_state_and_refuses_incomplete_output_refe
         pytest.skip("configure the actual pinned model2MLIR capture environment")
     assert capture_pin(checkout)["ok"]
     script = tmp_path / "exports.py"
-    script.write_text('''import sys
+    script.write_text(
+        """import sys
 from pathlib import Path
 import torch
 class Layout(torch.nn.Module):
@@ -35,15 +36,27 @@ class Multi(torch.nn.Module):
 for name, model in [("layout", Layout()), ("weighted", Weighted()), ("multi", Multi())]:
     exported = torch.export.export(model.eval(), (torch.arange(6, dtype=torch.float32).reshape(2, 3),))
     torch.export.save(exported, Path(sys.argv[1]) / (name + ".pt2"))
-''', encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
     subprocess.run([str(python), str(script), str(tmp_path)], check=True, capture_output=True, text=True)
     worker = repo_root() / "src/merlin/targetgen/_pt2_capture_worker.py"
     for name in ("layout", "weighted", "multi"):
         capture = tmp_path / name
-        completed = subprocess.run([
-            str(python), str(worker), "--exported", str(tmp_path / (name + ".pt2")),
-            "--out", str(capture), "--m2m-dir", str(checkout),
-        ], capture_output=True, text=True)
+        completed = subprocess.run(
+            [
+                str(python),
+                str(worker),
+                "--exported",
+                str(tmp_path / (name + ".pt2")),
+                "--out",
+                str(capture),
+                "--m2m-dir",
+                str(checkout),
+            ],
+            capture_output=True,
+            text=True,
+        )
         if name == "multi":
             assert completed.returncode != 0
             assert "one tensor output" in completed.stderr
@@ -70,7 +83,8 @@ for name, model in [("layout", Layout()), ("weighted", Weighted()), ("multi", Mu
 
     result = api.compile(
         api.SavedExport(tmp_path / "layout.pt2", capture=tmp_path / "public-reference"),
-        backend=layout, output=tmp_path / "public-compiled",
+        backend=layout,
+        output=tmp_path / "public-compiled",
     )
     reopened = api.Compilation.load(result.manifest)
     load_compile_inputs(reopened.directory / "frontend")
@@ -80,7 +94,8 @@ for name, model in [("layout", Layout()), ("weighted", Weighted()), ("multi", Mu
     with pytest.raises(ValueError, match="buffer binding requires"):
         api.compile(
             api.SavedExport(tmp_path / "weighted.pt2", capture=tmp_path / "weighted-reference"),
-            backend=layout, output=tmp_path / "weighted-rejected",
+            backend=layout,
+            output=tmp_path / "weighted-rejected",
         )
     assert not (tmp_path / "weighted-rejected").exists()
 
@@ -93,7 +108,8 @@ def test_python_program_inputs_freeze_original_and_use_the_public_compile_servic
         pytest.skip("configure the actual pinned model2MLIR capture environment")
     assert capture_pin(checkout)["ok"]
     script = tmp_path / "programs.py"
-    script.write_text('''import ctypes, json, subprocess, sys
+    script.write_text(
+        """import ctypes, json, subprocess, sys
 from pathlib import Path
 import torch
 from merlin import api
@@ -155,17 +171,30 @@ for program, args, message in ((model, None, "requires example_inputs"),
         raise AssertionError("invalid input was accepted")
 assert not (root/"rejected").exists() and not (root/"rejected.capture").exists()
 print(json.dumps({"input_kinds": 5, "actual_scalar_c_execution": True, "shared_calls": 2}))
-''', encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
     environment = dict(os.environ)
-    environment["PYTHONPATH"] = os.pathsep.join(filter(None, [
-        str(repo_root() / "src"), environment.get("PYTHONPATH"),
-    ]))
+    environment["PYTHONPATH"] = os.pathsep.join(
+        filter(
+            None,
+            [
+                str(repo_root() / "src"),
+                environment.get("PYTHONPATH"),
+            ],
+        )
+    )
     completed = subprocess.run(
-        [str(python), str(script), str(tmp_path)], env=environment,
-        capture_output=True, text=True, check=True,
+        [str(python), str(script), str(tmp_path)],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     assert json.loads(completed.stdout.splitlines()[-1]) == {
-        "input_kinds": 5, "actual_scalar_c_execution": True, "shared_calls": 2,
+        "input_kinds": 5,
+        "actual_scalar_c_execution": True,
+        "shared_calls": 2,
     }
 
 
@@ -186,12 +215,18 @@ def test_weighted_export_native_scalar_execution_matches_separate_reference(tmp_
     checkout = root()
     python = capture_python_path(checkout=checkout)
     tools = (toolchain.llvm_install() / "bin/mlir-opt", toolchain.mlir_translate(), toolchain.clang())
-    if (not python.is_file() or not checkout.is_dir() or not all(path.is_file() for path in tools)
-            or platform.machine() != "x86_64" or toolchain._env("MERLIN_COMPILER_DRIVER") != "stock-cli"):
+    if (
+        not python.is_file()
+        or not checkout.is_dir()
+        or not all(path.is_file() for path in tools)
+        or platform.machine() != "x86_64"
+        or toolchain._env("MERLIN_COMPILER_DRIVER") != "stock-cli"
+    ):
         pytest.skip("requires selected pinned capture and native stock MLIR/clang on x86_64")
     assert capture_pin(checkout)["ok"]
     source = tmp_path / "original.py"
-    source.write_text('''import sys, torch
+    source.write_text(
+        """import sys, torch
 class Model(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -203,23 +238,48 @@ class Model(torch.nn.Module):
 program = torch.export.export(Model().eval(), (torch.arange(-3, 3, dtype=torch.float32).reshape(2, 3),),
                               strict=False)
 torch.export.save(program, sys.argv[1])
-''', encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
     archive = tmp_path / "model.pt2"
     subprocess.run([str(python), str(source), str(archive)], check=True, capture_output=True, text=True)
     flags = ("--target=x86_64-unknown-linux-gnu",)
     selected = observe_index_width(tools[2], flags)
-    result = api.compile(archive, backend=scalar, output=tmp_path / "compiled", options=api.CompileOptions(parameters={
-        "scalar.data-layout": selected["data_layout"], "scalar.index-bits": selected["index_bits"],
-        "frontend.max-initialization-bytes": 64,
-    }))
+    result = api.compile(
+        archive,
+        backend=scalar,
+        output=tmp_path / "compiled",
+        options=api.CompileOptions(
+            parameters={
+                "scalar.data-layout": selected["data_layout"],
+                "scalar.index-bits": selected["index_bits"],
+                "frontend.max-initialization-bytes": 64,
+            }
+        ),
+    )
     result.verify()
     binding = result.metadata["frontend"]["argument_binding"]
     assert len(binding["initializers"]) == 2 and len(binding["runtime_inputs"]) == 1
     assert binding["unique_initialization_bytes"] == binding["initialization_byte_budget"] == 64
     assert "frontend.max-initialization-bytes" not in result.metadata["request"]["options"]["parameters"]
     library = tmp_path / "model.so"
-    subprocess.run([str(tools[2]), *flags, "-O2", "-fno-vectorize", "-fno-slp-vectorize", "-fPIC", "-shared",
-                    str(result.directory / "module.ll"), str(mlir_runtime_c()), "-lm", "-o", str(library)], check=True)
+    subprocess.run(
+        [
+            str(tools[2]),
+            *flags,
+            "-O2",
+            "-fno-vectorize",
+            "-fno-slp-vectorize",
+            "-fPIC",
+            "-shared",
+            str(result.directory / "module.ll"),
+            str(mlir_runtime_c()),
+            "-lm",
+            "-o",
+            str(library),
+        ],
+        check=True,
+    )
     call = ctypes.CDLL(str(library))._mlir_ciface_forward
     call.argtypes, call.restype = [ctypes.c_void_p] * 2, None
     inputs = np.arange(-3, 3, dtype=np.float32).reshape(2, 3)

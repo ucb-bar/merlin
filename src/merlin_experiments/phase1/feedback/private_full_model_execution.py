@@ -316,7 +316,8 @@ def run_engine(
     from merlin.runtime.backends import base as backends
     from merlin.targetgen.contract.compile import _selected_run_timeout
 
-    from ..joint_control import require_full_model, selected as joint_campaign
+    from ..joint_control import require_full_model
+    from ..joint_control import selected as joint_campaign
 
     if joint_campaign() is not None:
         timeout_s = min(timeout_s, require_full_model(engine=engine))
@@ -569,8 +570,8 @@ def host_execution_outputs(capture: Path, workdir: Path, *, receipt: Mapping[str
 
     options: dict[str, Any] = {}
     if receipt is not None:
-        from merlin.runtime import modelinputs as model_inputs
         from merlin.mining.registry import load_rvv_package
+        from merlin.runtime import modelinputs as model_inputs
 
         inputs = receipt.get("inputs") or {}
         package_path = Path(str(inputs.get("package") or ""))

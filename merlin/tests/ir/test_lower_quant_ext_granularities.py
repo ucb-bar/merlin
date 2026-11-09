@@ -242,7 +242,7 @@ def quantized_primitive_cases(tmp_path_factory):
         pytest.skip("select the actual pinned Torch/TorchAO/model2MLIR capture environment")
     tmp_path = tmp_path_factory.mktemp("quantized-primitives")
     script = tmp_path / "quantization.py"
-    script.write_text('''import json,sys
+    script.write_text("""import json,sys
 from pathlib import Path
 import numpy as np, torch, m2m
 import torch.ao.quantization.fx._decomposed
@@ -275,9 +275,14 @@ for index,(scale,zero,qmin,qmax) in enumerate(scales):
         np.save(directory/"expected.npy",expected.numpy())
         cases.append({"key":key,"admitted":index!=len(scales)-1,"dtype":name,"zero":zero,"min":qmin,"max":qmax})
 (root/"cases.json").write_text(json.dumps(cases))
-''')
-    result = subprocess.run([python, "-B", str(script), str(tmp_path)], capture_output=True, text=True,
-                            timeout=180, env={**os.environ, "PYTHONPATH": producer})
+""")
+    result = subprocess.run(
+        [python, "-B", str(script), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        timeout=180,
+        env={**os.environ, "PYTHONPATH": producer},
+    )
     assert result.returncode == 0, result.stderr[-8000:]
     cases = json.loads((tmp_path / "cases.json").read_bytes())
     return tmp_path, cases
@@ -316,8 +321,9 @@ def test_actual_pinned_torch_quantization_boundaries_and_scalar_precision_admiss
         np.testing.assert_array_equal(actual, expected, err_msg=case["key"])
         # NaN maps to integer zero independently of the zero point; infinities
         # saturate; signed zero follows the ordinary zero-point arithmetic.
-        np.testing.assert_array_equal(actual[-6:-1],
-                                      np.array([0, case["max"], case["min"], case["zero"], case["zero"]], np.int8))
+        np.testing.assert_array_equal(
+            actual[-6:-1], np.array([0, case["max"], case["min"], case["zero"], case["zero"]], np.int8)
+        )
 
 
 def test_native_scalar_quantization_matches_actual_torch_primitive(quantized_primitive_cases, tmp_path):
@@ -336,9 +342,12 @@ def test_native_scalar_quantization_matches_actual_torch_primitive(quantized_pri
     from merlin.llvmlower.abi import HostModel
     from merlin.xdsl_dialects._common import text
 
-    if (platform.system() != "Linux" or platform.machine() != "x86_64"
-            or toolchain._env("MERLIN_COMPILER_DRIVER", "python") != "stock-cli"
-            or not Path(toolchain.clang()).is_file()):
+    if (
+        platform.system() != "Linux"
+        or platform.machine() != "x86_64"
+        or toolchain._env("MERLIN_COMPILER_DRIVER", "python") != "stock-cli"
+        or not Path(toolchain.clang()).is_file()
+    ):
         pytest.skip("select actual stock MLIR/LLVM host tools on Linux x86_64")
     layout = target_data_layout.observe_index_width(toolchain.clang(), ["--target=x86_64-unknown-linux-gnu"])
     options = api.CompileOptions(parameters={"scalar.data-layout": layout["data_layout"], "scalar.index-bits": 64})
@@ -358,8 +367,12 @@ def test_native_scalar_quantization_matches_actual_torch_primitive(quantized_pri
         # or lucky CPU behavior for an otherwise-poison NaN conversion.
         generic = tmp_path / (case["key"] + "-native.mlir")
         native = compiled.directory / "native/model.llvm.mlir"
-        codegen._run([toolchain.llvm_install() / "bin/mlir-opt", native, "--mlir-print-op-generic", "-o", generic],
-                     inputs=(native,), outputs=(generic,), stage="quantization_native_guard")
+        codegen._run(
+            [toolchain.llvm_install() / "bin/mlir-opt", native, "--mlir-print-op-generic", "-o", generic],
+            inputs=(native,),
+            outputs=(generic,),
+            stage="quantization_native_guard",
+        )
         native_module = native_abi._parse_native(generic.read_text())
         conversions = [op for op in native_module.walk() if native_abi._name(op) == "llvm.fptosi"]
         assert conversions, "actual lowering must expose the checked float-to-integer operand"

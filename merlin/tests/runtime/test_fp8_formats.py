@@ -32,6 +32,7 @@ def test_e4m3_matches_the_existing_whole_model_decoder():
 def test_e5m2_decodes_its_own_layout_including_inf_nan():
     def dec(u, f):
         return float(fp8_to_f32(np.array([u], np.uint8), f)[0])
+
     assert dec(0x3C, "fp8_e5m2") == 1.0  # e5m2 1.0 (exp 15, man 0)
     assert dec(0x38, "fp8_e4m3") == 1.0  # e4m3 1.0 (exp 7, man 0) — same byte, DIFFERENT value:
     assert dec(0x3C, "fp8_e4m3") != 1.0  #   0x3C is not 1.0 in e4m3

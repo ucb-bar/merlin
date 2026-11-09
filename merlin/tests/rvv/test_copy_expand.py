@@ -132,10 +132,13 @@ def test_no_feature_runs_the_pipeline_in_one_stage():
     assert seen[0] == "builtin.module(" + _upstream_pipeline() + ")"
 
 
-@pytest.mark.parametrize("pass_pipeline", [
-    _upstream_pipeline(),
-    "canonicalize,func.func(buffer-loop-hoisting),func.func(convert-linalg-to-loops),canonicalize,cse",
-])
+@pytest.mark.parametrize(
+    "pass_pipeline",
+    [
+        _upstream_pipeline(),
+        "canonicalize,func.func(buffer-loop-hoisting),func.func(convert-linalg-to-loops),canonicalize,cse",
+    ],
+)
 def test_mid_stage_window_stops_before_linalg_is_lowered(pass_pipeline):
     """A mid rewrite that EMITS linalg must run before convert-linalg-to-loops, in EVERY pipeline.
 

@@ -656,9 +656,11 @@ def _host_regions(ops, stage_of, taken: dict[int, Group], oracle: TargetOracle) 
             # contraction.  Joining across either edge lets downstream glue
             # obscure a complete quantized sum/mean on the producer side.
             continue
-        if (stage_of[id(op)].kind in (VIEW, PAD, MOVEMENT)
-                and stage_of[id(users[0])].kind == DEQUANTIZE
-                and _dequantize_feeds_add(users[0], stage_of)):
+        if (
+            stage_of[id(op)].kind in (VIEW, PAD, MOVEMENT)
+            and stage_of[id(users[0])].kind == DEQUANTIZE
+            and _dequantize_feeds_add(users[0], stage_of)
+        ):
             # The scaled add reads the prepared integer tensor. Keep its
             # upstream layout/padding as a separate original host region;
             # its arithmetic statement contains only DQ/add/readout stages.
@@ -1157,7 +1159,8 @@ def _grow(
         sequence_check = getattr(oracle, "absorbs_sequence", None)
         if absorbable.admitted and sequence_check is not None:
             absorbable = sequence_check(
-                [*(stage_of[id(member)].kind for member in members), stage.kind], unit=group.placement,
+                [*(stage_of[id(member)].kind for member in members), stage.kind],
+                unit=group.placement,
             )
         if not absorbable.admitted:
             group.stopped_by, group.stopped_at = stage.kind, pending_pad or user

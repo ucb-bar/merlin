@@ -16,7 +16,6 @@ from typing import Any
 
 from merlin.common import mlir_query as mq
 from merlin.common.digest import is_sha256
-from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
 from merlin.frontends.capture_normalization import normalize_capture_mlir
 from merlin.frontends.linalg_f32_maximum_patterns import (
     STATIC_F32_MAXIMUM_SOURCE_BODY_SCHEMA,
@@ -25,6 +24,7 @@ from merlin.frontends.linalg_f32_maximum_patterns import (
 )
 from merlin.frontends.linalg_patterns import InvalidLinalgPattern
 from merlin.llvmlower.target_data_layout import selected_index_bits
+from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
 from merlin_experiments.phase1.feedback import private_control_support as control
 from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 from merlin_experiments.phase1.feedback.private_index_source import _same_json_value

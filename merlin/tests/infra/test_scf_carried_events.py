@@ -1,4 +1,5 @@
 """Counted completion ownership and actual SSA callback consumption, without target latency guesses."""
+
 from dataclasses import replace
 
 import pytest
@@ -6,10 +7,12 @@ from test_scf_commands import ExecuteIndices
 from xdsl.dialects import builtin, llvm, scf
 
 from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
-from merlin.compiler.schedule.scf_commands import emit_scf_commands
-from merlin.compiler.schedule.scf_commands import materialize_scf_commands
-from merlin.compiler.schedule.scf_commands import unroll_small_command_loops
-from merlin.compiler.schedule.scf_commands import verify_scf_commands
+from merlin.compiler.schedule.scf_commands import (
+    emit_scf_commands,
+    materialize_scf_commands,
+    unroll_small_command_loops,
+    verify_scf_commands,
+)
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.sched.ir import Call, Const, Kernel, Loop, Stage, Var, check_structure, parse_kernel
 
@@ -26,31 +29,63 @@ def pipeline(trips=3, *, hazard=False, nested=False):
     a = Stage("private", 0, 4, writes=True)
     b = Stage("private", 4, 4, writes=True)
     body = (
-        Call("compute", (("tile", Var("i") * 2), ("slot", Const(0))), produces="ca", awaits=("a",),
-             stages=(replace(a, writes=False),)),
-        Call("compute", (("tile", Var("i") * 2 + 1), ("slot", Const(1))), produces="cb", awaits=("b",),
-             stages=(replace(b, writes=False),)),
-        Call("fetch", (("tile", Var("i") * 2 + 2), ("slot", Const(0))), produces="na",
-             awaits=() if hazard else ("ca",), stages=(a,)),
-        Call("fetch", (("tile", Var("i") * 2 + 3), ("slot", Const(1))), produces="nb",
-             awaits=("cb",), stages=(b,)),
+        Call(
+            "compute",
+            (("tile", Var("i") * 2), ("slot", Const(0))),
+            produces="ca",
+            awaits=("a",),
+            stages=(replace(a, writes=False),),
+        ),
+        Call(
+            "compute",
+            (("tile", Var("i") * 2 + 1), ("slot", Const(1))),
+            produces="cb",
+            awaits=("b",),
+            stages=(replace(b, writes=False),),
+        ),
+        Call(
+            "fetch",
+            (("tile", Var("i") * 2 + 2), ("slot", Const(0))),
+            produces="na",
+            awaits=() if hazard else ("ca",),
+            stages=(a,),
+        ),
+        Call("fetch", (("tile", Var("i") * 2 + 3), ("slot", Const(1))), produces="nb", awaits=("cb",), stages=(b,)),
     )
     loop = Loop("i", trips, body, (("a", "start_a"), ("b", "start_b")), ("na", "nb"), ("end_a", "end_b"))
     if nested:
         # The outer loop transports the inner loop's real results; this does
         # not assert that a result finished merely because the child returned.
         child = replace(loop, iter_args=(("a", "outer_a"), ("b", "outer_b")))
-        loop = Loop("outer", 1, (child,), (("outer_a", "start_a"), ("outer_b", "start_b")),
-                    ("end_a", "end_b"), ("end_a", "end_b"))
-    return Kernel("stream", (), (
-        Call("fetch", (("tile", Const(0)), ("slot", Const(0))), produces="start_a", stages=(a,)),
-        Call("fetch", (("tile", Const(1)), ("slot", Const(1))), produces="start_b", stages=(b,)),
-        loop,
-        Call("finish", (("tile", Const(trips * 2)), ("slot", Const(0))), awaits=("end_a",),
-             stages=(replace(a, writes=False),)),
-        Call("finish", (("tile", Const(trips * 2 + 1)), ("slot", Const(1))), awaits=("end_b",),
-             stages=(replace(b, writes=False),)),
-    ))
+        loop = Loop(
+            "outer",
+            1,
+            (child,),
+            (("outer_a", "start_a"), ("outer_b", "start_b")),
+            ("end_a", "end_b"),
+            ("end_a", "end_b"),
+        )
+    return Kernel(
+        "stream",
+        (),
+        (
+            Call("fetch", (("tile", Const(0)), ("slot", Const(0))), produces="start_a", stages=(a,)),
+            Call("fetch", (("tile", Const(1)), ("slot", Const(1))), produces="start_b", stages=(b,)),
+            loop,
+            Call(
+                "finish",
+                (("tile", Const(trips * 2)), ("slot", Const(0))),
+                awaits=("end_a",),
+                stages=(replace(a, writes=False),),
+            ),
+            Call(
+                "finish",
+                (("tile", Const(trips * 2 + 1)), ("slot", Const(1))),
+                awaits=("end_b",),
+                stages=(replace(b, writes=False),),
+            ),
+        ),
+    )
 
 
 def execute(module):
@@ -102,13 +137,27 @@ def test_actual_xdsl_unroll_threads_event_phi_edges_and_alpha_names():
 
 def test_reentry_hazard_not_visible_in_completed_startup_is_rejected():
     stage = Stage("private", 0, 4, writes=True)
-    kernel = Kernel("reentry", (), (
-        Call("seed", (), produces="seed"), Call("wait", (), awaits=("seed",)),
-        Loop("i", 3, (Call("clobber", (), stages=(stage,)), Call("wait", (), awaits=("incoming",)),
-                      Call("launch", (), produces="next", stages=(stage,))),
-             (("incoming", "seed"),), ("next",), ("last",)),
-        Call("wait", (), awaits=("last",)),
-    ))
+    kernel = Kernel(
+        "reentry",
+        (),
+        (
+            Call("seed", (), produces="seed"),
+            Call("wait", (), awaits=("seed",)),
+            Loop(
+                "i",
+                3,
+                (
+                    Call("clobber", (), stages=(stage,)),
+                    Call("wait", (), awaits=("incoming",)),
+                    Call("launch", (), produces="next", stages=(stage,)),
+                ),
+                (("incoming", "seed"),),
+                ("next",),
+                ("last",),
+            ),
+            Call("wait", (), awaits=("last",)),
+        ),
+    )
     with pytest.raises(ValueError, match="private rows reused"):
         materialize_scf_commands(kernel)
 
@@ -122,12 +171,16 @@ def test_war_hazard_and_missing_final_drain_refuse_before_target_callbacks():
 
 
 def test_large_periodic_handle_permutation_is_compact_not_trip_enumerated():
-    kernel = Kernel("rotate", (), (
-        Call("a", (), produces="a", stages=(Stage("x", 0, 1, writes=True),)),
-        Call("b", (), produces="b", stages=(Stage("x", 1, 1, writes=True),)),
-        Loop("i", 1_000_001, (), (("x", "a"), ("y", "b")), ("y", "x"), ("last_x", "last_y")),
-        Call("wait", (), awaits=("last_x", "last_y")),
-    ))
+    kernel = Kernel(
+        "rotate",
+        (),
+        (
+            Call("a", (), produces="a", stages=(Stage("x", 0, 1, writes=True),)),
+            Call("b", (), produces="b", stages=(Stage("x", 1, 1, writes=True),)),
+            Loop("i", 1_000_001, (), (("x", "a"), ("y", "b")), ("y", "x"), ("last_x", "last_y")),
+            Call("wait", (), awaits=("last_x", "last_y")),
+        ),
+    )
     report = verify_scf_commands(materialize_scf_commands(kernel))
     assert report["loop_carried_completion"]["state_transfer_operations"] < 32
 
@@ -145,8 +198,12 @@ def test_lexical_capture_stale_initial_and_aliased_yield_refuse():
 def test_missing_actual_carried_builder_refuses_before_any_target_call():
     calls = []
     with pytest.raises(ValueError, match="actual loop input/yield/result"):
-        emit_scf_commands(materialize_scf_commands(pipeline()), ExecuteIndices(),
-                          lambda *args: calls.append(args), await_events=lambda values: None)
+        emit_scf_commands(
+            materialize_scf_commands(pipeline()),
+            ExecuteIndices(),
+            lambda *args: calls.append(args),
+            await_events=lambda values: None,
+        )
     assert not calls
 
 
@@ -157,8 +214,9 @@ def test_actual_llvm_cfg_consumes_carried_event_handles_and_completion_calls():
     def lower(name, args, metadata):
         operands = [adapter.value(v) for v in args.values()]
         result_types = [builtin.i64] if metadata.produces else []
-        op = builder.add(llvm.CallOp("target_" + name, *operands,
-                                    return_type=result_types[0] if result_types else None))
+        op = builder.add(
+            llvm.CallOp("target_" + name, *operands, return_type=result_types[0] if result_types else None)
+        )
         return op.results[0] if metadata.produces else None
 
     def await_events(handles):
@@ -167,18 +225,19 @@ def test_actual_llvm_cfg_consumes_carried_event_handles_and_completion_calls():
 
     emit_scf_commands(materialize_scf_commands(pipeline()), adapter, lower, await_events=await_events)
     function = llvm.FuncOp("schedule", llvm.LLVMFunctionType([]), body=builder.finish())
-    declarations = [llvm.FuncOp("target_" + name, llvm.LLVMFunctionType(inputs, output),
-                               linkage=llvm.LinkageAttr("external")) for name, inputs, output in (
-        ("fetch", [builtin.i64, builtin.i64], builtin.i64),
-        ("compute", [builtin.i64, builtin.i64], builtin.i64),
-        ("finish", [builtin.i64, builtin.i64], None),
-        ("complete", [builtin.i64], None),
-    )]
+    declarations = [
+        llvm.FuncOp("target_" + name, llvm.LLVMFunctionType(inputs, output), linkage=llvm.LinkageAttr("external"))
+        for name, inputs, output in (
+            ("fetch", [builtin.i64, builtin.i64], builtin.i64),
+            ("compute", [builtin.i64, builtin.i64], builtin.i64),
+            ("finish", [builtin.i64, builtin.i64], None),
+            ("complete", [builtin.i64], None),
+        )
+    ]
     builtin.ModuleOp([*declarations, function]).verify()
     assert any(len(block.args) == 3 for block in function.body.blocks)
     assert any(len(block.args) == 2 for block in function.body.blocks)
-    assert sum(type(op) is llvm.CallOp and op.callee.string_value() == "target_complete"
-               for op in function.walk()) == 6
+    assert sum(type(op) is llvm.CallOp and op.callee.string_value() == "target_complete" for op in function.walk()) == 6
 
 
 def test_old_synchronous_text_and_digest_are_unchanged():
@@ -187,11 +246,11 @@ def test_old_synchronous_text_and_digest_are_unchanged():
     assert parse_kernel(kernel.text()) == kernel
 
 
-@pytest.mark.parametrize("trips,action,factor", [(7, "split", 2), (7, "unroll", 2), (2, "unroll", 2),
-                                               (9, "split", 4), (9, "unroll", 4)])
+@pytest.mark.parametrize(
+    "trips,action,factor", [(7, "split", 2), (7, "unroll", 2), (2, "unroll", 2), (9, "split", 4), (9, "unroll", 4)]
+)
 def test_ordered_ir_split_unroll_tail_and_alpha_renamed_completion_edges(trips, action, factor):
-    from merlin.compiler.schedule.loop_schedule import LoopTransform
-    from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
+    from merlin.compiler.schedule.loop_schedule import LoopTransform, propose_loop_transforms
 
     source = pipeline(trips)
     result = propose_loop_transforms(source, (LoopTransform(action, ("i",), factor=factor),))
@@ -201,21 +260,22 @@ def test_ordered_ir_split_unroll_tail_and_alpha_renamed_completion_edges(trips, 
 
 
 def test_nested_ir_partial_unroll_and_partition_thread_enclosing_yields():
-    from merlin.compiler.schedule.loop_schedule import LoopTransform
-    from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
+    from merlin.compiler.schedule.loop_schedule import LoopTransform, propose_loop_transforms
 
     source = pipeline(7, nested=True)
-    result = propose_loop_transforms(source, (
-        LoopTransform("partition", ("outer", "i"), cuts=(2, 5), names=("first", "middle", "last")),
-        LoopTransform("unroll", ("outer", "middle"), factor=2),
-    ))
+    result = propose_loop_transforms(
+        source,
+        (
+            LoopTransform("partition", ("outer", "i"), cuts=(2, 5), names=("first", "middle", "last")),
+            LoopTransform("unroll", ("outer", "middle"), factor=2),
+        ),
+    )
     assert parse_kernel(result.text()) == result
     assert execute(materialize_scf_commands(result)) == execute(materialize_scf_commands(source))
 
 
 def test_partial_unroll_preserves_original_select_tail_operand():
-    from merlin.compiler.schedule.loop_schedule import LoopTransform
-    from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
+    from merlin.compiler.schedule.loop_schedule import LoopTransform, propose_loop_transforms
     from merlin.sched.ir.expr import select
 
     source = pipeline(7)
@@ -228,21 +288,24 @@ def test_partial_unroll_preserves_original_select_tail_operand():
     from merlin.sched.ir.kernel import concretize, instances
 
     assert [(c.instr, concretize(c, env)) for c, env in instances(result)] == [
-        (c.instr, concretize(c, env)) for c, env in instances(source)]
+        (c.instr, concretize(c, env)) for c, env in instances(source)
+    ]
     assert execute(materialize_scf_commands(result)) == execute(materialize_scf_commands(source))
 
 
 def test_dependency_changing_carried_transform_refuses_and_low_level_split_is_not_erased():
-    from merlin.compiler.schedule.loop_schedule import LoopTransform
-    from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
+    from merlin.compiler.schedule.loop_schedule import LoopTransform, propose_loop_transforms
     from merlin.sched.primitives import Cursor, NotApplicable, divide_loop
 
     source = pipeline(4)
     result = divide_loop(source, Cursor(loops=("i",)), 2)
     assert result.body[2].iter_args
     assert execute(materialize_scf_commands(result)) == execute(materialize_scf_commands(source))
-    for request in (LoopTransform("fission", ("i",), cut=2), LoopTransform("reorder", ("i",)),
-                    LoopTransform("hoist", ("i",), index=0)):
+    for request in (
+        LoopTransform("fission", ("i",), cut=2),
+        LoopTransform("reorder", ("i",)),
+        LoopTransform("hoist", ("i",), index=0),
+    ):
         with pytest.raises(NotApplicable, match="dependency transport"):
             propose_loop_transforms(source, (request,))
 
@@ -269,8 +332,7 @@ def test_mutated_actual_ssa_edge_and_untyped_loop_marker_refuse():
 
 
 def test_nested_complete_unroll_propagates_actual_final_event_to_outer_yield():
-    from merlin.compiler.schedule.loop_schedule import LoopTransform
-    from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
+    from merlin.compiler.schedule.loop_schedule import LoopTransform, propose_loop_transforms
 
     source = pipeline(3, nested=True)
     result = propose_loop_transforms(source, (LoopTransform("unroll", ("outer", "i"), factor=3),))
@@ -294,17 +356,22 @@ def test_direct_partition_helper_cannot_drop_duplicate_or_reorder_original_trips
     from merlin.sched.primitives.event_loops import partition_event_loop
 
     with pytest.raises(NotApplicable, match="exact complete increasing"):
-        partition_event_loop(pipeline(7), ("i",), bounds, tuple(f"part{i}" for i in range(len(bounds)-1)))
+        partition_event_loop(pipeline(7), ("i",), bounds, tuple(f"part{i}" for i in range(len(bounds) - 1)))
 
 
 def test_legacy_completed_token_capture_keeps_original_nonlexical_mode():
     # The previous bridge allowed a completed outer token to be awaited again
     # within a loop. A program without explicit carries keeps that old scope;
     # opting into lexical ownership must not silently change an old program.
-    source = Kernel("legacy", (), (
-        Call("seed", (), produces="ready"), Call("wait", (), awaits=("ready",)),
-        Loop("i", 3, (Call("wait", (), awaits=("ready",)),)),
-    ))
+    source = Kernel(
+        "legacy",
+        (),
+        (
+            Call("seed", (), produces="ready"),
+            Call("wait", (), awaits=("ready",)),
+            Loop("i", 3, (Call("wait", (), awaits=("ready",)),)),
+        ),
+    )
     module = materialize_scf_commands(source)
     assert "loop_carried_completion" not in verify_scf_commands(module)
     waited = []

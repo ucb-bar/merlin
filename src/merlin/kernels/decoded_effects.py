@@ -22,48 +22,108 @@ from __future__ import annotations
 
 from collections import Counter
 
+from .decoded_static_effects import _DOMAIN as _DOMAIN
+from .decoded_static_effects import (
+    _MOVEMENT_ROLES as _MOVEMENT_ROLES,
+)
+from .decoded_static_effects import (
+    _VALUES as _VALUES,
+)
+from .decoded_static_effects import (
+    _WITNESSES as _WITNESSES,
+)
+from .decoded_static_effects import (
+    ORDERING as ORDERING,
+)
 from .decoded_static_effects import (
     SCHEMA as SCHEMA,
-    ORDERING as ORDERING,
-    _MOVEMENT_ROLES as _MOVEMENT_ROLES,
-    _WITNESSES as _WITNESSES,
-    _VALUES as _VALUES,
-    _digest as _digest,
-    _fact as _fact,
-    _unknown as _unknown,
-    read_pinned_sidecar as read_pinned_sidecar,
-    read_pinned_facts as read_pinned_facts,
-    local_row_geometry as local_row_geometry,
-    selected_structure as selected_structure,
-    decoded_commands as decoded_commands,
-    _Protocol as _Protocol,
+)
+from .decoded_static_effects import (
     _bits as _bits,
-    _symbolic_bits as _symbolic_bits,
-    _register_domain as _register_domain,
-    _field_domain as _field_domain,
-    _site as _site,
-    _roles as _roles,
-    _retention as _retention,
+)
+from .decoded_static_effects import (
     _broadcast as _broadcast,
-    _tiles as _tiles,
-    _merge as _merge,
+)
+from .decoded_static_effects import (
     _close as _close,
-    _windows as _windows,
+)
+from .decoded_static_effects import (
+    _digest as _digest,
+)
+from .decoded_static_effects import (
     _epilogue as _epilogue,
-    _summary_windows as _summary_windows,
-    _summary_broadcast as _summary_broadcast,
+)
+from .decoded_static_effects import (
+    _fact as _fact,
+)
+from .decoded_static_effects import (
+    _field_domain as _field_domain,
+)
+from .decoded_static_effects import (
     _loop_nest as _loop_nest,
 )
-
-
-from .decoded_static_effects import _DOMAIN as _DOMAIN
-
+from .decoded_static_effects import (
+    _merge as _merge,
+)
+from .decoded_static_effects import (
+    _Protocol as _Protocol,
+)
+from .decoded_static_effects import (
+    _register_domain as _register_domain,
+)
+from .decoded_static_effects import (
+    _retention as _retention,
+)
+from .decoded_static_effects import (
+    _roles as _roles,
+)
+from .decoded_static_effects import (
+    _site as _site,
+)
+from .decoded_static_effects import (
+    _summary_broadcast as _summary_broadcast,
+)
+from .decoded_static_effects import (
+    _summary_windows as _summary_windows,
+)
+from .decoded_static_effects import (
+    _symbolic_bits as _symbolic_bits,
+)
+from .decoded_static_effects import (
+    _tiles as _tiles,
+)
+from .decoded_static_effects import (
+    _unknown as _unknown,
+)
+from .decoded_static_effects import (
+    _windows as _windows,
+)
+from .decoded_static_effects import (
+    decoded_commands as decoded_commands,
+)
+from .decoded_static_effects import (
+    local_row_geometry as local_row_geometry,
+)
+from .decoded_static_effects import (
+    read_pinned_facts as read_pinned_facts,
+)
+from .decoded_static_effects import (
+    read_pinned_sidecar as read_pinned_sidecar,
+)
+from .decoded_static_effects import (
+    selected_structure as selected_structure,
+)
 
 # ----------------------------------------------------------------------------- proved dynamic stream
 STREAM_SCOPE = "proved_dynamic_command_stream"
 _NO_STREAM = "no_proved_command_stream"
-_STREAM_FACTS = ("role_transfer_width", "operand_buffering", "issue_overlap", "prefetch_distance",
-                 "output_group_extent")
+_STREAM_FACTS = (
+    "role_transfer_width",
+    "operand_buffering",
+    "issue_overlap",
+    "prefetch_distance",
+    "output_group_extent",
+)
 _INBOUND_ROLES = ("operand_load", "weight_load", "dma")
 _RUNS_PREFIX = 64
 _BOUND = 32
@@ -247,8 +307,12 @@ class _StreamView:
             slots.setdefault(slot, []).append(name)
         out = []
         for slot, names in sorted(slots.items(), key=lambda item: str(item[0])):
-            rows = self.proto.fields(klass, lambda b, slot=slot: b.get("operand") == slot and b["interp"] == "int"
-                                     and b["field"] == self.proto.extent["rows"])
+            rows = self.proto.fields(
+                klass,
+                lambda b, slot=slot: (
+                    b.get("operand") == slot and b["interp"] == "int" and b["field"] == self.proto.extent["rows"]
+                ),
+            )
             out.append((slot, tuple(sorted(names)), rows[0] if len(rows) == 1 else None))
         self._slots[klass] = out
         return out
@@ -267,8 +331,15 @@ class _StreamView:
                 if relative is not None:
                     high = relative["high"] << relative["width"]
                     flags = tuple(sorted(f for f, bit in self.proto.flags.items() if high & bit))
-                    out.append(("/".join(names), flags, relative["offset"], rows,
-                                (relative["symbol"], relative["width"], high & ~mask)))
+                    out.append(
+                        (
+                            "/".join(names),
+                            flags,
+                            relative["offset"],
+                            rows,
+                            (relative["symbol"], relative["width"], high & ~mask),
+                        )
+                    )
                 continue
             if self.proto.sentinel(klass, names[0], value):
                 continue
@@ -315,8 +386,10 @@ def _block_step_field(structure, proto):
     wanted = (state_ref.get("bundle"), state_ref.get("name"))
     states = proto.fields(config, lambda b: (b["bundle"], b["field"]) == wanted)
     if len(found) != 1 or len(states) != 1:
-        return None, ("no unique per-load-state stride field of the load-configuration class other than the "
-                      "memory stride (RTL field-kind sources)")
+        return None, (
+            "no unique per-load-state stride field of the load-configuration class other than the "
+            "memory stride (RTL field-kind sources)"
+        )
     return (config, found[0], states[0]), None
 
 
@@ -336,8 +409,11 @@ class _Consumption:
         self._last_read = None
         geometry = structure.get("local_geometry") or {}
         self.row_elements = geometry.get("uniform_row_elements")
-        self.geometry_reason = None if type(self.row_elements) is int else (
-            geometry.get("reason") or "local row width not derived from the selected RTL facts")
+        self.geometry_reason = (
+            None
+            if type(self.row_elements) is int
+            else (geometry.get("reason") or "local row width not derived from the selected RTL facts")
+        )
         step, self.step_reason = _block_step_field(structure, view.proto)
         ports = structure.get("load_state_ports") or {}
         steps, writer = {}, {}
@@ -356,15 +432,28 @@ class _Consumption:
                 operand, _ = view.dram(klass, fields)
                 base, flags, space = view.local(klass, fields, symbolic)
                 rows, cols = view.extent(klass, fields)
-                load = dict(position=position, ordinal=loads_seen, computes_before=computes_seen,
-                            role=view.movement_role(roles), operand=operand or "unattributed", flags=flags,
-                            first=None, port=None, ports=set(), footprint=None, space=space)
+                load = dict(
+                    position=position,
+                    ordinal=loads_seen,
+                    computes_before=computes_seen,
+                    role=view.movement_role(roles),
+                    operand=operand or "unattributed",
+                    flags=flags,
+                    first=None,
+                    port=None,
+                    ports=set(),
+                    footprint=None,
+                    space=space,
+                )
                 loads_seen += 1
                 group = (load["role"], load["operand"], flags)
                 load["round"] = current[group]
                 reason = None
-                missing = [name for name, value in (("local address", base), ("transfer rows", rows),
-                                                    ("transfer columns", cols)) if value is None]
+                missing = [
+                    name
+                    for name, value in (("local address", base), ("transfer rows", rows), ("transfer columns", cols))
+                    if value is None
+                ]
                 if missing:
                     reason = "load " + " and ".join(missing) + " unresolved"
                 elif self.row_elements is None:
@@ -408,9 +497,12 @@ class _Consumption:
                     load = self.loads[index]
                     load["ports"].add(port)
                     if load["first"] is None:
-                        load.update(first=position, port=port, loads_between=loads_seen - load["ordinal"] - 1,
-                                    computes_between=computes_seen - load["computes_before"]
-                                    - (kind == "compute"))
+                        load.update(
+                            first=position,
+                            port=port,
+                            loads_between=loads_seen - load["ordinal"] - 1,
+                            computes_between=computes_seen - load["computes_before"] - (kind == "compute"),
+                        )
                     group = (load["role"], load["operand"], load["flags"])
                     if load["round"] == current[group]:
                         current[group] += 1  # data of the open fill round is now being consumed
@@ -424,15 +516,16 @@ class _Consumption:
             self._last_read = {}
             for position, space in self.reads:
                 self._last_read[space] = position
-        return any(position > load["position"] for space, position in self._last_read.items()
-                   if space != load["space"])
+        return any(position > load["position"] for space, position in self._last_read.items() if space != load["space"])
 
     def relative_limits(self):
         if not self.spaces:
             return []
-        return [f"{len(self.spaces)} allocation-relative local-address bases (unproved call returns): rows "
-                "compare only within one base; disjointness or overlap across allocations is not established, "
-                "so a writer of another base is never matched to a reader"]
+        return [
+            f"{len(self.spaces)} allocation-relative local-address bases (unproved call returns): rows "
+            "compare only within one base; disjointness or overlap across allocations is not established, "
+            "so a writer of another base is never matched to a reader"
+        ]
 
     def groups(self):
         """``{(role, operand label): [load]}``; the label carries flag sets only when they split an operand."""
@@ -529,8 +622,13 @@ def _role_transfer_width(view, stream, truncated, evidence_id):
     ports = _consumption(view).operand_ports()
     value = dict(
         data_movement={
-            role: dict(close(row), by_operand={k: dict(close(v), consumer_port=ports.get(f"{role}:{k}"))
-                                               for k, v in sorted(row["by_operand"].items())})
+            role: dict(
+                close(row),
+                by_operand={
+                    k: dict(close(v), consumer_port=ports.get(f"{role}:{k}"))
+                    for k, v in sorted(row["by_operand"].items())
+                },
+            )
             for role, row in sorted(roles.items())
         },
         local_staging={
@@ -559,8 +657,7 @@ def _rounds(loads):
     ``(regions, sequence, straddling_rounds)``; ``sequence`` is the region of each round in issue order."""
     footprints = {}
     for load in loads:
-        footprints.setdefault(load["round"], set()).update(
-            row for lo, hi in load["footprint"] for row in range(lo, hi))
+        footprints.setdefault(load["round"], set()).update(row for lo, hi in load["footprint"] for row in range(lo, hi))
     regions, owner, assigned, straddling = [], {}, [], 0
     for r in sorted(footprints):
         rows = footprints[r]
@@ -594,8 +691,7 @@ def _rounds(loads):
     for i in live:
         rows = sorted(regions[i]["rows"])
         spans = sum(1 for k, row in enumerate(rows) if k == 0 or row != rows[k - 1] + 1)
-        out.append(dict(lo=rows[0], hi=rows[-1], rows=len(rows), intervals=spans,
-                        rounds=sequence.count(live.index(i))))
+        out.append(dict(lo=rows[0], hi=rows[-1], rows=len(rows), intervals=spans, rounds=sequence.count(live.index(i))))
     return out, sequence, straddling
 
 
@@ -621,14 +717,23 @@ def _operand_buffering(view, stream, truncated, evidence_id):
     value = {}
     for (role, operand), loads in sorted(_split_by_base(consumption.groups()).items()):
         bases = sorted({load["footprint"][0][0] for load in loads if load["footprint"]})
-        entry = dict(definition=BUFFERING_DEFINITION, flags=list(loads[0]["flags"]), loads=len(loads),
-                     consumer_port=consumption.port(loads), distinct_base_addresses=len(bases),
-                     base_range=[bases[0], bases[-1]] if bases else None,
-                     block_steps=sorted({load["block_step"] for load in loads if load.get("block_step")}))
+        entry = dict(
+            definition=BUFFERING_DEFINITION,
+            flags=list(loads[0]["flags"]),
+            loads=len(loads),
+            consumer_port=consumption.port(loads),
+            distinct_base_addresses=len(bases),
+            base_range=[bases[0], bases[-1]] if bases else None,
+            block_steps=sorted({load["block_step"] for load in loads if load.get("block_step")}),
+        )
         unresolved = Counter(load["reason"] for load in loads if load["footprint"] is None)
         if unresolved:
-            entry.update(status="unknown", disjoint_windows=None, alternating=None,
-                         reason="; ".join(f"{n} loads: {why}" for why, n in unresolved.most_common()))
+            entry.update(
+                status="unknown",
+                disjoint_windows=None,
+                alternating=None,
+                reason="; ".join(f"{n} loads: {why}" for why, n in unresolved.most_common()),
+            )
             value.setdefault(role, {})[operand] = entry
             continue
         spaces = {load["space"] for load in loads}
@@ -636,29 +741,47 @@ def _operand_buffering(view, stream, truncated, evidence_id):
             space = next(iter(spaces))
             entry.update(windows_relative_to="allocation", allocation=space[0] if len(spaces) == 1 else None)
             if len(spaces) > 1:
-                entry.update(status="unknown", disjoint_windows=None, alternating=None, allocations=len(spaces),
-                             reason=f"loads address {len(spaces)} bases (exact or allocation-relative); "
-                                    "disjointness across allocations not established")
+                entry.update(
+                    status="unknown",
+                    disjoint_windows=None,
+                    alternating=None,
+                    allocations=len(spaces),
+                    reason=f"loads address {len(spaces)} bases (exact or allocation-relative); "
+                    "disjointness across allocations not established",
+                )
                 value.setdefault(role, {})[operand] = entry
                 continue
             if any(hi > 1 << space[1] for load in loads for _, hi in load["footprint"]):
-                entry.update(status="unknown", disjoint_windows=None, alternating=None,
-                             reason="a footprint wraps the allocation-relative offset width")
+                entry.update(
+                    status="unknown",
+                    disjoint_windows=None,
+                    alternating=None,
+                    reason="a footprint wraps the allocation-relative offset width",
+                )
                 value.setdefault(role, {})[operand] = entry
                 continue
         if any(not load["footprint"] or any(hi <= lo for lo, hi in load["footprint"]) for load in loads):
-            entry.update(status="unknown", disjoint_windows=None, alternating=None,
-                         reason="a load declares zero transfer rows or columns; its round writes no row")
+            entry.update(
+                status="unknown",
+                disjoint_windows=None,
+                alternating=None,
+                reason="a load declares zero transfer rows or columns; its round writes no row",
+            )
             value.setdefault(role, {})[operand] = entry
             continue
         regions, sequence, straddling = _rounds(loads)
         visits = [w for i, w in enumerate(sequence) if i == 0 or w != sequence[i - 1]]
         if straddling:
-            entry.update(status="unknown", disjoint_windows=None, alternating=None, fill_rounds=len(sequence),
-                         straddling_rounds=straddling,
-                         reason=f"{straddling} of {len(sequence)} fill rounds share rows with several regions or only "
-                                "part of one (loads issued into another region before the round was first read); "
-                                "the regions are not established")
+            entry.update(
+                status="unknown",
+                disjoint_windows=None,
+                alternating=None,
+                fill_rounds=len(sequence),
+                straddling_rounds=straddling,
+                reason=f"{straddling} of {len(sequence)} fill rounds share rows with several regions or only "
+                "part of one (loads issued into another region before the round was first read); "
+                "the regions are not established",
+            )
             value.setdefault(role, {})[operand] = entry
             continue
         entry.update(
@@ -685,12 +808,18 @@ def _operand_buffering(view, stream, truncated, evidence_id):
         stream,
         truncated,
         definition="a fill round is the run of one operand's loads issued before any of their rows is first read "
-                   "by a later issue; rounds whose block footprints share a local row form one region; "
-                   "alternating: several regions and the rounds return to a region after leaving it",
-        limits=["footprints are declared rows x ceil(cols / derived row elements) blocks at the configured "
-                "per-state block step; banks are not interpreted"] + (
+        "by a later issue; rounds whose block footprints share a local row form one region; "
+        "alternating: several regions and the rounds return to a region after leaving it",
+        limits=[
+            "footprints are declared rows x ceil(cols / derived row elements) blocks at the configured "
+            "per-state block step; banks are not interpreted"
+        ]
+        + (
             [f"{n} loads unresolved: {why}" for why, n in consumption.unresolved.most_common()]
-            if consumption.unresolved else []) + consumption.relative_limits(),
+            if consumption.unresolved
+            else []
+        )
+        + consumption.relative_limits(),
     )
 
 
@@ -726,18 +855,23 @@ def _prefetch_distance(view, stream, truncated, evidence_id):
     for (_, operand), loads in consumption.groups().items():
         tensors.setdefault(operand, []).extend(loads)
     if not any(load["first"] is not None for load in consumption.loads):
-        return _unknown("no later issue reads a row any resolved load wrote", scope=STREAM_SCOPE,
-                        unresolved=dict(consumption.unresolved))
+        return _unknown(
+            "no later issue reads a row any resolved load wrote",
+            scope=STREAM_SCOPE,
+            unresolved=dict(consumption.unresolved),
+        )
     return _stream_fact(
-        dict(by_operand={k: _distance(v, consumption) for k, v in sorted(tensors.items())},
-             all=_distance(consumption.loads, consumption)),
+        dict(
+            by_operand={k: _distance(v, consumption) for k, v in sorted(tensors.items())},
+            all=_distance(consumption.loads, consumption),
+        ),
         ["structure#instruction_roles", "structure#local_geometry", f"{evidence_id}#command_stream"],
         stream,
         truncated,
         partial=bool(consumption.unresolved),
         definition="for each load, the loads and the compute issues issued after it and before the first later "
-                   "issue whose declared local-address field reads a row the load wrote (latest writer); "
-                   "fraction_with_compute_ahead: consumed loads with at least one compute in between",
+        "issue whose declared local-address field reads a row the load wrote (latest writer); "
+        "fraction_with_compute_ahead: consumed loads with at least one compute in between",
         limits=["issue order of a proved scalar execution; a measured distance, not a timing or speed claim"]
         + [f"{n} loads unresolved: {why}" for why, n in consumption.unresolved.most_common()]
         + consumption.relative_limits(),
@@ -815,8 +949,10 @@ def _issue_overlap(view, stream, truncated, evidence_id):
         loads=len(loads),
         loads_with_compute_before_barrier=whole.get("loads_with_compute_before_barrier"),
         loads_without_compute_before_barrier=whole.get("loads_without_compute_before_barrier"),
-        by_operand={k: dict(overlap([row for row in loads if row[0] == k]), consumer_port=ports.get(k))
-                    for k in sorted({row[0] for row in loads})},
+        by_operand={
+            k: dict(overlap([row for row in loads if row[0] == k]), consumer_port=ports.get(k))
+            for k in sorted({row[0] for row in loads})
+        },
         fences=fences,
         barriers=barriers,
         computes_per_fence=round(computes / fences, 4) if fences else None,
@@ -839,8 +975,11 @@ def _readout_pitch_fields(view, structure):
         roles = _roles(structure, klass)
         if any(r in ("readout", "commit") for r in roles) and binding.get("field") == view.proto.extent["cols"]:
             readout_bundles.add(binding.get("bundle"))
-    modules = {row.get("module") for row in structure.get("field_layouts") or ()
-               if row.get("bundle") in readout_bundles and row.get("module")}
+    modules = {
+        row.get("module")
+        for row in structure.get("field_layouts") or ()
+        if row.get("bundle") in readout_bundles and row.get("module")
+    }
     found = {}
     for row in structure.get("operand_field_kind_sources") or ():
         klass, _, name = str(row.get("label") or "").partition(".")
@@ -860,8 +999,18 @@ def _output_group_extent(view, stream, truncated, evidence_id):
     blocks, block = [], None
 
     def fresh():
-        return dict(computes=0, readouts=0, shapes=Counter(), elements=0, offsets=set(), rows=set(),
-                    starts=set(), row_starts=set(), cols=set(), pitch_unknown=0)
+        return dict(
+            computes=0,
+            readouts=0,
+            shapes=Counter(),
+            elements=0,
+            offsets=set(),
+            rows=set(),
+            starts=set(),
+            row_starts=set(),
+            cols=set(),
+            pitch_unknown=0,
+        )
 
     block = fresh()
     for entry, klass, _, kind in view.entries:
@@ -937,8 +1086,12 @@ def _output_group_extent(view, stream, truncated, evidence_id):
     )
     return _stream_fact(
         value,
-        ["structure#instruction_roles", "field_layouts#transfer_bound", "structure#operand_field_kind_sources",
-         f"{evidence_id}#command_stream"],
+        [
+            "structure#instruction_roles",
+            "field_layouts#transfer_bound",
+            "structure#operand_field_kind_sources",
+            f"{evidence_id}#command_stream",
+        ],
         stream,
         truncated,
         limits=[
@@ -947,8 +1100,11 @@ def _output_group_extent(view, stream, truncated, evidence_id):
             "output_columns counts distinct column start positions modulo the configured readout row pitch "
             "times the common column extent; overlapping column tiles are not excluded",
         ]
-        + ([] if pitch_fields else ["no stride-kind configuration field shares the readout's RTL module; "
-                                    "output_columns stays unknown"]),
+        + (
+            []
+            if pitch_fields
+            else ["no stride-kind configuration field shares the readout's RTL module; output_columns stays unknown"]
+        ),
     )
 
 

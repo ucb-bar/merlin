@@ -72,6 +72,7 @@ def test_gep_does_not_infer_unproved_layout_or_poison_assertions(assertion, word
     b.add(llvm.InlineAsmOp("actual_view $0", "r", [pointer], has_side_effects=True))
     f = llvm.FuncOp("unknown", llvm.LLVMFunctionType([PTR], llvm.LLVMVoidType()), body=b.finish())
     seen = []
-    project_finite_pointer_trace(f, observe=lambda op, args: seen.append(args[0])
-                                 if op.name == "llvm.inline_asm" else None, pointer_bits=64)
+    project_finite_pointer_trace(
+        f, observe=lambda op, args: seen.append(args[0]) if op.name == "llvm.inline_asm" else None, pointer_bits=64
+    )
     assert seen == [None]

@@ -20,6 +20,7 @@ that re-exports ``prepare``. A command which ignores the selection is rejected
 there as DISCONNECTED_ADAPTER. A changed emission still needs normal paired
 numerical and timing checks over the complete grouped region.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -72,19 +73,27 @@ def prepare(source, *, package, mechanism):
         if type(value) is not str or not value:
             raise ValueError("the complete original source must remain intact")
 
-    session = PipelineSession(text, context=context, ir_level=LEVEL,
-        fingerprint=lambda value: hashlib.sha256(value.encode()).hexdigest(), verify_ir=verify)
+    session = PipelineSession(
+        text,
+        context=context,
+        ir_level=LEVEL,
+        fingerprint=lambda value: hashlib.sha256(value.encode()).hexdigest(),
+        verify_ir=verify,
+    )
     eligible = owner.eligible(text, package=package)
     if eligible is not None and type(eligible) is not bool:
         raise ValueError("owner eligibility must be true, false or unknown")
-    facts = PolicyFacts(session.stamp(), operations=frozenset({"shared_rhs_region"}), capabilities=(
-        ("shared_rhs_epochs_eligible", eligible),
-    ))
+    facts = PolicyFacts(
+        session.stamp(),
+        operations=frozenset({"shared_rhs_region"}),
+        capabilities=(("shared_rhs_epochs_eligible", eligible),),
+    )
 
     def construct(current, selected):
         scheduler = None
         if selected:
             from merlin.compiler.schedule.dense_shared_rhs import schedule_dense_shared_rhs
+
             scheduler = schedule_dense_shared_rhs
         product = owner.compile(current.module, package=package, scheduler=scheduler)
         if not isinstance(product, dict) or not isinstance(product.get("emitted"), (str, bytes)):
@@ -98,32 +107,58 @@ def prepare(source, *, package, mechanism):
         return {"emitted": product}
 
     registry = {
-        "shared_rhs_incumbent": RegisteredPass(PassSpec("shared_rhs_incumbent", 0,
-            produces=("compilation",), mutates_ir=False, ir_level=LEVEL),
-            lambda current: construct(current, False)),
-        "shared_rhs_epochs": RegisteredPass(PassSpec("shared_rhs_epochs", 0,
-            produces=("compilation",), mutates_ir=False, ir_level=LEVEL),
-            lambda current: construct(current, True)),
-        "emit_shared_rhs_program": RegisteredPass(PassSpec("emit_shared_rhs_program", 1,
-            requires=("compilation",), produces=("emitted",), mutates_ir=False, ir_level=LEVEL), emit),
+        "shared_rhs_incumbent": RegisteredPass(
+            PassSpec("shared_rhs_incumbent", 0, produces=("compilation",), mutates_ir=False, ir_level=LEVEL),
+            lambda current: construct(current, False),
+        ),
+        "shared_rhs_epochs": RegisteredPass(
+            PassSpec("shared_rhs_epochs", 0, produces=("compilation",), mutates_ir=False, ir_level=LEVEL),
+            lambda current: construct(current, True),
+        ),
+        "emit_shared_rhs_program": RegisteredPass(
+            PassSpec(
+                "emit_shared_rhs_program",
+                1,
+                requires=("compilation",),
+                produces=("emitted",),
+                mutates_ir=False,
+                ir_level=LEVEL,
+            ),
+            emit,
+        ),
     }
     variants = [PipelineVariant("incumbent", ("shared_rhs_incumbent", "emit_shared_rhs_program"))]
     if mechanism == MECHANISM:
-        variants.append(PipelineVariant(MECHANISM, ("shared_rhs_epochs", "emit_shared_rhs_program"), (
-            PropertyPredicate("capability", "shared_rhs_epochs_eligible"),
-        )))
+        variants.append(
+            PipelineVariant(
+                MECHANISM,
+                ("shared_rhs_epochs", "emit_shared_rhs_program"),
+                (PropertyPredicate("capability", "shared_rhs_epochs_eligible"),),
+            )
+        )
     policy = PipelinePolicy(tuple(variants), fallback="incumbent")
     return dict(session=session, facts=facts, registry=registry, policy=policy, output="emitted")
 
 
 def describe():
-    return dict(mechanism=MECHANISM, prepare="shared_rhs_epoch_recipe:prepare", owner=OWNER,
+    return dict(
+        mechanism=MECHANISM,
+        prepare="shared_rhs_epoch_recipe:prepare",
+        owner=OWNER,
         scheduler="merlin.compiler.schedule.dense_shared_rhs:schedule_dense_shared_rhs",
         pass_interface="merlin.transforms.pipeline_policy:execute_policy",
-        obligations=["complete source group and live-outs", "selected original resource/retention/epoch laws",
-            "actual schedule.plan consumed", "source alias guard or independently qualified custody",
-            "bound fused output numerics", "actual emitted product and complete-region paired checks"],
-        timing="UNKNOWN", winner="unranked", missing_owner="CONSTRUCTION_REQUIRED")
+        obligations=[
+            "complete source group and live-outs",
+            "selected original resource/retention/epoch laws",
+            "actual schedule.plan consumed",
+            "source alias guard or independently qualified custody",
+            "bound fused output numerics",
+            "actual emitted product and complete-region paired checks",
+        ],
+        timing="UNKNOWN",
+        winner="unranked",
+        missing_owner="CONSTRUCTION_REQUIRED",
+    )
 
 
 def main(argv=None):
@@ -141,12 +176,17 @@ def main(argv=None):
     if args.package is None or args.source is None or args.output is None:
         parser.error("--package, --source and --output are required for an application")
     from merlin.transforms.pipeline_policy import execute_policy
+
     binding = prepare(args.source, package=args.package, mechanism=args.mechanism)
     result = execute_policy(**binding)
     raw = result.artifact.encode() if isinstance(result.artifact, str) else result.artifact
     args.output.write_bytes(raw)
-    receipt = dict(result.receipt, emitted_sha256=hashlib.sha256(raw).hexdigest(),
-        numerical_assessment="NOT_CHECKED", timing="UNKNOWN")
+    receipt = dict(
+        result.receipt,
+        emitted_sha256=hashlib.sha256(raw).hexdigest(),
+        numerical_assessment="NOT_CHECKED",
+        timing="UNKNOWN",
+    )
     if args.receipt:
         args.receipt.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     print(json.dumps(receipt, indent=2, sort_keys=True))

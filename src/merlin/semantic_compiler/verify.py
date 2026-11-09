@@ -43,10 +43,12 @@ def check_timing(
     if any(child_id < 0 or child_id >= value.id for value in graph.values for child_id in value.children):
         return False, "physical schedule has invalid value dependencies"
     if any(
-        value.projection_of is None or value.projection_of >= value.id
+        value.projection_of is None
+        or value.projection_of >= value.id
         or graph.value(value.projection_of).kind != "instruction"
         or value.instruction_instance != graph.value(value.projection_of).instruction_instance
-        for value in graph.values if value.kind == "projection"
+        for value in graph.values
+        if value.kind == "projection"
     ):
         return False, "physical schedule has an unowned multi-result projection"
     if len(order) != len(instructions) or set(order) != instructions:
@@ -96,8 +98,7 @@ def _realized_extent(program: RuleProgram, choice: Choice) -> int | None:
     if metadata is None:
         return None
     extent = (
-        metadata["descriptor"].get("extent") if metadata["kind"] in {"instruction", "view"}
-        else metadata.get("extent")
+        metadata["descriptor"].get("extent") if metadata["kind"] in {"instruction", "view"} else metadata.get("extent")
     )
     return extent if type(extent) is int else None
 
@@ -154,9 +155,12 @@ def check_selection(
         if source_id is None or source_id not in source_index:
             return "selected symbol lacks a source correspondence"
         actual_layout = (
-            request.boundary_layout(source_id) if kind in {"input", "constant"}
-            else metadata["descriptor"]["physical_layout"] if kind == "view"
-            else metadata["descriptor"].get("output_layout", "") if kind == "instruction"
+            request.boundary_layout(source_id)
+            if kind in {"input", "constant"}
+            else metadata["descriptor"]["physical_layout"]
+            if kind == "view"
+            else metadata["descriptor"].get("output_layout", "")
+            if kind == "instruction"
             else ""
         )
         if required_layout and actual_layout != required_layout:
@@ -188,8 +192,10 @@ def check_selection(
             # geometry the target qualified, so a padded or otherwise
             # differently sized source realisation is not the same bits.
             expected_extents = (
-                view.source_extents if isinstance(view, ConcatViewDescriptor)
-                else (view.source_extent,) if view.kind == "slice"
+                view.source_extents
+                if isinstance(view, ConcatViewDescriptor)
+                else (view.source_extent,)
+                if view.kind == "slice"
                 else (view.extent,)
             )
             if tuple(_realized_extent(program, child) for child in choice.children) != expected_extents:
@@ -288,9 +294,13 @@ def check_selection(
                     return "selected instruction violates a computational attribute bound"
                 if descriptor.parameter_attrs:
                     selected_attrs = metadata.get("instantiated_attrs")
-                    if type(selected_attrs) is not dict or set(selected_attrs) != set(source_attrs) or any(
-                        type(selected_attrs[key]) is not type(value) or selected_attrs[key] != value
-                        for key, value in source_attrs.items()
+                    if (
+                        type(selected_attrs) is not dict
+                        or set(selected_attrs) != set(source_attrs)
+                        or any(
+                            type(selected_attrs[key]) is not type(value) or selected_attrs[key] != value
+                            for key, value in source_attrs.items()
+                        )
                     ):
                         return "selected instruction has a changed attribute substitution"
                 if not descriptor.parameter_attrs and "instantiated_attrs" in metadata:
@@ -332,10 +342,11 @@ def check_selection(
             return "pure semantic node was selected without a target realization"
         for index, child in enumerate(choice.children):
             child_layout = (
-                metadata["descriptor"]["physical_layout"] if kind == "view"
-                else descriptor.input_layouts[index] if (
-                    kind == "instruction" and descriptor.input_layouts
-                    and (request.boundary_layouts or required_layout)
+                metadata["descriptor"]["physical_layout"]
+                if kind == "view"
+                else descriptor.input_layouts[index]
+                if (
+                    kind == "instruction" and descriptor.input_layouts and (request.boundary_layouts or required_layout)
                 )
                 else ""
             )

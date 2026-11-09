@@ -27,8 +27,8 @@ from merlin.capture.safetensors import load_header
 from merlin.common import compile_trace
 from merlin.common import mlir_query as mq
 from merlin.common.digest import sha256_file
-from merlin.model import compile_saved_model
 from merlin.llvmlower.arena_bind import _call_target, _defines, _malloc_size
+from merlin.model import compile_saved_model
 from merlin.model_check import full_build as FB
 from merlin.runtime.backends import spike_model
 from merlin.transforms.certificates import ir_text

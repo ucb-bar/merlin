@@ -6,7 +6,6 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 
-
 from merlin.compiler.schedule.dense_rhs_residency import DenseRhsResidency, plan_dense_rhs_residency
 from merlin.compiler.schedule.library_sources import admission_point
 from merlin.compiler.schedule.window_transfer import (

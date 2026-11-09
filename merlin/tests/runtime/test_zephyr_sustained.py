@@ -9,6 +9,7 @@ arena and reports the whole series, so both are visible.
 The stats live in ``zephyr_model._sustained_stats``; it is exercised directly here (no board
 needed) plus, under ``MERLIN_RUN_SLOW``, end to end on spike.
 """
+
 from __future__ import annotations
 
 import os
@@ -23,8 +24,9 @@ from merlin.xdsl_dialects import _common
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
 
 BUNDLE = "small_llama_int8_consistent"
-slow = pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"),
-                          reason="set MERLIN_RUN_SLOW=1 (builds a Zephyr image + runs spike)")
+slow = pytest.mark.skipif(
+    not os.environ.get("MERLIN_RUN_SLOW"), reason="set MERLIN_RUN_SLOW=1 (builds a Zephyr image + runs spike)"
+)
 
 
 def test_generated_main_loops_and_reports_per_iteration():
@@ -46,34 +48,38 @@ def test_default_is_single_shot():
 
 
 def test_parse_console_collects_the_series():
-    console = "\n".join([
-        "METRIC iter_cycles 0 1000",
-        "METRIC iter_cycles 1 1010",
-        "METRIC iter_cycles 2 990",
-        "OUT 2 1065353216 1073741824",
-        "METRIC cycles 1000",
-        "METRIC iters 3",
-        "DONE",
-    ])
+    console = "\n".join(
+        [
+            "METRIC iter_cycles 0 1000",
+            "METRIC iter_cycles 1 1010",
+            "METRIC iter_cycles 2 990",
+            "OUT 2 1065353216 1073741824",
+            "METRIC cycles 1000",
+            "METRIC iters 3",
+            "DONE",
+        ]
+    )
     res = zm._parse_console(console, 0)
     assert res["iter_cycles"] == [1000, 1010, 990]
     assert res["sustained"]["median"] == 1000
     assert res["sustained"]["min"] == 990
-    assert res["metrics"]["cycles"] == 1000       # scalar METRICs still parse
+    assert res["metrics"]["cycles"] == 1000  # scalar METRICs still parse
     assert res["metrics"]["iters"] == 3
     np.testing.assert_allclose(res["outputs"], [1.0, 2.0])
 
 
 def test_parse_console_collects_k1_wall_series_and_peak_rss():
-    console = "\n".join([
-        "METRIC iter_wall_ns 0 2000",
-        "METRIC iter_wall_ns 1 1900",
-        "METRIC iter_wall_ns 2 2100",
-        "METRIC wall_ns 2000",
-        "METRIC peak_rss_kb 4096",
-        "OUT 1 1065353216",
-        "DONE",
-    ])
+    console = "\n".join(
+        [
+            "METRIC iter_wall_ns 0 2000",
+            "METRIC iter_wall_ns 1 1900",
+            "METRIC iter_wall_ns 2 2100",
+            "METRIC wall_ns 2000",
+            "METRIC peak_rss_kb 4096",
+            "OUT 1 1065353216",
+            "DONE",
+        ]
+    )
     result = zm._parse_console(console, 0)
     assert result["iter_wall_ns"] == [2000, 1900, 2100]
     assert result["sustained_wall_ns"]["median"] == 2000
@@ -82,11 +88,16 @@ def test_parse_console_collects_k1_wall_series_and_peak_rss():
 
 
 def test_parse_console_collects_contiguous_multi_program_stage_series():
-    console = "\n".join([
-        "STAGE 0 prefill 100", "STAGE 0 decode 300",
-        "STAGE 1 prefill 90", "STAGE 1 decode 310",
-        "OUT 1 1065353216", "DONE",
-    ])
+    console = "\n".join(
+        [
+            "STAGE 0 prefill 100",
+            "STAGE 0 decode 300",
+            "STAGE 1 prefill 90",
+            "STAGE 1 decode 310",
+            "OUT 1 1065353216",
+            "DONE",
+        ]
+    )
     result = zm._parse_console(console, 0)
     assert result["stage_wall_ns"] == {"prefill": [100, 90], "decode": [300, 310]}
 
@@ -99,7 +110,7 @@ def test_sustained_stats_reports_drift():
     flat = zm._sustained_stats([1000] * 12)
     assert flat["drift"] == 0.0
 
-    creeping = zm._sustained_stats(list(range(1000, 1120, 10)))   # monotonically worse
+    creeping = zm._sustained_stats(list(range(1000, 1120, 10)))  # monotonically worse
     assert creeping["drift"] > 0.05, "a steadily growing per-iteration cost was not surfaced"
     assert creeping["late_median"] > creeping["early_median"]
 
@@ -127,12 +138,23 @@ def test_sustained_run_holds_steady_state(tmp_path):
     if w8.is_file():
         refs["w8a8"] = np.load(w8)
 
-    res = zm.build_and_run(b, tmp_path / "sustained", board="spike_riscv64", backend="rvv",
-                           rvv_hart=0, harts=2, int8_compute=True,
-                           iters=12, warmup=2, references=refs, timeout=5400)
+    res = zm.build_and_run(
+        b,
+        tmp_path / "sustained",
+        board="spike_riscv64",
+        backend="rvv",
+        rvv_hart=0,
+        harts=2,
+        int8_compute=True,
+        iters=12,
+        warmup=2,
+        references=refs,
+        timeout=5400,
+    )
     assert res.get("ok"), f"sustained run failed the accuracy gate: cos={res.get('cos')}"
     s = res["sustained"]
     assert s["n"] == 12
     assert abs(s["drift"]) < 0.05, (
         f"per-iteration cost drifted {s['drift']:.1%} from the first third to the last "
-        f"(early={s['early_median']} late={s['late_median']}) — the arena is not being reused")
+        f"(early={s['early_median']} late={s['late_median']}) — the arena is not being reused"
+    )

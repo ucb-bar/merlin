@@ -34,21 +34,19 @@ def test_original_public_parameter_chain_baseline(tmp_path, monkeypatch):
 
 
 def run_baseline(tmp_path, monkeypatch, selected):
-    from merlin_experiments.phase0.capture_execution_attestation import require_verified_execution
-    from merlin_experiments.phase1.feedback import private_instruction_coordinator as C
-    from merlin_experiments.phase1.feedback import private_instruction_declaration as D
-
     from merlin.common import invocation_record as I
-    from merlin.model import compile_saved_model
-    from merlin.model import read_full_outputs
-    from merlin.runtime.modelinputs import selected_execution_firrtl, strict_tree_sha256
     from merlin.compiler.planning.model import plan_before_build
     from merlin.llvmlower import optional_passes
     from merlin.llvmlower.compilation_recipe import verify_completed_recipe
     from merlin.llvmlower.device_offload import SIDECAR_NAME
+    from merlin.model import compile_saved_model, read_full_outputs
     from merlin.runtime.input_observation import revalidate_observation
+    from merlin.runtime.modelinputs import selected_execution_firrtl, strict_tree_sha256
     from merlin.targetgen import capsule_source, target_registry
     from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+    from merlin_experiments.phase0.capture_execution_attestation import require_verified_execution
+    from merlin_experiments.phase1.feedback import private_instruction_coordinator as C
+    from merlin_experiments.phase1.feedback import private_instruction_declaration as D
 
     execution = selected.execution
     quiet_path = Path(execution["quiet_contract"]["path"])

@@ -22,8 +22,7 @@ def fixture():
     rewrite.entries["pool"]["acc_scale"] = 0.999
     rewrite.programs["pool"]["entry"] = deepcopy(rewrite.entries["pool"])
     readouts = tuple(
-        replace(chain, pool=RoundedReadout((0.999,)), replacement=chain.producer)
-        for chain in original.readouts
+        replace(chain, pool=RoundedReadout((0.999,)), replacement=chain.producer) for chain in original.readouts
     )
     plan = replace(original, readouts=readouts, readout_mode="single_readout", intermediate=None)
     selected = group_connected_spatial(source, rewrite)
@@ -33,8 +32,14 @@ def fixture():
 
 def prepare(source, rewrite, plan, contract, workspace):
     return prepare_connected_spatial_host(
-        source, rewrite, ("producer", "pool"), plan, contract, workspace,
-        kernel_symbol="private_spatial_kernel", pointer_alignments=(1, 1, 4, 1),
+        source,
+        rewrite,
+        ("producer", "pool"),
+        plan,
+        contract,
+        workspace,
+        kernel_symbol="private_spatial_kernel",
+        pointer_alignments=(1, 1, 4, 1),
         stack_budget_bytes=1,
     )
 
@@ -48,11 +53,16 @@ def test_exact_nonunit_composition_keeps_source_and_public_abi_with_one_stack_by
     assert host.scratch.module.body.block.first_op.function_type == source.body.block.first_op.function_type
     assert host.scratch.receipt["required_stripe_bytes"] == 0
     assert host.receipt["private_helper_pointer_count"] == 5
-    assert all(p["exact"] and p["domain"] == [-(1 << 31), (1 << 31) - 1]
-               and p["second_readout_identity"] and p["pool_scales"] == [f32(0.999)]
-               for p in host.receipt["source_readout_proofs"])
-    allocations = [op for op in host.scratch.module.walk() if isinstance(op, memref.AllocOp)
-                   and op.memref.type.get_shape() == (1,)]
+    assert all(
+        p["exact"]
+        and p["domain"] == [-(1 << 31), (1 << 31) - 1]
+        and p["second_readout_identity"]
+        and p["pool_scales"] == [f32(0.999)]
+        for p in host.receipt["source_readout_proofs"]
+    )
+    allocations = [
+        op for op in host.scratch.module.walk() if isinstance(op, memref.AllocOp) and op.memref.type.get_shape() == (1,)
+    ]
     stack = [op for op in host.scratch.module.walk() if isinstance(op, memref.AllocaOp)]
     assert not allocations and len(stack) == 1
     assert stack[0].memref.type.get_shape() == (1,)
@@ -76,8 +86,7 @@ def test_non_equivalent_replacement_and_missing_workspace_effects_still_refuse()
     source, rewrite, plan, contract, workspace = fixture()
     first = plan.readouts[0]
     with pytest.raises(ValueError, match="composition differs"):
-        replace(plan, readouts=(replace(first, replacement=RoundedReadout((0.25,), True)),
-                                *plan.readouts[1:]))
+        replace(plan, readouts=(replace(first, replacement=RoundedReadout((0.25,), True)), *plan.readouts[1:]))
     before = text(source, generic=True)
     with pytest.raises(ValueError):
         prepare(source, rewrite, plan, contract, replace(workspace, synchronous_before_return=False))

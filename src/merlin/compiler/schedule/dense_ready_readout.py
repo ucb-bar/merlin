@@ -57,8 +57,9 @@ def _strip_store_epochs(statement):
     if statement.body and statement.body[-1] == Call(DRAIN, ()):
         if statement.extent != 1:
             raise ValueError("ready readout cannot erase a counted completion epoch")
-        return tuple(s for child in _remap(statement.body[:-1], statement.var, None)
-                     for s in _strip_store_epochs(child))
+        return tuple(
+            s for child in _remap(statement.body[:-1], statement.var, None) for s in _strip_store_epochs(child)
+        )
     return (replace(statement, body=tuple(s for child in statement.body for s in _strip_store_epochs(child))),)
 
 
@@ -93,19 +94,24 @@ class DenseReadyInputPlacement:
 def _ready_input_placement(problem, choice, resources, storage):
     from merlin.compiler.schedule.dense_panel_pipeline import DenseRetainedChoice
 
-    if (type(choice) is not DenseRetainedChoice or choice.role != "weight"
-            or choice.outer_order != ("n", "m")
-            or choice.block.k != problem.tiles[1] or problem.tiles[0] // choice.block.m < 2
-            or not storage.admits(problem, choice.block, resources)):
+    if (
+        type(choice) is not DenseRetainedChoice
+        or choice.role != "weight"
+        or choice.outer_order != ("n", "m")
+        or choice.block.k != problem.tiles[1]
+        or problem.tiles[0] // choice.block.m < 2
+        or not storage.admits(problem, choice.block, resources)
+    ):
         raise ValueError("ready input placement needs an advancing unbiased retained-weight full-K choice")
     lhs, rhs, acc = storage.row_counts(problem, choice.block)
     offset = (lhs + storage.lhs.alignment - 1) // storage.lhs.alignment * storage.lhs.alignment
-    if (offset + lhs > storage.lhs.capacity
-            or ((offset + lhs) * storage.lhs.unit_bytes + rhs * storage.rhs.unit_bytes
-                > resources.operand_bytes)):
+    if offset + lhs > storage.lhs.capacity or (
+        (offset + lhs) * storage.lhs.unit_bytes + rhs * storage.rhs.unit_bytes > resources.operand_bytes
+    ):
         raise ValueError("ready input placement needs two owned LHS slots and one RHS panel")
-    return DenseReadyInputPlacement(choice, lhs, rhs, acc, offset,
-        _digest((asdict(problem), asdict(resources), asdict(storage))))
+    return DenseReadyInputPlacement(
+        choice, lhs, rhs, acc, offset, _digest((asdict(problem), asdict(resources), asdict(storage)))
+    )
 
 
 def dense_ready_input_choices(problem, resources, storage):
@@ -194,12 +200,20 @@ def propose_dense_ready_readout(kernel, problem, adapter, *, final_k_prefix=Fals
         for statement in body:
             if type(statement) is Loop:
                 statement = replace(statement, body=expose_epochs(statement.body))
-                if (statement.extent == 1 and statement.body
-                        and statement.body[-1] != Call(DRAIN, ())
-                        and any(type(child) is Loop and child.body
-                                and child.body[-1] == Call(DRAIN, ())
-                                and any(c != Call(DRAIN, ()) and type(adapter.project(c)) is Compute
-                                        for c in _calls(child.body)) for child in statement.body)):
+                if (
+                    statement.extent == 1
+                    and statement.body
+                    and statement.body[-1] != Call(DRAIN, ())
+                    and any(
+                        type(child) is Loop
+                        and child.body
+                        and child.body[-1] == Call(DRAIN, ())
+                        and any(
+                            c != Call(DRAIN, ()) and type(adapter.project(c)) is Compute for c in _calls(child.body)
+                        )
+                        for child in statement.body
+                    )
+                ):
                     result.extend(_remap(statement.body, statement.var, None))
                     continue
             result.append(statement)
@@ -217,8 +231,11 @@ def propose_dense_ready_readout(kernel, problem, adapter, *, final_k_prefix=Fals
             if type(statement) is not Loop:
                 continue
             if statement.body and statement.body[-1] == Call(DRAIN, ()):
-                if (kinds(statement) == {Preload, Compute} and index + 1 < len(body)
-                        and kinds(body[index + 1]) in ({Store}, {TiledIntegerStore})):
+                if (
+                    kinds(statement) == {Preload, Compute}
+                    and index + 1 < len(body)
+                    and kinds(body[index + 1]) in ({Store}, {TiledIntegerStore})
+                ):
                     paths.append((*path, statement.var))
             else:
                 discover(statement.body, (*path, statement.var))
@@ -239,18 +256,21 @@ def propose_dense_ready_readout(kernel, problem, adapter, *, final_k_prefix=Fals
             raise ValueError("ready readout needs one complete store domain, not partial partitions")
         loops, pair = _chain(epoch.body[0], 3)
         stores, store_calls = _chain(store_tree[0], 2)
-        if (len(pair) != 2 or len(store_calls) != 1
-                or any(type(c) is not Call or not _plain(c) for c in (*pair, *store_calls))):
+        if (
+            len(pair) != 2
+            or len(store_calls) != 1
+            or any(type(c) is not Call or not _plain(c) for c in (*pair, *store_calls))
+        ):
             raise ValueError("ready readout requires plain adjacent physical pairs and one original store")
         pre, compute = (adapter.project(c) for c in pair)
         store = adapter.project(store_calls[0])
-        if (type(pre) is not Preload or type(compute) is not Compute
-                or type(store) not in (Store, TiledIntegerStore)):
+        if type(pre) is not Preload or type(compute) is not Compute or type(store) not in (Store, TiledIntegerStore):
             raise ValueError("ready readout cannot split descriptors or vary output numerical configuration")
         variables = {s.var for s in loops}
         names = {}
-        for axis, coordinate in zip(("m", "k", "n"),
-                                    (compute.input_block[0], compute.input_block[1], pre.weight_block[1]), strict=True):
+        for axis, coordinate in zip(
+            ("m", "k", "n"), (compute.input_block[0], compute.input_block[1], pre.weight_block[1]), strict=True
+        ):
             selected = variables & free_vars(coordinate)
             if len(selected) != 1:
                 raise ValueError("ready readout needs independent original M/K/N coordinates")
@@ -275,11 +295,14 @@ def propose_dense_ready_readout(kernel, problem, adapter, *, final_k_prefix=Fals
         renamed_store = adapter.project(renamed[0])
         # Exact original scalar descriptors, including piecewise output tails.
         # Only affine logical coordinates need algebraic normalization.
-        if (pre.accumulator_row != renamed_store.accumulator_row or pre.rows != renamed_store.rows
-                or pre.cols != renamed_store.cols
-                or _linear(renamed_store.dram_row) != _linear(compute.input_block[0] * problem.tile_m)
-                or _linear(renamed_store.dram_col) != _linear(pre.weight_block[1] * problem.tile_n)
-                or names["k"] in (free_vars(pre.accumulator_row) | free_vars(pre.rows) | free_vars(pre.cols))):
+        if (
+            pre.accumulator_row != renamed_store.accumulator_row
+            or pre.rows != renamed_store.rows
+            or pre.cols != renamed_store.cols
+            or _linear(renamed_store.dram_row) != _linear(compute.input_block[0] * problem.tile_m)
+            or _linear(renamed_store.dram_col) != _linear(pre.weight_block[1] * problem.tile_n)
+            or names["k"] in (free_vars(pre.accumulator_row) | free_vars(pre.rows) | free_vars(pre.cols))
+        ):
             raise ValueError("ready readout does not match the exact original producer ACC/output footprint")
         if adapter.encode(renamed_store) != renamed[0] or any(adapter.encode(adapter.project(c)) != c for c in pair):
             raise ValueError("ready readout requires complete descriptor/effect roundtrips")
@@ -304,8 +327,9 @@ def propose_dense_ready_readout(kernel, problem, adapter, *, final_k_prefix=Fals
                 for depth in range(len(path), 0, -1):
                     ancestor = _loop_at(actual.body, path[:depth])
                     isolated = replace(ancestor, body=(isolated, Call(DRAIN, ())))
-                proposal = propose_dense_array_retention(replace(actual, body=(isolated,)), adapter,
-                                                        array_prefix_admission)
+                proposal = propose_dense_array_retention(
+                    replace(actual, body=(isolated,)), adapter, array_prefix_admission
+                )
                 proposal.revalidate(adapter, array_prefix_admission)
                 prefix = _loop_at(proposal.kernel.body, (*path, prefix.var))
                 array_changes = proposal.changes
@@ -327,15 +351,25 @@ def propose_dense_ready_readout(kernel, problem, adapter, *, final_k_prefix=Fals
             replacement = replace(epoch, body=(frontier, Call(DRAIN, ())))
         parent = _loop_at(actual.body, path[:-1]) if path[:-1] else None
         siblings = parent.body if parent is not None else actual.body
-        rewritten = (*siblings[:index], replacement, *siblings[index + 2:])
-        actual = (replace(actual, body=_splice(actual.body, path[:-1], (replace(parent, body=rewritten),)))
-                  if parent is not None else replace(actual, body=rewritten))
-        records.append(dict(path=path, loop_transforms=[asdict(r) for r in requests],
-                            final_k_tiles=k.extent, output_tiles=m.extent * n.extent,
-                            final_k_prefix=final_k_prefix, array_prefix=tuple(array_changes),
-                            geometry="unchanged original ACC and operand views",
-                            frontier="each original store immediately follows its complete final K paired run",
-                            completion="one original full drain after the complete frontier"))
+        rewritten = (*siblings[:index], replacement, *siblings[index + 2 :])
+        actual = (
+            replace(actual, body=_splice(actual.body, path[:-1], (replace(parent, body=rewritten),)))
+            if parent is not None
+            else replace(actual, body=rewritten)
+        )
+        records.append(
+            dict(
+                path=path,
+                loop_transforms=[asdict(r) for r in requests],
+                final_k_tiles=k.extent,
+                output_tiles=m.extent * n.extent,
+                final_k_prefix=final_k_prefix,
+                array_prefix=tuple(array_changes),
+                geometry="unchanged original ACC and operand views",
+                frontier="each original store immediately follows its complete final K paired run",
+                completion="one original full drain after the complete frontier",
+            )
+        )
     if check_structure(actual):
         raise ValueError("ready readout changed original binder custody")
     if array_prefix_admission is not None and not any(row["array_prefix"] for row in records):
@@ -359,9 +393,13 @@ def propose_dense_ready_input_pipeline(kernel, adapter, storage, *, row_offset, 
     This proposal needs the separate load/compute/readout conjunction and the
     actual-address epoch checker; capacity alone supplies neither permission.
     """
-    if (type(kernel) is not Kernel or check_structure(kernel)
-            or type(row_offset) is not int or row_offset <= 0
-            or row_offset % storage.lhs.alignment):
+    if (
+        type(kernel) is not Kernel
+        or check_structure(kernel)
+        or type(row_offset) is not int
+        or row_offset <= 0
+        or row_offset % storage.lhs.alignment
+    ):
         raise ValueError("input pipeline requires an aligned explicit private LHS slot offset")
     names = {arg.name for arg in kernel.args} | {loop.var for loop in _all_loops(kernel.body)}
     records = []
@@ -376,9 +414,13 @@ def propose_dense_ready_input_pipeline(kernel, adapter, storage, *, row_offset, 
         return {type(adapter.project(c)) for c in _calls(body) if c != Call(DRAIN, ())}
 
     def epoch(statement):
-        return (type(statement) is Loop and statement.extent == 1 and statement.body
-                and statement.body[-1] == Call(DRAIN, ())
-                and all(c != Call(DRAIN, ()) for c in _calls(statement.body[:-1])))
+        return (
+            type(statement) is Loop
+            and statement.extent == 1
+            and statement.body
+            and statement.body[-1] == Call(DRAIN, ())
+            and all(c != Call(DRAIN, ()) for c in _calls(statement.body[:-1]))
+        )
 
     def initialization(statement):
         # Preserve the existing separately completed initializer scopes. A
@@ -401,8 +443,7 @@ def propose_dense_ready_input_pipeline(kernel, adapter, storage, *, row_offset, 
                 result.append(replace(statement, body=shifted(statement.body, offset)))
             else:
                 operation = adapter.project(statement)
-                if (type(operation) is Load and operation.role == "lhs"
-                        or type(operation) is Compute):
+                if type(operation) is Load and operation.role == "lhs" or type(operation) is Compute:
                     if adapter.encode(operation) != statement:
                         raise ValueError("input slot relocation requires complete physical effect roundtrips")
                     field = "row" if type(operation) is Load else "input_row"
@@ -421,27 +462,35 @@ def propose_dense_ready_input_pipeline(kernel, adapter, storage, *, row_offset, 
                 result.append(statement)
                 continue
             parts = statement.body
-            if (statement.extent >= 2 and len(parts) >= 2
-                    and all(initialization(s) for s in parts[:-2])
-                    and all(epoch(s) for s in parts[-2:])
-                    and kinds(parts[-2].body) == {Load}
-                    and all(adapter.project(c).role == "lhs" for c in _calls(parts[-2].body[:-1]))
-                    and kinds(parts[-1].body) in ({Preload, Compute, Store},
-                                                {Preload, Compute, TiledIntegerStore})):
+            if (
+                statement.extent >= 2
+                and len(parts) >= 2
+                and all(initialization(s) for s in parts[:-2])
+                and all(epoch(s) for s in parts[-2:])
+                and kinds(parts[-2].body) == {Load}
+                and all(adapter.project(c).role == "lhs" for c in _calls(parts[-2].body[:-1]))
+                and kinds(parts[-1].body) in ({Preload, Compute, Store}, {Preload, Compute, TiledIntegerStore})
+            ):
                 initializers, (stage, current) = parts[:-2], parts[-2:]
                 initialization_drains = statement.extent * sum(drains(s) for s in initializers)
-                windows = _input_group_windows((stage, current), adapter,
-                    {**domains, statement.var: (0, statement.extent - 1)})
+                windows = _input_group_windows(
+                    (stage, current), adapter, {**domains, statement.var: (0, statement.extent - 1)}
+                )
                 if placement is not None:
                     if type(placement) is not DenseReadyInputPlacement or row_offset != placement.lhs_slot_offset:
                         raise ValueError("ready input emission must consume the selected placement")
                     lhs_window = (storage.lhs.base, storage.lhs.base + placement.lhs_rows)
-                    if (windows.get("lhs_stage") != lhs_window or windows.get("lhs_read") != lhs_window
-                            or any(role not in windows or windows[role][0] < view.base
-                                   or windows[role][1] > view.base + rows
-                                   for role, view, rows in (
-                                       ("weight", storage.rhs, placement.rhs_rows),
-                                       ("accumulator", storage.accumulator, placement.accumulator_rows)))):
+                    if (
+                        windows.get("lhs_stage") != lhs_window
+                        or windows.get("lhs_read") != lhs_window
+                        or any(
+                            role not in windows or windows[role][0] < view.base or windows[role][1] > view.base + rows
+                            for role, view, rows in (
+                                ("weight", storage.rhs, placement.rhs_rows),
+                                ("accumulator", storage.accumulator, placement.accumulator_rows),
+                            )
+                        )
+                    ):
                         raise ValueError("actual ready input accesses disagree with the selected role footprints")
                 period = fresh("dense_input_period")
 
@@ -451,35 +500,60 @@ def propose_dense_ready_input_pipeline(kernel, adapter, storage, *, row_offset, 
                     return shifted(contents, slot * row_offset)
 
                 def advance(slot, new, scale, offset):
-                    return (*_remap(initializers, statement.var, new, scale, offset),
-                        Loop(fresh("dense_input_epoch"), 1, (
-                        *selected(stage, 1 - slot, new, scale, offset + 1),
-                        *selected(current, slot, new, scale, offset), Call(DRAIN, ()))))
+                    return (
+                        *_remap(initializers, statement.var, new, scale, offset),
+                        Loop(
+                            fresh("dense_input_epoch"),
+                            1,
+                            (
+                                *selected(stage, 1 - slot, new, scale, offset + 1),
+                                *selected(current, slot, new, scale, offset),
+                                Call(DRAIN, ()),
+                            ),
+                        ),
+                    )
 
-                result.append(Loop(fresh("dense_input_prologue"), 1,
-                                   (*selected(stage, 0, None, 1, 0), Call(DRAIN, ()))))
+                result.append(
+                    Loop(fresh("dense_input_prologue"), 1, (*selected(stage, 0, None, 1, 0), Call(DRAIN, ())))
+                )
                 pairs, tail = divmod(statement.extent - 1, 2)
                 if pairs:
-                    result.append(Loop(period, pairs, (*advance(0, period, 2, 0),
-                                                        *advance(1, period, 2, 1))))
+                    result.append(Loop(period, pairs, (*advance(0, period, 2, 0), *advance(1, period, 2, 1))))
                 if tail:
                     result.extend(advance(0, None, 1, 2 * pairs))
                 result.extend(_remap(initializers, statement.var, None, 1, statement.extent - 1))
-                result.append(Loop(fresh("dense_input_epilogue"), 1, (
-                    *selected(current, (statement.extent - 1) % 2, None, 1, statement.extent - 1),
-                    Call(DRAIN, ()))))
-                records.append(dict(path=(*path, statement.var), groups=statement.extent,
-                                    lhs_slot_offsets=(0, row_offset), rhs_slots=1,
-                                    actual_role_windows=windows,
-                                    accumulator="same original rows reused only after full drain",
-                                    initializer_scopes=len(initializers),
-                                    initialization="all original separate completion scopes retained before current compute",
-                                    live_lhs_generations=2,
-                                    preserved_initialization_drains=initialization_drains,
-                                    remaining_drains=statement.extent + 1 + initialization_drains))
+                result.append(
+                    Loop(
+                        fresh("dense_input_epilogue"),
+                        1,
+                        (
+                            *selected(current, (statement.extent - 1) % 2, None, 1, statement.extent - 1),
+                            Call(DRAIN, ()),
+                        ),
+                    )
+                )
+                records.append(
+                    dict(
+                        path=(*path, statement.var),
+                        groups=statement.extent,
+                        lhs_slot_offsets=(0, row_offset),
+                        rhs_slots=1,
+                        actual_role_windows=windows,
+                        accumulator="same original rows reused only after full drain",
+                        initializer_scopes=len(initializers),
+                        initialization="all original separate completion scopes retained before current compute",
+                        live_lhs_generations=2,
+                        preserved_initialization_drains=initialization_drains,
+                        remaining_drains=statement.extent + 1 + initialization_drains,
+                    )
+                )
             else:
-                result.append(replace(statement, body=walk(parts, (*path, statement.var),
-                    {**domains, statement.var: (0, statement.extent - 1)})))
+                result.append(
+                    replace(
+                        statement,
+                        body=walk(parts, (*path, statement.var), {**domains, statement.var: (0, statement.extent - 1)}),
+                    )
+                )
         return tuple(result)
 
     actual = replace(kernel, body=walk(kernel.body))
@@ -511,17 +585,27 @@ class DenseReadyReadoutCheckingProjection:
     array_prefix_admission: object = None
 
     def _expected(self, adapter, storage, *, retained=False):
-        if (self.input_pipeline_placement is not None
-                and self.input_pipeline_row_offset != self.input_pipeline_placement.lhs_slot_offset):
+        if (
+            self.input_pipeline_placement is not None
+            and self.input_pipeline_row_offset != self.input_pipeline_placement.lhs_slot_offset
+        ):
             raise ValueError("ready input emission must consume the selected placement")
-        expected, regions = propose_dense_ready_readout(self.original_kernel, self.problem, adapter,
+        expected, regions = propose_dense_ready_readout(
+            self.original_kernel,
+            self.problem,
+            adapter,
             final_k_prefix=self.final_k_prefix,
-            array_prefix_admission=self.array_prefix_admission if retained else None)
+            array_prefix_admission=self.array_prefix_admission if retained else None,
+        )
         input_pipeline = []
         if self.input_pipeline_row_offset is not None:
             expected, input_pipeline = propose_dense_ready_input_pipeline(
-                expected, adapter, storage, row_offset=self.input_pipeline_row_offset,
-                placement=self.input_pipeline_placement)
+                expected,
+                adapter,
+                storage,
+                row_offset=self.input_pipeline_row_offset,
+                placement=self.input_pipeline_placement,
+            )
         if type(self.canonical_load_runs) is not bool:
             raise ValueError("explicit exact ready-readout load representation required")
         canonical_changes = []
@@ -553,10 +637,14 @@ class DenseReadyReadoutCheckingProjection:
         if actual != expected or actual.digest() != expected.digest():
             raise ValueError("actual array prefix differs from the exact pure retained-prefix transformation")
         fresh, _, _, _ = self._expected(adapter, storage)
-        return fresh, dict(actual_kernel_sha256=actual.digest(), fresh_read_kernel_sha256=fresh.digest(),
-            admission=asdict(self.array_prefix_admission), regions=regions,
+        return fresh, dict(
+            actual_kernel_sha256=actual.digest(),
+            fresh_read_kernel_sha256=fresh.digest(),
+            admission=asdict(self.array_prefix_admission),
+            regions=regions,
             premise="pure prefix only; same input/ACC/store accesses and issue order; stronger immutable RHS reads",
-            final_k="all original final-K consumes are fresh; original causal stores and full drain")
+            final_k="all original final-K consumes are fresh; original causal stores and full drain",
+        )
 
     def checking_kernel(self, actual, adapter, storage):
         expected, regions, input_pipeline, canonical_changes = self._expected(adapter, storage)
@@ -564,8 +652,10 @@ class DenseReadyReadoutCheckingProjection:
             raise ValueError("ready readout actual commands differ from the exact original transformation")
         return self.original_kernel, dict(
             rule="exact_final_k_producer_store_frontier_after_actual_hazards",
-            original_kernel_sha256=self.original_kernel.digest(), actual_kernel_sha256=actual.digest(),
-            regions=regions, canonical_load_runs=canonical_changes,
+            original_kernel_sha256=self.original_kernel.digest(),
+            actual_kernel_sha256=actual.digest(),
+            regions=regions,
+            canonical_load_runs=canonical_changes,
             input_pipeline=input_pipeline,
             geometry="original owned views; only explicit checked LHS slot relocation",
             correspondence="same complete counted products/stores; only independent outputs interchanged",
@@ -607,24 +697,44 @@ class DenseReadyReadoutResult:
 
     def revalidate(self):
         self.original.revalidate()
-        if (self.input_pipeline_placement is not None
-                and self.input_pipeline_row_offset != self.input_pipeline_placement.lhs_slot_offset):
+        if (
+            self.input_pipeline_placement is not None
+            and self.input_pipeline_row_offset != self.input_pipeline_placement.lhs_slot_offset
+        ):
             raise ValueError("ready input emission must consume the selected placement")
-        expected, _ = propose_dense_ready_readout(self.original.kernel, self.problem, self._adapter,
-            final_k_prefix=self.array_prefix_admission is not None, array_prefix_admission=self.array_prefix_admission)
+        expected, _ = propose_dense_ready_readout(
+            self.original.kernel,
+            self.problem,
+            self._adapter,
+            final_k_prefix=self.array_prefix_admission is not None,
+            array_prefix_admission=self.array_prefix_admission,
+        )
         if self.input_pipeline_row_offset is not None:
             expected, _ = propose_dense_ready_input_pipeline(
-                expected, self._adapter, self._storage, row_offset=self.input_pipeline_row_offset,
-                placement=self.input_pipeline_placement)
-        if (self.kernel != expected or self.kernel.digest() != self.realization["kernel_sha256"]
-                or self.checked_identity != _digest((self.original.kernel.digest(), self.kernel.digest(),
-                                                    asdict(self.admission), asdict(self.problem),
-                                                    repr(self._adapter), asdict(self._storage),
-                                                    None if self.input_pipeline_placement is None
-                                                    else asdict(self.input_pipeline_placement),
-                                                    None if self.array_prefix_admission is None
-                                                    else asdict(self.array_prefix_admission)))
-                or sha256(Path(__file__).read_bytes()).hexdigest() != self.owner_sha256):
+                expected,
+                self._adapter,
+                self._storage,
+                row_offset=self.input_pipeline_row_offset,
+                placement=self.input_pipeline_placement,
+            )
+        if (
+            self.kernel != expected
+            or self.kernel.digest() != self.realization["kernel_sha256"]
+            or self.checked_identity
+            != _digest(
+                (
+                    self.original.kernel.digest(),
+                    self.kernel.digest(),
+                    asdict(self.admission),
+                    asdict(self.problem),
+                    repr(self._adapter),
+                    asdict(self._storage),
+                    None if self.input_pipeline_placement is None else asdict(self.input_pipeline_placement),
+                    None if self.array_prefix_admission is None else asdict(self.array_prefix_admission),
+                )
+            )
+            or sha256(Path(__file__).read_bytes()).hexdigest() != self.owner_sha256
+        ):
             raise ValueError("ready readout original source, actual commands, capability or owner changed")
 
     def materialize_scf(self):
@@ -641,8 +751,9 @@ class DenseReadyReadoutResult:
         from merlin.compiler.schedule.llvm_program import emit_index_effect_program
 
         self.revalidate()
-        report = emit_index_effect_program(self.kernel, control, lower_effect,
-            complete_epoch=complete_epoch, completion_instruction=DRAIN)
+        report = emit_index_effect_program(
+            self.kernel, control, lower_effect, complete_epoch=complete_epoch, completion_instruction=DRAIN
+        )
         self.revalidate()
         return report
 
@@ -663,16 +774,20 @@ def _ready_execution_bound(result, problem, block, resources, storage):
     original = result.admission
     if type(result) is DenseSegmentedPipelineResult:
         _assignment(problem, block, resources, storage)
-        return replace(original.overlap,
-                        max_issued_compute_pairs=min(original.overlap.max_issued_compute_pairs,
-                                                     original.reduction.max_issued_compute_pairs),
-                        max_issued_loads=min(original.overlap.max_issued_loads, original.reduction.max_issued_loads),
-                        max_issued_readouts=min(original.overlap.max_issued_readouts,
-                                               original.reduction.max_issued_readouts))
+        return replace(
+            original.overlap,
+            max_issued_compute_pairs=min(
+                original.overlap.max_issued_compute_pairs, original.reduction.max_issued_compute_pairs
+            ),
+            max_issued_loads=min(original.overlap.max_issued_loads, original.reduction.max_issued_loads),
+            max_issued_readouts=min(original.overlap.max_issued_readouts, original.reduction.max_issued_readouts),
+        )
     else:
-        if (type(original) is not DenseRetainedReductionAdmission
-                or block.k != problem.tiles[1]
-                or not storage.admits(problem, block, resources)):
+        if (
+            type(original) is not DenseRetainedReductionAdmission
+            or block.k != problem.tiles[1]
+            or not storage.admits(problem, block, resources)
+        ):
             raise ValueError("ready readout requires the original complete full-K storage and reduction owner")
         return original
 
@@ -681,9 +796,21 @@ def _ready_execution_bound(result, problem, block, resources, storage):
     "merlin.compiler.schedule.dense_ready_readout.schedule_dense_ready_readout",
     fallback_route="caller-selected original route; the unchanged input checked result keeps its original readout",
 )
-def schedule_dense_ready_readout(result, problem, block, resources, storage, adapter, admission, *,
-                                 static_budget=128, timeout_ms=5000, input_pipeline_row_offset=None,
-                                 input_pipeline_placement=None, array_prefix_admission=None):
+def schedule_dense_ready_readout(
+    result,
+    problem,
+    block,
+    resources,
+    storage,
+    adapter,
+    admission,
+    *,
+    static_budget=128,
+    timeout_ms=5000,
+    input_pipeline_row_offset=None,
+    input_pipeline_placement=None,
+    array_prefix_admission=None,
+):
     """Consume a checked segmented/full-K result and separate causal law.
 
     The final compute/store frontier retains original ownership and reduction.
@@ -704,8 +831,13 @@ def schedule_dense_ready_readout(result, problem, block, resources, storage, ada
     admission.validate_for(adapter, bound)
     if array_prefix_admission is not None and type(result) is not DensePanelPipelineResult:
         raise ValueError("array prefix requires the original retained full-K owner")
-    actual, changes = propose_dense_ready_readout(result.kernel, problem, adapter,
-        final_k_prefix=array_prefix_admission is not None, array_prefix_admission=array_prefix_admission)
+    actual, changes = propose_dense_ready_readout(
+        result.kernel,
+        problem,
+        adapter,
+        final_k_prefix=array_prefix_admission is not None,
+        array_prefix_admission=array_prefix_admission,
+    )
     input_pipeline = []
     if input_pipeline_row_offset is not None:
         if admission.disjoint_load_qualification_identity is None:
@@ -715,30 +847,46 @@ def schedule_dense_ready_readout(result, problem, block, resources, storage, ada
         if input_pipeline_placement is None:
             lhs_rows = block.m * block.k * problem.tile_m
             rhs_rows = block.k * block.n * problem.tile_k
-            if (2 * lhs_rows * storage.lhs.unit_bytes + rhs_rows * storage.rhs.unit_bytes
-                    > resources.operand_bytes):
+            if 2 * lhs_rows * storage.lhs.unit_bytes + rhs_rows * storage.rhs.unit_bytes > resources.operand_bytes:
                 raise ValueError("two live LHS panels and one RHS panel exceed the original operand byte budget")
         actual, input_pipeline = propose_dense_ready_input_pipeline(
-            actual, adapter, storage, row_offset=input_pipeline_row_offset,
-            placement=input_pipeline_placement)
-    projection = DenseReadyReadoutCheckingProjection(result.kernel, problem,
-        input_pipeline_row_offset=input_pipeline_row_offset, input_pipeline_placement=input_pipeline_placement,
-        final_k_prefix=array_prefix_admission is not None, array_prefix_admission=array_prefix_admission)
+            actual, adapter, storage, row_offset=input_pipeline_row_offset, placement=input_pipeline_placement
+        )
+    projection = DenseReadyReadoutCheckingProjection(
+        result.kernel,
+        problem,
+        input_pipeline_row_offset=input_pipeline_row_offset,
+        input_pipeline_placement=input_pipeline_placement,
+        final_k_prefix=array_prefix_admission is not None,
+        array_prefix_admission=array_prefix_admission,
+    )
     fresh, array_proof = projection.hazard_kernel(actual, adapter, storage)
-    if (type(static_budget) is not int or static_budget <= 0
-            or sum(1 for _ in _calls(actual.body)) > static_budget):
+    if type(static_budget) is not int or static_budget <= 0 or sum(1 for _ in _calls(actual.body)) > static_budget:
         raise ValueError("actual retained prefix exceeds the original static command budget")
     report = _verify_dense_epochs(
-        fresh, problem, resources, storage, adapter, bound,
-        static_budget=static_budget, timeout_ms=timeout_ms,
-        output_readout=result.output_readout, bias_source=result.bias_source,
-        ordered_accumulator_commits=True, source_phase_fission=True,
+        fresh,
+        problem,
+        resources,
+        storage,
+        adapter,
+        bound,
+        static_budget=static_budget,
+        timeout_ms=timeout_ms,
+        output_readout=result.output_readout,
+        bias_source=result.bias_source,
+        ordered_accumulator_commits=True,
+        source_phase_fission=True,
         readout_compute_admission=admission,
         readout_source_projection=projection,
     )
-    report.update(schema="merlin.dense_ready_readout.v1", transformations=changes,
-                  original_schedule=result.realization, source_identity=result.source_identity,
-                  additional_capability=asdict(admission), schedule_ir=result.realization["schedule_ir"])
+    report.update(
+        schema="merlin.dense_ready_readout.v1",
+        transformations=changes,
+        original_schedule=result.realization,
+        source_identity=result.source_identity,
+        additional_capability=asdict(admission),
+        schedule_ir=result.realization["schedule_ir"],
+    )
     if input_pipeline:
         report["input_pipeline"] = input_pipeline
     if input_pipeline_placement is not None:
@@ -747,21 +895,50 @@ def schedule_dense_ready_readout(result, problem, block, resources, storage, ada
         report["array_prefix_projection"] = array_proof
         report["kernel_sha256"] = actual.digest()
     checked = DenseReadyReadoutResult(
-        result, actual, report, admission, problem,
-        _digest((result.kernel.digest(), actual.digest(), asdict(admission), asdict(problem),
-                 repr(adapter), asdict(storage), None if input_pipeline_placement is None
-                 else asdict(input_pipeline_placement), None if array_prefix_admission is None
-                 else asdict(array_prefix_admission))),
-        sha256(Path(__file__).read_bytes()).hexdigest(), adapter, storage,
-        input_pipeline_row_offset, input_pipeline_placement, array_prefix_admission,
+        result,
+        actual,
+        report,
+        admission,
+        problem,
+        _digest(
+            (
+                result.kernel.digest(),
+                actual.digest(),
+                asdict(admission),
+                asdict(problem),
+                repr(adapter),
+                asdict(storage),
+                None if input_pipeline_placement is None else asdict(input_pipeline_placement),
+                None if array_prefix_admission is None else asdict(array_prefix_admission),
+            )
+        ),
+        sha256(Path(__file__).read_bytes()).hexdigest(),
+        adapter,
+        storage,
+        input_pipeline_row_offset,
+        input_pipeline_placement,
+        array_prefix_admission,
     )
     checked.revalidate()
     return checked
 
 
-def admit_ready_readout_tile_loads(original, proposal, problem, block, resources, storage, adapter, *,
-                                   project, encode_band, static_budget=128, timeout_ms=5000,
-                                   max_static_nodes=4096, external_sources=None):
+def admit_ready_readout_tile_loads(
+    original,
+    proposal,
+    problem,
+    block,
+    resources,
+    storage,
+    adapter,
+    *,
+    project,
+    encode_band,
+    static_budget=128,
+    timeout_ms=5000,
+    max_static_nodes=4096,
+    external_sources=None,
+):
     """Compose final physical wide bands with the SAME causal frontier proof.
 
     Every actual band is decoded and all actual epochs are verified before the
@@ -777,11 +954,14 @@ def admit_ready_readout_tile_loads(original, proposal, problem, block, resources
         raise ValueError("wide causal readout cannot change original problem, storage or adapter")
     bound = _ready_execution_bound(original.original, problem, block, resources, storage)
     projection = DenseReadyReadoutCheckingProjection(
-        original.original.kernel, problem, canonical_load_runs=True,
+        original.original.kernel,
+        problem,
+        canonical_load_runs=True,
         input_pipeline_row_offset=original.input_pipeline_row_offset,
         input_pipeline_placement=original.input_pipeline_placement,
         final_k_prefix=original.array_prefix_admission is not None,
-        array_prefix_admission=original.array_prefix_admission)
+        array_prefix_admission=original.array_prefix_admission,
+    )
 
     def verifier(actual, p, b, r, s, a, admission, **options):
         if admission != original.admission:
@@ -789,32 +969,69 @@ def admit_ready_readout_tile_loads(original, proposal, problem, block, resources
         _ready_execution_bound(original.original, p, b, r, s)
         fresh, array_proof = projection.hazard_kernel(actual, a, s)
         report = _verify_dense_epochs(
-            fresh, p, r, s, a, bound, **options,
-            ordered_accumulator_commits=True, source_phase_fission=True,
-            readout_compute_admission=admission, readout_source_projection=projection,
+            fresh,
+            p,
+            r,
+            s,
+            a,
+            bound,
+            **options,
+            ordered_accumulator_commits=True,
+            source_phase_fission=True,
+            readout_compute_admission=admission,
+            readout_source_projection=projection,
         )
         if array_proof is not None:
             report.update(array_prefix_projection=array_proof, kernel_sha256=actual.digest())
         return report
 
     return _admit_dense_tile_loads(
-        original, proposal, problem, block, resources, storage, adapter,
-        verifier=verifier, project=project, encode_band=encode_band,
-        static_budget=static_budget, timeout_ms=timeout_ms, max_static_nodes=max_static_nodes,
+        original,
+        proposal,
+        problem,
+        block,
+        resources,
+        storage,
+        adapter,
+        verifier=verifier,
+        project=project,
+        encode_band=encode_band,
+        static_budget=static_budget,
+        timeout_ms=timeout_ms,
+        max_static_nodes=max_static_nodes,
         external_sources=external_sources,
     )
+
 
 @admission_point(
     "merlin.compiler.schedule.dense_ready_readout.schedule_dense_pipeline",
     fallback_route="caller-selected original route; this consumer emits nothing on refusal",
 )
 def schedule_dense_pipeline(
-    problem, resources, storage, adapter, *, name, dtypes, source_identity=None,
-    external_buffers_disjoint, schedule_plan=None, pipeline_admission=None,
-    batch_readouts=False, readout_mode="separate", readout_admission=None,
-    readout_group_path=(), static_budget=128, timeout_ms=5000,
-    output_readout=None, bias_source=None, readout_qualification_identity=None,
-    epoch_law=None, input_pipeline_row_offset=None, input_pipeline_placement=None, array_prefix_admission=None,
+    problem,
+    resources,
+    storage,
+    adapter,
+    *,
+    name,
+    dtypes,
+    source_identity=None,
+    external_buffers_disjoint,
+    schedule_plan=None,
+    pipeline_admission=None,
+    batch_readouts=False,
+    readout_mode="separate",
+    readout_admission=None,
+    readout_group_path=(),
+    static_budget=128,
+    timeout_ms=5000,
+    output_readout=None,
+    bias_source=None,
+    readout_qualification_identity=None,
+    epoch_law=None,
+    input_pipeline_row_offset=None,
+    input_pipeline_placement=None,
+    array_prefix_admission=None,
 ):
     """Consume one source-bound decision through its original checked owner.
 
@@ -852,28 +1069,58 @@ def schedule_dense_pipeline(
     premises hold, and the result emits only the remaining drains. None keeps
     every original drain; the returned schedule is then unchanged.
     """
-    if (type(batch_readouts) is not bool or readout_mode not in ("separate", "ready", "disjoint")
-            or type(readout_group_path) is not tuple
-            or any(type(v) is not str or not v for v in readout_group_path)
-            or readout_mode == "separate" and (readout_admission is not None or readout_group_path)
-            or readout_mode == "ready" and (readout_admission is None or readout_group_path)
-            or readout_mode == "disjoint" and (readout_admission is None or not readout_group_path)):
+    if (
+        type(batch_readouts) is not bool
+        or readout_mode not in ("separate", "ready", "disjoint")
+        or type(readout_group_path) is not tuple
+        or any(type(v) is not str or not v for v in readout_group_path)
+        or readout_mode == "separate"
+        and (readout_admission is not None or readout_group_path)
+        or readout_mode == "ready"
+        and (readout_admission is None or readout_group_path)
+        or readout_mode == "disjoint"
+        and (readout_admission is None or not readout_group_path)
+    ):
         raise ValueError("dense pipeline needs explicit consumed readout mode, law and group path")
     from merlin.compiler.schedule.schedule_ir import read_dense_schedule_plan
 
-    boundary = dict(output_readout=output_readout, bias_source=bias_source,
-                    readout_qualification_identity=readout_qualification_identity)
-    common = dict(name=name, dtypes=dtypes, source_identity=source_identity,
-                  external_buffers_disjoint=external_buffers_disjoint, static_budget=static_budget,
-                  schedule_plan=schedule_plan, **boundary)
-    decision = None if schedule_plan is None else read_dense_schedule_plan(
-        schedule_plan, problem, resources, storage, adapter, source_identity=source_identity,
-        dtypes=dtypes, static_budget=static_budget, output_readout=output_readout, bias_source=bias_source)
-    if (input_pipeline_row_offset is not None and input_pipeline_placement is not None):
+    boundary = dict(
+        output_readout=output_readout,
+        bias_source=bias_source,
+        readout_qualification_identity=readout_qualification_identity,
+    )
+    common = dict(
+        name=name,
+        dtypes=dtypes,
+        source_identity=source_identity,
+        external_buffers_disjoint=external_buffers_disjoint,
+        static_budget=static_budget,
+        schedule_plan=schedule_plan,
+        **boundary,
+    )
+    decision = (
+        None
+        if schedule_plan is None
+        else read_dense_schedule_plan(
+            schedule_plan,
+            problem,
+            resources,
+            storage,
+            adapter,
+            source_identity=source_identity,
+            dtypes=dtypes,
+            static_budget=static_budget,
+            output_readout=output_readout,
+            bias_source=bias_source,
+        )
+    )
+    if input_pipeline_row_offset is not None and input_pipeline_placement is not None:
         raise ValueError("ready input needs one typed placement or one explicit manual offset")
-    if (input_pipeline_row_offset is not None or input_pipeline_placement is not None
-            or array_prefix_admission is not None) and (
-            readout_mode != "ready" or decision is None or decision.pipeline_kind != "retained_full_k"):
+    if (
+        input_pipeline_row_offset is not None
+        or input_pipeline_placement is not None
+        or array_prefix_admission is not None
+    ) and (readout_mode != "ready" or decision is None or decision.pipeline_kind != "retained_full_k"):
         raise ValueError("advancing input slots require an explicit retained full-K ready-readout decision")
     if epoch_law is not None and (decision is None or decision.pipeline_kind != "two_window"):
         raise ValueError("dense panel epochs apply to an explicit two-window panel decision")
@@ -882,8 +1129,15 @@ def schedule_dense_pipeline(
             raise ValueError("compact decision cannot consume asynchronous pipeline or readout laws")
         from merlin.compiler.schedule.compact_dense import schedule_compact_dense
 
-        return schedule_compact_dense(problem, resources, storage, adapter,
-            verification_timeout_ms=timeout_ms, max_repairs=0 if decision is not None else 1, **common)
+        return schedule_compact_dense(
+            problem,
+            resources,
+            storage,
+            adapter,
+            verification_timeout_ms=timeout_ms,
+            max_repairs=0 if decision is not None else 1,
+            **common,
+        )
     if pipeline_admission is None:
         raise ValueError("advanced dense decision requires its independently selected pipeline law")
     # Layout decisions may relocate the original assigned windows. Every later
@@ -891,47 +1145,70 @@ def schedule_dense_pipeline(
     chosen_storage = decision.storage
     args = (problem, decision.block, resources, chosen_storage, adapter)
     if decision.pipeline_kind == "retained_lhs_segmented_k":
-        from merlin.compiler.schedule.dense_segmented_pipeline import batch_dense_segmented_readouts, schedule_dense_segmented_pipeline
+        from merlin.compiler.schedule.dense_segmented_pipeline import (
+            batch_dense_segmented_readouts,
+            schedule_dense_segmented_pipeline,
+        )
 
-        result = schedule_dense_segmented_pipeline(problem, resources, storage, adapter,
-                                                    pipeline_admission, timeout_ms=timeout_ms, **common)
+        result = schedule_dense_segmented_pipeline(
+            problem, resources, storage, adapter, pipeline_admission, timeout_ms=timeout_ms, **common
+        )
         if batch_readouts:
-            result = batch_dense_segmented_readouts(result, *args, pipeline_admission,
-                                                    static_budget=static_budget, timeout_ms=timeout_ms)
+            result = batch_dense_segmented_readouts(
+                result, *args, pipeline_admission, static_budget=static_budget, timeout_ms=timeout_ms
+            )
         if readout_mode == "ready":
-            result = schedule_dense_ready_readout(result, *args, readout_admission,
-                                                  static_budget=static_budget, timeout_ms=timeout_ms,
-                                                  input_pipeline_row_offset=input_pipeline_row_offset,
-                                                  input_pipeline_placement=input_pipeline_placement,
-                                                  array_prefix_admission=array_prefix_admission)
+            result = schedule_dense_ready_readout(
+                result,
+                *args,
+                readout_admission,
+                static_budget=static_budget,
+                timeout_ms=timeout_ms,
+                input_pipeline_row_offset=input_pipeline_row_offset,
+                input_pipeline_placement=input_pipeline_placement,
+                array_prefix_admission=array_prefix_admission,
+            )
         elif readout_mode == "disjoint":
             from merlin.compiler.schedule.dense_readout_overlap import schedule_dense_readout_overlap
 
-            result = schedule_dense_readout_overlap(result, *args, readout_admission,
-                group_path=readout_group_path, static_budget=static_budget, timeout_ms=timeout_ms)
+            result = schedule_dense_readout_overlap(
+                result,
+                *args,
+                readout_admission,
+                group_path=readout_group_path,
+                static_budget=static_budget,
+                timeout_ms=timeout_ms,
+            )
     else:
-        if readout_mode == "disjoint" or (readout_mode == "ready"
-                and decision.pipeline_kind != "retained_full_k"):
+        if readout_mode == "disjoint" or (readout_mode == "ready" and decision.pipeline_kind != "retained_full_k"):
             raise ValueError("readout mode requires its original checked segmented/full-K pipeline")
         from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_panel_pipeline
 
-        result = schedule_dense_panel_pipeline(problem, resources, storage, adapter,
-                                               pipeline_admission, timeout_ms=timeout_ms, **common)
+        result = schedule_dense_panel_pipeline(
+            problem, resources, storage, adapter, pipeline_admission, timeout_ms=timeout_ms, **common
+        )
         if batch_readouts:
             from merlin.compiler.schedule.dense_panel_readout import batch_dense_panel_readouts
 
-            result = batch_dense_panel_readouts(result, *args, pipeline_admission,
-                                                static_budget=static_budget, timeout_ms=timeout_ms)
+            result = batch_dense_panel_readouts(
+                result, *args, pipeline_admission, static_budget=static_budget, timeout_ms=timeout_ms
+            )
         if epoch_law is not None:
             from merlin.compiler.schedule.dense_panel_epochs import schedule_dense_panel_epochs
 
-            result = schedule_dense_panel_epochs(result, *args, pipeline_admission, epoch_law,
-                                                 static_budget=static_budget, timeout_ms=timeout_ms)
+            result = schedule_dense_panel_epochs(
+                result, *args, pipeline_admission, epoch_law, static_budget=static_budget, timeout_ms=timeout_ms
+            )
         if readout_mode == "ready":
-            result = schedule_dense_ready_readout(result, *args, readout_admission,
-                                                  static_budget=static_budget, timeout_ms=timeout_ms,
-                                                  input_pipeline_row_offset=input_pipeline_row_offset,
-                                                  input_pipeline_placement=input_pipeline_placement,
-                                                  array_prefix_admission=array_prefix_admission)
+            result = schedule_dense_ready_readout(
+                result,
+                *args,
+                readout_admission,
+                static_budget=static_budget,
+                timeout_ms=timeout_ms,
+                input_pipeline_row_offset=input_pipeline_row_offset,
+                input_pipeline_placement=input_pipeline_placement,
+                array_prefix_admission=array_prefix_admission,
+            )
     result.revalidate()
     return result

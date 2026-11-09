@@ -8,16 +8,15 @@ import pytest
 
 from merlin.compiler.schedule.blocks import SpatialMaxReadout
 from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.rolling_spatial import RollingPackedSpatialPlan
-from merlin.compiler.schedule.rolling_spatial import emit_rolling_spatial_producer
-from merlin.compiler.schedule.rolling_spatial import propose_rolling_spatial_choices
+from merlin.compiler.schedule.rolling_spatial import (
+    RollingPackedSpatialPlan,
+    emit_rolling_spatial_producer,
+    propose_rolling_spatial_choices,
+)
 from merlin.compiler.schedule.rolling_window import emit_rolling_window_lookup
-from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan
-from merlin.compiler.schedule.spatial_producer import SpatialProducerPlan
-from merlin.compiler.schedule.spatial_readout import RoundedReadout
-from merlin.compiler.schedule.spatial_readout import SpatialReadoutChain
-from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
-from merlin.compiler.schedule.window_transfer import Window2D
+from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
+from merlin.compiler.schedule.spatial_readout import RoundedReadout, SpatialReadoutChain
+from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan, Window2D
 from merlin.llvmlower.requantization import quantized
 
 

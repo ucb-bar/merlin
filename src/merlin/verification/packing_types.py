@@ -2,6 +2,7 @@
 
 These immutable declarations are premises, not runtime or compiler proofs.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

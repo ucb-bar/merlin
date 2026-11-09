@@ -17,16 +17,16 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
-from merlin_experiments.phase1.context import load_context
-from merlin_experiments.phase1.feedback import formal, freeze
-from merlin_experiments.phase2 import campaign
-from merlin_experiments.phase2.global_inputs import FrozenPhase1
 
 from merlin.benchharness import hash_tree
 from merlin.common import artifacts, provenance
 from merlin.common.paths import data_path
 from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen.sandbox import bwrap as BW
+from merlin_experiments.phase1.context import load_context
+from merlin_experiments.phase1.feedback import formal, freeze
+from merlin_experiments.phase2 import campaign
+from merlin_experiments.phase2.global_inputs import FrozenPhase1
 
 
 @pytest.fixture
@@ -189,9 +189,8 @@ def build_handoff(
     # This fixture exercises the formal->Phase-2 handoff, not a compiler build.
     # Supply an explicit synthetic external gate boundary just as the capsule
     # oracle above is synthetic; production PFM.run is never replaced.
-    from merlin_experiments.phase1.feedback import private_full_models as PFM
-
     from merlin.runtime.modelinputs import strict_tree_sha256
+    from merlin_experiments.phase1.feedback import private_full_models as PFM
 
     private_spec = tmp_path / "synthetic-private-spec.yaml"
     target = load_context(descriptor, repo=repo).target

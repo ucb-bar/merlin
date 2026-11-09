@@ -15,8 +15,16 @@ def ordered_float_compare(a, b, width, predicate):
     equal = a == b or (a & magnitude) == (b & magnitude) == 0
     sign_a, sign_b = a >> (width * 8 - 1), b >> (width * 8 - 1)
     less = not equal and (sign_a if sign_a != sign_b else a > b if sign_a else a < b)
-    return int({"oeq": equal, "one": not equal, "olt": less, "ole": less or equal,
-                "ogt": not (less or equal), "oge": not less}[predicate])
+    return int(
+        {
+            "oeq": equal,
+            "one": not equal,
+            "olt": less,
+            "ole": less or equal,
+            "ogt": not (less or equal),
+            "oge": not less,
+        }[predicate]
+    )
 
 
 def predicate_widths(node, operands):
@@ -30,14 +38,23 @@ def predicate_widths(node, operands):
     if any(item.type.shape != shape for item in operands):
         raise ValueError("constant predicate requires equal operand shapes")
     if node.op == "select":
-        if (len(operands) != 3 or node.attrs or operands[0].type != boolean
-                or any(item.type != node.type for item in operands[1:]) or node.type.dtype not in _WIDTHS):
+        if (
+            len(operands) != 3
+            or node.attrs
+            or operands[0].type != boolean
+            or any(item.type != node.type for item in operands[1:])
+            or node.type.dtype not in _WIDTHS
+        ):
             raise ValueError("constant select needs a Boolean condition and unchanged value types")
         width = _WIDTHS[node.type.dtype]
         return (1, width, width), width
     if node.op == "f32_nonzero":
-        if (len(operands) != 1 or operands[0].type != TensorType(shape, "f32", "raw-bit-pattern")
-                or node.type != boolean or node.attrs != (("numeric_semantics", "f32-une-zero-v1"),)):
+        if (
+            len(operands) != 1
+            or operands[0].type != TensorType(shape, "f32", "raw-bit-pattern")
+            or node.type != boolean
+            or node.attrs != (("numeric_semantics", "f32-une-zero-v1"),)
+        ):
             raise ValueError("constant truth conversion has different source semantics")
         return (4,), 1
     attrs = dict(node.attrs)
@@ -70,8 +87,9 @@ def predicate_element(node, arguments, widths):
     operation = attrs["operation"]
     if operation == "arith.cmpi":
         a, b = (v if v < 1 << 63 else v - (1 << 64) for v in arguments)
-        return int({"eq": a == b, "ne": a != b, "slt": a < b, "sle": a <= b,
-                    "sgt": a > b, "sge": a >= b}[attrs["predicate"]])
+        return int(
+            {"eq": a == b, "ne": a != b, "slt": a < b, "sle": a <= b, "sgt": a > b, "sge": a >= b}[attrs["predicate"]]
+        )
     if operation == "arith.cmpf":
         return ordered_float_compare(*arguments, widths[0], attrs["predicate"])
     if operation == "arith.extui":

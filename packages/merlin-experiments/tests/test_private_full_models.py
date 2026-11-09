@@ -12,6 +12,9 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
+
+from merlin.targetgen.sandbox import bwrap, host_surfaces
+from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface
 from merlin_experiments.phase1.feedback import private_bucketize_support as bucketize
 from merlin_experiments.phase1.feedback import private_compilation_inputs as compilation
 from merlin_experiments.phase1.feedback import private_f32_maximum_support as maximum
@@ -25,9 +28,6 @@ from merlin_experiments.phase1.feedback import private_literal_arange_admission 
 from merlin_experiments.phase1.feedback import private_ordered_scan_support as ordered_scan
 from merlin_experiments.phase1.feedback import private_pool_support as pool
 from merlin_experiments.phase1.feedback.private_prebuilt_receipt import load_diagnostic_receipt
-
-from merlin.targetgen.sandbox import bwrap, host_surfaces
-from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface
 
 
 def _sha(path: Path) -> str:
@@ -100,9 +100,8 @@ def _synthetic_source_demand(raw, normalized, groups, *, linked=None):
 
 
 def test_private_capture_binds_sealed_and_compiler_tree_algorithms_independently(tmp_path):
-    from merlin_experiments.capture_execution import sealed_m2m
-
     from merlin.runtime.modelinputs import strict_tree_sha256
+    from merlin_experiments.capture_execution import sealed_m2m
 
     capture = tmp_path / "capture"
     capture.mkdir()
@@ -796,9 +795,8 @@ def test_built_kernel_audit_reuses_exact_bytes_not_source_calls(tmp_path, monkey
 
 
 def test_unknown_built_kernel_audit_preserves_actual_diagnostics_and_still_refuses(tmp_path, monkeypatch):
-    from merlin_experiments.phase1.feedback.private_program_checks import ProgramCheckFailure
-
     from merlin.llvmlower import device_build
+    from merlin_experiments.phase1.feedback.private_program_checks import ProgramCheckFailure
 
     monkeypatch.setattr(device_build, "executable_kernel_entry", lambda _target: "kernel")
     device = tmp_path / "device"
@@ -1171,9 +1169,8 @@ def _generic_copy_module(
     ],
 )
 def test_generic_copy_support_proves_linear_tiled_movement_bounds(input_shape, input_map, accepted):
-    from merlin_experiments.phase1.feedback.private_data_movement import verify_generic_copy
-
     from merlin.common import mlir_query as mq
+    from merlin_experiments.phase1.feedback.private_data_movement import verify_generic_copy
 
     # Independent geometry: patch coordinates are bounded by the identity output domain.
     module = _generic_copy_module(
@@ -1192,9 +1189,8 @@ def test_generic_copy_support_proves_linear_tiled_movement_bounds(input_shape, i
 
 
 def test_generic_copy_support_requires_typed_singleton_projection_and_exact_join():
-    from merlin_experiments.phase1.feedback.private_data_movement import prove_generic_copy_source
-
     from merlin.common import mlir_query as mq
+    from merlin_experiments.phase1.feedback.private_data_movement import prove_generic_copy_source
 
     module = _generic_copy_module()
     row = {
@@ -1258,15 +1254,14 @@ def test_generic_copy_support_requires_typed_singleton_projection_and_exact_join
 
 
 def test_source_obligations_prove_copy_before_hardware_eligibility(tmp_path, monkeypatch):
-    from merlin_experiments.phase1.feedback import private_data_movement as movement
-
     from merlin.common import mlir_query as mq
-    from merlin.runtime.modelinputs import file_sha256
     from merlin.frontends.capture_normalization import normalize_capture_mlir
+    from merlin.runtime.modelinputs import file_sha256
     from merlin.targetgen import application_inventory as ai
     from merlin.targetgen import eligibility
     from merlin.targetgen.compute_units import SemanticCapability
     from merlin.xdsl_dialects.lowering import compute_groups as cg
+    from merlin_experiments.phase1.feedback import private_data_movement as movement
 
     capture = tmp_path / "capture"
     capture.mkdir()
@@ -1343,9 +1338,8 @@ def test_source_obligations_prove_copy_before_hardware_eligibility(tmp_path, mon
 
 
 def test_source_inventory_ordinal_join_requires_complete_exact_parsed_operations():
-    from merlin_experiments.phase1.feedback.private_data_movement import source_inventory_by_ordinal
-
     from merlin.common import mlir_query as mq
+    from merlin_experiments.phase1.feedback.private_data_movement import source_inventory_by_ordinal
 
     parsed = tuple(mq.walk(_generic_copy_module()))
     rows = [{"mlir_operation": mq.op_name(op), "count": 1, "ordinals": [ordinal]} for ordinal, op in enumerate(parsed)]
@@ -1961,9 +1955,8 @@ def test_private_postbuild_recipe_checks_actual_link_inputs(tmp_path):
 
 
 def test_recipe_derivation_binds_current_sources_and_selected_capture_recipe(tmp_path, monkeypatch):
-    from merlin_experiments.phase0 import evidence as evidence_api
-
     from merlin.targetgen.quant_recipe import digest as recipe_digest
+    from merlin_experiments.phase0 import evidence as evidence_api
 
     root = tmp_path / "derived"
     root.mkdir()

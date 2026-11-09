@@ -49,8 +49,9 @@ class PlannedCompiler:
 
     name = "merlin.planned"
 
-    def __init__(self, selection: SelectedExecution, backends: dict[str, RegionBackend], *,
-                 image: CImageLink | None = None):
+    def __init__(
+        self, selection: SelectedExecution, backends: dict[str, RegionBackend], *, image: CImageLink | None = None
+    ):
         if type(selection) is not SelectedExecution or type(backends) is not dict:
             raise ValueError("planned compilation requires a selection and explicit backend bindings")
         if any(type(key) is not str or type(value) is not RegionBackend for key, value in backends.items()):
@@ -66,8 +67,11 @@ class PlannedCompiler:
         self._image = image
 
     def _option_identity(self):
-        return json.dumps({key: {"entry": value.entry, "options": asdict(value.options)}
-                           for key, value in self.backends.items()}, sort_keys=True, allow_nan=False)
+        return json.dumps(
+            {key: {"entry": value.entry, "options": asdict(value.options)} for key, value in self.backends.items()},
+            sort_keys=True,
+            allow_nan=False,
+        )
 
     def _revalidate(self):
         if self.image is not self._image:
@@ -88,8 +92,9 @@ class PlannedCompiler:
         self._revalidate()
         if request.source.kind != "mlir":
             raise ValueError("planned compilation currently requires imported MLIR")
-        control = control_entry(request.options, self.selection.source.entry,
-                                self.image.deployment if self.image is not None else None)
+        control = control_entry(
+            request.options, self.selection.source.entry, self.image.deployment if self.image is not None else None
+        )
         if control is not None and any(item.proposal.abi == "inlined" for item in self.selection.selected):
             raise ValueError("C control needs a compiled wrapper for every operation; inline CPU cannot be omitted")
         actual = parse_mlir_text(request.source.text)
@@ -101,8 +106,9 @@ class PlannedCompiler:
 
     def compile(self, request):
         self.validate(request)
-        control = control_entry(request.options, self.selection.source.entry,
-                                self.image.deployment if self.image is not None else None)
+        control = control_entry(
+            request.options, self.selection.source.entry, self.image.deployment if self.image is not None else None
+        )
         if request.output.exists():
             raise FileExistsError(f"compilation requires fresh output: {request.output}")
         partition = partition_execution(self.selection)
@@ -122,8 +128,10 @@ class PlannedCompiler:
             item = next(item for item in self.selection.selected if item.alternative.id == region.alternative)
             ticket = None
             if item.proposal.lowering is not None:
-                if any(not callable(getattr(provider, method, None))
-                       for method in ("validate_selected", "compile_selected")):
+                if any(
+                    not callable(getattr(provider, method, None))
+                    for method in ("validate_selected", "compile_selected")
+                ):
                     raise ValueError("selected offer requires explicit validate_selected/compile_selected support")
                 ticket = LoweringTicket.bind(partition, region, binding.entry, child)
             before = request_identity(child)
@@ -153,26 +161,41 @@ class PlannedCompiler:
             products.extend(Artifact(a.path, a.kind, "region." + a.role, a.sha256) for a in compiled.artifacts)
             products.append(Artifact.from_file(compiled.manifest, kind="json", role="region.manifest"))
             region_products.append(RegionProduct(entry, compiled))
-            records.append({"alternative": region.alternative, "provider": region.provider,
-                            "partition_entry": region.symbol, "backend_entry": entry,
-                            "source_ordinals": list(region.source_ordinals),
-                            "inputs": list(region.inputs), "outputs": list(region.outputs),
-                            "lowering": ticket.record() if ticket is not None else None,
-                            "lowering_binding": "selected_offer" if ticket is not None else "legacy_source_and_options",
-                            "compilation": compiled.manifest.relative_to(request.output).as_posix()})
+            records.append(
+                {
+                    "alternative": region.alternative,
+                    "provider": region.provider,
+                    "partition_entry": region.symbol,
+                    "backend_entry": entry,
+                    "source_ordinals": list(region.source_ordinals),
+                    "inputs": list(region.inputs),
+                    "outputs": list(region.outputs),
+                    "lowering": ticket.record() if ticket is not None else None,
+                    "lowering_binding": "selected_offer" if ticket is not None else "legacy_source_and_options",
+                    "compilation": compiled.manifest.relative_to(request.output).as_posix(),
+                }
+            )
         stage = "compiled_regions"
-        remaining = ["control_lowering", "region_abi_adaptation", "link", "deployment_admission",
-                     "backend_correctness_verification", "execution_evidence"]
+        remaining = [
+            "control_lowering",
+            "region_abi_adaptation",
+            "link",
+            "deployment_admission",
+            "backend_correctness_verification",
+            "execution_evidence",
+        ]
         if control is not None:
             description, files = emit_selected_c(
-                partition, tuple(region_products), name=control, directory=request.output)
+                partition, tuple(region_products), name=control, directory=request.output
+            )
             control_directory = request.output / "control"
             control_directory.mkdir()
             for member, text in files.items():
                 path = control_directory / member
                 path.write_text(text, encoding="utf-8")
-                products.append(Artifact.from_file(path, kind="c-source" if path.suffix == ".c" else "c-header",
-                                                   role="control"))
+                products.append(
+                    Artifact.from_file(path, kind="c-source" if path.suffix == ".c" else "c-header", role="control")
+                )
             description["link_inputs"] = [f"control/{control}.c", *description["link_inputs"]]
             path = control_directory / "control.json"
             path.write_text(json.dumps(description, indent=2, allow_nan=False) + "\n", encoding="utf-8")
@@ -180,25 +203,43 @@ class PlannedCompiler:
             stage = "c_dispatch"
             remaining = ["link", "deployment_admission", "backend_correctness_verification", "execution_evidence"]
             if self.image is not None:
-                products.extend(link_selected_image(self.image, partition, tuple(region_products), description,
-                                                    directory=request.output))
+                products.extend(
+                    link_selected_image(
+                        self.image, partition, tuple(region_products), description, directory=request.output
+                    )
+                )
                 self._revalidate()
                 stage = "linked_image"
                 remaining = ["platform_startup_qualification", "backend_correctness_verification", "execution_evidence"]
         source_path = request.output / "partition.mlir"
         source_path.write_text(ir_text(partition.module), encoding="utf-8")
         report_path = request.output / "plan.json"
-        report = {"selection": self.selection.record(), "partition": asdict(partition.verification),
-                  "source_observation": partition.source_observation(),
-                  "emission": partition.emission.receipt(), "regions": records,
-                  "stage": stage, "execution_verified": False, "remaining": remaining}
+        report = {
+            "selection": self.selection.record(),
+            "partition": asdict(partition.verification),
+            "source_observation": partition.source_observation(),
+            "emission": partition.emission.receipt(),
+            "regions": records,
+            "stage": stage,
+            "execution_verified": False,
+            "remaining": remaining,
+        }
         report_path.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
-        products.extend((Artifact.from_file(source_path, kind="mlir", role="partitioned_source"),
-                         Artifact.from_file(report_path, kind="json", role="execution_plan")))
+        products.extend(
+            (
+                Artifact.from_file(source_path, kind="mlir", role="partitioned_source"),
+                Artifact.from_file(report_path, kind="json", role="execution_plan"),
+            )
+        )
         partition.revalidate()
         self._revalidate()
-        result = Compilation(request.output, self.name, request.source.sha256, tuple(products),
-                             deployment=self.image.deployment if self.image is not None else None,
-                             metadata={"stage": stage, "execution_verified": False})
+        result = Compilation(
+            request.output,
+            self.name,
+            request.source.sha256,
+            tuple(products),
+            deployment=self.image.deployment if self.image is not None else None,
+            metadata={"stage": stage, "execution_verified": False},
+        )
         result.verify()
         return result

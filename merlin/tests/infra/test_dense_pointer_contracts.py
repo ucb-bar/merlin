@@ -5,9 +5,7 @@ from dataclasses import replace
 import pytest
 from test_selected_dense_contracts import inputs
 
-from merlin.compiler.schedule.blocks import Compute
-from merlin.compiler.schedule.blocks import Load
-from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.blocks import Compute, Load, Store
 from merlin.compiler.schedule.dense_contracts import DenseSchedulingUnavailable
 from merlin.sched.ir import Const, Ptr
 

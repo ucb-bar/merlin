@@ -1,19 +1,18 @@
 """Actual counted dense programs, private byte windows and conservative refusals."""
+
 from dataclasses import replace
 
 import pytest
 from test_compact_dense import ADAPTER, mutate
 from test_dense_retained_reduction import chosen, inputs
 
-from merlin.compiler.schedule.batched_dense import partition_batched_dense_storage
-from merlin.compiler.schedule.batched_dense import partition_dense_phases
-from merlin.compiler.schedule.batched_dense import verify_dense_phase_partition
-from merlin.compiler.schedule.blocks import Compute
-from merlin.compiler.schedule.blocks import Load
-from merlin.compiler.schedule.blocks import Preload
-from merlin.compiler.schedule.blocks import Store
-from merlin.compiler.schedule.compact_dense import DenseLoopStorage
-from merlin.compiler.schedule.compact_dense import DenseMemoryView
+from merlin.compiler.schedule.batched_dense import (
+    partition_batched_dense_storage,
+    partition_dense_phases,
+    verify_dense_phase_partition,
+)
+from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
+from merlin.compiler.schedule.compact_dense import DenseLoopStorage, DenseMemoryView
 from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
 from merlin.sched.ir import Call, evaluate, instances
 
@@ -39,8 +38,11 @@ def program():
 def test_real_counted_phase_partition_preserves_every_original_operand_and_product(program):
     phases, record = partition_dense_phases(program, **options())
     for phase in phases:
-        expected = [(c.instr, tuple((k, evaluate(v, env)) for k, v in c.args))
-                    for c, env in instances(program) if c.instr != DRAIN and classification(c) == phase]
+        expected = [
+            (c.instr, tuple((k, evaluate(v, env)) for k, v in c.args))
+            for c, env in instances(program)
+            if c.instr != DRAIN and classification(c) == phase
+        ]
         assert commands(phases[phase]) == expected
         assert record["original_dynamic_calls"][phase] == len(expected)
     assert record["original_dynamic_completions"] == sum(c.instr == DRAIN for c, _ in instances(program))
@@ -70,9 +72,11 @@ def test_phase_partition_refuses_unclassified_effect_event_and_proof_overflow(pr
 
 
 def storage():
-    return DenseLoopStorage(DenseMemoryView("a", "sp", 2, 0, 48),
-                            DenseMemoryView("b", "sp", 3, 32, 32),
-                            DenseMemoryView("c", "acc", 8, 0, 32))
+    return DenseLoopStorage(
+        DenseMemoryView("a", "sp", 2, 0, 48),
+        DenseMemoryView("b", "sp", 3, 32, 32),
+        DenseMemoryView("c", "acc", 8, 0, 32),
+    )
 
 
 def test_batch_private_suballocations_preserve_selected_units_and_actual_parent_bounds():
@@ -80,8 +84,9 @@ def test_batch_private_suballocations_preserve_selected_units_and_actual_parent_
     groups = partition_batched_dense_storage(original, groups=2, row_counts=(24, 16, 16))
     assert [(s.lhs.base, s.rhs.base, s.accumulator.base) for s in groups] == [(0, 32, 0), (24, 48, 16)]
     for s in groups:
-        for parent, child in zip((original.lhs, original.rhs, original.accumulator),
-                                 (s.lhs, s.rhs, s.accumulator), strict=True):
+        for parent, child in zip(
+            (original.lhs, original.rhs, original.accumulator), (s.lhs, s.rhs, s.accumulator), strict=True
+        ):
             assert parent.base <= child.base < child.base + child.capacity <= parent.base + parent.capacity
             assert (child.backing, child.unit_bytes) == (parent.backing, parent.unit_bytes)
 

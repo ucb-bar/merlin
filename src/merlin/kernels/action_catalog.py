@@ -1133,8 +1133,12 @@ def _resolve_seam(prefix: str, backend: str | None) -> _SeamSpec:
 
 
 def seam_location(
-    target_seam: str, *, backend: str | None = None, oot_package: str | None = None,
-    codegen_provider=None, support_target=None,
+    target_seam: str,
+    *,
+    backend: str | None = None,
+    oot_package: str | None = None,
+    codegen_provider=None,
+    support_target=None,
 ) -> dict:
     """Resolve a route's ``target_seam`` to the concrete file + kind + whether new code is needed.
 
@@ -1164,8 +1168,12 @@ def seam_location(
 
 
 def escalation_ladder(
-    axis: str, backend: str = "rvv", *, oot_package: str | None = None,
-    codegen_provider=None, support_target=None,
+    axis: str,
+    backend: str = "rvv",
+    *,
+    oot_package: str | None = None,
+    codegen_provider=None,
+    support_target=None,
 ) -> list[dict]:
     """The full FLAG->KNOB->HEURISTIC->PASS->CODEGEN ladder for one axis: every route weakest->strongest,
     each annotated with the concrete (backend-scoped, OOT-relative) seam to edit and whether it is
@@ -1176,8 +1184,13 @@ def escalation_ladder(
     )
     out = []
     for r in rs:
-        loc = seam_location(r.target_seam, backend=backend, oot_package=oot_package,
-                            codegen_provider=codegen_provider, support_target=support_target)
+        loc = seam_location(
+            r.target_seam,
+            backend=backend,
+            oot_package=oot_package,
+            codegen_provider=codegen_provider,
+            support_target=support_target,
+        )
         out.append(
             {
                 "action_class": r.action_class,

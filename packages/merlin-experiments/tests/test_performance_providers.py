@@ -9,9 +9,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-import merlin_experiments
 import pytest
 
+import merlin_experiments
 from merlin.common.access import declared_modules
 
 PROVIDERS = (

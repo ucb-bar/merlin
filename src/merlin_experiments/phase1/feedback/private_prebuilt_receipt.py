@@ -10,9 +10,7 @@ from typing import Any
 from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
 
 
-def _require_selected_rtl_facts(
-    inputs: Mapping[str, Any], selected_rtl_facts: Mapping[str, str] | None
-) -> None:
+def _require_selected_rtl_facts(inputs: Mapping[str, Any], selected_rtl_facts: Mapping[str, str] | None) -> None:
     """Join an old path-only observation to current selected bytes, without producer credit."""
     observed = inputs.get("rtl_facts")
     identity = inputs.get("rtl_facts_identity")

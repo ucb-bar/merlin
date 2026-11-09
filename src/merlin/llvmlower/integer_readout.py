@@ -83,13 +83,20 @@ def exact_rational_candidate(scales, *, relu=False):
 
     points = {proof["accumulator_min"], proof["accumulator_max"]}
     for threshold in proof["thresholds"]:
-        points.update(x for x in (threshold - 1, threshold)
-                      if proof["accumulator_min"] <= x <= proof["accumulator_max"])
+        points.update(
+            x for x in (threshold - 1, threshold) if proof["accumulator_min"] <= x <= proof["accumulator_max"]
+        )
     if any(rounded(x) != evaluate(x, proof) for x in points):
         return None
-    return dict(schema="exact_rational_readout_v1", multiplier=numerator, shift=shift,
-                source=proof, proof="Monotone signed-i64 rational RNE agrees at both ends of every source interval",
-                checked_points=len(points), exact=True)
+    return dict(
+        schema="exact_rational_readout_v1",
+        multiplier=numerator,
+        shift=shift,
+        source=proof,
+        proof="Monotone signed-i64 rational RNE agrees at both ends of every source interval",
+        checked_points=len(points),
+        exact=True,
+    )
 
 
 def emit_rational_scalar_ir(scales, *, relu=False):
@@ -103,35 +110,42 @@ def emit_rational_scalar_ir(scales, *, relu=False):
     if candidate is None:
         raise ValueError("no exact signed-i64 rational readout for source scales")
     multiplier, shift = candidate["multiplier"], candidate["shift"]
-    lines = ["module {func.func @readout(%x:i32)->i8 {",
-             " %wide=arith.extsi %x:i32 to i64",
-             f" %multiplier=arith.constant {multiplier}:i64",
-             " %product=arith.muli %wide,%multiplier:i64"]
+    lines = [
+        "module {func.func @readout(%x:i32)->i8 {",
+        " %wide=arith.extsi %x:i32 to i64",
+        f" %multiplier=arith.constant {multiplier}:i64",
+        " %product=arith.muli %wide,%multiplier:i64",
+    ]
     result = "%product"
     if shift:
-        lines += [f" %shift=arith.constant {shift}:i64",
-                  f" %mask=arith.constant {(1 << shift) - 1}:i64",
-                  f" %half=arith.constant {1 << (shift - 1)}:i64",
-                  " %one=arith.constant 1:i64", " %zero=arith.constant 0:i64",
-                  " %base=arith.shrsi %product,%shift:i64",
-                  " %remainder=arith.andi %product,%mask:i64",
-                  " %above=arith.cmpi sgt,%remainder,%half:i64",
-                  " %tie=arith.cmpi eq,%remainder,%half:i64",
-                  " %parity=arith.andi %base,%one:i64",
-                  " %odd=arith.cmpi ne,%parity,%zero:i64",
-                  " %odd_tie=arith.andi %tie,%odd:i1",
-                  " %increment=arith.ori %above,%odd_tie:i1",
-                  " %increment_wide=arith.extui %increment:i1 to i64",
-                  " %rounded=arith.addi %base,%increment_wide:i64"]
+        lines += [
+            f" %shift=arith.constant {shift}:i64",
+            f" %mask=arith.constant {(1 << shift) - 1}:i64",
+            f" %half=arith.constant {1 << (shift - 1)}:i64",
+            " %one=arith.constant 1:i64",
+            " %zero=arith.constant 0:i64",
+            " %base=arith.shrsi %product,%shift:i64",
+            " %remainder=arith.andi %product,%mask:i64",
+            " %above=arith.cmpi sgt,%remainder,%half:i64",
+            " %tie=arith.cmpi eq,%remainder,%half:i64",
+            " %parity=arith.andi %base,%one:i64",
+            " %odd=arith.cmpi ne,%parity,%zero:i64",
+            " %odd_tie=arith.andi %tie,%odd:i1",
+            " %increment=arith.ori %above,%odd_tie:i1",
+            " %increment_wide=arith.extui %increment:i1 to i64",
+            " %rounded=arith.addi %base,%increment_wide:i64",
+        ]
         result = "%rounded"
-    lines += [f" %low=arith.constant {candidate['source']['output_min']}:i64",
-              " %high=arith.constant 127:i64",
-              f" %positive=arith.maxsi {result},%low:i64",
-              " %bounded=arith.minsi %positive,%high:i64",
-              " %out=arith.trunci %bounded:i64 to i8", " func.return %out:i8", "}}"]
+    lines += [
+        f" %low=arith.constant {candidate['source']['output_min']}:i64",
+        " %high=arith.constant 127:i64",
+        f" %positive=arith.maxsi {result},%low:i64",
+        " %bounded=arith.minsi %positive,%high:i64",
+        " %out=arith.trunci %bounded:i64 to i8",
+        " func.return %out:i8",
+        "}}",
+    ]
     return "\n".join(lines), candidate
-
-
 
 
 def emit_exact_scalar_ir(scales, *, relu=False):
@@ -160,24 +174,30 @@ def emit_exact_scalar_ir(scales, *, relu=False):
             transitions[threshold] = value
     if len(transitions) > 255:
         raise ValueError("i8 transition representation exceeds its finite bound")
-    lines = ["module {func.func @readout(%x:i32)->i8 {",
-             f" %initial=arith.constant {base}:i8"]
+    lines = ["module {func.func @readout(%x:i32)->i8 {", f" %initial=arith.constant {base}:i8"]
     result = "%initial"
     for index, (threshold, value) in enumerate(sorted(transitions.items())):
-        lines += [f" %threshold{index}=arith.constant {threshold}:i32",
-                  f" %value{index}=arith.constant {value}:i8",
-                  f" %above{index}=arith.cmpi sge,%x,%threshold{index}:i32",
-                  f" %selected{index}=arith.select %above{index},%value{index},{result}:i8"]
+        lines += [
+            f" %threshold{index}=arith.constant {threshold}:i32",
+            f" %value{index}=arith.constant {value}:i8",
+            f" %above{index}=arith.cmpi sge,%x,%threshold{index}:i32",
+            f" %selected{index}=arith.select %above{index},%value{index},{result}:i8",
+        ]
         result = f"%selected{index}"
     lines += [f" func.return {result}:i8", "}}"]
     text = "\n".join(lines)
     operations = 1 + 4 * len(transitions)
     if operations > 1024 or len(text.encode()) > 65536:
         raise ValueError("exact readout exceeds explicit scalar graph budget")
-    return text, dict(schema="exact_threshold_readout_v1", source=proof,
-        transition_count=len(transitions), scalar_operations=operations,
+    return text, dict(
+        schema="exact_threshold_readout_v1",
+        source=proof,
+        transition_count=len(transitions),
+        scalar_operations=operations,
         proof="Complete source monotone transitions, with equal thresholds coalesced and out-of-domain thresholds folded; exact for every signed-i32 input",
-        exact=True, max_output_lsb_error=0)
+        exact=True,
+        max_output_lsb_error=0,
+    )
 
 
 def partition_column_scales(scales, columns, *, relu=False, max_partitions=128):
@@ -207,7 +227,9 @@ def partition_column_scales(scales, columns, *, relu=False, max_partitions=128):
         else:
             ranges.append((column, 1, scale))
     if len(ranges) > max_partitions:
-        raise ValueError(f"column readout partition budget exceeded: {len(ranges)} > {max_partitions}; original route retained")
+        raise ValueError(
+            f"column readout partition budget exceeded: {len(ranges)} > {max_partitions}; original route retained"
+        )
     # Proof construction is shared for repeated coefficients, but returned
     # records confer no emission authority or reusable mutable IR analysis.
     proofs = {}
@@ -216,12 +238,17 @@ def partition_column_scales(scales, columns, *, relu=False, max_partitions=128):
         if scale not in proofs:
             proofs[scale] = emit_exact_scalar_ir([scale], relu=relu)
         scalar_ir, proof = proofs[scale]
-        regions.append(dict(first_column=start, columns=count, scale=scale,
-                            scalar_ir=scalar_ir, readout_proof=proof))
-    return dict(schema="contiguous_column_readout.v1", columns=columns,
-                source_scales=list(normalized), relu=relu, regions=regions,
-                partition_count=len(regions), max_partitions=max_partitions,
-                scope="complete ordered column cover and scalar numerical contracts only")
+        regions.append(dict(first_column=start, columns=count, scale=scale, scalar_ir=scalar_ir, readout_proof=proof))
+    return dict(
+        schema="contiguous_column_readout.v1",
+        columns=columns,
+        source_scales=list(normalized),
+        relu=relu,
+        regions=regions,
+        partition_count=len(regions),
+        max_partitions=max_partitions,
+        scope="complete ordered column cover and scalar numerical contracts only",
+    )
 
 
 def tiled_readout_parameter_table(readout, *, symbol):
@@ -240,7 +267,10 @@ def tiled_readout_parameter_table(readout, *, symbol):
         raise ValueError("parameter table requires an exact tiled source readout and local symbol")
     words = readout.table_words
     return llvm.GlobalOp(
-        llvm.LLVMArrayType(len(words), i32), symbol, "internal", constant=True,
+        llvm.LLVMArrayType(len(words), i32),
+        symbol,
+        "internal",
+        constant=True,
         value=DenseIntOrFPElementsAttr.from_list(TensorType(i32, (len(words),)), list(words)),
         alignment=4,
     )

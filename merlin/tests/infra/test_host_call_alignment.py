@@ -51,15 +51,16 @@ def test_actual_host_import_binds_all_call_descriptors_and_rejects_source_drift(
                output,(void*)(c-c%64),0,2,2,2,1);
       }
     """)
-    subprocess.run([str(compiler), "-S", "-emit-llvm", "-O1", str(source), "-o", str(llvm)], check=True,
-                   capture_output=True)
+    subprocess.run(
+        [str(compiler), "-S", "-emit-llvm", "-O1", str(source), "-o", str(llvm)], check=True, capture_output=True
+    )
     subprocess.run([str(compiler), "-c", str(llvm), "-o", str(obj)], check=True, capture_output=True)
-    records = {role: {"path": str(path), "sha256": file_sha256(path), "size_bytes": path.stat().st_size}
-               for role, path in (("llvm_ir", llvm), ("object", obj))}
+    records = {
+        role: {"path": str(path), "sha256": file_sha256(path), "size_bytes": path.stat().st_size}
+        for role, path in (("llvm_ir", llvm), ("object", obj))
+    }
     assigned = [{"symbol": "kernel"}]
-    preparations = {"kernel": {"call_buffers": [
-        {"shape": [2, 2], "dtype": dtype} for dtype in ("i8", "i8", "i32")
-    ]}}
+    preparations = {"kernel": {"call_buffers": [{"shape": [2, 2], "dtype": dtype} for dtype in ("i8", "i8", "i32")]}}
     actual, observation = inspect(records, assigned, preparations, diagnostics=tmp_path / "observations")
     assert actual == {"kernel": [64, 64, 64]}
     assert observation["host_artifacts"]["llvm_ir"] == records["llvm_ir"]["sha256"]

@@ -134,19 +134,25 @@ def test_exact_rne_grid_clipping_flush_and_signed_zero(tmp_path: Path) -> None:
 
 def test_explicit_zero_canonicalization_matches_host_and_preserves_nonzero_sign(tmp_path: Path) -> None:
     base = FloatBoundarySpec(
-        "finite-normal-preserve-zero", "fp8_e4m3", "encode",
-        max_normal_exponent_code=14, flush_below_normal=True,
+        "finite-normal-preserve-zero",
+        "fp8_e4m3",
+        "encode",
+        max_normal_exponent_code=14,
+        flush_below_normal=True,
         admitted_code_ranges=((0, 0), (8, 119), (136, 247)),
     )
     selected = FloatBoundarySpec(
-        "finite-normal-positive-zero", "fp8_e4m3", "encode",
-        max_normal_exponent_code=14, flush_below_normal=True,
+        "finite-normal-positive-zero",
+        "fp8_e4m3",
+        "encode",
+        max_normal_exponent_code=14,
+        flush_below_normal=True,
         admitted_code_ranges=base.admitted_code_ranges,
         canonicalize_negative_zero=True,
     )
     with pytest.raises(ValueError, match="outside the selected target input domain"):
-        base.encode(np.asarray([-0.0, -2.0**-20], dtype=np.float32))
-    values = np.asarray([0.0, -0.0, -2.0**-20, 2.0**-20, -1.0, 1.0], dtype=np.float32)
+        base.encode(np.asarray([-0.0, -(2.0**-20)], dtype=np.float32))
+    values = np.asarray([0.0, -0.0, -(2.0**-20), 2.0**-20, -1.0, 1.0], dtype=np.float32)
     expected = selected.encode(values).tobytes()
     assert expected == bytes((0, 0, 0, 0, 0xB8, 0x38))
     assert selected.record()["canonicalize_negative_zero"] is True
@@ -164,8 +170,12 @@ def test_explicit_zero_canonicalization_matches_host_and_preserves_nonzero_sign(
 @pytest.mark.parametrize("exponent", [-5, 5])
 def test_power_of_two_scaled_boundary_matches_compiled_host_encoder(tmp_path: Path, exponent: int) -> None:
     spec = FloatBoundarySpec(
-        "scaled-fixture", "fp8_e4m3", "encode", max_normal_exponent_code=14,
-        flush_below_normal=True, pre_encode_scale_exponent=exponent,
+        "scaled-fixture",
+        "fp8_e4m3",
+        "encode",
+        max_normal_exponent_code=14,
+        flush_below_normal=True,
+        pre_encode_scale_exponent=exponent,
     )
     variant = tmp_path / f"scale-{exponent}"
     variant.mkdir()
@@ -173,8 +183,7 @@ def test_power_of_two_scaled_boundary_matches_compiled_host_encoder(tmp_path: Pa
     thresholds = np.asarray(table.midpoint_bits, dtype=np.uint32).view(np.float32)
     cases = [np.float32(0), np.float32(-0.0), np.float32(0.5), np.float32(-0.5)]
     for midpoint in thresholds:
-        cases.extend((np.nextafter(midpoint, np.float32(0)), midpoint,
-                      np.nextafter(midpoint, np.float32(np.inf))))
+        cases.extend((np.nextafter(midpoint, np.float32(0)), midpoint, np.nextafter(midpoint, np.float32(np.inf))))
     rng = np.random.default_rng(0x5CA1E + exponent)
     raw = rng.integers(0, 1 << 32, size=2048, dtype=np.uint32)
     raw = raw[(raw & 0x7F800000) != 0x7F800000]

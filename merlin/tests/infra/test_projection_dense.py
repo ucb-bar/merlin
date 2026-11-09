@@ -8,10 +8,7 @@ from test_compact_dense import ADAPTER
 from test_dense_retained_reduction import chosen, inputs
 from test_shared_input_schedule import source
 
-from merlin.compiler.schedule.blocks import Compute
-from merlin.compiler.schedule.blocks import Load
-from merlin.compiler.schedule.blocks import Preload
-from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
 from merlin.compiler.schedule.projection_dense import bind_dense_projection
 from merlin.compiler.schedule.projection_views import plan_shared_projection_views
 from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups

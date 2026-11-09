@@ -25,8 +25,15 @@ def _record(value):
 
 
 def _target_identity(target):
-    return (target.name, target.kind, target.base.resolve(), target.capability_contract_path.resolve(),
-            target.contract_path.resolve(), target.facts_path.resolve(), target.backend)
+    return (
+        target.name,
+        target.kind,
+        target.base.resolve(),
+        target.capability_contract_path.resolve(),
+        target.contract_path.resolve(),
+        target.facts_path.resolve(),
+        target.backend,
+    )
 
 
 def _serialized_readout(root, operations, output_path):
@@ -44,8 +51,7 @@ def _serialized_readout(root, operations, output_path):
         sequence not in {("convert", "scale", "requant"), ("activation", "convert", "scale", "requant")}
         or len(kinds) != len(readout.get("readout", ()))
         or ("activation" in kinds and kinds["activation"].get("domain") != "accumulator")
-        or
-        kinds.get("convert") != {"kind": "convert", "to": "f32", "rounding": "half_even"}
+        or kinds.get("convert") != {"kind": "convert", "to": "f32", "rounding": "half_even"}
         or kinds.get("scale", {}).get("dtype") != "f32"
         or kinds.get("scale", {}).get("rounding") != "half_even"
         or kinds.get("scale", {}).get("granularity") not in {"per_command", "per_tensor", "per_channel"}
@@ -57,18 +63,31 @@ def _serialized_readout(root, operations, output_path):
         raise ValueError("serialized requantization has no unique source consumer")
     proved = match(candidates[0])
     epilogue = proved.epilogue
-    if (not _trace_attributes(epilogue.attributes)
-            or set(epilogue.properties) != {"indexing_maps", "iterator_types", "operandSegmentSizes"}):
+    if not _trace_attributes(epilogue.attributes) or set(epilogue.properties) != {
+        "indexing_maps",
+        "iterator_types",
+        "operandSegmentSizes",
+    }:
         raise ValueError("serialized readout has unsupported shell attributes or properties")
     properties = {
-        "arith.constant": {"value"}, "arith.sitofp": set(), "arith.mulf": {"fastmath"},
-        "arith.addf": {"fastmath"}, "math.roundeven": {"fastmath"},
-        "arith.maximumf": {"fastmath"}, "arith.minimumf": {"fastmath"},
-        "arith.fptosi": set(), "linalg.yield": set(),
+        "arith.constant": {"value"},
+        "arith.sitofp": set(),
+        "arith.mulf": {"fastmath"},
+        "arith.addf": {"fastmath"},
+        "math.roundeven": {"fastmath"},
+        "arith.maximumf": {"fastmath"},
+        "arith.minimumf": {"fastmath"},
+        "arith.fptosi": set(),
+        "linalg.yield": set(),
     }
     for scalar in epilogue.regions[0].block.ops:
-        if (scalar.name not in properties or not _trace_attributes(scalar.attributes)
-                or not set(scalar.properties) <= properties[scalar.name] or scalar.regions or scalar.successors):
+        if (
+            scalar.name not in properties
+            or not _trace_attributes(scalar.attributes)
+            or not set(scalar.properties) <= properties[scalar.name]
+            or scalar.regions
+            or scalar.successors
+        ):
             raise ValueError("serialized readout has unsupported scalar effects or properties")
         fastmath = scalar.properties.get("fastmath")
         if fastmath is not None and fastmath.data:
@@ -88,9 +107,19 @@ def _serialized_readout(root, operations, output_path):
 
 
 def discover_fusion_candidates(
-    source, *, provider, target, topology, resource: str, memory_domain: str,
-    cpu_resource: str, validate_implementation, budget=None, cursor=None,
-    numerical_policy_sha256=None, preparation_sha256=None,
+    source,
+    *,
+    provider,
+    target,
+    topology,
+    resource: str,
+    memory_domain: str,
+    cpu_resource: str,
+    validate_implementation,
+    budget=None,
+    cursor=None,
+    numerical_policy_sha256=None,
+    preparation_sha256=None,
 ):
     """Return admitted overlapping offers and original CPU alternatives plus reasons.
 
@@ -132,14 +161,31 @@ def discover_fusion_candidates(
             raise ValueError("paged source proposals require implemented patterns and provider source identity")
         context = ProposalContext(
             source.stamp.source_sha256,
-            document_digest({"selected_target": tuple(str(v) for v in target_identity),
-                             "bytes_sha256": hashlib.sha256(selected_bytes).hexdigest(), "contract": contract}),
-            (document_digest({"context": asdict(source.stamp.context),
-                              "selected_numerics": contract.get("numerical_semantics")})
-             if numerical_policy_sha256 is None else numerical_policy_sha256),
-            (document_digest({"context": asdict(source.stamp.context), "preparation": "not_supplied"})
-             if preparation_sha256 is None else preparation_sha256),
-            topology.sha256, provider_name, identity(), describe(), resource, memory_domain,
+            document_digest(
+                {
+                    "selected_target": tuple(str(v) for v in target_identity),
+                    "bytes_sha256": hashlib.sha256(selected_bytes).hexdigest(),
+                    "contract": contract,
+                }
+            ),
+            (
+                document_digest(
+                    {"context": asdict(source.stamp.context), "selected_numerics": contract.get("numerical_semantics")}
+                )
+                if numerical_policy_sha256 is None
+                else numerical_policy_sha256
+            ),
+            (
+                document_digest({"context": asdict(source.stamp.context), "preparation": "not_supplied"})
+                if preparation_sha256 is None
+                else preparation_sha256
+            ),
+            topology.sha256,
+            provider_name,
+            identity(),
+            describe(),
+            resource,
+            memory_domain,
             ProposalBudget() if budget is None else budget,
         )
         provider_binding = (page_hook, describe, identity)
@@ -147,25 +193,35 @@ def discover_fusion_candidates(
         if type(page) is not ProposalPage:
             raise ValueError("compiler paged proposal hook must return a typed ProposalPage")
         offered, discovery = page.proposals, page.discovery
-        if (len(offered) > context.budget.max_candidates
-                or discovery.get("discovery_context_sha256") != document_digest(context.record())):
+        if len(offered) > context.budget.max_candidates or discovery.get("discovery_context_sha256") != document_digest(
+            context.record()
+        ):
             raise ValueError("compiler proposal page differs from its bound context or output budget")
         work = discovery.get("work", {})
-        if (type(work.get("matcher_visits")) is not int
-                or not 0 <= work["matcher_visits"] <= context.budget.max_match_visits
-                or type(work.get("provider_proof_sessions")) is not int
-                or not 0 <= work["provider_proof_sessions"] + len(offered) <= context.budget.max_proof_sessions):
+        if (
+            type(work.get("matcher_visits")) is not int
+            or not 0 <= work["matcher_visits"] <= context.budget.max_match_visits
+            or type(work.get("provider_proof_sessions")) is not int
+            or not 0 <= work["provider_proof_sessions"] + len(offered) <= context.budget.max_proof_sessions
+        ):
             raise ValueError("compiler proposal page exceeds its declared matcher/proof session budget")
-        if any(p.lowering is None or p.lowering.implementation_sha256 != context.implementation_sha256
-               or p.lowering.pipeline not in {pattern.pipeline for pattern in context.patterns} for p in offered):
+        if any(
+            p.lowering is None
+            or p.lowering.implementation_sha256 != context.implementation_sha256
+            or p.lowering.pipeline not in {pattern.pipeline for pattern in context.patterns}
+            for p in offered
+        ):
             raise ValueError("compiler proposal page changed its described implementation or recipe")
     else:
         if budget is not None or cursor is not None:
             raise ValueError("selected compiler has no bounded source proposal hook")
         offered = propose(source, resource=resource, memory_domain=memory_domain)
     source.revalidate()
-    if (_target_identity(target) != target_identity or path.read_bytes() != selected_bytes
-            or _record(target.load_contract()) != contract_record):
+    if (
+        _target_identity(target) != target_identity
+        or path.read_bytes() != selected_bytes
+        or _record(target.load_contract()) != contract_record
+    ):
         raise ValueError("compiler proposal hook changed the selected target capability contract")
     if type(offered) is not tuple:
         raise ValueError("compiler proposal hook must return an immutable tuple")
@@ -173,9 +229,14 @@ def discover_fusion_candidates(
 
     def check_provider():
         if context is not None and (
-            (getattr(provider, "propose_page", None), getattr(provider, "describe", None),
-             getattr(provider, "discovery_identity", None)) != provider_binding
-            or provider.name != context.provider or provider.describe() != context.patterns
+            (
+                getattr(provider, "propose_page", None),
+                getattr(provider, "describe", None),
+                getattr(provider, "discovery_identity", None),
+            )
+            != provider_binding
+            or provider.name != context.provider
+            or provider.describe() != context.patterns
             or provider.discovery_identity() != context.implementation_sha256
         ):
             raise ValueError("selected provider implementation changed; rediscover proposals")
@@ -184,15 +245,17 @@ def discover_fusion_candidates(
     check_provider()
 
     def check(current_source, proposal):
-        from merlin.compiler.ir.contraction_shapes import contraction_extents
-        from merlin.compiler.ir.contraction_shapes import zero_initialised
+        from merlin.compiler.ir.contraction_shapes import contraction_extents, zero_initialised
         from merlin.transforms.dense_ir import _trace_attributes, static_zero_integer_matmul_geometry
         from merlin.xdsl_dialects.lowering import compute_groups as CG
         from merlin.xdsl_dialects.lowering import output_fusion as OF
 
         check_provider()
-        if (_target_identity(target) != target_identity or path.read_bytes() != selected_bytes
-                or _record(target.load_contract()) != contract_record):
+        if (
+            _target_identity(target) != target_identity
+            or path.read_bytes() != selected_bytes
+            or _record(target.load_contract()) != contract_record
+        ):
             raise ValueError("selected target capability contract changed; rediscover proposals")
         if proposal.provider != provider_name:
             raise ValueError("proposal is not owned by the selected compiler")
@@ -235,24 +298,33 @@ def discover_fusion_candidates(
             if not _trace_attributes(operation.attributes):
                 raise ValueError("offered region has unsupported source attributes")
             if operation not in required:
-                allowed = {"arith.constant": {"value"}, "tensor.empty": set(), "tensor.splat": set(),
-                           "linalg.fill": {"operandSegmentSizes"}}[operation.name]
+                allowed = {
+                    "arith.constant": {"value"},
+                    "tensor.empty": set(),
+                    "tensor.splat": set(),
+                    "linalg.fill": {"operandSegmentSizes"},
+                }[operation.name]
                 if set(operation.properties) != allowed:
                     raise ValueError("offered helper has unknown execution properties")
         # Shared source proposal admission checks every live tensor input/output;
         # the original caller checks selected target arithmetic and implementation.
-        if any(left is not right for left, right in zip(
-            _validator_identity(validate_implementation), validator_binding, strict=True
-        )):
+        if any(
+            left is not right
+            for left, right in zip(_validator_identity(validate_implementation), validator_binding, strict=True)
+        ):
             raise ValueError("original target implementation validator changed")
         if validate_implementation(current_source, proposal) is not None:
             raise ValueError("target implementation validator must raise on refusal and otherwise return None")
-        if any(left is not right for left, right in zip(
-            _validator_identity(validate_implementation), validator_binding, strict=True
-        )):
+        if any(
+            left is not right
+            for left, right in zip(_validator_identity(validate_implementation), validator_binding, strict=True)
+        ):
             raise ValueError("target implementation validator changed during admission")
-        if (_target_identity(target) != target_identity or path.read_bytes() != selected_bytes
-                or _record(target.load_contract()) != contract_record):
+        if (
+            _target_identity(target) != target_identity
+            or path.read_bytes() != selected_bytes
+            or _record(target.load_contract()) != contract_record
+        ):
             raise ValueError("selected target capability contract changed during admission")
         check_provider()
 
@@ -262,38 +334,57 @@ def discover_fusion_candidates(
         try:
             admitted = admit_proposal(source, proposal, topology, validate_implementation=check)
         except ValueError as exc:
-            category = ("missing_selected_output_path" if output_path is None
-                        and dict(proposal.alternative.metadata).get("pattern") == "dense-requant"
-                        else "source_or_target_admission")
-            reasons.append({"alternative": proposal.alternative.id, "status": "refused",
-                            "category": category, "reason": str(exc)})
+            category = (
+                "missing_selected_output_path"
+                if output_path is None and dict(proposal.alternative.metadata).get("pattern") == "dense-requant"
+                else "source_or_target_admission"
+            )
+            reasons.append(
+                {"alternative": proposal.alternative.id, "status": "refused", "category": category, "reason": str(exc)}
+            )
         else:
             accepted.append(admitted)
-            reasons.append({"alternative": proposal.alternative.id, "status": "admitted",
-                            "pattern": dict(proposal.alternative.metadata).get("pattern")})
+            reasons.append(
+                {
+                    "alternative": proposal.alternative.id,
+                    "status": "admitted",
+                    "pattern": dict(proposal.alternative.metadata).get("pattern"),
+                }
+            )
         # Custody corruption is a hard failure, never an optimization refusal.
         source.revalidate()
         check_provider()
-        if (_target_identity(target) != target_identity or path.read_bytes() != selected_bytes
-                or _record(target.load_contract()) != contract_record):
+        if (
+            _target_identity(target) != target_identity
+            or path.read_bytes() != selected_bytes
+            or _record(target.load_contract()) != contract_record
+        ):
             raise ValueError("selected target capability contract changed during admission")
-    cpu = tuple(admit_original_cpu(source, index, topology, resource=cpu_resource, memory_domain=memory_domain)
-                for index in range(len(source.operations)))
+    cpu = tuple(
+        admit_original_cpu(source, index, topology, resource=cpu_resource, memory_domain=memory_domain)
+        for index in range(len(source.operations))
+    )
     report = {
-        "schema": "merlin.fusion_discovery.v1", "source_sha256": source.stamp.source_sha256,
-        "target": target.name, "target_contract_sha256": hashlib.sha256(selected_bytes).hexdigest(),
-        "provider": provider_name, "offers": reasons, "cpu_alternatives": len(cpu),
-        "selection": "not_performed", "hardware_qualification": "not_established",
+        "schema": "merlin.fusion_discovery.v1",
+        "source_sha256": source.stamp.source_sha256,
+        "target": target.name,
+        "target_contract_sha256": hashlib.sha256(selected_bytes).hexdigest(),
+        "provider": provider_name,
+        "offers": reasons,
+        "cpu_alternatives": len(cpu),
+        "selection": "not_performed",
+        "hardware_qualification": "not_established",
         "costs": "unknown; no complete resource-envelope model",
         "planning_scope": "one shared coherent memory domain and serial completion",
         "discovery": discovery,
         "discovery_context": context.record() if context is not None else None,
         "next_cursor": discovery.get("next_cursor") if discovery is not None else None,
         "status": ("budget_exhausted" if discovery.get("scope_incomplete") else "complete")
-                  if discovery is not None else "legacy_unpaged",
+        if discovery is not None
+        else "legacy_unpaged",
         "numerical_policy_sha256": context.numerical_policy_sha256 if context is not None else None,
         "preparation_sha256": context.preparation_sha256 if context is not None else None,
     }
     if discovery is not None:
-        discovery['work']['shared_admission_sessions'] = len(offered)
+        discovery["work"]["shared_admission_sessions"] = len(offered)
     return (*accepted, *cpu), report

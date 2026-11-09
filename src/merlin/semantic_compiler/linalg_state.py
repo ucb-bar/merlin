@@ -1,4 +1,5 @@
 """State shared by ordered semantic source-translation families."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,11 +8,13 @@ from typing import Any
 from .model import KernelRequest
 from .reference_values import TensorValue
 
+
 @dataclass(frozen=True)
 class LinalgTranslation:
     request: KernelRequest
     constants: dict[str, TensorValue]
     source_operations: tuple[str, ...]
+
 
 @dataclass
 class TranslationState:

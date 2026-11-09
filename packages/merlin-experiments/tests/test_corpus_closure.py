@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+
 from merlin_experiments import SpecError, load_spec
 from merlin_experiments.adapters import ADAPTERS
 from merlin_experiments.runner import preflight, resolve_plan, resume, run, status
@@ -235,10 +236,10 @@ def test_extracted_phase1_source_closure_drift_refuses_resume(corpus_run, extrac
 
 
 def test_native_phase1_startup_pins_require_exact_declared_entrypoint(corpus_run, monkeypatch):
-    from merlin_experiments.phase1 import source_inputs
-    from merlin_experiments.runner import _phase1_source_inputs
     from merlin.target.spec import computation, instructions, signature
     from merlin.targetgen import instruction_semantics as legacy
+    from merlin_experiments.phase1 import source_inputs
+    from merlin_experiments.runner import _phase1_source_inputs
 
     definition, destination, _, _ = corpus_run
     plan = resolve_plan(load_spec(definition), run_dir=destination)

@@ -8,17 +8,15 @@ Physical slot/address choices remain symbolic after selection.
 
 from __future__ import annotations
 
-from .view_descriptors import ViewDescriptor, ConcatViewDescriptor
-
-from .instruction import AddressConstraint, AxisBound, AxisEquality, IntegerAttributeBound, InstructionDescriptor
-
 import json
 from dataclasses import dataclass
 from hashlib import sha256
 from math import prod
 from typing import Any
 
+from .instruction import AddressConstraint, AxisBound, AxisEquality, InstructionDescriptor, IntegerAttributeBound
 from .model import IndexMap, KernelRequest, SemanticNode, TensorType
+from .view_descriptors import ConcatViewDescriptor, ViewDescriptor
 
 
 def _digest(value: object) -> str:
@@ -69,19 +67,25 @@ def bundle_catalog(descriptors: tuple[InstructionDescriptor, ...]) -> dict[str, 
     complete: dict[str, tuple[InstructionDescriptor, ...]] = {}
     for name, members in groups.items():
         count = next(iter(members.values())).bundle_result_count
-        if set(members) != set(range(count)) or any(
-            item.bundle_result_count != count for item in members.values()
-        ):
+        if set(members) != set(range(count)) or any(item.bundle_result_count != count for item in members.values()):
             raise ValueError("multi-result instruction descriptor is incomplete")
         ordered = tuple(members[index] for index in range(count))
         first = ordered[0]
+
         def common(item: InstructionDescriptor) -> tuple:
             return (
-                item.input_storages, item.input_dtypes, item.input_numerical_policies,
-                item.input_policy_alternatives, item.input_ranks, item.input_axis_bounds,
-                item.input_layouts, item.input_read_offsets, item.completion_offset,
+                item.input_storages,
+                item.input_dtypes,
+                item.input_numerical_policies,
+                item.input_policy_alternatives,
+                item.input_ranks,
+                item.input_axis_bounds,
+                item.input_layouts,
+                item.input_read_offsets,
+                item.completion_offset,
                 item.index_maps[:-1] if item.index_maps else (),
             )
+
         if any(common(item) != common(first) for item in ordered[1:]):
             raise ValueError("multi-result instruction projections disagree on shared operands or timing")
         complete[name] = ordered
@@ -137,8 +141,9 @@ def generate_rules(
             if not descriptor.value_preserving_copy:
                 continue
             source_attrs = dict(node.attrs)
-            if any(key not in source_attrs or source_attrs[key] != value
-                   for key, value in descriptor.source_required_attrs):
+            if any(
+                key not in source_attrs or source_attrs[key] != value for key, value in descriptor.source_required_attrs
+            ):
                 continue
             copy_value = SemanticNode("copy_value", "identity", (node.id,), node.type)
             if not descriptor.accepts(copy_value, (node,)):
@@ -232,15 +237,22 @@ def generate_rules(
                     "source_node": node.id,
                     "type": node.type.record(),
                     **({"instantiated_attrs": dict(node.attrs)} if descriptor.parameter_attrs else {}),
-                    **({
-                        "bundle_instance": "m_" + _digest((
-                            descriptor.bundle_name,
-                            [item.record() for item in bundles[descriptor.bundle_name]],
-                            tuple(source_symbol[child] for child in node.inputs),
-                        )),
-                        "bundle_result_index": descriptor.bundle_result_index,
-                        "bundle_result_count": descriptor.bundle_result_count,
-                    } if descriptor.bundle_name else {}),
+                    **(
+                        {
+                            "bundle_instance": "m_"
+                            + _digest(
+                                (
+                                    descriptor.bundle_name,
+                                    [item.record() for item in bundles[descriptor.bundle_name]],
+                                    tuple(source_symbol[child] for child in node.inputs),
+                                )
+                            ),
+                            "bundle_result_index": descriptor.bundle_result_index,
+                            "bundle_result_count": descriptor.bundle_result_count,
+                        }
+                        if descriptor.bundle_name
+                        else {}
+                    ),
                 },
             )
             rhs = (

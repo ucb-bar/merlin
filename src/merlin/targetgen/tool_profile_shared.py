@@ -41,8 +41,13 @@ _NAMESPACE_MODULES_V6 = (
 _NAMESPACE_MODULES_V7 = (*_NAMESPACE_MODULES_V6,)
 _NAMESPACE_MODULES_V8 = (*_NAMESPACE_MODULES_V6,)
 _NAMESPACE_MODULES_V16 = (*_NAMESPACE_MODULES_V8, "merlin.xdsl_dialects", "merlin.sched.primitives")
-_NAMESPACE_MODULES_V20 = (*_NAMESPACE_MODULES_V16, "merlin.frontends", "merlin.integrations", "merlin.runtime",
-                          "merlin.xdsl_dialects.lowering")
+_NAMESPACE_MODULES_V20 = (
+    *_NAMESPACE_MODULES_V16,
+    "merlin.frontends",
+    "merlin.integrations",
+    "merlin.runtime",
+    "merlin.xdsl_dialects.lowering",
+)
 _NAMESPACE_MODULES_V24 = (*_NAMESPACE_MODULES_V20, "merlin.capture", "merlin.targetgen.oot_starterkit", "merlin.perf")
 
 
@@ -63,8 +68,13 @@ def _namespace_modules(version):
         22: _NAMESPACE_MODULES_V20,
         23: _NAMESPACE_MODULES_V20,
         24: _NAMESPACE_MODULES_V24,
-        25: (*_NAMESPACE_MODULES_V24, "merlin.compile.analysis", "merlin.compiler",
-             "merlin.compiler.ir", "merlin.compiler.passes"),
+        25: (
+            *_NAMESPACE_MODULES_V24,
+            "merlin.compile.analysis",
+            "merlin.compiler",
+            "merlin.compiler.ir",
+            "merlin.compiler.passes",
+        ),
     }[version]
 
 
@@ -589,11 +599,12 @@ def _release_inventory(document, *, version=6):
                     )
                 )
     if binding:
-        binding_modules = (tuple(canonical_module(name) for name in SOURCE_BINDING_MODULES)
-                           if version == 26 else SOURCE_BINDING_MODULES)
-        candidates = [
-            ((*modules, *binding_modules), (*public, *binding_modules)) for modules, public in candidates
-        ]
+        binding_modules = (
+            tuple(canonical_module(name) for name in SOURCE_BINDING_MODULES)
+            if version == 26
+            else SOURCE_BINDING_MODULES
+        )
+        candidates = [((*modules, *binding_modules), (*public, *binding_modules)) for modules, public in candidates]
     members = document.get("members", [])
     if isinstance(members, list) and all(type(row) is dict for row in members):
         actual = [row.get("module") for row in members]
@@ -823,9 +834,7 @@ def main(argv=None):
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--python-source-root", required=True, type=Path)
     parser.add_argument("--license-directory", required=True, type=Path)
-    parser.add_argument(
-        "--library-version", type=int, choices=(26,), default=26
-    )
+    parser.add_argument("--library-version", type=int, choices=(26,), default=26)
     parser.add_argument("--tool", action="append", default=[], help="existing tool registry name to stage, not grant")
     parser.add_argument("--source-binding", action="store_true", help="explicit version-8 typed-source/LLVM lexer APIs")
     args = parser.parse_args(argv)

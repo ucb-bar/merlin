@@ -27,8 +27,7 @@ class DenseRhsResidency:
         return self.k_tiles * self.n_tiles * self.block
 
 
-def plan_dense_rhs_residency(m, k, n, *, block, operand_rows, accumulator_rows, rhs_base,
-                             max_static_rhs_tiles=1024):
+def plan_dense_rhs_residency(m, k, n, *, block, operand_rows, accumulator_rows, rhs_base, max_static_rhs_tiles=1024):
     """Plan only disjoint full-RHS storage and one complete output accumulator.
 
     Decline before emission if the padded matrix, bounded static preparation or
@@ -41,7 +40,10 @@ def plan_dense_rhs_residency(m, k, n, *, block, operand_rows, accumulator_rows, 
     if rhs_base < block or rhs_base % block or accumulator_rows < block:
         return None
     kt, nt = (k + block - 1) // block, (n + block - 1) // block
-    if (kt * nt > max_static_rhs_tiles or rhs_base + kt * nt * block > operand_rows
-            or max(m * k, k * n, 4 * m * n) >= 1 << 63):
+    if (
+        kt * nt > max_static_rhs_tiles
+        or rhs_base + kt * nt * block > operand_rows
+        or max(m * k, k * n, 4 * m * n) >= 1 << 63
+    ):
         return None
     return DenseRhsResidency(m, k, n, block, rhs_base, kt, nt, operand_rows)

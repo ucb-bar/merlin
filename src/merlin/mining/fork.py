@@ -97,5 +97,6 @@ def mint_fork(
         "lever": lever,
         "generated_by_agent": generated_by_agent,
     }
-    return write_fork(out_root, target, run_id, schedule_text=schedule_text, knobs=knobs, lineage=lineage,
-                      renderer_sources=sources)
+    return write_fork(
+        out_root, target, run_id, schedule_text=schedule_text, knobs=knobs, lineage=lineage, renderer_sources=sources
+    )

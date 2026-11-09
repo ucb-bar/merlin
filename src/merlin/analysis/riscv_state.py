@@ -4,8 +4,6 @@ Observations retain their exact supported domain and explicit unknowns.
 No accelerator semantics, execution multiplicity or hardware law is inferred.
 """
 
-
-
 from .riscv_decode import (
     _REGIONS as _REGIONS,
 )
@@ -409,12 +407,14 @@ def _step(d, registers, stack, pc, word=None, fp=None, summaries=None):
             stack.pop(_PRIVATE_FRAME, None)
     registers[0] = ZERO
 
+
 def _defined_registers(d):
     if d.kind == "opaque":
         return set(range(1, 32))
     if d.kind in CALLS:
         return set(_CALLER_SAVED) | ({d.rd} if d.rd else set())
     return {d.rd} if d.rd else set()
+
 
 _CONDITIONS = {
     "beq": lambda x, y: x == y,

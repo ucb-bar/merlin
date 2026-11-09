@@ -5,10 +5,12 @@ from dataclasses import replace
 import pytest
 from test_compact_dense import ADAPTER, fixture
 
-from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
-from merlin.compiler.schedule.dense_panel_pipeline import DensePanelOverlapAdmission
-from merlin.compiler.schedule.dense_panel_pipeline import build_dense_panel_pipeline
-from merlin.compiler.schedule.dense_panel_pipeline import verify_dense_panel_pipeline
+from merlin.compiler.schedule.dense_panel_pipeline import (
+    DRAIN,
+    DensePanelOverlapAdmission,
+    build_dense_panel_pipeline,
+    verify_dense_panel_pipeline,
+)
 from merlin.sched.ir import Loop
 from merlin.transforms.dense_planning import dense_blocks
 
@@ -35,9 +37,11 @@ def test_typed_interleaving_changes_real_issue_order_preserves_exact_data_calls(
     from xdsl.dialects.builtin import StringAttr
 
     from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_panel_pipeline
-    from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-    from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-    from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+    from merlin.compiler.schedule.schedule_ir import (
+        dense_schedule_text,
+        make_dense_schedule_plan,
+        parse_dense_schedule_plan,
+    )
     from merlin.sched.ir import evaluate, instances
 
     p, r, s, b, a = setup()
@@ -152,9 +156,11 @@ def test_typed_decision_source_custody_and_actual_scf_llvm(tmp_path):
     from merlin.compiler.schedule.dense_panel_pipeline import schedule_source_dense_panel
     from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
     from merlin.compiler.schedule.scf_commands import emit_scf_commands
-    from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-    from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-    from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+    from merlin.compiler.schedule.schedule_ir import (
+        dense_schedule_text,
+        make_dense_schedule_plan,
+        parse_dense_schedule_plan,
+    )
     from merlin.llvmlower.host_builder import PTR, FnBuilder
     from merlin.transforms.certificates import ir_digest
 
@@ -422,18 +428,18 @@ def test_missing_completion_and_original_issue_capacity_refuse():
 @pytest.mark.parametrize("prefetch", [False, True])
 @pytest.mark.parametrize("biased,narrow", [(False, False), (True, False), (True, True), (False, "tiled")])
 @pytest.mark.parametrize("issue_order", ["compute_then_prefetch", "prefetch_rhs_between_columns"])
-def test_reversed_completion_with_finite_queue_backpressure_matches_every_output(prefetch, biased, narrow, issue_order, batch_readouts=False):
+def test_reversed_completion_with_finite_queue_backpressure_matches_every_output(
+    prefetch, biased, narrow, issue_order, batch_readouts=False
+):
     import numpy as np
 
-    from merlin.compiler.schedule.blocks import Compute
-    from merlin.compiler.schedule.blocks import InitializeAccumulator
-    from merlin.compiler.schedule.blocks import Load
-    from merlin.compiler.schedule.blocks import Preload
-    from merlin.compiler.schedule.blocks import Store
+    from merlin.compiler.schedule.blocks import Compute, InitializeAccumulator, Load, Preload, Store
     from merlin.compiler.schedule.compact_dense import DenseBiasSource
-    from merlin.compiler.schedule.dense_contracts import DenseIntegerReadout
-    from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout
-    from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
+    from merlin.compiler.schedule.dense_contracts import (
+        DenseIntegerReadout,
+        DenseTiledIntegerReadout,
+        TiledIntegerStore,
+    )
     from merlin.sched.ir import evaluate, instances
 
     p, r, s, b, a = setup()
@@ -514,8 +520,9 @@ def test_reversed_completion_with_finite_queue_backpressure_matches_every_output
 
         kernel, groups = _propose(kernel, adapter, 4)
         assert groups
-        a = replace(a, max_issued_readouts=4, pending_readouts=1,
-                    readout_configuration="ordered_snapshot_before_store_issue")
+        a = replace(
+            a, max_issued_readouts=4, pending_readouts=1, readout_configuration="ordered_snapshot_before_store_issue"
+        )
     verify_dense_panel_pipeline(
         kernel,
         p,

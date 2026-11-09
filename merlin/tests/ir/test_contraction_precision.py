@@ -3,13 +3,13 @@
 from dataclasses import replace
 
 import pytest
+from test_precision_intake import SOURCE, _tile_profile
 
 from merlin.compile.semantic_regions import extract_semantic_region
 from merlin.semantic_compiler.contraction_precision import lower_semantic_contraction
 from merlin.semantic_compiler.linalg_bridge import translate_linalg_text
 from merlin.semantic_compiler.model import KernelRequest
 from merlin.semantic_compiler.precision_values import FloatBoundarySpec
-from test_precision_intake import SOURCE, _tile_profile
 
 
 def selected():

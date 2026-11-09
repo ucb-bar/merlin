@@ -29,9 +29,15 @@ def _all_axes(backend: str) -> list[str]:
 
 
 def _ladder_for(axis: str, backend: str, *, codegen_provider=None, support_target=None) -> dict:
-    return {"axis": axis, "ladder": ac.escalation_ladder(
-        axis, backend, codegen_provider=codegen_provider, support_target=support_target,
-    )}
+    return {
+        "axis": axis,
+        "ladder": ac.escalation_ladder(
+            axis,
+            backend,
+            codegen_provider=codegen_provider,
+            support_target=support_target,
+        ),
+    }
 
 
 def _load_divergences(path: str) -> list[Divergence]:
@@ -77,7 +83,8 @@ def _regions_view(*, codegen_provider=None, support_target=None) -> list[dict]:
                         "forkable_now": ep.forkable_now,
                         "registry": ep.registry,
                     }
-                    for region, ep in selected if region == key
+                    for region, ep in selected
+                    if region == key
                 ],
             }
         )
@@ -106,8 +113,9 @@ def _route_view(d: Divergence, *, codegen_provider=None, support_target=None) ->
     a = ac.route(d)
     view = {"axis": d.axis, "expert": d.expert, "ours": d.ours, "routed": a is not None}
     if a is not None:
-        loc = ac.seam_location(a.target_seam, backend=d.backend,
-                               codegen_provider=codegen_provider, support_target=support_target)
+        loc = ac.seam_location(
+            a.target_seam, backend=d.backend, codegen_provider=codegen_provider, support_target=support_target
+        )
         view.update(
             {
                 "action_class": a.action_class,
@@ -118,8 +126,9 @@ def _route_view(d: Divergence, *, codegen_provider=None, support_target=None) ->
                 "forkable_now": a.forkable_now,
             }
         )
-    view["ladder"] = ac.escalation_ladder(d.axis, d.backend,
-                                         codegen_provider=codegen_provider, support_target=support_target)
+    view["ladder"] = ac.escalation_ladder(
+        d.axis, d.backend, codegen_provider=codegen_provider, support_target=support_target
+    )
     return view
 
 

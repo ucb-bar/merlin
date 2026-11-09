@@ -76,6 +76,7 @@ def source_operation_inventory(source: bytes | str) -> dict[str, Any]:
     # Interface syntax belongs to its frozen owner grammar, not a linalg
     # function parser. A mention in a comment is not enough to select it.
     from merlin.targetgen.contract.interface_emit import op_mnemonics
+
     if op_mnemonics(raw.decode("utf-8")):
         return interface_inventory(raw)
     entry, block, operations, returned = _parsed_source(raw)
@@ -325,13 +326,20 @@ def _selected_lowered_entry(functions, abi):
     """Select the declared entry and only its exact no-argument completion shim."""
     from xdsl.dialects import llvm
 
-    if (set(abi) != {"entry_symbol", "completion_symbol", "completion_asm"}
-            or not isinstance(abi["entry_symbol"], str) or not abi["entry_symbol"].isidentifier()):
+    if (
+        set(abi) != {"entry_symbol", "completion_symbol", "completion_asm"}
+        or not isinstance(abi["entry_symbol"], str)
+        or not abi["entry_symbol"].isidentifier()
+    ):
         return None, "lowered task ABI requires an explicit entry identity"
-    entry, completion, instruction = (abi[key] for key in
-                                     ("entry_symbol", "completion_symbol", "completion_asm"))
-    if completion is not None and (not isinstance(completion, str) or not completion.isidentifier()
-                                   or completion == entry or not isinstance(instruction, str) or not instruction.strip()):
+    entry, completion, instruction = (abi[key] for key in ("entry_symbol", "completion_symbol", "completion_asm"))
+    if completion is not None and (
+        not isinstance(completion, str)
+        or not completion.isidentifier()
+        or completion == entry
+        or not isinstance(instruction, str)
+        or not instruction.strip()
+    ):
         return None, "lowered completion requires a distinct declared symbol and instruction"
     selected = [fn for fn in functions if fn.sym_name.data == entry]
     if len(selected) != 1 or any(fn.sym_name.data not in {entry, completion} for fn in functions):
@@ -342,25 +350,42 @@ def _selected_lowered_entry(functions, abi):
     for helper in helpers:
         blocks = list(helper.body.blocks)
         ops = list(blocks[0].ops) if len(blocks) == 1 else []
-        if (helper.function_type.inputs or helper.function_type.is_variadic
-                or not isinstance(helper.function_type.output, llvm.LLVMVoidType)
-                or helper.linkage.linkage.data != "external" or helper.CConv.convention.data != "ccc"
-                or len(blocks) != 1 or blocks[0].args or len(ops) != 2
-                or not isinstance(ops[0], llvm.InlineAsmOp) or not isinstance(ops[1], llvm.ReturnOp)
-                or ops[0].operands or ops[1].operands
-                or (ops[0].results and (len(ops[0].results) != 1
+        if (
+            helper.function_type.inputs
+            or helper.function_type.is_variadic
+            or not isinstance(helper.function_type.output, llvm.LLVMVoidType)
+            or helper.linkage.linkage.data != "external"
+            or helper.CConv.convention.data != "ccc"
+            or len(blocks) != 1
+            or blocks[0].args
+            or len(ops) != 2
+            or not isinstance(ops[0], llvm.InlineAsmOp)
+            or not isinstance(ops[1], llvm.ReturnOp)
+            or ops[0].operands
+            or ops[1].operands
+            or (
+                ops[0].results
+                and (
+                    len(ops[0].results) != 1
                     or not isinstance(ops[0].results[0].type, llvm.LLVMVoidType)
-                    or ops[0].results[0].uses))
-                or ops[0].asm_string.data != instruction or ops[0].constraints.data != "~{memory}"
-                or ops[0].has_side_effects is None
-                or any("merlin.global_task" in op.attributes or "merlin.source_op_index" in op.attributes
-                       for op in helper.walk())):
+                    or ops[0].results[0].uses
+                )
+            )
+            or ops[0].asm_string.data != instruction
+            or ops[0].constraints.data != "~{memory}"
+            or ops[0].has_side_effects is None
+            or any(
+                "merlin.global_task" in op.attributes or "merlin.source_op_index" in op.attributes
+                for op in helper.walk()
+            )
+        ):
             return None, "lowered completion differs from the declared fence-only ABI"
     return selected[0], None
 
 
-def _lowered_task_problems(text: str, plan: Mapping[str, Any], command_buffer: Mapping[str, Any],
-                           lowered_abi: Mapping[str, str] | None = None) -> list[str]:
+def _lowered_task_problems(
+    text: str, plan: Mapping[str, Any], command_buffer: Mapping[str, Any], lowered_abi: Mapping[str, str] | None = None
+) -> list[str]:
     from merlin.perf.task_cfg_evidence import analyze_task_cfg
     from merlin.targetgen.oot_starterkit.llvm_context import parse_llvm_module
 
@@ -407,8 +432,12 @@ def _lowered_task_problems(text: str, plan: Mapping[str, Any], command_buffer: M
 
 
 def validate_mixed_program_plan(
-    source: bytes | str, command_buffer: Mapping[str, Any], lowered_mlir: str | None = None,
-    *, lowered_abi: Mapping[str, str] | None = None, schema_path: str | Path | None = None
+    source: bytes | str,
+    command_buffer: Mapping[str, Any],
+    lowered_mlir: str | None = None,
+    *,
+    lowered_abi: Mapping[str, str] | None = None,
+    schema_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Public preflight only; a successful result is never a grading certificate.
 

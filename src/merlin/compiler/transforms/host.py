@@ -68,8 +68,9 @@ def tensor_rewrite_source() -> str:
     return CONTRACTION_SOURCE + SQUARED_SUM_SOURCE + BROADCAST_SOURCE + FINITE_INTEGER_MATH_SOURCE + _COMPOSE
 
 
-def rewrite_tensor_module(context, module, *, contractions=True, squared_sums=True, broadcast_math=True,
-                          finite_integer_math=False):
+def rewrite_tensor_module(
+    context, module, *, contractions=True, squared_sums=True, broadcast_math=True, finite_integer_math=False
+):
     """Rewrite current pure static source tensors; preserve ordered arithmetic.
 
     Unsupported source stays on its original route. This API supplies no
@@ -80,7 +81,7 @@ def rewrite_tensor_module(context, module, *, contractions=True, squared_sums=Tr
     if type(finite_integer_math) is not bool:
         raise ValueError("explicit Boolean finite-domain math choice required")
     if finite_integer_math:
-        choices['finite_integer_math'] = True
+        choices["finite_integer_math"] = True
     if any(type(value) is not bool for value in choices.values()):
         raise ValueError("explicit Boolean host rewrite choices required")
     namespace = {}

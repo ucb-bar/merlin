@@ -28,16 +28,33 @@ def test_silu_fusion_match_retains_source_and_rejects_escaping_values():
     type_ = TensorType((3, 5), "f32", "raw-bit-pattern")
     x = SemanticNode("x", "input", (), type_, effect="input")
     y = replace(x, id="y")
-    sigmoid = SemanticNode("sigmoid", "source_f32_composite_unqualified", (x.id,), type_,
-                           tuple(sorted({"literal_bits": "0x3f800000",
-                                         "numeric_semantics": "source-f32-composite-unqualified-v1",
-                                         "operation": "sigmoid_f32"}.items())),
-                           index_maps=pointwise_identity_maps(2, 1))
-    product = SemanticNode("out", "f32_mul", (x.id, sigmoid.id), type_,
-                           (("numeric_semantics", "ieee754-f32-mul-rne-v1"),),
-                           index_maps=pointwise_identity_maps(2, 2))
-    source = KernelRequest((x, y, sigmoid, product), (product.id,), ("external",),
-                           ((x.id, "external"), (y.id, "external")), "synthetic")
+    sigmoid = SemanticNode(
+        "sigmoid",
+        "source_f32_composite_unqualified",
+        (x.id,),
+        type_,
+        tuple(
+            sorted(
+                {
+                    "literal_bits": "0x3f800000",
+                    "numeric_semantics": "source-f32-composite-unqualified-v1",
+                    "operation": "sigmoid_f32",
+                }.items()
+            )
+        ),
+        index_maps=pointwise_identity_maps(2, 1),
+    )
+    product = SemanticNode(
+        "out",
+        "f32_mul",
+        (x.id, sigmoid.id),
+        type_,
+        (("numeric_semantics", "ieee754-f32-mul-rne-v1"),),
+        index_maps=pointwise_identity_maps(2, 2),
+    )
+    source = KernelRequest(
+        (x, y, sigmoid, product), (product.id,), ("external",), ((x.id, "external"), (y.id, "external")), "synthetic"
+    )
     digest = source.digest()
     assert recognize_silu(source, product.id) == (sigmoid.id, product.id)
     assert source.digest() == digest
@@ -153,8 +170,9 @@ def test_source_slice_retains_policies_and_rejects_undeclared_physical_views():
 
 
 def test_parsed_contraction_keeps_its_maps_initializer_and_passthrough_output():
-    from merlin.semantic_compiler.linalg_bridge import translate_linalg_text
     from test_semantic_linalg_bridge import _generic_source
+
+    from merlin.semantic_compiler.linalg_bridge import translate_linalg_text
 
     source = translate_linalg_text(_generic_source(two_outputs=True), entry="work", target_identity="synthetic").request
     ids = tuple(node.id for node in source.nodes if node.effect == "pure")

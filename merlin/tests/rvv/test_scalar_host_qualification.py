@@ -10,10 +10,10 @@ import numpy as np
 import pytest
 import yaml
 
-from merlin.verification.scalar_host import ScalarHostQualificationError, qualify
 from merlin.runtime.backends import base as backends
 from merlin.runtime.backends import spike_model
 from merlin.targetgen import gsim_emulator, rtl_engine_policy
+from merlin.verification.scalar_host import ScalarHostQualificationError, qualify
 
 ROCKET_ISA = "rv64imafdcbzicsr_zifencei_zihpm_zfh_zba_zbb_zbs_xrocket"
 
@@ -219,11 +219,19 @@ def test_boolean_qualification_checks_all_canonical_output_bytes(tmp_path, monke
     output = generated / "qualifications" / "boolean"
     if mismatch:
         with pytest.raises(ScalarHostQualificationError, match="exact golden mismatch"):
-            qualify(capture=capture, package=package, board_catalog=catalog, board="rocket", dts=dts,
-                    output=output, arena_mb=32)
+            qualify(
+                capture=capture,
+                package=package,
+                board_catalog=catalog,
+                board="rocket",
+                dts=dts,
+                output=output,
+                arena_mb=32,
+            )
     else:
-        receipt = qualify(capture=capture, package=package, board_catalog=catalog, board="rocket", dts=dts,
-                          output=output, arena_mb=32)
+        receipt = qualify(
+            capture=capture, package=package, board_catalog=catalog, board="rocket", dts=dts, output=output, arena_mb=32
+        )
         assert receipt["output"]["element_dtype"] == "i1"
         assert receipt["output"]["mismatched_elements"] == 0
 
@@ -395,8 +403,8 @@ def test_native_gsim_uses_shared_model_parser_and_records_exact_engine(tmp_path,
 def test_bound_native_engine_revalidates_execution_inputs_without_legacy_command(tmp_path, monkeypatch):
     from pathlib import Path
 
-    from merlin.runtime.modelinputs import native_engine
     from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+    from merlin.runtime.modelinputs import native_engine
 
     _, citation, seen = _stub_native_gsim(tmp_path, monkeypatch, console="")
 

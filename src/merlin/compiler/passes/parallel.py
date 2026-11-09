@@ -6,6 +6,7 @@ per-operation chunks. Reductions are never divided by the class-wide schedule.
 The explicit ``tile_aligned`` compatibility preset retains its historical tiles;
 its sixteen-column value is a schedule choice, never an inferred hardware fact.
 """
+
 from __future__ import annotations
 
 from .contract import class_token, par_tag_for
@@ -35,11 +36,11 @@ def parallel_transform_schedule(
     if tile_aligned:
         body = [
             '    %matmul = transform.structured.match ops{["linalg.matmul"]} in %arg0 '
-            ': (!transform.any_op) -> !transform.any_op\n'
+            ": (!transform.any_op) -> !transform.any_op\n"
             "    %matmul_loop, %matmul_tiled = transform.structured.tile_using_forall "
             "%matmul tile_sizes [0, 16] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)",
             '    %batch_matmul = transform.structured.match ops{["linalg.batch_matmul"]} in %arg0 '
-            ': (!transform.any_op) -> !transform.any_op\n'
+            ": (!transform.any_op) -> !transform.any_op\n"
             "    %batch_matmul_loop, %batch_matmul_tiled = transform.structured.tile_using_forall "
             "%batch_matmul tile_sizes [1, 0, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)",
         ]
@@ -108,5 +109,3 @@ def _perop_parallel_schedule(chunks: list) -> str:
         "  }\n"
         "}\n"
     )
-
-

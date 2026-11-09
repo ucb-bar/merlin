@@ -17,6 +17,7 @@ from typing import Any
 
 from .linalg_bridge import LinalgBridgeError
 from .model import IndexMap, KernelRequest, SemanticNode, TensorType
+from .precision_contract import _SOURCE_MAPS, BoundaryConversion, DiagnosticMatmulTile, MatmulTileProfile, _digest
 from .precision_intake import (
     SourceValueRef,
     check_source_bound_f32_batched_matmuls,
@@ -25,7 +26,6 @@ from .precision_intake import (
 )
 from .precision_values import FloatBoundarySpec
 
-from .precision_contract import BoundaryConversion, DiagnosticMatmulTile, MatmulTileProfile, _digest, _SOURCE_MAPS
 
 def _permutation(index_map: IndexMap, source_rows: tuple[tuple[int, ...], ...]) -> tuple[int, int]:
     if (

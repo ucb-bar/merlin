@@ -10,23 +10,36 @@ from merlin.sched.primitives.loop_handles import locate_loop, loop_handles, tran
 
 def source():
     def leaf(offset):
-        return Loop("i", 5, (Call("work", (("address", Ptr("a", Var("i") + offset)),
-            ("tail", Select("i", 4, Const(1), Const(4)))),
-            sets=(("pitch", Var("i") + 1),), assumes=(("mode", Const(1)),)),))
+        return Loop(
+            "i",
+            5,
+            (
+                Call(
+                    "work",
+                    (("address", Ptr("a", Var("i") + offset)), ("tail", Select("i", 4, Const(1), Const(4)))),
+                    sets=(("pitch", Var("i") + 1),),
+                    assumes=(("mode", Const(1)),),
+                ),
+            ),
+        )
+
     return Kernel("pair", (TensorArg("a", (32,), "i8", "read"),), (leaf(0), leaf(10)))
 
 
 def trace(kernel):
     out = []
+
     def walk(body, env):
         for op in body:
             if type(op) is Loop:
                 for i in range(op.extent):
                     walk(op.body, {**env, op.var: i})
             else:
-                values = tuple((key, evaluate(value.offset if type(value) is Ptr else value, env))
-                               for key, value in op.args)
+                values = tuple(
+                    (key, evaluate(value.offset if type(value) is Ptr else value, env)) for key, value in op.args
+                )
                 out.append((op.instr, values, tuple((k, evaluate(v, env)) for k, v in op.sets)))
+
     walk(kernel.body, {})
     return out
 
@@ -66,10 +79,22 @@ def test_nested_hygiene_preserves_pointer_select_and_state_values():
 
 
 def test_carried_event_names_are_not_integer_binder_names():
-    original = Kernel("carried", (), (Call("start", (), produces="ready"),
-        Loop("i", 3, (Call("step", (("offset", Var("i")),), produces="next", awaits=("current",)),),
-             iter_args=(("current", "ready"),), yields=("next",), results=("done",)),
-        Call("drain", (), awaits=("done",))))
+    original = Kernel(
+        "carried",
+        (),
+        (
+            Call("start", (), produces="ready"),
+            Loop(
+                "i",
+                3,
+                (Call("step", (("offset", Var("i")),), produces="next", awaits=("current",)),),
+                iter_args=(("current", "ready"),),
+                yields=("next",),
+                results=("done",),
+            ),
+            Call("drain", (), awaits=("done",)),
+        ),
+    )
     actual = uniquify_loop_binders(original).kernel
     assert actual.body[1].iter_args == original.body[1].iter_args
     assert actual.body[1].body[0].awaits == ("current",)
@@ -81,25 +106,31 @@ def test_selected_occurrence_reaches_actual_scf_and_llvm_target_callback():
     from xdsl.dialects import builtin, llvm
 
     from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
-    from merlin.compiler.schedule.scf_commands import emit_scf_commands
-    from merlin.compiler.schedule.scf_commands import materialize_scf_commands
+    from merlin.compiler.schedule.scf_commands import emit_scf_commands, materialize_scf_commands
     from merlin.llvmlower.host_builder import FnBuilder
 
     # No target law is invented: this neutral target callback is an external
     # synchronous command interface, not a latency or hardware qualification.
-    original = Kernel("commands", (), tuple(Loop("i", 5, (
-        Call("command", (("index", Var("i") + offset),)),)) for offset in (0, 10)))
+    original = Kernel(
+        "commands", (), tuple(Loop("i", 5, (Call("command", (("index", Var("i") + offset),)),)) for offset in (0, 10))
+    )
     selected = transform_loop(original, locate_loop(original, (1,)), action="unroll", factor=3)
     scf = materialize_scf_commands(selected.kernel)
     builder = FnBuilder([])
     index = FnBuilderIndexAdapter(builder)
+
     def lower(name, values, metadata):
         assert name == "command" and not metadata.produces
         builder.add(llvm.CallOp("target_command", index.value(values["index"])))
+
     emit_scf_commands(scf, index, lower)
     function = llvm.FuncOp("schedule", llvm.LLVMFunctionType([]), body=builder.finish())
-    builtin.ModuleOp([llvm.FuncOp("target_command", llvm.LLVMFunctionType([builtin.i64]),
-                                 linkage=llvm.LinkageAttr("external")), function]).verify()
+    builtin.ModuleOp(
+        [
+            llvm.FuncOp("target_command", llvm.LLVMFunctionType([builtin.i64]), linkage=llvm.LinkageAttr("external")),
+            function,
+        ]
+    ).verify()
     # First sibling remains counted; second becomes three commands per bulk
     # iteration and its ordered two-instance tail. Actual LLVM contains five
     # command sites, rather than the two-site original program.

@@ -18,17 +18,15 @@ import pytest
 
 from merlin.compiler.schedule.fusion import FusionCapability
 from merlin.compiler.schedule.fusion_semantics import ElementwiseSemantics
-from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.program_limits import DecodedInstruction
-from merlin.compiler.schedule.program_limits import EncodedAccess
-from merlin.compiler.schedule.program_limits import ProgramDecoder
-from merlin.compiler.schedule.program_limits import ProgramLimits
-from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
-from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
-from merlin.compiler.schedule.schedule_pipeline import compile_schedule
-from merlin.compiler.schedule.temporary_storage import StorageAdapter
-from merlin.compiler.schedule.temporary_storage import StorageEffects
-from merlin.compiler.schedule.temporary_storage import TemporaryObject
+from merlin.compiler.schedule.program_limits import (
+    AddressWindow,
+    DecodedInstruction,
+    EncodedAccess,
+    ProgramDecoder,
+    ProgramLimits,
+)
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets, ScheduleEncoding, compile_schedule
+from merlin.compiler.schedule.temporary_storage import StorageAdapter, StorageEffects, TemporaryObject
 from merlin.sched.ir import Call, Const, Kernel, TensorArg, evaluate
 from merlin.semantic_compiler.allocation_types import StorageBank
 from merlin.verify.epilogue_applicability import ReadoutCapability
@@ -295,6 +293,7 @@ def inputs_and_reference(m, k, n, p, width):
 
 def reference_outputs(data):
     """Independent wide arithmetic for the complete two-layer source graph."""
+
     def finish(left, right, bias):
         # Wide independent arithmetic explicitly reconstructs source wrapping
         # before signed saturation; it does not call the device implementation.

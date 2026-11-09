@@ -30,11 +30,18 @@ def _source_members():
     from merlin.transforms import certificates
 
     owner = sys.modules[__name__]
-    return (*((owner, name) for name in
-              ("_source_members", "_check", "_boundary", "source_numerical_identity", "_validator_identity")),
-            (AdmittedProposal, "revalidate"), (AdmittedProposal, "source_observation"),
-            *semantics._source_members(), (boundary, "live_values"),
-            (certificates, "ir_digest"), (certificates, "ir_text"))
+    return (
+        *(
+            (owner, name)
+            for name in ("_source_members", "_check", "_boundary", "source_numerical_identity", "_validator_identity")
+        ),
+        (AdmittedProposal, "revalidate"),
+        (AdmittedProposal, "source_observation"),
+        *semantics._source_members(),
+        (boundary, "live_values"),
+        (certificates, "ir_digest"),
+        (certificates, "ir_text"),
+    )
 
 
 def source_numerical_identity(source, nodes: tuple[int, ...]) -> str:
@@ -48,8 +55,10 @@ def source_numerical_identity(source, nodes: tuple[int, ...]) -> str:
         raise ValueError("proposal operation indices are outside the original source")
     # Whole-source identity binds captured constants and dynamic parameter producers,
     # while exact ordinals distinguish otherwise identical operation sites.
-    record = (source.stamp.source_sha256,
-              tuple((source.operation_ordinals[n], ir_text(source.operations[n])) for n in nodes))
+    record = (
+        source.stamp.source_sha256,
+        tuple((source.operation_ordinals[n], ir_text(source.operations[n])) for n in nodes),
+    )
     return hashlib.sha256(_record(record).encode()).hexdigest()
 
 
@@ -64,18 +73,33 @@ class LoweringRecipe:
     abi: str
 
     def __post_init__(self):
-        if (type(self.implementation_sha256) is not str or len(self.implementation_sha256) != 64
-                or any(c not in "0123456789abcdef" for c in self.implementation_sha256)):
+        if (
+            type(self.implementation_sha256) is not str
+            or len(self.implementation_sha256) != 64
+            or any(c not in "0123456789abcdef" for c in self.implementation_sha256)
+        ):
             raise ValueError("lowering recipe requires an exact implementation SHA-256")
         if any(type(v) is not str or not v for v in (self.pipeline, self.abi)):
             raise ValueError("lowering recipe requires explicit pipeline and ABI identities")
-        if (type(self.guards) is not tuple or not self.guards
-                or any(type(row) is not tuple or len(row) != 2 or any(type(v) is not str or not v for v in row)
-                       for row in self.guards) or len(dict(self.guards)) != len(self.guards)):
+        if (
+            type(self.guards) is not tuple
+            or not self.guards
+            or any(
+                type(row) is not tuple or len(row) != 2 or any(type(v) is not str or not v for v in row)
+                for row in self.guards
+            )
+            or len(dict(self.guards)) != len(self.guards)
+        ):
             raise ValueError("lowering recipe requires immutable named guard identities")
-        if (type(self.artifacts) is not tuple or not self.artifacts
-                or any(type(row) is not tuple or len(row) != 2 or any(type(v) is not str or not v for v in row)
-                       for row in self.artifacts) or len(set(self.artifacts)) != len(self.artifacts)):
+        if (
+            type(self.artifacts) is not tuple
+            or not self.artifacts
+            or any(
+                type(row) is not tuple or len(row) != 2 or any(type(v) is not str or not v for v in row)
+                for row in self.artifacts
+            )
+            or len(set(self.artifacts)) != len(self.artifacts)
+        ):
             raise ValueError("lowering recipe requires explicit unique artifact kind/role pairs")
 
 
@@ -108,9 +132,11 @@ class SourceProposal:
                 raise ValueError(f"source proposal requires explicit {field}")
         if type(self.operation_ordinals) is not tuple or any(type(n) is not int for n in self.operation_ordinals):
             raise ValueError("source proposal requires original immutable operation ordinals")
-        if type(self.required_features) is not tuple or any(
-            type(f) is not str or not f for f in self.required_features
-        ) or len(set(self.required_features)) != len(self.required_features):
+        if (
+            type(self.required_features) is not tuple
+            or any(type(f) is not str or not f for f in self.required_features)
+            or len(set(self.required_features)) != len(self.required_features)
+        ):
             raise ValueError("source proposal features must be immutable unique names")
 
 
@@ -119,9 +145,10 @@ def _boundary(source, nodes):
     order = {name: index for index, name in enumerate(source.program.buffers)}
 
     def representations(names):
-        return tuple(BufferRepresentation(name, ValueRepresentation(
-            "tensor_ssa", "logical", source.program.buffers[name].dtype
-        )) for name in sorted(names, key=order.__getitem__))
+        return tuple(
+            BufferRepresentation(name, ValueRepresentation("tensor_ssa", "logical", source.program.buffers[name].dtype))
+            for name in sorted(names, key=order.__getitem__)
+        )
 
     return representations(inputs), representations(outputs)
 
@@ -133,8 +160,11 @@ proposal_boundary = _boundary
 def _check(source, proposal, topology, *, original_cpu):
     from merlin.llvmlower.offload_plan import OffloadSource
 
-    if (type(source) is not OffloadSource or type(proposal) is not SourceProposal
-            or type(topology) is not SelectedTopology):
+    if (
+        type(source) is not OffloadSource
+        or type(proposal) is not SourceProposal
+        or type(topology) is not SelectedTopology
+    ):
         raise ValueError("admission requires original typed source, proposal and selected topology")
     source.revalidate()
     if source.graph_mode != "ssa":
@@ -157,8 +187,10 @@ def _check(source, proposal, topology, *, original_cpu):
     if not set(proposal.required_features) <= set(resource.features):
         raise ValueError("resource does not declare the proposal's required implementation features")
     topology.require_access(
-        proposal.resource, proposal.memory_domain,
-        read=bool(alternative.inputs), write=bool(alternative.outputs) or bool(alternative.scratch_bytes),
+        proposal.resource,
+        proposal.memory_domain,
+        read=bool(alternative.inputs),
+        write=bool(alternative.outputs) or bool(alternative.scratch_bytes),
     )
     memory = topology.memory(proposal.memory_domain)
     if type(alternative.scratch_bytes) is not int or alternative.scratch_bytes < 0:
@@ -168,8 +200,9 @@ def _check(source, proposal, topology, *, original_cpu):
     if original_cpu:
         from merlin.compiler.ir.semantics import region_semantic_attributes
 
-        if region_semantic_attributes(source.module, source.entry,
-                                      tuple(source.operations[n] for n in alternative.nodes)):
+        if region_semantic_attributes(
+            source.module, source.entry, tuple(source.operations[n] for n in alternative.nodes)
+        ):
             raise ValueError("original scalar fallback cannot discharge annotated source numerical obligations")
         if (proposal.provider, proposal.abi, resource.kind) != ("merlin.scalar", "inlined", "cpu"):
             raise ValueError("original CPU preservation requires the selected CPU resource and inlined ABI")
@@ -249,9 +282,17 @@ def admit_proposal(source, proposal: SourceProposal, topology: SelectedTopology,
 
     sources = observe("proposal", _source_members)
     binding = _validator_identity(validate_implementation)
-    result = AdmittedProposal(source, proposal, topology, validate_implementation, binding, False,
-                              _record(asdict(proposal)), (source, proposal, topology, validate_implementation, sources),
-                              sources)
+    result = AdmittedProposal(
+        source,
+        proposal,
+        topology,
+        validate_implementation,
+        binding,
+        False,
+        _record(asdict(proposal)),
+        (source, proposal, topology, validate_implementation, sources),
+        sources,
+    )
     result.revalidate()
     return result
 
@@ -263,10 +304,26 @@ def admit_original_cpu(source, index: int, topology: SelectedTopology, *, resour
     sources = observe("proposal", _source_members)
     if type(index) is not int or not 0 <= index < len(source.operations):
         raise ValueError("original CPU selection requires an exact source index")
-    proposal = SourceProposal(source.cpu_alternatives[index], "merlin.scalar", resource, memory_domain, "inlined",
-                              source.stamp.source_sha256, (source.operation_ordinals[index],),
-                              source_numerical_identity(source, (index,)))
-    result = AdmittedProposal(source, proposal, topology, None, None, True, _record(asdict(proposal)),
-                              (source, proposal, topology, None, sources), sources)
+    proposal = SourceProposal(
+        source.cpu_alternatives[index],
+        "merlin.scalar",
+        resource,
+        memory_domain,
+        "inlined",
+        source.stamp.source_sha256,
+        (source.operation_ordinals[index],),
+        source_numerical_identity(source, (index,)),
+    )
+    result = AdmittedProposal(
+        source,
+        proposal,
+        topology,
+        None,
+        None,
+        True,
+        _record(asdict(proposal)),
+        (source, proposal, topology, None, sources),
+        sources,
+    )
     result.revalidate()
     return result

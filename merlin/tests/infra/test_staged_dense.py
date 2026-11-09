@@ -4,17 +4,19 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compiler.schedule.staged_dense import AccumulatorReadout
-from merlin.compiler.schedule.staged_dense import AccumulatorZero
-from merlin.compiler.schedule.staged_dense import CompletionFence
-from merlin.compiler.schedule.staged_dense import ComputeConsume
-from merlin.compiler.schedule.staged_dense import DescriptorIssue
-from merlin.compiler.schedule.staged_dense import OperandLoad
-from merlin.compiler.schedule.staged_dense import StagedDenseContract
-from merlin.compiler.schedule.staged_dense import StagedDenseProblem
-from merlin.compiler.schedule.staged_dense import StagedDenseRewrite
-from merlin.compiler.schedule.staged_dense import eliminate_redundant_rhs_loads
-from merlin.compiler.schedule.staged_dense import rewrite_staged_dense
+from merlin.compiler.schedule.staged_dense import (
+    AccumulatorReadout,
+    AccumulatorZero,
+    CompletionFence,
+    ComputeConsume,
+    DescriptorIssue,
+    OperandLoad,
+    StagedDenseContract,
+    StagedDenseProblem,
+    StagedDenseRewrite,
+    eliminate_redundant_rhs_loads,
+    rewrite_staged_dense,
+)
 from merlin.compiler.schedule.staged_dense_verification import verify_staged_dense
 
 

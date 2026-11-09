@@ -109,8 +109,10 @@ class StateDeclaration:
                 or node.effect != "input"
                 or (node.type.dtype, node.type.numerical_policy)
                 not in {
-                    ("f32", "raw-bit-pattern"), ("f64", "raw-bit-pattern"),
-                    ("bf16", "raw-bit-pattern"), ("fp8_e4m3", "raw-bit-pattern"),
+                    ("f32", "raw-bit-pattern"),
+                    ("f64", "raw-bit-pattern"),
+                    ("bf16", "raw-bit-pattern"),
+                    ("fp8_e4m3", "raw-bit-pattern"),
                     ("i64", "signed-i64"),
                 }
             ):

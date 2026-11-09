@@ -71,20 +71,18 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing", descriptor_effects
             "destination forwarding needs an original live kernel/runtime borrowed-effects owner: "
             "no retained aliases, no releases, completion before return; V26 descriptor identity is insufficient"
         )
-    from merlin_experiments.phase1.feedback import private_instruction_coordinator as C
-    from merlin_experiments.phase1.feedback import private_instruction_declaration as D
-
-    from merlin.model import compile_saved_model
-    from merlin.model import read_full_outputs
-    from merlin.runtime.modelinputs import selected_execution_firrtl
     from merlin.compiler.planning.model import plan_before_build
     from merlin.llvmlower.optional_passes import Selection, applied
     from merlin.llvmlower.source_optimization_policy import SourceOptimizationPolicy
     from merlin.llvmlower.source_optimization_request import GATHER_PASS, PACKING_PASS
+    from merlin.model import compile_saved_model, read_full_outputs
     from merlin.runtime.backends import base
     from merlin.runtime.input_observation import revalidate_observation
+    from merlin.runtime.modelinputs import selected_execution_firrtl
     from merlin.targetgen import target_registry
     from merlin.targetgen.elf_lanes import executable_sections
+    from merlin_experiments.phase1.feedback import private_instruction_coordinator as C
+    from merlin_experiments.phase1.feedback import private_instruction_declaration as D
 
     candidate_policy = (
         None

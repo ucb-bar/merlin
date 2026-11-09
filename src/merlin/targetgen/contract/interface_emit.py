@@ -147,9 +147,12 @@ def _fmt_attrs(attrs: dict[str, Any]) -> str:
             # so a round-tripped pooling command lost its window to a typing mismatch reported far from
             # the spelling that caused it. String stages (``epilogue = ["relu"]``) are unchanged.
             inner = ", ".join(
-                f"{float(x)!r} : f32" if k in {"acc_scale_by_column", "source_scales"}
-                else f'"{x}"' if isinstance(x, str)
-                else "[" + ", ".join(str(y) for y in x) + "]" if isinstance(x, list)
+                f"{float(x)!r} : f32"
+                if k in {"acc_scale_by_column", "source_scales"}
+                else f'"{x}"'
+                if isinstance(x, str)
+                else "[" + ", ".join(str(y) for y in x) + "]"
+                if isinstance(x, list)
                 else str(x)
                 for x in v
             )
@@ -173,8 +176,7 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
     )
     lines.append(header)
 
-    produced = {command["operands"]["dst"] for command in commands
-                if command.get("opcode") in _NAMED_OPCODE_TO_OP}
+    produced = {command["operands"]["dst"] for command in commands if command.get("opcode") in _NAMED_OPCODE_TO_OP}
 
     for name, spec in tensors.items():
         if name in produced:
@@ -210,8 +212,7 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
         elif op in ("MATMUL_RESIDENT", "MATMUL"):
             lhs, rhs, dst = ops["lhs"], ops["rhs"], ops["dst"]
             lines.append(
-                f"  %{dst} = merlin_iface.matmul %{lhs}, %{rhs}"
-                + (" " + _fmt_attrs(attrs) if attrs else "") + " : "
+                f"  %{dst} = merlin_iface.matmul %{lhs}, %{rhs}" + (" " + _fmt_attrs(attrs) if attrs else "") + " : "
                 f"({val_type[lhs]}, {val_type[rhs]}) -> !merlin_iface.acc<{acc_t}>"
             )
             val_type[dst] = f"!merlin_iface.acc<{acc_t}>"

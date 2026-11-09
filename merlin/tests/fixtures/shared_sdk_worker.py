@@ -313,8 +313,7 @@ def shared_input_from_export(_path):
     from xdsl.parser import Parser
 
     from merlin.compiler.schedule.blocks import Load
-    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
-    from merlin.compiler.schedule.compact_dense import DenseMemoryView
+    from merlin.compiler.schedule.compact_dense import DenseLoopStorage, DenseMemoryView
     from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups
     from merlin.compiler.schedule.shared_input_schedule import schedule_shared_input
     from merlin.compiler.schedule.shared_input_verification import verify_shared_input

@@ -235,8 +235,11 @@ def substrate_inventory(version: str) -> tuple[tuple[str, ...], tuple[str, ...],
         automatic = (
             *AUTOMATIC_CHECKER_MODULES_V3,
             "merlin.targetgen.tool_profile_shared",
-            ("merlin.compiler.schedule.export" if version == COMMON_SUBSTRATE_V19
-             else "merlin.compile.scheduling.export"),
+            (
+                "merlin.compiler.schedule.export"
+                if version == COMMON_SUBSTRATE_V19
+                else "merlin.compile.scheduling.export"
+            ),
         )
         return namespaces, public, automatic
     raise ValueError("unknown common compiler substrate")
@@ -831,8 +834,13 @@ def tool_profile_prompt(bundle: dict) -> str:
             "follow from SDK availability. Missing capabilities remain unavailable."
         )
     if profile["common_substrate"] in (
-        COMMON_SUBSTRATE_V9, COMMON_SUBSTRATE_V10, COMMON_SUBSTRATE_V11,
-        COMMON_SUBSTRATE_V12, COMMON_SUBSTRATE_V13, COMMON_SUBSTRATE_V14, COMMON_SUBSTRATE_V15,
+        COMMON_SUBSTRATE_V9,
+        COMMON_SUBSTRATE_V10,
+        COMMON_SUBSTRATE_V11,
+        COMMON_SUBSTRATE_V12,
+        COMMON_SUBSTRATE_V13,
+        COMMON_SUBSTRATE_V14,
+        COMMON_SUBSTRATE_V15,
         COMMON_SUBSTRATE_V16,
         COMMON_SUBSTRATE_V17,
         COMMON_SUBSTRATE_V18,
@@ -877,7 +885,11 @@ def tool_profile_prompt(bundle: dict) -> str:
             "It supplies no fixed-cycle spacing or loop-carried event ownership."
         )
     if profile["common_substrate"] in (
-        COMMON_SUBSTRATE_V15, COMMON_SUBSTRATE_V16, COMMON_SUBSTRATE_V17, COMMON_SUBSTRATE_V18, COMMON_SUBSTRATE_V19
+        COMMON_SUBSTRATE_V15,
+        COMMON_SUBSTRATE_V16,
+        COMMON_SUBSTRATE_V17,
+        COMMON_SUBSTRATE_V18,
+        COMMON_SUBSTRATE_V19,
     ):
         lines.append(
             "V22 keeps every V21 scheduling API, including loop-carried completion events and "

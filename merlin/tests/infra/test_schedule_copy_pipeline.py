@@ -7,18 +7,19 @@ from pathlib import Path
 import pytest
 import test_copy_pipeline as leaf
 
-from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.program_limits import DecodedInstruction
-from merlin.compiler.schedule.program_limits import EncodedAccess
-from merlin.compiler.schedule.program_limits import ProgramDecoder
-from merlin.compiler.schedule.program_limits import ProgramLimits
+from merlin.compiler.schedule.program_limits import (
+    AddressWindow,
+    DecodedInstruction,
+    EncodedAccess,
+    ProgramDecoder,
+    ProgramLimits,
+)
 from merlin.sched.ir import Const, evaluate
 
 
 @pytest.fixture
 def modules():
-    from merlin.compiler.schedule import copy_pipeline
-    from merlin.compiler.schedule import schedule_pipeline
+    from merlin.compiler.schedule import copy_pipeline, schedule_pipeline
 
     return schedule_pipeline, copy_pipeline
 
@@ -352,8 +353,7 @@ def test_original_bad_proposer_needs_separate_checker_and_exact_positions(module
 @pytest.mark.parametrize("version", [6, 7, 8])
 def test_exact_sdk_inventories_remain_import_closed_with_selected_companion_only_in_v8(tmp_path, modules, version):
     from merlin.common.paths import repo_root
-    from merlin.compiler.schedule.export import namespace_replacements
-    from merlin.compiler.schedule.export import public_modules
+    from merlin.compiler.schedule.export import namespace_replacements, public_modules
     from merlin.compiler.schedule.library_sources import library_modules
     from merlin.targetgen.compiler_library import freeze_compiler_library
 

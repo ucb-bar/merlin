@@ -13,12 +13,12 @@ import json
 from pathlib import Path
 
 import pytest
-from merlin_experiments.phase1 import joint_control as JC
-from merlin_experiments.phase1.feedback import mechanism_hints as MH
-from merlin_experiments.phase1.feedback import performance_brief as PB
 
 from merlin.common.paths import repo_root
 from merlin.compile.analysis.instruction_roles import ROLES
+from merlin_experiments.phase1 import joint_control as JC
+from merlin_experiments.phase1.feedback import mechanism_hints as MH
+from merlin_experiments.phase1.feedback import performance_brief as PB
 
 ROLE = "loop_descriptor"
 #: How a suggestion would name the mechanism the role prohibits.
@@ -124,9 +124,14 @@ def test_no_library_pass_in_optimization_next_suggests_a_hardware_loop(tmp_path,
             for key, rows in (("scalability", "cases"), ("core_gsim", "per_capsule"))
             for row in FIXTURE[key][rows]
         }
-        (tmp_path / "PUBLIC_CAPABILITIES.json").write_text(json.dumps({
-            "schema": "merlin.public_capability_inventory.v1", "members": members,
-        }))
+        (tmp_path / "PUBLIC_CAPABILITIES.json").write_text(
+            json.dumps(
+                {
+                    "schema": "merlin.public_capability_inventory.v1",
+                    "members": members,
+                }
+            )
+        )
     written = []
     for key, rows in (("scalability", "cases"), ("core_gsim", "per_capsule")):
         document = copy.deepcopy(FIXTURE[key])

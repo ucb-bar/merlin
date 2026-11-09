@@ -21,31 +21,48 @@ import os
 import tempfile
 from pathlib import Path
 
-from merlin.compiler.selection.features import CompositionError as CompositionError
-from merlin.compiler.selection.features import FeatureRegistry, ImprFeature
-
-
+from merlin.compiler.passes.features import (
+    _PROMOTE_STACK_DEFAULT_BYTES as _PROMOTE_STACK_DEFAULT_BYTES,
+)
 from merlin.compiler.passes.features import (
     FUSE_AFTER_GENERALIZE_NAME as FUSE_AFTER_GENERALIZE_NAME,
+)
+from merlin.compiler.passes.features import (
     FUSE_ELEMENTWISE_ANCHOR as FUSE_ELEMENTWISE_ANCHOR,
+)
+from merlin.compiler.passes.features import (
     FUSE_ELEMENTWISE_NAME as FUSE_ELEMENTWISE_NAME,
+)
+from merlin.compiler.passes.features import (
     FUSE_ELEMENTWISE_STAGE as FUSE_ELEMENTWISE_STAGE,
+)
+from merlin.compiler.passes.features import (
     PROMOTE_STACK_BYTES_ENV as PROMOTE_STACK_BYTES_ENV,
+)
+from merlin.compiler.passes.features import (
     PROMOTE_STACK_NAME as PROMOTE_STACK_NAME,
-    _PROMOTE_STACK_DEFAULT_BYTES as _PROMOTE_STACK_DEFAULT_BYTES,
+)
+from merlin.compiler.passes.features import (
     _fuse_after_generalize as _fuse_after_generalize,
+)
+from merlin.compiler.passes.features import (
     _fuse_elementwise_pipeline as _fuse_elementwise_pipeline,
+)
+from merlin.compiler.passes.features import (
     _promote_buffers_to_stack as _promote_buffers_to_stack,
+)
+from merlin.compiler.passes.features import (
     _promote_stack_bytes as _promote_stack_bytes,
+)
+from merlin.compiler.passes.features import (
     _reuse_tensor_destination as _reuse_tensor_destination,
 )
+from merlin.compiler.selection.features import CompositionError as CompositionError
+from merlin.compiler.selection.features import FeatureRegistry, ImprFeature
 
 from .copy_expand import FEATURE as _EXPAND_COPY_FEATURE
 from .selfcopy import FEATURE as _SELF_COPY_FEATURE
 from .transpose_fuse import FEATURE as _FUSE_TRANSPOSE_FEATURE
-
-
-
 
 _FEATURES = FeatureRegistry(lambda name: _try_lazy_register(name))
 _REGISTRY = _FEATURES.entries
@@ -238,8 +255,6 @@ normalize = _FEATURES.normalize
 
 
 apply_pipeline = _FEATURES.apply_pipeline
-
-
 
 
 apply_schedule = _FEATURES.apply_schedule
@@ -2441,18 +2456,6 @@ def ensure_vec_noncontraction(lanes: int, max_rank: int = VEC_NONCONTRACTION_MAX
 #: attribute. General, not target-specific -- every per-channel-quantized model has this shape.
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 def ensure_promote_stack(nbytes: int) -> str:
     """Register (on demand) a stack-promotion variant whose per-buffer cap is ``nbytes``.
 
@@ -3287,8 +3290,6 @@ module attributes {transform.with_named_sequence} {
 # baseline `convert-math-to-libm` -> scalar `expf` path (exact, crash-free). No pipeline edit needed.
 
 
-
-
 register(
     ImprFeature(
         name="vectorized_transcendental_activation",
@@ -3620,10 +3621,6 @@ register(
 #: (afterwards there are no producer/consumer tensors left to fuse).
 
 
-
-
-
-
 # ---- vectorize the amax reduction dynamic quantization emits ------------------------------------
 # Registered EAGERLY, at import of this module, rather than through `_try_lazy_register`. That is
 # deliberate and it is the cheaper half of the trap that hook exists for: the lowering runs in a
@@ -3637,17 +3634,12 @@ from .reduce_vec import ensure_registered as _ensure_amax_reduction  # noqa: E40
 VECTORIZE_AMAX_REDUCTION_NAME = _ensure_amax_reduction()
 
 
-
-
-
-
-
-
-
-
 from .bufferized_result_identity import ensure_registered as _ensure_buffer_identity  # noqa: E402
+
 BUFFERIZED_RESULT_IDENTITY_NAME = _ensure_buffer_identity()
 from .scalar_squared_sum import ensure_registered as _ensure_squared_sum  # noqa: E402
+
 SCALAR_SQUARED_SUM_NAME = _ensure_squared_sum()
 from .tensor_helper_inlining import ensure_registered as _ensure_tensor_helper_inlining  # noqa: E402
+
 TENSOR_HELPER_INLINING_NAME = _ensure_tensor_helper_inlining()

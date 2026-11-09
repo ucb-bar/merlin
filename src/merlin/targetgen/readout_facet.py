@@ -956,8 +956,12 @@ class TargetReadout:
     facets: tuple[ReadoutFacet, ...]
 
     def applies_composition(
-        self, stages: Sequence[str], *, unit: str | None = None,
-        selector: str | None = None, routes=(),
+        self,
+        stages: Sequence[str],
+        *,
+        unit: str | None = None,
+        selector: str | None = None,
+        routes=(),
     ) -> bool | None:
         """Whether one selected unit/readout carries the complete stage set.
 

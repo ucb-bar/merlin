@@ -14,7 +14,13 @@ from .sources import c_source_pair
 
 
 def emit_application_c(
-    source: KernelRequest, driver: dict, driver_files: dict[str, str], name: str, *, capacity: int, parameters=None,
+    source: KernelRequest,
+    driver: dict,
+    driver_files: dict[str, str],
+    name: str,
+    *,
+    capacity: int,
+    parameters=None,
 ):
     """Stage all outputs until dispatch succeeds; constants never become runtime inputs.
 
@@ -71,8 +77,10 @@ def emit_application_c(
     for index, (key, _) in enumerate(inputs):
         pointers[key] = f"inputs[{index}]"
     if parameters is not None:
-        pointers.update((key, f"parameters->data+{entry.offset}u")
-                        for key, entry in zip(parameters.node_ids, parameters.entries, strict=True))
+        pointers.update(
+            (key, f"parameters->data+{entry.offset}u")
+            for key, entry in zip(parameters.node_ids, parameters.entries, strict=True)
+        )
     for index, binding in enumerate(sorted(source.constants, key=lambda item: item.node_id)):
         symbol = f"{name}_constant_{index}"
         if binding.encoding == "f32-le-raw":
@@ -148,8 +156,10 @@ def emit_application_c(
         for pointer, size in [(f"inputs[{i}]", sizes[key]) for i, (key, _) in enumerate(inputs)] + [
             (f"outputs[{i}]", sizes[key]) for i, key in enumerate(source.outputs)
         ]:
-            parameter_checks += [f"{name}_overlap({pointer},{size}u,parameters,sizeof(*parameters))",
-                                 f"{name}_overlap({pointer},{size}u,parameters->data,parameters->bytes)"]
+            parameter_checks += [
+                f"{name}_overlap({pointer},{size}u,parameters,sizeof(*parameters))",
+                f"{name}_overlap({pointer},{size}u,parameters->data,parameters->bytes)",
+            ]
     format_declarations = ""
     if mixed:
         descriptions = []
@@ -179,7 +189,7 @@ def emit_application_c(
     )
     interface = f"""#include <stdint.h>
 #include <float.h>
-{'#include "parameter_sha256.h"' if parameters is not None else ''}
+{'#include "parameter_sha256.h"' if parameters is not None else ""}
 _Static_assert(sizeof(float)==4 && FLT_RADIX==2 && FLT_MANT_DIG==24 && FLT_MAX_EXP==128,
                "application source tensors require IEEE binary32");
 {chr(10).join(constants)}

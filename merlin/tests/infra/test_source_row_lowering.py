@@ -28,8 +28,16 @@ def selection(tmp_path, *, prepare=None, **changes):
         pytest.fail("discovery tests must not build or execute provider code")
 
     config = SourceRowLowering(
-        selected, opts["adapter"], POLICY, "host", 32, implementation, build,
-        assume_finite_inputs=True, private_ownership=True, disjoint_arguments=True,
+        selected,
+        opts["adapter"],
+        POLICY,
+        "host",
+        32,
+        implementation,
+        build,
+        assume_finite_inputs=True,
+        private_ownership=True,
+        disjoint_arguments=True,
     )
     return replace(config, **changes), original, seen
 
@@ -52,7 +60,9 @@ def test_all_islands_and_block_argument_bindings_are_selected_without_backend_so
     first = body.last_op.arguments[0]
     terminator = body.last_op
     operations, result = build_cpu_softmax_lastdim(
-        first if dependent else body.args[0], backend_policy=POLICY, assume_finite_inputs=True,
+        first if dependent else body.args[0],
+        backend_policy=POLICY,
+        assume_finite_inputs=True,
     )
     body.insert_ops_before(operations, terminator)
     terminator.operands = (result,)
@@ -60,9 +70,10 @@ def test_all_islands_and_block_argument_bindings_are_selected_without_backend_so
     assert len(seen) == 2
     for binding in seen:
         binding.compilation.revalidate()
-    assert seen[0].compilation.source.source is next(
-        op for op in seen[0].compilation.module.walk() if type(op) is func.FuncOp
-    ).body.block.args[0]
+    assert (
+        seen[0].compilation.source.source
+        is next(op for op in seen[0].compilation.module.walk() if type(op) is func.FuncOp).body.block.args[0]
+    )
     parsed = mq.parse(path)
     body = next(op for op in parsed.body.block.ops if getattr(op, "sym_name", None).data == "forward").body.block
     calls = [op for op in body.ops if type(op) is func.CallOp]
@@ -73,24 +84,49 @@ def test_all_islands_and_block_argument_bindings_are_selected_without_backend_so
     report = json.loads((path.parent / "source_rows.json").read_text())
     assert report["execution_domain"] == "host"
     assert report["premises"] == dict(
-        assume_finite_inputs=True, private_ownership=True, disjoint_arguments=True,
+        assume_finite_inputs=True,
+        private_ownership=True,
+        disjoint_arguments=True,
     )
     assert [row["shape"] for row in report["bindings"]] == [[2, 19], [2, 19]]
 
 
-@pytest.mark.parametrize("unavailable", [
-    "finite", "ownership", "alias", "completion", "state", "source", "capacity", "row_capability",
-])
+@pytest.mark.parametrize(
+    "unavailable",
+    [
+        "finite",
+        "ownership",
+        "alias",
+        "completion",
+        "state",
+        "source",
+        "capacity",
+        "row_capability",
+    ],
+)
 def test_unsupported_source_or_capabilities_keep_the_exact_source_bytes_and_no_provider(tmp_path, unavailable):
     config, original, seen = selection(tmp_path)
     if unavailable in ("finite", "ownership", "alias"):
-        config = replace(config, **{dict(
-            finite="assume_finite_inputs", ownership="private_ownership", alias="disjoint_arguments",
-        )[unavailable]: False})
+        config = replace(
+            config,
+            **{
+                dict(
+                    finite="assume_finite_inputs",
+                    ownership="private_ownership",
+                    alias="disjoint_arguments",
+                )[unavailable]: False
+            },
+        )
     elif unavailable in ("completion", "state"):
-        config = replace(config, adapter=replace(config.adapter, **{
-            "synchronous_completion" if unavailable == "completion" else "addressable_state": False,
-        }))
+        config = replace(
+            config,
+            adapter=replace(
+                config.adapter,
+                **{
+                    "synchronous_completion" if unavailable == "completion" else "addressable_state": False,
+                },
+            ),
+        )
     elif unavailable == "source":
         final = next(op for op in original.walk() if type(op) is func.ReturnOp).arguments[0].owner
         final.attributes["unknown_numerical_effect"] = builtin.UnitAttr()
@@ -114,10 +150,14 @@ def test_unsupported_source_or_capabilities_keep_the_exact_source_bytes_and_no_p
         config.selected_contracts.software_path.write_text(json.dumps(software))
         from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
 
-        current = read_scheduling_contracts(facts_path, config.selected_contracts.software_path,
-                                            target=config.selected_contracts.target)
-        config = replace(config, selected_contracts=current,
-                         adapter=replace(config.adapter, configuration_identity=current.hardware_identity))
+        current = read_scheduling_contracts(
+            facts_path, config.selected_contracts.software_path, target=config.selected_contracts.target
+        )
+        config = replace(
+            config,
+            selected_contracts=current,
+            adapter=replace(config.adapter, configuration_identity=current.hardware_identity),
+        )
     path, builder = run(tmp_path, config, original)
     assert path.read_bytes() == (tmp_path / "model.mlir").read_bytes()
     assert not seen
@@ -151,8 +191,10 @@ def test_post_preparation_changes_refuse_before_provider_compilation(tmp_path, m
     config, original, _ = selection(tmp_path)
     path, builder = run(tmp_path, config, original)
     selected = {
-        "source": path.parent / "input.mlir", "selected": path,
-        "facts": config.selected_contracts.facts_path, "receipt": path.parent / "source_rows.json",
+        "source": path.parent / "input.mlir",
+        "selected": path,
+        "facts": config.selected_contracts.facts_path,
+        "receipt": path.parent / "source_rows.json",
     }[mutation]
     selected.write_bytes(selected.read_bytes() + b"\n")
     with pytest.raises(ValueError, match="changed"):

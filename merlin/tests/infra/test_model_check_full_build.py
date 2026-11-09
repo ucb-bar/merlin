@@ -168,9 +168,14 @@ def built(tmp_path, monkeypatch):
             selected_ir = merlin_host_llvm_transform(
                 Path(clang()).resolve().parent, host_isa="rv64gc", combine_clamp=True
             )(original, directory / "host_llvm")
-            bind_preparation(recipe, directory / "host_llvm", {
-                "source_sha256": FB.sha256(original), "selected_sha256": FB.sha256(selected_ir),
-            })
+            bind_preparation(
+                recipe,
+                directory / "host_llvm",
+                {
+                    "source_sha256": FB.sha256(original),
+                    "selected_sha256": FB.sha256(selected_ir),
+                },
+            )
 
         def run(argv, **kwargs):
             return subprocess.run(argv, capture_output=True, text=True, check=True, **kwargs)
@@ -263,8 +268,8 @@ def test_full_build_forwards_only_selected_host_math_policy_and_separates_reuse(
 
 
 def test_native_adoption_reuses_observed_image_and_relinks_real_inputs(built, tmp_path):
-    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.model_check.full_build_native import adopt
+    from merlin.runtime.modelinputs import strict_tree_sha256
 
     build, stage, _directory, _source, calls = built
     original = build()
@@ -363,8 +368,8 @@ def _ordinary_admission(*, elf, evidence_root):
 
 
 def _adopt_checked_record(record, stage, tmp_path, *, qualification=None, include_bounded_declaration=True):
-    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.model_check.full_build_native import adopt
+    from merlin.runtime.modelinputs import strict_tree_sha256
 
     settings = FB.BuildSettings(
         **{
@@ -607,8 +612,11 @@ def test_fresh_native_adoptions_share_products_without_aliasing_runtime_template
         directory = tmp_path / f"owner-step{index}"
         elf = FB.relink(record, stage, {"in0": np.array(expected, np.float32)}, directory)
         assert subprocess.check_output([elf], text=True).strip() == f"{expected[0]} {expected[1]} 5"
-        verify_completed_recipe(directory / "compilation_recipe.json", executable=elf,
-                                expected_recipe_sha256=FB.sha256(directory / "compilation_recipe.json"))
+        verify_completed_recipe(
+            directory / "compilation_recipe.json",
+            executable=elf,
+            expected_recipe_sha256=FB.sha256(directory / "compilation_recipe.json"),
+        )
     assert len(calls) == 2, "each exact adoption stamp generates once; returning to the first reuses only its template"
     assert marker.read_bytes() == original_marker
     templates = list(Path(first["build_dir"]).glob("model_check_single_forward_*/template.json"))

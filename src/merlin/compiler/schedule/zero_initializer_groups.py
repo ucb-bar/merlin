@@ -28,10 +28,9 @@ def _name(operation):
 
 
 def _provenance_only(operation, *, properties=()):
-    return (
-        all(name.startswith("prov.") or name == "op_name__" for name in operation.attributes)
-        and not set(operation.properties) - set(properties)
-    )
+    return all(name.startswith("prov.") or name == "op_name__" for name in operation.attributes) and not set(
+        operation.properties
+    ) - set(properties)
 
 
 @dataclass(frozen=True)
@@ -167,7 +166,7 @@ def find_zero_initializer_groups(module, *, max_source_operations=10_000, max_so
             virtual = ((index - 1, 0), *virtual)
         if source_digest is None:
             source_digest = _digest(module)
-        groups.append(ZeroInitializerGroup(
-            source_digest, indices, ordinal, index, virtual, (m, k, n), m * n, m * n * 4
-        ))
+        groups.append(
+            ZeroInitializerGroup(source_digest, indices, ordinal, index, virtual, (m, k, n), m * n, m * n * 4)
+        )
     return tuple(groups)

@@ -66,7 +66,7 @@ def render_finite_f32_codebook_c(name: str, table: FiniteF32Codebook) -> list[st
 
     def rows(values: tuple[int, ...], width: int) -> list[str]:
         return [
-            "    " + ", ".join(f"0x{value:0{width}x}u" for value in values[start:start + 12]) + ","
+            "    " + ", ".join(f"0x{value:0{width}x}u" for value in values[start : start + 12]) + ","
             for start in range(0, len(values), 12)
         ]
 

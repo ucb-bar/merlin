@@ -12,14 +12,14 @@ from xdsl.dialects.builtin import ModuleOp, StringAttr, UnregisteredOp
 from merlin.compiler.schedule.blocks import SpatialMaxReadout
 from merlin.compiler.schedule.llvm_program import FnBuilderControlAdapter
 from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan
-from merlin.compiler.schedule.spatial_producer import SpatialProducerPlan
-from merlin.compiler.schedule.spatial_producer import emit_packed_spatial_producer
-from merlin.compiler.schedule.spatial_producer import read_spatial_plan_record
-from merlin.compiler.schedule.spatial_readout import RoundedReadout
-from merlin.compiler.schedule.spatial_readout import SpatialReadoutChain
-from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
-from merlin.compiler.schedule.window_transfer import Window2D
+from merlin.compiler.schedule.spatial_producer import (
+    PackedSpatialProducerPlan,
+    SpatialProducerPlan,
+    emit_packed_spatial_producer,
+    read_spatial_plan_record,
+)
+from merlin.compiler.schedule.spatial_readout import RoundedReadout, SpatialReadoutChain
+from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan, Window2D
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.llvmlower.requantization import quantized
 

@@ -19,15 +19,19 @@ def test_ordinary_source_host_and_all_plane_products(tmp_path):
     cc = clang()
     effects = BorrowedBufferEffects("independent native synchronous matrix fixture", True, True, True)
     capability = LogicalBorrowedABI(
-        DenseLogicalPointerABI("dense_row_major", (1, 1, 4),
-                               ("read_only", "read_only", "fully_written"),
-                               "logical_elements", "synchronous"),
-        effects, "independent native integer format", 4096,
+        DenseLogicalPointerABI(
+            "dense_row_major", (1, 1, 4), ("read_only", "read_only", "fully_written"), "logical_elements", "synchronous"
+        ),
+        effects,
+        "independent native integer format",
+        4096,
     )
 
     def emit(call):
         path = tmp_path / f"{call.symbol}.c"
-        path.write_text("#include <stdint.h>\n" + f"""
+        path.write_text(
+            "#include <stdint.h>\n"
+            + f"""
 void {call.kernel_symbol}(void *aa,void *bb,void *yy){{
  int8_t *a=aa,*b=bb;uint32_t*y=yy;
  for(int m=0;m<{call.m};m++)for(int n=0;n<{call.n};n++){{
@@ -36,25 +40,30 @@ void {call.kernel_symbol}(void *aa,void *bb,void *yy){{
   y[m*{call.n}+n]=s;
  }}
 }}
-""")
+"""
+        )
         output = path.with_suffix(".ll")
-        subprocess.run([cc, "-O2", "-fPIC", "-S", "-emit-llvm", path, "-o", output],
-                       check=True, capture_output=True)
+        subprocess.run([cc, "-O2", "-fPIC", "-S", "-emit-llvm", path, "-o", output], check=True, capture_output=True)
         return output.read_text(), ((path, hashlib.sha256(path.read_bytes()).hexdigest()),)
 
     program = lower_integer_batched_matmul_program(
-        source(h=3, m=2, k=7, n=5, planes=2), tmp_path / "ordinary",
-        select=lambda call: True, emit_matrix_kernel=emit,
-        logical_abi=capability, data_layout=_query(cc, ("-O2", "-fPIC")), refold_heads=True,
+        source(h=3, m=2, k=7, n=5, planes=2),
+        tmp_path / "ordinary",
+        select=lambda call: True,
+        emit_matrix_kernel=emit,
+        logical_abi=capability,
+        data_layout=_query(cc, ("-O2", "-fPIC")),
+        refold_heads=True,
     )
     library = tmp_path / "ordinary.so"
-    subprocess.run([cc, "-O2", "-shared", "-fPIC", program.host.ll_path,
-                    *program.kernels, *program.bridges, "-o", library], check=True, capture_output=True)
+    subprocess.run(
+        [cc, "-O2", "-shared", "-fPIC", program.host.ll_path, *program.kernels, *program.bridges, "-o", library],
+        check=True,
+        capture_output=True,
+    )
     rng = np.random.default_rng(19)
-    inputs = [rng.integers(-8, 9, shape, dtype=np.int8)
-              for shape in ((3, 2, 7), (3, 2, 7), (3, 7, 5), (3, 7, 5))]
-    expected = [a[h].astype(np.int32) @ b[h].astype(np.int32)
-                for a in inputs[:2] for b in inputs[2:] for h in range(3)]
+    inputs = [rng.integers(-8, 9, shape, dtype=np.int8) for shape in ((3, 2, 7), (3, 2, 7), (3, 7, 5), (3, 7, 5))]
+    expected = [a[h].astype(np.int32) @ b[h].astype(np.int32) for a in inputs[:2] for b in inputs[2:] for h in range(3)]
     outputs = [np.zeros_like(value) for value in expected]
     HostModel.load(str(library))([(x.ctypes.data, x.shape) for x in (*inputs, *outputs)])
     for actual, value in zip(outputs, expected, strict=True):

@@ -7,11 +7,11 @@ from copy import deepcopy
 from hashlib import sha256
 
 import pytest
-from merlin_experiments.phase1.feedback import private_index_source as index_source
 from xdsl.utils.exceptions import ParseError, VerifyException
 
 from merlin.common import mlir_query as mq
 from merlin.common.jsonio import canonical_json
+from merlin_experiments.phase1.feedback import private_index_source as index_source
 
 
 def _range_ir(name: str, *, extent: int, start: int, step: int) -> str:
@@ -216,12 +216,11 @@ def test_neutral_literal_indexed_extract_has_exact_trace_and_static_bounds(tmp_p
 
 
 def test_reviewed_literal_index_role_requires_source_trace_and_linked_build(tmp_path, monkeypatch):
-    from merlin_experiments.phase1.feedback import private_index_host_support as host_support
-
-    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.frontends.capture_normalization import normalize_capture_mlir
+    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.targetgen.application_inventory import operation_structure
     from merlin.targetgen.host_capabilities import admit_host_operation
+    from merlin_experiments.phase1.feedback import private_index_host_support as host_support
 
     capture = _capture(tmp_path)
     source = capture / "model.mlir"
@@ -495,12 +494,15 @@ def test_offset_bounds_are_independent_of_a_matching_trace(tmp_path):
 
 @pytest.mark.parametrize("offset", [0, 1])
 def test_literal_rank_zero_offset_preserves_index_bounds(tmp_path, offset):
-    source = (_source(offset=offset)
+    source = (
+        _source(offset=offset)
         .replace(": (i64) -> tensor<3xi64>", ": (i64) -> tensor<i64>")
-        .replace("affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>",
-                 "affine_map<(d0) -> (d0)>, affine_map<(d0) -> ()>, affine_map<(d0) -> (d0)>")
-        .replace("(tensor<3xi64>, tensor<3xi64>, tensor<3xi64>)",
-                 "(tensor<3xi64>, tensor<i64>, tensor<3xi64>)"))
+        .replace(
+            "affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>",
+            "affine_map<(d0) -> (d0)>, affine_map<(d0) -> ()>, affine_map<(d0) -> (d0)>",
+        )
+        .replace("(tensor<3xi64>, tensor<3xi64>, tensor<3xi64>)", "(tensor<3xi64>, tensor<i64>, tensor<3xi64>)")
+    )
     capture = _capture(tmp_path, source=source)
     if offset:
         with pytest.raises(ValueError, match="out of bounds"):
@@ -685,11 +687,10 @@ def test_mask_extension_and_sum_have_distinct_closed_roles(tmp_path):
 
 
 def test_mask_both_reviewed_roles_are_mandatory_for_linked_private_witness(tmp_path):
-    from merlin_experiments.phase1.feedback import private_index_host_support as host_support
-
     from merlin.frontends.capture_normalization import normalize_capture_mlir
     from merlin.targetgen.application_inventory import operation_structure
     from merlin.targetgen.host_capabilities import admit_host_operation
+    from merlin_experiments.phase1.feedback import private_index_host_support as host_support
 
     capture = _mask_capture(tmp_path)
     raw = (capture / "model.mlir").read_text()

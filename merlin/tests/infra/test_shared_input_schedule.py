@@ -6,15 +6,10 @@ import numpy as np
 import pytest
 from xdsl.dialects.builtin import IntegerAttr, StringAttr, i32
 
-from merlin.compiler.schedule.blocks import Compute
-from merlin.compiler.schedule.blocks import Load
-from merlin.compiler.schedule.blocks import Preload
-from merlin.compiler.schedule.blocks import Store
-from merlin.compiler.schedule.compact_dense import DenseLoopStorage
-from merlin.compiler.schedule.compact_dense import DenseMemoryView
+from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
+from merlin.compiler.schedule.compact_dense import DenseLoopStorage, DenseMemoryView
 from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups
-from merlin.compiler.schedule.shared_input_schedule import SharedInputEffect
-from merlin.compiler.schedule.shared_input_schedule import schedule_shared_input
+from merlin.compiler.schedule.shared_input_schedule import SharedInputEffect, schedule_shared_input
 from merlin.compiler.schedule.shared_input_verification import verify_shared_input
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.transforms.dense_planning import DenseResources

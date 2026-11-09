@@ -3,6 +3,7 @@
 These are custody and reservation records, not arithmetic, loader-execution or
 hardware certificates. The stateless v1 reader and emitted records are unchanged.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,14 +20,21 @@ def _json(value):
 
 def _identifier(value):
     letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"
-    return (type(value) is str and bool(value) and value[0] in letters and
-            all(c in letters + "0123456789" for c in value))
+    return (
+        type(value) is str and bool(value) and value[0] in letters and all(c in letters + "0123456789" for c in value)
+    )
 
 
 def _member(value):
-    if (type(value) is not str or not value or "\\" in value or ":" in value or
-            PurePosixPath(value).is_absolute() or ".." in PurePosixPath(value).parts or
-            PurePosixPath(value).as_posix() != value):
+    if (
+        type(value) is not str
+        or not value
+        or "\\" in value
+        or ":" in value
+        or PurePosixPath(value).is_absolute()
+        or ".." in PurePosixPath(value).parts
+        or PurePosixPath(value).as_posix() != value
+    ):
         raise ValueError("context and payload members require portable relative paths")
 
 
@@ -43,6 +51,7 @@ class CContext:
     device-local domain. On error their owner retains them until quiescence.
     Sizes are reservation limits, not guessed native struct layouts.
     """
+
     identity: str
     contract_sha256: str
     resource: str
@@ -65,15 +74,24 @@ class CContext:
                 raise ValueError("C context needs explicit identity, host resource and memory domain")
         if not is_sha256(self.contract_sha256):
             raise ValueError("C context needs a selected implementation contract SHA-256")
-        if (type(self.state_bytes) is not int or self.state_bytes <= 0 or
-                type(self.workspace_bytes) is not int or self.workspace_bytes < 0 or
-                not _alignment(self.state_alignment) or not _alignment(self.workspace_alignment)):
+        if (
+            type(self.state_bytes) is not int
+            or self.state_bytes <= 0
+            or type(self.workspace_bytes) is not int
+            or self.workspace_bytes < 0
+            or not _alignment(self.state_alignment)
+            or not _alignment(self.workspace_alignment)
+        ):
             raise ValueError("C context needs bounded state/workspace bytes and power-of-two alignments")
         _member(self.declaration)
         if not _identifier(self.ctype) or not _identifier(self.initialize):
             raise ValueError("C context declaration type and initializer must be C identifiers")
         if (self.ownership, self.lifetime, self.workspace_reuse, self.error) != (
-                "caller", "until_quiescent", "serial_after_success", "retain_until_drained_or_reset"):
+            "caller",
+            "until_quiescent",
+            "serial_after_success",
+            "retain_until_drained_or_reset",
+        ):
             raise ValueError("C context has no admitted ownership, serial reuse or failure lifetime")
 
     def record(self):
@@ -130,8 +148,10 @@ def context_reservations(selected, topology):
         contexts[context.identity] = context
         row = domains.setdefault(context.memory_domain, {"state_bytes": 0, "workspace_bytes": 0})
         alignment = memory.alignment_bytes
+
         def rounded(n):
             return ((n + alignment - 1) // alignment) * alignment
+
         row["state_bytes"] += rounded(context.state_bytes)
         row["workspace_bytes"] = max(row["workspace_bytes"], rounded(context.workspace_bytes))
     for name, row in domains.items():
@@ -148,10 +168,9 @@ def render_u32_payload(symbol, payload):
     """
     if not _identifier(symbol) or type(payload) is not bytes or not payload or len(payload) % 4:
         raise ValueError("u32le payload requires a C identifier and nonempty whole words")
-    words = tuple(int.from_bytes(payload[n:n + 4], "little") for n in range(0, len(payload), 4))
+    words = tuple(int.from_bytes(payload[n : n + 4], "little") for n in range(0, len(payload), 4))
     lines = ["#include <stdint.h>", f"static const uint32_t {symbol}[{len(words)}] = {{"]
-    lines.extend("  " + ", ".join(f"0x{word:08x}u" for word in words[n:n + 8]) + ","
-                 for n in range(0, len(words), 8))
+    lines.extend("  " + ", ".join(f"0x{word:08x}u" for word in words[n : n + 8]) + "," for n in range(0, len(words), 8))
     return "\n".join([*lines, "};", ""])
 
 
@@ -184,6 +203,7 @@ class CRegionABI2:
     caller must drain/reset through the selected platform before reuse. This
     receipt does not establish that initialization or a device launch occurred.
     """
+
     call: CRegionABI
     context: CContext
     embedded: tuple[EmbeddedPayload, ...]
@@ -193,14 +213,19 @@ class CRegionABI2:
             raise ValueError("stateful C call needs original typed call/context records")
         self.call.__post_init__()
         self.context.__post_init__()
-        if (type(self.embedded) is not tuple or not self.embedded or
-                any(type(item) is not EmbeddedPayload for item in self.embedded)):
+        if (
+            type(self.embedded) is not tuple
+            or not self.embedded
+            or any(type(item) is not EmbeddedPayload for item in self.embedded)
+        ):
             raise ValueError("stateful binary call requires explicit immutable embedded payloads")
         for item in self.embedded:
             item.__post_init__()
-        if (tuple(item.binary for item in self.embedded) != self.call.payloads or
-                len({item.header for item in self.embedded}) != len(self.embedded) or
-                len({item.symbol for item in self.embedded}) != len(self.embedded)):
+        if (
+            tuple(item.binary for item in self.embedded) != self.call.payloads
+            or len({item.header for item in self.embedded}) != len(self.embedded)
+            or len({item.symbol for item in self.embedded}) != len(self.embedded)
+        ):
             raise ValueError("stateful call payload list differs from exact unique embeddings")
 
     def __getattr__(self, name):
@@ -212,8 +237,12 @@ class CRegionABI2:
 
     def record(self):
         self.__post_init__()
-        return {**self.call.record(), "schema": "merlin.c_call.v2", "context": self.context.record(),
-                "embedded": [asdict(item) for item in self.embedded]}
+        return {
+            **self.call.record(),
+            "schema": "merlin.c_call.v2",
+            "context": self.context.record(),
+            "embedded": [asdict(item) for item in self.embedded],
+        }
 
     @classmethod
     def from_compilation(cls, compilation):
@@ -227,8 +256,11 @@ class CRegionABI2:
         v1 = {key: value for key, value in raw.items() if key not in {"context", "embedded"}}
         v1["schema"] = "merlin.c_call.v1"
         call = CRegionABI.from_compilation(replace(compilation, metadata={**compilation.metadata, "c_call": v1}))
-        result = cls(call, CContext.from_record(raw["context"]),
-                     tuple(EmbeddedPayload.from_record(row) for row in raw["embedded"]))
+        result = cls(
+            call,
+            CContext.from_record(raw["context"]),
+            tuple(EmbeddedPayload.from_record(row) for row in raw["embedded"]),
+        )
         result.__post_init__()
         artifacts = {item.path.relative_to(compilation.directory).as_posix(): item for item in compilation.artifacts}
         declaration = artifacts.get(result.context.declaration)

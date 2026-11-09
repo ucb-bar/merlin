@@ -167,8 +167,11 @@ def _execute(
     selection = adapter_selection or document.get("adapter")
     automatic = selection is None and ("target_binding" in document or "region_binding" in document)
     if automatic:
-        selection = ("merlin.mining.reconstruction_batch:reference_jobs" if "region_binding" in document
-                     else "merlin.mining.reconstruction_reference:reference_job")
+        selection = (
+            "merlin.mining.reconstruction_batch:reference_jobs"
+            if "region_binding" in document
+            else "merlin.mining.reconstruction_reference:reference_job"
+        )
     if command == "analyze" and selection is None:
         result["status"] = "analyzed"
         return result
@@ -188,8 +191,12 @@ def _execute(
     job = factory(document, index, root=root, workspace=workspace) if automatic else factory(document, index)
     if not isinstance(job, dict):
         raise ValueError("adapter factory must return its reconstruction job mapping")
-    options = dict(max_candidates=max_candidates, max_search_steps=max_search_steps,
-                   proposal_attempts=proposal_attempts, workspace=workspace)
+    options = dict(
+        max_candidates=max_candidates,
+        max_search_steps=max_search_steps,
+        proposal_attempts=proposal_attempts,
+        workspace=workspace,
+    )
     if "regions" in job:
         from .reconstruction_batch import execute_batch
 
@@ -197,8 +204,7 @@ def _execute(
     return _execute_job(command, job, result, pin=pin, **options)
 
 
-def _execute_job(command, job, result, *, pin, max_candidates, max_search_steps,
-                 proposal_attempts, workspace):
+def _execute_job(command, job, result, *, pin, max_candidates, max_search_steps, proposal_attempts, workspace):
     """Execute one ordinary reconstruction job, also reused by region batches."""
     index = result["inventory"]
     learning_context = dict(manifest_sha256=index["manifest_sha256"], adapter=pin)
@@ -261,8 +267,14 @@ def _execute_job(command, job, result, *, pin, max_candidates, max_search_steps,
         result["status"] = "analyzed"
         return result
     if "adapter" not in job:
-        result.update(status="unresolved", gaps=[_gap("adapter_gap",
-            "region has no executable library/target binding", "construct_reconstruction_adapter")])
+        result.update(
+            status="unresolved",
+            gaps=[
+                _gap(
+                    "adapter_gap", "region has no executable library/target binding", "construct_reconstruction_adapter"
+                )
+            ],
+        )
         return result
     if command == "reconstruct":
         from merlin.kernels.reconstruction import reconstruct
@@ -286,9 +298,7 @@ def _execute_job(command, job, result, *, pin, max_candidates, max_search_steps,
             learning_tasks=[
                 v.to_dict()
                 for v in (
-                    *learning_tasks(
-                        reconstruction, context=learning_context
-                    ),
+                    *learning_tasks(reconstruction, context=learning_context),
                     *learning_tasks(
                         {"goals": ("dispatch.actual_instruction_projection",), "gaps": job.get("comparison_gaps", ())},
                         context=learning_context,
@@ -364,16 +374,26 @@ def markdown_report(result):
     if result.get("command") == "steer":
         packet = result["experiment_packet"]
         rows = [
-            "# Reference-guided next experiments", "", "Exact requests and evidence are retained in packet.json.", "",
+            "# Reference-guided next experiments",
+            "",
+            "Exact requests and evidence are retained in packet.json.",
+            "",
         ]
         if "experiment_packets" in result:
-            rows.extend([f"All diagnoses are retained across {len(result['experiment_packets'])} packet shards.",
-                         "Select each pinned shard from packet-shards.json; no experiment is launched here.", ""])
+            rows.extend(
+                [
+                    f"All diagnoses are retained across {len(result['experiment_packets'])} packet shards.",
+                    "Select each pinned shard from packet-shards.json; no experiment is launched here.",
+                    "",
+                ]
+            )
         for task in packet["tasks"]:
-            rows.extend([
-                f"- {task['kind']}: {task.get('summary', task.get('next_action', 'inspect evidence'))}",
-                f"  Status: {task['status']}. Goals: {', '.join(task['goals'])}.",
-            ])
+            rows.extend(
+                [
+                    f"- {task['kind']}: {task.get('summary', task.get('next_action', 'inspect evidence'))}",
+                    f"  Status: {task['status']}. Goals: {', '.join(task['goals'])}.",
+                ]
+            )
         rows.extend(["", "Requests confer no numerical, timing, or compiler qualification.", ""])
         return "\n".join(rows)
     index = result.get("inventory", {})
@@ -392,8 +412,9 @@ def markdown_report(result):
         )
     if "regions" in result:
         rows.extend(["", "| Region | Status | Gaps |", "|---|---|---:|"])
-        rows.extend(f"| {row['region_id']} | {row['status']} | {len(row.get('gaps', ()))} |"
-                    for row in result["regions"])
+        rows.extend(
+            f"| {row['region_id']} | {row['status']} | {len(row.get('gaps', ()))} |" for row in result["regions"]
+        )
     rows.extend(["", "## Actionable gaps", ""])
     for gap in result.get("gaps", []):
         rows.append(f"- {gap['kind']}: {gap['reason']} → {gap['next_action']}")
@@ -459,30 +480,47 @@ def _publish_packet(output, packet, *, context_pins=()):
     selection_path = (output / "selection.json").resolve()
     _write(selection_path, selection)
     return {
-        "packet": str(packet_path), "selection": str(selection_path),
+        "packet": str(packet_path),
+        "selection": str(selection_path),
         "selection_sha256": digest(selection_path.read_bytes()),
     }
 
 
 def _publish_result(output, result):
     _write(output / "index.json", result)
-    published = (_publish_packet(output, result["experiment_packet"], context_pins=result.get("experiment_inputs", ()))
-                 if "experiment_packet" in result else {})
+    published = (
+        _publish_packet(output, result["experiment_packet"], context_pins=result.get("experiment_inputs", ()))
+        if "experiment_packet" in result
+        else {}
+    )
     if "experiment_packets" in result:
         shards = [published]
         for position, packet in enumerate(result["experiment_packets"][1:], 1):
-            shards.append(_publish_packet(output / "shards" / str(position).zfill(4), packet,
-                                          context_pins=result.get("experiment_inputs", ())))
+            shards.append(
+                _publish_packet(
+                    output / "shards" / str(position).zfill(4), packet, context_pins=result.get("experiment_inputs", ())
+                )
+            )
         shard_path = output / "packet-shards.json"
-        _write(shard_path, dict(schema="merlin.reference_experiment_shards.v1", complete=True,
-                               tasks=sum(len(row["tasks"]) for row in result["experiment_packets"]),
-                               shards=shards))
+        _write(
+            shard_path,
+            dict(
+                schema="merlin.reference_experiment_shards.v1",
+                complete=True,
+                tasks=sum(len(row["tasks"]) for row in result["experiment_packets"]),
+                shards=shards,
+            ),
+        )
         published = dict(published, packet_shards=str(shard_path))
     report = output / "report.md"
     report.write_text(markdown_report(result))
     os.chmod(report, 0o600)
-    print(json.dumps({"status": result["status"], "index": str(output / "index.json"),
-                      "report": str(report), **published}, sort_keys=True))
+    print(
+        json.dumps(
+            {"status": result["status"], "index": str(output / "index.json"), "report": str(report), **published},
+            sort_keys=True,
+        )
+    )
     return 0
 
 
@@ -504,10 +542,17 @@ def main(argv=None):
     steering = commands.add_parser("steer", help="produce controlled experiment requests for the author feedback loop")
     steering.add_argument("--input", type=Path, required=True, help="retained reconstruction index")
     steering.add_argument(
-        "--context", type=Path, required=True, help="selected compiler, evaluator and public tuning context",
+        "--context",
+        type=Path,
+        required=True,
+        help="selected compiler, evaluator and public tuning context",
     )
     steering.add_argument(
-        "--history", type=Path, action="append", default=[], help="pinned structured history selection",
+        "--history",
+        type=Path,
+        action="append",
+        default=[],
+        help="pinned structured history selection",
     )
     steering.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)

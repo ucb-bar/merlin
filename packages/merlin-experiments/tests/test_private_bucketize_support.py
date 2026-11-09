@@ -7,14 +7,14 @@ from copy import deepcopy
 from hashlib import sha256
 
 import pytest
-from merlin_experiments.phase1.feedback import private_bucketize_support as support
-from merlin_experiments.phase1.feedback import private_host_source_dispatch as dispatch
 
 from merlin.common import mlir_query as mq
-from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.frontends.bucketize_source import STATIC_BUCKETIZE_SOURCE_BODY_SCHEMA
 from merlin.frontends.capture_normalization import normalize_capture_mlir
+from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.targetgen.host_capabilities import admit_host_operation
+from merlin_experiments.phase1.feedback import private_bucketize_support as support
+from merlin_experiments.phase1.feedback import private_host_source_dispatch as dispatch
 
 
 def _sha(value: bytes) -> str:
@@ -442,7 +442,12 @@ def test_bucketize_schema_routes_away_from_unrelated_linalg_witness(monkeypatch)
 
     monkeypatch.setattr(dispatch.linalg_support, "record", wrong_witness)
     dispatch.record(
-        {}, {}, {}, {},
+        {},
+        {},
+        {},
+        {},
         {"source_body_proof": {"schema": STATIC_BUCKETIZE_SOURCE_BODY_SCHEMA}},
-        (), {}, None,
+        (),
+        {},
+        None,
     )

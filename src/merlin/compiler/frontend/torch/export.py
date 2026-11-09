@@ -56,8 +56,17 @@ def prepare(export: SavedExport, *, max_initialization_bytes: int = 64 * 1024 * 
     bundle = workspace / "reference"
     # The selected producer owns its framework environment. A caller's compiler
     # PYTHONPATH or user-site packages must not replace its pinned dependencies.
-    command = [str(interpreter), "-I", str(Path(capture.__file__)),
-               "--exported", str(export.path), "--out", str(bundle), "--m2m-dir", str(checkout)]
+    command = [
+        str(interpreter),
+        "-I",
+        str(Path(capture.__file__)),
+        "--exported",
+        str(export.path),
+        "--out",
+        str(bundle),
+        "--m2m-dir",
+        str(checkout),
+    ]
     with (workspace / "capture.log").open("w", encoding="utf-8") as log:
         completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=False)
     if completed.returncode:
@@ -76,13 +85,16 @@ def prepare(export: SavedExport, *, max_initialization_bytes: int = 64 * 1024 * 
     if original_program is not None and original_program.get("archive_sha256") != original:
         raise ValueError("frozen Python program differs from the selected export archive")
     record = {
-        "schema": "merlin.saved-export.v1", "archive_sha256": original,
-        "capture_pin": pin, "capture_python": str(interpreter),
+        "schema": "merlin.saved-export.v1",
+        "archive_sha256": original,
+        "capture_pin": pin,
+        "capture_python": str(interpreter),
         "capture_workspace": str(workspace),
         "capture_receipt_sha256": digest(bundle / "capture_receipt.json"),
         "captured_mlir_sha256": staged.original_source_sha256,
         "staged_mlir_sha256": staged.program_sha256,
-        "compiler_mlir_sha256": bound.record["bound_program_sha256"], "entry": staged.entry,
+        "compiler_mlir_sha256": bound.record["bound_program_sha256"],
+        "entry": staged.entry,
         "argument_binding": bound.record,
         "scope": "static_unquantized_tensor_inputs_and_immutable_initializers; importer_numerical_fidelity_unverified",
     }
@@ -98,9 +110,11 @@ def publish(compilation, stage: Path, record: dict, bound):
 
     bound.revalidate(stage)
     staged = load_compile_inputs(stage)
-    if (bound.record["bound_program_sha256"] != compilation.source_sha256 or
-            record["compiler_mlir_sha256"] != compilation.source_sha256 or
-            record["argument_binding"] != bound.record):
+    if (
+        bound.record["bound_program_sha256"] != compilation.source_sha256
+        or record["compiler_mlir_sha256"] != compilation.source_sha256
+        or record["argument_binding"] != bound.record
+    ):
         raise ValueError("compiled source differs from prepared export")
     destination = compilation.directory / "frontend"
     shutil.copytree(stage, destination)
@@ -112,9 +126,13 @@ def publish(compilation, stage: Path, record: dict, bound):
     program.write_text(bound.program, encoding="utf-8")
     receipt = compilation.directory / "frontend.json"
     receipt.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-    products = tuple(Artifact.from_file(path, kind="frontend-input", role="frontend")
-                     for path in [*sorted(destination.iterdir()), program, receipt] if path.is_file())
-    result = replace(compilation, artifacts=compilation.artifacts + products,
-                     metadata={**compilation.metadata, "frontend": record})
+    products = tuple(
+        Artifact.from_file(path, kind="frontend-input", role="frontend")
+        for path in [*sorted(destination.iterdir()), program, receipt]
+        if path.is_file()
+    )
+    result = replace(
+        compilation, artifacts=compilation.artifacts + products, metadata={**compilation.metadata, "frontend": record}
+    )
     result.write()
     return result

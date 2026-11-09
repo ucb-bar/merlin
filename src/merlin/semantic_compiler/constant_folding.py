@@ -153,7 +153,12 @@ def _element(node, arguments):
 
 
 def fold_source_constants(
-    source, *, element_budget=65536, eliminate_dead=False, include_f32=True, include_tensor_ops=False,
+    source,
+    *,
+    element_budget=65536,
+    eliminate_dead=False,
+    include_f32=True,
+    include_tensor_ops=False,
 ):
     """Fold byte-bound constants, optionally eliminating unused pure computation.
 
@@ -304,8 +309,11 @@ def verify_constant_folding(source, record):
     if original.digest() != record["before_digest"]:
         raise ValueError("constant folding original source changed")
     replayed, expected = fold_source_constants(
-        original, element_budget=record["element_budget"], eliminate_dead=eliminate_dead,
-        include_f32=include_f32, include_tensor_ops=include_tensor_ops,
+        original,
+        element_budget=record["element_budget"],
+        eliminate_dead=eliminate_dead,
+        include_f32=include_f32,
+        include_tensor_ops=include_tensor_ops,
     )
     if replayed.digest() != optimized.digest() or expected != record:
         raise ValueError("constant folding bytes or derivation differ from replay")

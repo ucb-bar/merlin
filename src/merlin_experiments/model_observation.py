@@ -57,8 +57,8 @@ def observe(
     engines require their own selected measurement and provenance workflow.
     """
     from merlin.model import read_full_outputs
-    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.runtime.backends.base import get_backend
+    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.runtime.out_bin import binary_console_diagnostics
     from merlin.runtime.whole_model_readback import parse_group_profile
 

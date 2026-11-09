@@ -6,19 +6,19 @@ from copy import deepcopy
 from hashlib import sha256
 
 import pytest
-from merlin_experiments.phase1.feedback import private_f32_maximum_support as support
-from merlin_experiments.phase1.feedback import private_host_source_dispatch as dispatch
 
 from merlin.common import mlir_query as mq
-from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.frontends.capture_normalization import normalize_capture_mlir
 from merlin.frontends.linalg_f32_maximum_patterns import (
     STATIC_F32_MAXIMUM_SOURCE_BODY_SCHEMA,
     recognize_static_f32_maximum,
     serialized_f32_maximum_pattern,
 )
+from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.targetgen.application_inventory import operation_structure
 from merlin.targetgen.host_capabilities import admit_host_operation
+from merlin_experiments.phase1.feedback import private_f32_maximum_support as support
+from merlin_experiments.phase1.feedback import private_host_source_dispatch as dispatch
 
 
 def _program() -> str:

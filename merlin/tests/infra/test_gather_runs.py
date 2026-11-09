@@ -11,13 +11,7 @@ import random
 
 import pytest
 
-from merlin.compiler.schedule import LHS
-from merlin.compiler.schedule import ConvContraction
-from merlin.compiler.schedule import Geometry
-from merlin.compiler.schedule import Knobs
-from merlin.compiler.schedule import Load
-from merlin.compiler.schedule import gather_runs
-from merlin.compiler.schedule import schedule_convolution
+from merlin.compiler.schedule import LHS, ConvContraction, Geometry, Knobs, Load, gather_runs, schedule_convolution
 
 GEOMETRY = Geometry(
     block=16, operand_rows=16384, operand_bank_rows=4096, accumulator_rows=1024, separate_accumulator_space=True

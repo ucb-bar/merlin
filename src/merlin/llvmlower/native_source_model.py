@@ -35,9 +35,12 @@ class NativeSourceModel:
         self.implementation_pins = tuple(
             (p.resolve(), sha256_file(p))
             for p in (
-                Path(__file__), Path(__file__).with_name("codegen.py"), Path(host_provider.__file__),
+                Path(__file__),
+                Path(__file__).with_name("codegen.py"),
+                Path(host_provider.__file__),
                 Path(objects.__file__),
-                Path(process.__file__), Path(shared.__file__),
+                Path(process.__file__),
+                Path(shared.__file__),
             )
         )
 

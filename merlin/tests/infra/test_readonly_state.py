@@ -24,27 +24,49 @@ def readonly_capture(request, tmp_path_factory):
         pytest.skip("select the real pinned Torch/TorchAO/model2MLIR capture environment")
     directory = tmp_path_factory.mktemp("readonly-" + request.param)
     loader = directory / "loader.py"
-    loader.write_text('''import torch
+    loader.write_text(
+        """import torch
 def get_model_and_inputs():
     torch.manual_seed(3)
     model = MODEL
     return model.eval(), (torch.arange(SIZE,dtype=torch.float32).reshape(SHAPE)/11,)
 def get_calibration_inputs(model,inputs): return [inputs,inputs]
-'''.replace("MODEL", "torch.nn.Linear(64,2,bias=False)" if request.param == "linear"
-            else "torch.nn.BatchNorm1d(4)").replace("SIZE", "64" if request.param == "linear" else "8")
-        .replace("SHAPE", "1,64" if request.param == "linear" else "2,4"))
-    command = [python, "-B", str(Path(worker.__file__)), "--m2m-dir", producer, "--loader", str(loader),
-               "--dtype", "int8" if request.param == "linear" else "fp32", "--materialize-bundle",
-               "--observe-buffer-state", "--out", str(directory / "capture")]
+""".replace("MODEL", "torch.nn.Linear(64,2,bias=False)" if request.param == "linear" else "torch.nn.BatchNorm1d(4)")
+        .replace("SIZE", "64" if request.param == "linear" else "8")
+        .replace("SHAPE", "1,64" if request.param == "linear" else "2,4")
+    )
+    command = [
+        python,
+        "-B",
+        str(Path(worker.__file__)),
+        "--m2m-dir",
+        producer,
+        "--loader",
+        str(loader),
+        "--dtype",
+        "int8" if request.param == "linear" else "fp32",
+        "--materialize-bundle",
+        "--observe-buffer-state",
+        "--out",
+        str(directory / "capture"),
+    ]
     recipe = None
     if request.param == "linear":
         from merlin.targetgen import quant_recipe as Q
 
         tensor = dict(dtype="int8", granularity="tensor", symmetric=True, block=None, mode="static")
-        recipe = dict(schema=Q.SCHEMA, target="fixture", unit="matrix", status="derived", families=["contraction"],
-                      weight={**tensor, "quant_min": -127, "quant_max": 127},
-                      activation={**tensor, "quant_min": -128, "quant_max": 127}, bias_domain="accumulator",
-                      software_numerical_engine="integer_reference", framework_capture_policy={"calibration_count": 2})
+        recipe = dict(
+            schema=Q.SCHEMA,
+            target="fixture",
+            unit="matrix",
+            status="derived",
+            families=["contraction"],
+            weight={**tensor, "quant_min": -127, "quant_max": 127},
+            activation={**tensor, "quant_min": -128, "quant_max": 127},
+            bias_domain="accumulator",
+            software_numerical_engine="integer_reference",
+            framework_capture_policy={"calibration_count": 2},
+        )
         recipe["recipe_sha256"] = Q.digest(recipe)
         path = directory / "recipe.json"
         path.write_text(json.dumps(recipe))
@@ -52,8 +74,11 @@ def get_calibration_inputs(model,inputs): return [inputs,inputs]
     result = subprocess.run(command, capture_output=True, text=True, timeout=150)
     assert result.returncode == 0, result.stderr[-10000:]
     capture = directory / "capture"
-    policy = {"schema": "fixture.readonly-preparation.v1", "recipe": recipe,
-              "source_sha256": hashlib.sha256((capture / "model.mlir").read_bytes()).hexdigest()}
+    policy = {
+        "schema": "fixture.readonly-preparation.v1",
+        "recipe": recipe,
+        "source_sha256": hashlib.sha256((capture / "model.mlir").read_bytes()).hexdigest(),
+    }
     path = directory / "policy.json"
     path.write_text(json.dumps(policy))
     stage = directory / "compiler"
@@ -185,19 +210,44 @@ def test_public_cli_freeze_option_uses_the_same_original_caller_contract(readonl
 
     _, _, stage, _ = readonly_capture
     observed = []
+
     def compile(source, **kwargs):
         assert type(source) is api.StagedProgram and source.freeze_readonly_buffers is True
         prepared, binding = prepare(source, max_initialization_bytes=65536)
         observed.append(binding.record()["buffer_freeze"])
         assert prepared.kind == "mlir"
         return SimpleNamespace(manifest=tmp_path / "manifest.json", to_dict=lambda: {})
+
     monkeypatch.setattr(api, "compile", compile)
-    assert compile_main([str(stage), "--input-kind", "compiler-stage", "--freeze-readonly-buffers",
-                         "--backend", "fixture.selected", "--output", str(tmp_path / "compiled")]) == 0
+    assert (
+        compile_main(
+            [
+                str(stage),
+                "--input-kind",
+                "compiler-stage",
+                "--freeze-readonly-buffers",
+                "--backend",
+                "fixture.selected",
+                "--output",
+                str(tmp_path / "compiled"),
+            ]
+        )
+        == 0
+    )
     assert len(observed) == 1 and observed[0]["consent"] is True
     with pytest.raises(SystemExit):
-        compile_main([str(stage), "--input-kind", "mlir", "--freeze-readonly-buffers",
-                      "--backend", "fixture.selected", "--output", str(tmp_path / "refused")])
+        compile_main(
+            [
+                str(stage),
+                "--input-kind",
+                "mlir",
+                "--freeze-readonly-buffers",
+                "--backend",
+                "fixture.selected",
+                "--output",
+                str(tmp_path / "refused"),
+            ]
+        )
 
 
 def test_actual_producer_observer_refuses_mutation_unknown_effects_and_source_aliases(tmp_path):
@@ -207,7 +257,7 @@ def test_actual_producer_observer_refuses_mutation_unknown_effects_and_source_al
     from merlin.common.paths import module_source_path
 
     script = tmp_path / "observe.py"
-    script.write_text('''import importlib.util, json, operator, sys
+    script.write_text("""import importlib.util, json, operator, sys
 from pathlib import Path
 import torch, m2m
 spec=importlib.util.spec_from_file_location("observer",sys.argv[1]); observer=importlib.util.module_from_spec(spec)
@@ -262,9 +312,13 @@ for name,model in (("ok",Readonly()),("alias",Readonly(True)),("runtime_alias",R
     result.exported_program=None
     refuse(call,"actual prepared export")
 print("actual producer effect/alias/payload refusals passed")
-''')
-    result = subprocess.run([python, "-B", str(script), str(module_source_path("merlin.compiler.frontend.torch.state")),
-                             str(tmp_path)], capture_output=True, text=True, timeout=120,
-                            env={**os.environ, "PYTHONPATH": producer})
+""")
+    result = subprocess.run(
+        [python, "-B", str(script), str(module_source_path("merlin.compiler.frontend.torch.state")), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env={**os.environ, "PYTHONPATH": producer},
+    )
     assert result.returncode == 0, result.stderr[-10000:]
     assert "refusals passed" in result.stdout

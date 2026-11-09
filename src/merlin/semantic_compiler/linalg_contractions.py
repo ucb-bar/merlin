@@ -1,14 +1,28 @@
 """Translate the contractions source family, preserving numerical boundaries."""
+
 from __future__ import annotations
 
-from merlin.frontends.linalg_native_pointwise import recognize_f32_relu_ordered_select, recognize_static_f32_division
-
-from .linalg_recognition import LinalgBridgeError, _linear_affine_expression, _maps, _named_matmul_maps_are_default, _static_f32_square_maps, _static_index_copy_map, _type
-from .model import IndexMap, SemanticNode, pointwise_identity_maps
 from merlin.frontends.linalg_composite_math import recognize_static_composite_math_body
 from merlin.frontends.linalg_math_patterns import recognize_static_f32_exp_rsqrt_body
-from merlin.frontends.linalg_patterns import InvalidLinalgPattern, recognize_signed_i8_i32_matmul, recognize_static_projected_pointwise
+from merlin.frontends.linalg_native_pointwise import recognize_f32_relu_ordered_select, recognize_static_f32_division
+from merlin.frontends.linalg_patterns import (
+    InvalidLinalgPattern,
+    recognize_signed_i8_i32_matmul,
+    recognize_static_projected_pointwise,
+)
+
+from .linalg_recognition import (
+    LinalgBridgeError,
+    _linear_affine_expression,
+    _maps,
+    _named_matmul_maps_are_default,
+    _static_f32_square_maps,
+    _static_index_copy_map,
+    _type,
+)
 from .linalg_state import TranslationState
+from .model import IndexMap, SemanticNode, pointwise_identity_maps
+
 
 def translate(state: TranslationState, op, ordinal):
     nodes = state.nodes
@@ -189,9 +203,7 @@ def translate(state: TranslationState, op, ordinal):
             lhs, rhs, init = (*op.inputs, op.outputs[0])
         if any(value not in env or env[value] is None for value in (lhs, rhs, init)):
             raise LinalgBridgeError("matmul reads an undefined or uninitialized operand")
-        lhs_type, rhs_type, init_type, result_type = (
-            _type(value.type) for value in (lhs, rhs, init, op.results[0])
-        )
+        lhs_type, rhs_type, init_type, result_type = (_type(value.type) for value in (lhs, rhs, init, op.results[0]))
         if lhs_type.dtype != rhs_type.dtype or lhs_type.numerical_policy != rhs_type.numerical_policy:
             raise LinalgBridgeError("matmul input dtypes or numerical policies differ")
         if op.name == "linalg.matmul" and lhs_type.dtype not in {"i32", "f32"}:

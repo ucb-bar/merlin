@@ -12,9 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import lcm, prod
 
-from merlin.targetgen.isa_spec import resolve_fact_integer
-
 from merlin.compiler.schedule.storage_contracts import StorageWindow
+from merlin.targetgen.isa_spec import resolve_fact_integer
 
 
 def _integers(values, *, positive=False):

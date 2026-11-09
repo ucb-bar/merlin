@@ -347,9 +347,14 @@ def ir_inventory(source) -> dict:
         "residual_adds": sorted(residual)[:8],
         "products_reading_views": len(viewed),
         "layout_regions": sum(family == "layout" for family, _ in kind.values()),
-        "connected_tensor_edges": len({(region[value], rid, id(value))
-            for rid in ops_of for value in external(rid)
-            if region.get(value) in kind and not constant(value)}),
+        "connected_tensor_edges": len(
+            {
+                (region[value], rid, id(value))
+                for rid in ops_of
+                for value in external(rid)
+                if region.get(value) in kind and not constant(value)
+            }
+        ),
         "parameters_prepared_per_call": sum(1 for steps in prepared_args.values() if steps),
         "parameters_prepared_more_than_once": sum(1 for steps in prepared_args.values() if len(steps) > 1),
     }
@@ -386,11 +391,15 @@ def ir_signals(inventory: dict) -> dict[str, list[str]]:
             "products consume another product's result"
         ]
     if inventory.get("layout_regions"):
-        found["host_layout"] = [f"IR: {inventory['layout_regions']} explicit layout regions; "
-                                "the owner must prove coordinate/effect preservation and actual savings"]
+        found["host_layout"] = [
+            f"IR: {inventory['layout_regions']} explicit layout regions; "
+            "the owner must prove coordinate/effect preservation and actual savings"
+        ]
     if inventory.get("connected_tensor_edges"):
-        found["intermediate_storage"] = [f"IR: {inventory['connected_tensor_edges']} tensor producer/consumer edges; "
-                                         "the owner must prove final allocation lifetimes before reuse"]
+        found["intermediate_storage"] = [
+            f"IR: {inventory['connected_tensor_edges']} tensor producer/consumer edges; "
+            "the owner must prove final allocation lifetimes before reuse"
+        ]
     if inventory["parameters_prepared_per_call"]:
         found["parameter_preparation"] = [
             f"IR: {inventory['parameters_prepared_per_call']} function arguments reach a product only through "
@@ -422,14 +431,20 @@ def request_matches(signals: dict, inventory: dict | None, declaration: dict | N
     if inventory.get("products_reading_views"):
         add("dense_input_views", f"IR: {inventory['products_reading_views']} products read reshaped or permuted views")
     if "host_layout" in signals:
-        add("propagate_layouts", signals["host_layout"][0],
+        add(
+            "propagate_layouts",
+            signals["host_layout"][0],
             "Original software logical_host/propagate_layout and independent-element-order permission; "
-            "floating-environment permission when required. Selected head/sibling composition currently defers layout.")
+            "floating-environment permission when required. Selected head/sibling composition currently defers layout.",
+        )
     if "intermediate_storage" in signals:
-        add("reuse_intermediate_storage", signals["intermediate_storage"][0],
+        add(
+            "reuse_intermediate_storage",
+            signals["intermediate_storage"][0],
             "Original software LLVM/static_arena, sequential execution, successful allocations "
             "and non-reentrant entry; "
-            "proven final allocation/free lifetimes. Source edges do not prove reusable bytes or disposable KV state.")
+            "proven final allocation/free lifetimes. Source edges do not prove reusable bytes or disposable KV state.",
+        )
     if "shared_input_siblings" in signals:
         add("shared_input_siblings", signals["shared_input_siblings"][0])
     if "independent_heads" in signals:
@@ -547,14 +562,20 @@ def roster(inventory: int, library: str | None) -> tuple[str, tuple[str, ...]]:
 def catalog_rows(modules) -> dict[str, dict]:
     from merlin.compiler.schedule.api_catalog import scheduling_capabilities
 
-    catalog = scheduling_capabilities(26)['composition']
-    for row in catalog['capabilities']:
-        required = {symbol.rsplit('.', 1)[0] for symbol in row['symbols']}
+    catalog = scheduling_capabilities(26)["composition"]
+    for row in catalog["capabilities"]:
+        required = {symbol.rsplit(".", 1)[0] for symbol in row["symbols"]}
         missing = None if modules is None else sorted(required - set(modules))
-        row['source_availability'].update(
-            status=('selection_not_supplied' if missing is None else
-                    'missing_selected_modules' if missing else 'modules_selected'),
-            missing_modules=missing)
+        row["source_availability"].update(
+            status=(
+                "selection_not_supplied"
+                if missing is None
+                else "missing_selected_modules"
+                if missing
+                else "modules_selected"
+            ),
+            missing_modules=missing,
+        )
     return {
         row["name"]: {
             "access": row["access"],

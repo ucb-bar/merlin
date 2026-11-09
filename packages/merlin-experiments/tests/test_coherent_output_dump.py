@@ -14,6 +14,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+from merlin.runtime.backends import base as backends
+from merlin.targetgen import plugins
+from merlin.targetgen.contract.readback_policy import ReadbackPolicy
 from merlin_experiments.phase1.feedback.native_memory_readback import (
     NativeMemoryReadback,
     execute_memory_elf,
@@ -30,10 +34,6 @@ from merlin_experiments.phase1.feedback.native_packet_readback import (
     admit_coherent_packet_storage,
     decode_coherent_packet_dump,
 )
-
-from merlin.runtime.backends import base as backends
-from merlin.targetgen import plugins
-from merlin.targetgen.contract.readback_policy import ReadbackPolicy
 
 
 @pytest.fixture

@@ -184,9 +184,15 @@ def elf_flag_corroboration(e_flags: int, features) -> dict[str, Any]:
     if e_flags & _EF_RVC:
         expected.append("c")
     missing = [] if features is None else [name for name in expected if name not in features]
-    return dict(e_flags=e_flags, float_abi=abi, rvc=bool(e_flags & _EF_RVC), implies=expected,
-                consistent=None if features is None else not missing, missing=missing,
-                scope="corroboration only; header flags add no extension")
+    return dict(
+        e_flags=e_flags,
+        float_abi=abi,
+        rvc=bool(e_flags & _EF_RVC),
+        implies=expected,
+        consistent=None if features is None else not missing,
+        missing=missing,
+        scope="corroboration only; header flags add no extension",
+    )
 
 
 def contract_host_isa(contract: Mapping[str, Any] | None) -> dict[str, Any] | None:
@@ -207,7 +213,7 @@ def contract_host_isa(contract: Mapping[str, Any] | None) -> dict[str, Any] | No
     base = "selected_contract:runner." + family_name
 
     def declared(flags, prefix):
-        return [flag[len(prefix):] for flag in flags if isinstance(flag, str) and flag.startswith(prefix)]
+        return [flag[len(prefix) :] for flag in flags if isinstance(flag, str) and flag.startswith(prefix)]
 
     simulator = []
     for engine, block in sorted((family.get("engines") or {}).items()):
@@ -231,27 +237,53 @@ def contract_host_isa(contract: Mapping[str, Any] | None) -> dict[str, Any] | No
 def select_decoder_isa(*, elf_attribute, declared, e_flags: int, elf_xlen: int) -> dict[str, Any]:
     """The decoder ISA record: value, source, llvm-objdump options and corroboration."""
     if elf_attribute and elf_attribute.get("error"):
-        return dict(value=None, source=elf_attribute.get("source"), status="unknown", reason=elf_attribute["error"],
-                    options=[], corroboration=elf_flag_corroboration(e_flags, None))
+        return dict(
+            value=None,
+            source=elf_attribute.get("source"),
+            status="unknown",
+            reason=elf_attribute["error"],
+            options=[],
+            corroboration=elf_flag_corroboration(e_flags, None),
+        )
     for candidate in (elf_attribute, declared):
         if not candidate or not candidate.get("value"):
             continue
         try:
             xlen, features = isa_features(str(candidate["value"]))
         except ValueError:
-            return dict(value=str(candidate["value"]), source=candidate.get("source"), status="unknown",
-                        reason="decoder_isa_string_unparseable", options=[],
-                        corroboration=elf_flag_corroboration(e_flags, None))
+            return dict(
+                value=str(candidate["value"]),
+                source=candidate.get("source"),
+                status="unknown",
+                reason="decoder_isa_string_unparseable",
+                options=[],
+                corroboration=elf_flag_corroboration(e_flags, None),
+            )
         if xlen != elf_xlen:
-            return dict(value=str(candidate["value"]), source=candidate.get("source"), status="unknown",
-                        reason="decoder_isa_xlen_differs_from_elf_class", options=[],
-                        corroboration=elf_flag_corroboration(e_flags, None))
-        return dict(value=str(candidate["value"]), source=candidate.get("source"), status="selected",
-                    features=list(features), options=["--mattr=" + ",".join("+" + name for name in features)],
-                    corroboration=elf_flag_corroboration(e_flags, features))
-    return dict(value=None, source=None, status="unknown", options=[],
-                reason="no ELF arch attribute and no selected contract host ISA",
-                corroboration=elf_flag_corroboration(e_flags, None))
+            return dict(
+                value=str(candidate["value"]),
+                source=candidate.get("source"),
+                status="unknown",
+                reason="decoder_isa_xlen_differs_from_elf_class",
+                options=[],
+                corroboration=elf_flag_corroboration(e_flags, None),
+            )
+        return dict(
+            value=str(candidate["value"]),
+            source=candidate.get("source"),
+            status="selected",
+            features=list(features),
+            options=["--mattr=" + ",".join("+" + name for name in features)],
+            corroboration=elf_flag_corroboration(e_flags, features),
+        )
+    return dict(
+        value=None,
+        source=None,
+        status="unknown",
+        options=[],
+        reason="no ELF arch attribute and no selected contract host ISA",
+        corroboration=elf_flag_corroboration(e_flags, None),
+    )
 
 
 def unrecognized_features(stderr: str) -> list[str]:

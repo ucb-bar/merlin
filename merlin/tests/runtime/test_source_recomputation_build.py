@@ -10,8 +10,8 @@ import pytest
 from test_recomputation import budgets, permissions, source
 from test_source_recomputation_selection import synthetic_comparison
 
-from merlin.common.ir_audit import IrAudit
 from merlin import model as BM
+from merlin.common.ir_audit import IrAudit
 from merlin.llvmlower import compilation_recipe as C
 from merlin.llvmlower import lower as L
 from merlin.llvmlower import source_recomputation as S
@@ -230,15 +230,19 @@ def test_model_object_must_consume_exact_observed_llvm(tmp_path):
     assert not recipe.record["commands"]
 
 
-@pytest.mark.parametrize("which", ["materialized", "prepared", "defaults", "method", "policy", "model_stage", "model_isa", "isa_parser"])
+@pytest.mark.parametrize(
+    "which", ["materialized", "prepared", "defaults", "method", "policy", "model_stage", "model_isa", "isa_parser"]
+)
 def test_original_inputs_methods_and_signature_metadata_do_not_refresh(tmp_path, monkeypatch, which):
     build, recipe, prepared, lower = setup(tmp_path)
-    assert {Path(BM.__file__).resolve(),
-            Path(inspect.getsourcefile(BM.prepare_saved)).resolve(),
-            Path(inspect.getsourcefile(BM.build_saved)).resolve(),
-            Path(inspect.getsourcefile(BM.launch_saved)).resolve(),
-            Path(inspect.getsourcefile(BM.revalidate_saved)).resolve(),
-            Path(inspect.getsourcefile(BM.require_host_isa_dts)).resolve()} <= set(BM.implementation_paths())
+    assert {
+        Path(BM.__file__).resolve(),
+        Path(inspect.getsourcefile(BM.prepare_saved)).resolve(),
+        Path(inspect.getsourcefile(BM.build_saved)).resolve(),
+        Path(inspect.getsourcefile(BM.launch_saved)).resolve(),
+        Path(inspect.getsourcefile(BM.revalidate_saved)).resolve(),
+        Path(inspect.getsourcefile(BM.require_host_isa_dts)).resolve(),
+    } <= set(BM.implementation_paths())
     if which == "materialized":
         (tmp_path / "capture/model.mlir").write_text("module {}")
     elif which == "prepared":

@@ -38,27 +38,49 @@ SOURCE = """module {func.func @forward(%x:tensor<2x3xf32>)->tensor<2x3xf32> {
 
 def selected(tmp_path):
     path = tmp_path / "hardware.yaml"
-    path.write_text(yaml.safe_dump({
-        "schema": "merlin.execution_topology.v1",
-        "resources": [{"id": "cpu0", "kind": "cpu", "features": [], "shared_group": "cpu0"}],
-        "memory_domains": [{"id": "ram", "capacity_bytes": 192, "alignment_bytes": 64}],
-        "access": [{"resource": "cpu0", "domain": "ram", "read": True, "write": True,
-                    "addressability": "shared", "visibility": "coherent", "completion": "synchronous"}],
-    }))
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "schema": "merlin.execution_topology.v1",
+                "resources": [{"id": "cpu0", "kind": "cpu", "features": [], "shared_group": "cpu0"}],
+                "memory_domains": [{"id": "ram", "capacity_bytes": 192, "alignment_bytes": 64}],
+                "access": [
+                    {
+                        "resource": "cpu0",
+                        "domain": "ram",
+                        "read": True,
+                        "write": True,
+                        "addressability": "shared",
+                        "visibility": "coherent",
+                        "completion": "synchronous",
+                    }
+                ],
+            }
+        )
+    )
     hardware = select_topology(path)
     source = bind_source(parse_mlir_text(SOURCE), entry="forward", context=PipelineContext(), graph_mode="ssa")
+
     def approve_layout(bound, proposal):
         assert len(proposal.alternative.nodes) == 1
         assert bound.operations[proposal.alternative.nodes[0]].name in {"tensor.collapse_shape", "tensor.expand_shape"}
         # This check admits the source family. Compilation output and actual C
         # behavior are checked separately; this is not accelerator qualification.
         bound.module.verify()
+
     candidates = []
     for index, original in enumerate(source.cpu_alternatives):
         alternative = replace(original, id=f"layout_{index}", implementation="dense-layout", placement="cpu0")
-        claim = SourceProposal(alternative, layout.name, "cpu0", "ram", "logical_tensor_v1",
-                               source.stamp.source_sha256, (source.operation_ordinals[index],),
-                               source_numerical_identity(source, (index,)))
+        claim = SourceProposal(
+            alternative,
+            layout.name,
+            "cpu0",
+            "ram",
+            "logical_tensor_v1",
+            source.stamp.source_sha256,
+            (source.operation_ordinals[index],),
+            source_numerical_identity(source, (index,)),
+        )
         candidates.append(admit_proposal(source, claim, hardware, validate_implementation=approve_layout))
     return source, hardware, tuple(candidates)
 
@@ -70,13 +92,16 @@ def compile_control(tmp_path, *, mutate=None, image=None, options=OPTIONS):
     source, _, candidates = selected(tmp_path)
     provider = layout
     if mutate:
+
         def changed(request):
             result = layout.compile(request)
             mutate(result)
             return result
+
         provider = SimpleNamespace(name=layout.name, validate=layout.validate, compile=changed)
-    backend = PlannedCompiler(select_execution(source, candidates), {layout.name: RegionBackend(provider, "kernel")},
-                              image=image)
+    backend = PlannedCompiler(
+        select_execution(source, candidates), {layout.name: RegionBackend(provider, "kernel")}, image=image
+    )
     return api.compile(ir_text(source.module), backend=backend, output=tmp_path / "compiled", options=options)
 
 
@@ -91,16 +116,40 @@ def test_selected_c_control_links_and_executes_preserving_bits_and_original_inpu
     assert len(report["calls"]) == 2 and {b["resource"] for b in report["bindings"]} == {"cpu0"}
     assert report["backend_correctness"] == "not_established" and not report["executed"]
     library = tmp_path / "model.so"
-    subprocess.run([gcc, "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-shared", "-fPIC",
-                    *(str(result.directory / path) for path in report["link_inputs"]), "-o", str(library)],
-                   check=True, capture_output=True, text=True)
+    subprocess.run(
+        [
+            gcc,
+            "-std=c11",
+            "-O2",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-shared",
+            "-fPIC",
+            *(str(result.directory / path) for path in report["link_inputs"]),
+            "-o",
+            str(library),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
     class State(ctypes.Structure):
         _fields_ = [("active", ctypes.c_int), ("completed", ctypes.c_size_t), ("kernel_status", ctypes.c_int)]
+
     class Buffer(ctypes.Structure):
         _fields_ = [("data", ctypes.c_void_p), ("bytes", ctypes.c_size_t)]
+
     run = ctypes.CDLL(str(library)).model_run
-    run.argtypes = [ctypes.POINTER(State), ctypes.c_void_p, ctypes.c_size_t,
-                    ctypes.POINTER(Buffer), ctypes.c_size_t, ctypes.c_void_p]
+    run.argtypes = [
+        ctypes.POINTER(State),
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.POINTER(Buffer),
+        ctypes.c_size_t,
+        ctypes.c_void_p,
+    ]
     run.restype = ctypes.c_int
     arena = ctypes.create_string_buffer(128)
     address = (ctypes.addressof(arena) + 63) & ~63
@@ -121,15 +170,18 @@ def test_selected_c_control_links_and_executes_preserving_bits_and_original_inpu
         api.inspect(result.manifest)
 
 
-@pytest.mark.parametrize("mutation,reason", [
-    (lambda result: result.metadata.pop("c_call"), "no supported explicit C call"),
-    (lambda result: result.metadata["c_call"]["inputs"][0].update(shape=[1, 6]), "ordered original tensor"),
-    (lambda result: result.metadata["c_call"].update(completion="async"), "synchronous completion"),
-    (lambda result: result.metadata["c_call"].update(link_inputs=["layout.json"]), "link input needs C source"),
-    (lambda result: result.metadata["c_call"].update(buffer_alignment=128), "selected memory contract"),
-    (lambda result: result.metadata["c_call"].update(scratch_bytes=64), "zero additional host scratch"),
-    (lambda result: result.metadata["c_call"].update(resource_kind="accelerator"), "selected resource"),
-])
+@pytest.mark.parametrize(
+    "mutation,reason",
+    [
+        (lambda result: result.metadata.pop("c_call"), "no supported explicit C call"),
+        (lambda result: result.metadata["c_call"]["inputs"][0].update(shape=[1, 6]), "ordered original tensor"),
+        (lambda result: result.metadata["c_call"].update(completion="async"), "synchronous completion"),
+        (lambda result: result.metadata["c_call"].update(link_inputs=["layout.json"]), "link input needs C source"),
+        (lambda result: result.metadata["c_call"].update(buffer_alignment=128), "selected memory contract"),
+        (lambda result: result.metadata["c_call"].update(scratch_bytes=64), "zero additional host scratch"),
+        (lambda result: result.metadata["c_call"].update(resource_kind="accelerator"), "selected resource"),
+    ],
+)
 def test_c_control_refuses_unimplemented_or_substituted_abi_before_success_manifest(tmp_path, mutation, reason):
     with pytest.raises(ValueError, match=reason):
         compile_control(tmp_path, mutate=mutation)
@@ -140,8 +192,9 @@ def test_c_control_refuses_unimplemented_or_substituted_abi_before_success_manif
 def test_c_control_never_drops_original_inline_cpu_operations(tmp_path):
     source, hardware, candidates = selected(tmp_path)
     original = admit_original_cpu(source, 0, hardware, resource="cpu0", memory_domain="ram")
-    backend = PlannedCompiler(select_execution(source, (original, candidates[1])),
-                              {layout.name: RegionBackend(layout, "kernel")})
+    backend = PlannedCompiler(
+        select_execution(source, (original, candidates[1])), {layout.name: RegionBackend(layout, "kernel")}
+    )
     with pytest.raises(ValueError, match="inline CPU cannot be omitted"):
         api.compile(ir_text(source.module), backend=backend, output=tmp_path / "rejected", options=OPTIONS)
     assert not (tmp_path / "rejected").exists()
@@ -149,10 +202,12 @@ def test_c_control_never_drops_original_inline_cpu_operations(tmp_path):
 
 def test_later_provider_cannot_change_a_previous_region_receipt(tmp_path):
     previous = []
+
     def mutate(result):
         if previous:
             previous[0].metadata["c_call"]["completion"] = "async"
         previous.append(result)
+
     with pytest.raises(ValueError, match="receipt changed after invocation"):
         compile_control(tmp_path, mutate=mutate)
     assert not (tmp_path / "compiled/compilation.json").exists()
@@ -165,7 +220,7 @@ def image_selection(tmp_path):
     directory = tmp_path / "startup"
     directory.mkdir()
     path = directory / "main.c"
-    path.write_text('''#include <stdint.h>
+    path.write_text("""#include <stdint.h>
 #include <stdio.h>
 #include "model.h"
 int main(void) {
@@ -180,13 +235,17 @@ int main(void) {
   puts("selected-layout-bits-preserved");
   return 0;
 }
-''')
+""")
     product = Artifact.from_file(path, kind="c-source", role="entry")
     startup = Compilation(directory, "caller.startup", product.sha256, (product,))
     startup.write()
-    return CImageLink(compiler=Path(gcc).resolve(), flags=("-std=c11", "-O2", "-Wall", "-Wextra", "-Werror"),
-                      startup=startup, link_inputs=("main.c",),
-                      deployment=Deployment("fixture-cpu", "linux", "x86_64", "sysv", 1))
+    return CImageLink(
+        compiler=Path(gcc).resolve(),
+        flags=("-std=c11", "-O2", "-Wall", "-Wextra", "-Werror"),
+        startup=startup,
+        link_inputs=("main.c",),
+        deployment=Deployment("fixture-cpu", "linux", "x86_64", "sysv", 1),
+    )
 
 
 def test_selected_image_links_actual_wrappers_runs_and_prepares_existing_external_handoff(tmp_path):
@@ -207,8 +266,13 @@ def test_selected_image_links_actual_wrappers_runs_and_prepares_existing_externa
 
     def run(request):
         actual = subprocess.run([request.artifact.path], check=True, capture_output=True, text=True)
-        return RunResult("fixture.host", request.artifact.sha256, "completed", actual.stdout,
-                         {"scope": "actual host CPU layout test; no accelerator or FireSim execution"})
+        return RunResult(
+            "fixture.host",
+            request.artifact.sha256,
+            "completed",
+            actual.stdout,
+            {"scope": "actual host CPU layout test; no accelerator or FireSim execution"},
+        )
 
     executed = api.run(result, runner=SimpleNamespace(name="fixture.host", validate=validate, run=run))
     assert executed.stdout == "selected-layout-bits-preserved\n"
@@ -229,27 +293,30 @@ def test_image_selection_and_link_inputs_cannot_change_or_hide_unimplemented_pay
         compile_control(tmp_path, image=image, options=replace(OPTIONS, harts=2))
     assert not (tmp_path / "compiled").exists()
     with pytest.raises(ValueError, match="no admitted payload"):
-        compile_control(tmp_path, image=image,
-                        mutate=lambda result: result.metadata["c_call"].update(payloads=["layout.json"]))
+        compile_control(
+            tmp_path, image=image, mutate=lambda result: result.metadata["c_call"].update(payloads=["layout.json"])
+        )
     assert not (tmp_path / "compiled/compilation.json").exists()
 
     directory = tmp_path / "changed"
     directory.mkdir()
     selected_image = image_selection(directory)
     original = process.run
+
     def change_after_link(*args, **kwargs):
         result = original(*args, **kwargs)
         selected_image.startup.artifacts[0].path.write_text("changed after actual link")
         return result
+
     monkeypatch.setattr(process, "run", change_after_link)
     with pytest.raises(ValueError, match="bytes do not match"):
         compile_control(directory, image=selected_image)
     assert not (directory / "compiled/compilation.json").exists()
 
 
-
-def stateful_control(tmp_path, *, corrupt=None, share=False, split_host=False, topology_edit=None,
-                     platform=None, image_factory=None):
+def stateful_control(
+    tmp_path, *, corrupt=None, share=False, split_host=False, topology_edit=None, platform=None, image_factory=None
+):
     """Source-bound software ABI fixture; no device math/execution claim."""
     from merlin.compiler.backend.cabi import CRegionABI
     from merlin.compiler.backend.stateful import CContext, CRegionABI2, EmbeddedPayload, render_u32_payload
@@ -259,8 +326,17 @@ def stateful_control(tmp_path, *, corrupt=None, share=False, split_host=False, t
     document["memory_domains"][0]["capacity_bytes"] = 1024
     if split_host:
         document["memory_domains"].append({"id": "host", "capacity_bytes": 256, "alignment_bytes": 64})
-        document["access"].append({"resource": "cpu0", "domain": "host", "read": True, "write": True,
-                                   "addressability": "shared", "visibility": "coherent", "completion": "synchronous"})
+        document["access"].append(
+            {
+                "resource": "cpu0",
+                "domain": "host",
+                "read": True,
+                "write": True,
+                "addressability": "shared",
+                "visibility": "coherent",
+                "completion": "synchronous",
+            }
+        )
     if topology_edit is not None:
         topology_edit(document)
     hardware.path.write_text(yaml.safe_dump(document))
@@ -271,14 +347,24 @@ def stateful_control(tmp_path, *, corrupt=None, share=False, split_host=False, t
         requirement = CContext(
             "shared" if share else f"context_{index}",
             "a" * 64 if platform is None else next(a.sha256 for a in platform.artifacts if a.kind == "json"),
-            "cpu0", "host" if split_host else "ram",
-            64, 16, 64, 16, "context.h", "software_context", "software_context_init")
+            "cpu0",
+            "host" if split_host else "ram",
+            64,
+            16,
+            64,
+            16,
+            "context.h",
+            "software_context",
+            "software_context_init",
+        )
         requirements.append(requirement)
         alternative = replace(item.alternative, metadata=tuple(sorted((requirement.selection_metadata(),))))
         proposal = replace(item.proposal, alternative=alternative)
+
         def admit(bound, claim):
             assert bound is source and claim.alternative.nodes in ((0,), (1,))
             assert claim.alternative.scratch_bytes == 0
+
         admitted.append(admit_proposal(source, proposal, hardware, validate_implementation=admit))
 
     def compile_region(request):
@@ -314,13 +400,20 @@ int {symbol}(void *opaque, const void *const *inputs, void *const *outputs) {{
  return result;
 }}
 """)
-        call = replace(original_call, symbol=symbol, link_inputs=(*original_call.link_inputs, "context.c"),
-                       payloads=("program.bin",))
+        call = replace(
+            original_call,
+            symbol=symbol,
+            link_inputs=(*original_call.link_inputs, "context.c"),
+            payloads=("program.bin",),
+        )
         abi = CRegionABI2(call, context, (EmbeddedPayload("program.bin", "program.h", "software_program"),))
-        artifacts = (*result.artifacts, Artifact.from_file(header, kind="c-header", role="context"),
-                     Artifact.from_file(binary, kind="device-binary", role="device-program"),
-                     Artifact.from_file(embedded, kind="c-header", role="embedded-program"),
-                     Artifact.from_file(wrapper, kind="c-source", role="context-wrapper"))
+        artifacts = (
+            *result.artifacts,
+            Artifact.from_file(header, kind="c-header", role="context"),
+            Artifact.from_file(binary, kind="device-binary", role="device-program"),
+            Artifact.from_file(embedded, kind="c-header", role="embedded-program"),
+            Artifact.from_file(wrapper, kind="c-source", role="context-wrapper"),
+        )
         result = replace(result, artifacts=artifacts, metadata={**result.metadata, "c_call": abi.record()})
         if corrupt:
             corrupt(result)
@@ -328,8 +421,11 @@ int {symbol}(void *opaque, const void *const *inputs, void *const *outputs) {{
 
     provider = SimpleNamespace(name=layout.name, validate=layout.validate, compile=compile_region)
     selection = select_execution(source, tuple(admitted))
-    backend = PlannedCompiler(selection, {layout.name: RegionBackend(provider, "kernel")},
-                              image=image_factory(tuple(requirements)) if image_factory is not None else None)
+    backend = PlannedCompiler(
+        selection,
+        {layout.name: RegionBackend(provider, "kernel")},
+        image=image_factory(tuple(requirements)) if image_factory is not None else None,
+    )
     return api.compile(ir_text(source.module), backend=backend, output=tmp_path / "compiled", options=OPTIONS)
 
 
@@ -343,7 +439,8 @@ def test_selected_stateful_contexts_reserve_host_storage_embed_exact_bytes_and_e
     assert [row["context_index"] for row in report["calls"]] == [0, 1]
     assert report["context_indices"] == {"context_0": 0, "context_1": 1}
     assert report["host_context_reservations"]["domains"] == {
-        "host": {"state_bytes": 128, "workspace_bytes": 64, "total_bytes": 192}}
+        "host": {"state_bytes": 128, "workspace_bytes": 64, "total_bytes": 192}
+    }
     assert report["total_reserved_host_bytes"] == 0  # Separate host domain, not tensor RAM.
     assert report["context_initialization"] == "caller_obligation_not_observed"
     assert report["completion_visibility"] == "runtime_obligation; no_execution_observed"
@@ -377,10 +474,25 @@ int main(void) {
 }
 """)
     executable = tmp_path / "stateful"
-    subprocess.run([gcc, "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
-                    "-I" + str(result.directory / "control"), "-I" + str(first), str(startup),
-                    *(str(result.directory / name) for name in report["link_inputs"]), "-o", str(executable)],
-                   check=True, capture_output=True, text=True)
+    subprocess.run(
+        [
+            gcc,
+            "-std=c11",
+            "-O2",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-I" + str(result.directory / "control"),
+            "-I" + str(first),
+            str(startup),
+            *(str(result.directory / name) for name in report["link_inputs"]),
+            "-o",
+            str(executable),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     subprocess.run([str(executable)], check=True, capture_output=True, text=True)
 
 
@@ -391,21 +503,26 @@ def test_stateful_receipt_refuses_changed_embedding_context_and_unadmitted_shari
     region = Compilation.load(compiled.directory / "regions/0/compilation.json")
     header = region.directory / "program.h"
     header.write_text(header.read_text().replace("01020304", "01020305"))
-    resealed = replace(region, artifacts=tuple(Artifact.from_file(a.path, kind=a.kind, role=a.role)
-                       if a.path == header else a for a in region.artifacts))
+    resealed = replace(
+        region,
+        artifacts=tuple(
+            Artifact.from_file(a.path, kind=a.kind, role=a.role) if a.path == header else a for a in region.artifacts
+        ),
+    )
     with pytest.raises(ValueError, match="exact selected binary bytes"):
         CRegionABI2.from_compilation(resealed)
     context_case = tmp_path / "context-case"
     context_case.mkdir()
+
     def changed_context(result):
         result.metadata["c_call"]["context"]["workspace_bytes"] = 128
+
     with pytest.raises(ValueError, match="original selected host reservation"):
         stateful_control(context_case, corrupt=changed_context)
     sharing_case = tmp_path / "sharing-case"
     sharing_case.mkdir()
     with pytest.raises(ValueError, match="different compiled initialization or products"):
         stateful_control(sharing_case, share=True)
-
 
     # The named host domain must supply its own actual capacity/access. Device
     # boundary RAM cannot silently stand in for an unavailable host reservation.
@@ -441,7 +558,7 @@ def stateful_image(tmp_path, *, corrupt=None, reservations=None, validator_edit=
     startup_directory = tmp_path / "startup"
     startup_directory.mkdir()
     source = startup_directory / "main.c"
-    source.write_text('''#include <stdint.h>
+    source.write_text("""#include <stdint.h>
 #include <string.h>
 #include "entry.h"
 int main(void) {
@@ -456,18 +573,21 @@ int main(void) {
  if(image_run(&state,arena,sizeof(arena),buffers,2)!=MODEL_BUSY) return 3;
  return 0;
 }
-''')
+""")
     configuration = startup_directory / "configuration.json"
     configuration.write_text('{"platform":"software-test","runtime_state_pre_reserved":128}')
     script = startup_directory / "layout.ld"
     script.write_text("SECTIONS { .image_marker : { BYTE(0x42) } } INSERT AFTER .rodata;\n")
-    products = (Artifact.from_file(source, kind="c-source", role="entry"),
-                Artifact.from_file(configuration, kind="json", role="configuration"),
-                Artifact.from_file(script, kind="data", role="linker-script"))
+    products = (
+        Artifact.from_file(source, kind="c-source", role="entry"),
+        Artifact.from_file(configuration, kind="json", role="configuration"),
+        Artifact.from_file(script, kind="data", role="linker-script"),
+    )
     startup = Compilation(startup_directory, "caller.startup", products[0].sha256, products)
     startup.write()
     admissions = []
     flags = ("-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-pie" if pie else "-no-pie")
+
     def validate(binding, region, image_selection, options):
         assert binding.platform is platform and image_selection.startup is startup
         assert json.loads(contract.read_text()) == {"scope": "software-only", "initialize": "contents_not_retained"}
@@ -480,19 +600,41 @@ int main(void) {
         admissions.append(binding.context.identity)
         if validator_edit:
             validator_edit(binding, region, options)
+
     entry_holder = []
+
     def image_factory(contexts):
-        entry = CImageEntry(contexts=tuple(CImageContext(c, platform, "contract.json",
-            "int(context*,void*,size_t)", "contents_not_retained", "host_state_only") for c in contexts),
+        entry = CImageEntry(
+            contexts=tuple(
+                CImageContext(
+                    c,
+                    platform,
+                    "contract.json",
+                    "int(context*,void*,size_t)",
+                    "contents_not_retained",
+                    "host_state_only",
+                )
+                for c in contexts
+            ),
             symbol="image_run",
-            validate_platform=validate, options={"scope": "software-only; no hardware execution qualification"},
+            validate_platform=validate,
+            options={"scope": "software-only; no hardware execution qualification"},
             reservations=reservations or (ReservedImageInterval("physical", 0x90000000, 4096),),
-            configuration=("configuration.json",), linker_scripts=("layout.ld",),
-            entry_state_bytes=entry_bytes, entry_state_pre_reserved=True)
+            configuration=("configuration.json",),
+            linker_scripts=("layout.ld",),
+            entry_state_bytes=entry_bytes,
+            entry_state_pre_reserved=True,
+        )
         entry_holder.append(entry)
-        return CImageLink(compiler=Path(compiler).resolve(), flags=flags,
-            startup=startup, link_inputs=("main.c",), context_entry=entry,
-            deployment=Deployment("fixture-cpu", "linux", "x86_64", "sysv", 1))
+        return CImageLink(
+            compiler=Path(compiler).resolve(),
+            flags=flags,
+            startup=startup,
+            link_inputs=("main.c",),
+            context_entry=entry,
+            deployment=Deployment("fixture-cpu", "linux", "x86_64", "sysv", 1),
+        )
+
     result = stateful_control(tmp_path, platform=platform, image_factory=image_factory, corrupt=corrupt)
     return result, admissions, entry_holder[0]
 
@@ -505,7 +647,8 @@ def test_selected_stateful_image_initializes_exact_contexts_links_and_retains_fa
     record = json.loads((result.directory / "image/link.json").read_text())
     assert record["placement_execution"] == "not_observed"
     assert record["context_entry"]["platform_admission"] == (
-        "original_caller_conditional_contract; hardware_execution_unobserved")
+        "original_caller_conditional_contract; hardware_execution_unobserved"
+    )
     assert record["context_entry"]["selection"]["configuration"] == ["configuration.json"]
     generated = (result.directory / "image/context/entry.c").read_text()
     assert generated.count("static unsigned char workspace_") == 1  # Serial maximum, not a hidden duplicate.
@@ -523,11 +666,16 @@ def test_selected_stateful_image_refuses_unadmitted_signature_mutation_and_reser
 
     def wrong_signature(result):
         path = result.directory / "context.h"
-        path.write_text(path.read_text().replace("static inline int software_context_init",
-                                                 "static inline unsigned software_context_init"))
-        artifacts = tuple(Artifact.from_file(a.path, kind=a.kind, role=a.role) if a.path == path else a
-                          for a in result.artifacts)
+        path.write_text(
+            path.read_text().replace(
+                "static inline int software_context_init", "static inline unsigned software_context_init"
+            )
+        )
+        artifacts = tuple(
+            Artifact.from_file(a.path, kind=a.kind, role=a.role) if a.path == path else a for a in result.artifacts
+        )
         object.__setattr__(result, "artifacts", artifacts)
+
     signature = tmp_path / "signature"
     signature.mkdir()
     with pytest.raises(RuntimeError, match="admitted image initializer signature"):

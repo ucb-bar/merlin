@@ -55,16 +55,24 @@ def _partition_complete(record, name, candidate):
     ``join`` below validates the original complete roster before publishing one.
     """
     required, programs = record.get("required_models"), record.get("required_programs")
-    if (record.get("mode") != "canonical_model_partition" or record.get("selected_model") != name
-            or record.get("passed") is not False or record.get("partition_passed") is not True
-            or not isinstance(required, list) or name not in required or not isinstance(programs, dict)
-            or set(programs) != set(required) or len(record.get("models", [])) != 1
-            or record["models"][0].get("model") != name):
+    if (
+        record.get("mode") != "canonical_model_partition"
+        or record.get("selected_model") != name
+        or record.get("passed") is not False
+        or record.get("partition_passed") is not True
+        or not isinstance(required, list)
+        or name not in required
+        or not isinstance(programs, dict)
+        or set(programs) != set(required)
+        or len(record.get("models", [])) != 1
+        or record["models"][0].get("model") != name
+    ):
         return False
     projection = {**record, "required_models": [name], "required_programs": {name: programs[name]}, "passed": True}
     projection.pop("mode")
-    return models.complete(projection, required_models=[name], required_programs={name: programs[name]},
-                           candidate_sha256=candidate)
+    return models.complete(
+        projection, required_models=[name], required_programs={name: programs[name]}, candidate_sha256=candidate
+    )
 
 
 @dataclass
@@ -100,11 +108,21 @@ class NativePartition:
             raise ValueError("native image provider selected a different model/target")
         receipt_pin = self.record["receipts"][program]
         receipt = _read(receipt_pin["path"])
-        result = adopt(receipt, stage=stage, target=target, label=label, submission=submission,
-                       submission_sha256=submission_sha256, settings=settings,
-                       qualification={"partition": _pin(self.path), "program": program,
-                                      "instruction_selection": self.record["instruction_selection"]},
-                       admission=self.selection.service)
+        result = adopt(
+            receipt,
+            stage=stage,
+            target=target,
+            label=label,
+            submission=submission,
+            submission_sha256=submission_sha256,
+            settings=settings,
+            qualification={
+                "partition": _pin(self.path),
+                "program": program,
+                "instruction_selection": self.record["instruction_selection"],
+            },
+            admission=self.selection.service,
+        )
         self.verify()
         directory = Path(directory)
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -123,17 +141,22 @@ def _verify_record(record):
     retained = record.get("schema") == revalidation.SCHEMA
     if retained:
         revalidation.verify_record(record)
-    if ((not retained and (record.get("schema") != SCHEMA or record.get("scope") != "canonical_static_only"))
-            or not valid_binding(record["authored_source_freeze"], record["private_spec_sha256"])):
+    if (
+        not retained and (record.get("schema") != SCHEMA or record.get("scope") != "canonical_static_only")
+    ) or not valid_binding(record["authored_source_freeze"], record["private_spec_sha256"]):
         raise ValueError("native static partition lost its original source binding")
     for pin in record["inputs"]:
         if file_sha256(Path(pin["path"])) != pin["sha256"]:
             raise ValueError("native static partition selected input changed")
     static = _read(record["static_partition_report"])
-    if (file_sha256(Path(record["static_partition_report"])) != record["static_partition_report_sha256"]
-            or not _partition_complete(static, name, candidate)
-            or any(static.get(key) != record[key] for key in (
-                "candidate_tree_sha256", "private_spec_sha256", "authored_source_freeze"))):
+    if (
+        file_sha256(Path(record["static_partition_report"])) != record["static_partition_report_sha256"]
+        or not _partition_complete(static, name, candidate)
+        or any(
+            static.get(key) != record[key]
+            for key in ("candidate_tree_sha256", "private_spec_sha256", "authored_source_freeze")
+        )
+    ):
         raise ValueError("native static partition is incomplete or changed")
     partitions._selection(record, target=record["target"], instruction_path=Path(record["instruction_path"]))
     if set(record["receipts"]) != set(static["required_programs"][name]):
@@ -144,17 +167,33 @@ def _verify_record(record):
         if file_sha256(Path(pin["path"])) != pin["sha256"]:
             raise ValueError("native compiled receipt changed")
         receipt = _read(pin["path"])
-        if (receipt.get("inputs", {}).get("host_elementwise_fusion", False)
-                is not record.get("host_elementwise_fusion", False)):
+        if receipt.get("inputs", {}).get("host_elementwise_fusion", False) is not record.get(
+            "host_elementwise_fusion", False
+        ):
             raise ValueError("native compiled host fusion selection changed")
-        if (receipt.get("status") != "compiled" or receipt["output"]["elf_sha256"] != entry["elf_sha256"]
-                or receipt["output"]["compilation_recipe"]["sha256"] != entry["compilation_recipe"]["recipe_sha256"]):
+        if (
+            receipt.get("status") != "compiled"
+            or receipt["output"]["elf_sha256"] != entry["elf_sha256"]
+            or receipt["output"]["compilation_recipe"]["sha256"] != entry["compilation_recipe"]["recipe_sha256"]
+        ):
             raise ValueError("native compiled receipt is not its verified linked program")
     return static
 
 
-def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selected, freeze, retained_products=None,
-             host_elementwise_fusion=False):
+def _compile(
+    *,
+    run_dir,
+    descriptor,
+    submission,
+    name,
+    out,
+    owner,
+    spec,
+    selected,
+    freeze,
+    retained_products=None,
+    host_elementwise_fusion=False,
+):
     """Fixed producer invoked only while the original native profile is active."""
     from merlin.targetgen.target_experiment import load_target_experiment
     from merlin_experiments.phase1.feedback.private_facts import selected_input_facts
@@ -165,8 +204,9 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
     gate = execution.gate_for(descriptor, required_programs=programs)
     if name not in roster or selected is None:
         raise ValueError("native chain requires a declared model and independent instruction selection")
-    options = _build_options(gate, spec=spec, name=name, programs=programs,
-                             host_elementwise_fusion=host_elementwise_fusion)
+    options = _build_options(
+        gate, spec=spec, name=name, programs=programs, host_elementwise_fusion=host_elementwise_fusion
+    )
     static_root = build_dir() / "phase1-native-chain" / run_dir.name / name / "static"
     if static_root.exists() or static_root.is_symlink():
         raise ValueError("native static build requires fresh selected output below MERLIN_OUT_ROOT")
@@ -175,15 +215,15 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
         from . import private_static_revalidation as revalidation
 
         observe({"stage": "retained_source_selection", "model": name})
-        revalidation.require_source_binding(
-            retained_products, run_dir=run_dir, spec=spec, freeze=freeze, target=target)
+        revalidation.require_source_binding(retained_products, run_dir=run_dir, spec=spec, freeze=freeze, target=target)
     observe({"stage": "instruction_selection", "model": name})
     trusted_tools = None
     if retained_products is None:
         prepared = instructions.prepare(selected, target=target, output=out / "instruction-selection")
     else:
         prepared, trusted_tools = revalidation.prepare_instructions(
-            selected, target=target, output=out / "instruction-selection")
+            selected, target=target, output=out / "instruction-selection"
+        )
     with selected_input_facts(spec, target=target, required_models=roster) as facts:
         prepared.require_facts(facts)
         if retained_products is not None:
@@ -191,11 +231,18 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
             if original["fact_reader_binding"] != facts:
                 raise ValueError("retained products changed original facts")
         result = models.run(
-            submission, spec, target=target, required_models=roster, required_programs=programs,
-            loader_env_requirements=models.loader_env_requirements_for(descriptor), out=static_root,
-            selected_model=name, source_freeze=freeze,
+            submission,
+            spec,
+            target=target,
+            required_models=roster,
+            required_programs=programs,
+            loader_env_requirements=models.loader_env_requirements_for(descriptor),
+            out=static_root,
+            selected_model=name,
+            source_freeze=freeze,
             source_freeze_root=run_dir / "private_full_model_input/sources",
-            build_options=options, linked_elf_admission=prepared.service,
+            build_options=options,
+            linked_elf_admission=prepared.service,
             native_result_format_selection=from_run(run_dir, target=target),
             progress=observe,
             **({"retained_products": retained_products} if retained_products is not None else {}),
@@ -204,34 +251,54 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
     if not _partition_complete(result, name, strict_tree_sha256(submission)["sha256"]):
         observe({"stage": "static_partition_refused", "model": name, "status": "fail"})
         raise ValueError("native static model partition did not pass: " + str(result.get("models")))
-    static_path, = static_root.glob("private_full_model_partition-*.json")
-    issuance, = (out / "instruction-selection/invocations").glob("*/invocation.json")
+    (static_path,) = static_root.glob("private_full_model_partition-*.json")
+    (issuance,) = (out / "instruction-selection/invocations").glob("*/invocation.json")
     record = {
-        "schema": SCHEMA, "scope": "canonical_static_only", "run_dir": str(run_dir),
+        "schema": SCHEMA,
+        "scope": "canonical_static_only",
+        "run_dir": str(run_dir),
         **({"host_elementwise_fusion": True} if host_elementwise_fusion else {}),
-        "target": target, "selected_model": name, "required_models": list(roster),
+        "target": target,
+        "selected_model": name,
+        "required_models": list(roster),
         "required_programs": {model: list(stages) for model, stages in programs.items()},
         "candidate_tree_sha256": result["candidate_tree_sha256"],
         "private_spec_sha256": result["private_spec_sha256"],
         "authored_source_freeze": result["authored_source_freeze"],
         "compiler_profile": profile.compiler_profile_binding(owner, run_dir=run_dir),
-        "fact_reader_binding": facts, "instruction_declaration_sha256": file_sha256(selected.path),
-        "instruction_path": str(selected.path), "instruction_selection": prepared.record(),
+        "fact_reader_binding": facts,
+        "instruction_declaration_sha256": file_sha256(selected.path),
+        "instruction_path": str(selected.path),
+        "instruction_selection": prepared.record(),
         "instruction_selection_receipt": str(out / "instruction-selection/selection.json"),
         "instruction_selection_invocation": str(issuance),
         "instruction_source_pins": [[str(p), digest] for p, digest in selected.pins],
-        "static_partition_report": str(static_path), "static_partition_report_sha256": file_sha256(static_path),
-        "receipts": (retained_products.verify()[0]["receipts"] if retained_products is not None else {
-            program: _pin(static_root / name / program / "baremetal_model.json") for program in programs[name]}),
-        "inputs": [_pin(path) for path in (spec, descriptor, run_dir / "environment.yaml",
-                                           run_dir / "input_bundle_manifest.yaml", Path(__file__))],
+        "static_partition_report": str(static_path),
+        "static_partition_report_sha256": file_sha256(static_path),
+        "receipts": (
+            retained_products.verify()[0]["receipts"]
+            if retained_products is not None
+            else {program: _pin(static_root / name / program / "baremetal_model.json") for program in programs[name]}
+        ),
+        "inputs": [
+            _pin(path)
+            for path in (
+                spec,
+                descriptor,
+                run_dir / "environment.yaml",
+                run_dir / "input_bundle_manifest.yaml",
+                Path(__file__),
+            )
+        ],
     }
     if retained_products is not None:
-        record.update(schema=revalidation.SCHEMA, scope=revalidation.SCOPE,
-                      retained_product_revalidation=result["retained_product_revalidation"],
-                      trusted_checker_preparation=trusted_tools)
-        record["inputs"].extend([_pin(Path(revalidation.__file__)),
-                                 *retained_products.verify()[1]])
+        record.update(
+            schema=revalidation.SCHEMA,
+            scope=revalidation.SCOPE,
+            retained_product_revalidation=result["retained_product_revalidation"],
+            trusted_checker_preparation=trusted_tools,
+        )
+        record["inputs"].extend([_pin(Path(revalidation.__file__)), *retained_products.verify()[1]])
     path = out / "native-static.json"
     path.write_text(json.dumps(record, indent=2) + "\n")
     partition = NativePartition(path, record, prepared)
@@ -273,23 +340,39 @@ def run_static(*, run_dir, descriptor, submission, name, out, host_elementwise_f
     target = load_target_experiment(descriptor).target
     environment = yaml.safe_load((run_dir / "environment.yaml").read_bytes())
     spec = Path(environment["private_full_model_spec"]["frozen_path"])
-    freeze = _private_source_freeze_for_formal(run_dir, spec, target, workspace=owner.workspace,
-                                              repo=owner.repo, descriptor=descriptor)
+    freeze = _private_source_freeze_for_formal(
+        run_dir, spec, target, workspace=owner.workspace, repo=owner.repo, descriptor=descriptor
+    )
     selected = declaration.read(run_dir / "private_instruction_input/selection.json", target=target)
-    with profile.original_compiler_execution(owner, target_experiment=load_target_experiment(descriptor),
-                                              candidate=submission, work_root=out / "profile"):
+    with profile.original_compiler_execution(
+        owner, target_experiment=load_target_experiment(descriptor), candidate=submission, work_root=out / "profile"
+    ):
         with IR.observe_call(
-            out, stage="native_static_chain_partition", function=_compile,
-            arguments={"run_dir": str(run_dir), "model": name,
-                       "candidate_tree_sha256": strict_tree_sha256(submission)["sha256"],
-                       **({"host_elementwise_fusion": True} if host_elementwise_fusion else {})},
+            out,
+            stage="native_static_chain_partition",
+            function=_compile,
+            arguments={
+                "run_dir": str(run_dir),
+                "model": name,
+                "candidate_tree_sha256": strict_tree_sha256(submission)["sha256"],
+                **({"host_elementwise_fusion": True} if host_elementwise_fusion else {}),
+            },
             inputs=(spec, descriptor, run_dir / "environment.yaml", run_dir / "input_bundle_manifest.yaml"),
             outputs=(out / "native-static.json",),
             dependencies=(Path(__file__), Path(models.__file__), Path(instructions.__file__)),
         ) as observed:
-            result = _compile(run_dir=run_dir, descriptor=descriptor, submission=submission, name=name, out=out,
-                              owner=owner, spec=spec, selected=selected, freeze=freeze,
-                              host_elementwise_fusion=host_elementwise_fusion)
+            result = _compile(
+                run_dir=run_dir,
+                descriptor=descriptor,
+                submission=submission,
+                name=name,
+                out=out,
+                owner=owner,
+                spec=spec,
+                selected=selected,
+                freeze=freeze,
+                host_elementwise_fusion=host_elementwise_fusion,
+            )
             observed.returned()
     IR.verify(observed.path)
     result.invocation = observed.path
@@ -307,13 +390,19 @@ def _producer(path, record, invocation):
     fusion = record.get("host_elementwise_fusion", False)
     if type(fusion) is not bool:
         raise ValueError("native static partition has an invalid host fusion selection")
-    if (call.get("kind") != "python_call" or call.get("stage") != "native_static_chain_partition"
-            or call.get("callable") != __name__ + "._compile"
-            or call.get("arguments") != {"run_dir": record["run_dir"], "model": record["selected_model"],
-                                         "candidate_tree_sha256": record["candidate_tree_sha256"],
-                                         **({"host_elementwise_fusion": True} if fusion else {})}
-            or not any(pin.get("path") == str(path) and pin.get("sha256") == file_sha256(path)
-                       for pin in call["outputs"])):
+    if (
+        call.get("kind") != "python_call"
+        or call.get("stage") != "native_static_chain_partition"
+        or call.get("callable") != __name__ + "._compile"
+        or call.get("arguments")
+        != {
+            "run_dir": record["run_dir"],
+            "model": record["selected_model"],
+            "candidate_tree_sha256": record["candidate_tree_sha256"],
+            **({"host_elementwise_fusion": True} if fusion else {}),
+        }
+        or not any(pin.get("path") == str(path) and pin.get("sha256") == file_sha256(path) for pin in call["outputs"])
+    ):
         raise ValueError("native static partition has no matching completed original producer")
 
 
@@ -331,28 +420,39 @@ def join(records, *, run_dir, descriptor, candidate_sha256):
     for name in roster:
         path = Path(records[name])
         record = _read(path)
-        if (record["run_dir"] != str(run_dir) or record["selected_model"] != name
-                or record["candidate_tree_sha256"] != candidate_sha256
-                or record["compiler_profile"] != expected_profile
-                or record["instruction_path"] != str(run_dir / "private_instruction_input/selection.json")):
+        if (
+            record["run_dir"] != str(run_dir)
+            or record["selected_model"] != name
+            or record["candidate_tree_sha256"] != candidate_sha256
+            or record["compiler_profile"] != expected_profile
+            or record["instruction_path"] != str(run_dir / "private_instruction_input/selection.json")
+        ):
             raise ValueError("native static partition belongs to another original run/model")
         actual = _verify_record(record)
-        issued, = path.parent.glob("invocations/*/invocation.json")
+        (issued,) = path.parent.glob("invocations/*/invocation.json")
         _producer(path, record, issued)
         if first is not None and any(record[key] != first[key] for key in partitions.BINDINGS):
             raise ValueError("native static partitions changed original source/profile/facts/policy")
         first = record
         rows.extend(actual["models"])
-    result = {**actual, "models": rows, "passed": True, "required_models": list(roster),
-              "required_programs": {name: list(programs[name]) for name in roster},
-              "worker_records": {name: _pin(path) for name, path in records.items()},
-              "compiler_profile": expected_profile, "fact_reader_binding": first["fact_reader_binding"],
-              "instruction_selections_by_model": {name: _read(path)["instruction_selection"]
-                                                  for name, path in records.items()}}
+    result = {
+        **actual,
+        "models": rows,
+        "passed": True,
+        "required_models": list(roster),
+        "required_programs": {name: list(programs[name]) for name in roster},
+        "worker_records": {name: _pin(path) for name, path in records.items()},
+        "compiler_profile": expected_profile,
+        "fact_reader_binding": first["fact_reader_binding"],
+        "instruction_selections_by_model": {
+            name: _read(path)["instruction_selection"] for name, path in records.items()
+        },
+    }
     for key in ("mode", "selected_model", "partition_passed"):
         result.pop(key, None)
-    result["passed"] = models.complete(result, required_models=roster, required_programs=programs,
-                                        candidate_sha256=candidate_sha256)
+    result["passed"] = models.complete(
+        result, required_models=roster, required_programs=programs, candidate_sha256=candidate_sha256
+    )
     if not result["passed"]:
         raise ValueError("native static joined roster did not satisfy the original full validator")
     return result

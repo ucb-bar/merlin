@@ -231,8 +231,8 @@ def _build_inputs(stage, submission, settings, directory, offload, weights_sourc
     and unknown files. Read existing selected/scoped facts without extraction.
     This is not a transitive provider, native resource or toolchain closure.
     """
-    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.model_check.cache import TARGET_INPUTS
+    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.targetgen.rtl.facts import find_facts, load_facts
     from merlin.targetgen.target_registry import resolve
 
@@ -970,8 +970,8 @@ def run_host(elf: Path, *, timeout_s: float) -> tuple[bytes, float]:
 
 def read(console: bytes, stage: Path, build_hash: str) -> tuple[list[np.ndarray], dict[str, Any]]:
     """Every result of the forward (i1 as bool), its text metrics and its group profile."""
-    from merlin.model import read_full_outputs
     from merlin.llvmlower.c_runtime import _out_specs
+    from merlin.model import read_full_outputs
     from merlin.runtime.out_bin import binary_console_diagnostics
     from merlin.runtime.whole_model_readback import parse_group_profile
 

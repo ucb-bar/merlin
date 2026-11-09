@@ -2,25 +2,23 @@
 
 Neutral byte-machine execution only: no target compiler or hardware timing claim.
 """
+
 import ctypes as C
-from dataclasses import replace
 import shutil
 import subprocess
 import sys
+from dataclasses import replace
 from uuid import uuid4
 
 import numpy as np
 import pytest
-
-from merlin.compiler.lower.connectedhost import ConnectedCStage
-from merlin.compiler.lower.connectedhost import emit_connected_host_c
-from merlin.compiler.lower.connected import compile_connected_region
-from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
-
 from test_connected_mixed import fixture
 from test_dense_source_catalog import implementation
 from test_multioutput_fusion import SPACES, WORD
 
+from merlin.compiler.lower.connected import compile_connected_region
+from merlin.compiler.lower.connectedhost import ConnectedCStage, emit_connected_host_c
+from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 
 EFFECTS = BorrowedBufferEffects("neutral-compiled-synchronous-noescape", True, True, True)
 
@@ -56,7 +54,7 @@ def build(tmp_path, *, widths=(1, 1, 4), origin=0, fail_stage=None, corrupt=Fals
             image = b"".join(invocation.images)
             binding = invocation.bindings
             width = widths[2]
-            code = f"static const uint8_t {symbol}_image[] = {{{','.join(map(str,image))}}};\n"
+            code = f"static const uint8_t {symbol}_image[] = {{{','.join(map(str, image))}}};\n"
             code += f"""static uint32_t {symbol}_word(const uint8_t *p) {{
               return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);
             }}
@@ -75,7 +73,7 @@ def build(tmp_path, *, widths=(1, 1, 4), origin=0, fail_stage=None, corrupt=Fals
                 for(size_t i=0;i<n;++i) {{
                   uint32_t raw=0;
                   for(size_t b=0;b<{width};++b) raw|=(uint32_t)inputs[0][in+i*{width}+b]<<(8*b);
-                  int32_t value=(int{width*8}_t)raw;
+                  int32_t value=(int{width * 8}_t)raw;
                   if(op==1) value=value < -128 ? -128 : value > 127 ? 127 : value;
                   else if(op==2) value=value < 0 ? 0 : value; else return 84;
                   for(size_t b=0;b<output_width;++b)
@@ -91,8 +89,9 @@ def build(tmp_path, *, widths=(1, 1, 4), origin=0, fail_stage=None, corrupt=Fals
         code += f"int {symbol}({args}) {{ ++{symbol}_calls; "
         code += "return 77;" if fail_stage == index else invoke + "return 0;"
         code += "}\n"
-        return ConnectedCStage(code, EFFECTS, alignment, widths[2] if index == 0 else 1,
-                               "neutral-decoded-window-to-logical-pointer-v1")
+        return ConnectedCStage(
+            code, EFFECTS, alignment, widths[2] if index == 0 else 1, "neutral-decoded-window-to-logical-pointer-v1"
+        )
 
     names = {w.backing for w in program.selected_contracts.storage.external}
     artifact = emit_connected_host_c(program, emit, symbol="chain", backing_origins={n: origin for n in names})
@@ -104,15 +103,20 @@ def build(tmp_path, *, widths=(1, 1, 4), origin=0, fail_stage=None, corrupt=Fals
         pytest.skip("neutral native runtime requires C compiler and little-endian host")
     # The native loader may retain prior images even after pytest reuses a path.
     library = tmp_path / f"chain-{uuid4().hex}.so"
-    result = subprocess.run([compiler, "-std=c11", "-O2", "-shared", "-fPIC", str(source), "-o", str(library)],
-                            capture_output=True, text=True, timeout=20)
+    result = subprocess.run(
+        [compiler, "-std=c11", "-O2", "-shared", "-fPIC", str(source), "-o", str(library)],
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
     assert result.returncode == 0, result.stderr
     dll = C.CDLL(str(library))
     dll.chain.argtypes = [C.POINTER(Backing), C.c_size_t]
     dll.chain.restype = Result
     buffers = {n: (C.c_ubyte * 512)(*([193] * 512)) for n in names}
-    backings = (Backing * len(names))(*(Backing(C.addressof(buffers[row["name"]]), 512)
-                                     for row in artifact.receipt["backings"]))
+    backings = (Backing * len(names))(
+        *(Backing(C.addressof(buffers[row["name"]]), 512) for row in artifact.receipt["backings"])
+    )
     return artifact, dll, buffers, backings
 
 
@@ -120,19 +124,19 @@ def build(tmp_path, *, widths=(1, 1, 4), origin=0, fail_stage=None, corrupt=Fals
 def test_compiled_chain_keeps_raw_liveout_fanout_tail_and_repeated_inputs(tmp_path, widths, origin):
     artifact, dll, buffers, backings = build(tmp_path, widths=widths, origin=origin)
     for seed in (1, 7):
-        a = ((np.arange(21)*31+seed)%255-127).astype(f"<i{widths[0]}").reshape(3, 7)
-        b = ((np.arange(35)*47+seed)%255-127).astype(f"<i{widths[1]}").reshape(7, 5)
+        a = ((np.arange(21) * 31 + seed) % 255 - 127).astype(f"<i{widths[0]}").reshape(3, 7)
+        b = ((np.arange(35) * 47 + seed) % 255 - 127).astype(f"<i{widths[1]}").reshape(7, 5)
         C.memmove(buffers["input0"], a.ctypes.data, a.nbytes)
         C.memmove(buffers["input1"], b.ctypes.data, b.nbytes)
         result = dll.chain(backings, len(backings))
         assert result.status == 0
         expected = (a.astype(np.int64) @ b.astype(np.int64)).astype(f"<i{widths[2]}")
-        assert bytes(buffers["output1"])[:expected.nbytes] == expected.tobytes()
+        assert bytes(buffers["output1"])[: expected.nbytes] == expected.tobytes()
         assert bytes(buffers["output0"])[:15] == expected.clip(-128, 127).astype("i1").tobytes()
-        assert bytes(buffers["output1"])[64:64+expected.nbytes] == expected.clip(0).tobytes()
-        assert bytes(buffers["input0"])[:a.nbytes] == a.tobytes()
-        assert bytes(buffers["input1"])[:b.nbytes] == b.tobytes()
-        assert bytes(buffers["output1"])[expected.nbytes:64] == bytes([193])*(64-expected.nbytes)
+        assert bytes(buffers["output1"])[64 : 64 + expected.nbytes] == expected.clip(0).tobytes()
+        assert bytes(buffers["input0"])[: a.nbytes] == a.tobytes()
+        assert bytes(buffers["input1"])[: b.nbytes] == b.tobytes()
+        assert bytes(buffers["output1"])[expected.nbytes : 64] == bytes([193]) * (64 - expected.nbytes)
     assert artifact.receipt["live_outputs"] == [2, 3, 4]
     assert artifact.receipt["execution_qualification"] == "not_established"
     assert [getattr(dll, f"chain_stage_{i}_count_calls")() for i in range(3)] == [2, 2, 2]
@@ -162,7 +166,7 @@ def test_stage_failure_stops_successors_and_preserves_error(tmp_path):
     result = dll.chain(backings, len(backings))
     assert (result.status, result.failed_stage) == (77, 1)
     assert [getattr(dll, f"chain_stage_{i}_count_calls")() for i in range(3)] == [1, 1, 0]
-    assert bytes(buffers["output0"]) == bytes([193])*512
+    assert bytes(buffers["output0"]) == bytes([193]) * 512
 
 
 def test_renderer_receipt_cannot_replace_independent_outputs(tmp_path):
@@ -180,9 +184,11 @@ def test_mutation_and_missing_completion_premises_refuse(tmp_path):
     region, settings, _ = fixture(tmp_path)
     program = compile_connected_region(region, **settings)
     names = {w.backing for w in program.selected_contracts.storage.external}
+
     def bad(invocation, symbol):
         object.__setattr__(invocation.bindings, "inputs", ())
         return ConnectedCStage("code", EFFECTS, (1, 1), 1, "explicit")
+
     with pytest.raises(ValueError, match="changed"):
         emit_connected_host_c(program, bad, symbol="chain", backing_origins={n: 0 for n in names})
     with pytest.raises(ValueError, match="synchronous"):

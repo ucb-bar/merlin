@@ -18,9 +18,9 @@ STAGES = compile_trace.declare(
 )
 
 
-
-def build_shared_library(ll_path, out_so, *, run, compiler, object_compiler,
-                         runtime_compiler, runtime_source, source_lowering=None):
+def build_shared_library(
+    ll_path, out_so, *, run, compiler, object_compiler, runtime_compiler, runtime_source, source_lowering=None
+):
     """Host .so (ctypes execution on x86), with the MLIR C-runtime shim.
 
     The runtime shim uses ``__bf16``. Use the same selected clang as the model
@@ -66,8 +66,13 @@ def build_shared_library(ll_path, out_so, *, run, compiler, object_compiler,
     provider_objects = ()
     if source_lowering is not None:
         provider_objects = source_lowering.objects(
-            Path(ll_path), model_o, rt_o, runtime_source=runtime, compiler=host_cc,
-            flags=("-O2", "-fPIC"), runner=original_run,
+            Path(ll_path),
+            model_o,
+            rt_o,
+            runtime_source=runtime,
+            compiler=host_cc,
+            flags=("-O2", "-fPIC"),
+            runner=original_run,
         )
     from merlin.llvmlower.adjacent_exp import runtime_c_for as exp_runtime_c_for
     from merlin.llvmlower.guarded_zero_contraction import runtime_c_for

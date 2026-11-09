@@ -24,44 +24,85 @@ from merlin.targetgen.tool_profile_shared import (
 def test_v24_exports_and_executes_actual_shared_rhs_owner(tmp_path):
     prefix = "merlin.compile.scheduling."
     source_public = {
-        "merlin.llvmlower.late_quant_rne", "merlin.llvmlower.source_expression_interval",
-        "merlin.llvmlower.source_expression_interval_llvm", "merlin.llvmlower.bounded_rne_word_cells",
-        "merlin.llvmlower.scaled_integer_finite", "merlin.llvmlower.scaled_integer_finite_llvm",
-        "merlin.llvmlower.repeated_pointwise", "merlin.llvmlower.weight_prepack_runtime",
+        "merlin.llvmlower.late_quant_rne",
+        "merlin.llvmlower.source_expression_interval",
+        "merlin.llvmlower.source_expression_interval_llvm",
+        "merlin.llvmlower.bounded_rne_word_cells",
+        "merlin.llvmlower.scaled_integer_finite",
+        "merlin.llvmlower.scaled_integer_finite_llvm",
+        "merlin.llvmlower.repeated_pointwise",
+        "merlin.llvmlower.weight_prepack_runtime",
         "merlin.llvmlower.contraction_row_slice",
-        "merlin.transforms.dense_row_batching", "merlin.transforms.shared_rhs_views",
+        "merlin.transforms.dense_row_batching",
+        "merlin.transforms.shared_rhs_views",
     }
     source_implementation = {
-        "merlin.llvmlower.bounded_rne_maps", "merlin.llvmlower.closed_tensor_insert",
-        "merlin.common.digest", "merlin.common.mlir_query", "merlin.common.yaml",
-        "merlin.capture", "merlin.capture.safetensors", "merlin.llvmlower.quant_round_check",
-        "merlin.llvmlower.segmented_matrix_view", "merlin.llvmlower.layout_conformance",
-        "merlin.llvmlower.weights_pack", "merlin.llvmlower.prepared_operand_effects",
-        "merlin.llvmlower.tensor_preparation_identity", "merlin.llvmlower.ordered_fma_groups",
-        "merlin.transforms.head_batching", "merlin.transforms.dense_row_batching_check",
+        "merlin.llvmlower.bounded_rne_maps",
+        "merlin.llvmlower.closed_tensor_insert",
+        "merlin.common.digest",
+        "merlin.common.mlir_query",
+        "merlin.common.yaml",
+        "merlin.capture",
+        "merlin.capture.safetensors",
+        "merlin.llvmlower.quant_round_check",
+        "merlin.llvmlower.segmented_matrix_view",
+        "merlin.llvmlower.layout_conformance",
+        "merlin.llvmlower.weights_pack",
+        "merlin.llvmlower.prepared_operand_effects",
+        "merlin.llvmlower.tensor_preparation_identity",
+        "merlin.llvmlower.ordered_fma_groups",
+        "merlin.transforms.head_batching",
+        "merlin.transforms.dense_row_batching_check",
     }
-    assert set(library_modules(24)) - set(library_modules(23)) == {
-        prefix + name for name in ("compact_dense_group", "compact_dense_group_check", "dense_shared_rhs",
-                                   "dense_shared_rhs_check", "shared_rhs_schedule_ir", "horizontal_convolution",
-                                   "rolling_lookahead", "convolution_input_first_use", "operand_slots",
-                                   "projection_dense", "projection_provenance")
-    } | source_public | source_implementation
-    assert set(public_modules(24)) - set(public_modules(23)) == {
-        prefix + "dense_shared_rhs", prefix + "horizontal_convolution", prefix + "rolling_lookahead",
-        prefix + "convolution_input_first_use",
-        prefix + "operand_slots", prefix + "projection_dense",
-    } | source_public
+    assert (
+        set(library_modules(24)) - set(library_modules(23))
+        == {
+            prefix + name
+            for name in (
+                "compact_dense_group",
+                "compact_dense_group_check",
+                "dense_shared_rhs",
+                "dense_shared_rhs_check",
+                "shared_rhs_schedule_ir",
+                "horizontal_convolution",
+                "rolling_lookahead",
+                "convolution_input_first_use",
+                "operand_slots",
+                "projection_dense",
+                "projection_provenance",
+            )
+        }
+        | source_public
+        | source_implementation
+    )
+    assert (
+        set(public_modules(24)) - set(public_modules(23))
+        == {
+            prefix + "dense_shared_rhs",
+            prefix + "horizontal_convolution",
+            prefix + "rolling_lookahead",
+            prefix + "convolution_input_first_use",
+            prefix + "operand_slots",
+            prefix + "projection_dense",
+        }
+        | source_public
+    )
     assert _SHARED_SUBSTRATES[COMMON_SUBSTRATE_V17] == 24
     assert library_modules() == library_modules(6)
     root = tmp_path / "sdk"
     manifest = prepare_shared_source_release(
-        root, python_source_root=repo_root() / "src", license_directory=repo_root(),
-        tools=TR.ARM_TOOLS["merlin_rtlchecks"], version=24, source_binding=True,
+        root,
+        python_source_root=repo_root() / "src",
+        license_directory=repo_root(),
+        tools=TR.ARM_TOOLS["merlin_rtlchecks"],
+        version=24,
+        source_binding=True,
     )
     assert manifest["schema"] == "merlin.shared_scheduling_library.v18"
     assert reviewed_shared_manifest(root, version=24) == manifest
-    assert not [p for p in (root / "merlin").rglob("*.py")
-                if author_inaccessible(staged_module(p.relative_to(root).as_posix()))]
+    assert not [
+        p for p in (root / "merlin").rglob("*.py") if author_inaccessible(staged_module(p.relative_to(root).as_posix()))
+    ]
     # Reuse the independent neutral effects fixture as the test driver. Every
     # compiler module, including the actual checker/emitter, must come from SDK.
     code = """
@@ -222,9 +263,7 @@ for name, module in tuple(sys.modules.items()):
   path = getattr(module, '__file__', None)
   if path: assert pathlib.Path(path).is_relative_to(SDK), (name, path)
 """
-    row_slice_source = runpy.run_path(
-        str(repo_root() / "merlin/tests/ir/test_contraction_row_slice.py")
-    )["source"]
+    row_slice_source = runpy.run_path(str(repo_root() / "merlin/tests/ir/test_contraction_row_slice.py"))["source"]
 
     code += """
 from merlin.llvmlower.contraction_row_slice import pushback_contraction_row_slices, prepare_contraction_row_slices
@@ -293,15 +332,36 @@ for name, module in tuple(sys.modules.items()):
   path = getattr(module, '__file__', None)
   if path: assert pathlib.Path(path).is_relative_to(SDK), (name, path)
 """
-    observer_recipe = (repo_root() / "packages/merlin-experiments/src/merlin_experiments/phase1/author_skills"
-                       / "heavy-pass-recipes/scripts/source_observer_recipe.py")
-    code = ("SDK = " + repr(str(root)) + "\nROW_SLICE_SOURCE = " + repr(row_slice_source())
-            + "\nOBSERVER_RECIPE = " + repr(str(observer_recipe))
-            + "\nROW_SLICE_RUNTIME_SOURCE = " + repr(row_slice_source(runtime_scale=True)) + "\n" + code)
-    env = {**os.environ, "PYTHONPATH": os.pathsep.join((str(root), str(repo_root() / "merlin/tests/infra"),
-                                                      str(repo_root() / "merlin/tests/ir"),
-                                                      str(Path(z3.__file__).parent.parent))),
-           "PYTHONDONTWRITEBYTECODE": "1"}
-    result = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, env=env,
-                            capture_output=True, text=True, timeout=60)
+    observer_recipe = (
+        repo_root()
+        / "packages/merlin-experiments/src/merlin_experiments/phase1/author_skills"
+        / "heavy-pass-recipes/scripts/source_observer_recipe.py"
+    )
+    code = (
+        "SDK = "
+        + repr(str(root))
+        + "\nROW_SLICE_SOURCE = "
+        + repr(row_slice_source())
+        + "\nOBSERVER_RECIPE = "
+        + repr(str(observer_recipe))
+        + "\nROW_SLICE_RUNTIME_SOURCE = "
+        + repr(row_slice_source(runtime_scale=True))
+        + "\n"
+        + code
+    )
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join(
+            (
+                str(root),
+                str(repo_root() / "merlin/tests/infra"),
+                str(repo_root() / "merlin/tests/ir"),
+                str(Path(z3.__file__).parent.parent),
+            )
+        ),
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    result = subprocess.run(
+        [sys.executable, "-c", code], cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60
+    )
     assert result.returncode == 0, result.stderr

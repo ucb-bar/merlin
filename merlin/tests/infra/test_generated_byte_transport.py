@@ -21,24 +21,27 @@ def emitted(window):
     capacity = window.input_shape[0] * prod(window.output_spatial) * window.input_shape[-1]
     private = builder.add(llvm.AllocaOp(builder.const(capacity), i8, alignment=16)).res
     emit_nhwc_window_panel(
-        builder, window, builder.entry.args[0], private, builder.const(0),
+        builder,
+        window,
+        builder.entry.args[0],
+        private,
+        builder.const(0),
         window.input_shape[0] * prod(window.output_spatial),
-        source_destination_disjoint=True, maximum_panel_bytes=capacity,
+        source_destination_disjoint=True,
+        maximum_panel_bytes=capacity,
     )
     address = builder.add(llvm.PtrToIntOp(builder.gep(private, builder.const(0), i8))).output
     # This opaque use needs a separate target effect owner. Recognition gives
     # it no completion/borrowing permission.
     builder.add(llvm.InlineAsmOp("", "r,~{memory}", [address], has_side_effects=True))
-    function = llvm.FuncOp("entry", llvm.LLVMFunctionType([PTR, PTR], llvm.LLVMVoidType()),
-                           body=builder.finish())
+    function = llvm.FuncOp("entry", llvm.LLVMFunctionType([PTR, PTR], llvm.LLVMVoidType()), body=builder.finish())
     module = ModuleOp([function])
     module.verify()
     return module, function, capacity
 
 
 def recognize(module, original_window, capacity, **changes):
-    options = dict(entry_symbol="entry", source_argument=0, window=original_window,
-                   maximum_private_bytes=capacity)
+    options = dict(entry_symbol="entry", source_argument=0, window=original_window, maximum_private_bytes=capacity)
     options.update(changes)
     return recognize_nhwc_halo_transport(module, **options)
 
@@ -75,9 +78,11 @@ def test_original_source_and_capacity_are_required(change):
 @pytest.mark.parametrize("change", ["copy_count", "zero_value", "source_pointer"])
 def test_changed_byte_effect_refuses(change):
     module, function, capacity = emitted(WINDOW)
-    intrinsic = next(op for op in function.walk()
-                     if op.name == "llvm.call_intrinsic" and
-                     ("memset" if change == "zero_value" else "memcpy") in str(op))
+    intrinsic = next(
+        op
+        for op in function.walk()
+        if op.name == "llvm.call_intrinsic" and ("memset" if change == "zero_value" else "memcpy") in str(op)
+    )
     operands = list(intrinsic.operands)
     if change == "source_pointer":
         operands[1] = tuple(function.body.blocks)[0].args[1]

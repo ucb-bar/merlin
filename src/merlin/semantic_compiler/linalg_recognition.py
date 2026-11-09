@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from .linalg_types import LinalgBridgeError, _i64_to_f32_bits, _scalar_f32_bits, _scalar_i64, _scalar_integer, _type
-
 from struct import pack, unpack
 
+from .linalg_types import LinalgBridgeError, _i64_to_f32_bits, _scalar_f32_bits, _scalar_i64, _scalar_integer, _type
 from .model import IndexMap, TensorType, pointwise_identity_maps
 
 

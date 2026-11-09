@@ -4,12 +4,7 @@ from hashlib import sha256
 
 import pytest
 
-from merlin.compiler.selection.knobs import MAX_KNOBS
-from merlin.compiler.selection.knobs import Knob
-from merlin.compiler.selection.knobs import KnobError
-from merlin.compiler.selection.knobs import KnobSettings
-from merlin.compiler.selection.knobs import bounded_settings
-from merlin.compiler.selection.knobs import declare
+from merlin.compiler.selection.knobs import MAX_KNOBS, Knob, KnobError, KnobSettings, bounded_settings, declare
 from merlin.transforms.evaluated_exploration import CompletedObservation, ExplorationIdentity
 from merlin.transforms.pass_exploration import EmittedProgram, MappingProposalKey
 from merlin.transforms.tuning_selection import KnobTrial, select_settings, unique_emissions
@@ -163,8 +158,10 @@ def test_explicit_decision_margin_avoids_tiny_changes_without_changing_ranking(t
     assert selected.selected is options[0] and selected.ranking["ranked"][0][1] == (9999,)
     assert selected.record()["ranking"]["minimum_relative_improvement"] == 0.01
     at_margin = (trials[0], trial(options[1], b"candidate", 9900))
-    assert select_settings(domain(), identity=identity(), trials=at_margin,
-                           minimum_relative_improvement=0.01).selected is options[1]
+    assert (
+        select_settings(domain(), identity=identity(), trials=at_margin, minimum_relative_improvement=0.01).selected
+        is options[1]
+    )
     for invalid in (True, -0.01, 1, float("nan"), float("inf")):
         with pytest.raises(ValueError, match="tolerance"):
             select_settings(domain(), identity=identity(), trials=trials, minimum_relative_improvement=invalid)

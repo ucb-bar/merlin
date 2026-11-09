@@ -3,11 +3,11 @@
 from pathlib import Path
 
 import pytest
-from merlin_experiments.phase1.feedback import private_compilation_inputs as compilation
-from merlin_experiments.phase1.feedback import private_program_checks as checks
 
 from merlin.runtime.modelinputs import file_sha256
 from merlin.verify.host_compute_audit import HostComputeVeto
+from merlin_experiments.phase1.feedback import private_compilation_inputs as compilation
+from merlin_experiments.phase1.feedback import private_program_checks as checks
 
 
 def _receipt(tmp_path):

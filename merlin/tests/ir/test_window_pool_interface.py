@@ -39,11 +39,16 @@ def test_standalone_pool_is_one_input_logical_call(tmp_path, monkeypatch, paddin
     from merlin.compiler.planning import complete as complete_group_routing
 
     pairs = []
-    monkeypatch.setattr(complete_group_routing, "_accum_from_facts",
-                        lambda target, lhs, rhs: pairs.append((lhs, rhs)) or "i32")
+    monkeypatch.setattr(
+        complete_group_routing, "_accum_from_facts", lambda target, lhs, rhs: pairs.append((lhs, rhs)) or "i32"
+    )
     selected = complete_group_routing.routing(
-        "gemmini", text, "original-package", capture=tmp_path / "capture",
-        model="", linked_elf_admission=object(),
+        "gemmini",
+        text,
+        "original-package",
+        capture=tmp_path / "capture",
+        model="",
+        linked_elf_admission=object(),
     )
     assert pairs == [("int8", "int8")]
     assert selected.require_complete_groups and selected.select(None)
@@ -99,14 +104,30 @@ def test_standalone_pool_saturates_before_spatial_padding():
     from merlin.runtime.reference import reference_outputs
     from merlin.runtime.simulator import simulate
 
-    cb = {"abi_version": "0.1", "target": "synthetic", "tensors": {
-        "X": {"shape": [1, 2], "dtype": "i8", "role": "input"},
-        "Y": {"shape": [1, 2], "dtype": "i8", "role": "output"},
-    }, "commands": [{"opcode": "MAXPOOL2D", "operands": {"src": "X", "dst": "Y"}, "attributes": {
-        "epilogue": ["acc_scale", "maxpool"], "acc_scale": 2.0, "output_dtype": "i8",
-        "pool_in_dims": [1, 1], "pool_size": [3, 3], "pool_stride": [1, 1],
-        "pool_padding": [1, 1, 1, 1], "pool_pad_value": -128,
-    }}]}
+    cb = {
+        "abi_version": "0.1",
+        "target": "synthetic",
+        "tensors": {
+            "X": {"shape": [1, 2], "dtype": "i8", "role": "input"},
+            "Y": {"shape": [1, 2], "dtype": "i8", "role": "output"},
+        },
+        "commands": [
+            {
+                "opcode": "MAXPOOL2D",
+                "operands": {"src": "X", "dst": "Y"},
+                "attributes": {
+                    "epilogue": ["acc_scale", "maxpool"],
+                    "acc_scale": 2.0,
+                    "output_dtype": "i8",
+                    "pool_in_dims": [1, 1],
+                    "pool_size": [3, 3],
+                    "pool_stride": [1, 1],
+                    "pool_padding": [1, 1, 1, 1],
+                    "pool_pad_value": -128,
+                },
+            }
+        ],
+    }
     values = {"X": [[-128, 127]]}
     assert reference_outputs(cb, values)["Y"] == [[-128, 127]]
     result = simulate(cb, values)

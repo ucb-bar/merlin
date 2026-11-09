@@ -15,10 +15,10 @@ from pathlib import Path
 
 from merlin.common.digest import sha256_file as _sha
 from merlin.common.source_membership import SourceMembershipError, python_members
+from merlin.development.definition import SpecError
 
 from .. import access_policy
 from ..adapters import _relative_entrypoint, phase0_startup_inputs
-from merlin.development.definition import SpecError
 
 PREFIXES = ("phase1:client:", "phase1:source:", "phase1:startup:", "phase1:native:")
 SCOPE = "phase1-package-public-clients-startup-and-retained-native-harness-access-policy-v2"

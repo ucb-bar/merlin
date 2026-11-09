@@ -6,26 +6,29 @@ from itertools import permutations
 import numpy as np
 import pytest
 
-from merlin.compiler.schedule.blocks import AXES
-from merlin.compiler.schedule.blocks import NEST
-from merlin.compiler.schedule.blocks import BlockScheduleError
-from merlin.compiler.schedule.blocks import Compute
-from merlin.compiler.schedule.blocks import Contraction
-from merlin.compiler.schedule.blocks import ConvContraction
-from merlin.compiler.schedule.blocks import Geometry
-from merlin.compiler.schedule.blocks import Knobs
-from merlin.compiler.schedule.blocks import Load
-from merlin.compiler.schedule.blocks import Preload
-from merlin.compiler.schedule.blocks import Store
-from merlin.compiler.schedule.blocks import check_residency
-from merlin.compiler.schedule.blocks import execute
-from merlin.compiler.schedule.blocks import schedule_contraction
-from merlin.compiler.schedule.blocks import schedule_convolution
+from merlin.compiler.schedule.blocks import (
+    AXES,
+    NEST,
+    BlockScheduleError,
+    Compute,
+    Contraction,
+    ConvContraction,
+    Geometry,
+    Knobs,
+    Load,
+    Preload,
+    Store,
+    check_residency,
+    execute,
+    schedule_contraction,
+    schedule_convolution,
+)
 
 
 def _schedule():
     return schedule_contraction(
-        Contraction(7, 10, 9), Geometry(4, 256, 128, 128, True),
+        Contraction(7, 10, 9),
+        Geometry(4, 256, 128, 128, True),
         Knobs(lookahead_steps=0, load_grouping=NEST),
     )
 
@@ -102,10 +105,11 @@ def test_incomplete_output_cannot_be_overwritten_by_another_output():
 def test_completed_stores_allow_accumulator_reuse_in_a_different_layout():
     base = _schedule()
     schedule = schedule_contraction(
-        base.contraction, base.geometry, Knobs(loop_order=("m", "n", "k")),
+        base.contraction,
+        base.geometry,
+        Knobs(loop_order=("m", "n", "k")),
     )
-    ops = tuple(replace(op, accumulator_row=0) if isinstance(op, (Preload, Store)) else op
-                for op in schedule.ops)
+    ops = tuple(replace(op, accumulator_row=0) if isinstance(op, (Preload, Store)) else op for op in schedule.ops)
     reused = replace(schedule, ops=ops, geometry=replace(schedule.geometry, accumulator_rows=4))
     check_residency(reused)
     lhs = np.arange(70).reshape(7, 10) % 7 - 3
@@ -119,7 +123,7 @@ def test_reduction_order_is_checked_even_when_all_operands_are_loaded():
     ops = list(schedule.ops)
     first = next(i for i, op in enumerate(ops) if isinstance(op, Compute) and op.input_block == (0, 0))
     second = next(i for i, op in enumerate(ops) if isinstance(op, Compute) and op.input_block == (0, 1))
-    ops[first - 1:first + 1], ops[second - 1:second + 1] = ops[second - 1:second + 1], ops[first - 1:first + 1]
+    ops[first - 1 : first + 1], ops[second - 1 : second + 1] = ops[second - 1 : second + 1], ops[first - 1 : first + 1]
     with pytest.raises(BlockScheduleError, match="reduction"):
         check_residency(replace(schedule, ops=tuple(ops)))
 
@@ -155,8 +159,13 @@ def test_gather_cannot_write_more_rows_than_its_declared_footprint():
     schedule = _schedule()
     first = next(op for op in schedule.ops if isinstance(op, Load) and op.role == "lhs")
     gather = tuple((first.dram_row + i, first.dram_col) for i in range(first.rows + 1))
-    ops = tuple(replace(op, gather=gather) if op is first else
-                replace(op, input_gather=gather) if isinstance(op, Compute) and op.input_block == first.block else op
-                for op in schedule.ops)
+    ops = tuple(
+        replace(op, gather=gather)
+        if op is first
+        else replace(op, input_gather=gather)
+        if isinstance(op, Compute) and op.input_block == first.block
+        else op
+        for op in schedule.ops
+    )
     with pytest.raises(BlockScheduleError, match="gather"):
         check_residency(replace(schedule, ops=ops))

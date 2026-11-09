@@ -39,9 +39,12 @@ _ACTIVE = contextvars.ContextVar("original_checked_source_model_diagnostic", def
 
 
 def _require_issued(selection):
-    if (type(selection) is not CheckedSourceModelDiagnostic or selection not in _ISSUED
-            or selection._issuer is not _ISSUER
-            or _ISSUED[selection] != hashlib.sha256(selection._record_json.encode()).hexdigest()):
+    if (
+        type(selection) is not CheckedSourceModelDiagnostic
+        or selection not in _ISSUED
+        or selection._issuer is not _ISSUER
+        or _ISSUED[selection] != hashlib.sha256(selection._record_json.encode()).hexdigest()
+    ):
         raise ValueError("checked source diagnostic was not issued by the original host")
 
 
@@ -81,8 +84,11 @@ def _verification_record_valid(row):
         and row.get("scope") == _FULL_SCOPE
         and "verification_protocol" not in row
         and "source_effects_status" not in row
-        and (row.get("native_execution_protocol") == POINTER_PROTOCOL
-             if row.get("schema") == POINTER_SCHEMA else "native_execution_protocol" not in row)
+        and (
+            row.get("native_execution_protocol") == POINTER_PROTOCOL
+            if row.get("schema") == POINTER_SCHEMA
+            else "native_execution_protocol" not in row
+        )
     )
 
 
@@ -101,7 +107,8 @@ def numerical_grade_matches_selection(record, grade):
             and grade.get("checked_source_status") == FAST_STATUS
             and grade.get("checked_source_diagnostic") == record
             and grade.get("verification_protocol") == NUMERICAL_COUNTS_PROTOCOL
-            and type(effects) is dict and effects.get("status") == "PENDING"
+            and type(effects) is dict
+            and effects.get("status") == "PENDING"
             and grade.get("status") == "incomplete"
             and grade.get("formal_admission") is False
             and grade.get("promotion_authority") == "NONE"
@@ -110,9 +117,11 @@ def numerical_grade_matches_selection(record, grade):
             and grade.get("timing_cycles") is None
             and "complete_source_qualification" not in grade
         )
-    return (grade.get("checked_source_status") == FULL_STATUS
-            and grade.get("schema") != FAST_RESULT_SCHEMA
-            and "verification_protocol" not in grade)
+    return (
+        grade.get("checked_source_status") == FULL_STATUS
+        and grade.get("schema") != FAST_RESULT_SCHEMA
+        and "verification_protocol" not in grade
+    )
 
 
 @dataclass(frozen=True, eq=False)
@@ -183,22 +192,24 @@ class CheckedSourceModelDiagnostic:
         return row
 
 
-def select_checked_source_diagnostic(passes, *, target, rtl_facts, board_config, native_execution_protocol=None,
-                                     verification_protocol=None):
+def select_checked_source_diagnostic(
+    passes, *, target, rtl_facts, board_config, native_execution_protocol=None, verification_protocol=None
+):
     """Select a live original issuer; neither labels nor saved success grant it."""
-    from merlin_experiments.phase0 import connected_integer_qualification as source_owner
-
     from merlin.runtime.modelinputs import selected_firrtl
+    from merlin_experiments.phase0 import connected_integer_qualification as source_owner
 
     if type(passes) is not CompilerPassSelection or passes.factory is None:
         raise ValueError("checked source diagnostic needs the original independently replayable pass factory")
     if type(target) is not str or not target or type(board_config) is not str or not board_config:
         raise ValueError("checked source diagnostic requires explicit selected target and RTL configuration")
     if native_execution_protocol is not None and (
-            type(native_execution_protocol) is not str or native_execution_protocol != POINTER_PROTOCOL):
+        type(native_execution_protocol) is not str or native_execution_protocol != POINTER_PROTOCOL
+    ):
         raise ValueError("checked source diagnostic requires its exact explicit pointer execution protocol")
     if verification_protocol is not None and (
-            type(verification_protocol) is not str or verification_protocol != NUMERICAL_COUNTS_PROTOCOL):
+        type(verification_protocol) is not str or verification_protocol != NUMERICAL_COUNTS_PROTOCOL
+    ):
         raise ValueError("checked source diagnostic requires its exact explicit verification protocol")
     with passes.metadata_operation():
         passes.revalidate()
@@ -224,14 +235,22 @@ def select_checked_source_diagnostic(passes, *, target, rtl_facts, board_config,
         if native_execution_protocol is not None:
             row.update(schema=POINTER_SCHEMA, native_execution_protocol=native_execution_protocol)
         if verification_protocol is not None:
-            row.update(schema=NUMERICAL_COUNTS_SCHEMA, scope=_FAST_SCOPE,
-                       verification_protocol=verification_protocol, source_effects_status="PENDING",
-                       incumbent_authority="NONE", roofline_convergence_authority="NONE")
-        sources = tuple(_pin(path) for path in (
-            Path(__file__).resolve(),
-            Path(__file__).with_name("checked_source_model_diagnostic_execution.py").resolve(),
-            Path(source_owner.__file__).resolve(),
-        ))
+            row.update(
+                schema=NUMERICAL_COUNTS_SCHEMA,
+                scope=_FAST_SCOPE,
+                verification_protocol=verification_protocol,
+                source_effects_status="PENDING",
+                incumbent_authority="NONE",
+                roofline_convergence_authority="NONE",
+            )
+        sources = tuple(
+            _pin(path)
+            for path in (
+                Path(__file__).resolve(),
+                Path(__file__).with_name("checked_source_model_diagnostic_execution.py").resolve(),
+                Path(source_owner.__file__).resolve(),
+            )
+        )
         result = CheckedSourceModelDiagnostic(passes, _canonical(row), _callback(capability.owner), sources, _ISSUER)
         _ISSUED[result] = hashlib.sha256(result._record_json.encode()).hexdigest()
         result.revalidate()
@@ -244,11 +263,17 @@ def restore_checked_source_diagnostic(record, *, capsule, target, package_dir):
 
     require_restored_model_context(CONTEXT_FIELD, record, package_dir=package_dir, target=target)
     passes = active_compiler_passes()
-    if (type(record) is not dict or record.get("schema") not in {SCHEMA, POINTER_SCHEMA, NUMERICAL_COUNTS_SCHEMA}
-            or type(passes) is not CompilerPassSelection):
+    if (
+        type(record) is not dict
+        or record.get("schema") not in {SCHEMA, POINTER_SCHEMA, NUMERICAL_COUNTS_SCHEMA}
+        or type(passes) is not CompilerPassSelection
+    ):
         raise ValueError("checked source diagnostic has no original restored owner")
     selection = select_checked_source_diagnostic(
-        passes, target=target, rtl_facts=record["rtl_facts"]["path"], board_config=record["board_config"],
+        passes,
+        target=target,
+        rtl_facts=record["rtl_facts"]["path"],
+        board_config=record["board_config"],
         native_execution_protocol=record.get("native_execution_protocol"),
         verification_protocol=record.get("verification_protocol"),
     )

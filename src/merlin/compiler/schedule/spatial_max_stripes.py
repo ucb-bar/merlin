@@ -4,6 +4,7 @@ This changes staging granularity, not scalar arithmetic or completion laws.
 A backend must bind every staged row and the full strip readout to its selected
 addressing/pooling semantics, and complete that readout before strip reuse.
 """
+
 from dataclasses import dataclass
 
 from merlin.compiler.schedule.blocks import SpatialMaxReadout
@@ -34,10 +35,16 @@ def _kernel(source, batches, channels, channel_block, transfer_rows):
         base = Var("batch") * (h * w) + y * w
 
         def load(source_x, local_x, rows):
-            return Call("stage_spatial_rows", (
-                ("source_row", base + source_x), ("local_row", Const(ky * width) + local_x),
-                ("rows", rows), ("first_column", column), ("columns", columns),
-            ))
+            return Call(
+                "stage_spatial_rows",
+                (
+                    ("source_row", base + source_x),
+                    ("local_row", Const(ky * width) + local_x),
+                    ("rows", rows),
+                    ("first_column", column),
+                    ("columns", columns),
+                ),
+            )
 
         if left:
             name = f"left_{ky}"
@@ -45,24 +52,36 @@ def _kernel(source, batches, channels, channel_block, transfer_rows):
         full, tail = divmod(middle, transfer_rows)
         if full:
             name = f"middle_{ky}"
-            body.append(Loop(name, full, (
-                load(Var(name) * transfer_rows, Var(name) * transfer_rows + left, Const(transfer_rows)),
-            )))
+            body.append(
+                Loop(
+                    name,
+                    full,
+                    (load(Var(name) * transfer_rows, Var(name) * transfer_rows + left, Const(transfer_rows)),),
+                )
+            )
         if tail:
             body.append(load(Const(full * transfer_rows), Const(left + full * transfer_rows), Const(tail)))
         if right:
             name = f"right_{ky}"
-            body.append(Loop(name, right, (
-                load(Const(w - 1), Var(name) + left + middle, Const(1)),
-            )))
-    body.append(Call("read_spatial_strip", (
-        ("output_row", Var("batch") * (oh * ow) + Var("output_y") * ow),
-        ("first_column", column), ("columns", columns),
-    )))
-    return Kernel("striped_spatial_max", (
-        TensorArg("input", (batches * h * w, channels), "i8", "read"),
-        TensorArg("output", (batches * oh * ow, channels), "i8", "write"),
-    ), (Loop("batch", batches, (Loop("output_y", oh, (Loop("channel", blocks, tuple(body)),)),)),))
+            body.append(Loop(name, right, (load(Const(w - 1), Var(name) + left + middle, Const(1)),)))
+    body.append(
+        Call(
+            "read_spatial_strip",
+            (
+                ("output_row", Var("batch") * (oh * ow) + Var("output_y") * ow),
+                ("first_column", column),
+                ("columns", columns),
+            ),
+        )
+    )
+    return Kernel(
+        "striped_spatial_max",
+        (
+            TensorArg("input", (batches * h * w, channels), "i8", "read"),
+            TensorArg("output", (batches * oh * ow, channels), "i8", "write"),
+        ),
+        (Loop("batch", batches, (Loop("output_y", oh, (Loop("channel", blocks, tuple(body)),)),)),),
+    )
 
 
 @dataclass(frozen=True)
@@ -88,9 +107,12 @@ class StripedSpatialMax:
     def dynamic_calls(self):
         left, middle, right = _horizontal(self.source.input_hw[1], self.stripe_hw[1], self.source.padding[1])
         loads = self.source.window[0] * (left + (middle + self.transfer_rows - 1) // self.transfer_rows + right)
-        return self.batches * self.source.output_hw[0] * (
-            (self.channels + self.channel_block - 1) // self.channel_block
-        ) * (loads + 1)
+        return (
+            self.batches
+            * self.source.output_hw[0]
+            * ((self.channels + self.channel_block - 1) // self.channel_block)
+            * (loads + 1)
+        )
 
     def revalidate(self):
         """Check this actual counted program and its original capacity/source join.
@@ -100,19 +122,28 @@ class StripedSpatialMax:
         capacity is a bound, not an ownership or physical address-space grant.
         """
         original = plan_striped_spatial_max(
-            self.source, batches=self.batches, channels=self.channels, channel_block=self.channel_block,
-            transfer_rows=self.transfer_rows, capacity_rows=self.capacity_rows,
+            self.source,
+            batches=self.batches,
+            channels=self.channels,
+            channel_block=self.channel_block,
+            transfer_rows=self.transfer_rows,
+            capacity_rows=self.capacity_rows,
         )
         if self.kernel != original.kernel:
             raise ValueError("actual spatial strip program differs from complete original source staging/readout")
         return {
-            "schema": "merlin.striped_spatial_max.v1", "kernel_sha256": self.kernel.digest(),
-            "stripe_hw": list(self.stripe_hw), "output_hw": [1, self.source.output_hw[1]],
-            "temporary_rows": self.temporary_rows, "dynamic_calls": self.dynamic_calls,
+            "schema": "merlin.striped_spatial_max.v1",
+            "kernel_sha256": self.kernel.digest(),
+            "stripe_hw": list(self.stripe_hw),
+            "output_hw": [1, self.source.output_hw[1]],
+            "temporary_rows": self.temporary_rows,
+            "dynamic_calls": self.dynamic_calls,
             "scalar_readout": "unchanged caller-bound readout before signed maximum",
             "padding": "minimum signed i8; duplicate clamped valid source cells",
             "completion_required": "complete every staging call and strip readout before reuse",
-            "physical_mapping_verified": False, "target_execution": False, "timing": None,
+            "physical_mapping_verified": False,
+            "target_execution": False,
+            "timing": None,
         }
 
 

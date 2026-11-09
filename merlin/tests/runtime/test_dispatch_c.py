@@ -255,8 +255,10 @@ def test_compiled_dispatch_checks_all_pointer_alignments_before_calls(tmp_path):
         original.dispatch,
         memory_requirements=replace(original.memory_requirements, reserved=()),
     )
-    bindings = {i: replace(call, buffer_alignment=alignment)
-                for (i, call), alignment in zip(calls().items(), (4, 16, 8, 4), strict=True)}
+    bindings = {
+        i: replace(call, buffer_alignment=alignment)
+        for (i, call), alignment in zip(calls().items(), (4, 16, 8, 4), strict=True)
+    }
     report, files = emit_program_c(bounded, "aligned", bindings)
     assert bounded.memory_plan.offsets == {"a": 0, "c": 0}
     assert [(row["id"], row["alignment"]) for row in report["buffers"]] == [("x", 8), ("y", 16), ("z", 4)]
@@ -305,7 +307,11 @@ int main(void) {
   return 0;
 }
 """)
-    subprocess.run([compiler, "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
-                    "aligned.c", "check.c", "-o", "check"], cwd=tmp_path,
-                   check=True, capture_output=True, timeout=120)
+    subprocess.run(
+        [compiler, "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "aligned.c", "check.c", "-o", "check"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        timeout=120,
+    )
     subprocess.run([str(tmp_path / "check")], check=True, capture_output=True, timeout=10)

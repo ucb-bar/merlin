@@ -27,21 +27,33 @@ reads downstream as a covered one.
 
 from __future__ import annotations
 
-from merlin.targetgen.corpus_shapes import (
-    SynthesisError as SynthesisError,
-    _tile_int as _tile_int,
-    cap_to_affordable as cap_to_affordable,
-    narrowest_admitted as narrowest_admitted,
-    quanta_by_dtype as quanta_by_dtype,
-    _quantize as _quantize,
-    extents_for as extents_for,
-)
-
 import copy
 import hashlib
 import json
 from math import isqrt
 from typing import Any
+
+from merlin.targetgen.corpus_shapes import (
+    SynthesisError as SynthesisError,
+)
+from merlin.targetgen.corpus_shapes import (
+    _quantize as _quantize,
+)
+from merlin.targetgen.corpus_shapes import (
+    _tile_int as _tile_int,
+)
+from merlin.targetgen.corpus_shapes import (
+    cap_to_affordable as cap_to_affordable,
+)
+from merlin.targetgen.corpus_shapes import (
+    extents_for as extents_for,
+)
+from merlin.targetgen.corpus_shapes import (
+    narrowest_admitted as narrowest_admitted,
+)
+from merlin.targetgen.corpus_shapes import (
+    quanta_by_dtype as quanta_by_dtype,
+)
 
 from .application_operation_plan import _application_operation_plan as _application_operation_plan
 from .application_operation_plan import _cost as _cost

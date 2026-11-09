@@ -36,6 +36,7 @@ def policy(path):
     if not value["drain_s"] <= value["final_model_s"] < value["duration_s"]:
         raise ValueError("joint campaign windows must be nested")
     from .study_protocol import validate as validate_study_protocol
+
     validate_study_protocol(value)
     mode = value.get("compiler_execution_mode", "profile_strict_v1")
     if mode not in {"profile_strict_v1", "snapshot_external_v1"}:
@@ -234,6 +235,7 @@ def require_full_model(*, engine="spike", now=None):
     if value is None:
         return None
     from .study_protocol import validate as study_protocol
+
     if study_protocol(value["policy"]) is not None:
         raise RuntimeError("private whole-model campaigns are outside the selected-capsule study")
     left = remaining(now=now)
@@ -378,8 +380,9 @@ def physical_correctness(capsule, *, wait=None, progress=None, queue=None, poll_
                         f"+ {reservation:.0f} s for this job > {spec['worker_budget_s']} s); "
                         "obligation remains pending"
                     )
-                Q.enqueue(data, token, capsule=capsule, request_class=request_class, now=time.time(),
-                          requester=Q.requester())
+                Q.enqueue(
+                    data, token, capsule=capsule, request_class=request_class, now=time.time(), requester=Q.requester()
+                )
                 state = Q.describe(data, token, spec["max_jobs"])
                 if Q.admissible(data, token, spec["max_jobs"]):
                     Q.leave(data, token)
@@ -534,9 +537,9 @@ def selfcheck_policy(function):
                 left = max(1, int(remaining()))
                 return function(forwarded + ["--timeout", str(min(request.timeout, left))], **kwargs)
             if sim == "gsim":
+                from .gsim_wall_cap import request_refusal
                 from .joint_gsim_measurement import admission as measurement
                 from .joint_gsim_measurement import requested as measurement_request
-                from .gsim_wall_cap import request_refusal
 
                 over_cap = None if measurement_request() is not None else request_refusal(request.capsules)
                 if over_cap is not None:
@@ -611,6 +614,7 @@ def prompt_block():
     if value is None:
         return ""
     from .study_protocol import prompt as study_prompt
+
     study = study_prompt(value["policy"])
     if study:
         return study + instruction_policy_line(value["policy"])
@@ -620,12 +624,16 @@ def prompt_block():
 def _l3_schedule_text(p):
     """Author-facing: when L3 certification runs, and which engine measures performance."""
     if (p.get("gsim_correctness") or {}).get("continuous_promotion") is True:
-        return ("Every original capsule selected in gsim_correctness retains both Spike and gSIM "
-                "correctness obligations; the native queue promotes eligible exact snapshots after cheap "
-                "prerequisites and reuses matching native evidence.")
-    return ("L3 gSIM certification of the selected correctness cases runs at the end, best-effort, on "
-            "the final compiler; development grades stop at Spike L0-L2. Performance is measured on the "
-            "Spike cycle model by default; ask for gSIM cycles with --sim gsim.")
+        return (
+            "Every original capsule selected in gsim_correctness retains both Spike and gSIM "
+            "correctness obligations; the native queue promotes eligible exact snapshots after cheap "
+            "prerequisites and reuses matching native evidence."
+        )
+    return (
+        "L3 gSIM certification of the selected correctness cases runs at the end, best-effort, on "
+        "the final compiler; development grades stop at Spike L0-L2. Performance is measured on the "
+        "Spike cycle model by default; ask for gSIM cycles with --sim gsim."
+    )
 
 
 def _campaign_prompt_block(p):
@@ -721,7 +729,8 @@ def stage_evidence(verdict):
             "physical_certificate": False,
             "final_only_pending": sorted(held_capsules(value)),
             "physical_correctness_required": sorted(correctness_capsules(value)),
-            "physical_correctness_schedule": "during the run" if continuous_l3_promotion(value)
+            "physical_correctness_schedule": "during the run"
+            if continuous_l3_promotion(value)
             else "L3 is certified at the end, best-effort; development rows are not L3 failures",
             "performance_qualification": "unknown",
         }
@@ -759,10 +768,13 @@ def _full_compiler_prompt_block(policy):
         + "\n\n"
         f"Selected campaign duration: {policy['duration_s'] / 3600:g} hours from author launch; "
         f"editing stops {policy['drain_s'] / 60:g} minutes before deadline for freeze/drain. "
-        + (f"Required gSIM correctness: {len(correctness.get('capsules', ()))} declared cases, "
-           f"concurrency {correctness.get('max_jobs', 'unselected')}, "
-           f"per-job budget {correctness.get('per_job_s', 'unselected')} seconds. "
-           if correctness.get("continuous_promotion") is True else _l3_schedule_text(policy) + " ")
+        + (
+            f"Required gSIM correctness: {len(correctness.get('capsules', ()))} declared cases, "
+            f"concurrency {correctness.get('max_jobs', 'unselected')}, "
+            f"per-job budget {correctness.get('per_job_s', 'unselected')} seconds. "
+            if correctness.get("continuous_promotion") is True
+            else _l3_schedule_text(policy) + " "
+        )
         + f"Selective calibration gSIM concurrency {witness.get('max_jobs', 'unselected')}, "
         f"per-job budget {witness.get('per_job_s', 'unselected')} seconds; "
         f"initial diagnostics {bounds['initial_diagnostics_max']}, bootstrap observations "

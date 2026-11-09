@@ -38,15 +38,19 @@ def test_real_oot_renderer_policy_and_discovery_are_the_selected_owners(selected
     rendered = legacy.render_schedule(knobs, codegen_provider=selected)
     assert rendered == (root / "schedules/hand_v0/schedule.mlir").read_text()
     assert legacy.microkernel_features({"MR": 4, "NR": 16, "KC": 16}, codegen_provider=selected) == [
-        "accumulator_resident_microkernel_v3", "erase_self_copy",
+        "accumulator_resident_microkernel_v3",
+        "erase_self_copy",
     ]
     assert legacy._rvv_best_block(4, 16, [(8, 344)], codegen_provider=selected) == (4, 8)
     from merlin.kernels import action_catalog, regions
 
     source = str(selected.microkernel_policy_api().__file__)
     assert action_catalog.seam_location("schedule:op_match", codegen_provider=selected)["seam_file"] == source
-    points = [point for _, point in regions.all_edit_points(codegen_provider=selected)
-              if point.seam in {"schedule:op_match", "schedule:vector_sizes"}]
+    points = [
+        point
+        for _, point in regions.all_edit_points(codegen_provider=selected)
+        if point.seam in {"schedule:op_match", "schedule:vector_sizes"}
+    ]
     assert points and all(point.file == source and point.forkable_now for point in points)
     record = legacy.policy_source_record(selected)
     assert any(row["path"].endswith("policy/blocking_cost.py") for row in record["members"])
@@ -71,16 +75,20 @@ def test_missing_installed_policy_and_policy_source_mutation_refuse(monkeypatch,
     from merlin.compiler.backend import service
 
     monkeypatch.setattr(paths, "env", lambda name: None)
+
     def absent(*args, **kwargs):
         raise ValueError("no installed backend")
+
     monkeypatch.setattr(service, "resolve", absent)
     with pytest.raises(RuntimeError, match="requires its OOT package"):
         legacy.render_schedule({})
     member = tmp_path / "selected-policy.py"
     member.write_text("before")
+
     def changed(knobs):
         member.write_text("after")
         return "candidate schedule"
+
     provider = SimpleNamespace(API_VERSION=1, render_schedule=changed, policy_source_files=lambda: [member])
     with pytest.raises(ValueError, match="source changed"):
         legacy.render_schedule({}, codegen_provider=provider)
@@ -94,9 +102,16 @@ def test_fork_retains_lineage_and_actual_selected_renderer_sources(selected, tmp
     root = Path(selected.microkernel_policy_api().__file__).parents[3]
     parent = load_host_package(root / "schedules/hand_v0", codegen_provider=selected)
     original = parent.schedule_text
-    result = legacy.mint_fork(parent, {"contraction_strategy": "outerproduct"},
-                              version=1, depth=1, timestamp="test", source_evidence=["policy-owner-test"],
-                              lever="lowering_pattern", out_root=tmp_path)
+    result = legacy.mint_fork(
+        parent,
+        {"contraction_strategy": "outerproduct"},
+        version=1,
+        depth=1,
+        timestamp="test",
+        source_evidence=["policy-owner-test"],
+        lever="lowering_pattern",
+        out_root=tmp_path,
+    )
     fork = load_host_package(result, codegen_provider=selected)
     assert fork.manifest["lineage"]["parent_run_id"] == parent.run_id
     assert fork.manifest["lineage"]["source_evidence"] == ["policy-owner-test"]
@@ -104,8 +119,12 @@ def test_fork_retains_lineage_and_actual_selected_renderer_sources(selected, tmp
     assert fork.manifest["authoring"]["renderer_sources"] == legacy.policy_source_record(selected)
     source = str(selected.microkernel_policy_api().__file__)
     views = _regions_view(codegen_provider=selected)
-    points = [point for region in views for point in region["edit_points"]
-              if point["seam"] in {"schedule:op_match", "schedule:vector_sizes"}]
+    points = [
+        point
+        for region in views
+        for point in region["edit_points"]
+        if point["seam"] in {"schedule:op_match", "schedule:vector_sizes"}
+    ]
     assert points and all(point["file"] == source for point in points)
     ladder = _ladder_for("compute.nr_is_vsetvlmax", "rvv", codegen_provider=selected)["ladder"]
     assert any(step["seam_file"] == source for step in ladder if step["target_seam"].startswith("schedule:"))

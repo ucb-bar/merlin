@@ -1,4 +1,5 @@
 """Validated target instruction signatures, numerical premises and constraints."""
+
 from __future__ import annotations
 
 import json
@@ -8,6 +9,7 @@ from math import prod
 from typing import Any
 
 from .model import IndexMap, KernelRequest, SemanticNode, TensorType
+
 
 @dataclass(frozen=True)
 class AddressConstraint:
@@ -189,8 +191,10 @@ class InstructionDescriptor:
     def __post_init__(self) -> None:
         if not all((self.name, self.computation, self.output_storage, self.output_dtype, self.numerical_policy)):
             raise ValueError("instruction descriptor needs semantic, storage and numerical identity")
-        if not isinstance(self.bundle_name, str) or type(self.bundle_result_index) is not int or (
-            type(self.bundle_result_count) is not int
+        if (
+            not isinstance(self.bundle_name, str)
+            or type(self.bundle_result_index) is not int
+            or (type(self.bundle_result_count) is not int)
         ):
             raise ValueError("multi-result instruction fields need typed names and indexes")
         if self.bundle_name:
@@ -218,9 +222,13 @@ class InstructionDescriptor:
         if self.source_required_attrs and not self.value_preserving_copy:
             raise ValueError("source attributes require a value-preserving copy")
         arity = len(self.input_storages)
-        if not isinstance(self.input_layouts, tuple) or self.input_layouts and (
-            len(self.input_layouts) != arity
-            or any(not isinstance(layout, str) or not layout for layout in self.input_layouts)
+        if (
+            not isinstance(self.input_layouts, tuple)
+            or self.input_layouts
+            and (
+                len(self.input_layouts) != arity
+                or any(not isinstance(layout, str) or not layout for layout in self.input_layouts)
+            )
         ):
             raise ValueError("instruction input layouts must cover every operand")
         if not isinstance(self.output_layout, str):
@@ -334,8 +342,7 @@ class InstructionDescriptor:
         if not 0 <= index < len(self.input_numerical_policies):
             return False
         return policy == self.input_numerical_policies[index] or (
-            bool(self.input_policy_alternatives)
-            and policy in self.input_policy_alternatives[index]
+            bool(self.input_policy_alternatives) and policy in self.input_policy_alternatives[index]
         )
 
     def accepts(self, node: SemanticNode, inputs: tuple[SemanticNode, ...]) -> bool:
@@ -363,8 +370,7 @@ class InstructionDescriptor:
             and all(type(attributes[key]) is type(value) and attributes[key] == value for key, value in fixed.items())
             and all(bound.accepts(attributes[bound.name]) for bound in self.parameter_attrs)
             and all(n.type.dtype == dtype for n, dtype in zip(inputs, self.input_dtypes))
-            and all(self.accepts_input_policy(index, n.type.numerical_policy)
-                    for index, n in enumerate(inputs))
+            and all(self.accepts_input_policy(index, n.type.numerical_policy) for index, n in enumerate(inputs))
             and (not self.input_ranks or all(len(n.type.shape) == rank for n, rank in zip(inputs, self.input_ranks)))
             and (
                 all(n.type.shape == node.type.shape for n in inputs)
@@ -450,8 +456,13 @@ class InstructionDescriptor:
         }
         required = expected - {"source_required_attrs"}
         allowed = expected | {
-            "parameter_attrs", "input_policy_alternatives", "input_layouts", "output_layout",
-            "bundle_name", "bundle_result_index", "bundle_result_count",
+            "parameter_attrs",
+            "input_policy_alternatives",
+            "input_layouts",
+            "output_layout",
+            "bundle_name",
+            "bundle_result_index",
+            "bundle_result_count",
         }
         if not required <= set(row) <= allowed:
             raise ValueError("instruction descriptor has missing or unknown fields")
@@ -484,9 +495,7 @@ class InstructionDescriptor:
             validity=tuple(AddressConstraint.from_record(item) for item in row["validity"]),
             input_dtypes=tuple(row["input_dtypes"]),
             input_numerical_policies=tuple(row["input_numerical_policies"]),
-            input_policy_alternatives=tuple(
-                tuple(policies) for policies in raw_alternatives
-            ),
+            input_policy_alternatives=tuple(tuple(policies) for policies in raw_alternatives),
             input_ranks=tuple(row["input_ranks"]),
             output_axis_bounds=tuple(AxisBound.from_record(item) for item in row["output_axis_bounds"]),
             input_axis_bounds=tuple(
@@ -505,4 +514,3 @@ class InstructionDescriptor:
             bundle_result_index=row.get("bundle_result_index", 0),
             bundle_result_count=row.get("bundle_result_count", 1),
         )
-

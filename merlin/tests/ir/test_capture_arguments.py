@@ -27,12 +27,12 @@ def _capture(root, *, dtype="f32", scalar=None, buffer=None, extra_members=None)
     root.mkdir()
     scalar = np.array(-0.0, dtype="float32") if scalar is None else scalar
     buffer = np.array([1, -2], dtype="float32") if buffer is None else buffer
-    source = f'''builtin.module attributes {{prov.weights_file = "old.safetensors"}} {{
+    source = f"""builtin.module attributes {{prov.weights_file = "old.safetensors"}} {{
       func.func @forward(%w: tensor<2xf32>, %c: tensor<{dtype}>,
                          %b: tensor<2xf32>, %x: tensor<2xf32>) -> tensor<2xf32> {{
         func.return %x : tensor<2xf32>
       }}
-    }}'''.encode()
+    }}""".encode()
     manifest = {
         "0": {"kind": "param", "weight": "linear.weight", "dtype": "float32", "shape": [2]},
         "1": {"kind": "input", "name": "c_lifted_tensor_0"},
@@ -41,24 +41,51 @@ def _capture(root, *, dtype="f32", scalar=None, buffer=None, extra_members=None)
     }
     header = json.dumps({"linear.weight": {"dtype": "F32", "shape": [2], "data_offsets": [0, 8]}}).encode()
     trace = json.dumps({"status": "complete", "mlir": {"sha256": _sha(source)}}).encode()
-    meta = {"ok": True, "opaque": 0, "weights": "old.safetensors", "func_name": "forward",
-            "input_abi": [{"shape": [2], "dtype": "f32"}], "output_abi": [{"shape": [2], "dtype": "f32"}],
-            "dtype": "f32", "frontend_trace": {"sha256": _sha(trace)}}
+    meta = {
+        "ok": True,
+        "opaque": 0,
+        "weights": "old.safetensors",
+        "func_name": "forward",
+        "input_abi": [{"shape": [2], "dtype": "f32"}],
+        "output_abi": [{"shape": [2], "dtype": "f32"}],
+        "dtype": "f32",
+        "frontend_trace": {"sha256": _sha(trace)},
+    }
     stream = BytesIO()
-    np.savez(stream, **{"c_lifted_tensor_0": scalar, "buf::state.value": buffer,
-                       "unrelated_private_tensor": np.array([123]), **(extra_members or {})})
-    members = {"model.mlir": source, "weights.safetensors": struct.pack("<Q", len(header)) + header + bytes(8),
-               "weights.safetensors.manifest.json": json.dumps(manifest).encode(),
-               "input_order.json": b'{"x": 0}', "extra.npz": stream.getvalue(),
-               "frontend-trace.json": trace, "meta.json": json.dumps(meta).encode(),
-               "inputs.npz": b"private runtime data", "golden.npy": b"private reference data"}
+    np.savez(
+        stream,
+        **{
+            "c_lifted_tensor_0": scalar,
+            "buf::state.value": buffer,
+            "unrelated_private_tensor": np.array([123]),
+            **(extra_members or {}),
+        },
+    )
+    members = {
+        "model.mlir": source,
+        "weights.safetensors": struct.pack("<Q", len(header)) + header + bytes(8),
+        "weights.safetensors.manifest.json": json.dumps(manifest).encode(),
+        "input_order.json": b'{"x": 0}',
+        "extra.npz": stream.getvalue(),
+        "frontend-trace.json": trace,
+        "meta.json": json.dumps(meta).encode(),
+        "inputs.npz": b"private runtime data",
+        "golden.npy": b"private reference data",
+    }
     for name, raw in members.items():
         (root / name).write_bytes(raw)
-    receipt = {"schema": "m2m.capture-receipt.v1",
-               "materialized_abi": {"complete": True, "inputs": 1, "lifted_constants": ["c_lifted_tensor_0"]},
-               "lifted_constants": {"c_lifted_tensor_0": {"shape": list(scalar.shape), "dtype": str(scalar.dtype),
-                                                          "sha256": _sha(scalar.tobytes())}},
-               "artifacts": {name: {"bytes": len(raw), "sha256": _sha(raw)} for name, raw in members.items()}}
+    receipt = {
+        "schema": "m2m.capture-receipt.v1",
+        "materialized_abi": {"complete": True, "inputs": 1, "lifted_constants": ["c_lifted_tensor_0"]},
+        "lifted_constants": {
+            "c_lifted_tensor_0": {
+                "shape": list(scalar.shape),
+                "dtype": str(scalar.dtype),
+                "sha256": _sha(scalar.tobytes()),
+            }
+        },
+        "artifacts": {name: {"bytes": len(raw), "sha256": _sha(raw)} for name, raw in members.items()},
+    }
     (root / "capture_receipt.json").write_text(json.dumps(receipt))
 
 
@@ -103,14 +130,27 @@ def test_declared_leaves_only_and_buffer_remains_state(tmp_path, monkeypatch):
     assert not {"extra.npz", "golden.npy", "inputs.npz"} & {p.name for p in stage.iterdir()}
     assert (capture / "weights.safetensors").read_bytes() == (stage / "weights.safetensors").read_bytes()
     assert result["source"]["argument_materialization"]["entries"][1]["role"] == "buffer"
-    state = StateDeclaration.from_record({"schema": "merlin.application_state.v1",
-                                         "source_program_sha256": staged.program_sha256,
-                                         "ports": [{"argument_index": 2, "name": "b_state_value",
-                                                    "mode": "read_only", "output_index": None,
-                                                    "initialization": "captured"}]}, staged)
+    state = StateDeclaration.from_record(
+        {
+            "schema": "merlin.application_state.v1",
+            "source_program_sha256": staged.program_sha256,
+            "ports": [
+                {
+                    "argument_index": 2,
+                    "name": "b_state_value",
+                    "mode": "read_only",
+                    "output_index": None,
+                    "initialization": "captured",
+                }
+            ],
+        },
+        staged,
+    )
     assert state.ports[0].argument_index == 2
     request = translate_linalg_text(
-        staged.program, entry=staged.entry, target_identity="synthetic",
+        staged.program,
+        entry=staged.entry,
+        target_identity="synthetic",
         argument_constants={0: payloads[0], 1: payloads[1]},
     ).request
     assert request.node("arg1").op == "constant" and request.node("arg2").op == "input"
@@ -119,16 +159,24 @@ def test_declared_leaves_only_and_buffer_remains_state(tmp_path, monkeypatch):
         freeze_c_arguments(stage, name="model", source_sha256=staged.program_sha256)
 
 
-@pytest.mark.parametrize("case, expected", [
-    ("buffer_collision", "unique initializer"), ("wrong_dtype", "dtype differs"),
-    ("wrong_shape", "shape or numeric storage"), ("hash", "capture receipt"),
-    ("runtime_constant", "runtime input positions"), ("zip", "valid NPZ"),
-])
+@pytest.mark.parametrize(
+    "case, expected",
+    [
+        ("buffer_collision", "unique initializer"),
+        ("wrong_dtype", "dtype differs"),
+        ("wrong_shape", "shape or numeric storage"),
+        ("hash", "capture receipt"),
+        ("runtime_constant", "runtime input positions"),
+        ("zip", "valid NPZ"),
+    ],
+)
 def test_rejects_invalid_materialization_atomically(tmp_path, case, expected):
     capture, stage = tmp_path / "capture", tmp_path / "stage"
-    options = {"buffer_collision": {"extra_members": {"buf::state_value": np.ones(2, dtype="float32")}},
-               "wrong_dtype": {"buffer": np.ones(2, dtype="float64")},
-               "wrong_shape": {"buffer": np.ones(3, dtype="float32")}}
+    options = {
+        "buffer_collision": {"extra_members": {"buf::state_value": np.ones(2, dtype="float32")}},
+        "wrong_dtype": {"buffer": np.ones(2, dtype="float64")},
+        "wrong_shape": {"buffer": np.ones(3, dtype="float32")},
+    }
     _capture(capture, **options.get(case, {}))
     if case == "hash":
         path = capture / "capture_receipt.json"
@@ -171,8 +219,13 @@ def test_streamed_archives_select_roles_and_check_budget_without_whole_file_read
     staged = load_compile_inputs(stage)
     assert [row["kind"] for row in staged.argument_bindings] == ["param", "constant", "buffer", "input"]
     all_values = {0: bytes(8), 1: struct.pack("<I", 0x80000000), 2: struct.pack("<2f", 1, -2)}
-    for kinds, indices, budget in (((), (), 0), (("constant",), (1,), 4), (("buffer",), (2,), 8),
-                                   (("param",), (0,), 8), (("param", "constant"), (0, 1), 12)):
+    for kinds, indices, budget in (
+        ((), (), 0),
+        (("constant",), (1,), 4),
+        (("buffer",), (2,), 8),
+        (("param",), (0,), 8),
+        (("param", "constant"), (0, 1), 12),
+    ):
         assert load_lifted_argument_bytes(stage, staged, kinds=kinds, max_bytes=budget) == {
             index: all_values[index] for index in indices
         }
@@ -298,12 +351,16 @@ def test_duplicate_zip_members_refuse():
         with pytest.warns(UserWarning, match="Duplicate name"):
             archive.writestr("c_lifted_tensor_0.npy", member.getvalue())
     with pytest.raises(ValueError, match="duplicate members"):
-        materialize_arguments({"0": {"kind": "input", "name": "c_lifted_tensor_0"}},
-                              [{"shape": [1], "dtype": "f32"}],
-                              {"lifted_constants": {"c_lifted_tensor_0": {}},
-                               "materialized_abi": {"lifted_constants": ["c_lifted_tensor_0"]}},
-                              stream.getvalue(), _WEIGHT_DTYPES)
-
+        materialize_arguments(
+            {"0": {"kind": "input", "name": "c_lifted_tensor_0"}},
+            [{"shape": [1], "dtype": "f32"}],
+            {
+                "lifted_constants": {"c_lifted_tensor_0": {}},
+                "materialized_abi": {"lifted_constants": ["c_lifted_tensor_0"]},
+            },
+            stream.getvalue(),
+            _WEIGHT_DTYPES,
+        )
 
 
 def test_mlir_immutable_bindings_keep_every_storage_bit_runtime_order_and_original_stage(tmp_path, monkeypatch):
@@ -326,15 +383,21 @@ def test_mlir_immutable_bindings_keep_every_storage_bit_runtime_order_and_origin
         "i1": ("bool", "BOOL", bytes.fromhex("01000100")),
     }
     read = Path.read_bytes
+
     def compiler_only(path):
         assert path.name not in {"golden.npy", "inputs.npz", "extra.npz"}
         return read(path)
+
     monkeypatch.setattr(Path, "read_bytes", compiler_only)
     for dtype, (framework, storage, data) in formats.items():
         capture, stage = tmp_path / dtype, tmp_path / (dtype + "-stage")
         _write_weighted_capture(capture, shared_weight=True, return_weight=True)
-        source = read(capture / "model.mlir").decode().replace(
-            "%input: tensor<2x2xf32>)", "%input: tensor<2x2xf32>, %other: tensor<2x2xf32>)").replace("f32", dtype)
+        source = (
+            read(capture / "model.mlir")
+            .decode()
+            .replace("%input: tensor<2x2xf32>)", "%input: tensor<2x2xf32>, %other: tensor<2x2xf32>)")
+            .replace("f32", dtype)
+        )
         _replace(capture, "model.mlir", source.encode())
         trace = json.dumps({"status": "complete", "mlir": {"sha256": _sha(source.encode())}}).encode()
         _replace(capture, "frontend-trace.json", trace)
@@ -355,8 +418,9 @@ def test_mlir_immutable_bindings_keep_every_storage_bit_runtime_order_and_origin
         for index in ("0", "1"):
             rows[index]["dtype"] = framework
         _replace(capture, "weights.safetensors.manifest.json", json.dumps(rows).encode())
-        header = json.dumps({"linear.weight": {"dtype": storage, "shape": [2, 2],
-                                                "data_offsets": [0, len(data)]}}).encode()
+        header = json.dumps(
+            {"linear.weight": {"dtype": storage, "shape": [2, 2], "data_offsets": [0, len(data)]}}
+        ).encode()
         _replace(capture, "weights.safetensors", struct.pack("<Q", len(header)) + header + data)
         stage_compile_inputs(capture, stage)
         staged = load_compile_inputs(stage)
@@ -405,14 +469,18 @@ def test_mlir_immutable_bindings_keep_every_storage_bit_runtime_order_and_origin
     for name, shape, data in (("scalar", (), bytes.fromhex("0100807f")), ("empty", (0,), b"")):
         capture, stage = tmp_path / name, tmp_path / (name + "-stage")
         tensor = "tensor<" + "".join(str(n) + "x" for n in shape) + "f32>"
-        source = ('builtin.module attributes {prov.weights_file = "origin/weights.safetensors"} {'
-                  f'func.func @forward(%w: {tensor}) -> {tensor} {{func.return %w : {tensor}}}' + '}')
+        source = (
+            'builtin.module attributes {prov.weights_file = "origin/weights.safetensors"} {'
+            f"func.func @forward(%w: {tensor}) -> {tensor} {{func.return %w : {tensor}}}" + "}"
+        )
         _write_capture(capture, source=source, input_shapes=(), output_shapes=(shape,))
-        header = json.dumps({"weight": {"dtype": "F32", "shape": list(shape),
-                                          "data_offsets": [0, len(data)]}}).encode()
+        header = json.dumps({"weight": {"dtype": "F32", "shape": list(shape), "data_offsets": [0, len(data)]}}).encode()
         _replace(capture, "weights.safetensors", struct.pack("<Q", len(header)) + header + data)
-        _replace(capture, "weights.safetensors.manifest.json", json.dumps({
-            "0": {"kind": "param", "weight": "weight", "dtype": "float32", "shape": list(shape)}}).encode())
+        _replace(
+            capture,
+            "weights.safetensors.manifest.json",
+            json.dumps({"0": {"kind": "param", "weight": "weight", "dtype": "float32", "shape": list(shape)}}).encode(),
+        )
         _replace(capture, "input_order.json", b"{}")
         stage_compile_inputs(capture, stage)
         staged = load_compile_inputs(stage)
@@ -437,9 +505,15 @@ def test_mlir_binding_refuses_state_calls_and_changed_selected_source(tmp_path):
         bind_lifted_arguments(stage, load_compile_inputs(stage), max_initialization_bytes=100)
     capture, stage = tmp_path / "calls", tmp_path / "calls-stage"
     _write_weighted_capture(capture)
-    source = (capture / "model.mlir").read_text().replace(
-        "func.return %input", "func.call @forward(%weight, %input) : "
-        "(tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>\nfunc.return %input")
+    source = (
+        (capture / "model.mlir")
+        .read_text()
+        .replace(
+            "func.return %input",
+            "func.call @forward(%weight, %input) : "
+            "(tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>\nfunc.return %input",
+        )
+    )
     _replace(capture, "model.mlir", source.encode())
     trace = json.dumps({"status": "complete", "mlir": {"sha256": _sha(source.encode())}}).encode()
     _replace(capture, "frontend-trace.json", trace)

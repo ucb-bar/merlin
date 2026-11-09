@@ -350,7 +350,11 @@ def load_boards(path: str | Path | None = None) -> dict[str, Board]:
             if vector is None:
                 count = kwargs.get("vector_harts")
                 vector = tuple(range(kwargs["harts"] if count is None else count))
-            if not ids or len(set(ids)) != len(ids) or any(h not in vector or not 0 <= h < kwargs["harts"] for h in ids):
+            if (
+                not ids
+                or len(set(ids)) != len(ids)
+                or any(h not in vector or not 0 <= h < kwargs["harts"] for h in ids)
+            ):
                 raise BoardRegistryError(
                     f"{where}: matrix_hart_ids must be distinct vector-capable harts {list(vector)}; got {list(ids)}"
                 )

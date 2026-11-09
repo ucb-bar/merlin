@@ -8,8 +8,7 @@ from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, StringAttr, i32
 
 from merlin.common import mlir_query as mq
 from merlin.common.paths import merlin_dir
-from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
-from merlin.compiler.schedule.dense_source import _problem
+from merlin.compiler.schedule.dense_source import DenseSourceUnavailable, _problem
 from merlin.targetgen.capsule_source import model_op_demands_checked
 from merlin.transforms.certificates import ir_digest, ir_text
 from merlin.transforms.dense_ir import recognize_signed_integer_matmul, static_zero_integer_matmul_geometry

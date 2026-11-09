@@ -294,8 +294,11 @@ def test_activation_accurate_on_spike(op):
     from merlin.runtime.boards import board as selected_board
 
     run = zm.run_on_spike(
-        build["elf"], dram_base=selected_board(build["board"]).dram_base,
-        harts=1, mem_bytes=build["ram_bytes"], timeout=900,
+        build["elf"],
+        dram_base=selected_board(build["board"]).dram_base,
+        harts=1,
+        mem_bytes=build["ram_bytes"],
+        timeout=900,
     )
     gate = zm._gate(run["prefix"], refs)
     assert gate.get("ok") is True

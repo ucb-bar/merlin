@@ -14,12 +14,12 @@ from __future__ import annotations
 import hashlib
 import json
 from contextlib import nullcontext
-from io import BytesIO
-from merlin.capture.safetensors import read_header
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 
 from merlin.capture.safetensors import load_header as load_safetensors_header
+from merlin.capture.safetensors import read_header
 
 DTYPE_BYTES = {"I8": 1, "U8": 1, "I32": 4, "I64": 8, "F16": 2, "BF16": 2, "F32": 4, "F64": 8}
 
@@ -145,8 +145,10 @@ def checked_payload(safetensors_path, *, archive_sha256, out_blob=None):
     and chunk storage, and never replace an existing output. This validates
     byte identity, not tensor numerical domains or target packing.
     """
-    if not isinstance(archive_sha256, str) or len(archive_sha256) != 64 or any(
-        char not in "0123456789abcdef" for char in archive_sha256
+    if (
+        not isinstance(archive_sha256, str)
+        or len(archive_sha256) != 64
+        or any(char not in "0123456789abcdef" for char in archive_sha256)
     ):
         raise ValueError("weight archive needs a canonical SHA256 identity")
     target = Path(out_blob) if out_blob is not None else None
@@ -169,8 +171,12 @@ def checked_payload(safetensors_path, *, archive_sha256, out_blob=None):
                         destination.write(chunk)
                 if complete.hexdigest() != archive_sha256:
                     raise ValueError("weight archive changed after compiler input validation")
-        return {"archive_sha256": archive_sha256, "payload_sha256": payload.hexdigest(),
-                "payload_offset": offset, "payload_bytes": count}
+        return {
+            "archive_sha256": archive_sha256,
+            "payload_sha256": payload.hexdigest(),
+            "payload_offset": offset,
+            "payload_bytes": count,
+        }
     except BaseException:
         if created:
             target.unlink(missing_ok=True)

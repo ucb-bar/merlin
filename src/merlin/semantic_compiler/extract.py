@@ -65,8 +65,15 @@ class Choice:
         # Choices are immutable. Preserve the serialized identity while avoiding
         # repeated expansion of the same shared producer for every consumer.
         base = (self.eclass, self.symbol, self.storage, tuple(child.key() for child in self.children))
-        return base if not self.bundle_instance else (
-            *base, self.bundle_instance, self.bundle_result_index, self.bundle_result_count,
+        return (
+            base
+            if not self.bundle_instance
+            else (
+                *base,
+                self.bundle_instance,
+                self.bundle_result_index,
+                self.bundle_result_count,
+            )
         )
 
     def physical_instance(self) -> tuple | None:
@@ -140,8 +147,7 @@ _ChoiceRequest = tuple[int, str, str, int, frozenset[tuple[int, str, str]]]
 def _cycle_components(exploration: Exploration, deadline: float | None) -> dict[int, frozenset[int]]:
     """Find mutually reachable classes with two iterative depth-first walks."""
     edges = {
-        eclass: {child for node in nodes for child in node.children}
-        for eclass, nodes in exploration.classes.items()
+        eclass: {child for node in nodes for child in node.children} for eclass, nodes in exploration.classes.items()
     }
     reverse: dict[int, set[int]] = {eclass: set() for eclass in edges}
     for eclass, children in tuple(edges.items()):
@@ -208,7 +214,9 @@ def _mandatory_instruction_bound(
     for node, alternatives in exploration.classes.items():
         _check_deadline(deadline)
         dependencies[owners[node]].update(
-            owners[child] for alternative in alternatives for child in alternative.children
+            owners[child]
+            for alternative in alternatives
+            for child in alternative.children
             if owners[child] != owners[node]
         )
     required: dict[int, set[int]] = {}
@@ -220,9 +228,7 @@ def _mandatory_instruction_bound(
                 kind = program.symbols.get(alternative.symbol, {}).get("kind")
                 if kind in {"input", "constant"}:
                     exits.append(set())
-                elif kind in {"instruction", "view"} and all(
-                    owners[child] != label for child in alternative.children
-                ):
+                elif kind in {"instruction", "view"} and all(owners[child] != label for child in alternative.children):
                     obligations = set().union(*(required[owners[child]] for child in alternative.children))
                     if kind == "instruction" and alternative.symbol.startswith("i_"):
                         obligations.add(label)
@@ -237,11 +243,13 @@ def _mandatory_instruction_bound(
     boundary_issues = set()
     for root, storage in zip(exploration.roots, output_storages):
         alternatives = exploration.classes.get(root, ())
-        if any(program.symbols.get(node.symbol, {}).get("kind") in {"input", "constant", "view"}
-               for node in alternatives):
+        if any(
+            program.symbols.get(node.symbol, {}).get("kind") in {"input", "constant", "view"} for node in alternatives
+        ):
             continue
         matching = [
-            node for node in alternatives
+            node
+            for node in alternatives
             if program.symbols.get(node.symbol, {}).get("kind") == "instruction"
             and program.symbols[node.symbol]["descriptor"].get("output_storage") == storage
         ]
@@ -268,7 +276,11 @@ class ExtractionSession:
     def __post_init__(self) -> None:
         self.components = _cycle_components(self.exploration, self.deadline)
         self.minimum_instructions = _mandatory_instruction_bound(
-            self.exploration, self.program, self.components, self.deadline, self.request.output_storages,
+            self.exploration,
+            self.program,
+            self.components,
+            self.deadline,
+            self.request.output_storages,
         )
 
 
@@ -296,10 +308,22 @@ def _choices(
     key = (eclass, storage, required_layout, budget, relevant)
     stream = memo.get(key)
     if stream is None:
-        stream = _ChoiceStream([], _expand_choices(
-            exploration, request, program, eclass, storage, required_layout,
-            budget, ancestors, deadline, memo, components,
-        ))
+        stream = _ChoiceStream(
+            [],
+            _expand_choices(
+                exploration,
+                request,
+                program,
+                eclass,
+                storage,
+                required_layout,
+                budget,
+                ancestors,
+                deadline,
+                memo,
+                components,
+            ),
+        )
         memo[key] = stream
     index = 0
     while True:
@@ -373,8 +397,11 @@ def _expand_choices(
                 else (descriptor.get("source_extent", descriptor["extent"]),)
             )
             if (
-                recursive or len(node.children) != len(required_extents) or descriptor["storage"] != storage
-                or required_layout and descriptor["physical_layout"] != required_layout
+                recursive
+                or len(node.children) != len(required_extents)
+                or descriptor["storage"] != storage
+                or required_layout
+                and descriptor["physical_layout"] != required_layout
             ):
                 continue
 
@@ -384,9 +411,17 @@ def _expand_choices(
                     yield chosen
                     return
                 for child in _choices(
-                    exploration, request, program, node.children[index], storage,
-                    descriptor["physical_layout"], budget,
-                    next_ancestors, deadline, memo, components,
+                    exploration,
+                    request,
+                    program,
+                    node.children[index],
+                    storage,
+                    descriptor["physical_layout"],
+                    budget,
+                    next_ancestors,
+                    deadline,
+                    memo,
+                    components,
                 ):
                     child_metadata = program.symbols[child.symbol]
                     child_extent = (
@@ -418,16 +453,16 @@ def _expand_choices(
         # Earlier request schemas do not state a boundary representation.
         # Descriptor layouts become obligations only for layout-qualified v4
         # requests (or when a view explicitly requests a physical layout).
-        input_layouts = descriptor.get("input_layouts", ()) if (
-            request.boundary_layouts or required_layout
-        ) else ()
+        input_layouts = descriptor.get("input_layouts", ()) if (request.boundary_layouts or required_layout) else ()
         if request.boundary_layouts and len(input_layouts) != len(required):
             continue
         if len(required) != len(node.children):
             continue
         if not node.children:
             yield Choice(
-                eclass, node.symbol, storage,
+                eclass,
+                node.symbol,
+                storage,
                 bundle_instance=metadata.get("bundle_instance", ""),
                 bundle_result_index=metadata.get("bundle_result_index", 0),
                 bundle_result_count=metadata.get("bundle_result_count", 1),
@@ -460,7 +495,10 @@ def _expand_choices(
 
         for children in combinations(0, ()):
             yield Choice(
-                eclass, node.symbol, storage, children,
+                eclass,
+                node.symbol,
+                storage,
+                children,
                 metadata.get("bundle_instance", ""),
                 metadata.get("bundle_result_index", 0),
                 metadata.get("bundle_result_count", 1),
@@ -484,8 +522,10 @@ def enumerate_candidates(
     if session is None:
         session = ExtractionSession(exploration, request, program, deadline)
     elif (
-        session.exploration is not exploration or session.request is not request
-        or session.program is not program or session.deadline != deadline
+        session.exploration is not exploration
+        or session.request is not request
+        or session.program is not program
+        or session.deadline != deadline
     ):
         raise ValueError("extraction session belongs to a different graph, request, rules or deadline")
     if node_budget < session.minimum_instructions:
@@ -511,7 +551,17 @@ def enumerate_candidates(
         storage = request.output_storages[index]
         layout = request.output_layouts[index] if request.output_layouts else ""
         for choice in _choices(
-            exploration, request, program, root, storage, layout, node_budget, frozenset(), deadline, memo, components,
+            exploration,
+            request,
+            program,
+            root,
+            storage,
+            layout,
+            node_budget,
+            frozenset(),
+            deadline,
+            memo,
+            components,
         ):
             if emitted >= max_candidates:
                 return

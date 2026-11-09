@@ -23,9 +23,13 @@ def _write(root, relative, text=""):
     if inventory.is_file():
         policy = json.loads(inventory.read_text())
     else:
-        policy = {"schema": "merlin.logical_components.v1", "research": {
-            owner: {"namespaces": [], "modules": []} for owner in
-            ("merlin-experiments", "merlin-dse", "merlin-mining", "merlin-analysis")}}
+        policy = {
+            "schema": "merlin.logical_components.v1",
+            "research": {
+                owner: {"namespaces": [], "modules": []}
+                for owner in ("merlin-experiments", "merlin-dse", "merlin-mining", "merlin-analysis")
+            },
+        }
     parts = relative.split("/")
     if parts[0] == "packages":
         module = ".".join(parts[3:]).removesuffix(".py").removesuffix(".__init__")

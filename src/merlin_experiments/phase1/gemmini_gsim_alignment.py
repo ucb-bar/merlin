@@ -63,9 +63,14 @@ def _dts_identity(path: Path) -> dict:
     cells = []
     for key in ("#address-cells", "#size-cells"):
         values = root.props.get(key)
-        if (not isinstance(values, list) or len(values) != 1
-                or not isinstance(values[0], tuple) or values[0][0] != "cells"
-                or len(values[0][1]) != 1 or type(values[0][1][0]) is not int):
+        if (
+            not isinstance(values, list)
+            or len(values) != 1
+            or not isinstance(values[0], tuple)
+            or values[0][0] != "cells"
+            or len(values[0][1]) != 1
+            or type(values[0][1][0]) is not int
+        ):
             raise ValueError(f"DTS has no unique root {key}: {path}")
         cells.append(values[0][1][0])
     if any(count not in (1, 2) for count in cells):
@@ -78,8 +83,7 @@ def _dts_identity(path: Path) -> dict:
         if node.strings("status") == ["disabled"] or node.strings("device_type") != ["memory"]:
             continue
         reg = node.props.get("reg")
-        if (not isinstance(reg, list) or len(reg) != 1
-                or not isinstance(reg[0], tuple) or reg[0][0] != "cells"):
+        if not isinstance(reg, list) or len(reg) != 1 or not isinstance(reg[0], tuple) or reg[0][0] != "cells":
             raise ValueError(f"enabled memory node has no single register span: {path}")
         words = reg[0][1]
         if len(words) != sum(cells) or any(type(word) is not int or not 0 <= word <= 0xFFFFFFFF for word in words):
@@ -88,7 +92,7 @@ def _dts_identity(path: Path) -> dict:
         base = size = 0
         for word in words[:address_cells]:
             base = (base << 32) | word
-        for word in words[address_cells:address_cells + size_cells]:
+        for word in words[address_cells : address_cells + size_cells]:
             size = (size << 32) | word
         spans.append((base, size))
     isa = dts_string_values(source, "riscv,isa")

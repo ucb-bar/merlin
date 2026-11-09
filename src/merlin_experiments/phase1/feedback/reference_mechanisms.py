@@ -16,13 +16,29 @@ def interface_sharing(products, *, pin, command_buffer=None, lanes=None, max_wit
     uses = defaultdict(list)
     for product in products:
         for role in ("lhs", "rhs"):
-            uses[product[role]].append(dict(operation=product["ordinal"], operand=role,
-                                           witness=f"source:{pin['sha256']}#command:{product['ordinal']}"))
-    shared = [dict(value=value, consumers=members[:max_witnesses], consumers_total=len(members),
-                   status="observed_declared_interface_sharing", storage_reuse="unknown",
-                   required_proof=["source-to-selected-consumer binding", "load and preparation lifetime",
-                                   "capacity and non-overwrite across all consumers"])
-              for value, members in uses.items() if len({row["operation"] for row in members}) > 1]
+            uses[product[role]].append(
+                dict(
+                    operation=product["ordinal"],
+                    operand=role,
+                    witness=f"source:{pin['sha256']}#command:{product['ordinal']}",
+                )
+            )
+    shared = [
+        dict(
+            value=value,
+            consumers=members[:max_witnesses],
+            consumers_total=len(members),
+            status="observed_declared_interface_sharing",
+            storage_reuse="unknown",
+            required_proof=[
+                "source-to-selected-consumer binding",
+                "load and preparation lifetime",
+                "capacity and non-overwrite across all consumers",
+            ],
+        )
+        for value, members in uses.items()
+        if len({row["operation"] for row in members}) > 1
+    ]
     reductions, unknowns, unsupported_sharing = [], [], []
     if command_buffer is not None:
         # Reuse the canonical ABI's shape/layout/stride/dilation validation.
@@ -41,20 +57,35 @@ def interface_sharing(products, *, pin, command_buffer=None, lanes=None, max_wit
             if any(type(value) is not int for value in kernel):
                 unknowns.append(dict(operation=row.index, reason="convolution kernel extents are not integers"))
                 continue
-            reductions.append(dict(operation=row.index, source_op_index=row.index,
-                witness=f"source:{pin['sha256']}#command:{row.index}",
-                packing=packing_profiles(tuple(kernel[:3]), lanes=lanes)))
-    return dict(status="partial" if unknowns or unsupported_sharing else "observed", origin="parsed_interface_source",
-                reductions=reductions[:max_witnesses], reductions_total=len(reductions),
-                reductions_omitted=max(0, len(reductions) - max_witnesses),
-                shared_inputs=shared[:max_witnesses], shared_inputs_total=len(shared),
-                shared_inputs_omitted=max(0, len(shared) - max_witnesses),
-                shared_input_coverage=dict(status="partial" if unsupported_sharing else "complete_supported_products",
-                    unsupported_commands=unsupported_sharing[:max_witnesses],
-                    unsupported_commands_total=len(unsupported_sharing),
-                    absence_of_sharing="unknown" if unsupported_sharing else "within_supported_products_only"),
-                unknowns=unknowns[:max_witnesses], unknowns_total=len(unknowns),
-                optimization_application="unknown", numerical_equivalence="unknown", performance="unknown")
+            reductions.append(
+                dict(
+                    operation=row.index,
+                    source_op_index=row.index,
+                    witness=f"source:{pin['sha256']}#command:{row.index}",
+                    packing=packing_profiles(tuple(kernel[:3]), lanes=lanes),
+                )
+            )
+    return dict(
+        status="partial" if unknowns or unsupported_sharing else "observed",
+        origin="parsed_interface_source",
+        reductions=reductions[:max_witnesses],
+        reductions_total=len(reductions),
+        reductions_omitted=max(0, len(reductions) - max_witnesses),
+        shared_inputs=shared[:max_witnesses],
+        shared_inputs_total=len(shared),
+        shared_inputs_omitted=max(0, len(shared) - max_witnesses),
+        shared_input_coverage=dict(
+            status="partial" if unsupported_sharing else "complete_supported_products",
+            unsupported_commands=unsupported_sharing[:max_witnesses],
+            unsupported_commands_total=len(unsupported_sharing),
+            absence_of_sharing="unknown" if unsupported_sharing else "within_supported_products_only",
+        ),
+        unknowns=unknowns[:max_witnesses],
+        unknowns_total=len(unknowns),
+        optimization_application="unknown",
+        numerical_equivalence="unknown",
+        performance="unknown",
+    )
 
 
 def selected_lanes(*, facts=None, target=None):
@@ -74,8 +105,12 @@ def selected_lanes(*, facts=None, target=None):
         try:
             geometry = geometry_from_address_space(derive_address_space(target, facts=json.loads(raw)))
             lanes = ReductionLanes(geometry.block, fact_pin["sha256"] + "#derived_square_block_geometry")
-            lane_status = dict(status="derived_square_block_geometry", width=lanes.width,
-                               evidence=lanes.evidence, sources=geometry.sources)
+            lane_status = dict(
+                status="derived_square_block_geometry",
+                width=lanes.width,
+                evidence=lanes.evidence,
+                sources=geometry.sources,
+            )
         except BlockScheduleError as error:
             lane_status = dict(status="unknown", reason=str(error)[:256])
     return lanes, lane_status, inputs
@@ -107,20 +142,41 @@ def align_questions(reference, candidate):
             # never proof that the current lowering selected the worst case.
             extents = [item["physical_extent"] for item in alternatives if item["physical_extent"] is not None]
             if extents and len(set(extents)) > 1:
-                questions.append(dict(
-                    side=side, mechanism="reduction_partition", status="conditional_source_opportunity",
-                    source_witness=row["witness"], useful_extent=packing["useful_reduction_extent"],
-                    conditional_physical_extents=extents, emitted_partition="unknown",
-                    required_proof=packing["required_proof"], optimization_application="unknown"))
+                questions.append(
+                    dict(
+                        side=side,
+                        mechanism="reduction_partition",
+                        status="conditional_source_opportunity",
+                        source_witness=row["witness"],
+                        useful_extent=packing["useful_reduction_extent"],
+                        conditional_physical_extents=extents,
+                        emitted_partition="unknown",
+                        required_proof=packing["required_proof"],
+                        optimization_application="unknown",
+                    )
+                )
         for row in source.get("shared_inputs", []):
-            questions.append(dict(
-                side=side, mechanism="shared_operand_lifetime", status="observed_source_sharing",
-                source_value=row["value"], consumers=row["consumers"],
-                selected_emitted_roots=emitted.get("roots", []),
-                reachable_emitted_functions=emitted.get("reachable_total"),
-                required_proof=row["required_proof"], optimization_application="unknown"))
-    return dict(status="independent_observations", questions=questions[:32], questions_total=len(questions),
-                questions_omitted=max(0, len(questions) - 32),
-                producer_correspondence="unknown", numerical_equivalence="unknown", performance="unknown",
-                next_action="Bind source operations to actual selected consumers and emitted access/partition "
-                            "witnesses; then evaluate capacity, legality and complete-region timing.")
+            questions.append(
+                dict(
+                    side=side,
+                    mechanism="shared_operand_lifetime",
+                    status="observed_source_sharing",
+                    source_value=row["value"],
+                    consumers=row["consumers"],
+                    selected_emitted_roots=emitted.get("roots", []),
+                    reachable_emitted_functions=emitted.get("reachable_total"),
+                    required_proof=row["required_proof"],
+                    optimization_application="unknown",
+                )
+            )
+    return dict(
+        status="independent_observations",
+        questions=questions[:32],
+        questions_total=len(questions),
+        questions_omitted=max(0, len(questions) - 32),
+        producer_correspondence="unknown",
+        numerical_equivalence="unknown",
+        performance="unknown",
+        next_action="Bind source operations to actual selected consumers and emitted access/partition "
+        "witnesses; then evaluate capacity, legality and complete-region timing.",
+    )

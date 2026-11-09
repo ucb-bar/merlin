@@ -19,8 +19,7 @@ import pytest
 from merlin.common.paths import repo_root
 from merlin.compiler.schedule.compact_verification import verify_compact_dense
 from merlin.compiler.schedule.loop_schedule import LoopTransform
-from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
-from merlin.compiler.schedule.schedule_ir import read_dense_schedule_plan
+from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan, read_dense_schedule_plan
 from merlin.kernels.reconstruction import reconstruct
 from merlin.mining.reconstruction_learning import (
     CheckResult,

@@ -11,6 +11,9 @@ from dataclasses import asdict, dataclass
 
 from xdsl.dialects import arith, builtin, tensor
 
+from merlin.compiler.schedule.compact_dense import CompactDenseResult, schedule_compact_dense
+from merlin.compiler.schedule.library_sources import shared_library_sources
+from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
 from merlin.transforms.certificates import ir_digest
 from merlin.transforms.dense_ir import static_zero_integer_matmul_geometry
 from merlin.transforms.pipeline_state import (
@@ -20,10 +23,6 @@ from merlin.transforms.pipeline_state import (
     PipelineSession,
     validate_pass_order,
 )
-
-from merlin.compiler.schedule.compact_dense import CompactDenseResult, schedule_compact_dense
-from merlin.compiler.schedule.library_sources import shared_library_sources
-from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
 
 
 class DenseSourceUnavailable(ValueError):
@@ -43,9 +42,7 @@ def _selection(selected):
 
 def _source_geometry(operation, dtypes, element_budget, *, allow_provenance=False):
     try:
-        return static_zero_integer_matmul_geometry(
-            operation, dtypes, max_source_elements=element_budget
-        )
+        return static_zero_integer_matmul_geometry(operation, dtypes, max_source_elements=element_budget)
     except ValueError as error:
         raise DenseSourceUnavailable(str(error)) from error
 
@@ -216,9 +213,12 @@ class DenseSourceResult:
         self.revalidate()
         result = self.compiled.emit_llvm(builder, lower_call)
         self.revalidate()
-        return {**result, "source_sha256": self.source_stamp.source_sha256,
-                "source_operation_ordinal": self.operation_ordinal,
-                "selected_contracts_identity": self.selection_identity}
+        return {
+            **result,
+            "source_sha256": self.source_stamp.source_sha256,
+            "source_operation_ordinal": self.operation_ordinal,
+            "selected_contracts_identity": self.selection_identity,
+        }
 
 
 def schedule_source_dense(

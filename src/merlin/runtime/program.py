@@ -28,11 +28,11 @@ Default-off and additive — the existing monolithic/outlined paths are untouche
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
 from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any
 
 from merlin.compiler.schedule.arena import ArenaRequirements, check_bounded_arena, plan_bounded_arena
-from typing import Any
 
 from ..xdsl_dialects.lowering.arena_plan import MemoryPlan, plan_arena
 from ..xdsl_dialects.lowering.dispatch_program import DispatchProgram
@@ -154,7 +154,11 @@ def build_program(
         check_bounded_arena(dispatch, memory_requirements, memory_plan)
         mem = memory_plan
     else:
-        mem = plan_bounded_arena(dispatch, memory_requirements) if memory_requirements is not None else plan_arena(dispatch)
+        mem = (
+            plan_bounded_arena(dispatch, memory_requirements)
+            if memory_requirements is not None
+            else plan_arena(dispatch)
+        )
     kernels: dict[str, KernelEntry] = {}
     opcodes: set[str] = set()
     for node in dispatch.nodes:

@@ -34,7 +34,8 @@ FEATURE = "erase_self_copy"
 #: Spliced into the lowering runners (they execute in the m2m venv). Defines the erase and a helper
 #: that runs a pass pipeline in two halves so the erase lands AFTER bufferization + cse (when the
 #: self-copy becomes literal) and BEFORE finalize-memref-to-llvm (after which it is an opaque call).
-RUNNER_PRELUDE = r'''
+RUNNER_PRELUDE = (
+    r'''
 def _erase_self_copies(module):
     """Erase `memref.copy %x, %x` -- copying a buffer onto itself is a no-op. Returns the count."""
     n = 0
@@ -53,8 +54,11 @@ def _erase_self_copies(module):
     return n
 
 
-''' + STAGED_RUNNER + r'''_ERASE_SELF_COPY = len(sys.argv) > 4 and sys.argv[4] == '1'
 '''
+    + STAGED_RUNNER
+    + r"""_ERASE_SELF_COPY = len(sys.argv) > 4 and sys.argv[4] == '1'
+"""
+)
 
 
 def needs_canonicalize(pipeline: str) -> bool:

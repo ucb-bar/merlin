@@ -136,7 +136,7 @@ def _symbol(root: Path, path: str, symbol: str, seen=frozenset()) -> dict:
                 if (alias.asname or alias.name) != symbol:
                     continue
                 parts = Path(_module_relative(path)).with_suffix("").parts
-                prefix = parts[:-node.level] if node.level else ()
+                prefix = parts[: -node.level] if node.level else ()
                 module = (*prefix, *(node.module or "").split("."))
                 imported = Path("src", *module).with_suffix(".py").as_posix()
                 if not (root / imported).is_file():
@@ -146,15 +146,17 @@ def _symbol(root: Path, path: str, symbol: str, seen=frozenset()) -> dict:
     for node in tree.body:
         if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Name):
             continue
-        if not any(ast.dump(target) == ast.dump(ast.parse('sys.modules[__name__] = None').body[0].targets[0])
-                   for target in node.targets):
+        if not any(
+            ast.dump(target) == ast.dump(ast.parse("sys.modules[__name__] = None").body[0].targets[0])
+            for target in node.targets
+        ):
             continue
         for statement in tree.body:
             if not isinstance(statement, ast.ImportFrom):
                 continue
             for alias in statement.names:
                 if alias.asname == node.value.id and not statement.level and statement.module:
-                    imported = Path('src', *statement.module.split('.'), alias.name).with_suffix('.py').as_posix()
+                    imported = Path("src", *statement.module.split("."), alias.name).with_suffix(".py").as_posix()
                     if (root / imported).is_file():
                         return _symbol(root, imported, symbol, seen)
     return {"status": "symbol not found in current source"}

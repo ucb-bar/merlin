@@ -32,7 +32,6 @@ class RowNormalizationGroup:
         return self.shape[-1]
 
 
-
 def _shape(value):
     typ = value.type
     if not isinstance(typ, builtin.TensorType) or not isinstance(typ.encoding, builtin.NoneAttr):
@@ -43,11 +42,9 @@ def _shape(value):
     return shape
 
 
-
 def _metadata(operation):
     if any(not key.startswith("prov.") for key in operation.attributes):
         raise ValueError("unknown normalization operation attributes are conservative barriers")
-
 
 
 def _view(value):
@@ -62,7 +59,6 @@ def _view(value):
         if seen > 64:
             raise ValueError("row normalization reshape chain exceeds its source budget")
     return value
-
 
 
 def _body(operation, scalar_class, inputs):
@@ -80,15 +76,12 @@ def _body(operation, scalar_class, inputs):
     return len(block.args) == inputs + (1 if isinstance(operation, L.GenericOp) else 0)
 
 
-
 def _generic(operation, scalar_class, inputs):
     return isinstance(operation, L.GenericOp) and len(operation.results) == 1 and _body(operation, scalar_class, inputs)
 
 
-
 def _reduce(operation, scalar_class):
     return isinstance(operation, L.ReduceOp) and len(operation.operands) == 2 and _body(operation, scalar_class, 2)
-
 
 
 def _identity_copy(operation, value):
@@ -112,7 +105,6 @@ def _identity_copy(operation, value):
     )
 
 
-
 def _linear(expression, rank):
     if isinstance(expression, AffineConstantExpr):
         return (expression.value, *([0] * rank))
@@ -128,7 +120,6 @@ def _linear(expression, rank):
             if not any(right[1:]):
                 return tuple(right[0] * x for x in left)
     raise ValueError("row normalization requires checked affine row-fiber indexing")
-
 
 
 def _fiber_map(mapping, input_shape, loop_shape, kind):
@@ -157,7 +148,6 @@ def _fiber_map(mapping, input_shape, loop_shape, kind):
         raise ValueError("normalization indexing crosses or permutes source row fibers")
 
 
-
 def local_type(value, group):
     shape = _shape(value)
     count = prod(shape)
@@ -168,7 +158,6 @@ def local_type(value, group):
     else:
         raise ValueError("normalization tensor cannot be restricted to one complete row")
     return builtin.TensorType(value.type.get_element_type(), shape)
-
 
 
 def row_input_projection(mapping, shape, loop_shape):
@@ -192,7 +181,6 @@ def row_input_projection(mapping, shape, loop_shape):
     if nonunit != sorted(set(nonunit)) or rank - 1 in axes[:-1]:
         raise ValueError("row input permutes, repeats or mixes the source column domain")
     return tuple(axes)
-
 
 
 def _check_operation(operation, group):
@@ -239,7 +227,6 @@ def _check_operation(operation, group):
             raise ValueError("normalization initialization requires its original constant scalar splat")
     else:
         raise ValueError("unknown normalization tensor semantics are conservative barriers")
-
 
 
 def match_row_normalization(final):
@@ -360,10 +347,8 @@ def match_row_normalization(final):
         return None
 
 
-
 def row_input_values(group):
     return tuple(value for value, _ in row_input_specs(group))
-
 
 
 def row_input_specs(group):
@@ -383,7 +368,6 @@ def row_input_specs(group):
                     raise ValueError("one row input has different source projections")
                 values[value] = projection
     return tuple(values.items())
-
 
 
 def ordered_contraction(operation):
@@ -414,7 +398,6 @@ def ordered_contraction(operation):
         and iterators[-1] == L.IteratorTypeAttr(L.IteratorType.REDUCTION)
         and all(i == L.IteratorTypeAttr(L.IteratorType.PARALLEL) for i in iterators[:-1])
     )
-
 
 
 # Published record spelling remains readable through the exact legacy alias.

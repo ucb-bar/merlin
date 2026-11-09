@@ -3,13 +3,13 @@
 from pathlib import Path
 
 import pytest
-from merlin_experiments.corpus import preparation, release
-from merlin_experiments.spec import SpecError
 
 from merlin.common.paths import python_source_dir, repo_root
 from merlin.targetgen import tool_profile as TP
 from merlin.targetgen import tool_registry as TR
 from merlin.targetgen.tool_profile_shared import prepare_shared_source_release
+from merlin_experiments.corpus import preparation, release
+from merlin_experiments.spec import SpecError
 
 
 def test_omitted_selection_freezes_current_sdk26_source():

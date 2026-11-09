@@ -8,9 +8,9 @@ from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 
-from merlin.compiler.lower.c.parameters import bind_application_parameters, parameter_source_identity
 from merlin.compiler.build.application import compile_semantic_application, verify_semantic_application
 from merlin.compiler.frontend.inputs import load_compile_inputs, load_lifted_argument_bytes
+from merlin.compiler.lower.c.parameters import bind_application_parameters, parameter_source_identity
 from merlin.semantic_compiler.constant_math_backend import MathUnavailable
 from merlin.semantic_compiler.linalg_bridge import translate_linalg_text
 from merlin.semantic_compiler.source_preparation import preparation_counts, prepare_source
@@ -28,13 +28,21 @@ def compile_command(args, *, write_status, search_limits):
         if snapshot.profile.digest() != binding.profile().digest():
             raise ValueError("application snapshot differs from selected support profile")
         report = compile_application_report(
-            args, binding=binding, snapshot=snapshot, limits=search_limits(args.search_limits),
+            args,
+            binding=binding,
+            snapshot=snapshot,
+            limits=search_limits(args.search_limits),
             write_status=write_status,
         )
     except (OSError, ValueError, RuntimeError, KeyError, TypeError, ImportError, UnicodeError) as error:
-        report = {"schema": "merlin.native_compilation_status.v1",
-                  "status": getattr(error, "status", "compile_error"),
-                  "engine": args.engine, "support": args.support, "out": str(args.out), "reason": str(error)}
+        report = {
+            "schema": "merlin.native_compilation_status.v1",
+            "status": getattr(error, "status", "compile_error"),
+            "engine": args.engine,
+            "support": args.support,
+            "out": str(args.out),
+            "reason": str(error),
+        }
         if args.status_file and not Path(args.status_file).resolve().is_relative_to(Path(args.out).resolve()):
             write_status(Path(args.status_file), report)
     print(json.dumps(report, sort_keys=True))
@@ -75,7 +83,8 @@ def _source(args, binding, target_identity):
         )
     external = getattr(args, "application_parameters", "embedded") == "external"
     parameters = load_lifted_argument_bytes(
-        directory, staged,
+        directory,
+        staged,
         **({"kinds": ("constant", "buffer"), "max_bytes": 64 * 1024 * 1024} if external else {}),
     )
     state_arguments = {port.argument_index for port in declaration.ports} if declaration else set()
@@ -140,8 +149,12 @@ def compile_application_report(args, *, binding, snapshot, limits, write_status)
             _, current, _, current_state, current_folding, current_parameters = _source(
                 args, binding, snapshot.profile.target_identity
             )
-            if (current.digest() != source.digest() or current_state != state or current_folding != folding
-                    or current_parameters != parameters):
+            if (
+                current.digest() != source.digest()
+                or current_state != state
+                or current_folding != folding
+                or current_parameters != parameters
+            ):
                 raise ValueError("staged application inputs changed during compilation")
         except (OSError, ValueError, RuntimeError, KeyError, TypeError, ImportError, UnicodeError) as error:
             if destination.exists():

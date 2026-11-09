@@ -29,6 +29,8 @@ from pathlib import Path
 from typing import Any
 
 from merlin.compiler.backend.host import HOST_PRECISIONS as _RVV_DTYPES
+from merlin.compiler.frontend.preflight import preflight_model  # noqa: F401 -- re-exported
+from merlin.compiler.planning.model import plan_before_build
 
 # The exact helpers historically extracted from this facade remain re-exported here, so
 # `merlin.compile_cli.<name>` keeps resolving for callers. New module APIs do not
@@ -95,8 +97,6 @@ from .verification.mesh_reference import (  # noqa: F401 -- re-exported
     _accum_rel_tolerance,
     _reference_on_datapath,
 )
-from merlin.compiler.frontend.preflight import preflight_model  # noqa: F401 -- re-exported
-from merlin.compiler.planning.model import plan_before_build
 
 #: Where ``--run`` can put a compiled result.
 _RUNS = ("none", "host", "k1", "spike", "zephyr", "verilator", "gsim")
@@ -283,8 +283,8 @@ def compile_rvv(
 
     import numpy as np
 
-    from .mining import k1
     from .compiler.backend.host import load_host_package
+    from .mining import k1
     from .runtime.backends import zephyr_model as zm
 
     # ``timeout`` is the budget for the complete subprocess session.  The generated harness owns

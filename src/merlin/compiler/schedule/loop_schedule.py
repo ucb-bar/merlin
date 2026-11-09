@@ -48,8 +48,9 @@ class LoopTransform:
             raise ValueError("loop transform requires an executable action and a current loop path")
         if type(self.cuts) is not tuple or any(type(c) is not int for c in self.cuts):
             raise ValueError("partition cuts must be an exact tuple of integer interior offsets")
-        expected_names = (2 if self.action in ("split", "unroll")
-                          else len(self.cuts) + 1 if self.action == "partition" else 1)
+        expected_names = (
+            2 if self.action in ("split", "unroll") else len(self.cuts) + 1 if self.action == "partition" else 1
+        )
         if (
             type(self.names) is not tuple
             or any(type(name) is not str or not name for name in self.names)
@@ -63,7 +64,9 @@ class LoopTransform:
                 not 1 <= len(self.cuts) <= 15
                 or any(not 0 < c < 1 << 63 for c in self.cuts)
                 or tuple(sorted(set(self.cuts))) != self.cuts
-                or self.factor is not None or self.cut is not None or self.index is not None
+                or self.factor is not None
+                or self.cut is not None
+                or self.index is not None
             ):
                 raise ValueError("partition requires only 1..15 strictly increasing positive interior cuts")
         elif self.cuts:
@@ -185,8 +188,9 @@ def propose_loop_transforms(kernel, transforms, *, index_bits=64, max_static_ope
         from merlin.sched.ir.events import has_carried_events
 
         if request.action in ("reorder", "fuse", "fission", "hoist") and has_carried_events((target,)):
-            raise NotApplicable("completion-carrying order/placement changes need a separate "
-                                "dependency transport proof")
+            raise NotApplicable(
+                "completion-carrying order/placement changes need a separate dependency transport proof"
+            )
         # Conservative preflight before cloning: work depends on the explicit
         # factor and static body, never the dynamic loop trip count.
         growth = (len(request.cuts) + 1 if request.action == "partition" else (request.factor or 1) + 1) * (
@@ -224,9 +228,12 @@ def propose_loop_transforms(kernel, transforms, *, index_bits=64, max_static_ope
                 # Shift on the old variable first, then rename: the existing
                 # substitution primitive preserves equality predicates under a
                 # SAME-variable shift and under a separate variable rename.
-                body = _map_calls(target.body, lambda call: _subst_call(
-                    _subst_call(call, target.var, Var(target.var) + start), target.var, Var(name)
-                ))
+                body = _map_calls(
+                    target.body,
+                    lambda call: _subst_call(
+                        _subst_call(call, target.var, Var(target.var) + start), target.var, Var(name)
+                    ),
+                )
                 parts.append(Loop(name, stop - start, body))
             actual = replace(actual, body=_splice(actual.body, request.path, tuple(parts)))
         elif request.action == "split":
@@ -368,8 +375,13 @@ def tile_loop_nest_transforms(
         raise ValueError("tile tail policy must explicitly refuse or cut exact rectangles")
     if tail_policy == "cut":
         return _tail_tile_loop_nest_transforms(
-            kernel, path, factors, outer_order, inner_order,
-            index_bits=index_bits, max_static_operations=max_static_operations,
+            kernel,
+            path,
+            factors,
+            outer_order,
+            inner_order,
+            index_bits=index_bits,
+            max_static_operations=max_static_operations,
         )
     LoopTransform("split", path, factor=factors[0])
     selected = []
@@ -414,9 +426,7 @@ def tile_loop_nest_transforms(
             current[position - 1], current[position] = current[position], current[position - 1]
             position -= 1
     result = tuple(requests)
-    propose_loop_transforms(
-        kernel, result, index_bits=index_bits, max_static_operations=max_static_operations
-    )
+    propose_loop_transforms(kernel, result, index_bits=index_bits, max_static_operations=max_static_operations)
     return result
 
 
@@ -510,11 +520,18 @@ def _tail_tile_loop_nest_transforms(
                 if loop.extent % factor:
                     raise NotApplicable("tail tiling region retains an uncut remainder")
                 names[axis] = (fresh(loop.var + "_tile"), fresh(loop.var + "_within"))
-                apply(LoopTransform("split", (*region[:-1], *(loop.var for loop in loops[: axis + 1])),
-                                    factor=factor, names=names[axis]))
+                apply(
+                    LoopTransform(
+                        "split",
+                        (*region[:-1], *(loop.var for loop in loops[: axis + 1])),
+                        factor=factor,
+                        names=names[axis],
+                    )
+                )
         current = [name for axis, loop in enumerate(loops) for name in names.get(axis, (loop.var,))]
-        wanted = ([names[axis][0] for axis in outer_order if axis in names]
-                  + [names[axis][1] if axis in names else loops[axis].var for axis in inner_order])
+        wanted = [names[axis][0] for axis in outer_order if axis in names] + [
+            names[axis][1] if axis in names else loops[axis].var for axis in inner_order
+        ]
         for destination, name in enumerate(wanted):
             position = current.index(name)
             while position > destination:
@@ -562,24 +579,37 @@ class OrderedLoopPartition:
         """
         if type(original) is not Kernel or original.digest() != self.source_identity:
             raise ValueError("original ordered partition source identity changed")
-        if (type(self.request) is not LoopTransform or self.request.action != "partition"
-                or len(self.request.names) != len(self.request.cuts) + 1):
+        if (
+            type(self.request) is not LoopTransform
+            or self.request.action != "partition"
+            or len(self.request.names) != len(self.request.cuts) + 1
+        ):
             raise ValueError("ordered partition requires its exact recorded request")
-        expected = propose_loop_transforms(original, (self.request,), index_bits=self.index_bits,
-                                           max_static_operations=self.max_static_operations)
+        expected = propose_loop_transforms(
+            original, (self.request,), index_bits=self.index_bits, max_static_operations=self.max_static_operations
+        )
         target = _loop_at(original.body, self.request.path)
         boundaries = (0, *self.request.cuts, target.extent)
         regions = tuple(
             LoopPartitionRegion((*self.request.path[:-1], name), start, stop)
             for name, start, stop in zip(self.request.names, boundaries[:-1], boundaries[1:], strict=True)
         )
-        if (type(partitioned) is not Kernel or partitioned != expected
-                or self.kernel != expected or self.regions != regions):
+        if (
+            type(partitioned) is not Kernel
+            or partitioned != expected
+            or self.kernel != expected
+            or self.regions != regions
+        ):
             raise ValueError("actual ordered partition or original interval mapping changed")
-        return dict(schema="merlin.ordered_loop_partition.v1", status="pass",
-                    source_identity=self.source_identity, partitioned_identity=partitioned.digest(),
-                    regions=len(regions), exact_instance_order=True,
-                    source_and_target_admission="original independent proofs remain required")
+        return dict(
+            schema="merlin.ordered_loop_partition.v1",
+            status="pass",
+            source_identity=self.source_identity,
+            partitioned_identity=partitioned.digest(),
+            regions=len(regions),
+            exact_instance_order=True,
+            source_and_target_admission="original independent proofs remain required",
+        )
 
 
 def partition_counted_loop(kernel, path, *, cuts, names=(), index_bits=64, max_static_operations=4096):
@@ -593,19 +623,22 @@ def partition_counted_loop(kernel, path, *, cuts, names=(), index_bits=64, max_s
     inferred. This optional proposal does not alter default emission.
     """
     request = LoopTransform("partition", path, names=names, cuts=cuts)
-    actual = propose_loop_transforms(kernel, (request,), index_bits=index_bits,
-                                     max_static_operations=max_static_operations)
+    actual = propose_loop_transforms(
+        kernel, (request,), index_bits=index_bits, max_static_operations=max_static_operations
+    )
     # Resolve actual generated names, so custody never depends on an implicit
     # naming convention or a caller's unverified member declaration.
     target = _loop_at(kernel.body, path)
     siblings, _ = _resolve(actual.body, Cursor(loops=path[:-1]))
     original_siblings, _ = _resolve(kernel.body, Cursor(loops=path[:-1]))
     position = next(i for i, child in enumerate(original_siblings) if child is target)
-    names = tuple(child.var for child in siblings[position:position + len(cuts) + 1])
+    names = tuple(child.var for child in siblings[position : position + len(cuts) + 1])
     request = replace(request, names=names)
     boundaries = (0, *cuts, target.extent)
-    regions = tuple(LoopPartitionRegion((*path[:-1], name), start, stop)
-                    for name, start, stop in zip(names, boundaries[:-1], boundaries[1:], strict=True))
+    regions = tuple(
+        LoopPartitionRegion((*path[:-1], name), start, stop)
+        for name, start, stop in zip(names, boundaries[:-1], boundaries[1:], strict=True)
+    )
     result = OrderedLoopPartition(actual, request, regions, kernel.digest(), index_bits, max_static_operations)
     result.verify_current(kernel, actual)
     return result

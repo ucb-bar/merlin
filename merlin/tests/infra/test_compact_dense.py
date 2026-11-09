@@ -4,15 +4,14 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compiler.schedule.blocks import Compute
-from merlin.compiler.schedule.blocks import Load
-from merlin.compiler.schedule.blocks import Preload
-from merlin.compiler.schedule.blocks import Store
-from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
-from merlin.compiler.schedule.compact_dense import DenseLoopStorage
-from merlin.compiler.schedule.compact_dense import DenseMemoryView
-from merlin.compiler.schedule.compact_dense import emit_compact_dense
-from merlin.compiler.schedule.compact_dense import schedule_compact_dense
+from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
+from merlin.compiler.schedule.compact_dense import (
+    DenseLoopAdapter,
+    DenseLoopStorage,
+    DenseMemoryView,
+    emit_compact_dense,
+    schedule_compact_dense,
+)
 from merlin.compiler.schedule.compact_verification import verify_compact_dense
 from merlin.sched.ir import Call, Loop, as_expr, evaluate, instances
 from merlin.transforms.dense_planning import DenseProblem, DenseResources, dense_blocks
@@ -64,27 +63,44 @@ def project(call):
 ADAPTER = DenseLoopAdapter(encode, project, "neutral-test-config-v1", "source-ordered-test-policy-v1", True, True, 64)
 
 
-@pytest.mark.parametrize("shape,tile", [
-    ((3136, 64, 64), (16, 16, 16)),
-    ((784, 128, 512), (16, 16, 16)),
-    ((1, 2048, 32000), (16, 16, 16)),
-    ((911, 73, 131), (3, 5, 7)),
-])
+@pytest.mark.parametrize(
+    "shape,tile",
+    [
+        ((3136, 64, 64), (16, 16, 16)),
+        ((784, 128, 512), (16, 16, 16)),
+        ((1, 2048, 32000), (16, 16, 16)),
+        ((911, 73, 131), (3, 5, 7)),
+    ],
+)
 def test_large_quantified_residency_fits_original_checking_budget(shape, tile):
     p = DenseProblem(*shape, *tile, 1, 1, 4)
     s = DenseLoopStorage(
         DenseMemoryView("left", "left_sram", p.tile_k, 0, 4096),
         DenseMemoryView("right", "right_sram", p.tile_n, 0, 4096),
-        DenseMemoryView("sums", "acc_sram", p.tile_n*4, 0, 1024),
+        DenseMemoryView("sums", "acc_sram", p.tile_n * 4, 0, 1024),
     )
-    r = DenseResources(4096*(p.tile_k+p.tile_n), 1024*p.tile_n*4, 4, 4, 8,
-                       partial_output_tiles=True, partial_output_blocks=True)
+    r = DenseResources(
+        4096 * (p.tile_k + p.tile_n),
+        1024 * p.tile_n * 4,
+        4,
+        4,
+        8,
+        partial_output_tiles=True,
+        partial_output_blocks=True,
+    )
     result = schedule_compact_dense(
-        p, r, s, ADAPTER, name="bounded", dtypes=("i8", "i8", "i32"),
-        static_budget=512, verification_timeout_ms=2000, external_buffers_disjoint=True,
+        p,
+        r,
+        s,
+        ADAPTER,
+        name="bounded",
+        dtypes=("i8", "i8", "i32"),
+        static_budget=512,
+        verification_timeout_ms=2000,
+        external_buffers_disjoint=True,
     )
     assert result is not None
-    assert result.realization["output_tiles"] == p.tiles[0]*p.tiles[2]
+    assert result.realization["output_tiles"] == p.tiles[0] * p.tiles[2]
     assert result.realization["machine_emission"] == "not_established"
     # The large domains remain symbolic; no expanded work or changed source
     # order is admitted to make the proof fit its original two-second budget.
@@ -383,7 +399,17 @@ def test_existing_c_emitter_executes_actual_compact_program(tmp_path, dtypes, wi
 
 
 def native_dense_pair(
-    tmp_path, p, r, s, result, adapter, *, dtypes, selected_contracts=None, overflow=False, whole_graph=False,
+    tmp_path,
+    p,
+    r,
+    s,
+    result,
+    adapter,
+    *,
+    dtypes,
+    selected_contracts=None,
+    overflow=False,
+    whole_graph=False,
     lose_continuation=False,
 ):
     """Execute emitted C with byte-backed storage, complete outputs and guards."""
@@ -403,14 +429,23 @@ def native_dense_pair(
     # one output tile; the optimized arm must actually issue fewer byte reads.
     started = time.perf_counter()
     baseline = schedule_compact_dense(
-        p, replace(r, max_m_blocks=1, max_n_blocks=1), s, adapter,
-        name="baseline", dtypes=dtypes, static_budget=80, external_buffers_disjoint=True,
-        verification_timeout_ms=20_000, selected_contracts=selected_contracts,
+        p,
+        replace(r, max_m_blocks=1, max_n_blocks=1),
+        s,
+        adapter,
+        name="baseline",
+        dtypes=dtypes,
+        static_budget=80,
+        external_buffers_disjoint=True,
+        verification_timeout_ms=20_000,
+        selected_contracts=selected_contracts,
     )
     baseline_scheduling_seconds = time.perf_counter() - started
     baseline_report = baseline.realization
-    assert (baseline_report["pipeline"]["library_sources_sha256"]
-            == result.realization["pipeline"]["library_sources_sha256"])
+    assert (
+        baseline_report["pipeline"]["library_sources_sha256"]
+        == result.realization["pipeline"]["library_sources_sha256"]
+    )
     ct = {"i8": "int8_t", "i16": "int16_t", "i32": "int32_t", "f32": "float"}
     np_types = {"i8": np.int8, "i16": np.int16, "i32": np.int32, "f32": np.float32}
     definitions = {}
@@ -435,22 +470,31 @@ def native_dense_pair(
     views = (s.lhs, s.rhs, s.accumulator)
     backings = sorted({view.backing for view in views})
     arrays = {name: f"memory_{i}" for i, name in enumerate(backings)}
-    extents = {name: max((v.base + v.capacity) * v.unit_bytes for v in views if v.backing == name) + 16
-               for name in backings}
+    extents = {
+        name: max((v.base + v.capacity) * v.unit_bytes for v in views if v.backing == name) + 16 for name in backings
+    }
     declarations = "\n".join(f"static unsigned char {arrays[name]}[{size}];" for name, size in extents.items())
-    declarations += "\n" + "\n".join(f"#define {role} {arrays[view.backing]}" for role, view in zip(
-        ("left", "right", "sums"), views))
-    declarations += "\nvoid init_memories(void) {" + "".join(
-        f"memset({arrays[name]}, 88, {size});" for name, size in extents.items()) + "}\n"
+    declarations += "\n" + "\n".join(
+        f"#define {role} {arrays[view.backing]}" for role, view in zip(("left", "right", "sums"), views)
+    )
+    declarations += (
+        "\nvoid init_memories(void) {"
+        + "".join(f"memset({arrays[name]}, 88, {size});" for name, size in extents.items())
+        + "}\n"
+    )
     declarations += "int guards_intact(void) {"
     for backing, size in extents.items():
-        allowed = " || ".join(f"(i >= {v.base * v.unit_bytes} && i < {(v.base + v.capacity) * v.unit_bytes})"
-                              for v in views if v.backing == backing)
+        allowed = " || ".join(
+            f"(i >= {v.base * v.unit_bytes} && i < {(v.base + v.capacity) * v.unit_bytes})"
+            for v in views
+            if v.backing == backing
+        )
         declarations += f"for(int i=0;i<{size};i++) if(!({allowed}) && {arrays[backing]}[i]!=88) return 0;"
     declarations += "return 1;}\n"
     accumulator_c = "uint32_t" if dtypes[2] == "i32" else ct[dtypes[2]]
-    multiply_add = ("acc = acc + (uint32_t)(int32_t)x * (uint32_t)(int32_t)y;"
-                    if dtypes[2] == "i32" else "acc = acc + x*y;")
+    multiply_add = (
+        "acc = acc + (uint32_t)(int32_t)x * (uint32_t)(int32_t)y;" if dtypes[2] == "i32" else "acc = acc + x*y;"
+    )
     source = f"""
 #include <stdint.h>
 #include <string.h>
@@ -549,7 +593,7 @@ void graph_{arm}({ct[dtypes[0]]} *raw_lhs, {ct[dtypes[1]]} *raw_rhs,
         lhs = (np.arange(p.m * p.k) % 7 - 3 + invocation).reshape(p.m, p.k).astype(np_types[dtypes[0]])
         rhs = (np.arange(p.k * p.n) % 5 - 2 - invocation).reshape(p.k, p.n).astype(np_types[dtypes[1]])
         if overflow:
-            lhs[:] = (np.where(np.arange(p.m)[:, None] % 2, -30001, 30001) + invocation)
+            lhs[:] = np.where(np.arange(p.m)[:, None] % 2, -30001, 30001) + invocation
             rhs[:] = 30000 - np.arange(p.k * p.n).reshape(p.k, p.n) % 13 - invocation
         if dtypes[0] == "f32":
             lhs /= np.float32(3.7)
@@ -594,8 +638,15 @@ void graph_{arm}({ct[dtypes[0]]} *raw_lhs, {ct[dtypes[1]]} *raw_rhs,
             assert observed_traffic[-1] == report["requested_load_bytes"]
             actual_commands = ctypes.c_uint64.in_dll(compiled, "commands").value
             assert actual_commands == report["executed_instruction_calls"]
-            measurements.append(dict(arm=arm, invocation=invocation, requested_load_bytes=observed_traffic[-1],
-                                     executed_commands=actual_commands, native_host_call_seconds=elapsed))
+            measurements.append(
+                dict(
+                    arm=arm,
+                    invocation=invocation,
+                    requested_load_bytes=observed_traffic[-1],
+                    executed_commands=actual_commands,
+                    native_host_call_seconds=elapsed,
+                )
+            )
         assert observed_traffic[1] < observed_traffic[0]
         if whole_graph:
             raw_lhs = np.ascontiguousarray(lhs.T)
@@ -616,16 +667,33 @@ void graph_{arm}({ct[dtypes[0]]} *raw_lhs, {ct[dtypes[1]]} *raw_rhs,
                 assert raw_bytes == (raw_lhs.tobytes(), raw_rhs.tobytes(), bias.tobytes())
                 assert all(guarded[:4] == 0xABCDEF12) and all(guarded[-4:] == 0xABCDEF12)
                 assert compiled.guards_intact() == 1
-                counters = {name: ctypes.c_uint64.in_dll(compiled, name).value for name in (
-                    "host_pack_bytes", "host_scalar_updates", "dispatches", "load_bytes", "commands")}
-                assert counters == dict(host_pack_bytes=2 * (lhs.nbytes + rhs.nbytes),
-                                        host_scalar_updates=2 * p.m * p.n + p.n + 1, dispatches=1,
-                                        load_bytes=report["requested_load_bytes"],
-                                        commands=report["executed_instruction_calls"])
-                measurements.append(dict(arm=arm, invocation=invocation, scope="complete_neutral_host_graph",
-                                         native_host_call_seconds=elapsed, **counters))
-    return dict(native_compile_seconds=compile_seconds, baseline_scheduling_seconds=baseline_scheduling_seconds,
-                arm_source_bytes=dict(baseline=len(baseline_source.encode()), optimized=len(optimized_source.encode())),
-                source_bytes=len(source.encode()),
-                library_bytes=library.stat().st_size, measurements=measurements,
-                compilation_peak_memory=None, accelerator_timing=None)
+                counters = {
+                    name: ctypes.c_uint64.in_dll(compiled, name).value
+                    for name in ("host_pack_bytes", "host_scalar_updates", "dispatches", "load_bytes", "commands")
+                }
+                assert counters == dict(
+                    host_pack_bytes=2 * (lhs.nbytes + rhs.nbytes),
+                    host_scalar_updates=2 * p.m * p.n + p.n + 1,
+                    dispatches=1,
+                    load_bytes=report["requested_load_bytes"],
+                    commands=report["executed_instruction_calls"],
+                )
+                measurements.append(
+                    dict(
+                        arm=arm,
+                        invocation=invocation,
+                        scope="complete_neutral_host_graph",
+                        native_host_call_seconds=elapsed,
+                        **counters,
+                    )
+                )
+    return dict(
+        native_compile_seconds=compile_seconds,
+        baseline_scheduling_seconds=baseline_scheduling_seconds,
+        arm_source_bytes=dict(baseline=len(baseline_source.encode()), optimized=len(optimized_source.encode())),
+        source_bytes=len(source.encode()),
+        library_bytes=library.stat().st_size,
+        measurements=measurements,
+        compilation_peak_memory=None,
+        accelerator_timing=None,
+    )

@@ -4,9 +4,9 @@ from dataclasses import replace
 
 import pytest
 
+from merlin.compiler.schedule.arena import ArenaRequirements, plan_bounded_arena
 from merlin.runtime.program import build_program
 from merlin.xdsl_dialects.lowering.arena_plan import ArenaPlanError, plan_arena
-from merlin.compiler.schedule.arena import ArenaRequirements, plan_bounded_arena
 from merlin.xdsl_dialects.lowering.dispatch_program import Buffer, DispatchProgram, Node
 from merlin.xdsl_dialects.lowering.global_plan_emission import dispatch_digest
 

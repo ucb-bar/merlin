@@ -93,8 +93,9 @@ def test_python_and_C_packers_follow_source_maps_and_initialize_tails(tmp_path, 
     }[kind]()
     matrix = expanded.reshape(plan.shape)
     stored_rows = min(2, plan.shape[0]) if compact and kind in {"broadcast", "scalar"} else plan.shape[0]
-    stored_cols = (min(3, plan.shape[1]) if compact and kind in {"column_broadcast", "scalar", "channel_bias"}
-                   else plan.shape[1])
+    stored_cols = (
+        min(3, plan.shape[1]) if compact and kind in {"column_broadcast", "scalar", "channel_bias"} else plan.shape[1]
+    )
     tiles = []
     for row in range(0, stored_rows, 2):
         for col in range(0, stored_cols, 3):
@@ -107,10 +108,14 @@ def test_python_and_C_packers_follow_source_maps_and_initialize_tails(tmp_path, 
     assert plan.input_packed_bytes[1] == len(expected)
     # Rebuild only for this test's output assembler: real consumers use tile
     # strides and never store the repeated copies. NumPy supplies the values.
-    repeated = b"".join(tiles[
-        (row // 2 if stored_rows == plan.shape[0] else 0) * ((stored_cols + 2) // 3)
-        + (col // 3 if stored_cols == plan.shape[1] else 0)
-    ] for row in range(0, plan.shape[0], 2) for col in range(0, plan.shape[1], 3))
+    repeated = b"".join(
+        tiles[
+            (row // 2 if stored_rows == plan.shape[0] else 0) * ((stored_cols + 2) // 3)
+            + (col // 3 if stored_cols == plan.shape[1] else 0)
+        ]
+        for row in range(0, plan.shape[0], 2)
+        for col in range(0, plan.shape[1], 3)
+    )
     assert assemble_pointwise_output(plan, repeated) == expanded.astype("<u2").tobytes()
     compiler = shutil.which("cc")
     assert compiler
@@ -149,9 +154,13 @@ def test_python_and_C_packers_follow_source_maps_and_initialize_tails(tmp_path, 
     assert logical.raw == expanded.astype("<u2").tobytes()
     assert all(node.type.shape == (2, 3) for node in plan.body_request().nodes)
     assert plan.source.nodes[-1].type.shape == expanded.shape
-    assert plan.record()["schema"] == ("merlin.pointwise_tiling.v3" if compact else
-                                       "merlin.pointwise_tiling.v1" if expanded.ndim == 2 else
-                                       "merlin.pointwise_tiling.v2")
+    assert plan.record()["schema"] == (
+        "merlin.pointwise_tiling.v3"
+        if compact
+        else "merlin.pointwise_tiling.v1"
+        if expanded.ndim == 2
+        else "merlin.pointwise_tiling.v2"
+    )
 
 
 @pytest.mark.parametrize(
@@ -171,7 +180,11 @@ def test_invalid_pointwise_maps_and_boundaries_are_rejected(fault):
         if fault != "padding":
             source = replace(source, nodes=(*source.nodes[:-1], output))
         PointwiseTiling(
-            source, (2, 3), 2, b"\0" if fault == "padding" else b"\0\0", (b"\0\0",) if fault == "operand_pads" else (),
+            source,
+            (2, 3),
+            2,
+            b"\0" if fault == "padding" else b"\0\0",
+            (b"\0\0",) if fault == "operand_pads" else (),
             compact_broadcasts="yes" if fault == "compaction" else False,
         )
 
@@ -188,8 +201,23 @@ def test_shared_operand_keeps_one_input_and_rejects_distinct_views():
     values = bytes(range(30))
     assert materialize_pointwise_input(shared, 0, values) == materialize_pointwise_input(original, 0, values)
     with pytest.raises(ValueError, match="identical physical view"):
-        replace(shared, source=replace(source, nodes=(a, replace(output, index_maps=(
-            output.index_maps[0], IndexMap(2, ((1, 0), (0, -1)), (0, 4)), output.index_maps[-1])))))
+        replace(
+            shared,
+            source=replace(
+                source,
+                nodes=(
+                    a,
+                    replace(
+                        output,
+                        index_maps=(
+                            output.index_maps[0],
+                            IndexMap(2, ((1, 0), (0, -1)), (0, 4)),
+                            output.index_maps[-1],
+                        ),
+                    ),
+                ),
+            ),
+        )
 
 
 def test_shared_tiling_owners_preserve_aliases_and_observe_actual_sources(tmp_path, monkeypatch):
@@ -219,6 +247,7 @@ def test_shared_tiling_owners_preserve_aliases_and_observe_actual_sources(tmp_pa
     calls = []
     original_prod = pointwise.prod
     with monkeypatch.context() as patch:
+
         def counted(values):
             calls.append(True)
             return original_prod(values)
@@ -231,31 +260,47 @@ def test_shared_tiling_owners_preserve_aliases_and_observe_actual_sources(tmp_pa
     assert c_tiling.StreamedMNKTiling is panels.StreamedMNKTiling
     for owner, legacy, names in (
         (contraction_k, ordered_k_tiling, ("OrderedKTilingError", "RowMajorKSlice", "OrderedKTiling")),
-        (contraction_mn, ordered_mn_tiling,
-         ("OrderedMNTilingError", "RowMajorMatrixSlice", "MatrixTile", "OrderedMNTiling")),
+        (
+            contraction_mn,
+            ordered_mn_tiling,
+            ("OrderedMNTilingError", "RowMajorMatrixSlice", "MatrixTile", "OrderedMNTiling"),
+        ),
         (contraction_mnk, ordered_mnk_tiling, ("OrderedMNKTilingError", "OrderedMNKTiling", "LoopedMNKTiling")),
         (panels, streamed_mnk_tiling, ("StreamedMNKTiling",)),
     ):
         assert owner is legacy
         for name in names:
-            assert getattr(owner, name).__module__ == "merlin.semantic_compiler." + {
-                contraction_k: "ordered_k_tiling", contraction_mn: "ordered_mn_tiling",
-                contraction_mnk: "ordered_mnk_tiling", panels: "streamed_mnk_tiling",
-            }[owner]
+            assert (
+                getattr(owner, name).__module__
+                == "merlin.semantic_compiler."
+                + {
+                    contraction_k: "ordered_k_tiling",
+                    contraction_mn: "ordered_mn_tiling",
+                    contraction_mnk: "ordered_mnk_tiling",
+                    panels: "streamed_mnk_tiling",
+                }[owner]
+            )
     maps = (
         IndexMap(3, ((1, 0, 0), (0, 0, 1)), (0, 0)),
         IndexMap(3, ((0, 1, 0), (0, 0, 1)), (0, 0)),
         IndexMap(3, ((1, 0, 0), (0, 1, 0)), (0, 0)),
     )
     source = KernelRequest(
-        (SemanticNode("a", "input", (), TensorType((4, 8), "i8", "raw-byte"), effect="input"),
-         SemanticNode("w", "input", (), TensorType((6, 8), "i8", "raw-byte"), effect="input"),
-         SemanticNode("c", "matmul", ("a", "w"), TensorType((4, 6), "i32", "ordered-i32"), index_maps=maps)),
-        ("c",), ("external",), (("a", "external"), ("w", "external")), "synthetic", lowering_policy="diagnostic",
+        (
+            SemanticNode("a", "input", (), TensorType((4, 8), "i8", "raw-byte"), effect="input"),
+            SemanticNode("w", "input", (), TensorType((6, 8), "i8", "raw-byte"), effect="input"),
+            SemanticNode("c", "matmul", ("a", "w"), TensorType((4, 6), "i32", "ordered-i32"), index_maps=maps),
+        ),
+        ("c",),
+        ("external",),
+        (("a", "external"), ("w", "external")),
+        "synthetic",
+        lowering_policy="diagnostic",
     )
     validation_calls = []
     original_validate = contraction_k._validated_oriented_source
     with monkeypatch.context() as patch:
+
         def validated(*args, **kwargs):
             validation_calls.append(True)
             return original_validate(*args, **kwargs)
@@ -266,25 +311,47 @@ def test_shared_tiling_owners_preserve_aliases_and_observe_actual_sources(tmp_pa
     assert len(validation_calls) == 2
     mn_plan = contraction_mn.partition_ordered_matmul_mn(source, tile_m=2, tile_n=3, qualified_policy="ordered-i32")
     mnk_plan = contraction_mnk.partition_ordered_matmul_mnk(
-        source, tile_m=2, tile_n=3, tile_k=4, qualified_policy="ordered-i32",
+        source,
+        tile_m=2,
+        tile_n=3,
+        tile_k=4,
+        qualified_policy="ordered-i32",
     )
     streamed = panels.plan_streamed_mnk(full, capacity_bytes=128, alignment_bytes=8, pad_element=b"\0")
     assert streamed is not None
     for original in (k_plan, mn_plan, mnk_plan, full, streamed):
         restored = pickle.loads(pickle.dumps(original))
         assert type(restored) is type(original) and restored == original
-    for error in (contraction_k.OrderedKTilingError, contraction_mn.OrderedMNTilingError,
-                  contraction_mnk.OrderedMNKTilingError):
+    for error in (
+        contraction_k.OrderedKTilingError,
+        contraction_mn.OrderedMNTilingError,
+        contraction_mnk.OrderedMNKTilingError,
+    ):
         restored = pickle.loads(pickle.dumps(error("unsupported fixture")))
         assert type(restored) is error and restored.args == ("unsupported fixture",)
 
-    owners = tuple("compiler/transforms/" + name + ".py" for name in (
-        "pointwise", "reduction", "contraction_k", "contraction_mn", "contraction_mnk", "panels",
-    ))
-    aliases = tuple(name + ".py" for name in (
-        "pointwise_tiling", "reduction_tiling", "ordered_k_tiling", "ordered_mn_tiling", "ordered_mnk_tiling",
-        "streamed_mnk_tiling",
-    ))
+    owners = tuple(
+        "compiler/transforms/" + name + ".py"
+        for name in (
+            "pointwise",
+            "reduction",
+            "contraction_k",
+            "contraction_mn",
+            "contraction_mnk",
+            "panels",
+        )
+    )
+    aliases = tuple(
+        name + ".py"
+        for name in (
+            "pointwise_tiling",
+            "reduction_tiling",
+            "ordered_k_tiling",
+            "ordered_mn_tiling",
+            "ordered_mnk_tiling",
+            "streamed_mnk_tiling",
+        )
+    )
     assert set(owners) <= set(snapshot._SHARED_SOURCE_FILES)
     assert set(aliases) <= set(snapshot._NATIVE_SOURCE_FILES)
     observed = snapshot._compiler_sources()

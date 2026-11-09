@@ -256,8 +256,8 @@ def candidate_view(inputs, *, entry_symbol, decoder):
     """Count actual emitted IR through existing decoder and closed-CFG owners."""
     from xdsl.parser import Parser
 
-    from merlin.common.ir_lock import IR_LOCK
     from merlin.analysis.schedule_structure import ScheduleModel
+    from merlin.common.ir_lock import IR_LOCK
     from merlin.perf.emitted_work import summarize_emitted_work
     from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
     from merlin.targetgen.rocc.decode import decode_module
@@ -265,19 +265,27 @@ def candidate_view(inputs, *, entry_symbol, decoder):
     from .reference_views import source_view
 
     def gap(reason, *, required_adapter, **details):
-        return dict(status="unknown", reason=reason, required_adapter=required_adapter,
-                    semantic_alignment="unknown", numerical_equivalence="unknown",
-                    execution="not_established", **details), None
+        return dict(
+            status="unknown",
+            reason=reason,
+            required_adapter=required_adapter,
+            semantic_alignment="unknown",
+            numerical_equivalence="unknown",
+            execution="not_established",
+            **details,
+        ), None
 
     if not decoder.get("semantics"):
         return gap("candidate_selected_operand_semantics_unavailable", required_adapter="selected_operand_decoder")
     try:
         source = source_view(inputs["source"])
     except (ValueError, TypeError, KeyError, AttributeError):
-        return gap("candidate_source_to_command_buffer_adapter_unavailable",
-                   required_adapter="typed_source_to_command_buffer",
-                   supported_source_contract="closed_merlin_interface",
-                   required_obligations=["typed_product_operand_and_output_views", "ordered_numeric_contract"])
+        return gap(
+            "candidate_source_to_command_buffer_adapter_unavailable",
+            required_adapter="typed_source_to_command_buffer",
+            supported_source_contract="closed_merlin_interface",
+            required_obligations=["typed_product_operand_and_output_views", "ordered_numeric_contract"],
+        )
     try:
         cb = source["command_buffer"]
         packs = {
@@ -286,13 +294,20 @@ def candidate_view(inputs, *, entry_symbol, decoder):
         products = [row for row in cb["commands"] if row["opcode"] == "MATMUL_RESIDENT"]
         commits = [row for row in cb["commands"] if row["opcode"] == "COMMIT"]
         if len(products) != 1 or len(commits) != 1:
-            return gap("candidate_product_readout_cardinality_unsupported",
-                       required_adapter="typed_multi_product_view" if len(products) > 1 or len(commits) > 1
-                       else "complete_single_product_readout",
-                       source_counts=dict(products=len(products), commits=len(commits)),
-                       supported_counts=dict(products=1, commits=1),
-                       required_obligations=["per_product_operand_subviews", "complete_output_coordinates",
-                                             "ordered_output_composition", "per_product_numeric_contract"])
+            return gap(
+                "candidate_product_readout_cardinality_unsupported",
+                required_adapter="typed_multi_product_view"
+                if len(products) > 1 or len(commits) > 1
+                else "complete_single_product_readout",
+                source_counts=dict(products=len(products), commits=len(commits)),
+                supported_counts=dict(products=1, commits=1),
+                required_obligations=[
+                    "per_product_operand_subviews",
+                    "complete_output_coordinates",
+                    "ordered_output_composition",
+                    "per_product_numeric_contract",
+                ],
+            )
         product, commit = products[0]["operands"], commits[0]
         a, b = cb["tensors"][product["lhs"]], cb["tensors"][packs[product["rhs"]]]
         output = cb["tensors"][commit["operands"]["dst"]]
@@ -300,10 +315,17 @@ def candidate_view(inputs, *, entry_symbol, decoder):
         if commit["operands"]["src"] != product["dst"]:
             return gap("candidate_product_readout_join_unavailable", required_adapter="typed_product_readout_view")
         if attrs.get("epilogue") != []:
-            return gap("candidate_numeric_epilogue_adapter_unavailable", required_adapter="ordered_numeric_epilogue",
-                       ordered_stages=attrs.get("epilogue"),
-                       required_obligations=["stage_order", "scale_and_bias_operands", "rounding_and_saturation",
-                                             "activation_and_readout_domain"])
+            return gap(
+                "candidate_numeric_epilogue_adapter_unavailable",
+                required_adapter="ordered_numeric_epilogue",
+                ordered_stages=attrs.get("epilogue"),
+                required_obligations=[
+                    "stage_order",
+                    "scale_and_bias_operands",
+                    "rounding_and_saturation",
+                    "activation_and_readout_domain",
+                ],
+            )
         problem = dict(
             m=a["shape"][0],
             k=a["shape"][1],
@@ -315,8 +337,11 @@ def candidate_view(inputs, *, entry_symbol, decoder):
             module = Parser(make_llvm_context(), inputs["emitted"].decode()).parse_module()
             entries = [op for op in module.walk() if op.name == "llvm.func" and op.sym_name.data == entry_symbol]
             if len(entries) != 1:
-                return gap("candidate_emitted_entry_unavailable", required_adapter="unique_emitted_function_entry",
-                           matching_entries=len(entries))
+                return gap(
+                    "candidate_emitted_entry_unavailable",
+                    required_adapter="unique_emitted_function_entry",
+                    matching_entries=len(entries),
+                )
             (entry,) = entries
             trace = decode_module(module, target=decoder["target"], semantics=decoder["semantics"])
             sites = [op for op in module.walk() if op.name == "llvm.inline_asm"]
@@ -324,13 +349,18 @@ def candidate_view(inputs, *, entry_symbol, decoder):
             counted = summarize_emitted_work(entry, command_kind=lambda op: classes.get(id(op)))
         counts = counted["command_counts"]
         if counts.get("UNKNOWN") or not counted["command_classification_complete"]:
-            return gap("candidate_emitted_command_classification_incomplete",
-                       required_adapter="complete_selected_instruction_decoder")
+            return gap(
+                "candidate_emitted_command_classification_incomplete",
+                required_adapter="complete_selected_instruction_decoder",
+            )
         fences = counts.get("FENCE", 0)
         commands = sum(counts.values()) - fences
         roles = (decoder.get("structure") or {}).get("instruction_roles") or {}
-        configurations = (sum(count for name, count in counts.items() if "config" in roles.get(name, ()))
-                          if all(roles.get(name) for name in counts if name != "FENCE") else None)
+        configurations = (
+            sum(count for name, count in counts.items() if "config" in roles.get(name, ()))
+            if all(roles.get(name) for name in counts if name != "FENCE")
+            else None
+        )
         model = ScheduleModel(
             source_kind="counted_emitted_ir",
             complete=True,
@@ -370,9 +400,22 @@ def compare_candidate(reference, candidate, expert, ours):
     projected = candidate.get("captured_reference_axes") or {}
     problems = reference["problems"]
     actual = projected.get("problem", {})
-    projection_gap = ({key: projected[key] for key in (
-        "reason", "required_adapter", "source_counts", "supported_counts", "ordered_stages", "required_obligations"
-    ) if key in projected} if projected.get("status") == "unknown" else None)
+    projection_gap = (
+        {
+            key: projected[key]
+            for key in (
+                "reason",
+                "required_adapter",
+                "source_counts",
+                "supported_counts",
+                "ordered_stages",
+                "required_obligations",
+            )
+            if key in projected
+        }
+        if projected.get("status") == "unknown"
+        else None
+    )
     compatible = (
         len(problems) == 1
         and all(problems[0].get(key) == actual.get(key) for key in ("m", "k", "n", "dtypes"))

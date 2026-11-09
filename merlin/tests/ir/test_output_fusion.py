@@ -181,9 +181,7 @@ def test_capture_bound_source_formation_uses_the_same_exact_cut(path, monkeypatc
     expected, _ = _fused(_module(), path)
     module = mq.parse(_module())
     monkeypatch.setattr(OF, "declared_path", lambda target: path)
-    groups, _ = form_exact_groups(
-        module, "synthetic", tmp_path, partial(form_source_groups, oracle=_Oracle())
-    )
+    groups, _ = form_exact_groups(module, "synthetic", tmp_path, partial(form_source_groups, oracle=_Oracle()))
     (actual,) = [group for group in groups if group.placement != CG.HOST]
     assert actual.fusion == expected.fusion
     assert actual.stages == expected.stages
@@ -203,9 +201,7 @@ def test_exact_fusion_statement_refusal_never_falls_back_to_bare_contraction(mon
 
     monkeypatch.setattr(GC, "program", no_requant_form)
     module = mq.parse(_module())
-    result = rewrite_groups_to_device(
-        module, "synthetic", select=lambda _: True, oracle=_Oracle(), capture=tmp_path
-    )
+    result = rewrite_groups_to_device(module, "synthetic", select=lambda _: True, oracle=_Oracle(), capture=tmp_path)
     assert result.moved == 0
     assert result.skipped == (("group0", "no device form: selected requant form is unavailable"),)
     assert any(mq.op_name(op) == "quant_ext.quantize_per_tensor" for op in module.walk())
@@ -482,9 +478,7 @@ def test_selected_prepack_uses_proved_offsets_without_rederiving_float_bias(tmp_
     result = GP.prepack([device], manifest, weights, device_layout=True)
     assert result["record"]["skipped"] == []
     (row,) = result["record"]["groups"]
-    np.testing.assert_array_equal(
-        result["arrays"][row["bias"]["array"]], device.fusion["proof"]["offsets"]
-    )
+    np.testing.assert_array_equal(result["arrays"][row["bias"]["array"]], device.fusion["proof"]["offsets"])
     assert row["acc_scale_by_column"] == device.fusion["proof"]["device_scale"]
     assert row["bias"]["fold_rule"] == "source_bound_output_fusion_offsets"
 
@@ -502,8 +496,13 @@ def test_accumulator_bias_cut_keeps_the_host_readout_without_an_escaping_value_r
     (tmp_path / "weights.safetensors").write_bytes(b"")
     module = mq.parse(_module())
     result = rewrite_groups_to_device(
-        module, "synthetic", select=lambda _: True, oracle=_Oracle(), capture=tmp_path,
-        weight_args=(), require_complete_groups=True,
+        module,
+        "synthetic",
+        select=lambda _: True,
+        oracle=_Oracle(),
+        capture=tmp_path,
+        weight_args=(),
+        require_complete_groups=True,
     )
     module.verify()
     assert result.moved == 1 and result.skipped == ()
@@ -518,8 +517,10 @@ def test_accumulator_bias_cut_keeps_the_host_readout_without_an_escaping_value_r
 
 def test_accumulator_bound_includes_the_minimum_signed_weight_code():
     lines = _module(bias=(0,) * 8).splitlines()
-    lines = ["    %w = arith.constant dense<-128> : tensor<8x8xi8>" if line.startswith("    %w =") else line
-             for line in lines]
+    lines = [
+        "    %w = arith.constant dense<-128> : tensor<8x8xi8>" if line.startswith("    %w =") else line
+        for line in lines
+    ]
     device, _host = _fused("\n".join(lines), _path())
     assert device.fusion["cut"] == "requant"
     assert device.fusion["proof"]["accumulator_bound"] == [-8 * 128 * 128, 8 * 128 * 128]

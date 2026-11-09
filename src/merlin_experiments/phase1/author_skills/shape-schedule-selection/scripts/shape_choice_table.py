@@ -47,8 +47,13 @@ SCHEMA = "merlin.author_shape_choice_table.v1"
 ROW_SCHEMA = "merlin.author_shape_results.v1"
 BASES = ("measured_roi", "modeled_roi", "static_emitted_ir")
 #: Fit flag -> the working set whose ``_copies`` / ``_stores_needed`` resources decide it.
-PREDICATES = {"lhs_fits": "operand_lhs", "rhs_fits": "operand_rhs", "operands_fit": "operand_both",
-              "output_fits": "accumulator_output", "m_stripe_fits": "accumulator_m_stripe"}
+PREDICATES = {
+    "lhs_fits": "operand_lhs",
+    "rhs_fits": "operand_rhs",
+    "operands_fit": "operand_both",
+    "output_fits": "accumulator_output",
+    "m_stripe_fits": "accumulator_m_stripe",
+}
 _MODEL_IDENTITY = ("model_sha256", "timing_mode", "timing_epoch")
 
 
@@ -162,8 +167,16 @@ def load_cases(path) -> list[dict]:
             gemm = (first[-2], first[-1], second[-1]) if second and len(first) >= 2 else None
         else:
             raise SystemExit(f"case {row['case']}: give m/k/n, operand_shapes or conv")
-        cases.append({"case": row["case"], "family": str(family), "shapes": shapes, "gemm": gemm,
-                      "class": row.get("class"), "model": row.get("model") is True})
+        cases.append(
+            {
+                "case": row["case"],
+                "family": str(family),
+                "shapes": shapes,
+                "gemm": gemm,
+                "class": row.get("class"),
+                "model": row.get("model") is True,
+            }
+        )
     return cases
 
 
@@ -203,9 +216,13 @@ def capacity(facts_path: str | None) -> dict | None:
     name = ((doc.get("inputs") or {}).get("target") if isinstance(doc, dict) else None) or "workspace"
     space = AS.derive_address_space(name, facts=doc)
     operand, accumulator = AS.operand_store(space), AS.accumulator_store(space)
-    return {"source": str(path), "edge": space.array_cols, "operand": operand.store,
-            "accumulator": accumulator.store,
-            "unknown": [r.reason for r in (operand, accumulator) if r.store is None]}
+    return {
+        "source": str(path),
+        "edge": space.array_cols,
+        "operand": operand.store,
+        "accumulator": accumulator.store,
+        "unknown": [r.reason for r in (operand, accumulator) if r.store is None],
+    }
 
 
 def resources(gemm, caps) -> dict:
@@ -228,8 +245,12 @@ def resources(gemm, caps) -> dict:
         both = None if None in (lhs, rhs) else lhs + rhs
         sets.update({"operand_lhs": (lhs, op), "operand_rhs": (rhs, op), "operand_both": (both, op)})
     if acc is not None and acc.capacity_rows():
-        sets.update({"accumulator_output": (working_set_rows(acc, (m, n)), acc),
-                     "accumulator_m_stripe": (working_set_rows(acc, (m, min(n, edge or n))), acc)})
+        sets.update(
+            {
+                "accumulator_output": (working_set_rows(acc, (m, n)), acc),
+                "accumulator_m_stripe": (working_set_rows(acc, (m, min(n, edge or n))), acc),
+            }
+        )
     out = {}
     for name, (rows, store) in sets.items():
         if rows:
@@ -238,15 +259,18 @@ def resources(gemm, caps) -> dict:
     if edge and op is not None and acc is not None and op.elems_per_row() and acc.elems_per_row():
         from merlin.compiler.selection.capacity import _capacity_fit_tile
 
-        out["resident_tiles_cover"] = _capacity_fit_tile(m, k, n, edge, op.capacity_rows() * op.elems_per_row(),
-                                                         acc.capacity_rows() * acc.elems_per_row())[3]
+        out["resident_tiles_cover"] = _capacity_fit_tile(
+            m, k, n, edge, op.capacity_rows() * op.elems_per_row(), acc.capacity_rows() * acc.elems_per_row()
+        )[3]
     return out
 
 
 def predicates(facts: dict) -> dict:
     """The fit/does-not-fit flags the table separates winners by, read from :func:`resources`."""
-    return {flag: None if facts.get(name + "_copies") is None else facts[name + "_copies"] >= 1
-            for flag, name in PREDICATES.items()}
+    return {
+        flag: None if facts.get(name + "_copies") is None else facts[name + "_copies"] >= 1
+        for flag, name in PREDICATES.items()
+    }
 
 
 # --------------------------------------------------------------------------------------------------
@@ -282,8 +306,17 @@ def _response_rows(doc: dict, settings: dict | None) -> list[dict]:
         elif _positive(performance.get("estimated_whole_soc_cycles")):
             cycles, basis = performance["estimated_whole_soc_cycles"], "modeled_roi"
             domain = "model:" + json.dumps([performance.get(k) for k in _MODEL_IDENTITY])
-        rows.append({"case": case, "settings": settings, "cycles": cycles, "basis": basis, "domain": domain,
-                     "numerics": _numerics(row), "program_sha256": row.get("program_sha256")})
+        rows.append(
+            {
+                "case": case,
+                "settings": settings,
+                "cycles": cycles,
+                "basis": basis,
+                "domain": domain,
+                "numerics": _numerics(row),
+                "program_sha256": row.get("program_sha256"),
+            }
+        )
     return rows
 
 
@@ -310,9 +343,15 @@ def _row(row: dict, path) -> dict:
     # CompletedObservation.eligible: passing numerics, complete timing over the complete ROI, known cycles.
     complete = observation.get("timing_status", "complete") == "complete" and observation.get("complete_roi", True)
     cycles = observation.get("cycles")
-    return {"case": row["case"], "settings": dict(row.get("settings") or {}),
-            "cycles": cycles if complete and _positive(cycles) else None, "basis": basis, "domain": domain,
-            "numerics": numerics == "pass", "program_sha256": observation.get("program_sha256")}
+    return {
+        "case": row["case"],
+        "settings": dict(row.get("settings") or {}),
+        "cycles": cycles if complete and _positive(cycles) else None,
+        "basis": basis,
+        "domain": domain,
+        "numerics": numerics == "pass",
+        "program_sha256": observation.get("program_sha256"),
+    }
 
 
 def load_results(path) -> list[dict]:
@@ -359,8 +398,9 @@ def _rank(scores: dict, basis: str, domain: str) -> dict:
     """Order candidates by their paired cycle ratio to the incumbent; unknown ratios stay unranked."""
     from merlin.transforms.pass_exploration import ObservedMetrics, rank_observed_metrics
 
-    observations = tuple((name, ObservedMetrics(basis, domain, (("cycle_ratio", value),)))
-                         for name, value in sorted(scores.items()))
+    observations = tuple(
+        (name, ObservedMetrics(basis, domain, (("cycle_ratio", value),))) for name, value in sorted(scores.items())
+    )
     if not observations:
         return {"ranked": (), "unranked_unknown": ()}
     return rank_observed_metrics(observations, objectives=("cycle_ratio",))
@@ -391,8 +431,13 @@ def choice_table(space, cases, rows, caps, edge) -> dict:
             aliases.setdefault(by_geometry[geometry.identity]["case"], []).append(case["case"])
             continue
         facts = resources(case["gemm"], caps)
-        by_geometry[geometry.identity] = {**case, "geometry": geometry, "class_name": shape_class(case, edge),
-                                          "resources": facts, "predicates": predicates(facts)}
+        by_geometry[geometry.identity] = {
+            **case,
+            "geometry": geometry,
+            "class_name": shape_class(case, edge),
+            "resources": facts,
+            "predicates": predicates(facts),
+        }
     case_geometry = {c["case"]: g for g, c in by_geometry.items()}
     for primary, names in aliases.items():
         for name in names:
@@ -440,36 +485,66 @@ def choice_table(space, cases, rows, caps, edge) -> dict:
             winner = trained[0][0] if trained else None
             values = dict(ranked)
             held_ratios = _ratios(table, partition.held_out, winner, current) if winner else None
-            transfer = {"partition_sha256": partition.manifest()["sha256"], "winner": winner,
-                        "holds": bool(best and winner in values and values[winner] == best[1]),
-                        "held_out_max_ratio": max(held_ratios) if held_ratios else None,
-                        "held_out_position": [c for c, _ in ranked].index(winner) if winner in values else None}
-        totals = {c: sum(table[(g.identity, c)] for g in held) for c in names
-                  if all((g.identity, c) in table for g in held)}
-        class_rows.append({
-            "class": name, "cases": [by_geometry[g.identity]["case"] for g in held],
-            "best": best[0] if best else None, "best_ratio": best[1][0] if best else None,
-            "best_cycles": totals.get(best[0]) if best else None, "current_cycles": totals.get(current),
-            "ranked": [[c, v[0]] for c, v in ranked],
-            "unknown": sorted(c for c, _ in ranking["unranked_unknown"]), "trained_on_other_classes": transfer,
-        })
+            transfer = {
+                "partition_sha256": partition.manifest()["sha256"],
+                "winner": winner,
+                "holds": bool(best and winner in values and values[winner] == best[1]),
+                "held_out_max_ratio": max(held_ratios) if held_ratios else None,
+                "held_out_position": [c for c, _ in ranked].index(winner) if winner in values else None,
+            }
+        totals = {
+            c: sum(table[(g.identity, c)] for g in held) for c in names if all((g.identity, c) in table for g in held)
+        }
+        class_rows.append(
+            {
+                "class": name,
+                "cases": [by_geometry[g.identity]["case"] for g in held],
+                "best": best[0] if best else None,
+                "best_ratio": best[1][0] if best else None,
+                "best_cycles": totals.get(best[0]) if best else None,
+                "current_cycles": totals.get(current),
+                "ranked": [[c, v[0]] for c, v in ranked],
+                "unknown": sorted(c for c, _ in ranking["unranked_unknown"]),
+                "trained_on_other_classes": transfer,
+            }
+        )
     per_case = []
     for gid, g in by_geometry.items():
         values = {c: table[(gid, c)] for c in names if (gid, c) in table}
         low = min(values.values()) if values else None
-        per_case.append({"case": g["case"], "aliases": aliases.get(g["case"], []), "class": g["class_name"],
-                         "gemm": g["gemm"], "predicates": g["predicates"], "resources": g["resources"],
-                         "winners": sorted(c for c, v in values.items() if v == low), "cycles": low,
-                         "distinct_programs": len(programs.get(gid, {})) or None, "measured": len(values)})
-    return {"schema": SCHEMA, "basis": basis, "domain": domain, "edge": edge,
-            "facts": caps["source"] if caps else None, "candidates": names, "current": current,
-            "classes": class_rows, "cases": per_case,
-            "separating_predicates": separations(per_case, keys, space, current),
-            "set_aside": {"other_knob_settings": skipped, "unmatched_cases": sorted(unmatched),
-                          "failing_numerics": sorted(failing),
-                          "other_domains": sum(1 for r in usable if r["cycles"] is not None
-                                               and (r["basis"], r["domain"]) != chosen)},
-            "performance_qualification": False}
+        per_case.append(
+            {
+                "case": g["case"],
+                "aliases": aliases.get(g["case"], []),
+                "class": g["class_name"],
+                "gemm": g["gemm"],
+                "predicates": g["predicates"],
+                "resources": g["resources"],
+                "winners": sorted(c for c, v in values.items() if v == low),
+                "cycles": low,
+                "distinct_programs": len(programs.get(gid, {})) or None,
+                "measured": len(values),
+            }
+        )
+    return {
+        "schema": SCHEMA,
+        "basis": basis,
+        "domain": domain,
+        "edge": edge,
+        "facts": caps["source"] if caps else None,
+        "candidates": names,
+        "current": current,
+        "classes": class_rows,
+        "cases": per_case,
+        "separating_predicates": separations(per_case, keys, space, current),
+        "set_aside": {
+            "other_knob_settings": skipped,
+            "unmatched_cases": sorted(unmatched),
+            "failing_numerics": sorted(failing),
+            "other_domains": sum(1 for r in usable if r["cycles"] is not None and (r["basis"], r["domain"]) != chosen),
+        },
+        "performance_qualification": False,
+    }
 
 
 def _guards(working_set: str, incumbent: str) -> dict:
@@ -482,8 +557,10 @@ def _guards(working_set: str, incumbent: str) -> dict:
 
     from merlin.transforms.pipeline_policy import ResourcePredicate
 
-    sides = {"when_true": ResourcePredicate(working_set + "_copies", 1),
-             "when_false": ResourcePredicate(working_set + "_stores_needed", 2)}
+    sides = {
+        "when_true": ResourcePredicate(working_set + "_copies", 1),
+        "when_false": ResourcePredicate(working_set + "_stores_needed", 2),
+    }
     try:
         from merlin.transforms.shape_policy import ShapeScheduleClass
     except ImportError:  # a library without shape_policy: the guards stay ordinary policy predicates
@@ -491,8 +568,10 @@ def _guards(working_set: str, incumbent: str) -> dict:
     for side, guard in sides.items():
         if ShapeScheduleClass is not None:
             ShapeScheduleClass(side, (guard,), incumbent)  # refuses a guard shape_policy would not accept
-    return {side: {"predicate": asdict(guard), "boundary_values": [guard.at_least, guard.at_least - 1]}
-            for side, guard in sides.items()}
+    return {
+        side: {"predicate": asdict(guard), "boundary_values": [guard.at_least, guard.at_least - 1]}
+        for side, guard in sides.items()
+    }
 
 
 def separations(per_case, keys, space, incumbent) -> list[dict]:
@@ -522,9 +601,18 @@ def separations(per_case, keys, space, incumbent) -> list[dict]:
                 seen = {row["resources"].get(side["predicate"]["resource"]) for row in per_case}
                 side["missing_boundary_values"] = [v for v in side["boundary_values"] if v not in seen]
             # Support per side: one case on a side is a hypothesis to test at the boundary.
-            found.append({"knob": knob, "predicate": name, "when_true": mapping[True],
-                          "when_false": mapping[False], "cases": len(winners),
-                          "cases_true": support[True], "cases_false": support[False], "guards": guards})
+            found.append(
+                {
+                    "knob": knob,
+                    "predicate": name,
+                    "when_true": mapping[True],
+                    "when_false": mapping[False],
+                    "cases": len(winners),
+                    "cases_true": support[True],
+                    "cases_false": support[False],
+                    "guards": guards,
+                }
+            )
     return found
 
 
@@ -538,9 +626,12 @@ def _pct(ratio):
 
 
 def render(report: dict) -> str:
-    lines = [f"Choice table ({report['basis']}, {report['domain']}); array edge {report['edge'] or 'unknown'}"
-             f"{' from ' + report['facts'] if report['facts'] else ''}",
-             f"current setting: {report['current'].removesuffix(' (current)')}", ""]
+    lines = [
+        f"Choice table ({report['basis']}, {report['domain']}); array edge {report['edge'] or 'unknown'}"
+        f"{' from ' + report['facts'] if report['facts'] else ''}",
+        f"current setting: {report['current'].removesuffix(' (current)')}",
+        "",
+    ]
     width = max([len("best in class"), *(len(str(r["best"] or "unknown")) for r in report["classes"])])
     header = f"{'class':<12} {'cases':>5}  {'best in class':<{width}} {'cycles':>12} {'vs current':>10}  holds-out"
     lines += [header, "-" * len(header)]
@@ -550,17 +641,24 @@ def render(report: dict) -> str:
         if transfer is not None:
             worst = transfer["held_out_max_ratio"]
             regress = f"; regresses {_pct(worst)} on a case here" if worst is not None and worst > 1 else ""
-            held = (f"{'yes' if transfer['holds'] else 'no'} (other classes pick "
-                    f"{transfer['winner'] or 'nothing known'}{regress})")
+            held = (
+                f"{'yes' if transfer['holds'] else 'no'} (other classes pick "
+                f"{transfer['winner'] or 'nothing known'}{regress})"
+            )
         cycles = f"{row['best_cycles']:,.0f}" if row["best_cycles"] is not None else "unknown"
         best = str(row["best"] or "unknown")
-        lines.append(f"{row['class']:<12} {len(row['cases']):>5}  {best:<{width}} {cycles:>12} "
-                     f"{_pct(row['best_ratio']):>10}  {held}")
+        lines.append(
+            f"{row['class']:<12} {len(row['cases']):>5}  {best:<{width}} {cycles:>12} "
+            f"{_pct(row['best_ratio']):>10}  {held}"
+        )
         if row["unknown"]:
-            lines.append(f"{'':<20}unranked (a case lacks a passing pair with the current setting): "
-                         f"{', '.join(row['unknown'])}")
-    lines += ["", "Per case (capacity predicates: L=lhs R=rhs O=both operands A=output S=one M stripe fit; "
-              "T=resident tiles)"]
+            lines.append(
+                f"{'':<20}unranked (a case lacks a passing pair with the current setting): {', '.join(row['unknown'])}"
+            )
+    lines += [
+        "",
+        "Per case (capacity predicates: L=lhs R=rhs O=both operands A=output S=one M stripe fit; T=resident tiles)",
+    ]
     for row in sorted(report["cases"], key=lambda r: (r["class"], r["case"])):
         p = row["predicates"]
         flags = "".join(("-" if p.get(k) is None else "y" if p[k] else "n") for k in PREDICATES)
@@ -570,8 +668,10 @@ def render(report: dict) -> str:
         lines.append(f"  {row['case']:<36} {row['class']:<11} {gemm:<16} LROAS={flags} T={cover:<4} -> {win}")
     lines += ["", "Capacity predicates that separate the per-case winners"]
     for s in report["separating_predicates"]:
-        lines.append(f"  {s['knob']}: {s['when_true']} where {s['predicate']} ({s['cases_true']} cases), "
-                     f"{s['when_false']} where not ({s['cases_false']} cases)")
+        lines.append(
+            f"  {s['knob']}: {s['when_true']} where {s['predicate']} ({s['cases_true']} cases), "
+            f"{s['when_false']} where not ({s['cases_false']} cases)"
+        )
         for side, guard in s["guards"].items():
             p = guard["predicate"]
             missing = " and ".join(map(str, guard["missing_boundary_values"]))
@@ -580,10 +680,13 @@ def render(report: dict) -> str:
     if not report["separating_predicates"]:
         lines.append("  none: keep a per-class choice, add cases at the class boundary, or derive another fact")
     aside = report["set_aside"]
-    lines += ["", f"set aside: {aside['other_knob_settings']} rows with other knobs changed, "
-              f"{len(aside['failing_numerics'])} failing numerics, {aside['other_domains']} in other timing domains, "
-              f"unmatched cases {aside['unmatched_cases'] or 'none'}",
-              "Evidence for a decision, not a qualification: confirm with ab-library-pass before changing a default."]
+    lines += [
+        "",
+        f"set aside: {aside['other_knob_settings']} rows with other knobs changed, "
+        f"{len(aside['failing_numerics'])} failing numerics, {aside['other_domains']} in other timing domains, "
+        f"unmatched cases {aside['unmatched_cases'] or 'none'}",
+        "Evidence for a decision, not a qualification: confirm with ab-library-pass before changing a default.",
+    ]
     return "\n".join(lines)
 
 
@@ -591,11 +694,15 @@ def render_shape_policy(report: dict) -> str:
     """Per class of an ``assess_shape_policy(...).report``: what was selected and what keeps the incumbent."""
     if not isinstance(report, dict) or report.get("schema") != "merlin.shape_schedule_policy.v1":
         raise SystemExit("--shape-policy expects the report of merlin.transforms.shape_policy.assess_shape_policy")
-    lines = [f"shape policy {str(report.get('policy_sha256'))[:12]} (max regression ratio "
-             f"{report.get('max_regression_ratio')})", ""]
+    lines = [
+        f"shape policy {str(report.get('policy_sha256'))[:12]} (max regression ratio "
+        f"{report.get('max_regression_ratio')})",
+        "",
+    ]
     for group in report.get("classes", ()):
-        lines.append(f"{group['shape_class']}: {group['status']}; selected {group['selected']} "
-                     f"(incumbent {group['incumbent']})")
+        lines.append(
+            f"{group['shape_class']}: {group['status']}; selected {group['selected']} (incumbent {group['incumbent']})"
+        )
         for alt in group.get("alternatives", ()):
             score = alt.get("training_geometric_mean_ratio")
             ratios = alt.get("matched_cycle_ratios") or []
@@ -610,20 +717,30 @@ def render_shape_policy(report: dict) -> str:
                 why.append("mixed performance domains")
             if ratios and max(ratios) > report.get("max_regression_ratio", 1.0):
                 why.append(f"regresses {_pct(max(ratios))} on a matched case")
-            lines.append(f"  {alt['alternative']:<28} {'supported' if alt['supported'] else 'not supported':<14} "
-                         f"training {_pct(score) if score is not None else 'unknown'}"
-                         f"{'; ' + '; '.join(why) if why else ''}")
+            lines.append(
+                f"  {alt['alternative']:<28} {'supported' if alt['supported'] else 'not supported':<14} "
+                f"training {_pct(score) if score is not None else 'unknown'}"
+                f"{'; ' + '; '.join(why) if why else ''}"
+            )
     winners = [w for w in report.get("exact_source_winners", ()) if w.get("winner")]
-    lines += ["", f"exact-source winners (this source only, not a guard): {len(winners)} of "
-              f"{len(report.get('exact_source_winners', ()))} geometries"]
+    lines += [
+        "",
+        f"exact-source winners (this source only, not a guard): {len(winners)} of "
+        f"{len(report.get('exact_source_winners', ()))} geometries",
+    ]
     return "\n".join(lines)
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0],
-                                 epilog="Formats: the shape-schedule-selection skill, reference/choice-table.md.")
-    ap.add_argument("--shape-policy", default=None,
-                    help="instead: print an assess_shape_policy report (JSON of policy.report) per class")
+    ap = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0],
+        epilog="Formats: the shape-schedule-selection skill, reference/choice-table.md.",
+    )
+    ap.add_argument(
+        "--shape-policy",
+        default=None,
+        help="instead: print an assess_shape_policy report (JSON of policy.report) per class",
+    )
     ap.add_argument("--knobs", help="your TUNING_KNOBS.json (merlin.tuning_knobs.v1)")
     ap.add_argument("--cases", help="JSON list of cases with geometry")
     ap.add_argument("--results", help="normalized rows, CompletedObservation rows or self-check responses (JSON)")
@@ -650,7 +767,8 @@ def main(argv=None) -> int:
     report["unmeasured_candidates"] = sorted(
         label(tuple(zip(space["selected"], values)), space)
         for values in product(*(space["knobs"][k] for k in space["selected"]))
-        if label(tuple(zip(space["selected"], values)), space) not in report["candidates"])
+        if label(tuple(zip(space["selected"], values)), space) not in report["candidates"]
+    )
     print(json.dumps(report, indent=1, default=str) if a.json else render(report))
     return 0
 

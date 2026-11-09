@@ -44,10 +44,13 @@ def test_region_bridge_preserves_actual_source_ids_and_retained_bodies():
     source = stream.getvalue() + "\n"
     graph = _program_graph(parse_mlir_text(source), hashlib.sha256(source.encode()).hexdigest())
     regions = [
-        {"region_id": row["provenance"]["prov.region_id"], "operation_id": row["operation_id"],
-         "status": "emitted" if index == 0 else "unsupported_semantics",
-         "static_inputs_status": "packed_or_runtime" if index == 0 else "not_emitted",
-         "request_digest": "selected-request" if index == 0 else None}
+        {
+            "region_id": row["provenance"]["prov.region_id"],
+            "operation_id": row["operation_id"],
+            "status": "emitted" if index == 0 else "unsupported_semantics",
+            "static_inputs_status": "packed_or_runtime" if index == 0 else "not_emitted",
+            "request_digest": "selected-request" if index == 0 else None,
+        }
         for index, row in enumerate(row for row in graph["operations"] if row["mlir_operation"] == "linalg.matmul")
     ]
     record, text = diagnostic_host_bridge(source, "forward", regions)
@@ -97,8 +100,10 @@ def _selected() -> dict:
             "request_digest": request,
             "source_sha256": hashlib.sha256(SOURCE.encode()).hexdigest(),
             "boundary_conversions": [
-                {"source": "input0"}, {"source": "input1"},
-                {"source": "right"}, {"source": "left"},
+                {"source": "input0"},
+                {"source": "input1"},
+                {"source": "right"},
+                {"source": "left"},
             ],
         },
         "execution_plan": execution,
@@ -117,8 +122,7 @@ def test_whole_graph_bridge_preserves_ordered_c_interface() -> None:
     record, text = diagnostic_whole_graph_host_bridge(**_selected())
     module = parse_mlir_text(text)
     module.verify()
-    functions = {op.sym_name.data: op for op in module.body.block.ops
-                 if isinstance(op, func.FuncOp)}
+    functions = {op.sym_name.data: op for op in module.body.block.ops if isinstance(op, func.FuncOp)}
     assert set(functions) == {"forward", "selected_graph"}
     assert not functions["selected_graph"].body.blocks
     assert "llvm.emit_c_interface" in functions["selected_graph"].attributes
@@ -136,17 +140,20 @@ def test_whole_graph_bridge_preserves_ordered_c_interface() -> None:
     assert not record["linked"] and not record["executed"]
 
 
-@pytest.mark.parametrize("change", [
-    lambda data: data.update(program=data["program"] + "\n"),
-    lambda data: data["compilation"].update(engine="act_reference"),
-    lambda data: data["compilation"].update(binary_sha256=None),
-    lambda data: data["compilation"].update(native_check_fingerprint=None),
-    lambda data: data["selection"].update(source_outputs=["left", "right"]),
-    lambda data: data["selection"].update(graph_outputs=[1]),
-    lambda data: data["execution_plan"].update(output_addresses=[2048, 2048]),
-    lambda data: data["execution_plan"].update(output_addresses=[2048]),
-    lambda data: data["precision_plan"].update(source_sha256="0" * 64),
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda data: data.update(program=data["program"] + "\n"),
+        lambda data: data["compilation"].update(engine="act_reference"),
+        lambda data: data["compilation"].update(binary_sha256=None),
+        lambda data: data["compilation"].update(native_check_fingerprint=None),
+        lambda data: data["selection"].update(source_outputs=["left", "right"]),
+        lambda data: data["selection"].update(graph_outputs=[1]),
+        lambda data: data["execution_plan"].update(output_addresses=[2048, 2048]),
+        lambda data: data["execution_plan"].update(output_addresses=[2048]),
+        lambda data: data["precision_plan"].update(source_sha256="0" * 64),
+    ],
+)
 def test_whole_graph_bridge_rejects_changed_selection(change) -> None:
     data = copy.deepcopy(_selected())
     change(data)
@@ -185,17 +192,26 @@ def test_cli_bridge_checks_native_artifact_bytes_before_writing(tmp_path: Path, 
     compilation = selected["compilation"]
     compilation["binary_sha256"] = hashlib.sha256(members["program.bin"]).hexdigest()
     compilation["stage_artifacts"] = {
-        name: hashlib.sha256(members[name]).hexdigest()
-        for name in ("native-selection.json", "precision-plan.json")
+        name: hashlib.sha256(members[name]).hexdigest() for name in ("native-selection.json", "precision-plan.json")
     }
     (compiled / "manifest.json").write_text(json.dumps(compilation, sort_keys=True) + "\n")
 
     def invoke(destination: Path) -> int:
-        return cli.main([
-            "native-bridge-graph", "--linalg", str(source), "--entry", "forward",
-            "--compiled", str(compiled), "--device-symbol", "selected_graph",
-            "--out", str(destination),
-        ])
+        return cli.main(
+            [
+                "native-bridge-graph",
+                "--linalg",
+                str(source),
+                "--entry",
+                "forward",
+                "--compiled",
+                str(compiled),
+                "--device-symbol",
+                "selected_graph",
+                "--out",
+                str(destination),
+            ]
+        )
 
     good = tmp_path / "good"
     assert invoke(good) == 0
@@ -233,7 +249,8 @@ def _write_compiled(root: Path, selected: dict, layouts: dict | None = None) -> 
     compilation["binary_sha256"] = hashlib.sha256(members["program.bin"]).hexdigest()
     compilation["stage_artifacts"] = {
         name: hashlib.sha256(content).hexdigest()
-        for name, content in members.items() if name not in {"execution_plan.json", "program.bin"}
+        for name, content in members.items()
+        if name not in {"execution_plan.json", "program.bin"}
     }
     (root / "manifest.json").write_text(json.dumps(compilation, sort_keys=True) + "\n")
 
@@ -257,11 +274,21 @@ def test_cli_bridge_accepts_precision_plan_bound_before_physical_layouts(tmp_pat
     }
 
     def invoke(compiled: Path, destination: Path) -> int:
-        return cli.main([
-            "native-bridge-graph", "--linalg", str(source), "--entry", "forward",
-            "--compiled", str(compiled), "--device-symbol", "selected_graph",
-            "--out", str(destination),
-        ])
+        return cli.main(
+            [
+                "native-bridge-graph",
+                "--linalg",
+                str(source),
+                "--entry",
+                "forward",
+                "--compiled",
+                str(compiled),
+                "--device-symbol",
+                "selected_graph",
+                "--out",
+                str(destination),
+            ]
+        )
 
     def selected_after_layouts() -> dict:
         selected = _selected()
@@ -284,9 +311,12 @@ def test_cli_bridge_accepts_precision_plan_bound_before_physical_layouts(tmp_pat
     assert invoke(stale, tmp_path / "stale-bridge") == 2
 
     legacy = tmp_path / "legacy"
-    _write_compiled(legacy, selected_after_layouts(), {
-        key: value for key, value in layouts.items() if key != "request_digest"
-    } | {"schema": "merlin.physical_boundary_layouts.v1"})
+    _write_compiled(
+        legacy,
+        selected_after_layouts(),
+        {key: value for key, value in layouts.items() if key != "request_digest"}
+        | {"schema": "merlin.physical_boundary_layouts.v1"},
+    )
     assert invoke(legacy, tmp_path / "legacy-bridge") == 2
 
 
@@ -299,8 +329,10 @@ def test_native_verify_reopens_source_snapshot_and_selected_stages(
     dtype = TensorType((1,), "i32", "exact-i32")
     request = KernelRequest(
         nodes=(SemanticNode("x", "input", (), dtype, effect="input"),),
-        outputs=("x",), output_storages=("external",),
-        input_storages=(("x", "external"),), target_identity="synthetic-verify-1",
+        outputs=("x",),
+        output_storages=("external",),
+        input_storages=(("x", "external"),),
+        target_identity="synthetic-verify-1",
         lowering_policy="diagnostic",
     )
     request_path = tmp_path / "request.json"
@@ -321,15 +353,19 @@ def test_native_verify_reopens_source_snapshot_and_selected_stages(
     artifact.mkdir()
     binary = b"\x13\x00\x00\x00"
     selected = {
-        "engine": "merlin_native", "request_digest": request.digest(),
-        "target_identity": request.target_identity, "check_fingerprint": "checked-1",
+        "engine": "merlin_native",
+        "request_digest": request.digest(),
+        "target_identity": request.target_identity,
+        "check_fingerprint": "checked-1",
     }
     selected_bytes = (json.dumps(selected, sort_keys=True) + "\n").encode()
     (artifact / "program.bin").write_bytes(binary)
     (artifact / "native-selection.json").write_bytes(selected_bytes)
     manifest = {
-        "engine": "merlin_native", "compile_mode": "diagnostic",
-        "request_digest": request.digest(), "target_identity": request.target_identity,
+        "engine": "merlin_native",
+        "compile_mode": "diagnostic",
+        "request_digest": request.digest(),
+        "target_identity": request.target_identity,
         "native_snapshot_sha256": hashlib.sha256((snapshot_root / "manifest.json").read_bytes()).hexdigest(),
         "native_check_fingerprint": "checked-1",
         "binary_sha256": hashlib.sha256(binary).hexdigest(),
@@ -338,9 +374,19 @@ def test_native_verify_reopens_source_snapshot_and_selected_stages(
     (artifact / "manifest.json").write_text(json.dumps(manifest))
     status_path = tmp_path / "verify-status.json"
     command = [
-        "native-verify", "--engine", "merlin_native", "--snapshot", str(snapshot_root),
-        "--request", str(request_path), "--mode", "diagnostic", "--artifact", str(artifact),
-        "--out", str(status_path),
+        "native-verify",
+        "--engine",
+        "merlin_native",
+        "--snapshot",
+        str(snapshot_root),
+        "--request",
+        str(request_path),
+        "--mode",
+        "diagnostic",
+        "--artifact",
+        str(artifact),
+        "--out",
+        str(status_path),
     ]
     assert cli.main(command) == 0
     assert json.loads(status_path.read_text())["status"] == "verified_artifacts"
@@ -356,9 +402,13 @@ def test_native_verify_reopens_source_snapshot_and_selected_stages(
     (snapshot_root / "manifest.json").write_text('{"identity":"snapshot-1"}\n')
 
     changed = KernelRequest(
-        nodes=request.nodes, outputs=request.outputs, output_storages=request.output_storages,
-        input_storages=request.input_storages, target_identity=request.target_identity,
-        lowering_policy="diagnostic", source_identity="different-source",
+        nodes=request.nodes,
+        outputs=request.outputs,
+        output_storages=request.output_storages,
+        input_storages=request.input_storages,
+        target_identity=request.target_identity,
+        lowering_policy="diagnostic",
+        source_identity="different-source",
     )
     request_path.write_text(json.dumps(changed.record()))
     assert cli.main(command) == 2
@@ -382,10 +432,15 @@ def test_explicit_graph_policy_compiles_tracks_replays_and_refuses_unselected_pr
     policy_path = tmp_path / "policy.json"
     policy_path.write_text(json.dumps(policy))
     dtype = TensorType((1,), "i32", "exact-i32")
-    request = KernelRequest(nodes=(SemanticNode("x", "input", (), dtype, effect="input"),),
-                            outputs=("x",), input_storages=(("x", "external"),), output_storages=("external",),
-                            target_identity="synthetic-graph-fixture", lowering_policy="diagnostic",
-                            source_identity=policy["source_sha256"])
+    request = KernelRequest(
+        nodes=(SemanticNode("x", "input", (), dtype, effect="input"),),
+        outputs=("x",),
+        input_storages=(("x", "external"),),
+        output_storages=("external",),
+        target_identity="synthetic-graph-fixture",
+        lowering_policy="diagnostic",
+        source_identity=policy["source_sha256"],
+    )
     profile = SimpleNamespace(target_identity=request.target_identity, digest=lambda: "selected-profile")
     snapshot = SimpleNamespace(profile=profile, root=snapshot_root)
     preparations = []
@@ -410,12 +465,16 @@ def test_explicit_graph_policy_compiles_tracks_replays_and_refuses_unselected_pr
             destination.mkdir()
             binary = b"\x13\x00\x00\x00"
             (destination / "program.bin").write_bytes(binary)
-            manifest = {"engine": "merlin_native", "request_digest": request.digest(),
-                        "target_identity": request.target_identity, "compile_mode": "diagnostic",
-                        "binary_sha256": hashlib.sha256(binary).hexdigest(),
-                        "native_snapshot_sha256": hashlib.sha256(
-                            (snapshot_root / "manifest.json").read_bytes()).hexdigest(),
-                        "constant_inputs": [], "stage_artifacts": {}}
+            manifest = {
+                "engine": "merlin_native",
+                "request_digest": request.digest(),
+                "target_identity": request.target_identity,
+                "compile_mode": "diagnostic",
+                "binary_sha256": hashlib.sha256(binary).hexdigest(),
+                "native_snapshot_sha256": hashlib.sha256((snapshot_root / "manifest.json").read_bytes()).hexdigest(),
+                "constant_inputs": [],
+                "stage_artifacts": {},
+            }
             (destination / "manifest.json").write_text(json.dumps(manifest))
             return manifest
 
@@ -424,21 +483,42 @@ def test_explicit_graph_policy_compiles_tracks_replays_and_refuses_unselected_pr
     abi = tmp_path / "abi.json"
     abi.write_text(json.dumps({"fixed_inputs": {"x": 0}, "fixed_outputs": [1]}))
     artifact, status = tmp_path / "compiled", tmp_path / "verify.json"
-    base = ["--engine", "merlin_native", "--support", "synthetic", "--snapshot", str(snapshot_root),
-            "--linalg", str(source), "--linalg-entry", "forward", "--diagnostic-graph-policy", str(policy_path),
-            "--mode", "diagnostic"]
-    assert cli.main(["native-compile", *base, "--abi", str(abi), "--target-source", str(tmp_path),
-                     "--out", str(artifact)]) == 0
+    base = [
+        "--engine",
+        "merlin_native",
+        "--support",
+        "synthetic",
+        "--snapshot",
+        str(snapshot_root),
+        "--linalg",
+        str(source),
+        "--linalg-entry",
+        "forward",
+        "--diagnostic-graph-policy",
+        str(policy_path),
+        "--mode",
+        "diagnostic",
+    ]
+    assert (
+        cli.main(["native-compile", *base, "--abi", str(abi), "--target-source", str(tmp_path), "--out", str(artifact)])
+        == 0
+    )
     manifest = json.loads((artifact / "manifest.json").read_text())
-    assert manifest["stage_artifacts"]["precision-plan.json"] == hashlib.sha256(
-        (artifact / "precision-plan.json").read_bytes()).hexdigest()
-    assert json.loads((artifact / "precision-plan.json").read_text())["source_sha256"] == hashlib.sha256(
-        source.read_bytes()).hexdigest()
+    assert (
+        manifest["stage_artifacts"]["precision-plan.json"]
+        == hashlib.sha256((artifact / "precision-plan.json").read_bytes()).hexdigest()
+    )
+    assert (
+        json.loads((artifact / "precision-plan.json").read_text())["source_sha256"]
+        == hashlib.sha256(source.read_bytes()).hexdigest()
+    )
     command = ["native-verify", *base, "--artifact", str(artifact), "--out", str(status)]
     assert cli.main(command) == 0 and len(preparations) == 2
     assert json.loads(status.read_text())["status"] == "verified_artifacts"
+
     def bounded_selection(*args, **kwargs):
         raise target_binding.NativeCompilationError("resource_limit", "fixture selection budget")
+
     snapshot.select = bounded_selection
     selection = tmp_path / "selection.json"
     assert cli.main(["native-select", *base, "--out", str(selection)]) == 2
@@ -452,11 +532,38 @@ def test_explicit_graph_policy_compiles_tracks_replays_and_refuses_unselected_pr
     assert before == {p.name: p.read_bytes() for p in artifact.iterdir()}
     non_diagnostic = ["strict-native" if item == "diagnostic" else item for item in base]
     rejected = tmp_path / "rejected"
-    assert cli.main(["native-compile", *non_diagnostic, "--abi", str(abi), "--target-source", str(tmp_path),
-                     "--out", str(rejected)]) == 2
+    assert (
+        cli.main(
+            [
+                "native-compile",
+                *non_diagnostic,
+                "--abi",
+                str(abi),
+                "--target-source",
+                str(tmp_path),
+                "--out",
+                str(rejected),
+            ]
+        )
+        == 2
+    )
     assert not rejected.exists()
-    assert cli.main(["native-compile", *base, "--application", "--abi", str(abi),
-                     "--target-source", str(tmp_path), "--out", str(rejected)]) == 2
+    assert (
+        cli.main(
+            [
+                "native-compile",
+                *base,
+                "--application",
+                "--abi",
+                str(abi),
+                "--target-source",
+                str(tmp_path),
+                "--out",
+                str(rejected),
+            ]
+        )
+        == 2
+    )
     assert not rejected.exists()
     status.write_text('{"status":"verified_artifacts"}')
     assert cli.main([*command, "--application"]) == 2
@@ -471,24 +578,32 @@ def test_staged_graph_policy_keeps_exact_policy_entry_and_original_source_bindin
     from merlin.compiler.frontend.native import load_selected_request
 
     dtype = TensorType((1,), "i32", "exact-i32")
-    request = KernelRequest(nodes=(SemanticNode("x", "input", (), dtype, effect="input"),),
-                            outputs=("x",), input_storages=(("x", "external"),), output_storages=("external",),
-                            target_identity="synthetic-staged-graph", lowering_policy="diagnostic")
+    request = KernelRequest(
+        nodes=(SemanticNode("x", "input", (), dtype, effect="input"),),
+        outputs=("x",),
+        input_storages=(("x", "external"),),
+        output_storages=("external",),
+        target_identity="synthetic-staged-graph",
+        lowering_policy="diagnostic",
+    )
     policy = {"source_sha256": "a" * 64}
     policy_path = tmp_path / "policy.json"
     policy_path.write_text(json.dumps(policy))
-    staged = SimpleNamespace(program=SOURCE, entry="forward", precision_policy=policy,
-                             original_source_sha256="a" * 64)
+    staged = SimpleNamespace(program=SOURCE, entry="forward", precision_policy=policy, original_source_sha256="a" * 64)
     monkeypatch.setattr(inputs, "load_compile_inputs", lambda _: staged)
     visits = []
+
     def prepare(source, *, entry, policy, original_source_sha256):
         visits.append((source, entry, policy, original_source_sha256))
         return SimpleNamespace(request=request, source_operations=("func.return",), record=lambda: {})
-    args = Namespace(diagnostic_graph_policy=str(policy_path), compile_inputs="selected-staged",
-                     linalg=None, linalg_entry=None)
+
+    args = Namespace(
+        diagnostic_graph_policy=str(policy_path), compile_inputs="selected-staged", linalg=None, linalg_entry=None
+    )
     binding = SimpleNamespace(prepare_precision_graph=prepare)
-    loaded, kind, _, _ = load_selected_request(args, target_identity=request.target_identity,
-                                              mode="diagnostic", binding=binding)
+    loaded, kind, _, _ = load_selected_request(
+        args, target_identity=request.target_identity, mode="diagnostic", binding=binding
+    )
     assert loaded is request and kind == "source_bound_diagnostic_staged_graph"
     assert visits == [(SOURCE, "forward", policy, "a" * 64)]
     staged.precision_policy = {**policy, "different": True}
@@ -499,8 +614,14 @@ def test_staged_graph_policy_keeps_exact_policy_entry_and_original_source_bindin
     with pytest.raises(ValueError, match="diagnostic mode"):
         load_selected_request(args, target_identity=request.target_identity, mode="strict-native", binding=binding)
     assert len(visits) == 1
+
     def old_hook(source, *, entry, policy):
         pytest.fail("a staged premise must never be dropped to retry an older hook")
+
     with pytest.raises(TypeError, match="original_source_sha256"):
-        load_selected_request(args, target_identity=request.target_identity, mode="diagnostic",
-                              binding=SimpleNamespace(prepare_precision_graph=old_hook))
+        load_selected_request(
+            args,
+            target_identity=request.target_identity,
+            mode="diagnostic",
+            binding=SimpleNamespace(prepare_precision_graph=old_hook),
+        )

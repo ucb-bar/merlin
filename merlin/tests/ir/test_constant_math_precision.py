@@ -11,13 +11,13 @@ from fractions import Fraction
 from types import SimpleNamespace
 
 import pytest
+from test_semantic_constant_folding import request
 
 from merlin.semantic_compiler.constant_math_backend import HELPER_ENV, MathHelper, MathUnavailable, build_helper
 from merlin.semantic_compiler.constant_math_precision import prepare_constant_math, verify_constant_math
 from merlin.semantic_compiler.model import SemanticNode, pointwise_identity_maps
 from merlin.semantic_compiler.scalar_reference import _round
 from merlin.semantic_compiler.source_preparation import prepare_source, verify_source_preparation
-from test_semantic_constant_folding import request
 
 
 @pytest.fixture(scope="module")

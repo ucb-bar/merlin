@@ -4,15 +4,15 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.program_limits import EncodedAccess
-from merlin.compiler.schedule.spill_conformance import verify_device_spills
-from merlin.compiler.schedule.spill_conformance import verify_storage_dataflow
-from merlin.compiler.schedule.temporary_storage import StorageAdapter
-from merlin.compiler.schedule.temporary_storage import StorageEffects
-from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
-from merlin.compiler.schedule.temporary_storage import TemporaryObject
-from merlin.compiler.schedule.temporary_storage import allocate_temporary_storage
+from merlin.compiler.schedule.program_limits import AddressWindow, EncodedAccess
+from merlin.compiler.schedule.spill_conformance import verify_device_spills, verify_storage_dataflow
+from merlin.compiler.schedule.temporary_storage import (
+    StorageAdapter,
+    StorageEffects,
+    StorageOptimizationUnavailable,
+    TemporaryObject,
+    allocate_temporary_storage,
+)
 from merlin.sched.ir import Call, Const, Kernel, TensorArg, evaluate
 from merlin.semantic_compiler.allocation_types import Reservation, StorageBank
 

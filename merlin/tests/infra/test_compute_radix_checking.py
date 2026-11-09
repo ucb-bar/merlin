@@ -5,8 +5,7 @@ from dataclasses import dataclass, replace
 import pytest
 from test_compact_dense import ADAPTER, encode
 
-from merlin.compiler.schedule.blocks import Compute
-from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Compute, Preload
 from merlin.compiler.schedule.dense_panel_pipeline import _collapse_compute_radices
 from merlin.sched.ir import Call, Expr, Kernel, Loop, Ptr, TensorArg, Var, check_structure, select
 from merlin.sched.ir.kernel import concretize, instances
@@ -15,13 +14,14 @@ from merlin.sched.ir.kernel import concretize, instances
 def sample():
     k, m = Var("k"), Var("m")
     n = Var("stripe") * 4 + Var("within")
-    preload = encode(Preload(k * 64 + n * 4, (k, n), m * 48 + n * 4,
-                             select("k", 0, 0, 1), 2, 4, 3))
+    preload = encode(Preload(k * 64 + n * 4, (k, n), m * 48 + n * 4, select("k", 0, 0, 1), 2, 4, 3))
     preload = replace(preload, args=(*preload.args, ("audit_ptr", Ptr("audit", n * 2 + m))))
     compute = encode(Compute(m * 18 + k * 3, (m, k), 2, 3, True))
-    return Kernel("inverse", (TensorArg("audit", (4096,), "i8", "read"),),
-                  (Loop("k", 2, (Loop("stripe", 3, (Loop("within", 4,
-                    (Loop("m", 2, (preload, compute)),)),)),)),))
+    return Kernel(
+        "inverse",
+        (TensorArg("audit", (4096,), "i8", "read"),),
+        (Loop("k", 2, (Loop("stripe", 3, (Loop("within", 4, (Loop("m", 2, (preload, compute)),)),)),)),),
+    )
 
 
 def concrete(kernel):
@@ -33,6 +33,7 @@ def map_pair(kernel, edit):
         if len(body) == 2 and all(not isinstance(s, Loop) for s in body):
             return edit(body)
         return tuple(replace(s, body=walk(s.body)) if type(s) is Loop else s for s in body)
+
     return replace(kernel, body=walk(kernel.body))
 
 
@@ -56,16 +57,16 @@ class Unknown(Expr):
     pass
 
 
-@pytest.mark.parametrize("extra", [Var("stripe"), Var("within"),
-                                  select("within", 3, 2, 4), Unknown()])
+@pytest.mark.parametrize("extra", [Var("stripe"), Var("within"), select("within", 3, 2, 4), Unknown()])
 def test_every_scalar_tag_or_partial_tail_must_obey_the_exact_coefficient_relation(extra):
     original = map_pair(sample(), lambda pair: (replace(pair[0], args=(*pair[0].args, ("tag", extra))), pair[1]))
     actual, changes = _collapse_compute_radices(original, ADAPTER)
     assert actual == original and not changes
 
 
-@pytest.mark.parametrize("edit", [lambda pair: tuple(reversed(pair)),
-                                   lambda pair: (replace(pair[0], unit="execute"), pair[1])])
+@pytest.mark.parametrize(
+    "edit", [lambda pair: tuple(reversed(pair)), lambda pair: (replace(pair[0], unit="execute"), pair[1])]
+)
 def test_changed_pair_order_or_additional_effects_are_not_collapsed(edit):
     original = map_pair(sample(), edit)
     actual, changes = _collapse_compute_radices(original, ADAPTER)

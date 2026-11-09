@@ -20,6 +20,7 @@ than pattern-matched: the identifier run is walked and each field validated. A f
 not fit falls back to the filename tokens, and a shape token that fits neither form is preserved
 verbatim as ``{"tile": <token>}`` — never dropped.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,12 +30,35 @@ from merlin.kernels.types import NormalizedKernel, normalize_dtype
 
 # Ordered longest-first so e.g. "igemm"/"dwconv" win over "gemm"/"conv".
 _OP_KEYWORDS = (
-    "igemm", "gemm", "dwconv2d", "dwconv", "conv",
-    "argmaxpool", "maxpool", "avgpool", "vmulcaddc",
-    "rdsum", "rsum", "rdminmax", "rminmax",
-    "vadd", "vmul", "vdiv", "vsub", "vbinary", "vclamp", "velu",
-    "vsigmoid", "vtanh", "vgelu", "vsqrt", "vrsqrt", "vexp", "vcvt",
-    "ibilinear", "transpose",
+    "igemm",
+    "gemm",
+    "dwconv2d",
+    "dwconv",
+    "conv",
+    "argmaxpool",
+    "maxpool",
+    "avgpool",
+    "vmulcaddc",
+    "rdsum",
+    "rsum",
+    "rdminmax",
+    "rminmax",
+    "vadd",
+    "vmul",
+    "vdiv",
+    "vsub",
+    "vbinary",
+    "vclamp",
+    "velu",
+    "vsigmoid",
+    "vtanh",
+    "vgelu",
+    "vsqrt",
+    "vrsqrt",
+    "vexp",
+    "vcvt",
+    "ibilinear",
+    "transpose",
 )
 
 #: The base ISA suffix to ingest. A PARAMETER, not a target: see the module docstring.
@@ -62,7 +86,7 @@ def find_ukernel_symbol(text: str, isa: str) -> tuple[str, str] | None:
         end = at + len(_SYM_PREFIX)
         while end < len(text) and text[end] in _CORE_ALPHABET:
             end += 1
-        found = _split_ukernel_run(text[at + len(_SYM_PREFIX):end], isa)
+        found = _split_ukernel_run(text[at + len(_SYM_PREFIX) : end], isa)
         if found is not None:
             return found
         at = text.find(_SYM_PREFIX, at + 1)
@@ -72,12 +96,11 @@ def find_ukernel_symbol(text: str, isa: str) -> tuple[str, str] | None:
 def _split_ukernel_run(run: str, isa: str) -> tuple[str, str] | None:
     """Split one ``<core>_ukernel_<shape>__<isa>…`` run; last ``_ukernel_`` first (greedy core)."""
     at = run.rfind(_UKERNEL_INFIX)
-    while at > 0:                        # > 0: `core` must be non-empty
-        tail = run[at + len(_UKERNEL_INFIX):]
+    while at > 0:  # > 0: `core` must be non-empty
+        tail = run[at + len(_UKERNEL_INFIX) :]
         sep = tail.find(_ISA_SEP)
         shape = tail[:sep] if sep != -1 else ""
-        if (sep > 0 and tail[sep + len(_ISA_SEP):].startswith(isa)
-                and all(ch in _SHAPE_ALPHABET for ch in shape)):
+        if sep > 0 and tail[sep + len(_ISA_SEP) :].startswith(isa) and all(ch in _SHAPE_ALPHABET for ch in shape):
             return run[:at], shape
         at = run.rfind(_UKERNEL_INFIX, 0, at)
     return None
@@ -93,6 +116,7 @@ def endpoint_markers() -> dict[str, tuple[str, ...]]:
     out: dict[str, list[str]] = {}
     try:
         from merlin.analysis import compute_endpoints as _ep
+
         for name in _ep.endpoint_names():
             ep = _ep.load_endpoint(name)
             names = [n for names in ep.roles.values() for n in names]
@@ -110,8 +134,9 @@ def endpoint_markers() -> dict[str, tuple[str, ...]]:
     return {t: tuple(sorted(set(v))) for t, v in out.items()}
 
 
-def attribute_target(text: str, default_target: str,
-                     markers: "dict[str, tuple[str, ...]] | None" = None) -> tuple[str, tuple[str, ...]]:
+def attribute_target(
+    text: str, default_target: str, markers: "dict[str, tuple[str, ...]] | None" = None
+) -> tuple[str, tuple[str, ...]]:
     """``(target, matched_markers)`` for one kernel source.
 
     Returns ``default_target`` and an empty tuple when nothing matches — the honest outcome for a plain
@@ -129,6 +154,8 @@ def attribute_target(text: str, default_target: str,
         if hit:
             return target, hit
     return default_target, ()
+
+
 #: Shape-token suffixes that qualify a tile: ``v`` scalable, ``c`` channel, ``vc`` both. Longest
 #: first, since the token continues past them (``4x8vc`` and ``4x8vcx`` both read as ``vc``).
 _TILE_SUFFIXES = ("vc", "v", "c")
@@ -163,16 +190,17 @@ def parse_shape_token(token: str) -> dict[str, object] | None:
     """
     a = _decimal_run(token, 0)
     if a:
-        if token.startswith("x", a):                       # <MR>x<NR>[vc|v|c]
+        if token.startswith("x", a):  # <MR>x<NR>[vc|v|c]
             b = _decimal_run(token, a + 1)
             if b > a + 1:
-                return {"MR": int(token[:a]),
-                        "NR": f"{token[a + 1:b]}{_suffix_at(token, b, _TILE_SUFFIXES)}"}
-        if token.startswith("p", a):                       # <points>p[<channels>][vc|v]
+                return {"MR": int(token[:a]), "NR": f"{token[a + 1 : b]}{_suffix_at(token, b, _TILE_SUFFIXES)}"}
+        if token.startswith("p", a):  # <points>p[<channels>][vc|v]
             b = _decimal_run(token, a + 1)
             # `c` alone is NOT a suffix of this form -- the old alternation spelled it `(vc?)?`.
-            return {"kernel_points": int(token[:a]),
-                    "channel_tile": f"{token[a + 1:b]}{_suffix_at(token, b, ('vc', 'v'))}"}
+            return {
+                "kernel_points": int(token[:a]),
+                "channel_tile": f"{token[a + 1 : b]}{_suffix_at(token, b, ('vc', 'v'))}",
+            }
     return None
 
 
@@ -185,8 +213,9 @@ def _parse_shape(token: str) -> dict[str, object]:
     return parse_shape_token(token) or {"tile": token}
 
 
-def _record_from_file(path: Path, repo: Path, target: str,
-                      markers: "dict[str, tuple[str, ...]] | None" = None) -> NormalizedKernel:
+def _record_from_file(
+    path: Path, repo: Path, target: str, markers: "dict[str, tuple[str, ...]] | None" = None
+) -> NormalizedKernel:
     text = path.read_text(encoding="utf-8", errors="replace")
     sym = find_ukernel_symbol(text, target)
     if sym:
@@ -199,8 +228,7 @@ def _record_from_file(path: Path, repo: Path, target: str,
         toks = stem.split("-")
         dtype = normalize_dtype(toks[0] if toks else "")
         op = _guess_op(stem.replace("-", "_"))
-        shape_tok = next((t for t in toks
-                          if parse_shape_token(t) and any(c.isdigit() for c in t)), "")
+        shape_tok = next((t for t in toks if parse_shape_token(t) and any(c.isdigit() for c in t)), "")
         shape = _parse_shape(shape_tok) if shape_tok else {}
     try:
         rel = str(path.relative_to(repo))
@@ -216,8 +244,14 @@ def _record_from_file(path: Path, repo: Path, target: str,
         meta["endpoint_markers"] = list(hit)
         meta["reattributed_from"] = target
     return NormalizedKernel(
-        source="xnnpack", target=attributed, path=rel, op=op, dtype=dtype,
-        shape=shape, raw_text=text, meta=meta,
+        source="xnnpack",
+        target=attributed,
+        path=rel,
+        op=op,
+        dtype=dtype,
+        shape=shape,
+        raw_text=text,
+        meta=meta,
     )
 
 
@@ -229,7 +263,7 @@ def ingest_xnnpack(repo: str, target: str = "rvv", limit: int | None = None) -> 
     root = Path(repo)
     pattern = f"src/*/gen/*{target}*.c"
     count = 0
-    markers = endpoint_markers()          # derived once; the per-file check is a substring scan
+    markers = endpoint_markers()  # derived once; the per-file check is a substring scan
     for path in sorted(root.glob(pattern)):
         yield _record_from_file(path, root, target, markers)
         count += 1

@@ -745,8 +745,11 @@ def derive(
     performance_full = None
     if public_selection is not None:
         PP.validate_selection(public_selection)
-        if (not performance_captures or set(performance_loaders) != set(performance_captures)
-                or (not independent_public and layer_guard is None)):
+        if (
+            not performance_captures
+            or set(performance_loaders) != set(performance_captures)
+            or (not independent_public and layer_guard is None)
+        ):
             raise ValueError(
                 "connected public performance sources require every declared sealed capture "
                 "and, for legacy policies, an operator-private exclusion selection"
@@ -926,7 +929,10 @@ def derive(
             )
         numeric_policy = recipe_doc.get("public_numerical_policy")
         boundary_entries, boundary_outputs, boundary_report = PB.derive(
-            public_entries, outputs, evidence=selected, policy=boundary_policy,
+            public_entries,
+            outputs,
+            evidence=selected,
+            policy=boundary_policy,
             **({"numerical_policy": numeric_policy} if numeric_policy is not None else {}),
         )
         # The original operator-private shape selection applies to the new

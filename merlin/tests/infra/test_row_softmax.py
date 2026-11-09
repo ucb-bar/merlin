@@ -9,15 +9,17 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from merlin.compiler.schedule.row_softmax import PHASE_ROLES
-from merlin.compiler.schedule.row_softmax import CausalRowMask
-from merlin.compiler.schedule.row_softmax import RowSoftmaxAdapter
-from merlin.compiler.schedule.row_softmax import RowSoftmaxNumerics
-from merlin.compiler.schedule.row_softmax import RowSoftmaxProblem
-from merlin.compiler.schedule.row_softmax import RowSoftmaxResources
-from merlin.compiler.schedule.row_softmax import RowSoftmaxStep
-from merlin.compiler.schedule.row_softmax import RowSoftmaxUnavailable
-from merlin.compiler.schedule.row_softmax import compile_row_softmax
+from merlin.compiler.schedule.row_softmax import (
+    PHASE_ROLES,
+    CausalRowMask,
+    RowSoftmaxAdapter,
+    RowSoftmaxNumerics,
+    RowSoftmaxProblem,
+    RowSoftmaxResources,
+    RowSoftmaxStep,
+    RowSoftmaxUnavailable,
+    compile_row_softmax,
+)
 from merlin.compiler.schedule.row_softmax_verification import verify_row_softmax
 from merlin.llvmlower.cpu_softmax import CPU_SOFTMAX_F32_AVX2_POLICY, cpu_softmax_row_numerics
 from merlin.sched.ir import NULL, Call, Const
@@ -246,8 +248,9 @@ def test_alternative_chunks_use_same_source_and_verifier():
     opts = fixture(columns=113, chunk=17, capacity=1024)
     variants = [compile_row_softmax(**opts, chunk_elements=n) for n in (1, 7, 8, 13, 17)]
     assert len({r.report["numerical_identity"] for r in variants}) == 1
-    assert all(verify(r, opts) == {key: value for key, value in r.report.items() if key != "pipeline"}
-               for r in variants)
+    assert all(
+        verify(r, opts) == {key: value for key, value in r.report.items() if key != "pipeline"} for r in variants
+    )
     assert variants[0].report["executed_commands"] > variants[-1].report["executed_commands"]
 
 

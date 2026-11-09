@@ -8,14 +8,13 @@ from test_compact_dense import encode as fresh_encode
 from test_compact_dense import project as fresh_project
 from test_dense_retained_reduction import chosen, inputs
 
-from merlin.compiler.schedule.blocks import Compute
-from merlin.compiler.schedule.blocks import Load
-from merlin.compiler.schedule.blocks import Preload
-from merlin.compiler.schedule.blocks import Store
-from merlin.compiler.schedule.dense_array_retention import DenseArrayRetentionAdmission
-from merlin.compiler.schedule.dense_array_retention import propose_dense_array_retention
-from merlin.compiler.schedule.dense_array_retention import verify_dense_array_retention
-from merlin.compiler.schedule.dense_array_retention import verify_dense_array_tile_loads
+from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
+from merlin.compiler.schedule.dense_array_retention import (
+    DenseArrayRetentionAdmission,
+    propose_dense_array_retention,
+    verify_dense_array_retention,
+    verify_dense_array_tile_loads,
+)
 from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
 from merlin.sched.ir import Call, Const, Kernel, Loop, Var, instances
 from merlin.sched.ir.kernel import concretize
@@ -24,8 +23,15 @@ from merlin.sched.ir.kernel import concretize
 def encode(op):
     if type(op) is Preload and op.weight_row is None:
         assert op.weight_block is None
-        return Call("keep_descriptor", tuple(zip(("acc", "continue", "rows", "cols", "depth"),
-                    (op.accumulator_row, op.accumulate, op.rows, op.cols, op.weight_rows))))
+        return Call(
+            "keep_descriptor",
+            tuple(
+                zip(
+                    ("acc", "continue", "rows", "cols", "depth"),
+                    (op.accumulator_row, op.accumulate, op.rows, op.cols, op.weight_rows),
+                )
+            ),
+        )
     if type(op) is Compute and not op.fresh_weights:
         return replace(fresh_encode(op), instr="stay")
     return fresh_encode(op)
@@ -41,8 +47,9 @@ def project(call):
 
 
 ADAPTER = replace(FRESH_ADAPTER, encode=encode, project=project)
-LAW = DenseArrayRetentionAdmission(ADAPTER.configuration_identity, ADAPTER.numerical_policy_identity,
-                                   "synthetic-array-capture-stay-output-only-v1")
+LAW = DenseArrayRetentionAdmission(
+    ADAPTER.configuration_identity, ADAPTER.numerical_policy_identity, "synthetic-array-capture-stay-output-only-v1"
+)
 
 
 def setup(shape=(9, 14, 25), tile=(2, 3, 4)):
@@ -69,16 +76,19 @@ def execute(kernel, problem):
             stride = problem.tile_m if op.role == "lhs" else problem.tile_k
             for r in range(op.rows):
                 for c in range(op.cols):
-                    memory[op.role, op.row + r + c // columns * stride, c % columns] = (
-                        source[op.dram_row + r][op.dram_col + c])
+                    memory[op.role, op.row + r + c // columns * stride, c % columns] = source[op.dram_row + r][
+                        op.dram_col + c
+                    ]
         elif type(op) is Preload:
             assert pending is None
             pending = op
         elif type(op) is Compute:
             assert pending is not None
             if op.fresh_weights:
-                array = [[memory["weight", pending.weight_row + k, n]
-                          for n in range(pending.cols)] for k in range(pending.weight_rows)]
+                array = [
+                    [memory["weight", pending.weight_row + k, n] for n in range(pending.cols)]
+                    for k in range(pending.weight_rows)
+                ]
             assert array is not None and len(array) == op.cols
             for r in range(op.rows):
                 for n in range(pending.cols):
@@ -94,8 +104,9 @@ def execute(kernel, problem):
                     key = (op.dram_row + r, op.dram_col + n)
                     assert key not in output
                     output[key] = accumulators[op.accumulator_row + r, n]
-    expected = {(m, n): sum(lhs[m][k] * rhs[k][n] for k in range(problem.k))
-                for m in range(problem.m) for n in range(problem.n)}
+    expected = {
+        (m, n): sum(lhs[m][k] * rhs[k][n] for k in range(problem.k)) for m in range(problem.m) for n in range(problem.n)
+    }
     assert output == expected
     return output
 
@@ -108,7 +119,8 @@ def test_actual_counted_first_and_remaining_preserve_tails_products_and_completi
     assert report["retained_pairs"] > 0 and report["scratchpad_rhs_retained"]
     assert execute(proposal.kernel, p) == execute(original.kernel, p)
     assert sum(call.instr == DRAIN for call, _ in instances(proposal.kernel)) == sum(
-        call.instr == DRAIN for call, _ in instances(original.kernel))
+        call.instr == DRAIN for call, _ in instances(original.kernel)
+    )
     from test_scf_commands import record
 
     from merlin.compiler.schedule.scf_commands import materialize_scf_commands
@@ -122,9 +134,7 @@ def test_actual_counted_first_and_remaining_preserve_tails_products_and_completi
 
 
 def test_finite_block_scheduler_is_an_independent_resident_weight_oracle():
-    from merlin.compiler.schedule.blocks import Contraction
-    from merlin.compiler.schedule.blocks import Geometry
-    from merlin.compiler.schedule.blocks import schedule_contraction
+    from merlin.compiler.schedule.blocks import Contraction, Geometry, schedule_contraction
 
     p, _, _, _, _, original = setup((4, 6, 4), (2, 2, 2))
     proposal = propose_dense_array_retention(original.kernel, ADAPTER, LAW)
@@ -166,9 +176,15 @@ def test_law_adapter_stream_and_unknown_effect_mutations_refuse():
         replace(proposal, kernel=replace(proposal.kernel, name="mutated")).revalidate(ADAPTER, LAW)
 
     def add_effect(body):
-        return tuple(replace(statement, body=add_effect(statement.body)) if type(statement) is Loop else
-                     replace(statement, unit="unknown") if statement.instr == "compute" else statement
-                     for statement in body)
+        return tuple(
+            replace(statement, body=add_effect(statement.body))
+            if type(statement) is Loop
+            else replace(statement, unit="unknown")
+            if statement.instr == "compute"
+            else statement
+            for statement in body
+        )
+
     with pytest.raises(ValueError, match="additional call"):
         propose_dense_array_retention(replace(original.kernel, body=add_effect(original.kernel.body)), ADAPTER, LAW)
 
@@ -192,6 +208,7 @@ def test_a_clobber_inside_the_resident_run_is_not_an_array_reuse_proposal():
         if len(body) == 2 and all(type(s) is Call for s in body):
             return (body[0], Call("unknown_array_clobber", ()), body[1])
         return tuple(replace(s, body=corrupt(s.body)) if type(s) is Loop else s for s in body)
+
     with pytest.raises(ValueError):
         propose_dense_array_retention(replace(original.kernel, body=corrupt(original.kernel.body)), ADAPTER, LAW)
 
@@ -200,9 +217,15 @@ def test_conservative_projection_still_proves_actual_load_addresses_and_budget()
     p, r, s, b, a, original = setup()
 
     def corrupt(body):
-        return tuple(replace(c, body=corrupt(c.body)) if type(c) is Loop else
-                     replace(c, args=tuple((key, value + 10000 if key == "dst" else value)
-                                           for key, value in c.args)) if c.instr == "weight_load" else c for c in body)
+        return tuple(
+            replace(c, body=corrupt(c.body))
+            if type(c) is Loop
+            else replace(c, args=tuple((key, value + 10000 if key == "dst" else value) for key, value in c.args))
+            if c.instr == "weight_load"
+            else c
+            for c in body
+        )
+
     proposal = propose_dense_array_retention(replace(original.kernel, body=corrupt(original.kernel.body)), ADAPTER, LAW)
     with pytest.raises(ValueError, match="storage bounds"):
         verify_dense_array_retention(proposal, p, b, r, s, ADAPTER, a, static_budget=256)
@@ -216,8 +239,7 @@ def test_actual_scf_to_llvm_consumes_stay_without_emitting_the_fresh_projection(
     from xdsl.dialects.builtin import ModuleOp, i64
 
     from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
-    from merlin.compiler.schedule.scf_commands import emit_scf_commands
-    from merlin.compiler.schedule.scf_commands import materialize_scf_commands
+    from merlin.compiler.schedule.scf_commands import emit_scf_commands, materialize_scf_commands
     from merlin.llvmlower.host_builder import PTR, FnBuilder
 
     p, r, s, b, a, original = setup()
@@ -232,8 +254,15 @@ def test_actual_scf_to_llvm_consumes_stay_without_emitting_the_fresh_projection(
 
     emit_scf_commands(materialize_scf_commands(proposal.kernel), bridge, lower)
     function = llvm.FuncOp("compiled", llvm.LLVMFunctionType([PTR] * 3, llvm.LLVMVoidType()), body=builder.finish())
-    output = ModuleOp([*(llvm.FuncOp(name, llvm.LLVMFunctionType([i64] * count, llvm.LLVMVoidType()))
-                         for name, count in declarations.items()), function])
+    output = ModuleOp(
+        [
+            *(
+                llvm.FuncOp(name, llvm.LLVMFunctionType([i64] * count, llvm.LLVMVoidType()))
+                for name, count in declarations.items()
+            ),
+            function,
+        ]
+    )
     output.verify()
     assert "stay" in declarations and "keep_descriptor" in declarations
     assert proposal.checking_kernel.digest() == original.kernel.digest()
@@ -242,9 +271,10 @@ def test_actual_scf_to_llvm_consumes_stay_without_emitting_the_fresh_projection(
 def test_large_counted_proposal_does_not_expand_the_dynamic_compute_domain():
     # Proposal counts are exact structural counts, not physical admission.
     k, n, m = (Var(axis) for axis in ("k", "n", "m"))
-    pair = (encode(Preload(k * 512 + n * 16, (k, n), (m * 32 + n) * 16,
-                           Const(1), Const(16), Const(16), Const(16))),
-            encode(Compute(m * 2048 + k * 16, (m, k), Const(16), Const(16), True)))
+    pair = (
+        encode(Preload(k * 512 + n * 16, (k, n), (m * 32 + n) * 16, Const(1), Const(16), Const(16), Const(16))),
+        encode(Compute(m * 2048 + k * 16, (m, k), Const(16), Const(16), True)),
+    )
     original = Kernel("counted", (), (Loop("k", 128, (Loop("n", 32, (Loop("m", 32, pair),)),)),))
     proposal = propose_dense_array_retention(original, ADAPTER, LAW)
     assert len(proposal.changes) == 1
@@ -264,14 +294,19 @@ def test_m_varying_weight_address_and_ignored_scalar_operands_cannot_be_erased()
             elif statement.instr == "preload":
                 # The innermost loop is M in this original K,N,M source.
                 if mode == "vary":
-                    statement = replace(statement, args=tuple((key, value + Var(m) if key == "weight" else value)
-                                                              for key, value in statement.args))
+                    statement = replace(
+                        statement,
+                        args=tuple(
+                            (key, value + Var(m) if key == "weight" else value) for key, value in statement.args
+                        ),
+                    )
                 else:
                     statement = replace(statement, args=(*statement.args, ("unmodeled", Const(1))))
                 result.append(statement)
             else:
                 result.append(statement)
         return tuple(result)
+
     with pytest.raises(ValueError, match="invariant across M"):
         bad = replace(original.kernel, body=corrupt(original.kernel.body, "vary"))
         propose_dense_array_retention(bad, ADAPTER, LAW)
@@ -281,14 +316,18 @@ def test_m_varying_weight_address_and_ignored_scalar_operands_cannot_be_erased()
 
 
 def wide_setup():
-    from merlin.compiler.schedule.tile_load_coalescing import TileLoadAddressLaw
-    from merlin.compiler.schedule.tile_load_coalescing import TileLoadMapping
-    from merlin.compiler.schedule.tile_load_coalescing import _linear
-    from merlin.compiler.schedule.tile_load_coalescing import propose_tile_load_coalescing
+    from merlin.compiler.schedule.tile_load_coalescing import (
+        TileLoadAddressLaw,
+        TileLoadMapping,
+        _linear,
+        propose_tile_load_coalescing,
+    )
 
     p, r, s, b, a, original = setup((8, 8, 8), (2, 2, 2))
-    laws = {role: TileLoadAddressLaw(2, 2, 8, 1, pitch, 2, "independent-wide-array-test")
-            for role, pitch in (("lhs", p.k), ("weight", p.n))}
+    laws = {
+        role: TileLoadAddressLaw(2, 2, 8, 1, pitch, 2, "independent-wide-array-test")
+        for role, pitch in (("lhs", p.k), ("weight", p.n))
+    }
 
     def mapping(call):
         if call.instr not in ("lhs_load", "weight_load"):
@@ -296,22 +335,36 @@ def wide_setup():
         op = project(call)
         view = s.lhs if op.role == "lhs" else s.rhs
         law = laws[op.role]
-        return TileLoadMapping(op.role, view.backing, op.dram_row * law.source_pitch_bytes + op.dram_col,
-                               op.row, op.rows, op.cols, law)
+        return TileLoadMapping(
+            op.role, view.backing, op.dram_row * law.source_pitch_bytes + op.dram_col, op.row, op.rows, op.cols, law
+        )
 
     def wider(call, columns):
-        return replace(call, args=tuple((key, Const(columns) if key == "cols" else value)
-                                       for key, value in call.args))
+        return replace(call, args=tuple((key, Const(columns) if key == "cols" else value) for key, value in call.args))
 
     def band(call, decoded):
         offset, terms = _linear(decoded.source_byte)
         base, base_terms = _linear(mapping(call).source_byte)
         assert terms == base_terms
         columns = offset - base
-        return replace(call, args=tuple((key, decoded.local_row if key == "dst" else decoded.columns if key == "cols"
-                                        else value + columns if key == "src_col"
-                                        else value + columns // decoded.law.tile_columns if key == "b" else value)
-                                       for key, value in call.args))
+        return replace(
+            call,
+            args=tuple(
+                (
+                    key,
+                    decoded.local_row
+                    if key == "dst"
+                    else decoded.columns
+                    if key == "cols"
+                    else value + columns
+                    if key == "src_col"
+                    else value + columns // decoded.law.tile_columns
+                    if key == "b"
+                    else value,
+                )
+                for key, value in call.args
+            ),
+        )
 
     wide, changes = propose_tile_load_coalescing(original.kernel, project=mapping, encode=wider, max_tiles=4)
     assert changes["changes"]
@@ -321,8 +374,9 @@ def wide_setup():
 
 def test_final_wide_bands_and_array_retention_compose_without_emitting_either_checking_projection():
     p, r, s, b, a, original, proposal, mapping, band = wide_setup()
-    report = verify_dense_array_tile_loads(proposal, p, b, r, s, ADAPTER, a,
-                                          project=mapping, encode_band=band, static_budget=256)
+    report = verify_dense_array_tile_loads(
+        proposal, p, b, r, s, ADAPTER, a, project=mapping, encode_band=band, static_budget=256
+    )
     projection = report["tile_load_projection"]
     assert projection["physical_load_commands"] < projection["expanded_logical_tile_bands"]
     assert report["actual_kernel_sha256"] == proposal.kernel.digest()
@@ -343,27 +397,39 @@ def test_wide_array_checks_every_second_band_pitch_metadata_and_missing_mapping(
     def bad_band(call, decoded):
         result = band(call, decoded)
         if decoded.local_row != mapping(call).local_row:
-            result = replace(result, args=tuple((key, value + 1 if key == "dst" else value)
-                                               for key, value in result.args))
+            result = replace(
+                result, args=tuple((key, value + 1 if key == "dst" else value) for key, value in result.args)
+            )
         return result
 
     def bad_pitch(call):
         decoded = mapping(call)
         return None if decoded is None else replace(decoded, law=replace(decoded.law, source_pitch_bytes=p.k + 1))
 
-    for decode, encode_band, message in ((mapping, bad_band, "changes the final wide command mapping"),
-                                         (bad_pitch, band, "source layout"),
-                                         (lambda call: None, band, "every actual panel load")):
+    for decode, encode_band, message in (
+        (mapping, bad_band, "changes the final wide command mapping"),
+        (bad_pitch, band, "source layout"),
+        (lambda call: None, band, "every actual panel load"),
+    ):
         with pytest.raises(ValueError, match=message):
-            verify_dense_array_tile_loads(proposal, p, b, r, s, ADAPTER, a,
-                                          project=decode, encode_band=encode_band, static_budget=256)
+            verify_dense_array_tile_loads(
+                proposal, p, b, r, s, ADAPTER, a, project=decode, encode_band=encode_band, static_budget=256
+            )
 
     def effects(body):
-        return tuple(replace(call, body=effects(call.body)) if type(call) is Loop else
-                     replace(call, unit="unmodeled") if call.instr == "weight_load" else call for call in body)
+        return tuple(
+            replace(call, body=effects(call.body))
+            if type(call) is Loop
+            else replace(call, unit="unmodeled")
+            if call.instr == "weight_load"
+            else call
+            for call in body
+        )
 
-    changed = propose_dense_array_retention(replace(proposal.checking_kernel, body=effects(
-        proposal.checking_kernel.body)), ADAPTER, LAW)
+    changed = propose_dense_array_retention(
+        replace(proposal.checking_kernel, body=effects(proposal.checking_kernel.body)), ADAPTER, LAW
+    )
     with pytest.raises(ValueError, match="plain exact"):
-        verify_dense_array_tile_loads(changed, p, b, r, s, ADAPTER, a,
-                                      project=mapping, encode_band=band, static_budget=256)
+        verify_dense_array_tile_loads(
+            changed, p, b, r, s, ADAPTER, a, project=mapping, encode_band=band, static_budget=256
+        )

@@ -38,8 +38,12 @@ def source_group_roster(groups, required, *, host_placement, module=None) -> dic
     from merlin.common import mlir_query as mq
 
     source: dict[str, Any] = {
-        "eligible_groups": [], "eligible_group_provenance": [], "eligible_group_metrics": {},
-        "optional_groups": [], "optional_group_provenance": [], "optional_group_metrics": {},
+        "eligible_groups": [],
+        "eligible_group_provenance": [],
+        "eligible_group_metrics": {},
+        "optional_groups": [],
+        "optional_group_provenance": [],
+        "optional_group_metrics": {},
         "optional_group_refusals": [],
     }
     required = set(required)
@@ -83,17 +87,20 @@ def source_group_roster(groups, required, *, host_placement, module=None) -> dic
         source[f"{prefix}_groups"].sort()
     # Validate even unused optional identities: ambiguity is never resolved by
     # whether this particular compilation happened to select the group.
-    join_routed_source_groups([
-        {"group": row["source_group"], **row} for row in source["eligible_group_provenance"]
-    ], source)
+    join_routed_source_groups(
+        [{"group": row["source_group"], **row} for row in source["eligible_group_provenance"]], source
+    )
     if module is not None:
         from merlin.compiler.ir.contraction_shapes import observe_contractions
 
         shapes = {id(op): shape for op, shape in observe_contractions(module)}
         admitted = set(source["eligible_groups"]) | set(source["optional_groups"])
         source["source_group_contractions"] = {
-            group.index: {"parallel": list(shape.parallel), "reduction": list(shape.reduction),
-                          "dtypes": list(shape.dtypes)}
+            group.index: {
+                "parallel": list(shape.parallel),
+                "reduction": list(shape.reduction),
+                "dtypes": list(shape.dtypes),
+            }
             for group in groups
             if group.index in admitted and (shape := shapes.get(id(group.root))) is not None
         }
@@ -170,8 +177,10 @@ def join_routed_source_groups(assigned: Any, source: Mapping[str, Any]) -> dict[
 def require_intended_host_selection(skipped: Any) -> None:
     """Accept ordinary host selection only after required-source coverage is checked."""
     if not isinstance(skipped, (list, tuple)) or any(
-        not isinstance(row, (list, tuple)) or len(row) != 2
-        or not isinstance(row[0], str) or not row[0]
+        not isinstance(row, (list, tuple))
+        or len(row) != 2
+        or not isinstance(row[0], str)
+        or not row[0]
         or row[1] != "the placement did not select this group's root"
         for row in skipped
     ):
@@ -190,11 +199,15 @@ def verify_routed_source_coverage(emitted: Mapping[str, Any], source: Mapping[st
     if not isinstance(assigned, list) or not assigned:
         raise ValueError("linked roster differs from eligible source groups")
     demand = source.get("accelerator_source_demand")
-    if (not isinstance(demand, Mapping) or demand.get("status") != "source_demand_derived"
-        or demand.get("n_unknown_host_groups") != 0 or demand.get("n_missing_direct_groups") != 0
+    if (
+        not isinstance(demand, Mapping)
+        or demand.get("status") != "source_demand_derived"
+        or demand.get("n_unknown_host_groups") != 0
+        or demand.get("n_missing_direct_groups") != 0
         or demand.get("n_unresolved_raw_regions") != 0
         or demand.get("demanded_group_provenance") != source.get("eligible_group_provenance")
-        or demand.get("n_demanded_groups") != len(source.get("eligible_groups", []))):
+        or demand.get("n_demanded_groups") != len(source.get("eligible_groups", []))
+    ):
         raise ValueError("linked source coverage lacks complete independent accelerator demand")
     joined = join_routed_source_groups(assigned, source)
     require_intended_host_selection(emitted.get("skipped", []))
@@ -208,8 +221,14 @@ def _conv_entry_signature_matches(emitted, symbol, row):
     if emitted.get("granularity") != "group" or not isinstance(entry, Mapping) or entry.get("op") != "conv2d":
         return False
     epilogue = entry.get("epilogue", [])
-    if epilogue not in ([], ["acc_scale"], ["bias_add"], ["bias_add", "acc_scale"],
-                        ["acc_scale", "relu"], ["bias_add", "acc_scale", "relu"]):
+    if epilogue not in (
+        [],
+        ["acc_scale"],
+        ["bias_add"],
+        ["bias_add", "acc_scale"],
+        ["acc_scale", "relu"],
+        ["bias_add", "acc_scale", "relu"],
+    ):
         return False
     if entry.get("layout", "NHWC") != "NHWC":
         return False
@@ -228,8 +247,22 @@ def _conv_entry_signature_matches(emitted, symbol, row):
     stated = program.get("entry") if isinstance(program, Mapping) else None
     if not isinstance(stated, Mapping):
         return False
-    for key in ("op", "Himg", "Wimg", "ci", "kh", "kw", "N", "stride", "padding", "dilation", "epilogue", "acc_scale",
-                "acc_scale_by_column", "output_dtype"):
+    for key in (
+        "op",
+        "Himg",
+        "Wimg",
+        "ci",
+        "kh",
+        "kw",
+        "N",
+        "stride",
+        "padding",
+        "dilation",
+        "epilogue",
+        "acc_scale",
+        "acc_scale_by_column",
+        "output_dtype",
+    ):
         default = [1, 1] if key == "dilation" else [] if key == "epilogue" else None
         if entry.get(key, default) != stated.get(key, default):
             return False
@@ -308,8 +341,10 @@ def convolution_input_preparations(emitted, source):
         if not _conv_entry_signature_matches(emitted, symbol, row):
             raise ValueError("logical convolution input preparation differs from source-bound call ABI")
         preparations[symbol] = {
-            "entry": entry, "call_buffers": emitted["call_buffers"][symbol],
-            "source_group": original_group, "argument_alignment": 1,
+            "entry": entry,
+            "call_buffers": emitted["call_buffers"][symbol],
+            "source_group": original_group,
+            "argument_alignment": 1,
         }
     return preparations
 
@@ -392,13 +427,16 @@ def join_sibling_source_composition(emitted, source, *, module, target, preparat
     if preparation_receipt is not None:
         from pathlib import Path
 
-        from merlin.runtime.modelinputs import file_sha256
         from merlin.frontends.linalg_mlir import parse_mlir_file
         from merlin.llvmlower.weight_prepack import revalidate_build_preparation
+        from merlin.runtime.modelinputs import file_sha256
 
         receipt_path = Path(preparation_receipt)
-        if (not receipt_path.is_absolute() or not receipt_path.is_file()
-            or any(path.is_symlink() for path in (receipt_path, *receipt_path.parents))):
+        if (
+            not receipt_path.is_absolute()
+            or not receipt_path.is_file()
+            or any(path.is_symlink() for path in (receipt_path, *receipt_path.parents))
+        ):
             raise ValueError("sibling preparation needs its original direct owned receipt")
         receipt_sha = file_sha256(receipt_path)
         revalidate_build_preparation(receipt_path)
@@ -410,8 +448,10 @@ def join_sibling_source_composition(emitted, source, *, module, target, preparat
         projection_module = parse_mlir_file(prepared_path)
         preparation = {
             "receipt": {"path": str(receipt_path), "sha256": receipt_sha},
-            "schema": record["schema"], "identity_sha256": record["identity_sha256"],
-            "source_model_sha256": file_sha256(source_path), "prepared_model_sha256": file_sha256(prepared_path),
+            "schema": record["schema"],
+            "identity_sha256": record["identity_sha256"],
+            "source_model_sha256": file_sha256(source_path),
+            "prepared_model_sha256": file_sha256(prepared_path),
             "immutable_arguments": record["immutable_arguments"],
         }
     projection_sha = hashlib.sha256(text(projection_module, generic=True).encode()).hexdigest()
@@ -441,26 +481,35 @@ def join_sibling_source_composition(emitted, source, *, module, target, preparat
         geometry = source.get("source_group_contractions", {}).get(source_group)
         if geometry != {"parallel": [group.m, width], "reduction": [group.k], "dtypes": ["i8", "i8", "i32"]}:
             raise ValueError("sibling raw product differs from original contraction precision or extents")
-        members.append({
-            "source_group": source_group, "source_region_id": region,
-            # The independent roster canonicalizes the complete identity set;
-            # actual typed-call metadata must retain the source's exact order.
-            "source_node_ids": [node.data for node in root.attributes["prov.source_node_ids"]],
-            "output_role": "out_" + str(index), "geometry_m_k_n": [group.m, group.k, width],
-            "raw_output_elements": group.m * width, "raw_output_element_bytes": 4,
-            "source_useful_macs": group.m * group.k * width,
-        })
+        members.append(
+            {
+                "source_group": source_group,
+                "source_region_id": region,
+                # The independent roster canonicalizes the complete identity set;
+                # actual typed-call metadata must retain the source's exact order.
+                "source_node_ids": [node.data for node in root.attributes["prov.source_node_ids"]],
+                "output_role": "out_" + str(index),
+                "geometry_m_k_n": [group.m, group.k, width],
+                "raw_output_elements": group.m * width,
+                "raw_output_element_bytes": 4,
+                "source_useful_macs": group.m * group.k * width,
+            }
+        )
     covered = [row["source_group"] for row in members]
     if len(set(covered)) != len(covered) or not set(source["eligible_groups"]) <= set(covered):
         raise ValueError("sibling composition duplicates or omits independently eligible original source groups")
     expected_entry = {
-        "schema": "original_sibling_source_entry_v1", "name": symbol, "source_ir_sha256": source_sha,
+        "schema": "original_sibling_source_entry_v1",
+        "name": symbol,
+        "source_ir_sha256": source_sha,
         "core_ir_sha256": hashlib.sha256(text(outlined.core, generic=True).encode()).hexdigest(),
     }
+
     def same(actual, expected):
         try:
             return json.dumps(actual, sort_keys=True, allow_nan=False) == json.dumps(
-                expected, sort_keys=True, allow_nan=False)
+                expected, sort_keys=True, allow_nan=False
+            )
         except (TypeError, ValueError):
             return False
 
@@ -473,18 +522,21 @@ def join_sibling_source_composition(emitted, source, *, module, target, preparat
         or not same(emitted.get("entries"), {symbol: expected_entry})
         or not same(emitted.get("programs"), {symbol: cb})
         or not same(emitted.get("expected_interfaces"), {symbol: {"mlir": interface, "sha256": interface_sha}})
-        or not same(emitted.get("call_buffers"), {symbol: [
-            {"role": buffer.role, "shape": list(buffer.shape), "dtype": buffer.dtype} for buffer in buffers
-        ]})
+        or not same(
+            emitted.get("call_buffers"),
+            {symbol: [{"role": buffer.role, "shape": list(buffer.shape), "dtype": buffer.dtype} for buffer in buffers]},
+        )
         or emitted.get("arg_access") != {symbol: ["read"] * (len(members) + 1) + ["write"] * len(members)}
-        or not isinstance(assigned, list) or len(assigned) != 1 or not isinstance(assigned[0], Mapping)
+        or not isinstance(assigned, list)
+        or len(assigned) != 1
+        or not isinstance(assigned[0], Mapping)
         or assigned[0].get("symbol") != symbol
-        or not (assigned[0].get("group") is None or type(assigned[0].get("group")) is int
-                and assigned[0]["group"] == 0)
+        or not (assigned[0].get("group") is None or type(assigned[0].get("group")) is int and assigned[0]["group"] == 0)
         or not same(assigned[0].get("parallel"), [group.m, sum(group.widths)])
         or not same(assigned[0].get("reduction"), [group.k])
         or assigned[0].get("dtypes") != ["i8", "i8", "i32"]
-        or assigned[0].get("source_region_id") is not None or assigned[0].get("source_node_ids")
+        or assigned[0].get("source_region_id") is not None
+        or assigned[0].get("source_node_ids")
     ):
         raise ValueError("emitted sibling composition differs from independently rederived source and complete ABI")
     require_intended_host_selection(emitted.get("skipped", []))
@@ -492,15 +544,21 @@ def join_sibling_source_composition(emitted, source, *, module, target, preparat
         raise ValueError("sibling source composition join changed original source")
     if preparation is not None:
         revalidate_build_preparation(receipt_path)
-        if (file_sha256(receipt_path) != receipt_sha
+        if (
+            file_sha256(receipt_path) != receipt_sha
             or file_sha256(source_path) != preparation["source_model_sha256"]
-            or file_sha256(prepared_path) != preparation["prepared_model_sha256"]):
+            or file_sha256(prepared_path) != preparation["prepared_model_sha256"]
+        ):
             raise ValueError("sibling original preparation changed during source join")
     return {
         "schema": "merlin.original_sibling_source_composition.v1",
-        "source_ir_sha256": source_sha, "prepared_source_ir_sha256": projection_sha,
-        "preparation": preparation, "interface_sha256": interface_sha,
-        "physical_symbol": symbol, "physical_group": assigned[0].get("group"), "members": members,
+        "source_ir_sha256": source_sha,
+        "prepared_source_ir_sha256": projection_sha,
+        "preparation": preparation,
+        "interface_sha256": interface_sha,
+        "physical_symbol": symbol,
+        "physical_group": assigned[0].get("group"),
+        "members": members,
         "host_entry_symbol": function.sym_name.data,
         "borrowed_entry_symbol": function.sym_name.data + "_borrowed",
         "required_source_groups": list(source["eligible_groups"]),
@@ -510,5 +568,5 @@ def join_sibling_source_composition(emitted, source, *, module, target, preparat
         "source_useful_macs": sum(row["source_useful_macs"] for row in members),
         "original_source_denominator_unchanged": True,
         "scope": "original source identities, ordered raw products and complete logical interface only; "
-                 "actual member work, host calls, effects, objects, execution and required tiers remain separate",
+        "actual member work, host calls, effects, objects, execution and required tiers remain separate",
     }

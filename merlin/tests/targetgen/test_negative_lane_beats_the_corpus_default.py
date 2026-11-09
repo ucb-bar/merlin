@@ -26,10 +26,10 @@ from pathlib import Path
 import external_sources
 import pytest
 import yaml
-from merlin_experiments.phase0.declarations import all_declarations, for_target
 
 from merlin.common.paths import merlin_dir
 from merlin.targetgen import corpus_spec as CS
+from merlin_experiments.phase0.declarations import all_declarations, for_target
 
 
 def _binding(directory: str):

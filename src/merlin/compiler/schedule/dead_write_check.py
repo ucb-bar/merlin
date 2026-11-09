@@ -8,9 +8,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 
-from merlin.sched.ir import Call, Kernel
-from merlin.semantic_compiler.allocation_types import StorageBank
-
 from merlin.compiler.schedule.program_limits import AddressWindow
 from merlin.compiler.schedule.temporary_storage import (
     StorageAdapter,
@@ -20,6 +17,8 @@ from merlin.compiler.schedule.temporary_storage import (
     _problem,
     _project,
 )
+from merlin.sched.ir import Call, Kernel
+from merlin.semantic_compiler.allocation_types import StorageBank
 
 
 @dataclass(frozen=True)

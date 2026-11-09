@@ -14,13 +14,18 @@ class TileLoadCoalescing:
     capacity_rows: int
 
     def __post_init__(self):
-        if (any(type(v) is not int or not 0 < v < 1 << 63 for v in (
-                self.rows, self.columns, self.tile, self.max_columns, self.block_stride, self.capacity_rows))
-                or type(self.local_base) is not int or not 0 <= self.local_base < 1 << 63
-                or self.rows > self.tile or self.max_columns % self.tile
-                or self.block_stride < self.rows
-                or self.local_base + (self.columns - 1) // self.tile * self.block_stride + self.rows
-                > self.capacity_rows):
+        if (
+            any(
+                type(v) is not int or not 0 < v < 1 << 63
+                for v in (self.rows, self.columns, self.tile, self.max_columns, self.block_stride, self.capacity_rows)
+            )
+            or type(self.local_base) is not int
+            or not 0 <= self.local_base < 1 << 63
+            or self.rows > self.tile
+            or self.max_columns % self.tile
+            or self.block_stride < self.rows
+            or self.local_base + (self.columns - 1) // self.tile * self.block_stride + self.rows > self.capacity_rows
+        ):
             raise ValueError("coalesced loads need complete bounded nonoverlapping local tile rows")
 
     def commands(self):
@@ -30,8 +35,7 @@ class TileLoadCoalescing:
             yield column, min(self.max_columns, self.columns - column), local
 
     def location(self, row, column):
-        if (any(type(v) is not int for v in (row, column))
-                or not 0 <= row < self.rows or not 0 <= column < self.columns):
+        if any(type(v) is not int for v in (row, column)) or not 0 <= row < self.rows or not 0 <= column < self.columns:
             raise ValueError("load element leaves its complete logical rectangle")
         return self.local_base + column // self.tile * self.block_stride + row, column % self.tile
 
@@ -56,12 +60,23 @@ class TileLoadAddressLaw:
     exact_copy: bool = True
 
     def __post_init__(self):
-        if (any(type(v) is not int or not 0 < v < 1 << 63 for v in (
-                self.tile_columns, self.max_rows, self.max_columns, self.element_bytes,
-                self.source_pitch_bytes, self.local_block_stride))
-                or self.max_columns < self.tile_columns
-                or type(self.identity) is not str or not self.identity
-                or self.exact_copy is not True):
+        if (
+            any(
+                type(v) is not int or not 0 < v < 1 << 63
+                for v in (
+                    self.tile_columns,
+                    self.max_rows,
+                    self.max_columns,
+                    self.element_bytes,
+                    self.source_pitch_bytes,
+                    self.local_block_stride,
+                )
+            )
+            or self.max_columns < self.tile_columns
+            or type(self.identity) is not str
+            or not self.identity
+            or self.exact_copy is not True
+        ):
             raise ValueError("tile load addressing requires explicit bounded exact mapping")
 
 
@@ -100,10 +115,12 @@ class TileLoadMapping:
     def __post_init__(self):
         from merlin.sched.ir import Expr
 
-        if (any(type(s) is not str or not s for s in (self.source, self.destination))
-                or self.source == self.destination or type(self.law) not in (TileLoadLaw, TileLoadAddressLaw)
-                or any(not isinstance(x, Expr) for x in (
-                    self.source_byte, self.local_row, self.rows, self.columns))):
+        if (
+            any(type(s) is not str or not s for s in (self.source, self.destination))
+            or self.source == self.destination
+            or type(self.law) not in (TileLoadLaw, TileLoadAddressLaw)
+            or any(not isinstance(x, Expr) for x in (self.source_byte, self.local_row, self.rows, self.columns))
+        ):
             raise ValueError("tile load mapping requires distinct stores and explicit index operands")
 
 
@@ -146,11 +163,15 @@ def _substitute(expression, variable, replacement):
         if expression.var == variable:
             if type(replacement) is not Const:
                 raise ValueError("tile coalescing retains variable tail selectors")
-            return _substitute(expression.then if replacement.value == expression.equals else expression.other,
-                               variable, replacement)
-        return select(expression.var, expression.equals,
-                      _substitute(expression.then, variable, replacement),
-                      _substitute(expression.other, variable, replacement))
+            return _substitute(
+                expression.then if replacement.value == expression.equals else expression.other, variable, replacement
+            )
+        return select(
+            expression.var,
+            expression.equals,
+            _substitute(expression.then, variable, replacement),
+            _substitute(expression.other, variable, replacement),
+        )
     raise ValueError("tile coalescing retains unknown operands")
 
 
@@ -165,6 +186,7 @@ def _replace_call(call, variable, replacement):
         if type(x) is Ptr:
             return replace(x, offset=_substitute(x.offset, variable, replacement))
         return x
+
     return replace(call, args=tuple((name, value(x)) for name, x in call.args))
 
 
@@ -176,11 +198,16 @@ def _same_mapping(actual, expected):
     if type(actual) is not TileLoadMapping:
         return False
     try:
-        return (actual.source == expected.source and actual.destination == expected.destination
-                and actual.law == expected.law
-                and all(getattr(actual, name) == getattr(expected, name)
-                        or _linear(getattr(actual, name)) == _linear(getattr(expected, name))
-                        for name in ("source_byte", "local_row", "rows", "columns")))
+        return (
+            actual.source == expected.source
+            and actual.destination == expected.destination
+            and actual.law == expected.law
+            and all(
+                getattr(actual, name) == getattr(expected, name)
+                or _linear(getattr(actual, name)) == _linear(getattr(expected, name))
+                for name in ("source_byte", "local_row", "rows", "columns")
+            )
+        )
     except ValueError as error:
         raise ValueError("coalesced actual target operands have an unsupported mapping") from error
 
@@ -199,8 +226,12 @@ def coalesce_tile_load_loops(kernel, *, project, encode, max_tiles, max_static_n
     independently decoded shorter command; it does not pad or merge partial tiles.
     """
     return _coalesce_tile_load_loops(
-        kernel, project=project, encode=encode, max_tiles=max_tiles,
-        max_static_nodes=max_static_nodes, law_type=TileLoadLaw,
+        kernel,
+        project=project,
+        encode=encode,
+        max_tiles=max_tiles,
+        max_static_nodes=max_static_nodes,
+        law_type=TileLoadLaw,
         coalesce_tail=coalesce_tail,
     )
 
@@ -216,8 +247,12 @@ def propose_tile_load_coalescing(kernel, *, project, encode, max_tiles, max_stat
     its actual encoding is checked identically to the main band.
     """
     return _coalesce_tile_load_loops(
-        kernel, project=project, encode=encode, max_tiles=max_tiles,
-        max_static_nodes=max_static_nodes, law_type=TileLoadAddressLaw,
+        kernel,
+        project=project,
+        encode=encode,
+        max_tiles=max_tiles,
+        max_static_nodes=max_static_nodes,
+        law_type=TileLoadAddressLaw,
         coalesce_tail=coalesce_tail,
     )
 
@@ -229,10 +264,14 @@ def _coalesce_tile_load_loops(kernel, *, project, encode, max_tiles, max_static_
     from merlin.sched.ir.integer_domain import check_integer_domain
     from merlin.sched.ir.kernel import check_structure
 
-    if (type(kernel) is not Kernel or check_structure(kernel)
-            or not callable(project) or not callable(encode)
-            or type(coalesce_tail) is not bool
-            or any(type(x) is not int or x <= 0 for x in (max_tiles, max_static_nodes))):
+    if (
+        type(kernel) is not Kernel
+        or check_structure(kernel)
+        or not callable(project)
+        or not callable(encode)
+        or type(coalesce_tail) is not bool
+        or any(type(x) is not int or x <= 0 for x in (max_tiles, max_static_nodes))
+    ):
         raise ValueError("tile coalescing requires valid counted IR, actual codecs and finite bounds")
     check_integer_domain(kernel, 64)
     nodes, changes, refusals = 0, [], []
@@ -254,10 +293,13 @@ def _coalesce_tile_load_loops(kernel, *, project, encode, max_tiles, max_static_
             rows, columns = _linear(mapping.rows), _linear(mapping.columns)
             source, local = _linear(mapping.source_byte), _linear(mapping.local_row)
             law = mapping.law
-            if (rows[1] or not 0 < rows[0] <= min(law.max_rows, law.local_block_stride)
-                    or columns != (law.tile_columns, {})
-                    or source[1].get(loop.var, 0) != law.tile_columns * law.element_bytes
-                    or local[1].get(loop.var, 0) != law.local_block_stride):
+            if (
+                rows[1]
+                or not 0 < rows[0] <= min(law.max_rows, law.local_block_stride)
+                or columns != (law.tile_columns, {})
+                or source[1].get(loop.var, 0) != law.tile_columns * law.element_bytes
+                or local[1].get(loop.var, 0) != law.local_block_stride
+            ):
                 return None
             width = min(max_tiles, law.max_columns // law.tile_columns, loop.extent)
             if width < 2:
@@ -282,29 +324,45 @@ def _coalesce_tile_load_loops(kernel, *, project, encode, max_tiles, max_static_
                     if type(tail_mapping) is not TileLoadMapping:
                         raise ValueError("tail tile load lost its actual mapping")
                     encoded_tail = encode(tail, remainder * law.tile_columns)
-                    if (type(encoded_tail) is not Call or not _plain(encoded_tail)
-                            or not _same_mapping(project(encoded_tail),
-                                replace(tail_mapping, columns=Const(remainder * law.tile_columns)))):
+                    if (
+                        type(encoded_tail) is not Call
+                        or not _plain(encoded_tail)
+                        or not _same_mapping(
+                            project(encoded_tail), replace(tail_mapping, columns=Const(remainder * law.tile_columns))
+                        )
+                    ):
                         raise ValueError("coalesced tail actual target operands change source or local mapping")
                     body.append(Loop(loop.var, 1, (encoded_tail,)))
                     tail_commands = 1
                 else:
-                    body.append(Loop(loop.var, remainder,
-                                     (_replace_call(call, loop.var, Var(loop.var) + trips * width),)))
-            changes.append(dict(variable=loop.var, original_trips=loop.extent,
-                                tiles_per_command=width, full_commands=trips,
-                                retained_tail_tiles=remainder if tail_commands == remainder else 0,
-                                coalesced_tail_tiles=remainder if tail_commands < remainder else 0,
-                                tail_commands=tail_commands, original_commands=loop.extent,
-                                actual_commands=trips + tail_commands, law_identity=law.identity,
-                                source_pitch_bytes=law.source_pitch_bytes,
-                                local_block_stride=law.local_block_stride,
-                                actual_access=dict(source=expected.source, destination=expected.destination,
-                                    source_byte_affine=_linear(expected.source_byte),
-                                    local_row_affine=_linear(expected.local_row), rows=rows[0],
-                                    columns=width*law.tile_columns),
-                                addressing_law=("local_row+floor(column/tile_columns)*block_stride+row; "
-                                                "lane=column%tile_columns")))
+                    body.append(
+                        Loop(loop.var, remainder, (_replace_call(call, loop.var, Var(loop.var) + trips * width),))
+                    )
+            changes.append(
+                dict(
+                    variable=loop.var,
+                    original_trips=loop.extent,
+                    tiles_per_command=width,
+                    full_commands=trips,
+                    retained_tail_tiles=remainder if tail_commands == remainder else 0,
+                    coalesced_tail_tiles=remainder if tail_commands < remainder else 0,
+                    tail_commands=tail_commands,
+                    original_commands=loop.extent,
+                    actual_commands=trips + tail_commands,
+                    law_identity=law.identity,
+                    source_pitch_bytes=law.source_pitch_bytes,
+                    local_block_stride=law.local_block_stride,
+                    actual_access=dict(
+                        source=expected.source,
+                        destination=expected.destination,
+                        source_byte_affine=_linear(expected.source_byte),
+                        local_row_affine=_linear(expected.local_row),
+                        rows=rows[0],
+                        columns=width * law.tile_columns,
+                    ),
+                    addressing_law=("local_row+floor(column/tile_columns)*block_stride+row; lane=column%tile_columns"),
+                )
+            )
             return tuple(body)
         except ValueError as error:
             # Unknown original expressions retain the old program. A malformed
@@ -323,20 +381,27 @@ def _coalesce_tile_load_loops(kernel, *, project, encode, max_tiles, max_static_
                 raise ValueError("tile coalescing static work budget exceeded")
             if type(statement) is Loop:
                 replacement = rewrite(statement)
-                result.extend(replacement if replacement is not None else
-                              (replace(statement, body=walk(statement.body)),))
+                result.extend(
+                    replacement if replacement is not None else (replace(statement, body=walk(statement.body)),)
+                )
             else:
                 result.append(statement)
         return tuple(result)
+
     actual = replace(kernel, body=walk(kernel.body))
     if check_structure(actual):
         raise ValueError("coalesced target schedule is structurally invalid")
     check_integer_domain(actual, 64)
-    return actual, dict(schema="merlin.counted_tile_load_coalescing.v1",
-                        source_sha256=kernel.digest(), actual_sha256=actual.digest(),
-                        changes=changes, refusals=refusals, static_nodes=nodes,
-                        target_execution="not_run",
-                        scope="exact actual load mapping; no asynchronous completion or target qualification grant")
+    return actual, dict(
+        schema="merlin.counted_tile_load_coalescing.v1",
+        source_sha256=kernel.digest(),
+        actual_sha256=actual.digest(),
+        changes=changes,
+        refusals=refusals,
+        static_nodes=nodes,
+        target_execution="not_run",
+        scope="exact actual load mapping; no asynchronous completion or target qualification grant",
+    )
 
 
 def expand_tile_load_mapping(mapping):
@@ -355,11 +420,15 @@ def expand_tile_load_mapping(mapping):
     law = mapping.law
     if not 0 < mapping.columns.value <= law.max_columns:
         raise ValueError("actual tile-band accesses exceed the selected column bound")
-    return tuple(replace(mapping,
-                         source_byte=mapping.source_byte + first * law.element_bytes,
-                         local_row=mapping.local_row + first // law.tile_columns * law.local_block_stride,
-                         columns=Const(min(law.tile_columns, mapping.columns.value - first)))
-                 for first in range(0, mapping.columns.value, law.tile_columns))
+    return tuple(
+        replace(
+            mapping,
+            source_byte=mapping.source_byte + first * law.element_bytes,
+            local_row=mapping.local_row + first // law.tile_columns * law.local_block_stride,
+            columns=Const(min(law.tile_columns, mapping.columns.value - first)),
+        )
+        for first in range(0, mapping.columns.value, law.tile_columns)
+    )
 
 
 @dataclass(frozen=True)
@@ -383,9 +452,15 @@ class TileStoreAddressLaw:
     identity: str
 
     def __post_init__(self):
-        TileLoadAddressLaw(self.tile_columns, self.max_rows, self.max_columns,
-                           self.element_bytes, self.output_pitch_bytes,
-                           self.local_block_stride, self.identity)
+        TileLoadAddressLaw(
+            self.tile_columns,
+            self.max_rows,
+            self.max_columns,
+            self.element_bytes,
+            self.output_pitch_bytes,
+            self.local_block_stride,
+            self.identity,
+        )
         if type(self.readout_identity) is not str or not self.readout_identity:
             raise ValueError("tile store addressing requires its exact original readout state")
         if self.output_pitch_bytes < self.tile_columns * self.element_bytes:
@@ -413,10 +488,12 @@ class TileStoreMapping:
     def __post_init__(self):
         from merlin.sched.ir import Expr
 
-        if (any(type(s) is not str or not s for s in (self.source, self.destination))
-                or self.source == self.destination or type(self.law) is not TileStoreAddressLaw
-                or any(not isinstance(x, Expr) for x in (
-                    self.output_byte, self.local_row, self.rows, self.columns))):
+        if (
+            any(type(s) is not str or not s for s in (self.source, self.destination))
+            or self.source == self.destination
+            or type(self.law) is not TileStoreAddressLaw
+            or any(not isinstance(x, Expr) for x in (self.output_byte, self.local_row, self.rows, self.columns))
+        ):
             raise ValueError("tile store mapping requires explicit local/output coordinates and readout state")
 
 
@@ -431,17 +508,26 @@ def _store_geometry(mapping):
     # Include every state/limit in the proxy identity. An encoder cannot hide
     # a changed coefficient behind an unchanged target qualification string.
     geometry_law = TileLoadAddressLaw(
-        law.tile_columns, law.max_rows,
-        min(law.max_columns, law.output_pitch_bytes // law.element_bytes), law.element_bytes,
-        law.output_pitch_bytes, law.local_block_stride,
+        law.tile_columns,
+        law.max_rows,
+        min(law.max_columns, law.output_pitch_bytes // law.element_bytes),
+        law.element_bytes,
+        law.output_pitch_bytes,
+        law.local_block_stride,
         sha256(repr(asdict(law)).encode()).hexdigest(),
     )
-    return TileLoadMapping(mapping.destination, mapping.source, mapping.output_byte,
-                           mapping.local_row, mapping.rows, mapping.columns, geometry_law)
+    return TileLoadMapping(
+        mapping.destination,
+        mapping.source,
+        mapping.output_byte,
+        mapping.local_row,
+        mapping.rows,
+        mapping.columns,
+        geometry_law,
+    )
 
 
-def propose_tile_store_coalescing(kernel, *, project, encode, max_tiles,
-                                   max_static_nodes=4096, coalesce_tail=False):
+def propose_tile_store_coalescing(kernel, *, project, encode, max_tiles, max_static_nodes=4096, coalesce_tail=False):
     """Coalesce adjacent pure stores without moving any completion or effect.
 
     ``project`` must decode the actual call into ``TileStoreMapping``, or None
@@ -459,8 +545,12 @@ def propose_tile_store_coalescing(kernel, *, project, encode, max_tiles,
         return None if mapping is None else _store_geometry(mapping)
 
     actual, report = _coalesce_tile_load_loops(
-        kernel, project=geometry, encode=encode, max_tiles=max_tiles,
-        max_static_nodes=max_static_nodes, law_type=TileLoadAddressLaw,
+        kernel,
+        project=geometry,
+        encode=encode,
+        max_tiles=max_tiles,
+        max_static_nodes=max_static_nodes,
+        law_type=TileLoadAddressLaw,
         coalesce_tail=coalesce_tail,
     )
     for change in report["changes"]:
@@ -469,8 +559,9 @@ def propose_tile_store_coalescing(kernel, *, project, encode, max_tiles,
         access["source"], access["destination"] = access["destination"], access["source"]
         access["output_byte_affine"] = access.pop("source_byte_affine")
     report["schema"] = "merlin.counted_tile_store_coalescing.v1"
-    report["scope"] = ("exact actual store mapping and original readout state; "
-                       "no producer, completion or target qualification grant")
+    report["scope"] = (
+        "exact actual store mapping and original readout state; no producer, completion or target qualification grant"
+    )
     return actual, report
 
 
@@ -478,6 +569,7 @@ def expand_tile_store_mapping(mapping):
     """Expand every actual wide store band for independent hazard checking."""
     from dataclasses import replace
 
-    return tuple(replace(mapping, output_byte=band.source_byte, local_row=band.local_row,
-                         columns=band.columns)
-                 for band in expand_tile_load_mapping(_store_geometry(mapping)))
+    return tuple(
+        replace(mapping, output_byte=band.source_byte, local_row=band.local_row, columns=band.columns)
+        for band in expand_tile_load_mapping(_store_geometry(mapping))
+    )

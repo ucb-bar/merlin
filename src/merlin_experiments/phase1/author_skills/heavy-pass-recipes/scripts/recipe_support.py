@@ -71,8 +71,7 @@ def dtypes():
 
 def dense_view(shape, caps, *, lhs_rows=None):
     """One problem plus storage/resources whose byte budgets are the operand and accumulator stores."""
-    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
-    from merlin.compiler.schedule.compact_dense import DenseMemoryView
+    from merlin.compiler.schedule.compact_dense import DenseLoopStorage, DenseMemoryView
     from merlin.transforms.dense_planning import DenseProblem, DenseResources
 
     rows_edge, cols_edge = caps["array"]
@@ -122,13 +121,14 @@ def segmented_pipeline(p, s, r, a, block, *, name, batch=False, readout_mode="se
     """
     from dataclasses import replace
 
-    from merlin.compiler.schedule.dense_panel_pipeline import DenseReadoutComputeAdmission
-    from merlin.compiler.schedule.dense_panel_pipeline import DenseReadyReadoutAdmission
+    from merlin.compiler.schedule.dense_panel_pipeline import DenseReadoutComputeAdmission, DenseReadyReadoutAdmission
     from merlin.compiler.schedule.dense_ready_readout import schedule_dense_pipeline
     from merlin.compiler.schedule.dense_segmented_pipeline import DenseSegmentedAdmission
-    from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-    from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-    from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+    from merlin.compiler.schedule.schedule_ir import (
+        dense_schedule_text,
+        make_dense_schedule_plan,
+        parse_dense_schedule_plan,
+    )
 
     rs = replace(r, max_k_blocks=block.k)
     overlap, reduction = example()._laws(a, block, segmented=True)
@@ -188,8 +188,20 @@ def segmented_pipeline(p, s, r, a, block, *, name, batch=False, readout_mode="se
     return result, text
 
 
-def retained_pipeline(p, s, r, a, block, *, name, batch=False, readout_mode="separate",
-                      retained_operand="lhs", input_pipeline=False, input_pipeline_placement=None):
+def retained_pipeline(
+    p,
+    s,
+    r,
+    a,
+    block,
+    *,
+    name,
+    batch=False,
+    readout_mode="separate",
+    retained_operand="lhs",
+    input_pipeline=False,
+    input_pipeline_placement=None,
+):
     """Full-K panel plus optional causal readouts, including a single primitive K tile.
 
     The target must supply its own reduction/readout declarations. These test-only
@@ -200,14 +212,18 @@ def retained_pipeline(p, s, r, a, block, *, name, batch=False, readout_mode="sep
     from dataclasses import replace
 
     from merlin.compiler.schedule.compact_dense import emit_compact_dense
-    from merlin.compiler.schedule.dense_panel_pipeline import DenseReadyReadoutAdmission
-    from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_compute_order
-    from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_operand_hoists
+    from merlin.compiler.schedule.dense_panel_pipeline import (
+        DenseReadyReadoutAdmission,
+        dense_retained_compute_order,
+        dense_retained_operand_hoists,
+    )
     from merlin.compiler.schedule.dense_ready_readout import schedule_dense_pipeline
     from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
-    from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-    from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-    from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+    from merlin.compiler.schedule.schedule_ir import (
+        dense_schedule_text,
+        make_dense_schedule_plan,
+        parse_dense_schedule_plan,
+    )
 
     if readout_mode not in ("separate", "ready"):
         raise ValueError("full-K recipe supports separate or ready readouts")
@@ -220,31 +236,61 @@ def retained_pipeline(p, s, r, a, block, *, name, batch=False, readout_mode="sep
     order = ("m", "n") if retained_operand == "lhs" else ("n", "m")
     law = example()._laws(a, block, segmented=False)
     if batch or readout_mode == "ready":
-        law = replace(law, max_issued_readouts=block.m * block.n, pending_readouts=2,
-                      readout_configuration="ordered_snapshot_before_store_issue")
+        law = replace(
+            law,
+            max_issued_readouts=block.m * block.n,
+            pending_readouts=2,
+            readout_configuration="ordered_snapshot_before_store_issue",
+        )
     raw = emit_compact_dense(p, block, s, a, name=name, dtypes=dtypes(), outer_order=order)
     transforms = dense_retained_operand_hoists(raw, a, role=retained_operand)
-    transforms += dense_retained_compute_order(
-        propose_loop_transforms(raw, transforms), a, order=("k", "n", "m"))
+    transforms += dense_retained_compute_order(propose_loop_transforms(raw, transforms), a, order=("k", "n", "m"))
     plan = make_dense_schedule_plan(
-        p, r, s, a, source_identity=SOURCE, dtypes=dtypes(), static_budget=128,
-        block_tiles=(block.m, block.k, block.n), outer_order=order,
-        loop_transforms=transforms, pipeline_kind="retained_full_k", pipeline_prefetch=False,
+        p,
+        r,
+        s,
+        a,
+        source_identity=SOURCE,
+        dtypes=dtypes(),
+        static_budget=128,
+        block_tiles=(block.m, block.k, block.n),
+        outer_order=order,
+        loop_transforms=transforms,
+        pipeline_kind="retained_full_k",
+        pipeline_prefetch=False,
     )
     text = dense_schedule_text(plan)
-    readout = None if readout_mode == "separate" else DenseReadyReadoutAdmission(
-        a.configuration_identity, a.numerical_policy_identity,
-        "test-only-ready-readout-completion", "test-only-store-snapshot", block.m * block.n, 2,
+    readout = (
+        None
+        if readout_mode == "separate"
+        else DenseReadyReadoutAdmission(
+            a.configuration_identity,
+            a.numerical_policy_identity,
+            "test-only-ready-readout-completion",
+            "test-only-store-snapshot",
+            block.m * block.n,
+            2,
+        )
     )
     if input_pipeline:
         readout = replace(readout, disjoint_load_qualification_identity="test-only-disjoint-load-ready-conjunction")
     result = schedule_dense_pipeline(
-        p, r, s, a, name=name, dtypes=dtypes(), source_identity=SOURCE,
-        external_buffers_disjoint=True, schedule_plan=parse_dense_schedule_plan(text),
-        pipeline_admission=law, batch_readouts=batch,
-        readout_mode=readout_mode, readout_admission=readout,
-        input_pipeline_row_offset=(block.m * block.k * p.tile_m
-                                   if input_pipeline and input_pipeline_placement is None else None),
+        p,
+        r,
+        s,
+        a,
+        name=name,
+        dtypes=dtypes(),
+        source_identity=SOURCE,
+        external_buffers_disjoint=True,
+        schedule_plan=parse_dense_schedule_plan(text),
+        pipeline_admission=law,
+        batch_readouts=batch,
+        readout_mode=readout_mode,
+        readout_admission=readout,
+        input_pipeline_row_offset=(
+            block.m * block.k * p.tile_m if input_pipeline and input_pipeline_placement is None else None
+        ),
         input_pipeline_placement=input_pipeline_placement,
     )
     result.materialize_scf().verify()

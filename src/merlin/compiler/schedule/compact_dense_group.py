@@ -12,11 +12,6 @@ import inspect
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
-from merlin.sched.ir import Call, Const, Kernel, Loop, TensorArg, Var
-from merlin.sched.ir.kernel import check_structure
-from merlin.transforms.dense_planning import DenseGroupChoice, DenseProblem, DenseResources, choose_dense_group
-from merlin.transforms.pipeline_state import AnalysisStamp, PassSpec, PipelineContext, PipelineSession
-
 from merlin.compiler.schedule.compact_dense import (
     DenseLoopAdapter,
     _dense_library_sources,
@@ -36,6 +31,10 @@ from merlin.compiler.schedule.compact_dense_group_check import (
 )
 from merlin.compiler.schedule.compact_verification import DenseVerificationUnavailable
 from merlin.compiler.schedule.library_sources import admission_point
+from merlin.sched.ir import Call, Const, Kernel, Loop, TensorArg, Var
+from merlin.sched.ir.kernel import check_structure
+from merlin.transforms.dense_planning import DenseGroupChoice, DenseProblem, DenseResources, choose_dense_group
+from merlin.transforms.pipeline_state import AnalysisStamp, PassSpec, PipelineContext, PipelineSession
 
 
 def implementation_paths() -> tuple[Path, ...]:
@@ -227,10 +226,12 @@ def schedule_compact_dense_group(
     ):
         raise ValueError("shared LHS requires bounded typed group inputs")
     if block_tiles is not None and (
-        type(block_tiles) is not tuple or len(block_tiles) != len(problems)
-        or any(type(shape) is not tuple or len(shape) != 3
-               or any(type(value) is not int or value <= 0 for value in shape)
-               for shape in block_tiles)
+        type(block_tiles) is not tuple
+        or len(block_tiles) != len(problems)
+        or any(
+            type(shape) is not tuple or len(shape) != 3 or any(type(value) is not int or value <= 0 for value in shape)
+            for shape in block_tiles
+        )
     ):
         raise ValueError("shared LHS block selection needs one positive (M, K, N) tuple per source member")
     contracts, readouts, qualifications = _group_output_contracts(

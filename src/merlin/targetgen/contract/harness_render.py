@@ -30,19 +30,21 @@ from dataclasses import dataclass
 from math import prod
 from typing import Any
 
-from merlin.compiler.ir.logical_abi import Buffer
-from merlin.compiler.ir.logical_abi import HarnessRenderError
-from merlin.compiler.ir.logical_abi import LogicalAbi
-from merlin.compiler.ir.logical_abi import _ordered
-from merlin.compiler.ir.logical_abi import _output_buffer
-from merlin.compiler.ir.logical_abi import _produced
-from merlin.compiler.ir.logical_abi import _shape
-from merlin.compiler.ir.logical_abi import kernel_abi_from_commands
-from merlin.compiler.ir.logical_abi import kernel_arg_order
-from merlin.compiler.ir.logical_abi import logical_abi
-from merlin.compiler.ir.logical_abi import logical_inputs
-from merlin.compiler.ir.logical_abi import logical_interface
-from merlin.compiler.ir.logical_abi import logical_outputs
+from merlin.compiler.ir.logical_abi import (
+    Buffer,
+    HarnessRenderError,
+    LogicalAbi,
+    _ordered,
+    _output_buffer,
+    _produced,
+    _shape,
+    kernel_abi_from_commands,
+    kernel_arg_order,
+    logical_abi,
+    logical_inputs,
+    logical_interface,
+    logical_outputs,
+)
 
 #: Backend modules conventionally expose their renderer's refusal as ``CodegenError``.
 CodegenError = HarnessRenderError
@@ -558,7 +560,11 @@ class _Readout:
         self.binary = policy is not None and policy.transport == FULL_VALUES_BIN
         self.packet_v2 = policy is not None and policy.transport == COHERENT_PACKET_V2
         self.packet = policy is not None and policy.transport in (COHERENT_PACKET_V1, COHERENT_PACKET_V2)
-        self.coherent = policy is not None and policy.transport in (COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2)
+        self.coherent = policy is not None and policy.transport in (
+            COHERENT_DUMP_V1,
+            COHERENT_PACKET_V1,
+            COHERENT_PACKET_V2,
+        )
         self.digested = False
         self.packet_expected: list = []
         self.packet_capacity = None
@@ -588,7 +594,8 @@ class _Readout:
 
             try:
                 self.packet_capacity = (
-                    out_packet_v2_capacity(self.packet_expected) if self.packet_v2
+                    out_packet_v2_capacity(self.packet_expected)
+                    if self.packet_v2
                     else out_bin_packet_capacity(self.packet_expected)
                 )
             except ValueError as exc:
@@ -665,7 +672,7 @@ class _Readout:
                 )
                 return [
                     "  {",
-                    f'  if (!merlin_out_bin_memory_cstr(&merlin_packet_sink, '
+                    f"  if (!merlin_out_bin_memory_cstr(&merlin_packet_sink, "
                     f'"OUT_PKT_BEGIN v2 {name} {rows} {cols} {buf.dtype} {container.word_bytes} {sign_char} {mode}\\n")) return 2;',
                     f"  merlin_out_packet_v2_init(&merlin_out_v2, {count}ULL, {container.word_bytes}, "
                     f"{sign}, {int(mode == 'e')}, merlin_packet_write);",
@@ -779,7 +786,7 @@ class _Readout:
             )
         if self.packet:
             includes = '#include "out_b64.h"\n#include "out_bin.h"\n#include "out_bin_memory.h"\n'
-            return includes + ('#include "out_packet_v2.h"\n' if self.packet_v2 else '')
+            return includes + ('#include "out_packet_v2.h"\n' if self.packet_v2 else "")
         return ""
 
     def declarations(self) -> list[str]:

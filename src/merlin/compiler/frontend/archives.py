@@ -1,4 +1,5 @@
 """Checked compiler input bytes and bounded tensor-archive identities."""
+
 from __future__ import annotations
 
 import hashlib
@@ -18,7 +19,11 @@ class _ArchiveInfo:
 
 
 def _archive_info(
-    directory: Path, name: str, *, expected_sha256: str | None = None, typed: bool = True,
+    directory: Path,
+    name: str,
+    *,
+    expected_sha256: str | None = None,
+    typed: bool = True,
 ) -> _ArchiveInfo:
     """Read bounded tensor metadata and, when requested, hash without copying payloads."""
     member = directory / name
@@ -37,7 +42,9 @@ def _archive_info(
                 raise ValueError(f"compiler input member differs from manifest: {name}")
         after = os.fstat(stream.fileno())
         if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
-            after.st_size, after.st_mtime_ns, after.st_ctime_ns
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
         ):
             raise ValueError("tensor archive changed while checking its metadata")
     return _ArchiveInfo(header, start, before.st_size, checked_sha256)
@@ -78,4 +85,3 @@ def _checked_member(directory: Path, receipt: dict, name: str) -> bytes:
     if entry.get("bytes") != len(raw) or entry.get("sha256") != _sha(raw):
         raise ValueError(f"capture member differs from receipt: {name}")
     return raw
-

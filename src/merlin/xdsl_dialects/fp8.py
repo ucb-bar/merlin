@@ -134,9 +134,8 @@ if HAS_XDSL:
         already fixes both -- verified by identity, not assumed. Both are walked anyway, and the
         insert is ``setdefault``, so this keeps working if a later xDSL gives them separate objects.
         """
-        from xdsl.irdl.constraints import BaseAttr
-
         from xdsl.dialects.builtin import AnyFloatConstr
+        from xdsl.irdl.constraints import BaseAttr
 
         for module_name in ("arith", "math"):
             try:

@@ -23,10 +23,12 @@ _COL = "affine_map<(d0, d1) -> (d1)>"
 
 
 def _generic(result, ins, types, maps, body, out="tensor<4x8xf32>"):
-    return (f"    %e_{result} = tensor.empty() : {out}\n"
-            f"    %{result} = linalg.generic {{indexing_maps = [{', '.join(maps)}], iterator_types = "
-            f'["parallel", "parallel"]}} ins({ins} : {types}) outs(%e_{result} : {out}) {{\n{body}\n'
-            f"    }} -> {out}\n")
+    return (
+        f"    %e_{result} = tensor.empty() : {out}\n"
+        f"    %{result} = linalg.generic {{indexing_maps = [{', '.join(maps)}], iterator_types = "
+        f'["parallel", "parallel"]}} ins({ins} : {types}) outs(%e_{result} : {out}) {{\n{body}\n'
+        f"    }} -> {out}\n"
+    )
 
 
 def _binary(op):
@@ -35,8 +37,11 @@ def _binary(op):
 
 def quantized_layer(relu=True):
     """int8 x int8 -> i32 -> f32 -> *0.25 -> +bias -> [relu] -> quantize(int8, scale 8)."""
-    weights = "dense<[" + ", ".join(
-        "[" + ", ".join(str((i * 3 + j) % 5 - 2) for j in range(8)) + "]" for i in range(8)) + "]>"
+    weights = (
+        "dense<["
+        + ", ".join("[" + ", ".join(str((i * 3 + j) % 5 - 2) for j in range(8)) + "]" for i in range(8))
+        + "]>"
+    )
     bias = "dense<[" + ", ".join(f"{b * 0.25:.6e}" for b in (0, 4, -4, 8, 1, -1, 0, 16)) + "]>"
     lines = [
         "builtin.module {",
@@ -47,8 +52,13 @@ def quantized_layer(relu=True):
         "    %init = linalg.fill ins(%zero : i32) outs(%e0 : tensor<4x8xi32>) -> tensor<4x8xi32>",
         "    %mm = linalg.matmul ins(%x, %w : tensor<4x8xi8>, tensor<8x8xi8>) outs(%init : tensor<4x8xi32>) "
         "-> tensor<4x8xi32>",
-        _generic("f", "%mm", "tensor<4x8xi32>", [_ID2, _ID2],
-                 "    ^bb0(%a: i32, %o: f32):\n      %c = arith.sitofp %a : i32 to f32\n      linalg.yield %c : f32"),
+        _generic(
+            "f",
+            "%mm",
+            "tensor<4x8xi32>",
+            [_ID2, _ID2],
+            "    ^bb0(%a: i32, %o: f32):\n      %c = arith.sitofp %a : i32 to f32\n      linalg.yield %c : f32",
+        ),
         "    %sin = arith.constant 2.500000e-01 : f32",
         "    %s0 = tensor.splat %sin : tensor<4x8xf32>",
         _generic("m", "%f, %s0", "tensor<4x8xf32>, tensor<4x8xf32>", [_ID2, _ID2, _ID2], _binary("mulf")),
@@ -57,9 +67,16 @@ def quantized_layer(relu=True):
     ]
     last = "%ba"
     if relu:
-        lines.append(_generic("r", "%ba", "tensor<4x8xf32>", [_ID2, _ID2],
-                              "    ^bb0(%a: f32, %o: f32):\n      %z = arith.constant 0.000000e+00 : f32\n"
-                              "      %c = arith.maximumf %a, %z : f32\n      linalg.yield %c : f32"))
+        lines.append(
+            _generic(
+                "r",
+                "%ba",
+                "tensor<4x8xf32>",
+                [_ID2, _ID2],
+                "    ^bb0(%a: f32, %o: f32):\n      %z = arith.constant 0.000000e+00 : f32\n"
+                "      %c = arith.maximumf %a, %z : f32\n      linalg.yield %c : f32",
+            )
+        )
         last = "%r"
     lines += [
         "    %qs = arith.constant dense<8.000000e+00> : tensor<f32>",
@@ -84,8 +101,13 @@ PATH = {
     "readout": [
         {"kind": "activation", "function": "relu", "domain": "accumulator"},
         {"kind": "convert", "to": "f32", "rounding": "half_even"},
-        {"kind": "scale", "dtype": "f32", "rounding": "half_even", "granularity": "per_command",
-         "columns_per_scale": 4},
+        {
+            "kind": "scale",
+            "dtype": "f32",
+            "rounding": "half_even",
+            "granularity": "per_command",
+            "columns_per_scale": 4,
+        },
         {"kind": "requant", "to": "i8", "rounding": "half_even", "clamp": [-128, 127]},
     ],
     "exits": {"accumulator": True, "requant": True},
@@ -94,12 +116,14 @@ PATH = {
 
 def epilogue_program():
     """An i32 contraction followed by two elementwise integer stages (three source opportunities)."""
-    add = ("    ^bb0(%a: i32, %c: i32, %o: i32):\n      %s = arith.{op} %a, %c : i32\n      linalg.yield %s : i32")
+    add = "    ^bb0(%a: i32, %c: i32, %o: i32):\n      %s = arith.{op} %a, %c : i32\n      linalg.yield %s : i32"
     maps = f"[{_ID2}, {_ID2}, {_ID2}]"
-    stage = ("    %e_{n} = tensor.empty() : tensor<4x8xi32>\n"
-             "    %{n} = linalg.generic {{indexing_maps = {maps}, iterator_types = [\"parallel\", \"parallel\"]}} "
-             "ins(%{src}, %b : tensor<4x8xi32>, tensor<4x8xi32>) outs(%e_{n} : tensor<4x8xi32>) {{\n{body}\n"
-             "    }} -> tensor<4x8xi32>\n")
+    stage = (
+        "    %e_{n} = tensor.empty() : tensor<4x8xi32>\n"
+        '    %{n} = linalg.generic {{indexing_maps = {maps}, iterator_types = ["parallel", "parallel"]}} '
+        "ins(%{src}, %b : tensor<4x8xi32>, tensor<4x8xi32>) outs(%e_{n} : tensor<4x8xi32>) {{\n{body}\n"
+        "    }} -> tensor<4x8xi32>\n"
+    )
     text = (
         "builtin.module {\n"
         "  func.func @forward(%x: tensor<4x8xi32>, %w: tensor<8x8xi32>, %b: tensor<4x8xi32>) -> tensor<4x8xi32> {\n"

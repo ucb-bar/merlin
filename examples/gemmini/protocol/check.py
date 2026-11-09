@@ -35,8 +35,11 @@ def check(spec_path: Path) -> list[str]:
     )
     numerical_path = root / spec["authority"]["numerical_contract"]
     numerical_bytes = numerical_path.read_bytes()
-    configuration_bytes = (MD._protocol_models_bytes(numerical_bytes, spec)
-                           if "models_configuration" in spec["authority"] else numerical_bytes)
+    configuration_bytes = (
+        MD._protocol_models_bytes(numerical_bytes, spec)
+        if "models_configuration" in spec["authority"]
+        else numerical_bytes
+    )
     models_config = yaml.safe_load(configuration_bytes)
     MD.selected_float_policy(MD.load(numerical_path, source_bytes=configuration_bytes))
     inputs = json.loads((root / spec["authority"]["evaluation_input_manifest"]).read_text())
@@ -143,28 +146,43 @@ def resolved_contract(spec_path: Path) -> dict:
             "configuration": yaml.safe_load(payload),
             "sha256": hashlib.sha256(payload).hexdigest(),
             "sources": {
-                "baseline": {"path": str(numerical_path.resolve()),
-                             "sha256": hashlib.sha256(numerical_bytes).hexdigest()},
-                "protocol": {"path": str(spec_path.resolve()),
-                             "sha256": hashlib.sha256(spec_path.read_bytes()).hexdigest()},
-                "resolver": {"path": str(Path(MD.__file__).resolve()),
-                             "sha256": hashlib.sha256(Path(MD.__file__).read_bytes()).hexdigest()},
-                "exporter": {"path": str(Path(__file__).resolve()),
-                             "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
+                "baseline": {
+                    "path": str(numerical_path.resolve()),
+                    "sha256": hashlib.sha256(numerical_bytes).hexdigest(),
+                },
+                "protocol": {
+                    "path": str(spec_path.resolve()),
+                    "sha256": hashlib.sha256(spec_path.read_bytes()).hexdigest(),
+                },
+                "resolver": {
+                    "path": str(Path(MD.__file__).resolve()),
+                    "sha256": hashlib.sha256(Path(MD.__file__).read_bytes()).hexdigest(),
+                },
+                "exporter": {
+                    "path": str(Path(__file__).resolve()),
+                    "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                },
             },
             "scope": "Geometry only; baseline arithmetic and numerical policy unchanged. Fresh configuration-bound "
-                     "capture/calibration/reference evidence is required; no previous seal is upgraded. "
-                     "Host-math selections declared elsewhere remain separately bound obligations.",
+            "capture/calibration/reference evidence is required; no previous seal is upgraded. "
+            "Host-math selections declared elsewhere remain separately bound obligations.",
         }
     calibration_name = spec["authority"]["capsule_calibration_requirements"]
     calibration = yaml.safe_load((root / calibration_name).read_bytes())
     names = {spec_path.name, "run-manifest.template.yaml", spec["baseline_comparison"]["manifest_template"]}
     names.add(calibration_name)
     names.add(calibration["source_recipe"])
-    names.update(spec["authority"][name] for name in (
-        "catalog", "phase1_launch", "source_workloads", "numerical_contract",
-        "historical_input_sources", "evaluation_input_manifest",
-    ))
+    names.update(
+        spec["authority"][name]
+        for name in (
+            "catalog",
+            "phase1_launch",
+            "source_workloads",
+            "numerical_contract",
+            "historical_input_sources",
+            "evaluation_input_manifest",
+        )
+    )
     names.update(spec["hardware"][name] for name in ("bindings", "board_catalog"))
     recipes = {}
     for name, model in spec["models"].items():
@@ -178,10 +196,13 @@ def resolved_contract(spec_path: Path) -> dict:
         **({"models_configuration": configuration} if configuration is not None else {}),
         "capsule_calibration_requirements": calibration,
         "recipes": recipes,
-        "files": {name: {
-            "sha256": hashlib.sha256((root / name).read_bytes()).hexdigest(),
-            "bytes": (root / name).stat().st_size,
-        } for name in sorted(names)},
+        "files": {
+            name: {
+                "sha256": hashlib.sha256((root / name).read_bytes()).hexdigest(),
+                "bytes": (root / name).stat().st_size,
+            }
+            for name in sorted(names)
+        },
         "scope": "Generated snapshot of the shared definitions, not an independently edited policy.",
         "execution_qualified": False,
     }
@@ -190,8 +211,9 @@ def resolved_contract(spec_path: Path) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--spec", type=Path, default=Path(__file__).with_name("experiment.yaml"))
-    parser.add_argument("--export", type=Path,
-                        help="write resolved JSON and selected .models.yaml beside it, outside examples/gemmini")
+    parser.add_argument(
+        "--export", type=Path, help="write resolved JSON and selected .models.yaml beside it, outside examples/gemmini"
+    )
     args = parser.parse_args()
     try:
         value = resolved_contract(args.spec.resolve()) if args.export else None
@@ -212,8 +234,9 @@ def main() -> int:
             if "models_configuration" in value:
                 selected = value["models_configuration"]
                 configuration_path = output.with_name(output.stem + ".models.yaml")
-                configuration_bytes = yaml.safe_dump(selected["configuration"], sort_keys=True,
-                                                     allow_unicode=True).encode("utf-8")
+                configuration_bytes = yaml.safe_dump(
+                    selected["configuration"], sort_keys=True, allow_unicode=True
+                ).encode("utf-8")
                 if hashlib.sha256(configuration_bytes).hexdigest() != selected["sha256"]:
                     raise ValueError("resolved configuration identity differs from generated bytes")
                 configuration_path.write_bytes(configuration_bytes)

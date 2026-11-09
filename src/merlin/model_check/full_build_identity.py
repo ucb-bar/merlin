@@ -30,7 +30,8 @@ def host_math_identity(policy: str) -> dict:
     return {
         "policy": policy,
         "source_sha256": hashlib.sha256(recipe.source.encode("utf-8")).hexdigest()
-        if recipe.source is not None else None,
+        if recipe.source is not None
+        else None,
         "compile_flags": list(recipe.compile_flags),
         "link_flags": list(recipe.link_flags),
     }
@@ -39,9 +40,9 @@ def host_math_identity(policy: str) -> dict:
 def build_material(stage, target, label, submission, submission_sha256, settings, offload) -> dict:
     """Read build inputs once per build request, never once per recurrent input."""
     from merlin.common.paths import repo_root, runtime_dir
-    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.llvmlower import toolchain
     from merlin.runtime.backends import spike
+    from merlin.runtime.modelinputs import strict_tree_sha256
 
     gcc = spike.gcc_path()
     tools = {
@@ -63,10 +64,7 @@ def build_material(stage, target, label, submission, submission_sha256, settings
     source = repo_root() / "src" / "merlin"
     # package_digest includes bytecode; select source files explicitly so importing
     # a module cannot change the identity of the same compiler implementation.
-    project = {
-        str(path.relative_to(source)): content_digest(path)
-        for path in sorted(source.rglob("*.py"))
-    }
+    project = {str(path.relative_to(source)): content_digest(path) for path in sorted(source.rglob("*.py"))}
     return {
         "schema": "merlin.model_check.full_build_material.v2",
         "scope": "project source and direct selected build inputs; transitive toolchain closure unknown",
@@ -88,8 +86,12 @@ def build_material(stage, target, label, submission, submission_sha256, settings
         "dotenv_sha256": content_digest(repo_root() / ".env") if (repo_root() / ".env").is_file() else None,
         "target_inputs": target_inputs(),
         "environment_sha256": content_digest_bytes(
-            {name: value for name, value in os.environ.items() if name.startswith("MERLIN_")
-             or name in {"PATH", "PYTHONPATH", "CFLAGS", "CXXFLAGS", "LDFLAGS", "CPATH", "LIBRARY_PATH"}}
+            {
+                name: value
+                for name, value in os.environ.items()
+                if name.startswith("MERLIN_")
+                or name in {"PATH", "PYTHONPATH", "CFLAGS", "CXXFLAGS", "LDFLAGS", "CPATH", "LIBRARY_PATH"}
+            }
         ),
         "offload": offload,
     }

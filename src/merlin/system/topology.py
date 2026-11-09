@@ -82,9 +82,15 @@ class MemoryAccess:
 
 
 def _document(resources, memories, access):
-    return json.dumps({"resources": [asdict(r) for r in resources],
-                       "memory_domains": [asdict(m) for m in memories],
-                       "access": [asdict(a) for a in access]}, sort_keys=True, separators=(",", ":"))
+    return json.dumps(
+        {
+            "resources": [asdict(r) for r in resources],
+            "memory_domains": [asdict(m) for m in memories],
+            "access": [asdict(a) for a in access],
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 def _parse(payload):
@@ -146,9 +152,10 @@ class SelectedTopology:
         if hashlib.sha256(payload).hexdigest() != self.sha256:
             raise ValueError("selected execution topology changed; replan")
         parsed = _parse(payload)
-        if _document(*parsed) != self._record or _document(
-            self.resources, self.memory_domains, self.access
-        ) != self._record:
+        if (
+            _document(*parsed) != self._record
+            or _document(self.resources, self.memory_domains, self.access) != self._record
+        ):
             raise ValueError("selected execution topology bindings changed; replan")
 
     def resource(self, identity: str) -> Resource:
@@ -182,7 +189,8 @@ def select_topology(path: str | Path) -> SelectedTopology:
     path = Path(path).absolute()
     payload = _read(path)
     resources, memories, access = _parse(payload)
-    result = SelectedTopology(path, hashlib.sha256(payload).hexdigest(), resources, memories, access,
-                              _document(resources, memories, access))
+    result = SelectedTopology(
+        path, hashlib.sha256(payload).hexdigest(), resources, memories, access, _document(resources, memories, access)
+    )
     result.revalidate()
     return result

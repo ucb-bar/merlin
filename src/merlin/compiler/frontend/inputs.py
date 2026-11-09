@@ -47,7 +47,6 @@ _STAGED_REQUIRED = frozenset({"program.mlir", "signature.json", *_COPIED})
 _STAGED_OPTIONAL = frozenset({"precision-policy.json", "input_order.json", CONSTANT_FILE})
 
 
-
 class LiftedArgumentResourceLimit(ValueError):
     """The selected payload exceeds the caller's materialization budget."""
 
@@ -137,7 +136,10 @@ def stage_compile_inputs(
         raise ValueError("capture receipt lacks weights.safetensors identity")
     try:
         weights = _archive_info(
-            source, "weights.safetensors", expected_sha256=entry["sha256"], typed=bool(weight_manifest),
+            source,
+            "weights.safetensors",
+            expected_sha256=entry["sha256"],
+            typed=bool(weight_manifest),
         )
     except ValueError as error:
         raise ValueError("capture archive invalid or differs from receipt: " + str(error)) from error
@@ -163,8 +165,12 @@ def stage_compile_inputs(
     if "export_state" in metadata:
         from merlin.compiler.frontend.state import validate_observation
 
-        export_state = validate_observation(metadata["export_state"], trace=trace, source_sha256=_sha(raw),
-                                            manifest_sha256=_sha(copied["weights.safetensors.manifest.json"]))
+        export_state = validate_observation(
+            metadata["export_state"],
+            trace=trace,
+            source_sha256=_sha(raw),
+            manifest_sha256=_sha(copied["weights.safetensors.manifest.json"]),
+        )
     module = parse_mlir_text(raw.decode("utf-8"))
     old_reference = module.attributes.get("prov.weights_file")
     if not isinstance(old_reference, StringAttr) or old_reference.data != metadata.get("weights"):
@@ -206,13 +212,18 @@ def stage_compile_inputs(
         weight_manifest, copied[CONSTANT_FILE], materialization = materialize_arguments(
             weight_manifest,
             [_tensor_abi(type_) for type_ in _entry_type(parsed, signature["entry"]).inputs.data],
-            receipt, _checked_member(source, receipt, "extra.npz"), _WEIGHT_DTYPES,
+            receipt,
+            _checked_member(source, receipt, "extra.npz"),
+            _WEIGHT_DTYPES,
         )
         copied["weights.safetensors.manifest.json"] = json.dumps(weight_manifest, sort_keys=True).encode()
         signature["schema"] = "merlin.compile-signature.v3"
     if weight_manifest:
         signature["arguments"] = _argument_bindings(
-            _entry_type(parsed, signature["entry"]), signature["inputs"], copied, materialized=materialized,
+            _entry_type(parsed, signature["entry"]),
+            signature["inputs"],
+            copied,
+            materialized=materialized,
         )
     _check_signature(parsed, signature, copied)
     signature_raw = (json.dumps(signature, sort_keys=True, indent=2) + "\n").encode()
@@ -264,16 +275,16 @@ def load_compile_inputs(directory: str | Path) -> StagedCompileInputs:
     if not isinstance(manifest, dict) or manifest.get("schema") != "merlin.compile-inputs.v1":
         raise ValueError("unsupported compiler input manifest")
     members = manifest.get("members")
-    if not isinstance(members, dict) or not _STAGED_REQUIRED <= set(members) <= (
-        _STAGED_REQUIRED | _STAGED_OPTIONAL
-    ):
+    if not isinstance(members, dict) or not _STAGED_REQUIRED <= set(members) <= (_STAGED_REQUIRED | _STAGED_OPTIONAL):
         raise ValueError("compiler input manifest has missing or unknown members")
     if {member.name for member in root.iterdir()} != {"compile-inputs.json", *members}:
         raise ValueError("compiler input directory has missing or undeclared members")
     raw_members = {}
     for name, expected in members.items():
-        if not isinstance(expected, str) or len(expected) != 64 or any(
-            char not in "0123456789abcdef" for char in expected
+        if (
+            not isinstance(expected, str)
+            or len(expected) != 64
+            or any(char not in "0123456789abcdef" for char in expected)
         ):
             raise ValueError(f"compiler input member has invalid digest: {name}")
         if name in {"weights.safetensors", CONSTANT_FILE}:
@@ -288,7 +299,10 @@ def load_compile_inputs(directory: str | Path) -> StagedCompileInputs:
     # member identity check without inventing a tensor-archive requirement.
     for name in sorted({"weights.safetensors", CONSTANT_FILE} & set(members)):
         raw_members[name] = _archive_info(
-            root, name, expected_sha256=members[name], typed=signature.get("schema") != "merlin.compile-signature.v1",
+            root,
+            name,
+            expected_sha256=members[name],
+            typed=signature.get("schema") != "merlin.compile-signature.v1",
         )
     _check_signature(parse_mlir_text(raw_members["program.mlir"].decode("utf-8")), signature, raw_members)
     policy = None
@@ -315,8 +329,11 @@ def load_compile_inputs(directory: str | Path) -> StagedCompileInputs:
     if "export_state" in source_record:
         from merlin.compiler.frontend.state import validate_observation
 
-        validate_observation(source_record["export_state"], trace=json.loads(raw_members["frontend-trace.json"]),
-                             source_sha256=original_source_sha256)
+        validate_observation(
+            source_record["export_state"],
+            trace=json.loads(raw_members["frontend-trace.json"]),
+            source_sha256=original_source_sha256,
+        )
     return StagedCompileInputs(
         raw_members["program.mlir"].decode("utf-8"),
         signature["entry"],
@@ -332,7 +349,10 @@ def load_compile_inputs(directory: str | Path) -> StagedCompileInputs:
 
 
 def load_lifted_argument_bytes(
-    directory: str | Path, staged: StagedCompileInputs, *, kinds: tuple[str, ...] | None = None,
+    directory: str | Path,
+    staged: StagedCompileInputs,
+    *,
+    kinds: tuple[str, ...] | None = None,
     max_bytes: int | None = None,
 ) -> dict[int, bytes]:
     """Read exact declared parameter bytes for a previously checked stage.
@@ -347,7 +367,8 @@ def load_lifted_argument_bytes(
     """
     roles = {"param", "buffer", "constant"}
     if kinds is not None and (
-        not isinstance(kinds, tuple) or any(not isinstance(kind, str) or kind not in roles for kind in kinds)
+        not isinstance(kinds, tuple)
+        or any(not isinstance(kind, str) or kind not in roles for kind in kinds)
         or len(set(kinds)) != len(kinds)
     ):
         raise ValueError("lifted argument selection needs distinct declared roles")
@@ -401,12 +422,12 @@ def load_lifted_argument_bytes(
             while chunk := stream.read(1024 * 1024):
                 hasher.update(chunk)
                 if position < info.payload_start:
-                    header_parts.append(chunk[:info.payload_start - position])
+                    header_parts.append(chunk[: info.payload_start - position])
                 for key, parts in portions.items():
                     start, end = ranges[key]
                     a, b = max(start, position), min(end, position + len(chunk))
                     if a < b:
-                        parts.append(chunk[a - position:b - position])
+                        parts.append(chunk[a - position : b - position])
                 position += len(chunk)
         if hasher.hexdigest() != digest or position != info.file_bytes:
             role = "weights" if file == "weights.safetensors" else "constants"

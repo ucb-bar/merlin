@@ -262,9 +262,12 @@ def verify_capture_receipt(path: str | Path) -> dict:
             if integer.get("schema") == "merlin.dynamic_integer_reference.v1":
                 from merlin.targetgen._dynamic_integer_reference import validate_receipt
 
-                validate_receipt(integer, annotated=stats.get("annotated_contractions"),
-                                 dynamic_calls=stats["dynamic_contractions"]["device_calls"],
-                                 exported=integer.get("exported_integer_mm_count"))
+                validate_receipt(
+                    integer,
+                    annotated=stats.get("annotated_contractions"),
+                    dynamic_calls=stats["dynamic_contractions"]["device_calls"],
+                    exported=integer.get("exported_integer_mm_count"),
+                )
         except (ValueError, TypeError, KeyError, OSError) as exc:
             errors.append(f"dynamic integerization evidence is invalid: {exc}")
     result = {
@@ -337,18 +340,28 @@ def verified_static_integerization(projection: dict | None, *, receipt_sha256: s
         from merlin.targetgen._dynamic_integer_reference import validate_receipt
 
         try:
-            calls = dynamic_integerization_count(projection.get("dynamic_integerization"), emitted=0,
-                exported=receipt.get("exported_integer_mm_count"), program_sha256=capture["sha256"])
-            validate_receipt(receipt, annotated=0, dynamic_calls=calls,
-                             exported=receipt.get("exported_integer_mm_count"))
+            calls = dynamic_integerization_count(
+                projection.get("dynamic_integerization"),
+                emitted=0,
+                exported=receipt.get("exported_integer_mm_count"),
+                program_sha256=capture["sha256"],
+            )
+            validate_receipt(
+                receipt, annotated=0, dynamic_calls=calls, exported=receipt.get("exported_integer_mm_count")
+            )
             agreement = receipt["golden_agreement"]
             pointer, reference = agreement.get("output") or {}, projection.get("reference_artifact") or {}
             source = agreement.get("source") or {}
-            return (projection.get("software_numerical_engine") == "integer_reference"
-                    and pointer.get("path") == "integer-reference.json"
-                    and is_sha256(source.get("sha256")) and isinstance(source.get("path"), str)
-                    and is_sha256(pointer.get("sha256")) and pointer.get("sha256") == reference.get("sha256")
-                    and type(reference.get("bytes")) is int and reference["bytes"] > 0)
+            return (
+                projection.get("software_numerical_engine") == "integer_reference"
+                and pointer.get("path") == "integer-reference.json"
+                and is_sha256(source.get("sha256"))
+                and isinstance(source.get("path"), str)
+                and is_sha256(pointer.get("sha256"))
+                and pointer.get("sha256") == reference.get("sha256")
+                and type(reference.get("bytes")) is int
+                and reference["bytes"] > 0
+            )
         except (ValueError, TypeError, KeyError):
             return False
     if not isinstance(receipt, dict) or receipt.get("schema") != "m2m.pt2e-integerize.v1":

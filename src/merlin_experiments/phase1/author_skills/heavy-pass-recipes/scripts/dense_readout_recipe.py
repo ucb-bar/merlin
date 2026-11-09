@@ -77,8 +77,12 @@ def recipe(facts: str | None = None, shape=None, *, family="segmented", input_pi
     if family == "segmented":
         block = S.pick(S.blocks(p, s, replace(r, max_k_blocks=p.tiles[1] - 1)), accepts)
         pipeline = S.segmented_pipeline
-        modes = (("segmented", False, "separate"), ("batched_readouts", True, "separate"),
-                 ("readout_overlap", True, "disjoint"), ("ready_readout", True, "ready"))
+        modes = (
+            ("segmented", False, "separate"),
+            ("batched_readouts", True, "separate"),
+            ("readout_overlap", True, "disjoint"),
+            ("ready_readout", True, "ready"),
+        )
     else:
         placement = None
         if input_pipeline:
@@ -92,15 +96,24 @@ def recipe(facts: str | None = None, shape=None, *, family="segmented", input_pi
         else:
             block = S.pick(S.blocks(p, s, r), lambda b: b.k == p.tiles[1])
         pipeline = S.retained_pipeline
-        modes = (("retained", False, "separate"), ("batched_readouts", True, "separate"),
-                 ("ready_readout", True, "ready"))
+        modes = (
+            ("retained", False, "separate"),
+            ("batched_readouts", True, "separate"),
+            ("ready_readout", True, "ready"),
+        )
         if input_pipeline:
             modes += (("input_pipeline", True, "ready"),)
     variants = {}
     for name, batch, mode in modes:
-        options = (dict(retained_operand="weight", input_pipeline=name == "input_pipeline",
-                        input_pipeline_placement=placement if name == "input_pipeline" else None)
-                   if input_pipeline else {})
+        options = (
+            dict(
+                retained_operand="weight",
+                input_pipeline=name == "input_pipeline",
+                input_pipeline_placement=placement if name == "input_pipeline" else None,
+            )
+            if input_pipeline
+            else {}
+        )
         result, _ = pipeline(p, s, r, a, block, name=name, batch=batch, readout_mode=mode, **options)
         epochs = result.realization.get("epochs", ())
         variants[name] = {
@@ -135,10 +148,17 @@ def main(argv=None) -> int:
     )
     ap.add_argument("--facts", default=None, help="RTL facts JSON (default: rtl_facts/facts.json if present)")
     ap.add_argument("--shape", default=None, help="M,K,N (default: derived so the output overflows the accumulator)")
-    ap.add_argument("--family", choices=("segmented", "retained"), default="segmented",
-                    help="retained also supports one K tile; all full-K panels must fit")
-    ap.add_argument("--input-pipeline", action="store_true",
-                    help="retained family: compare two advancing LHS slots with invariant weights")
+    ap.add_argument(
+        "--family",
+        choices=("segmented", "retained"),
+        default="segmented",
+        help="retained also supports one K tile; all full-K panels must fit",
+    )
+    ap.add_argument(
+        "--input-pipeline",
+        action="store_true",
+        help="retained family: compare two advancing LHS slots with invariant weights",
+    )
     ap.add_argument("--library", default=None, help="editable compiler library (default: submission/compiler_library)")
     a = ap.parse_args(argv)
     _support().use_library(a.library)

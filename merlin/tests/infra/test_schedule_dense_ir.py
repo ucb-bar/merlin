@@ -6,9 +6,11 @@ import pytest
 from test_compact_dense import ADAPTER, fixture, schedule
 from xdsl.dialects.builtin import ArrayAttr, DenseArrayBase, IntegerAttr, StringAttr, i64
 
-from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+from merlin.compiler.schedule.schedule_ir import (
+    dense_schedule_text,
+    make_dense_schedule_plan,
+    parse_dense_schedule_plan,
+)
 from merlin.sched.ir import evaluate, instances
 from merlin.xdsl_dialects.schedule import BindOp, HandleType
 

@@ -146,8 +146,14 @@ def test_preparation_is_read_once_while_source_operands_are_still_attached(tmp_p
 def test_column_gains_are_part_of_the_actual_kernel_identity():
     from merlin.llvmlower.device_offload import _kernel_identity
 
-    entry = {"op": "matmul", "M": 3, "K": 7, "N": 5, "epilogue": ["acc_scale"],
-             "acc_scale_by_column": [0.5] * 4 + [0.25]}
+    entry = {
+        "op": "matmul",
+        "M": 3,
+        "K": 7,
+        "N": 5,
+        "epilogue": ["acc_scale"],
+        "acc_scale_by_column": [0.5] * 4 + [0.25],
+    }
     assert _kernel_identity(entry) != _kernel_identity({**entry, "acc_scale_by_column": [0.5] * 5})
     assert _kernel_identity(entry) == _kernel_identity({**entry, "name": "another_source_group"})
 
@@ -162,9 +168,9 @@ def test_terminal_residual_keeps_layout_evidence_from_original_producers(tmp_pat
     x = capture.arg("x", shape, "i8")
     weights = {name: capture.arg(name, [4, 4, 1, 1], "i8") for name in ("wa", "wb")}
     biases = {name: capture.arg(name, [4], "f32") for name in ("ba", "bb")}
-    a, _, _ = capture.conv(x, 4, 3, 3, 4, 1, 1, 0, weights["wa"], biases["ba"], .5, .25, .5)
-    b, _, _ = capture.conv(a, 4, 3, 3, 4, 1, 1, 0, weights["wb"], biases["bb"], .5, .25, .5)
-    result = capture.residual(a, b, shape, .5, .5, .5)
+    a, _, _ = capture.conv(x, 4, 3, 3, 4, 1, 1, 0, weights["wa"], biases["ba"], 0.5, 0.25, 0.5)
+    b, _, _ = capture.conv(a, 4, 3, 3, 4, 1, 1, 0, weights["wb"], biases["bb"], 0.5, 0.25, 0.5)
+    result = capture.residual(a, b, shape, 0.5, 0.5, 0.5)
     text = capture.module(result, shape)
     stored = {name: np.ones((4, 4, 1, 1), dtype=np.int8) for name in weights}
     stored.update({name: np.zeros(4, dtype=np.float32) for name in biases})
@@ -172,7 +178,11 @@ def test_terminal_residual_keeps_layout_evidence_from_original_producers(tmp_pat
     _write_capture(root, text, stored)
     source = mq.parse(text)
     rewrite = rewrite_groups_to_device(
-        source, "gemmini", select=lambda _: True, capture=root / "model.mlir", require_complete_groups=True,
+        source,
+        "gemmini",
+        select=lambda _: True,
+        capture=root / "model.mlir",
+        require_complete_groups=True,
     )
     source.verify()
     assert rewrite.moved == 3

@@ -113,8 +113,11 @@ def control_regions(function, *, include_rectangular=False):
         if pending:
             continue
         structural[header] = (loop, tuple(nested), tuple(order))
-    rectangular = {header: region for header, region in structural.items()
-                   if include_rectangular and rectangular_counts(region) is not None}
+    rectangular = {
+        header: region
+        for header, region in structural.items()
+        if include_rectangular and rectangular_counts(region) is not None
+    }
     leaves = {header: region for header, region in structural.items() if len(region[1]) == 1}
     if _leaf_trace_fits(cfg, loops, backedges, leaves, MAX_BLOCK_VISITS) is not False:
         return {**leaves, **rectangular}
@@ -196,8 +199,12 @@ def rectangular_counts(region):
                 return None
         elif terminal.name != "llvm.br":
             return None
-        if any(destination not in root.nodes and not (block is root.header and destination is root.exit)
-               for destination in terminal.successors):
+        if any(
+            destination not in root.nodes and not (block is root.header and destination is root.exit)
+            for destination in terminal.successors
+        ):
             return None
-    return {block: prod(loop.trips if block is loop.header else loop.trips - 1
-                        for loop in loops if block in loop.nodes) for block in order}
+    return {
+        block: prod(loop.trips if block is loop.header else loop.trips - 1 for loop in loops if block in loop.nodes)
+        for block in order
+    }

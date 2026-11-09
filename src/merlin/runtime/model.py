@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from merlin.runtime import modelinputs as MI
 from merlin.compiler.build.modeloptions import BaremetalModelError, _sha
+from merlin.runtime import modelinputs as MI
 from merlin.runtime.backends import spike as spike_backend
 from merlin.runtime.backends import spike_model
 

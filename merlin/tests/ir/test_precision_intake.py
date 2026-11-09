@@ -894,11 +894,20 @@ def test_selected_native_tile_binds_original_source_policy_and_static_artifacts(
     from merlin.verification.native_records import check_precision_plan
 
     plan = _build_tile()
-    policy = {"source_sha256": plan.original_source_sha256, "operand_encoding": "e4m3-rne",
-              "matmul_regions": {"first": {"unit": 0}, "second": {"unit": 0}}}
-    staged = StagedCompileInputs(SOURCE, "work", policy, json.dumps(policy).encode(),
-                                 plan.original_source_sha256, plan.staged_program_sha256,
-                                 plan.precision_policy_sha256)
+    policy = {
+        "source_sha256": plan.original_source_sha256,
+        "operand_encoding": "e4m3-rne",
+        "matmul_regions": {"first": {"unit": 0}, "second": {"unit": 0}},
+    }
+    staged = StagedCompileInputs(
+        SOURCE,
+        "work",
+        policy,
+        json.dumps(policy).encode(),
+        plan.original_source_sha256,
+        plan.staged_program_sha256,
+        plan.precision_policy_sha256,
+    )
     calls = []
 
     class Binding:
@@ -934,17 +943,21 @@ def test_selected_native_tile_binds_original_source_policy_and_static_artifacts(
     records = []
     for index, conversion in enumerate(plan.inputs):
         value = np.ones(conversion.source_type.shape, dtype=np.float32)
-        source = DeclaredStaticTensor(conversion.source_role, index, f"weight{index}", (), value,
-                                      "a" * 64, sha256(value.tobytes()).hexdigest())
-        records.append(PreparedStaticInput(
-            conversion.source_role, 10 + index * 10, source,
-            value.tobytes() if index == 0 else None,
-            None if index == 0 else "outside the selected target input domain",
-        ))
+        source = DeclaredStaticTensor(
+            conversion.source_role, index, f"weight{index}", (), value, "a" * 64, sha256(value.tobytes()).hexdigest()
+        )
+        records.append(
+            PreparedStaticInput(
+                conversion.source_role,
+                10 + index * 10,
+                source,
+                value.tobytes() if index == 0 else None,
+                None if index == 0 else "outside the selected target input domain",
+            )
+        )
     binding.constants = tuple(records)
     (tmp_path / "execution_plan.json").write_text(json.dumps({"input_addresses": [10, 20]}))
-    manifest = publish_precision_plan(tmp_path, {"stage_artifacts": {}}, plan,
-                                      binding=binding, staged_root=tmp_path)
+    manifest = publish_precision_plan(tmp_path, {"stage_artifacts": {}}, plan, binding=binding, staged_root=tmp_path)
     assert manifest["constant_inputs"] == [record.record() for record in records]
     assert manifest["constant_inputs"][1]["status"] == "blocked"
     assert not (tmp_path / "constants" / f"{records[1].role}.bin").exists()
@@ -986,11 +999,14 @@ def test_selected_native_tile_binds_original_source_policy_and_static_artifacts(
             (destination / "program.bin").write_bytes(binary)
             (destination / "execution_plan.json").write_bytes(execution)
             manifest = {
-                "engine": "merlin_native", "request_digest": request.digest(),
-                "target_identity": request.target_identity, "compile_mode": "diagnostic",
+                "engine": "merlin_native",
+                "request_digest": request.digest(),
+                "target_identity": request.target_identity,
+                "compile_mode": "diagnostic",
                 "native_snapshot_sha256": sha256(b"{}").hexdigest(),
                 "binary_sha256": sha256(binary).hexdigest(),
-                "execution_plan_sha256": sha256(execution).hexdigest(), "stage_artifacts": {},
+                "execution_plan_sha256": sha256(execution).hexdigest(),
+                "stage_artifacts": {},
             }
             (destination / "manifest.json").write_text(json.dumps(manifest))
             return manifest
@@ -1000,12 +1016,29 @@ def test_selected_native_tile_binds_original_source_policy_and_static_artifacts(
     monkeypatch.setattr(target_binding, "load_native_target_binding", lambda name: EmittingBinding())
     abi = tmp_path / "abi.json"
     abi.write_text(json.dumps({"fixed_inputs": {"lhs": 0, "rhs": 1}, "fixed_outputs": [2]}))
-    common = ["--engine", "merlin_native", "--support", "synthetic", "--snapshot", str(snapshot_root),
-              "--compile-inputs", str(tmp_path), "--diagnostic-region", "first", "--diagnostic-tile-index", "0",
-              "--mode", "diagnostic"]
+    common = [
+        "--engine",
+        "merlin_native",
+        "--support",
+        "synthetic",
+        "--snapshot",
+        str(snapshot_root),
+        "--compile-inputs",
+        str(tmp_path),
+        "--diagnostic-region",
+        "first",
+        "--diagnostic-tile-index",
+        "0",
+        "--mode",
+        "diagnostic",
+    ]
     artifact, status = tmp_path / "compiled", tmp_path / "replay.json"
-    assert cli.main(["native-compile", *common, "--abi", str(abi), "--target-source", str(tmp_path),
-                     "--out", str(artifact)]) == 0
+    assert (
+        cli.main(
+            ["native-compile", *common, "--abi", str(abi), "--target-source", str(tmp_path), "--out", str(artifact)]
+        )
+        == 0
+    )
     assert cli.main(["native-verify", *common, "--artifact", str(artifact), "--out", str(status)]) == 0
     assert json.loads(status.read_bytes())["status"] == "verified_artifacts"
     (artifact / records[0].record()["path"]).write_bytes(b"changed")

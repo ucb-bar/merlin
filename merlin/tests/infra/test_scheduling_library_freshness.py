@@ -118,8 +118,14 @@ def test_report_edits_preserve_checked_native_dense_execution(tmp_path, monkeypa
 
     monkeypatch.setattr(codegen, "emit_c_function", edit_report)
     measured = native_dense_pair(
-        tmp_path, problem, resources, storage, result, DENSE_ADAPTER,
-        dtypes=("i8", "i8", "i32"), whole_graph=True,
+        tmp_path,
+        problem,
+        resources,
+        storage,
+        result,
+        DENSE_ADAPTER,
+        dtypes=("i8", "i8", "i32"),
+        whole_graph=True,
     )
     assert result.realization["pipeline"] == {}
     record_property("native_execution", json.dumps(measured))
@@ -135,8 +141,9 @@ def test_schedule_rejects_changed_block_helper_during_rewrite(tmp_path, monkeypa
         return ADAPTER.rewrite(call, accesses)
 
     with pytest.raises(ValueError, match="library changed"):
-        compile_schedule(kernel, objects, banks, replace(ADAPTER, rewrite=rewrite), codec,
-                         limits_for(banks, model, word), **model)
+        compile_schedule(
+            kernel, objects, banks, replace(ADAPTER, rewrite=rewrite), codec, limits_for(banks, model, word), **model
+        )
 
 
 def test_finalizer_rejects_changed_pipeline_inside_decoder(tmp_path, monkeypatch):

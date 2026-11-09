@@ -13,7 +13,9 @@ def test_scalar_and_mask_ports_round_trip_and_keep_output_order():
         return %mask, %scale : tensor<2xi1>, tensor<f32>
       }
     }"""
-    request = translate_linalg_text(source, entry="forward", target_identity="synthetic", lowering_policy="diagnostic").request
+    request = translate_linalg_text(
+        source, entry="forward", target_identity="synthetic", lowering_policy="diagnostic"
+    ).request
     assert request.nodes[0].type.shape == ()
     assert request.nodes[1].type == TensorType((2,), "i1", "boolean")
     assert KernelRequest.from_record(request.record()).digest() == request.digest()

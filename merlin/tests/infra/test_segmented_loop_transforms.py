@@ -7,27 +7,44 @@ import pytest
 from test_compact_dense import ADAPTER
 from test_dense_segmented_pipeline import chosen, inputs
 
-from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
-from merlin.compiler.schedule.dense_panel_pipeline import dense_panel_rhs_stripes
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN, dense_panel_rhs_stripes
 from merlin.compiler.schedule.dense_segmented_pipeline import schedule_dense_segmented_pipeline
-from merlin.compiler.schedule.loop_schedule import LoopTransform
-from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
-from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+from merlin.compiler.schedule.loop_schedule import LoopTransform, propose_loop_transforms
+from merlin.compiler.schedule.schedule_ir import (
+    dense_schedule_text,
+    make_dense_schedule_plan,
+    parse_dense_schedule_plan,
+)
 from merlin.sched.ir import Loop, evaluate, instances
 from merlin.sched.primitives import NotApplicable
 
 
 def consume(p, r, s, b, admission, requests):
     plan = make_dense_schedule_plan(
-        p, r, s, ADAPTER, source_identity="b" * 64, dtypes=("i8", "i8", "i32"), static_budget=128,
-        name="segmented", block_tiles=(b.m, b.k, b.n), pipeline_kind="retained_lhs_segmented_k",
-        pipeline_prefetch=True, pipeline_issue_order="prefetch_rhs_between_columns", loop_transforms=requests,
+        p,
+        r,
+        s,
+        ADAPTER,
+        source_identity="b" * 64,
+        dtypes=("i8", "i8", "i32"),
+        static_budget=128,
+        name="segmented",
+        block_tiles=(b.m, b.k, b.n),
+        pipeline_kind="retained_lhs_segmented_k",
+        pipeline_prefetch=True,
+        pipeline_issue_order="prefetch_rhs_between_columns",
+        loop_transforms=requests,
     )
     return schedule_dense_segmented_pipeline(
-        p, r, s, ADAPTER, admission, name="segmented", dtypes=("i8", "i8", "i32"),
-        schedule_plan=parse_dense_schedule_plan(dense_schedule_text(plan)), source_identity="b" * 64,
+        p,
+        r,
+        s,
+        ADAPTER,
+        admission,
+        name="segmented",
+        dtypes=("i8", "i8", "i32"),
+        schedule_plan=parse_dense_schedule_plan(dense_schedule_text(plan)),
+        source_identity="b" * 64,
         external_buffers_disjoint=True,
     )
 
@@ -75,9 +92,10 @@ def test_optin_short_tail_keeps_original_mixed_epoch_while_complete_stripes_tran
     assert len(before) == len(after)
     assert [Counter(group) for group in before] == [Counter(group) for group in after]
     assert any(left != right for left, right in zip(before, after, strict=True))
-    assert any(left == right and any(c[0] == "compute" for c in left)
-               and any(c[0] == "weight_load" for c in left)
-               for left, right in zip(before, after, strict=True))
+    assert any(
+        left == right and any(c[0] == "compute" for c in left) and any(c[0] == "weight_load" for c in left)
+        for left, right in zip(before, after, strict=True)
+    )
     actual.materialize_scf().verify()
     actual.revalidate()
 
@@ -98,8 +116,10 @@ def test_segmented_typed_fission_cannot_separate_preload_from_compute():
         for statement in body:
             if type(statement) is Loop:
                 path = (*prefix, statement.var)
-                if (len(statement.body) == 2
-                        and [getattr(c, "instr", None) for c in statement.body] == ["preload", "compute"]):
+                if len(statement.body) == 2 and [getattr(c, "instr", None) for c in statement.body] == [
+                    "preload",
+                    "compute",
+                ]:
                     paths.append(path)
                 walk(statement.body, path)
 
@@ -119,10 +139,20 @@ def test_segmented_stripes_execute_all_original_scalar_outputs(monkeypatch):
     def capacity_fixture(**kwargs):
         kwargs["shape"] = (3, 14, 7)
         p, r, s = original_fixture(**kwargs)
-        s = replace(s, lhs=replace(s.lhs, capacity=256), rhs=replace(s.rhs, capacity=48),
-                    accumulator=replace(s.accumulator, capacity=64))
-        r = replace(r, operand_bytes=256 * s.lhs.unit_bytes + 48 * s.rhs.unit_bytes,
-                    accumulator_bytes=64 * s.accumulator.unit_bytes, max_m_blocks=2, max_n_blocks=2, max_k_blocks=2)
+        s = replace(
+            s,
+            lhs=replace(s.lhs, capacity=256),
+            rhs=replace(s.rhs, capacity=48),
+            accumulator=replace(s.accumulator, capacity=64),
+        )
+        r = replace(
+            r,
+            operand_bytes=256 * s.lhs.unit_bytes + 48 * s.rhs.unit_bytes,
+            accumulator_bytes=64 * s.accumulator.unit_bytes,
+            max_m_blocks=2,
+            max_n_blocks=2,
+            max_k_blocks=2,
+        )
         return p, r, s
 
     def schedule(p, r, s, **kwargs):
@@ -145,12 +175,13 @@ def test_segmented_wide_loads_keep_combined_law_and_check_every_actual_band():
     from test_panel_tile_loads import evaluated_calls
 
     from merlin.compiler.schedule.dense_segmented_pipeline import admit_segmented_tile_loads
-    from merlin.compiler.schedule.panel_tile_loads import admit_panel_tile_loads
-    from merlin.compiler.schedule.panel_tile_loads import expand_panel_tile_loads
-    from merlin.compiler.schedule.tile_load_coalescing import TileLoadAddressLaw
-    from merlin.compiler.schedule.tile_load_coalescing import TileLoadMapping
-    from merlin.compiler.schedule.tile_load_coalescing import _linear
-    from merlin.compiler.schedule.tile_load_coalescing import propose_tile_load_coalescing
+    from merlin.compiler.schedule.panel_tile_loads import admit_panel_tile_loads, expand_panel_tile_loads
+    from merlin.compiler.schedule.tile_load_coalescing import (
+        TileLoadAddressLaw,
+        TileLoadMapping,
+        _linear,
+        propose_tile_load_coalescing,
+    )
     from merlin.sched.ir import Const
 
     p, r, s, b, admission = inputs((4, 12, 8), 2)
@@ -168,31 +199,43 @@ def test_segmented_wide_loads_keep_combined_law_and_check_every_actual_band():
         op = ADAPTER.project(call)
         view = s.lhs if op.role == "lhs" else s.rhs
         law = laws[op.role]
-        return TileLoadMapping(op.role, view.backing, op.dram_row * law.source_pitch_bytes + op.dram_col,
-                               op.row, op.rows, op.cols, law)
+        return TileLoadMapping(
+            op.role, view.backing, op.dram_row * law.source_pitch_bytes + op.dram_col, op.row, op.rows, op.cols, law
+        )
 
     def encode(call, columns):
-        return replace(call, args=tuple((key, Const(columns) if key == "cols" else value)
-                                       for key, value in call.args))
+        return replace(call, args=tuple((key, Const(columns) if key == "cols" else value) for key, value in call.args))
 
     def band(call, mapping):
         offset, terms = _linear(mapping.source_byte)
         base, base_terms = _linear(project(call).source_byte)
         assert terms == base_terms
         columns = offset - base
-        return replace(call, args=tuple((key, mapping.local_row if key == "dst"
-                                        else mapping.columns if key == "cols"
-                                        else value + columns if key == "src_col"
-                                        else value + columns // mapping.law.tile_columns if key == "b" else value)
-                                       for key, value in call.args))
+        return replace(
+            call,
+            args=tuple(
+                (
+                    key,
+                    mapping.local_row
+                    if key == "dst"
+                    else mapping.columns
+                    if key == "cols"
+                    else value + columns
+                    if key == "src_col"
+                    else value + columns // mapping.law.tile_columns
+                    if key == "b"
+                    else value,
+                )
+                for key, value in call.args
+            ),
+        )
 
     proposal, changes = propose_tile_load_coalescing(striped.kernel, project=project, encode=encode, max_tiles=2)
     assert changes["changes"]
     # Existing one-K-panel admission must not silently acquire a combined law.
     with pytest.raises(ValueError, match="original checked panel"):
         admit_panel_tile_loads(striped, proposal, p, b, r, s, ADAPTER, project=project, encode_band=band)
-    actual = admit_segmented_tile_loads(striped, proposal, p, b, r, s, ADAPTER,
-                                      project=project, encode_band=band)
+    actual = admit_segmented_tile_loads(striped, proposal, p, b, r, s, ADAPTER, project=project, encode_band=band)
     expanded, proof = expand_panel_tile_loads(actual.kernel, project=project, encode_band=band)
     assert evaluated_calls(expanded) == evaluated_calls(striped.kernel)
     assert proof["physical_load_commands"] < proof["expanded_logical_tile_bands"]
@@ -206,5 +249,4 @@ def test_segmented_wide_loads_keep_combined_law_and_check_every_actual_band():
         return None if mapping is None else replace(mapping, source_byte=mapping.source_byte + 1)
 
     with pytest.raises(ValueError, match="actual wide mapping differs"):
-        admit_segmented_tile_loads(striped, proposal, p, b, r, s, ADAPTER,
-                                  project=corrupt_mapping, encode_band=band)
+        admit_segmented_tile_loads(striped, proposal, p, b, r, s, ADAPTER, project=corrupt_mapping, encode_band=band)

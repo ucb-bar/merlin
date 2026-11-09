@@ -257,7 +257,13 @@ def append_void_region(builder: FnBuilder, function: llvm.FuncOp, arguments) -> 
     """
     arguments = tuple(arguments)
     function.verify()
-    if any(not key.startswith("prov.") for key in function.attributes) or set(function.properties) - {"sym_name", "function_type", "CConv", "linkage", "visibility_"}:
+    if any(not key.startswith("prov.") for key in function.attributes) or set(function.properties) - {
+        "sym_name",
+        "function_type",
+        "CConv",
+        "linkage",
+        "visibility_",
+    }:
         raise ValueError("region has unsupported function-level semantics")
     blocks = tuple(function.body.blocks)
     if not blocks or len(blocks[0].args) != len(arguments):
@@ -299,5 +305,10 @@ def append_void_region(builder: FnBuilder, function: llvm.FuncOp, arguments) -> 
             block.add_op(llvm.BrOp(continuation))
     builder.region.add_block(continuation)
     builder.blk = continuation
-    return {"blocks": len(blocks), "returns": len(returns), "operations": len(operations),
-            "effects": "all original operations retained in source order", "calls_added": 0}
+    return {
+        "blocks": len(blocks),
+        "returns": len(returns),
+        "operations": len(operations),
+        "effects": "all original operations retained in source order",
+        "calls_added": 0,
+    }

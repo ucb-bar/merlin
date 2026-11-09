@@ -43,6 +43,7 @@ def fix_bool_sitofp(module) -> int:
         n += 1
     return n
 
+
 def fix_bool_fptosi(module) -> int:
     """Rewrite a float->``i1`` ``arith.fptosi``/``arith.fptoui`` into ``x != 0``; returns the count.
 

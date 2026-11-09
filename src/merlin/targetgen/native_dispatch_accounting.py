@@ -323,8 +323,8 @@ def _audit_candidate_completed_dispatch(
         from xdsl.parser import Parser
 
         from merlin.common.facts_view import interface as facts_interface
-        from merlin.runtime.modelinputs import native_engine, selected_firrtl
         from merlin.perf.compiler_plan_evidence import verify_compiler_global_plan
+        from merlin.runtime.modelinputs import native_engine, selected_firrtl
         from merlin.targetgen.contract.schemas import contract_dir
         from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
         from merlin.targetgen.oracle_policy import selected_l3_engine_report

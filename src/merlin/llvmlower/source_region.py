@@ -45,14 +45,24 @@ def append_source_observations(module, values, *, function="forward", max_elemen
 
     from merlin.xdsl_dialects._common import text
 
-    if (type(function) is not str or not function or type(values) is not tuple
-            or not values or len(values) > 32 or len(set(values)) != len(values)
-            or type(max_elements) is not int or max_elements < 1):
+    if (
+        type(function) is not str
+        or not function
+        or type(values) is not tuple
+        or not values
+        or len(values) > 32
+        or len(set(values)) != len(values)
+        or type(max_elements) is not int
+        or max_elements < 1
+    ):
         raise ValueError("source observations require distinct bounded original SSA results")
     module.verify()
     before = text(module, generic=True)
-    owners = [op for op in module.body.block.ops if type(op) is func.FuncOp
-              and op.sym_name.data == function and len(op.body.blocks) == 1]
+    owners = [
+        op
+        for op in module.body.block.ops
+        if type(op) is func.FuncOp and op.sym_name.data == function and len(op.body.blocks) == 1
+    ]
     if len(owners) != 1:
         raise ValueError("source observations require one original single-block function")
     owner = owners[0]
@@ -64,8 +74,12 @@ def append_source_observations(module, values, *, function="forward", max_elemen
     positions = {op: i for i, op in enumerate(block.ops)}
     records, elements = [], 0
     for value in values:
-        if (not isinstance(value, OpResult) or value.owner.parent is not block
-                or value in original_results or not isinstance(value.type, TensorType)):
+        if (
+            not isinstance(value, OpResult)
+            or value.owner.parent is not block
+            or value in original_results
+            or not isinstance(value.type, TensorType)
+        ):
             raise ValueError("observation is not a distinct top-level original tensor result")
         shape = tuple(value.type.get_shape())
         if any(d < 1 for d in shape):
@@ -73,12 +87,12 @@ def append_source_observations(module, values, *, function="forward", max_elemen
         elements += prod(shape)
         if elements > max_elements:
             raise ValueError("source observations exceed the explicit element bound")
-        records.append({"operation_ordinal": positions[value.owner],
-                        "result_index": value.index, "type": str(value.type)})
+        records.append(
+            {"operation_ordinal": positions[value.owner], "result_index": value.index, "type": str(value.type)}
+        )
     mapping = {}
     observed = module.clone(value_mapper=mapping)
-    copied = next(op for op in observed.body.block.ops if type(op) is func.FuncOp
-                  and op.sym_name.data == function)
+    copied = next(op for op in observed.body.block.ops if type(op) is func.FuncOp and op.sym_name.data == function)
     result_values = (*tuple(copied.body.block.last_op.operands), *(mapping[v] for v in values))
     copied.body.block.erase_op(copied.body.block.last_op)
     copied.body.block.add_op(func.ReturnOp(*result_values))
@@ -88,17 +102,25 @@ def append_source_observations(module, values, *, function="forward", max_elemen
     observed.verify()
     if text(module, generic=True) != before:
         raise ValueError("source observation changed the original module")
-    return SourceObservations(observed, {
-        "schema": "merlin.original_ssa_observations.v1",
-        "source_ir_sha256": hashlib.sha256(before.encode()).hexdigest(),
-        "observed_ir_sha256": hashlib.sha256(text(observed, generic=True).encode()).hexdigest(),
-        "function": function, "original_result_count": len(original_results),
-        "observations": records, "observed_elements": elements,
-        "original_operation_order_preserved": True,
-        "original_results_preserved": True, "intermediate_lifetimes_extended": True,
-        "effect_or_target_admission": False, "source_closure_verified": False,
-        "target_execution": False, "timing_equivalence": False,
-    })
+    return SourceObservations(
+        observed,
+        {
+            "schema": "merlin.original_ssa_observations.v1",
+            "source_ir_sha256": hashlib.sha256(before.encode()).hexdigest(),
+            "observed_ir_sha256": hashlib.sha256(text(observed, generic=True).encode()).hexdigest(),
+            "function": function,
+            "original_result_count": len(original_results),
+            "observations": records,
+            "observed_elements": elements,
+            "original_operation_order_preserved": True,
+            "original_results_preserved": True,
+            "intermediate_lifetimes_extended": True,
+            "effect_or_target_admission": False,
+            "source_closure_verified": False,
+            "target_execution": False,
+            "timing_equivalence": False,
+        },
+    )
 
 
 def extract_source_region(
@@ -358,7 +380,6 @@ class _SiblingContractionPlan:
     prepared_inputs: tuple = ()
 
 
-
 def _sibling_tensor_operation_is_pure(op):
     """Keep source quantization markers while checking their typed lowering.
 
@@ -378,10 +399,14 @@ def _sibling_tensor_operation_is_pure(op):
     allowed = {"quant_min", "quant_max", "output_dtype"}
     if name in _DEQUANT_KINDS:
         allowed |= {"axis", "group_size"}
-    if (not isinstance(op, UnregisteredOp) or name not in (*_DEQUANT_KINDS, *_QUANT_KINDS)
-            or op.regions or op.successors
-            or any(key != "op_name__" and not key.startswith("prov.") for key in op.attributes)
-            or set(op.properties) - allowed):
+    if (
+        not isinstance(op, UnregisteredOp)
+        or name not in (*_DEQUANT_KINDS, *_QUANT_KINDS)
+        or op.regions
+        or op.successors
+        or any(key != "op_name__" and not key.startswith("prov.") for key in op.attributes)
+        or set(op.properties) - allowed
+    ):
         return False
     cloned = op.clone()
     shadow = ModuleOp([cloned])
@@ -407,8 +432,8 @@ def _plan_sibling_contractions(host, selected, *, symbol, max_source_elements=64
     from xdsl.dialects.builtin import ModuleOp
     from xdsl.ir import Block, Region
 
-    from merlin.compiler.schedule.dense_source import read_zero_seeded_integer_matmul
     from merlin.compiler.ir.boundary import free_values
+    from merlin.compiler.schedule.dense_source import read_zero_seeded_integer_matmul
 
     if type(selected) is not tuple or not 2 <= len(selected) <= 8 or len(set(selected)) != len(selected):
         raise ValueError("source siblings require two to eight distinct current roots")
@@ -489,7 +514,14 @@ def _plan_sibling_contractions(host, selected, *, symbol, max_source_elements=64
     core = ModuleOp([callee.clone()])
     core.verify()
     return _SiblingContractionPlan(
-        host, block, selected, inputs, outputs, tuple(sorted(hoisted, key=positions.get)), callee, core,
+        host,
+        block,
+        selected,
+        inputs,
+        outputs,
+        tuple(sorted(hoisted, key=positions.get)),
+        callee,
+        core,
         {
             "source_root_ordinals": [positions[op] for op in selected],
             "source_geometries": [list(shape) for shape in geometries],

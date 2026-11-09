@@ -59,11 +59,17 @@ def test_descriptor_factory_is_retained_without_issuing_effects_before_preparati
 
 
 @pytest.mark.parametrize("descriptor_selected,factory", [(True, None), (True, object()), (False, lambda: None)])
-def test_descriptor_preparation_requires_an_unissued_selected_factory(descriptor_selected, factory, tmp_path, monkeypatch):
+def test_descriptor_preparation_requires_an_unissued_selected_factory(
+    descriptor_selected, factory, tmp_path, monkeypatch
+):
     source, prepared, work, route = selected(tmp_path, monkeypatch)
     with pytest.raises(weight_prepack.PrepackRefused, match="checked composition"):
-        rebind(replace(route, descriptor_results=descriptor_selected, descriptor_effects=factory),
-               source=source, prepared=prepared, work=work)
+        rebind(
+            replace(route, descriptor_results=descriptor_selected, descriptor_effects=factory),
+            source=source,
+            prepared=prepared,
+            work=work,
+        )
 
 
 @pytest.mark.parametrize("field", ["exact_selection", "catalog_builder", "prepared_transform", "offload_selection"])
@@ -94,25 +100,28 @@ def test_sibling_layout_derivation_retains_original_source_and_effect_selection(
     from merlin.xdsl_dialects._common import text
 
     source, prepared, work, route = selected(tmp_path, monkeypatch)
-    original = mq.parse((source / 'model.mlir').read_text())
+    original = mq.parse((source / "model.mlir").read_text())
     digest = hashlib.sha256(text(original, generic=True).encode()).hexdigest()
     # This fixture checks only exact layout custody; no target effects are qualified.
-    choice = SiblingSourceRoute(digest, BorrowedBufferEffects('TEST-only owner premise', True, True, True))
+    choice = SiblingSourceRoute(digest, BorrowedBufferEffects("TEST-only owner premise", True, True, True))
     route = replace(route, sibling_source=choice)
     bound = rebind(route, source=source, prepared=prepared, work=work)
-    assert bound.sibling_source is choice and route.capture == source / 'model.mlir'
+    assert bound.sibling_source is choice and route.capture == source / "model.mlir"
     reopened, receipt = original_sibling_source(
-        bound, choice, actual_source=prepared / 'model.mlir', work=work,
+        bound,
+        choice,
+        actual_source=prepared / "model.mlir",
+        work=work,
     )
     assert text(reopened, generic=True) == text(original, generic=True)
     assert choice.source_ir_sha256 == digest
-    binding = work / 'device_capture_preparation.json'
+    binding = work / "device_capture_preparation.json"
     document = json.loads(binding.read_text())
-    document['preparation_sha256'] = '0' * 64
+    document["preparation_sha256"] = "0" * 64
     binding.write_text(json.dumps(document))
-    with pytest.raises(weight_prepack.PrepackRefused, match='original checked weight preparation'):
-        original_sibling_source(bound, choice, actual_source=prepared / 'model.mlir', work=work)
-    assert receipt['sha256'] != '0' * 64
+    with pytest.raises(weight_prepack.PrepackRefused, match="original checked weight preparation"):
+        original_sibling_source(bound, choice, actual_source=prepared / "model.mlir", work=work)
+    assert receipt["sha256"] != "0" * 64
 
 
 def test_weight_preparation_cannot_rebind_another_sibling_source(tmp_path, monkeypatch):
@@ -120,6 +129,6 @@ def test_weight_preparation_cannot_rebind_another_sibling_source(tmp_path, monke
     from merlin.llvmlower.sibling_source_route import SiblingSourceRoute
 
     source, prepared, work, route = selected(tmp_path, monkeypatch)
-    choice = SiblingSourceRoute('0' * 64, BorrowedBufferEffects('TEST-only owner premise', True, True, True))
-    with pytest.raises(weight_prepack.PrepackRefused, match='original sibling selection'):
+    choice = SiblingSourceRoute("0" * 64, BorrowedBufferEffects("TEST-only owner premise", True, True, True))
+    with pytest.raises(weight_prepack.PrepackRefused, match="original sibling selection"):
         rebind(replace(route, sibling_source=choice), source=source, prepared=prepared, work=work)

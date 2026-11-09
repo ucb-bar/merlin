@@ -497,10 +497,15 @@ def program(
 
     if group.window_pool is not None:
         entry = {k: v for k, v in group.window_pool.items() if k not in ("proof", "output_shape")}
-        entry.update(name=name or f"group_{group.index}", kind="op", op="maxpool2d",
-                     operand_dtype=group.in_dtype, epilogue=["acc_scale", "maxpool"], output_dtype="i8")
-        return GroupProgram(entry=entry, stored_operand=None, transposed=False,
-                            notes=(group.window_pool["proof"],))
+        entry.update(
+            name=name or f"group_{group.index}",
+            kind="op",
+            op="maxpool2d",
+            operand_dtype=group.in_dtype,
+            epilogue=["acc_scale", "maxpool"],
+            output_dtype="i8",
+        )
+        return GroupProgram(entry=entry, stored_operand=None, transposed=False, notes=(group.window_pool["proof"],))
     if group.fusion and group.fusion.get("cut") != "bare":
         from .group_output_program import program as output_program
 
@@ -553,7 +558,9 @@ def program(
         # for prepacking and provenance.
         oriented = _activation_contraction(group, base)
         return replace(
-            oriented, stored_operand=stored, stored_arg=stored_arg,
+            oriented,
+            stored_operand=stored,
+            stored_arg=stored_arg,
             notes=("the source-selected contraction orientation is preserved; its left operand remains immutable",),
         )
     side, bias_arg = _bias_side(group)
@@ -646,6 +653,7 @@ def device_output_shape(entry: Mapping[str, Any]) -> list[int]:
     features = entry.get("N")
     if op == "maxpool2d":
         from merlin.runtime.tensor import pool_out_dims
+
         h, w = entry["pool_in_dims"]
         ho, wo = pool_out_dims(h, w, entry["pool_size"], entry["pool_stride"], entry["pool_padding"])
         return [ho * wo, int(features)]

@@ -31,16 +31,24 @@ def test_ordinary_model_plan_uses_selected_o3_without_changing_harness(monkeypat
     # Preserve the actual common plan; only the independent tool query is bounded
     # here so the test checks flag propagation without a cross compiler dependency.
     def observe(compiler, flags):
-        return dict(schema="merlin.selected-index-lowering.v1", compiler_requested=str(compiler),
-                    compiler_resolved="/compiler", compiler_sha256="a" * 64, cross_flags=flags,
-                    index_bits=64, data_layout="e-p:64:64",
-                    scope="synthetic flag-propagation fixture; no compiler execution")
+        return dict(
+            schema="merlin.selected-index-lowering.v1",
+            compiler_requested=str(compiler),
+            compiler_resolved="/compiler",
+            compiler_sha256="a" * 64,
+            cross_flags=flags,
+            index_bits=64,
+            data_layout="e-p:64:64",
+            scope="synthetic flag-propagation fixture; no compiler execution",
+        )
 
     monkeypatch.setattr(spike_model.target_data_layout, "observe_index_width", observe)
     control = spike_model.selected_model_compiler_plan(
-        backend="scalar", cflags_override=None, vlen=None, features=frozenset())
+        backend="scalar", cflags_override=None, vlen=None, features=frozenset()
+    )
     candidate = spike_model.selected_model_compiler_plan(
-        backend="scalar", cflags_override=None, vlen=None, features=frozenset({FEATURE}))
+        backend="scalar", cflags_override=None, vlen=None, features=frozenset({FEATURE})
+    )
     assert candidate["gcc_cflags"] == control["gcc_cflags"]
     assert candidate["clang_cflags"] == control["clang_cflags"]
     assert candidate["model_cflags"] == edit_cflags(control["model_cflags"])
@@ -74,17 +82,35 @@ def test_complete_native_recurrence_words_flags_modes_and_canaries(tmp_path):
       int clear(void){return feclearexcept(FE_ALL_EXCEPT);}
     """)
     models = []
-    for name, flags in [("control", ["-O2", "-fPIC"]),
-                        ("candidate", edit_cflags(["-O2", "-fPIC"]))]:
+    for name, flags in [("control", ["-O2", "-fPIC"]), ("candidate", edit_cflags(["-O2", "-fPIC"]))]:
         obj, so = tmp_path / f"{name}.o", tmp_path / f"{name}.so"
-        subprocess.run([str(clang()), *flags, "-c", str(ll), "-o", str(obj)],
-                       capture_output=True, check=True)
-        subprocess.run([str(clang()), "-shared", "-fPIC", str(obj), str(mlir_runtime_c()),
-                        str(helper), "-lm", "-o", str(so)], capture_output=True, check=True)
+        subprocess.run([str(clang()), *flags, "-c", str(ll), "-o", str(obj)], capture_output=True, check=True)
+        subprocess.run(
+            [str(clang()), "-shared", "-fPIC", str(obj), str(mlir_runtime_c()), str(helper), "-lm", "-o", str(so)],
+            capture_output=True,
+            check=True,
+        )
         models.append((HostModel.load(str(so)), ctypes.CDLL(str(so))))
-    values = np.array([0, 0x80000000, 1, 0x80000001, 0x3F800000, 0xBF800000,
-                       0x7F7FFFFF, 0x7F800000, 0x7FC01234, 0x7F800001, 0x3F000001,
-                       0x00800000, 0x7F000000, 0xFF000000, 0x3F7FFFFF], dtype="u4")
+    values = np.array(
+        [
+            0,
+            0x80000000,
+            1,
+            0x80000001,
+            0x3F800000,
+            0xBF800000,
+            0x7F7FFFFF,
+            0x7F800000,
+            0x7FC01234,
+            0x7F800001,
+            0x3F000001,
+            0x00800000,
+            0x7F000000,
+            0xFF000000,
+            0x3F7FFFFF,
+        ],
+        dtype="u4",
+    )
     try:
         for mode in range(4):
             for shift in range(7):

@@ -42,8 +42,11 @@ def prepare_integer_convolution_panels(source, *, max_packing_bytes, max_candida
     module = parse_mlir_text(source)
     module.verify()
     report = dict(
-        schema="merlin.integer_convolution_panels.v1", source_sha256=hashlib.sha256(source.encode()).hexdigest(),
-        max_packing_bytes=max_packing_bytes, routes=[], timing="not_measured",
+        schema="merlin.integer_convolution_panels.v1",
+        source_sha256=hashlib.sha256(source.encode()).hexdigest(),
+        max_packing_bytes=max_packing_bytes,
+        routes=[],
+        timing="not_measured",
         scope="logical source packing payload; physical resources and backend execution checked separately",
     )
     prune_dead_pure_tensor_ops(module)
@@ -52,12 +55,18 @@ def prepare_integer_convolution_panels(source, *, max_packing_bytes, max_candida
             continue
         constant = operation.operands[0].owner
         if (
-            type(constant) is not arith.ConstantOp or type(constant.value) is not builtin.IntegerAttr
-            or constant.value.value.data != 0 or constant.results[0].type != builtin.i32
+            type(constant) is not arith.ConstantOp
+            or type(constant.value) is not builtin.IntegerAttr
+            or constant.value.value.data != 0
+            or constant.results[0].type != builtin.i32
             or operation.results[0].type.element_type != builtin.i32
             or any(not k.startswith("prov.") for k in (*operation.attributes, *constant.attributes))
-            or operation.properties or operation.regions or operation.successors
-            or set(constant.properties) != {"value"} or constant.regions or constant.successors
+            or operation.properties
+            or operation.regions
+            or operation.successors
+            or set(constant.properties) != {"value"}
+            or constant.regions
+            or constant.successors
         ):
             continue
         empty = tensor.EmptyOp((), operation.results[0].type)
@@ -75,8 +84,14 @@ def prepare_integer_convolution_panels(source, *, max_packing_bytes, max_candida
             record["reason"] = "full_payload_within_budget"
             continue
         maximum = min(match.ow, max_packing_bytes // match.k)
-        width = next((w for w in range(maximum, max(0, maximum - max_candidates), -1)
-                      if match.k * (w + match.ow % w) <= max_packing_bytes), None)
+        width = next(
+            (
+                w
+                for w in range(maximum, max(0, maximum - max_candidates), -1)
+                if match.k * (w + match.ow % w) <= max_packing_bytes
+            ),
+            None,
+        )
         if width is None:
             record["reason"] = "no_panel_within_payload_budget"
             continue

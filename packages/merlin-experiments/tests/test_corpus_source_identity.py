@@ -30,11 +30,21 @@ def test_corpus_package_import_does_not_load_host_workflows(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.parametrize("damage", [
-    "release", "preparation", "admission", "initializer", "added", "removed",
-    "quantization_admission", "quantization_capture_projection",
-    "quantization_recipe_records", "quantization_recipe_dynamic",
-])
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "release",
+        "preparation",
+        "admission",
+        "initializer",
+        "added",
+        "removed",
+        "quantization_admission",
+        "quantization_capture_projection",
+        "quantization_recipe_records",
+        "quantization_recipe_dynamic",
+    ],
+)
 def test_corpus_package_membership_and_bytes_are_bound(tmp_path, monkeypatch, damage):
     package = tmp_path / "corpus"
     shutil.copytree(

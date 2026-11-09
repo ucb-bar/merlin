@@ -1,17 +1,28 @@
 """Translate the arithmetic source family, preserving numerical boundaries."""
+
 from __future__ import annotations
 
-from .linalg_recognition import LinalgBridgeError, _embedding_lookup_operands, _oriented_matmul_accumulate_maps, _oriented_matmul_maps, _source_f32_batched_matmul, _type
-from .model import SemanticNode, TensorType, pointwise_identity_maps
 from xdsl.dialects.builtin import StringAttr
 from xdsl.dialects.linalg.attrs import IteratorType
+
 from merlin.frontends.linalg_bf16_add import recognize_bf16_f32_chop_add, recognize_bf16_f32_chop_sub
 from merlin.frontends.linalg_bf16_mul import recognize_bf16_product_rne
 from merlin.frontends.linalg_bf16_relu import recognize_bf16_sign_clamp_relu
 from merlin.frontends.linalg_fp8_cast import recognize_bf16_fp8_truncation
 from merlin.frontends.linalg_ordered_fp8 import recognize_ordered_fp8_bf16_reset_matmul
 from merlin.frontends.linalg_patterns import InvalidLinalgPattern
+
+from .linalg_recognition import (
+    LinalgBridgeError,
+    _embedding_lookup_operands,
+    _oriented_matmul_accumulate_maps,
+    _oriented_matmul_maps,
+    _source_f32_batched_matmul,
+    _type,
+)
 from .linalg_state import TranslationState
+from .model import SemanticNode, TensorType, pointwise_identity_maps
+
 
 def translate(state: TranslationState, op, ordinal):
     nodes = state.nodes
@@ -55,11 +66,7 @@ def translate(state: TranslationState, op, ordinal):
             if not isinstance(policy, StringAttr):
                 raise LinalgBridgeError("BF16 binary numerical policy must be a string")
             if policy.data == "selected-f32-rne-bf16-chop-v1":
-                body = (
-                    tuple(op.regions[0].block.ops)
-                    if len(op.regions) == 1 and len(op.regions[0].blocks) == 1
-                    else ()
-                )
+                body = tuple(op.regions[0].block.ops) if len(op.regions) == 1 and len(op.regions[0].blocks) == 1 else ()
                 if len(body) > 2 and body[2].name == "arith.subf":
                     semantic_op = "sub_bf16"
                     lhs, rhs, destination, semantics, domain = recognize_bf16_f32_chop_sub(op)
@@ -80,8 +87,7 @@ def translate(state: TranslationState, op, ordinal):
         source_ids = (env[lhs], env[rhs])
         source_nodes = {node.id: node for node in nodes}
         if any(
-            source_nodes[source_id].op == "input"
-            and dict(source_nodes[source_id].attrs).get("input_domain") != domain
+            source_nodes[source_id].op == "input" and dict(source_nodes[source_id].attrs).get("input_domain") != domain
             for source_id in source_ids
         ):
             raise LinalgBridgeError("BF16 binary premise differs from its source boundary")
@@ -147,9 +153,7 @@ def translate(state: TranslationState, op, ordinal):
                 "matmul" if accumulator_id is None else "matmul_accumulate",
                 source_ids if accumulator_id is None else (*source_ids, accumulator_id),
                 TensorType(result_type.shape, result_type.dtype, semantics),
-                index_maps=(
-                    _oriented_matmul_maps() if accumulator_id is None else _oriented_matmul_accumulate_maps()
-                ),
+                index_maps=(_oriented_matmul_maps() if accumulator_id is None else _oriented_matmul_accumulate_maps()),
             )
         )
         env[op.results[0]] = node_id

@@ -332,6 +332,7 @@ def group_interface(entry: Mapping[str, Any], binder, *, source_reference: str) 
     """The interface MLIR a package is asked to lower for one stated group, through the one path."""
     if entry.get("schema") == "connected_quantized_sum_entry_v1":
         from merlin.llvmlower.quantized_sum_route import quantized_sum_interface
+
         return quantized_sum_interface(entry, binder, source_reference=source_reference)
     if entry.get("schema") == "connected_spatial_entry_v1":
         from merlin.llvmlower.connected_spatial import spatial_pair_interface
@@ -376,12 +377,17 @@ def source_bound_group_buffers(entry, interface, *, binding=None, target=None):
         if entry.get("op") != schemas[schema]:
             raise ValueError("connected entry lost its original composed source operation")
         selected_target = binding.target if binding is not None else target
-        if (not isinstance(selected_target, str) or not selected_target
-                or target is not None and target != selected_target
-                or actual["target"] != selected_target):
+        if (
+            not isinstance(selected_target, str)
+            or not selected_target
+            or target is not None
+            and target != selected_target
+            or actual["target"] != selected_target
+        ):
             raise ValueError("connected interface differs from its original selected target")
         if binding is None:
             from merlin.compiler.selection.mesh import _mesh_tile_binding
+
             from .device_routing_placement import _accum_from_facts
 
             operand = entry.get("operand_dtype")

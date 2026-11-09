@@ -6,9 +6,9 @@ import json
 
 import pytest
 from author_skill_support import BODY_LIMIT, SKILLS, front_matter, gate, load_script, target_mentions
-from merlin_experiments.phase1.feedback import mechanism_hints
 
 from merlin.common.paths import repo_root
+from merlin_experiments.phase1.feedback import mechanism_hints
 
 SKILL = SKILLS / "pass-library"
 

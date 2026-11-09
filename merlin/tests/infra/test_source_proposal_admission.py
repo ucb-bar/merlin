@@ -20,9 +20,15 @@ from merlin.transforms.dense_ir import recognize_signed_integer_matmul
 def example():
     legacy, alternatives, context = legacy_example()
     source = bind_source(legacy.module, entry=legacy.entry, context=context, graph_mode="ssa")
-    alternatives = tuple(replace(source.cpu_alternatives[item.nodes[0]], id=item.id,
-                                 implementation=item.implementation, placement=item.placement)
-                         for item in alternatives)
+    alternatives = tuple(
+        replace(
+            source.cpu_alternatives[item.nodes[0]],
+            id=item.id,
+            implementation=item.implementation,
+            placement=item.placement,
+        )
+        for item in alternatives
+    )
     return source, alternatives, context
 
 
@@ -34,9 +40,18 @@ def topology(tmp_path, **edge_changes):
             {"id": "array0", "kind": "accelerator", "features": ["integer-matmul"], "shared_group": "array0"},
         ],
         "memory_domains": [{"id": "dram", "capacity_bytes": 4096, "alignment_bytes": 64}],
-        "access": [dict(resource=resource, domain="dram", read=True, write=True,
-                        addressability="shared", visibility="coherent", completion="synchronous")
-                   for resource in ("cpu0", "array0")],
+        "access": [
+            dict(
+                resource=resource,
+                domain="dram",
+                read=True,
+                write=True,
+                addressability="shared",
+                visibility="coherent",
+                completion="synchronous",
+            )
+            for resource in ("cpu0", "array0")
+        ],
     }
     document["access"][1].update(edge_changes)
     path = tmp_path / "hardware.yaml"
@@ -45,10 +60,17 @@ def topology(tmp_path, **edge_changes):
 
 
 def proposal(source, alternative):
-    return SourceProposal(alternative, "test.checked.integer", "array0", "dram", "logical_tensor_v1",
-                          source.stamp.source_sha256,
-                          tuple(source.operation_ordinals[n] for n in alternative.nodes),
-                          source_numerical_identity(source, alternative.nodes), ("integer-matmul",))
+    return SourceProposal(
+        alternative,
+        "test.checked.integer",
+        "array0",
+        "dram",
+        "logical_tensor_v1",
+        source.stamp.source_sha256,
+        tuple(source.operation_ordinals[n] for n in alternative.nodes),
+        source_numerical_identity(source, alternative.nodes),
+        ("integer-matmul",),
+    )
 
 
 def original_check(source, candidate):
@@ -81,8 +103,10 @@ def test_proposal_rechecks_shared_semantic_owner_after_original_callback(tmp_pat
         elif mutation == "callback":
             monkeypatch.setattr(semantics, "region_semantic_attributes", lambda *args: ())
         else:
+
             def replacement(*args):
                 return ()
+
             monkeypatch.setattr(semantics.region_semantic_attributes, "__code__", replacement.__code__)
 
     with pytest.raises(ValueError, match="shared source-region implementation"):
@@ -99,11 +123,14 @@ def test_admitted_proposal_retains_observation_and_refuses_changed_bytes_before_
     monkeypatch.setattr(semantics, "__file__", str(observed))
     source, alternatives, _ = example()
     calls = []
+
     def check(bound, claim):
         calls.append(claim.alternative.id)
         original_check(bound, claim)
-    admitted = admit_proposal(source, proposal(source, alternatives[0]), topology(tmp_path),
-                              validate_implementation=check)
+
+    admitted = admit_proposal(
+        source, proposal(source, alternatives[0]), topology(tmp_path), validate_implementation=check
+    )
     record = admitted.source_observation()
     assert any(row["path"] == str(observed) for row in record["files"])
     record["files"].clear()  # Public receipt mutations cannot reseal the live observation.
@@ -116,12 +143,15 @@ def test_admitted_proposal_retains_observation_and_refuses_changed_bytes_before_
 def test_exact_sites_shared_cpu_and_original_source_changes(tmp_path):
     source, alternatives, _ = example()
     selected = topology(tmp_path)
-    admitted = admit_proposal(source, proposal(source, alternatives[1]), selected,
-                              validate_implementation=original_check)
+    admitted = admit_proposal(
+        source, proposal(source, alternatives[1]), selected, validate_implementation=original_check
+    )
     assert admitted.alternative.nodes == (7,)
     assert admitted.proposal.operation_ordinals != proposal(source, alternatives[0]).operation_ordinals
-    cpu = tuple(admit_original_cpu(source, n, selected, resource="cpu0", memory_domain="dram")
-                for n in range(len(source.operations)))
+    cpu = tuple(
+        admit_original_cpu(source, n, selected, resource="cpu0", memory_domain="dram")
+        for n in range(len(source.operations))
+    )
     assert all(p.proposal.resource == "cpu0" and p.proposal.abi == "inlined" for p in cpu)
     assert selected.resource("cpu0").shared_group == "cpu0"
     # Scalar and vector implementation features do not create independent resources.
@@ -132,30 +162,45 @@ def test_exact_sites_shared_cpu_and_original_source_changes(tmp_path):
         admitted.revalidate()
 
 
-@pytest.mark.parametrize("change,reason", [
-    ({"resource": "missing"}, "undeclared execution"),
-    ({"required_features": ("missing",)}, "required implementation features"),
-    ({"numerical_sha256": "changed"}, "numerical contract"),
-    ({"operation_ordinals": (0,)}, "different original source"),
-    ({"abi": "opaque"}, "boundary ABI"),
-])
+@pytest.mark.parametrize(
+    "change,reason",
+    [
+        ({"resource": "missing"}, "undeclared execution"),
+        ({"required_features": ("missing",)}, "required implementation features"),
+        ({"numerical_sha256": "changed"}, "numerical contract"),
+        ({"operation_ordinals": (0,)}, "different original source"),
+        ({"abi": "opaque"}, "boundary ABI"),
+    ],
+)
 def test_proposal_refusals_precede_implementation_callback(tmp_path, change, reason):
     source, alternatives, _ = example()
     candidate = replace(proposal(source, alternatives[0]), **change)
+
     def forbidden(*args):
         pytest.fail("invalid original binding must refuse before implementation validation")
+
     with pytest.raises(ValueError, match=reason):
         admit_proposal(source, candidate, topology(tmp_path), validate_implementation=forbidden)
 
 
-@pytest.mark.parametrize("edge", [
-    {"read": False}, {"addressability": "separate"}, {"visibility": "explicit"}, {"completion": "unknown"},
-])
+@pytest.mark.parametrize(
+    "edge",
+    [
+        {"read": False},
+        {"addressability": "separate"},
+        {"visibility": "explicit"},
+        {"completion": "unknown"},
+    ],
+)
 def test_missing_memory_path_is_not_an_implicit_transfer(tmp_path, edge):
     source, alternatives, _ = example()
     with pytest.raises(ValueError, match="access|transfer, visibility or completion"):
-        admit_proposal(source, proposal(source, alternatives[0]), topology(tmp_path, **edge),
-                       validate_implementation=original_check)
+        admit_proposal(
+            source,
+            proposal(source, alternatives[0]),
+            topology(tmp_path, **edge),
+            validate_implementation=original_check,
+        )
 
 
 def test_validator_source_and_capacity_cannot_change_after_admission(tmp_path):
@@ -163,11 +208,16 @@ def test_validator_source_and_capacity_cannot_change_after_admission(tmp_path):
     selected = topology(tmp_path)
     candidate = proposal(source, alternatives[0])
     with pytest.raises(ValueError, match="scratch exceeds"):
-        admit_proposal(source, replace(candidate, alternative=replace(candidate.alternative, scratch_bytes=4097)),
-                       selected, validate_implementation=original_check)
+        admit_proposal(
+            source,
+            replace(candidate, alternative=replace(candidate.alternative, scratch_bytes=4097)),
+            selected,
+            validate_implementation=original_check,
+        )
     admitted = admit_proposal(source, candidate, selected, validate_implementation=original_check)
     operation = source.operations[candidate.alternative.nodes[0]]
     from xdsl.dialects.builtin import StringAttr
+
     operation.attributes["prov.changed"] = StringAttr("changed")
     with pytest.raises(ValueError, match="changed|stale"):
         admitted.revalidate()
@@ -175,12 +225,17 @@ def test_validator_source_and_capacity_cannot_change_after_admission(tmp_path):
 
 def test_original_checker_is_retained_and_provider_cannot_substitute_it(tmp_path):
     source, alternatives, _ = example()
+
     def checked(source, candidate):
         original_check(source, candidate)
-    admitted = admit_proposal(source, proposal(source, alternatives[0]), topology(tmp_path),
-                              validate_implementation=checked)
+
+    admitted = admit_proposal(
+        source, proposal(source, alternatives[0]), topology(tmp_path), validate_implementation=checked
+    )
+
     def replacement(source, candidate):
         return None
+
     checked.__code__ = replacement.__code__
     with pytest.raises(ValueError, match="validator changed"):
         admitted.revalidate()
@@ -227,19 +282,25 @@ def test_logical_tensor_abi_checks_actual_ssa_boundaries_before_validator(tmp_pa
     nodes = tuple(range(len(source.operations)))
     inputs, outputs = _component_boundary(source.program, nodes)
     order = {name: index for index, name in enumerate(source.program.buffers)}
+
     def reps(names):
-        return tuple(BufferRepresentation(name, ValueRepresentation("tensor_ssa", "logical", "i32"))
-                     for name in sorted(names, key=order.__getitem__))
-    alternative = replace(source.cpu_alternatives[0], id="checked-chain", nodes=nodes,
-                          inputs=reps(inputs), outputs=reps(outputs))
+        return tuple(
+            BufferRepresentation(name, ValueRepresentation("tensor_ssa", "logical", "i32"))
+            for name in sorted(names, key=order.__getitem__)
+        )
+
+    alternative = replace(
+        source.cpu_alternatives[0], id="checked-chain", nodes=nodes, inputs=reps(inputs), outputs=reps(outputs)
+    )
     candidate = replace(proposal(source, alternative), resource="cpu0", required_features=())
     called = []
+
     def independent_fixture_check(bound, offered):
         called.append(offered.operation_ordinals)
         assert any(bound.operations[n].name == "arith.addi" for n in nodes)
+
     if tensor:
-        admit_proposal(source, candidate, selected,
-                       validate_implementation=independent_fixture_check).revalidate()
+        admit_proposal(source, candidate, selected, validate_implementation=independent_fixture_check).revalidate()
         assert called
     else:
         with pytest.raises(ValueError, match="raw scalar boundaries"):
@@ -252,8 +313,9 @@ def test_logical_tensor_abi_checks_actual_ssa_boundaries_before_validator(tmp_pa
 def test_legacy_outlined_graph_does_not_authorize_actual_ssa_boundaries(tmp_path):
     source, alternatives, _ = legacy_example()
     with pytest.raises(ValueError, match="actual SSA graph"):
-        admit_proposal(source, proposal(source, alternatives[0]), topology(tmp_path),
-                       validate_implementation=original_check)
+        admit_proposal(
+            source, proposal(source, alternatives[0]), topology(tmp_path), validate_implementation=original_check
+        )
 
 
 def test_source_semantic_admission_does_not_authorize_builtin_scalar_fallback(tmp_path):
@@ -264,8 +326,14 @@ def test_source_semantic_admission_does_not_authorize_builtin_scalar_fallback(tm
     from merlin.compiler.components import _admit_cpu
     from merlin.transforms.pipeline_state import PipelineContext
 
-    source = bind_source(annotated_source(), entry="forward", context=PipelineContext(), graph_mode="ssa",
-                         validate_source=check_annotated_source, source_options=approved_source_options())
+    source = bind_source(
+        annotated_source(),
+        entry="forward",
+        context=PipelineContext(),
+        graph_mode="ssa",
+        validate_source=check_annotated_source,
+        source_options=approved_source_options(),
+    )
     selected = topology(tmp_path)
     # Unannotated initializer preservation inherits no unrelated operation's
     # numerical permission. Selecting the annotated ReLU still must refuse.

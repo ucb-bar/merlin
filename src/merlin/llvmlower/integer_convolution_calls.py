@@ -45,18 +45,23 @@ class IntegerConvolutionCall:
 
     def __post_init__(self):
         shapes = (self.input_shape, self.weight_shape, self.output_shape)
-        if (type(self.operation_ordinal) is not int or self.operation_ordinal < 0
-                or any(type(s) is not tuple or len(s) != 4 for s in shapes)
-                or any(type(d) is not int or d <= 0 for s in shapes for d in s)
-                or any(type(s) is not tuple or len(s) != 2 or any(type(d) is not int or d <= 0 for d in s)
-                       for s in (self.stride, self.dilation))
-                or any(prod(s) * 4 >= 1 << 63 for s in shapes)
-                or self.output_dtype not in ("i8", "i32")
-                or (self.output_dtype == "i8") != (self.readout_identity is not None)
-                or self.readout_identity is not None and not is_sha256(self.readout_identity)
-                or len({self.symbol, self.borrowed_symbol, self.kernel_symbol}) != 3
-                or any(not is_identifier(name)
-                       for name in (self.symbol, self.borrowed_symbol, self.kernel_symbol))):
+        if (
+            type(self.operation_ordinal) is not int
+            or self.operation_ordinal < 0
+            or any(type(s) is not tuple or len(s) != 4 for s in shapes)
+            or any(type(d) is not int or d <= 0 for s in shapes for d in s)
+            or any(
+                type(s) is not tuple or len(s) != 2 or any(type(d) is not int or d <= 0 for d in s)
+                for s in (self.stride, self.dilation)
+            )
+            or any(prod(s) * 4 >= 1 << 63 for s in shapes)
+            or self.output_dtype not in ("i8", "i32")
+            or (self.output_dtype == "i8") != (self.readout_identity is not None)
+            or self.readout_identity is not None
+            and not is_sha256(self.readout_identity)
+            or len({self.symbol, self.borrowed_symbol, self.kernel_symbol}) != 3
+            or any(not is_identifier(name) for name in (self.symbol, self.borrowed_symbol, self.kernel_symbol))
+        ):
             raise ValueError("bounded exact integer convolution geometry and symbols required")
         b, h, w, ci = self.input_shape
         kh, kw, wc, co = self.weight_shape
@@ -68,8 +73,11 @@ class IntegerConvolutionCall:
 
 
 def _shape(value):
-    if (not isinstance(value.type, builtin.TensorType) or type(value.type.encoding) is not builtin.NoneAttr
-            or any(d <= 0 for d in value.type.get_shape())):
+    if (
+        not isinstance(value.type, builtin.TensorType)
+        or type(value.type.encoding) is not builtin.NoneAttr
+        or any(d <= 0 for d in value.type.get_shape())
+    ):
         raise ValueError("static unencoded tensor required")
     return tuple(value.type.get_shape())
 
@@ -84,53 +92,79 @@ def _single_user(value):
 
 
 def _transpose(operation, permutation):
-    if (type(operation) is not TransposeOp or not _pure(operation, ("permutation",))
-            or tuple(operation.permutation.get_values()) != tuple(permutation)
-            or len(operation.inputs) != 1 or len(operation.outputs) != 1
-            or type(operation.outputs[0].owner) is not tensor.EmptyOp
-            or not _pure(operation.outputs[0].owner) or operation.outputs[0].owner.operands
-            or len(operation.body.blocks) != 1):
+    if (
+        type(operation) is not TransposeOp
+        or not _pure(operation, ("permutation",))
+        or tuple(operation.permutation.get_values()) != tuple(permutation)
+        or len(operation.inputs) != 1
+        or len(operation.outputs) != 1
+        or type(operation.outputs[0].owner) is not tensor.EmptyOp
+        or not _pure(operation.outputs[0].owner)
+        or operation.outputs[0].owner.operands
+        or len(operation.body.blocks) != 1
+    ):
         return False
     block = operation.body.block
     body = tuple(block.ops)
-    return (len(block.args) == 2 and len(body) == 1 and body[0].name == "linalg.yield"
-            and _pure(body[0]) and tuple(body[0].operands) == (block.args[0],)
-            and _shape(operation.results[0]) == tuple(_shape(operation.inputs[0])[i] for i in permutation)
-            and operation.results[0].type.element_type == operation.inputs[0].type.element_type)
+    return (
+        len(block.args) == 2
+        and len(body) == 1
+        and body[0].name == "linalg.yield"
+        and _pure(body[0])
+        and tuple(body[0].operands) == (block.args[0],)
+        and _shape(operation.results[0]) == tuple(_shape(operation.inputs[0])[i] for i in permutation)
+        and operation.results[0].type.element_type == operation.inputs[0].type.element_type
+    )
 
 
 def _reshape_pair(expand, source_shape, target_shape):
-    if (type(expand) is not tensor.ExpandShapeOp
-            or not _pure(expand, ("reassociation", "static_output_shape")) or len(expand.operands) != 1
-            or _shape(expand.results[0]) != target_shape):
+    if (
+        type(expand) is not tensor.ExpandShapeOp
+        or not _pure(expand, ("reassociation", "static_output_shape"))
+        or len(expand.operands) != 1
+        or _shape(expand.results[0]) != target_shape
+    ):
         return None
     collapse = expand.operands[0].owner
-    if (type(collapse) is not tensor.CollapseShapeOp or not _pure(collapse, ("reassociation",))
-            or len(collapse.operands) != 1 or _shape(collapse.operands[0]) != source_shape
-            or _shape(collapse.results[0]) != (prod(source_shape),)
-            or _single_user(collapse.results[0]) is not expand):
+    if (
+        type(collapse) is not tensor.CollapseShapeOp
+        or not _pure(collapse, ("reassociation",))
+        or len(collapse.operands) != 1
+        or _shape(collapse.operands[0]) != source_shape
+        or _shape(collapse.results[0]) != (prod(source_shape),)
+        or _single_user(collapse.results[0]) is not expand
+    ):
         return None
-    if any(v.type.element_type != collapse.operands[0].type.element_type
-           for v in (collapse.results[0], expand.results[0])):
+    if any(
+        v.type.element_type != collapse.operands[0].type.element_type for v in (collapse.results[0], expand.results[0])
+    ):
         return None
 
     def groups(op):
         return tuple(tuple(v.value.data for v in group) for group in op.reassociation)
+
     if groups(collapse) != (tuple(range(len(source_shape))),) or groups(expand) != (tuple(range(len(target_shape))),):
         return None
     return collapse
 
 
 def _bias_add(operation, source, channels):
-    if (type(operation) is not GenericOp
-            or not _pure(operation, ("indexing_maps", "iterator_types", "operandSegmentSizes"))
-            or len(operation.inputs) != 2 or operation.inputs[0] is not source or len(operation.outputs) != 1
-            or _shape(operation.inputs[1]) != (channels,) or str(operation.inputs[1].type.element_type) != "i32"
-            or _shape(operation.results[0]) != _shape(source) or str(operation.results[0].type.element_type) != "i32"
-            or tuple(str(t.data) for t in operation.iterator_types) != ("parallel",) * 4
-            or type(operation.outputs[0].owner) is not tensor.EmptyOp
-            or not _pure(operation.outputs[0].owner) or operation.outputs[0].owner.operands
-            or len(operation.body.blocks) != 1):
+    if (
+        type(operation) is not GenericOp
+        or not _pure(operation, ("indexing_maps", "iterator_types", "operandSegmentSizes"))
+        or len(operation.inputs) != 2
+        or operation.inputs[0] is not source
+        or len(operation.outputs) != 1
+        or _shape(operation.inputs[1]) != (channels,)
+        or str(operation.inputs[1].type.element_type) != "i32"
+        or _shape(operation.results[0]) != _shape(source)
+        or str(operation.results[0].type.element_type) != "i32"
+        or tuple(str(t.data) for t in operation.iterator_types) != ("parallel",) * 4
+        or type(operation.outputs[0].owner) is not tensor.EmptyOp
+        or not _pure(operation.outputs[0].owner)
+        or operation.outputs[0].owner.operands
+        or len(operation.body.blocks) != 1
+    ):
         return None
     d = AffineDimExpr
     identity = AffineMap(4, 0, tuple(d(i) for i in range(4)))
@@ -138,10 +172,17 @@ def _bias_add(operation, source, channels):
         return None
     block = operation.body.block
     body = tuple(block.ops)
-    if (len(block.args) != 3 or len(body) != 2 or type(body[0]) is not arith.AddiOp
-            or not _pure(body[0], ("overflowFlags",)) or body[0].overflow_flags.data
-            or set(body[0].operands) != set(block.args[:2]) or body[1].name != "linalg.yield"
-            or not _pure(body[1]) or tuple(body[1].operands) != (body[0].results[0],)):
+    if (
+        len(block.args) != 3
+        or len(body) != 2
+        or type(body[0]) is not arith.AddiOp
+        or not _pure(body[0], ("overflowFlags",))
+        or body[0].overflow_flags.data
+        or set(body[0].operands) != set(block.args[:2])
+        or body[1].name != "linalg.yield"
+        or not _pure(body[1])
+        or tuple(body[1].operands) != (body[0].results[0],)
+    ):
         return None
     return operation.inputs[1]
 
@@ -166,11 +207,14 @@ def _match(operation, readout):
     match = _match_im2col(operation, PackReport())
     if match is None or not _bounded_plain(match.gather, ("indexing_maps", "iterator_types", "operandSegmentSizes")):
         return None
-    if (tuple(str(t.data) for t in match.gather.iterator_types) != ("parallel",) * 6
-            or not _bounded_plain(match.gather.body.block.last_op)
-            or type(match.gather.outputs[0].owner) is not tensor.EmptyOp
-            or not _pure(match.gather.outputs[0].owner) or match.gather.outputs[0].owner.operands
-            or _reshape_pair(match.expand, _shape(match.gather.results[0]), (match.k, match.m)) is not match.collapse):
+    if (
+        tuple(str(t.data) for t in match.gather.iterator_types) != ("parallel",) * 6
+        or not _bounded_plain(match.gather.body.block.last_op)
+        or type(match.gather.outputs[0].owner) is not tensor.EmptyOp
+        or not _pure(match.gather.outputs[0].owner)
+        or match.gather.outputs[0].owner.operands
+        or _reshape_pair(match.expand, _shape(match.gather.results[0]), (match.k, match.m)) is not match.collapse
+    ):
         return None
     image = match.gather.inputs[0].owner
     if not _transpose(image, (0, 3, 1, 2)):
@@ -186,8 +230,9 @@ def _match(operation, readout):
     if not _transpose(weight, (3, 2, 0, 1)) or _shape(weight.inputs[0]) != (kh, kw, ci, co):
         return None
     result_collapse = _single_user(operation.results[0])
-    result_expand = (_single_user(result_collapse.results[0])
-                     if type(result_collapse) is tensor.CollapseShapeOp else None)
+    result_expand = (
+        _single_user(result_collapse.results[0]) if type(result_collapse) is tensor.CollapseShapeOp else None
+    )
     if _reshape_pair(result_expand, (co, b * match.oh * match.ow), (co, b, match.oh, match.ow)) is not result_collapse:
         return None
     result_transpose = _single_user(result_expand.results[0])
@@ -213,14 +258,28 @@ def _match(operation, readout):
             return None
         if cursor not in allowed and not _setup(cursor):
             return None
-    call_geometry = (input_value, weight.inputs[0], bias_value, chain, epilogue,
-                     (b, match.oh, match.ow, co), (match.sh, match.sw), (match.dh, match.dw))
+    call_geometry = (
+        input_value,
+        weight.inputs[0],
+        bias_value,
+        chain,
+        epilogue,
+        (b, match.oh, match.ow, co),
+        (match.sh, match.sw),
+        (match.dh, match.dw),
+    )
     return call_geometry
 
 
 def prepare_integer_convolution_calls(
-    source, *, select, borrowed_effects, output_readout=None, entry="forward",
-    symbol_prefix="__merlin_integer_conv", allocation_alignment=64,
+    source,
+    *,
+    select,
+    borrowed_effects,
+    output_readout=None,
+    entry="forward",
+    symbol_prefix="__merlin_integer_conv",
+    allocation_alignment=64,
 ):
     """Outline closed, zero-padded-free NHWC/HWIO convolution plus modular bias.
 
@@ -231,9 +290,13 @@ def prepare_integer_convolution_calls(
     if type(borrowed_effects) is not BorrowedBufferEffects or not callable(select):
         raise ValueError("explicit synchronous implementation selection required")
     borrowed_effects.__post_init__()
-    if (not isinstance(symbol_prefix, str) or not is_identifier(symbol_prefix)
-            or type(allocation_alignment) is not int or allocation_alignment <= 0
-            or allocation_alignment & (allocation_alignment - 1)):
+    if (
+        not isinstance(symbol_prefix, str)
+        or not is_identifier(symbol_prefix)
+        or type(allocation_alignment) is not int
+        or allocation_alignment <= 0
+        or allocation_alignment & (allocation_alignment - 1)
+    ):
         raise ValueError("portable symbol prefix and power-of-two allocation alignment required")
     module = parse_mlir_text(source)
     module.verify()
@@ -253,13 +316,28 @@ def prepare_integer_convolution_calls(
             continue
         image, weight, bias, chain, epilogue, output_shape, stride, dilation = matched
         index = len(calls)
-        while any(name in reserved for name in (f"{symbol_prefix}_{index}", f"{symbol_prefix}_{index}_borrowed",
-                                                f"{symbol_prefix}_{index}_kernel")):
+        while any(
+            name in reserved
+            for name in (
+                f"{symbol_prefix}_{index}",
+                f"{symbol_prefix}_{index}_borrowed",
+                f"{symbol_prefix}_{index}_kernel",
+            )
+        ):
             index += 1
         symbol = f"{symbol_prefix}_{index}"
         try:
-            call = IntegerConvolutionCall(ordinal, _shape(image), _shape(weight), output_shape, stride, dilation,
-                                          symbol, symbol + "_borrowed", symbol + "_kernel")
+            call = IntegerConvolutionCall(
+                ordinal,
+                _shape(image),
+                _shape(weight),
+                output_shape,
+                stride,
+                dilation,
+                symbol,
+                symbol + "_borrowed",
+                symbol + "_kernel",
+            )
         except ValueError:
             continue
         selected = select(call)
@@ -275,7 +353,7 @@ def prepare_integer_convolution_calls(
             if admitted:
                 call = narrow
             else:
-                chain = chain[:-len(epilogue.operations)]
+                chain = chain[: -len(epilogue.operations)]
                 epilogue = None
         typ = chain[-1].results[0].type
         empty = tensor.EmptyOp((), typ)
@@ -286,14 +364,25 @@ def prepare_integer_convolution_calls(
         for stage in reversed(chain):
             Rewriter.erase_op(stage)
         types = [image.type, weight.type, bias.type, typ]
-        declaration = func.FuncOp(call.symbol, (types, [typ]), Region(), visibility="private",
-                                   arg_attrs=builtin.ArrayAttr([builtin.DictionaryAttr({
-                                       "bufferization.access": builtin.StringAttr(access)
-                                   }) for access in ("read", "read", "read", "write")]))
+        declaration = func.FuncOp(
+            call.symbol,
+            (types, [typ]),
+            Region(),
+            visibility="private",
+            arg_attrs=builtin.ArrayAttr(
+                [
+                    builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr(access)})
+                    for access in ("read", "read", "read", "write")
+                ]
+            ),
+        )
         declaration.attributes["llvm.emit_c_interface"] = builtin.UnitAttr()
         module.body.block.add_op(declaration)
-        writers.append(FreshTensorWriterContract(call.symbol, 3, (3,), call.borrowed_symbol,
-                                                 allocation_alignment, borrowed_effects=borrowed_effects))
+        writers.append(
+            FreshTensorWriterContract(
+                call.symbol, 3, (3,), call.borrowed_symbol, allocation_alignment, borrowed_effects=borrowed_effects
+            )
+        )
         calls.append(call)
         reserved.update((call.symbol, call.borrowed_symbol, call.kernel_symbol))
         if epilogue is not None:
@@ -302,12 +391,20 @@ def prepare_integer_convolution_calls(
         return PreparedIntegerMatmulCalls(source, hashlib.sha256(source.encode()).hexdigest(), (), ())
     rewrite_fresh_tensor_writers(module, writers)
     module.verify()
-    return PreparedIntegerMatmulCalls(ir_text(module), hashlib.sha256(source.encode()).hexdigest(),
-                                      tuple(calls), tuple(writers), tuple(proofs))
+    return PreparedIntegerMatmulCalls(
+        ir_text(module), hashlib.sha256(source.encode()).hexdigest(), tuple(calls), tuple(writers), tuple(proofs)
+    )
 
 
 def lower_integer_convolution_program(
-    source, workdir, *, select, emit_kernel, borrowed_effects, data_layout, output_readout=None,
+    source,
+    workdir,
+    *,
+    select,
+    emit_kernel,
+    borrowed_effects,
+    data_layout,
+    output_readout=None,
     host_features=None,
 ):
     """Compose direct convolution with ordinary host/lifetime checks.
@@ -319,8 +416,9 @@ def lower_integer_convolution_program(
     from .lower import lower_model
     from .tensor_helper_inlining import composition_features
 
-    prepared = prepare_integer_convolution_calls(source, select=select, borrowed_effects=borrowed_effects,
-                                                 output_readout=output_readout)
+    prepared = prepare_integer_convolution_calls(
+        source, select=select, borrowed_effects=borrowed_effects, output_readout=output_readout
+    )
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
     path = workdir / "prepared.mlir"
@@ -335,13 +433,18 @@ def lower_integer_convolution_program(
         kernel_path, bridge_path = workdir / f"kernel{index}.ll", workdir / f"bridge{index}.c"
         kernel_path.write_text(kernel)
         shapes = (call.input_shape, call.weight_shape, (call.weight_shape[3],), call.output_shape)
-        buffers = tuple(LogicalBuffer(name, "output" if i == 3 else "input", name, shape, dtype)
-                        for i, (name, shape, dtype) in enumerate(zip(("input", "weight", "bias", "output"), shapes,
-                                                                  ("i8", "i8", "i32", call.output_dtype), strict=True)))
+        buffers = tuple(
+            LogicalBuffer(name, "output" if i == 3 else "input", name, shape, dtype)
+            for i, (name, shape, dtype) in enumerate(
+                zip(("input", "weight", "bias", "output"), shapes, ("i8", "i8", "i32", call.output_dtype), strict=True)
+            )
+        )
         abi_symbol = call.symbol + "_logical_abi"
-        unit = emit_logical_translation_unit("external", {abi_symbol: (buffers, [dict(role=b.role, shape=b.shape,
-                                                                                   dtype=b.dtype) for b in buffers])},
-                                             kernel_symbol_for=lambda _: call.kernel_symbol)
+        unit = emit_logical_translation_unit(
+            "external",
+            {abi_symbol: (buffers, [dict(role=b.role, shape=b.shape, dtype=b.dtype) for b in buffers])},
+            kernel_symbol_for=lambda _: call.kernel_symbol,
+        )
         if unit.skipped or unit.symbols != (abi_symbol,):
             raise ValueError("convolution logical pointer ABI could not be bound exactly")
         ranks = [len(shape) for shape in shapes]
@@ -353,9 +456,17 @@ def lower_integer_convolution_program(
         bridge_path.write_text(text)
         kernels.append(kernel_path)
         bridges.append(bridge_path)
-    borrowed = (from_writers(path, prepared.writers, tuple(dict.fromkeys(pins)), lambda: None)
-                if prepared.calls else None)
-    host = lower_model(prepared.source, workdir / "host", targets=(), index_bits=64, data_layout=data_layout,
-                       borrowed_buffer_calls=borrowed, hoist_static_allocs=False,
-                       features=composition_features(host_features, has_writers=bool(prepared.calls)))
+    borrowed = (
+        from_writers(path, prepared.writers, tuple(dict.fromkeys(pins)), lambda: None) if prepared.calls else None
+    )
+    host = lower_model(
+        prepared.source,
+        workdir / "host",
+        targets=(),
+        index_bits=64,
+        data_layout=data_layout,
+        borrowed_buffer_calls=borrowed,
+        hoist_static_allocs=False,
+        features=composition_features(host_features, has_writers=bool(prepared.calls)),
+    )
     return ComposedIntegerMatmulProgram(prepared, host, tuple(kernels), tuple(bridges))

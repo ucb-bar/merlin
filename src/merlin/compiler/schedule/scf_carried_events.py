@@ -5,6 +5,7 @@ loops without enumerating trips or guessing device latency. These checks cover
 declared RAW/WAR/WAW lifetimes only; target completion callbacks still need the
 selected target's independent source/effect contract.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,13 +27,19 @@ def loop_event_names(op):
     if type(data) is not dict or set(data) != {"inputs", "results"}:
         raise ValueError("unknown lexical completion loop binding fields")
     inputs, results = data["inputs"], data["results"]
-    if (type(inputs) is not list or type(results) is not list or not inputs
-            or len(inputs) != len(results) or len(inputs) != len(op.iter_args)
-            or len(op.results) != len(inputs) or len(op.body.block.args) != len(inputs) + 1
-            or any(type(n) is not str or not n for n in (*inputs, *results))
-            or len(set(inputs)) != len(inputs) or len(set(results)) != len(results)
-            or any(v.type.name != "runtime.event" for v in
-                   (*op.iter_args, *op.results, *op.body.block.args[1:]))):
+    if (
+        type(inputs) is not list
+        or type(results) is not list
+        or not inputs
+        or len(inputs) != len(results)
+        or len(inputs) != len(op.iter_args)
+        or len(op.results) != len(inputs)
+        or len(op.body.block.args) != len(inputs) + 1
+        or any(type(n) is not str or not n for n in (*inputs, *results))
+        or len(set(inputs)) != len(inputs)
+        or len(set(results)) != len(results)
+        or any(v.type.name != "runtime.event" for v in (*op.iter_args, *op.results, *op.body.block.args[1:]))
+    ):
         raise ValueError("completion loop input/result types or arities differ")
     return tuple(inputs), tuple(results)
 
@@ -100,11 +107,13 @@ def verify_carried_events(module, *, max_operations, allow_persistent_state):
             elif type(op) is func.CallOp:
                 metadata, operands = C._command(op, allow_persistent_state)
                 declaration = declarations.get(op.callee.root_reference.data)
-                if (declaration is None
-                        or tuple(declaration.function_type.inputs) != tuple(v.type for v in op.arguments)
-                        or tuple(declaration.function_type.outputs) != tuple(v.type for v in op.results)):
+                if (
+                    declaration is None
+                    or tuple(declaration.function_type.inputs) != tuple(v.type for v in op.arguments)
+                    or tuple(declaration.function_type.outputs) != tuple(v.type for v in op.results)
+                ):
                     raise ValueError("command declaration and actual SSA call disagree")
-                for name, event in zip(metadata.awaits, op.arguments[len(operands):], strict=True):
+                for name, event in zip(metadata.awaits, op.arguments[len(operands) :], strict=True):
                     if event not in values or names[event] != name:
                         raise ValueError("event SSA edge differs from its dominating lexical binding")
                     pending.pop(event, None)
@@ -121,8 +130,12 @@ def verify_carried_events(module, *, max_operations, allow_persistent_state):
                 if not yielding or op is not block.last_op:
                     raise ValueError("completion yields require their lexical loop terminator")
                 yielded = tuple(op.arguments)
-                if (len(yielded) != len(incoming) or len(set(yielded)) != len(yielded)
-                        or any(v not in values for v in yielded) or set(pending) - set(yielded)):
+                if (
+                    len(yielded) != len(incoming)
+                    or len(set(yielded)) != len(yielded)
+                    or any(v not in values for v in yielded)
+                    or set(pending) - set(yielded)
+                ):
                     raise ValueError("every live event must be yielded once or completed before loop exit")
                 return tuple(pending.get(v) for v in yielded)
             elif type(op) is func.ReturnOp:
@@ -131,8 +144,11 @@ def verify_carried_events(module, *, max_operations, allow_persistent_state):
             elif type(op) not in (arith.ConstantOp, arith.AddiOp, arith.MuliOp, arith.CmpiOp, arith.SelectOp):
                 raise ValueError("unsupported operation in command control program")
             if type(op) in (arith.ConstantOp, arith.AddiOp, arith.MuliOp, arith.CmpiOp, arith.SelectOp):
-                if (any(v.type not in (builtin.i64, builtin.i1) for v in (*op.operands, *op.results))
-                        or type(op) is arith.CmpiOp and op.predicate.value.data != 0):
+                if (
+                    any(v.type not in (builtin.i64, builtin.i1) for v in (*op.operands, *op.results))
+                    or type(op) is arith.CmpiOp
+                    and op.predicate.value.data != 0
+                ):
                     raise ValueError("unsupported command index type or predicate")
         if pending:
             raise ValueError("every launched event must complete before entry exit")
@@ -141,8 +157,11 @@ def verify_carried_events(module, *, max_operations, allow_persistent_state):
         return ()
 
     body(entry.body.block)
-    return {"state_transfer_operations": work, "counted_loop_summaries": summaries,
-            "method": "exact declared-stage transfer cycles; no dynamic trip expansion or device latency"}
+    return {
+        "state_transfer_operations": work,
+        "counted_loop_summaries": summaries,
+        "method": "exact declared-stage transfer cycles; no dynamic trip expansion or device latency",
+    }
 
 
 def rename_ssa_events(module):
@@ -170,15 +189,16 @@ def rename_ssa_events(module):
                 body(op.body.block, dict(zip(op.body.block.args[1:], local, strict=True)))
                 results = tuple(fresh() for _ in op.results)
                 if local:
-                    op.attributes[CARRIED_EVENTS] = builtin.StringAttr(json.dumps(
-                        {"inputs": local, "results": results}, sort_keys=True))
+                    op.attributes[CARRIED_EVENTS] = builtin.StringAttr(
+                        json.dumps({"inputs": local, "results": results}, sort_keys=True)
+                    )
                 for value in op.iter_args:
                     names.pop(value, None)
                 names.update(zip(op.results, results, strict=True))
             elif type(op) is func.CallOp:
                 data = json.loads(op.attributes[C.SCHEMA].data)
                 try:
-                    data["awaits"] = [names[v] for v in op.arguments[len(data["operands"]):]]
+                    data["awaits"] = [names[v] for v in op.arguments[len(data["operands"]) :]]
                 except KeyError as error:
                     raise ValueError("cloned completion edge escaped its lexical scope") from error
                 if op.results:

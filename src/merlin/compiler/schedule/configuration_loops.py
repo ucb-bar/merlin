@@ -13,11 +13,15 @@ from __future__ import annotations
 import struct
 from dataclasses import fields, replace
 
+from merlin.compiler.schedule.configuration import (
+    ConfigurationAdapter,
+    ConfigurationEffects,
+    ConfigurationResult,
+    ConfigurationUnavailable,
+)
 from merlin.sched.ir import Call, Kernel, Loop, Ptr, Stage
 from merlin.sched.ir.expr import Const, Expr, Scaled, Select, Sum, Var, free_vars
 from merlin.sched.ir.kernel import check_structure
-
-from merlin.compiler.schedule.configuration import ConfigurationAdapter, ConfigurationEffects, ConfigurationResult, ConfigurationUnavailable
 
 
 def _bounded(kernel, max_calls, max_fields, max_depth):

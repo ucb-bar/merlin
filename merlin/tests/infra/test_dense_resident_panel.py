@@ -2,17 +2,28 @@
 
 import pytest
 
-from merlin.compiler.schedule.dense_resident_panel import plan_dense_resident_panel
-from merlin.compiler.schedule.dense_resident_panel import plan_dense_stationary_panel
+from merlin.compiler.schedule.dense_resident_panel import plan_dense_resident_panel, plan_dense_stationary_panel
 
 
 def plan(m, k, n, **changes):
-    return plan_dense_resident_panel(m, k, n, **(dict(block=16, operand_rows=16384,
-        bank_rows=4096, accumulator_rows=1024) | changes))
+    return plan_dense_resident_panel(
+        m, k, n, **(dict(block=16, operand_rows=16384, bank_rows=4096, accumulator_rows=1024) | changes)
+    )
 
 
-@pytest.mark.parametrize("shape", [(12544, 64, 256), (3136, 128, 512), (12544, 256, 64),
-    (3136, 512, 128), (784, 256, 1024), (512, 512, 512), (17, 641, 33), (1, 1, 1)])
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (12544, 64, 256),
+        (3136, 128, 512),
+        (12544, 256, 64),
+        (3136, 512, 128),
+        (784, 256, 1024),
+        (512, 512, 512),
+        (17, 641, 33),
+        (1, 1, 1),
+    ],
+)
 def test_exact_source_geometry_full_k_and_disjoint_bank_reservations(shape):
     selected = plan(*shape)
     assert selected is not None and selected.padded_k >= shape[1]
@@ -38,11 +49,20 @@ def test_incomplete_bank_and_accumulator_reservations_decline():
     assert plan(17, 17, 17, accumulator_rows=15) is None
 
 
-@pytest.mark.parametrize("shape", [(12544, 64, 256), (3136, 128, 512), (12544, 256, 64),
-    (3136, 512, 128), (784, 256, 1024), (512, 512, 512), (17, 641, 33)])
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (12544, 64, 256),
+        (3136, 128, 512),
+        (12544, 256, 64),
+        (3136, 512, 128),
+        (784, 256, 1024),
+        (512, 512, 512),
+        (17, 641, 33),
+    ],
+)
 def test_stationary_groups_have_disjoint_operands_and_live_accumulator_capacity(shape):
-    selected = plan_dense_stationary_panel(*shape, block=16, operand_rows=16384,
-                                           bank_rows=4096, accumulator_rows=1024)
+    selected = plan_dense_stationary_panel(*shape, block=16, operand_rows=16384, bank_rows=4096, accumulator_rows=1024)
     assert selected is not None
     assert selected.m_blocks * selected.padded_k <= selected.rhs_base
     assert selected.rhs_base + selected.rhs_rows <= selected.operand_rows
@@ -51,30 +71,30 @@ def test_stationary_groups_have_disjoint_operands_and_live_accumulator_capacity(
 
 
 def test_stationary_planning_does_not_sacrifice_extra_lhs_replays_for_larger_row_groups():
-    selected = plan_dense_stationary_panel(512, 512, 512, block=16, operand_rows=16384,
-                                           bank_rows=4096, accumulator_rows=1024)
+    selected = plan_dense_stationary_panel(
+        512, 512, 512, block=16, operand_rows=16384, bank_rows=4096, accumulator_rows=1024
+    )
     assert selected.m_blocks == 16 and selected.columns == 256
 
 
-@pytest.mark.parametrize('shape', [(17, 17, 19), (3, 17, 1105), (512, 512, 512)])
+@pytest.mark.parametrize("shape", [(17, 17, 19), (3, 17, 1105), (512, 512, 512)])
 def test_output_panel_reserves_distinct_full_reduction_column_blocks(shape):
     from merlin.compiler.schedule.dense_resident_panel import plan_dense_output_panel
 
-    selected = plan_dense_output_panel(*shape, block=16, operand_rows=16384,
-                                      bank_rows=4096, accumulator_rows=1023)
+    selected = plan_dense_output_panel(*shape, block=16, operand_rows=16384, bank_rows=4096, accumulator_rows=1023)
     assert selected is not None
     assert selected.columns <= 1008
     assert selected.rhs_base + selected.rhs_rows <= selected.operand_rows
     assert selected.padded_k >= shape[1]
 
 
-@pytest.mark.parametrize('shape', [(12544, 64, 256), (512, 512, 512), (64, 64, 256),
-                                   (65, 17, 257), (17, 641, 33), (3, 17, 1105)])
+@pytest.mark.parametrize(
+    "shape", [(12544, 64, 256), (512, 512, 512), (64, 64, 256), (65, 17, 257), (17, 641, 33), (3, 17, 1105)]
+)
 def test_joint_row_column_products_fit_all_live_storage(shape):
     from merlin.compiler.schedule.dense_resident_panel import plan_dense_joint_panel
 
-    selected = plan_dense_joint_panel(*shape, block=16, operand_rows=16384,
-                                     bank_rows=4096, accumulator_rows=1024)
+    selected = plan_dense_joint_panel(*shape, block=16, operand_rows=16384, bank_rows=4096, accumulator_rows=1024)
     assert selected is not None
     assert selected.m_blocks * selected.padded_k <= selected.rhs_base
     assert selected.rhs_base + selected.rhs_rows <= selected.operand_rows
@@ -84,6 +104,7 @@ def test_joint_row_column_products_fit_all_live_storage(shape):
 def test_joint_plan_keeps_all_tall_columns_live_while_reusing_weights():
     from merlin.compiler.schedule.dense_resident_panel import plan_dense_joint_panel
 
-    selected = plan_dense_joint_panel(12544, 64, 256, block=16, operand_rows=16384,
-                                     bank_rows=4096, accumulator_rows=1024)
+    selected = plan_dense_joint_panel(
+        12544, 64, 256, block=16, operand_rows=16384, bank_rows=4096, accumulator_rows=1024
+    )
     assert selected.m_blocks == 4 and selected.n_blocks == 16

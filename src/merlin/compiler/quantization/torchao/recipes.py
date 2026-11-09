@@ -138,4 +138,3 @@ def capture_recipe_candidates(
                 ]
             result.append(row)
     return result
-

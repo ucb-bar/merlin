@@ -26,8 +26,9 @@ def _snapshot(host, *, source_sha256=None, host_sha256=None):
     return {
         "source": source_sha256,
         "host": host_sha256,
-        "components": [component_snapshot(c, source_sha256=source_sha256, host_sha256=host_sha256)
-                       for c in host.components],
+        "components": [
+            component_snapshot(c, source_sha256=source_sha256, host_sha256=host_sha256) for c in host.components
+        ],
         "rewrite": host.rewrite.to_sidecar(),
         "receipt": host.receipt,
     }
@@ -41,17 +42,26 @@ def require_components(host, selected):
         not selected.partial
         or not host.components
         or source_sha256 != selected.source_ir_sha256
-        or _sha(json.dumps(_snapshot(host, source_sha256=source_sha256, host_sha256=host_sha256),
-                           sort_keys=True, allow_nan=False)) != host.integrity_sha256
+        or _sha(
+            json.dumps(
+                _snapshot(host, source_sha256=source_sha256, host_sha256=host_sha256), sort_keys=True, allow_nan=False
+            )
+        )
+        != host.integrity_sha256
     ):
         raise ValueError("original sibling component source, host or custody changed")
     host.source.verify()
     host.module.verify()
     checked_preparations = set()
     for component in host.components:
-        _require_host_integrity(component, selected, source_sha256=source_sha256,
-                                host_sha256=host_sha256, verify_graphs=False,
-                                checked_preparations=checked_preparations)
+        _require_host_integrity(
+            component,
+            selected,
+            source_sha256=source_sha256,
+            host_sha256=host_sha256,
+            verify_graphs=False,
+            checked_preparations=checked_preparations,
+        )
 
 
 def prepare_components(device, selected, source, directory):
@@ -88,8 +98,9 @@ def build_components(device, selected, actual, *, original, preparation=None):
     selected.record()
     from merlin.xdsl_dialects.lowering import output_fusion as OF
 
-    prepared = prepare_sibling_components(actual, effects=selected.effects,
-        output_path=OF.declared_path(device.device), values=OF.Values(device.capture))
+    prepared = prepare_sibling_components(
+        actual, effects=selected.effects, output_path=OF.declared_path(device.device), values=OF.Values(device.capture)
+    )
     if not prepared.components:
         raise ValueError("source has no independently checked shared-input component")
     abi = kernel_abi_for(device.device)
@@ -171,9 +182,16 @@ def build_components(device, selected, actual, *, original, preparation=None):
             },
             "",
         )
-        host = replace(host, integrity_sha256=_sha(json.dumps(
-            single_snapshot(host, source_sha256=original_sha256, host_sha256=module_sha256),
-            sort_keys=True, allow_nan=False)))
+        host = replace(
+            host,
+            integrity_sha256=_sha(
+                json.dumps(
+                    single_snapshot(host, source_sha256=original_sha256, host_sha256=module_sha256),
+                    sort_keys=True,
+                    allow_nan=False,
+                )
+            ),
+        )
         components.append(host)
     maps = ("signatures", "entries", "programs", "arg_access", "expected_interfaces", "call_buffers")
     merged = {name: dict(getattr(ordinary, name)) for name in maps}
@@ -191,9 +209,16 @@ def build_components(device, selected, actual, *, original, preparation=None):
         routed=(*ordinary.routed, *(r for c in components for r in c.rewrite.routed)),
     )
     host = RoutedSiblingComponents(original, module, tuple(components), rewrite, prepared.receipt, "")
-    host = replace(host, integrity_sha256=_sha(json.dumps(
-        _snapshot(host, source_sha256=original_sha256, host_sha256=module_sha256),
-        sort_keys=True, allow_nan=False)))
+    host = replace(
+        host,
+        integrity_sha256=_sha(
+            json.dumps(
+                _snapshot(host, source_sha256=original_sha256, host_sha256=module_sha256),
+                sort_keys=True,
+                allow_nan=False,
+            )
+        ),
+    )
     require_components(host, selected)
     return host
 

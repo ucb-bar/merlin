@@ -91,20 +91,31 @@ def test_comparison_evidence_uses_diagnostics_instead_of_requiring_an_optimizati
     # operator-selected public capsule admitted only dispatch goals.
     context = selected_context()
     goal = "evidence.cca_comparison"
-    context["tuning"] = dict(current=dict(schedule="batched"), domains=dict(
-        schedule=dict(values=["off", "batched"], goals=[goal])))
+    context["tuning"] = dict(
+        current=dict(schedule="batched"), domains=dict(schedule=dict(values=["off", "batched"], goals=[goal]))
+    )
     context["capsules"][0]["goals"] = ["dispatch.role.load", "dispatch.n_fences"]
-    report = dict(kind="reference_candidate_comparison", cca=dict(
-        status="compared", compared_axes=["dispatch.loop_offloaded"], divergences=[],
-        unknowns=[dict(axis="compute.op", reason="value_unavailable", missing_sides=["expert", "ours"])]))
-    task, = build_experiment_packet(report, context=context)["tasks"]
+    report = dict(
+        kind="reference_candidate_comparison",
+        cca=dict(
+            status="compared",
+            compared_axes=["dispatch.loop_offloaded"],
+            divergences=[],
+            unknowns=[dict(axis="compute.op", reason="value_unavailable", missing_sides=["expert", "ours"])],
+        ),
+    )
+    (task,) = build_experiment_packet(report, context=context)["tasks"]
     assert task["status"] == "blocked" and not task["requests"]
     assert task["next_action"]["gaps"] == ["evidence.current_source_and_emission_observations"]
     assert task["next_action"]["phase"] == "evidence_collection"
-    diagnostic, = task["next_action"]["diagnostics"]
+    (diagnostic,) = task["next_action"]["diagnostics"]
     assert diagnostic["capsule"] == context["capsules"][0]["id"]
-    assert diagnostic["argv"] == [*context["capsules"][0]["selfcheck_argv"][:3], "submission",
-                                  *context["capsules"][0]["selfcheck_argv"][4:], "--candidate-diagnostics"]
+    assert diagnostic["argv"] == [
+        *context["capsules"][0]["selfcheck_argv"][:3],
+        "submission",
+        *context["capsules"][0]["selfcheck_argv"][4:],
+        "--candidate-diagnostics",
+    ]
     assert "--tuning-overrides" not in diagnostic["argv"]
     assert not task["hypotheses"]
     assert task["mechanism_status"] == task["performance_status"] == "unknown"
@@ -121,7 +132,7 @@ def test_analysis_diagnostics_never_select_held_out_or_fabricate_commands():
             invalid["capsules"][0]["selfcheck_argv"] = ["python3", "-c", "unreviewed()"]
         else:
             invalid["capsules"][0]["selfcheck_argv"] = []
-        task, = build_experiment_packet(report, context=invalid)["tasks"]
+        (task,) = build_experiment_packet(report, context=invalid)["tasks"]
         assert not task["next_action"]["diagnostics"] and not task["requests"]
         assert task["next_action"]["gaps"] == ["binding.development_diagnostic_command"]
 
@@ -141,7 +152,7 @@ def test_knob_and_capsule_must_share_the_same_diagnosed_goal():
     context["capsules"][0]["goals"] = ["scheduling.completion"]
     report = missing_mechanism()
     report["gaps"][0]["goals"] = [GOAL, "scheduling.completion"]
-    task, = build_experiment_packet(report, context=context)["tasks"]
+    (task,) = build_experiment_packet(report, context=context)["tasks"]
     assert not task["requests"] and task["status"] == "blocked"
     assert task["next_action"]["gaps"] == ["binding.shared_goal_applicability"]
     bindings = task["next_action"]["binding_requirements"]["goals"]
@@ -158,7 +169,7 @@ def test_each_capsule_gets_only_alternatives_for_its_own_goal():
     context["capsules"].append(second)
     report = missing_mechanism()
     report["gaps"][0]["goals"] = [GOAL, "scheduling.completion"]
-    task, = build_experiment_packet(report, context=context)["tasks"]
+    (task,) = build_experiment_packet(report, context=context)["tasks"]
     assert task["status"] == "ready" and len(task["requests"]) == 4
     variants = [row for row in task["requests"] if row["role"] == "variant"]
     assert [(row["capsule"], row["tuning_overrides"]) for row in variants] == [
@@ -170,8 +181,8 @@ def test_each_capsule_gets_only_alternatives_for_its_own_goal():
 def test_binding_feedback_keeps_held_out_shapes_unavailable_for_trials():
     context = selected_context()
     context["capsules"][0]["split"] = "held_out"
-    task, = build_experiment_packet(missing_mechanism(), context=context)["tasks"]
-    binding, = task["next_action"]["binding_requirements"]["goals"]
+    (task,) = build_experiment_packet(missing_mechanism(), context=context)["tasks"]
+    (binding,) = task["next_action"]["binding_requirements"]["goals"]
     assert binding["selected_capsules"] == binding["held_out_capsules"]
     assert not binding["development_capsules"] and not task["requests"]
     assert "binding.development_capsule" in task["next_action"]["gaps"]
@@ -494,10 +505,15 @@ def test_normalized_prior_regression_creates_a_task_without_fabricating_referenc
 
 
 def test_modeled_unchanged_control_retains_independent_policy_qualification_obligation():
-    history = [dict(outcome="provisional_unchanged", next_action="qualification_needed",
-                    measurement=dict(kind="provisional", before_cycles=166327, after_cycles=166327),
-                    artifact_pins=[dict(path="retained/comparison.json", sha256="f" * 64)])]
-    task, = build_experiment_packet({}, context=selected_context(), history=history)["tasks"]
+    history = [
+        dict(
+            outcome="provisional_unchanged",
+            next_action="qualification_needed",
+            measurement=dict(kind="provisional", before_cycles=166327, after_cycles=166327),
+            artifact_pins=[dict(path="retained/comparison.json", sha256="f" * 64)],
+        )
+    ]
+    (task,) = build_experiment_packet({}, context=selected_context(), history=history)["tasks"]
     assert task["kind"] == "qualification_gap"
     assert task["prior_attempts"][0]["outcome"] == "provisional_unchanged"
     assert task["performance_status"] == "unknown" and task["status"] == "blocked"
@@ -580,15 +596,18 @@ def test_attribution_history_requests_owner_evidence_instead_of_another_optimiza
 def test_actual_static_analysis_and_comparison_become_scoped_evidence_tasks(tmp_path):
     analysis = pytest.importorskip("merlin_experiments.phase1.feedback.reference_analysis")
     facts = tmp_path / "facts.json"
-    facts.write_text(json.dumps(dict(interfaces=[dict(name="funct_decode_table", custom_opcode=123,
-        legal_funct=[1], names={"1": "load"})])))
+    facts.write_text(
+        json.dumps(
+            dict(interfaces=[dict(name="funct_decode_table", custom_opcode=123, legal_funct=[1], names={"1": "load"})])
+        )
+    )
     raw = b"00000100 <kernel>:\n 100: 0200307b .insn r 0x7b,3,1,x0,x0,x0\n 104: 00008082 ret\n"
     pin = dict(path="reference-kernels/kernel.dis", sha256=hashlib.sha256(raw).hexdigest(), size_bytes=len(raw))
     ccas = []
     report = analysis._lift(raw, "disassembly", pin, facts=facts, offset=0, limit=1, ccas=ccas, candidate=False)
     report["input"] = pin  # The ordinary _analyze caller attaches its freshly read artifact pin.
     packet = build_experiment_packet(report, context=selected_context())
-    task, = packet["tasks"]
+    (task,) = packet["tasks"]
     assert task["kind"] == "adapter_gap"
     assert task["goals"] == ["evidence.runtime_operand_projection"]
     assert task["evidence"][0]["scope"] == "listed_instruction_sites"
@@ -602,19 +621,28 @@ def test_actual_static_analysis_and_comparison_become_scoped_evidence_tasks(tmp_
     assert comparison["cca"]["denominator"] == 0
     assert all(row["kind"] == "missing_evidence" for row in tasks)
     assert {goal for row in tasks for goal in row["goals"]} >= {
-        "evidence.cca_comparison", "source.complete_fused_region", "scheduling.schedule_consumption"}
+        "evidence.cca_comparison",
+        "source.complete_fused_region",
+        "scheduling.schedule_consumption",
+    }
     assert not any(row["kind"] == "scoped_mechanism_difference" for row in tasks)
     assert all(row["performance_status"] == "unknown" and not row["requests"] for row in tasks)
 
 
 def test_supported_analysis_difference_can_use_only_its_declared_knob_binding():
-    report = dict(kind="reference_candidate_comparison", count_basis="listed_instruction_sites",
+    report = dict(
+        kind="reference_candidate_comparison",
+        count_basis="listed_instruction_sites",
         reference=dict(input=dict(path="reference-kernels/kernel.dis", sha256="1" * 64)),
         candidate=dict(input=dict(path="variants/trial/kernel.dis", sha256="2" * 64)),
-        cca=dict(status="compared", compared_axes=[GOAL],
-                 divergences=[dict(axis=GOAL, expert=True, ours=False, evidence=["scoped original witness"])],
-                 unknowns=[]))
-    task, = build_experiment_packet(report, context=selected_context())["tasks"]
+        cca=dict(
+            status="compared",
+            compared_axes=[GOAL],
+            divergences=[dict(axis=GOAL, expert=True, ours=False, evidence=["scoped original witness"])],
+            unknowns=[],
+        ),
+    )
+    (task,) = build_experiment_packet(report, context=selected_context())["tasks"]
     assert task["kind"] == "scoped_mechanism_difference" and len(task["requests"]) == 2
     assert task["evidence"][0]["status"] == "observed_structural"
     assert task["evidence"][0]["scope"] == "listed_instruction_sites"
@@ -622,25 +650,48 @@ def test_supported_analysis_difference_can_use_only_its_declared_knob_binding():
     assert task["performance_status"] == task["mechanism_status"] == "unknown"
     assert task["acceptance"]["performance"]["static_counts_are_scores"] is False
     report["cca"]["compared_axes"] = []
-    unknown, = build_experiment_packet(report, context=selected_context())["tasks"]
+    (unknown,) = build_experiment_packet(report, context=selected_context())["tasks"]
     assert unknown["kind"] == "missing_evidence" and not unknown["requests"]
 
 
-@pytest.mark.parametrize("kind,fields,goal,scope", [
-    ("source_syntax", dict(semantic_region_status="unknown", functions=[dict(symbol="f", loop_count=2)]),
-     "source.complete_fused_region", "source_syntax"),
-    ("interface_source_analysis", dict(products=2, groups=[dict(rhs="shared")]),
-     "evidence.source_to_emission_binding", "declared_source_contract"),
-    ("declared_semantic_region", dict(region=dict(operations=[])),
-     "evidence.source_to_emission_binding", "declared_source_contract"),
-    ("declared_semantic_comparison", dict(declared_contracts=dict(status="equivalent")),
-     "evidence.source_to_emission_binding", "declared_source_contract"),
-    ("schedule_decisions", dict(realized=False, decisions=[dict(operation="schedule.plan")]),
-     "scheduling.schedule_consumption", "schedule_intent"),
-])
+@pytest.mark.parametrize(
+    "kind,fields,goal,scope",
+    [
+        (
+            "source_syntax",
+            dict(semantic_region_status="unknown", functions=[dict(symbol="f", loop_count=2)]),
+            "source.complete_fused_region",
+            "source_syntax",
+        ),
+        (
+            "interface_source_analysis",
+            dict(products=2, groups=[dict(rhs="shared")]),
+            "evidence.source_to_emission_binding",
+            "declared_source_contract",
+        ),
+        (
+            "declared_semantic_region",
+            dict(region=dict(operations=[])),
+            "evidence.source_to_emission_binding",
+            "declared_source_contract",
+        ),
+        (
+            "declared_semantic_comparison",
+            dict(declared_contracts=dict(status="equivalent")),
+            "evidence.source_to_emission_binding",
+            "declared_source_contract",
+        ),
+        (
+            "schedule_decisions",
+            dict(realized=False, decisions=[dict(operation="schedule.plan")]),
+            "scheduling.schedule_consumption",
+            "schedule_intent",
+        ),
+    ],
+)
 def test_source_and_schedule_reports_do_not_imply_emitted_mechanisms(kind, fields, goal, scope):
     report = dict(kind=kind, input=dict(path="submission/input", sha256="1" * 64), **fields)
-    task, = build_experiment_packet(report, context=selected_context())["tasks"]
+    (task,) = build_experiment_packet(report, context=selected_context())["tasks"]
     assert task["goals"] == [goal] and task["evidence"][0]["scope"] == scope
     assert task["evidence"][0]["input_pins"]["input"] == report["input"]
     assert task["status"] == "blocked" and not task["requests"]
@@ -649,18 +700,25 @@ def test_source_and_schedule_reports_do_not_imply_emitted_mechanisms(kind, field
 
 def test_actual_source_and_schedule_parsers_feed_the_existing_builder(tmp_path):
     analysis = pytest.importorskip("merlin_experiments.phase1.feedback.reference_analysis")
-    source = analysis._source_summary(b"def f(x):\n    for i in range(3):\n        tile(x, i)\n",
-                                      "python_schedule", 0, 1)
-    source_task, = build_experiment_packet(source, context=selected_context())["tasks"]
+    source = analysis._source_summary(
+        b"def f(x):\n    for i in range(3):\n        tile(x, i)\n", "python_schedule", 0, 1
+    )
+    (source_task,) = build_experiment_packet(source, context=selected_context())["tasks"]
     assert source["functions"][0]["loop_count"] == 1
     assert source_task["kind"] == "missing_evidence"
     submission = tmp_path / "submission"
     submission.mkdir()
     (submission / "plan.mlir").write_text(
-        'builtin.module { "schedule.plan"() <{sym_name = "candidate"}> ({}) : () -> () }')
-    report, _ = analysis._analyze(dict(path="submission/plan.mlir", format="schedule_mlir"),
-        workspace=tmp_path, reference_root=None, facts=None, candidate=True)
-    task, = build_experiment_packet(report, context=selected_context())["tasks"]
+        'builtin.module { "schedule.plan"() <{sym_name = "candidate"}> ({}) : () -> () }'
+    )
+    report, _ = analysis._analyze(
+        dict(path="submission/plan.mlir", format="schedule_mlir"),
+        workspace=tmp_path,
+        reference_root=None,
+        facts=None,
+        candidate=True,
+    )
+    (task,) = build_experiment_packet(report, context=selected_context())["tasks"]
     assert report["decisions"][0]["operation"] == "schedule.plan"
     assert task["evidence"][0]["value"] is False
     assert task["next_action"]["action"] == "consume_schedule_plan_and_reanalyze_emitted_artifacts"
@@ -670,7 +728,7 @@ def test_analysis_response_unwraps_gaps_with_original_pointers_and_no_completion
     gap = dict(kind="adapter_gap", goals=["evidence.native_issue"], reason="original_native_capture_absent")
     report = dict(kind="artifact_cross_view_analysis", inputs=dict(source=dict(sha256="1" * 64)), gaps=[gap])
     response = dict(schema="merlin.reference_analysis.v1", status="analyzed", report=report)
-    task, = build_experiment_packet(response, context=selected_context())["tasks"]
+    (task,) = build_experiment_packet(response, context=selected_context())["tasks"]
     assert task["evidence"][0]["pointer"] == "/report/gaps/0"
     assert task["evidence"][0]["sha256"] == digest(gap)
     assert task["evidence"][0]["scope"] == "cross_view_diagnostic"
@@ -678,31 +736,42 @@ def test_analysis_response_unwraps_gaps_with_original_pointers_and_no_completion
     denied = dict(response, status="denied", gaps=[gap])
     assert not build_experiment_packet(denied, context=selected_context())["tasks"]
     unavailable = dict(schema=response["schema"], status="unknown", gap=gap)
-    task, = build_experiment_packet(unavailable, context=selected_context())["tasks"]
+    (task,) = build_experiment_packet(unavailable, context=selected_context())["tasks"]
     assert task["evidence"][0]["pointer"] == "/gap" and task["evidence"][0]["status"] == "unknown"
 
 
 def test_static_count_delta_alone_is_not_an_optimization_task_or_a_speedup():
-    report = dict(kind="reference_candidate_comparison", instruction_site_delta=-100,
+    report = dict(
+        kind="reference_candidate_comparison",
+        instruction_site_delta=-100,
         command_site_comparison=dict(load=dict(reference=200, candidate=100)),
-        cca=dict(status="unknown", denominator=0, compared_axes=[], divergences=[], unknowns=[]))
+        cca=dict(status="unknown", denominator=0, compared_axes=[], divergences=[], unknowns=[]),
+    )
     packet = build_experiment_packet(report, context=selected_context())
     assert not packet["tasks"]
 
 
 def test_missing_static_projection_is_unknown_and_does_not_disappear():
     report = dict(kind="static_instruction_analysis", regions=[dict(region_id=0, listed_instructions=1)])
-    task, = build_experiment_packet(report, context=selected_context())["tasks"]
+    (task,) = build_experiment_packet(report, context=selected_context())["tasks"]
     assert task["kind"] == "adapter_gap" and task["evidence"][0]["status"] == "unknown"
     assert not task["requests"]
 
 
 def test_partial_machine_projection_and_representation_views_retain_actionable_gaps():
-    machine = dict(kind="static_instruction_analysis", regions=[dict(region_id="body",
-        mechanism_projection=dict(status="partial", missing=["complete_semantic_region"],
-                                  next_action="join_original_source"))])
+    machine = dict(
+        kind="static_instruction_analysis",
+        regions=[
+            dict(
+                region_id="body",
+                mechanism_projection=dict(
+                    status="partial", missing=["complete_semantic_region"], next_action="join_original_source"
+                ),
+            )
+        ],
+    )
     packet = build_experiment_packet(machine, context=selected_context())
-    task, = packet["tasks"]
+    (task,) = packet["tasks"]
     assert task["kind"] == "adapter_gap" and "complete_semantic_region" in task["summary"]
     assert not task["requests"]
     bundle = dict(kind="representation_bundle", views=dict(binary=machine), input=dict(sha256="1" * 64))
@@ -712,16 +781,23 @@ def test_partial_machine_projection_and_representation_views_retain_actionable_g
 
 
 def test_explicit_unknown_semantics_prevent_machine_differences_becoming_executable_trials():
-    report = dict(kind="reference_candidate_comparison", semantic_compatibility="unknown",
-        cca=dict(status="compared", compared_axes=[GOAL],
-                 divergences=[dict(axis=GOAL, expert=True, ours=False)], unknowns=[]))
+    report = dict(
+        kind="reference_candidate_comparison",
+        semantic_compatibility="unknown",
+        cca=dict(
+            status="compared", compared_axes=[GOAL], divergences=[dict(axis=GOAL, expert=True, ours=False)], unknowns=[]
+        ),
+    )
     tasks = build_experiment_packet(report, context=selected_context())["tasks"]
     assert tasks and all(row["kind"] != "scoped_mechanism_difference" and not row["requests"] for row in tasks)
 
 
 def test_cross_view_source_mismatch_and_recorded_difference_keep_separate_obligations():
-    report = dict(kind="artifact_cross_view_comparison", declared_source_join="unknown_or_mismatch",
-        gaps=[dict(kind="scoped_mechanism_difference", goals=[GOAL], reason="recorded issue mixes differ")])
+    report = dict(
+        kind="artifact_cross_view_comparison",
+        declared_source_join="unknown_or_mismatch",
+        gaps=[dict(kind="scoped_mechanism_difference", goals=[GOAL], reason="recorded issue mixes differ")],
+    )
     tasks = build_experiment_packet(report, context=selected_context())["tasks"]
     difference = next(row for row in tasks if row["kind"] == "scoped_mechanism_difference")
     source = next(row for row in tasks if row["kind"] == "missing_evidence")
@@ -750,7 +826,7 @@ def captured_comparison():
             schedule_model=dict(complete=True, unknowns=["hardware_completion_and_timing_not_established"]),
         ),
         candidate=dict(
-            input=dict(path=(Path('artifacts') / 'views.json').as_posix(), sha256="3" * 64),
+            input=dict(path=(Path("artifacts") / "views.json").as_posix(), sha256="3" * 64),
             captured_reference_axes=dict(
                 status="observed_counted_emission", count_scope=scope, traffic="unknown", residency="unknown"
             ),

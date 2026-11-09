@@ -13,17 +13,16 @@ from pathlib import Path
 from yaml import YAMLError
 
 from merlin.common.digest import sha256_file as _sha
+from merlin.development.definition import ExperimentSpec, SpecError, read_yaml
+from merlin.development.definition import default_run_dir as default_run_dir
+from merlin_experiments.runner_records import _read_json as _read_json
+from merlin_experiments.runner_records import _write_json as _write_json
 
 from .adapters import ADAPTERS, PHASE0_MODULE, PHASE1_MODULE, phase0_sources, phase0_startup_inputs, phase1_entrypoint
 from .phase1.source_inputs import fingerprint
 from .runner_process import _process_active as _process_active
 from .runner_process import _process_group_active as _process_group_active
 from .runner_process import _stop_process_group as _stop_process_group
-from merlin.development.definition import ExperimentSpec, SpecError, read_yaml
-from merlin.development.definition import default_run_dir as default_run_dir
-
-from merlin_experiments.runner_records import _write_json as _write_json
-from merlin_experiments.runner_records import _read_json as _read_json
 
 
 def _now() -> str:

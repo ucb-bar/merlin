@@ -3,6 +3,7 @@
 This leaf discovers no stages or paths. Its callers supply fixed internal owner
 readers; observations grant no source access, semantic or loaded-code proof.
 """
+
 from __future__ import annotations
 
 import sys
@@ -25,8 +26,12 @@ validator_identity.__module__ = "merlin.compiler.ir.semantics"
 
 
 def _members(reader):
-    return (*reader(), *((sys.modules[__name__], name) for name in ("observe", "validator_identity", "_members")),
-            (SourceObservation, "revalidate"), (SourceObservation, "record"))
+    return (
+        *reader(),
+        *((sys.modules[__name__], name) for name in ("observe", "validator_identity", "_members")),
+        (SourceObservation, "revalidate"),
+        (SourceObservation, "record"),
+    )
 
 
 @dataclass(frozen=True)
@@ -42,8 +47,9 @@ class SourceObservation:
         if any(a is not b for a, b in zip(validator_identity(self._reader), self._reader_binding, strict=True)):
             raise ValueError("shared source-region owner reader changed")
         members = _members(self._reader)
-        if (len(members) != len(self._members) or any(
-                a is not c or b != d for (a, b), (c, d) in zip(members, self._members, strict=True))):
+        if len(members) != len(self._members) or any(
+            a is not c or b != d for (a, b), (c, d) in zip(members, self._members, strict=True)
+        ):
             raise ValueError("shared source-region owner roster changed")
         for (owner, name), binding in zip(members, self._bindings, strict=True):
             current = validator_identity(getattr(owner, name))
@@ -55,11 +61,14 @@ class SourceObservation:
 
     def record(self):
         self.revalidate()
-        return {"stage": self.stage, "files": [{"module": module.__name__, "path": str(path), "sha256": value}
-                                                for module, path, value in self._files],
-                "callables": [function.__module__ + "." + function.__qualname__
-                              for _, function, _, _ in self._bindings],
-                "scope": "direct source bytes and original callable identities; not loaded-code or semantic proof"}
+        return {
+            "stage": self.stage,
+            "files": [
+                {"module": module.__name__, "path": str(path), "sha256": value} for module, path, value in self._files
+            ],
+            "callables": [function.__module__ + "." + function.__qualname__ for _, function, _, _ in self._bindings],
+            "scope": "direct source bytes and original callable identities; not loaded-code or semantic proof",
+        }
 
 
 def observe(stage, reader):

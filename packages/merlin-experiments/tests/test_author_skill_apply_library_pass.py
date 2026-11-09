@@ -1,4 +1,5 @@
 """Actual declared emission must consume the shared registered pass application."""
+
 from __future__ import annotations
 
 import json
@@ -11,7 +12,7 @@ from author_skill_fixtures import load_script
 from merlin.common.paths import checkout_root
 from merlin.transforms.certificates import parse_ir
 
-ADAPTER = '''from merlin.transforms.certificates import ir_text, parse_ir
+ADAPTER = """from merlin.transforms.certificates import ir_text, parse_ir
 from merlin.transforms.pipeline import PipelineOptions, apply_common_pipeline
 from merlin.transforms.pipeline_policy import (PipelinePolicy, PipelineVariant,
     PolicyFacts, RegisteredPass)
@@ -35,9 +36,9 @@ def prepare(source, *, package, mechanism):
     policy = PipelinePolicy((PipelineVariant('selected', paths[mechanism]),), 'selected')
     return dict(session=session, facts=PolicyFacts(session.stamp()), registry=registry,
                 policy=policy, output='product')
-'''
+"""
 
-COMPILER = '''import json, sys
+COMPILER = """import json, sys
 from pathlib import Path
 from library_pass_adapter import prepare
 from merlin.transforms.pipeline_policy import execute_policy
@@ -46,42 +47,59 @@ selection = package / 'LIBRARY_PASS_SELECTION.json'
 mechanism = json.loads(selection.read_text())['mechanism'] if selection.exists() else None
 binding = prepare(Path(sys.argv[1]), package=package, mechanism=mechanism)
 sys.stdout.write(execute_policy(**binding).artifact)
-'''
+"""
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope="module")
 def selected_library(tmp_path_factory):
     """Select stable private bytes while other contributors edit the checkout."""
-    return shutil.copytree(checkout_root() / 'src', tmp_path_factory.mktemp('selected-library') / 'src',
-                           ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+    return shutil.copytree(
+        checkout_root() / "src",
+        tmp_path_factory.mktemp("selected-library") / "src",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
 
 
 @pytest.fixture
 def package(tmp_path, selected_library):
-    base = tmp_path / 'submission'
-    (base / 'tools').mkdir(parents=True)
-    (base / 'tools/library_pass_adapter.py').write_text(ADAPTER)
-    (base / 'tools/compiler.py').write_text(COMPILER)
-    (base / 'compiler_library').symlink_to(selected_library, target_is_directory=True)
-    (base / 'manifest.yaml').write_text(json.dumps({'commands': {'lower_target_to_llvm': {
-        'argv': [sys.executable, 'tools/compiler.py', '{input_mlir}']}}}))
-    (base / 'source.mlir').write_text('''builtin.module { func.func @f() -> i32 {
+    base = tmp_path / "submission"
+    (base / "tools").mkdir(parents=True)
+    (base / "tools/library_pass_adapter.py").write_text(ADAPTER)
+    (base / "tools/compiler.py").write_text(COMPILER)
+    (base / "compiler_library").symlink_to(selected_library, target_is_directory=True)
+    (base / "manifest.yaml").write_text(
+        json.dumps(
+            {"commands": {"lower_target_to_llvm": {"argv": [sys.executable, "tools/compiler.py", "{input_mlir}"]}}}
+        )
+    )
+    (base / "source.mlir").write_text("""builtin.module { func.func @f() -> i32 {
       %a = arith.constant 3 : i32
       %b = arith.constant 4 : i32
       %sum = arith.addi %a, %b : i32
       func.return %sum : i32
-    }}''')
+    }}""")
     return base
 
 
-def invoke(package, tmp_path, mechanism='fold', *, cli=None, **extra):
-    cli = cli or load_script('ab-library-pass', 'apply_library_pass')
-    receipt = tmp_path / 'application.json'
-    args = ['--submission', str(package), '--variant', str(tmp_path / 'variants/changed'),
-            '--library', str((package / 'compiler_library').resolve()), '--mechanism', mechanism,
-            '--case', 'source-locator', '--receipt', str(receipt)]
+def invoke(package, tmp_path, mechanism="fold", *, cli=None, **extra):
+    cli = cli or load_script("ab-library-pass", "apply_library_pass")
+    receipt = tmp_path / "application.json"
+    args = [
+        "--submission",
+        str(package),
+        "--variant",
+        str(tmp_path / "variants/changed"),
+        "--library",
+        str((package / "compiler_library").resolve()),
+        "--mechanism",
+        mechanism,
+        "--case",
+        "source-locator",
+        "--receipt",
+        str(receipt),
+    ]
     for key, value in extra.items():
-        args.extend(['--' + key, str(value)])
+        args.extend(["--" + key, str(value)])
     code = cli.main(args)
     return code, json.loads(receipt.read_text())
 
@@ -95,115 +113,120 @@ def evaluate(path):
     interpreter = Interpreter(parse_ir(path.read_text()))
     interpreter.register_implementations(ArithFunctions())
     interpreter.register_implementations(FuncFunctions())
-    values = interpreter.call_op('f', ())
+    values = interpreter.call_op("f", ())
     # xDSL0.75 returns a typed constant where0.68 returns the Python integer.
-    assert all(type(value) is int or (
-        isinstance(value, IntegerAttr) and isinstance(value.type, IntegerType)
-        and value.type.width.data == 32
-    ) for value in values)
+    assert all(
+        type(value) is int
+        or (isinstance(value, IntegerAttr) and isinstance(value.type, IntegerType) and value.type.width.data == 32)
+        for value in values
+    )
     return tuple(value.value.data if isinstance(value, IntegerAttr) else value for value in values)
 
 
 def test_registered_pass_changes_actual_emission_and_preserves_neutral_numerics(package, tmp_path):
-    (package / 'build').mkdir()
-    (package / 'build/cache').write_bytes(b'not source')
-    original = (package / 'source.mlir').read_bytes()
+    (package / "build").mkdir()
+    (package / "build/cache").write_bytes(b"not source")
+    original = (package / "source.mlir").read_bytes()
     code, record = invoke(package, tmp_path)
-    assert code == 0 and record['status'] == 'APPLIED_EMITTED_CHANGE'
-    assert record['actual_emitted_products_differ']
-    base = tmp_path / 'application-products/baseline/stdout'
-    variant = tmp_path / 'application-products/variant/stdout'
-    assert 'arith.addi' in base.read_text() and 'arith.addi' not in variant.read_text()
+    assert code == 0 and record["status"] == "APPLIED_EMITTED_CHANGE"
+    assert record["actual_emitted_products_differ"]
+    base = tmp_path / "application-products/baseline/stdout"
+    variant = tmp_path / "application-products/variant/stdout"
+    assert "arith.addi" in base.read_text() and "arith.addi" not in variant.read_text()
     assert evaluate(base) == evaluate(variant) == (7,)
-    assert [p['name'] for p in record['variant_pipeline']['passes']] == ['fold', 'emit']
-    assert record['numerical_status'] == 'NOT_CHECKED' and record['timing_status'] == 'UNKNOWN'
-    assert not (tmp_path / 'variants/changed/build').exists()
-    assert (tmp_path / 'variants/changed/compiler_library').is_symlink()
-    assert record['selected_library']['reused']
-    assert not (package / 'LIBRARY_PASS_SELECTION.json').exists()
-    assert (package / 'source.mlir').read_bytes() == original
+    assert [p["name"] for p in record["variant_pipeline"]["passes"]] == ["fold", "emit"]
+    assert record["numerical_status"] == "NOT_CHECKED" and record["timing_status"] == "UNKNOWN"
+    assert not (tmp_path / "variants/changed/build").exists()
+    assert (tmp_path / "variants/changed/compiler_library").is_symlink()
+    assert record["selected_library"]["reused"]
+    assert not (package / "LIBRARY_PASS_SELECTION.json").exists()
+    assert (package / "source.mlir").read_bytes() == original
 
 
 def test_missing_hook_requests_construction_without_a_variant(package, tmp_path):
-    (package / 'tools/library_pass_adapter.py').unlink()
+    (package / "tools/library_pass_adapter.py").unlink()
     code, record = invoke(package, tmp_path)
-    assert code == 2 and record['status'] == 'CONSTRUCTION_REQUIRED'
-    assert 'Implement author adapter' in record['detail']
-    assert not (tmp_path / 'variants/changed').exists()
+    assert code == 2 and record["status"] == "CONSTRUCTION_REQUIRED"
+    assert "Implement author adapter" in record["detail"]
+    assert not (tmp_path / "variants/changed").exists()
 
 
 def test_manifest_tool_placeholder_uses_the_copied_package_entrypoint(package, tmp_path):
-    manifest = {'entrypoints': {'tool': 'tools/compiler.py'}, 'commands': {'lower_target_to_llvm': {
-        'argv': [sys.executable, '{tool}', '{input_mlir}']}}}
-    (package / 'manifest.yaml').write_text(json.dumps(manifest))
+    manifest = {
+        "entrypoints": {"tool": "tools/compiler.py"},
+        "commands": {"lower_target_to_llvm": {"argv": [sys.executable, "{tool}", "{input_mlir}"]}},
+    }
+    (package / "manifest.yaml").write_text(json.dumps(manifest))
     code, record = invoke(package, tmp_path)
-    assert code == 0 and record['actual_emitted_products_differ']
-    baseline = record['baseline_emission']['argv']
-    variant = record['variant_emission']['argv']
-    assert baseline[1] == str(package / 'tools/compiler.py')
-    assert variant[1] == str(tmp_path / 'variants/changed/tools/compiler.py')
-    assert evaluate(tmp_path / 'application-products/variant/stdout') == (7,)
+    assert code == 0 and record["actual_emitted_products_differ"]
+    baseline = record["baseline_emission"]["argv"]
+    variant = record["variant_emission"]["argv"]
+    assert baseline[1] == str(package / "tools/compiler.py")
+    assert variant[1] == str(tmp_path / "variants/changed/tools/compiler.py")
+    assert evaluate(tmp_path / "application-products/variant/stdout") == (7,)
 
 
-@pytest.mark.parametrize('mechanism,status,detail', [
-    ('noop', 'REFUSED', 'UNCHANGED'),
-    ('unknown', 'CONSTRUCTION_REQUIRED', 'no declared mapping'),
-])
+@pytest.mark.parametrize(
+    "mechanism,status,detail",
+    [
+        ("noop", "REFUSED", "UNCHANGED"),
+        ("unknown", "CONSTRUCTION_REQUIRED", "no declared mapping"),
+    ],
+)
 def test_noop_or_missing_mapping_cannot_proceed_to_evaluation(package, tmp_path, mechanism, status, detail):
     from merlin_experiments.phase1.feedback.idle_tuning import _variant_names
 
     code, record = invoke(package, tmp_path, mechanism)
-    assert code != 0 and record['status'] == status and detail in record['detail']
-    assert (tmp_path / 'variants/changed/manifest.yaml').exists()
+    assert code != 0 and record["status"] == status and detail in record["detail"]
+    assert (tmp_path / "variants/changed/manifest.yaml").exists()
     assert _variant_names(tmp_path, 8) == []
-    assert (tmp_path / 'variants/.library-pass-pending-changed').is_file()
+    assert (tmp_path / "variants/.library-pass-pending-changed").is_file()
 
 
 def test_manifest_ignoring_selection_is_refused(package, tmp_path):
-    path = package / 'tools/compiler.py'
-    path.write_text(COMPILER.replace('mechanism=mechanism', 'mechanism=None'))
+    path = package / "tools/compiler.py"
+    path.write_text(COMPILER.replace("mechanism=mechanism", "mechanism=None"))
     code, record = invoke(package, tmp_path)
-    assert code == 1 and 'DISCONNECTED_ADAPTER' in record['detail']
+    assert code == 1 and "DISCONNECTED_ADAPTER" in record["detail"]
 
 
 def test_safe_link_is_materialized_as_normal_variant_source(package, tmp_path):
-    (package / 'same-source.mlir').symlink_to('source.mlir')
+    (package / "same-source.mlir").symlink_to("source.mlir")
     code, _ = invoke(package, tmp_path)
     assert code == 0
-    copied = tmp_path / 'variants/changed/same-source.mlir'
+    copied = tmp_path / "variants/changed/same-source.mlir"
     assert copied.is_file() and not copied.is_symlink()
-    assert copied.read_bytes() == (package / 'source.mlir').read_bytes()
+    assert copied.read_bytes() == (package / "source.mlir").read_bytes()
 
 
 def test_unsafe_link_is_refused_before_copy(package, tmp_path):
-    outside = tmp_path / 'outside'
-    outside.write_text('not selected source')
-    (package / 'escape').symlink_to(outside)
+    outside = tmp_path / "outside"
+    outside.write_text("not selected source")
+    (package / "escape").symlink_to(outside)
     code, record = invoke(package, tmp_path)
-    assert code == 1 and 'unsafe source link' in record['detail']
-    assert not (tmp_path / 'variants/changed').exists()
+    assert code == 1 and "unsafe source link" in record["detail"]
+    assert not (tmp_path / "variants/changed").exists()
 
 
-@pytest.mark.parametrize('changed_input', ['source', 'library'])
+@pytest.mark.parametrize("changed_input", ["source", "library"])
 def test_changed_selected_input_refuses_success_receipt(package, tmp_path, monkeypatch, changed_input):
-    cli = load_script('ab-library-pass', 'apply_library_pass')
+    cli = load_script("ab-library-pass", "apply_library_pass")
     original_emit = cli.emit
-    path = (package / 'source.mlir' if changed_input == 'source'
-            else package / 'compiler_library/merlin/__init__.py')
+    path = package / "source.mlir" if changed_input == "source" else package / "compiler_library/merlin/__init__.py"
     original = path.read_bytes()
 
     def change_after_emission(*args, **kwargs):
         result = original_emit(*args, **kwargs)
         if args[0] != package.resolve():
-            path.write_bytes(original + b'\n# changed after actual emission\n')
+            path.write_bytes(original + b"\n# changed after actual emission\n")
         return result
 
-    monkeypatch.setattr(cli, 'emit', change_after_emission)
+    monkeypatch.setattr(cli, "emit", change_after_emission)
     try:
         code, record = invoke(package, tmp_path, cli=cli)
-        assert code == 1 and record['status'] == 'REFUSED'
-        assert 'changed during application' in record['detail']
-        assert (tmp_path / 'variants/.library-pass-pending-changed').is_file()
+        assert code == 1 and record["status"] == "REFUSED"
+        assert "changed during application" in record["detail"]
+        assert (tmp_path / "variants/.library-pass-pending-changed").is_file()
     finally:
         path.write_bytes(original)
 
@@ -211,30 +234,30 @@ def test_changed_selected_input_refuses_success_receipt(package, tmp_path, monke
 def test_idle_discovery_waits_for_success_receipt_after_actual_emission(package, tmp_path, monkeypatch):
     from merlin_experiments.phase1.feedback.idle_tuning import _variant_names
 
-    cli = load_script('ab-library-pass', 'apply_library_pass')
+    cli = load_script("ab-library-pass", "apply_library_pass")
     original_emit = cli.emit
     original_copy = cli.shutil.copy2
     seen = []
     copied = []
 
     def inspect_copy(source, destination):
-        assert (tmp_path / 'variants/.library-pass-pending-changed').is_file()
+        assert (tmp_path / "variants/.library-pass-pending-changed").is_file()
         assert _variant_names(tmp_path, 8) == []
         copied.append(True)
         return original_copy(source, destination)
 
     def inspect_pending(*args, **kwargs):
-        assert (tmp_path / 'variants/changed/manifest.yaml').exists()
-        assert (tmp_path / 'variants/.library-pass-pending-changed').is_file()
+        assert (tmp_path / "variants/changed/manifest.yaml").exists()
+        assert (tmp_path / "variants/.library-pass-pending-changed").is_file()
         assert _variant_names(tmp_path, 8) == []
         seen.append(True)
         return original_emit(*args, **kwargs)
 
-    monkeypatch.setattr(cli, 'emit', inspect_pending)
-    monkeypatch.setattr(cli.shutil, 'copy2', inspect_copy)
+    monkeypatch.setattr(cli, "emit", inspect_pending)
+    monkeypatch.setattr(cli.shutil, "copy2", inspect_copy)
     code, record = invoke(package, tmp_path, cli=cli)
     assert code == 0 and len(seen) == 2 and copied
-    assert record['status'] == 'APPLIED_EMITTED_CHANGE'
-    assert (tmp_path / 'application.json').is_file()
-    assert not (tmp_path / 'variants/.library-pass-pending-changed').exists()
-    assert _variant_names(tmp_path, 8) == ['changed']
+    assert record["status"] == "APPLIED_EMITTED_CHANGE"
+    assert (tmp_path / "application.json").is_file()
+    assert not (tmp_path / "variants/.library-pass-pending-changed").exists()
+    assert _variant_names(tmp_path, 8) == ["changed"]

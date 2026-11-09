@@ -348,8 +348,9 @@ class DenseReadoutOverlapResult:
         from merlin.compiler.schedule.llvm_program import emit_index_effect_program
 
         self.revalidate()
-        report = emit_index_effect_program(self.kernel, control, lower_effect,
-            complete_epoch=complete_epoch, completion_instruction=DRAIN)
+        report = emit_index_effect_program(
+            self.kernel, control, lower_effect, complete_epoch=complete_epoch, completion_instruction=DRAIN
+        )
         self.revalidate()
         return report
 

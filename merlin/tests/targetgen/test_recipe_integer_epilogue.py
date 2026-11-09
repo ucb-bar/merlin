@@ -84,7 +84,9 @@ def _recipes() -> dict[str, dict]:
     ).to_dict() | {"accumulator_dtype": "int32"}
     recipes = {name: QM.derive(base, _METHODOLOGY, path) for name, path in PATHS.items()}
     recipes["partitioned_per_column"] = QM.derive(
-        base, {**_METHODOLOGY, "scale_granularity": "per_channel"}, _path(),
+        base,
+        {**_METHODOLOGY, "scale_granularity": "per_channel"},
+        _path(),
     )
     return recipes
 
@@ -97,10 +99,15 @@ def test_the_quantizer_reads_the_epilogue_block_through_its_sibling() -> None:
     assert all(r["status"] == QR.DERIVED for r in _recipes().values())
 
 
-@pytest.mark.parametrize("change", [
-    {"logical_granularity": "per_tensor"}, {"columns_per_scale": False},
-    {"columns_per_scale": 0}, {"granularity": "per_tensor"},
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"logical_granularity": "per_tensor"},
+        {"columns_per_scale": False},
+        {"columns_per_scale": 0},
+        {"granularity": "per_tensor"},
+    ],
+)
 def test_logical_channel_policy_cannot_replace_physical_readout_facts(change):
     from copy import deepcopy
 

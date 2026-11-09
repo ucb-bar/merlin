@@ -139,7 +139,14 @@ def prepare(spec, declaration, *, target, output, selected_facts=None, selected_
 
 
 def install_for_session(
-    spec, declaration, *, target, run_dir, selected_facts=None, selected_facts_sha256=None, descriptor=None,
+    spec,
+    declaration,
+    *,
+    target,
+    run_dir,
+    selected_facts=None,
+    selected_facts_sha256=None,
+    descriptor=None,
     host_inputs=None,
 ):
     """Publish pinned operator inputs before authoring and broker subprocess startup."""
@@ -149,8 +156,12 @@ def install_for_session(
             raise ValueError("independent host inputs require one explicit selector and descriptor")
         from .public_owned_host_inputs import prepare as prepare_inputs
 
-        record = prepare_inputs(host_inputs, target=target, descriptor=descriptor,
-                                output=Path(run_dir).absolute() / "public_owned_host_build_selection.json")
+        record = prepare_inputs(
+            host_inputs,
+            target=target,
+            descriptor=descriptor,
+            output=Path(run_dir).absolute() / "public_owned_host_build_selection.json",
+        )
         os.environ[ENV] = json.dumps(record, sort_keys=True)
         return record
     if spec is None:

@@ -70,8 +70,7 @@ def _record(path: Path) -> dict:
     def invalid_constant(value):
         raise ValueError(f"invalid JSON numeric constant: {value}")
 
-    document = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_object,
-                          parse_constant=invalid_constant)
+    document = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_object, parse_constant=invalid_constant)
     if not isinstance(document, dict):
         raise ValueError(f"evidence must be a JSON object: {path}")
     return document
@@ -98,8 +97,10 @@ def main(argv: list[str] | None = None) -> int:
     from merlin.targetgen.champions import ChampionError, export_champion
 
     try:
-        records = {name: _record(getattr(args, name))
-                   for name in ("provenance", "certification", "measurements", "isa_prohibition")}
+        records = {
+            name: _record(getattr(args, name))
+            for name in ("provenance", "certification", "measurements", "isa_prohibition")
+        }
         destination = export_champion(
             args.target,
             args.repo,

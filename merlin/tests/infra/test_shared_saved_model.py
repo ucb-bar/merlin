@@ -7,8 +7,8 @@ import pytest
 from test_baremetal_saved_model import _console, _fake_build, _fixture
 from test_source_dense_lowering import selection
 
-from merlin.common.digest import sha256_file
 from merlin import model as BM
+from merlin.common.digest import sha256_file
 
 
 def selected(tmp_path):
@@ -95,7 +95,10 @@ def test_execution_cannot_publish_success_with_changed_source_selection(tmp_path
     monkeypatch.setattr(BM.spike_model, "run", run)
     with pytest.raises(ValueError, match="changed"):
         BM.compile_saved_model(
-            **inputs, output=out / "execution", run="spike", reference_file="golden.npy",
+            **inputs,
+            output=out / "execution",
+            run="spike",
+            reference_file="golden.npy",
             shared_source_lowerings=(config,),
         )
     receipt = json.loads((out / "execution" / "baremetal_model.json").read_text())

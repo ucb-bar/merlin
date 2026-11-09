@@ -2,12 +2,10 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compiler.schedule.configuration import ConfigurationAdapter
-from merlin.compiler.schedule.configuration import ConfigurationEffects
+from merlin.compiler.schedule.configuration import ConfigurationAdapter, ConfigurationEffects
 from merlin.compiler.schedule.configuration_loop_cleanup import eliminate_counted_configuration
 from merlin.compiler.schedule.configuration_loops import hoist_loop_configuration
-from merlin.compiler.schedule.configuration_motion import promote_configuration_writes
-from merlin.compiler.schedule.configuration_motion import verify_configuration_motion
+from merlin.compiler.schedule.configuration_motion import promote_configuration_writes, verify_configuration_motion
 from merlin.sched.ir import Call, Const, Kernel, Loop
 
 
@@ -36,9 +34,7 @@ STORE = Call("store", ())
 
 
 def test_real_cleanup_promotion_hoist_composition_on_huge_counted_domain():
-    original = Kernel("reduction", (), (Loop("r", 1000000, (
-        Loop("c", 128, (LD, LOAD, LD, LOAD, ST, STORE)),
-    )),))
+    original = Kernel("reduction", (), (Loop("r", 1000000, (Loop("c", 128, (LD, LOAD, LD, LOAD, ST, STORE)),)),))
     current = original
     proofs = []
     for _ in range(8):

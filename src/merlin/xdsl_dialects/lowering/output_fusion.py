@@ -520,8 +520,7 @@ def _granularity(total, scale_stage, channels: int) -> dict[str, Any]:
                 raise _Refused(UNMODELED, str(error)) from error
             # Numeric equivalence is still proved over the complete source bound.
             # No command count or physical placement follows from this record.
-            return {"granularity": "per_command", "columns_per_scale": width,
-                    "output_column_partition": partition}
+            return {"granularity": "per_command", "columns_per_scale": width, "output_column_partition": partition}
         raise _Refused(
             GRANULARITY,
             f"the scale differs within a group of {width} column(s) one readout scale covers",
@@ -628,7 +627,8 @@ def _bound(chain: Chain, values: Values, extents: Mapping[int, Any]) -> tuple[in
         # Read extrema as Python integers before taking their magnitudes.
         magnitudes.append(
             max(abs(int(stored.min())), abs(int(stored.max())))
-            if stored is not None and stored.size else max(-span[0], span[1])
+            if stored is not None and stored.size
+            else max(-span[0], span[1])
         )
     bound = int(extent[1]) * magnitudes[0] * magnitudes[1]
     return -bound, bound

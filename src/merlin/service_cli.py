@@ -31,16 +31,22 @@ def compile_main(argv: list[str] | None = None) -> int:
     parser.add_argument("source", type=Path)
     parser.add_argument("--backend", required=True)
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--input-kind", help="compiler-stage selects a compiler-only directory; "
-                        "defaults to torch-export for .pt2 files, otherwise mlir")
+    parser.add_argument(
+        "--input-kind",
+        help="compiler-stage selects a compiler-only directory; "
+        "defaults to torch-export for .pt2 files, otherwise mlir",
+    )
     parser.add_argument(
         "--capture-output", type=Path, help="fresh export evidence workspace; defaults to OUTPUT.capture"
     )
     parser.add_argument("--system")
     parser.add_argument("--platform")
     parser.add_argument("--harts", type=int)
-    parser.add_argument("--freeze-readonly-buffers", action="store_true",
-                        help="explicitly snapshot observed readonly BUFFER state in compiler-stage input")
+    parser.add_argument(
+        "--freeze-readonly-buffers",
+        action="store_true",
+        help="explicitly snapshot observed readonly BUFFER state in compiler-stage input",
+    )
     parser.add_argument("--option", action="append", default=[], metavar="NAMESPACE.KEY=JSON")
     args = parser.parse_args(argv)
     parameters = {}
@@ -57,8 +63,10 @@ def compile_main(argv: list[str] | None = None) -> int:
         parser.error("--freeze-readonly-buffers requires --input-kind compiler-stage")
     if kind == "torch-export":
         source = SavedExport(
-            args.source, capture=args.capture_output if args.capture_output is not None else
-            args.output.with_name(args.output.name + ".capture"),
+            args.source,
+            capture=args.capture_output
+            if args.capture_output is not None
+            else args.output.with_name(args.output.name + ".capture"),
         )
     elif kind == "compiler-stage":
         if args.capture_output is not None:
@@ -67,9 +75,7 @@ def compile_main(argv: list[str] | None = None) -> int:
     else:
         if args.capture_output is not None:
             parser.error("--capture-output requires --input-kind torch-export")
-        source = Source(
-            args.source.read_text(encoding="utf-8"), kind=kind, origin=str(args.source.resolve())
-        )
+        source = Source(args.source.read_text(encoding="utf-8"), kind=kind, origin=str(args.source.resolve()))
     result = compile(
         source,
         backend=args.backend,

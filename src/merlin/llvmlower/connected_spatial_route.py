@@ -13,8 +13,7 @@ from dataclasses import asdict, dataclass, replace
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan
-    from merlin.compiler.schedule.spatial_producer import SpatialProducerPlan
+    from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
 
     from .fresh_tensor_writer import FreshTensorWriterContract, PrivateWorkspaceContract
 
@@ -30,8 +29,7 @@ class ConnectedSpatialRoute:
     stack_budget_bytes: int | None = None
 
     def record(self):
-        from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan
-        from merlin.compiler.schedule.spatial_producer import SpatialProducerPlan
+        from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
 
         from .fresh_tensor_writer import FreshTensorWriterContract, PrivateWorkspaceContract
         from .spatial_scratch_abi import _symbol

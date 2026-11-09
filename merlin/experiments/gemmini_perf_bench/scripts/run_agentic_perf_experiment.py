@@ -7,12 +7,12 @@ import sys
 from pathlib import Path
 
 import _pbcommon as PB
-from merlin_experiments.phase2 import checkpoint_admission as AD
-from merlin_experiments.phase2 import checkpoint_cli
-from merlin_experiments.phase2 import holdout_corpus as HOLDOUT
 
 from merlin.benchharness import runs_root
 from merlin.targetgen.target_experiment import load_target_experiment
+from merlin_experiments.phase2 import checkpoint_admission as AD
+from merlin_experiments.phase2 import checkpoint_cli
+from merlin_experiments.phase2 import holdout_corpus as HOLDOUT
 
 
 def _resolve_context(args, invocation: tuple[str, ...]) -> AD.ExecutionContext:
@@ -28,10 +28,8 @@ def _resolve_context(args, invocation: tuple[str, ...]) -> AD.ExecutionContext:
             source_root=source,
             catalog_path=args.holdout_catalog or source / "experiments/catalog.yaml",
             core_package_root=args.core_package_root or source / "src/merlin",
-            experiments_package_root=args.experiments_package_root
-            or source / "src/merlin_experiments",
-            experiments_namespace_root=args.experiments_namespace_root
-            or source / "src/merlin",
+            experiments_package_root=args.experiments_package_root or source / "src/merlin_experiments",
+            experiments_namespace_root=args.experiments_namespace_root or source / "src/merlin",
         ),
         chia_wrapper=args.chia_wrapper or Path(__file__).resolve().with_name("chia_agentic_perf_experiment.py"),
         invocation=invocation,

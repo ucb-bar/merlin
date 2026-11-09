@@ -43,6 +43,7 @@ from pathlib import Path
 
 from merlin.targetgen.application_inventory import application_demand_inventory
 
+from .conformance_scope import _scope_gap as _scope_gap
 from .conformance_types import (
     DECLARED,
     OBSERVED,
@@ -51,8 +52,6 @@ from .conformance_types import (
     Cell,
     CellOrigin,
 )
-
-from .conformance_scope import _scope_gap as _scope_gap
 
 
 def _capsule_paths(root: str | Path) -> list[Path]:

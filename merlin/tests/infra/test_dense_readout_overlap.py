@@ -6,11 +6,8 @@ import pytest
 from test_compact_dense import ADAPTER
 from test_dense_segmented_pipeline import chosen, inputs
 
-from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
-from merlin.compiler.schedule.dense_panel_pipeline import DenseReadoutComputeAdmission
-from merlin.compiler.schedule.dense_panel_pipeline import _verify_dense_epochs
-from merlin.compiler.schedule.dense_readout_overlap import propose_dense_readout_overlap
-from merlin.compiler.schedule.dense_readout_overlap import schedule_dense_readout_overlap
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN, DenseReadoutComputeAdmission, _verify_dense_epochs
+from merlin.compiler.schedule.dense_readout_overlap import propose_dense_readout_overlap, schedule_dense_readout_overlap
 from merlin.compiler.schedule.dense_segmented_pipeline import batch_dense_segmented_readouts
 from merlin.sched.ir import Call, Loop, evaluate, instances
 
@@ -59,10 +56,7 @@ def test_actual_counted_pair_odd_group_tails_and_full_source_proof():
 def test_same_actual_scalar_source_outputs_with_odd_groups_and_primitive_tails():
     import numpy as np
 
-    from merlin.compiler.schedule.blocks import Compute
-    from merlin.compiler.schedule.blocks import Load
-    from merlin.compiler.schedule.blocks import Preload
-    from merlin.compiler.schedule.blocks import Store
+    from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
 
     p, r, storage, b, original, capability = selected()
     actual = schedule_dense_readout_overlap(
@@ -151,8 +145,7 @@ def test_old_law_same_window_alias_and_unqualified_effects_refuse():
     rows = b.m * b.n * p.tile_m
 
     def encode(op):
-        from merlin.compiler.schedule.blocks import Preload
-        from merlin.compiler.schedule.blocks import Store
+        from merlin.compiler.schedule.blocks import Preload, Store
 
         if type(op) in (Preload, Store):
             op = replace(op, accumulator_row=op.accumulator_row + (-rows))
@@ -200,8 +193,7 @@ def test_old_law_same_window_alias_and_unqualified_effects_refuse():
 
 
 def test_exact_checking_projection_rejects_changed_data_windows_and_unknown_expressions():
-    from merlin.compiler.schedule.dense_readout_overlap import DenseReadoutCheckingProjection
-    from merlin.compiler.schedule.dense_readout_overlap import _affine_window_bounds
+    from merlin.compiler.schedule.dense_readout_overlap import DenseReadoutCheckingProjection, _affine_window_bounds
     from merlin.sched.ir import Const
 
     p, r, storage, b, original, capability = selected()
@@ -263,10 +255,12 @@ def test_exact_checking_projection_rejects_changed_data_windows_and_unknown_expr
 def test_wide_readout_owner_checks_every_actual_band_and_preserves_full_boundary():
     from merlin.compiler.schedule.dense_readout_overlap import admit_readout_overlap_tile_loads
     from merlin.compiler.schedule.panel_tile_loads import admit_panel_tile_loads
-    from merlin.compiler.schedule.tile_load_coalescing import TileLoadAddressLaw
-    from merlin.compiler.schedule.tile_load_coalescing import TileLoadMapping
-    from merlin.compiler.schedule.tile_load_coalescing import _linear
-    from merlin.compiler.schedule.tile_load_coalescing import propose_tile_load_coalescing
+    from merlin.compiler.schedule.tile_load_coalescing import (
+        TileLoadAddressLaw,
+        TileLoadMapping,
+        _linear,
+        propose_tile_load_coalescing,
+    )
     from merlin.sched.ir import Const
 
     p, r, s, b, original, capability = selected((4, 6, 24))

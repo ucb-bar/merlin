@@ -66,9 +66,16 @@ def freeze_route(device):
     if type(selected) not in (SiblingSourceRoute, HeadBatchSourceRoute):
         raise ValueError("sibling route requires its original typed selection")
     if getattr(device, "granularity", None) != "group" or any(
-        getattr(device, key, None) is not None for key in (
-            "connected_spatial", "exact_selection", "catalog_manifest", "catalog_object", "catalog_builder",
-            "prepared_transform", "post_offload_transform", "offload_selection",
+        getattr(device, key, None) is not None
+        for key in (
+            "connected_spatial",
+            "exact_selection",
+            "catalog_manifest",
+            "catalog_object",
+            "catalog_builder",
+            "prepared_transform",
+            "post_offload_transform",
+            "offload_selection",
         )
     ):
         raise ValueError("sibling ownership requires a group route without opaque source or ABI rewrites")
@@ -94,8 +101,11 @@ def _snapshot(host, *, source_sha256=None, host_sha256=None):
         "source": _sha(_text(host.source)) if source_sha256 is None else source_sha256,
         "host": _sha(_text(host.module)) if host_sha256 is None else host_sha256,
         "core": _sha(_text(host.core)),
-        "writer": asdict(host.writer), "device_symbol": host.device_symbol, "interface": _sha(host.interface),
-        "rewrite": host.rewrite.to_sidecar(), "receipt": host.receipt,
+        "writer": asdict(host.writer),
+        "device_symbol": host.device_symbol,
+        "interface": _sha(host.interface),
+        "rewrite": host.rewrite.to_sidecar(),
+        "receipt": host.receipt,
     }
 
 
@@ -113,40 +123,46 @@ def require_host(host, selected):
         return require_components(host, selected)
     if type(host) is not RoutedSiblingHost:
         raise ValueError("original sibling source, host, interface or effects changed")
-    _require_host_integrity(host, selected, source_sha256=_sha(_text(host.source)),
-                            host_sha256=_sha(_text(host.module)))
+    _require_host_integrity(
+        host, selected, source_sha256=_sha(_text(host.source)), host_sha256=_sha(_text(host.module))
+    )
 
 
-def _require_host_integrity(host, selected, *, source_sha256, host_sha256, verify_graphs=True,
-                            checked_preparations=None):
+def _require_host_integrity(
+    host, selected, *, source_sha256, host_sha256, verify_graphs=True, checked_preparations=None
+):
     """Check one component against freshly read shared source/host identities."""
     if type(host) is not RoutedSiblingHost or (
         source_sha256 != selected.source_ir_sha256
         or host.writer.borrowed_effects != selected.effects
-        or _sha(json.dumps(_snapshot(host, source_sha256=source_sha256, host_sha256=host_sha256),
-                           sort_keys=True, allow_nan=False)) != host.integrity_sha256
+        or _sha(
+            json.dumps(
+                _snapshot(host, source_sha256=source_sha256, host_sha256=host_sha256), sort_keys=True, allow_nan=False
+            )
+        )
+        != host.integrity_sha256
     ):
         raise ValueError("original sibling source, host, interface or effects changed")
     if verify_graphs:
         host.source.verify()
         host.module.verify()
     host.core.verify()
-    preparation = host.receipt.get('weight_preparation')
+    preparation = host.receipt.get("weight_preparation")
     if preparation is not None:
         from merlin.common.digest import sha256_file
 
         from .weight_prepack import revalidate_build_preparation
 
-        for pin in (preparation, preparation['capture_binding']):
-            if sha256_file(pin['path']) != pin['sha256']:
-                raise ValueError('sibling original weight preparation changed')
+        for pin in (preparation, preparation["capture_binding"]):
+            if sha256_file(pin["path"]) != pin["sha256"]:
+                raise ValueError("sibling original weight preparation changed")
         # Disjoint components often share one exact model/weight preparation.
         # Their receipt pins are still read above; the expensive source/weight
         # proof need run only once inside this callback-free validation batch.
         # A new require_components invocation starts with a fresh set.
         key = json.dumps(preparation, sort_keys=True, allow_nan=False)
         if checked_preparations is None or key not in checked_preparations:
-            revalidate_build_preparation(preparation['path'])
+            revalidate_build_preparation(preparation["path"])
             if checked_preparations is not None:
                 checked_preparations.add(key)
 
@@ -185,8 +201,11 @@ def _command_buffer(core, target, *, readouts=None):
         raise ValueError("sibling core must retain its exact shared input and distinct member weights")
     names = {arg: "input_0" if index == 0 else "weight_" + str(index - 1) for index, arg in enumerate(args)}
     tensors = {
-        names[arg]: {"shape": list(arg.type.get_shape()), "dtype": str(arg.type.element_type),
-                     "role": "input" if index == 0 else "weight"}
+        names[arg]: {
+            "shape": list(arg.type.get_shape()),
+            "dtype": str(arg.type.element_type),
+            "role": "input" if index == 0 else "weight",
+        }
         for index, arg in enumerate(args)
     }
     from .sibling_readout_commands import source_readout_commands
@@ -195,14 +214,22 @@ def _command_buffer(core, target, *, readouts=None):
     commands = []
     for index, weight in enumerate(weights):
         resident, accumulator, output = (prefix + str(index) for prefix in ("resident_", "acc_", "out_"))
-        commands.extend((
-            {"opcode": "RES_PACK", "operands": {"src": names[weight], "dst": resident},
-             "attributes": {"layout": "packed_rhs"}},
-            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": names[lhs], "rhs": resident, "dst": accumulator}},
-            {"opcode": "COMMIT", "operands": {"src": accumulator, "dst": output},
-             "attributes": member_readouts[index]},
-            {"opcode": "EVICT", "operands": {"handle": resident}},
-        ))
+        commands.extend(
+            (
+                {
+                    "opcode": "RES_PACK",
+                    "operands": {"src": names[weight], "dst": resident},
+                    "attributes": {"layout": "packed_rhs"},
+                },
+                {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": names[lhs], "rhs": resident, "dst": accumulator}},
+                {
+                    "opcode": "COMMIT",
+                    "operands": {"src": accumulator, "dst": output},
+                    "attributes": member_readouts[index],
+                },
+                {"opcode": "EVICT", "operands": {"handle": resident}},
+            )
+        )
         if provenance:
             commands[-3]["attributes"] = provenance[index]
     return {"abi_version": "0.1", "target": target, "tensors": tensors, "commands": commands}, group
@@ -231,10 +258,13 @@ def prepare_host(device, selected, source, directory):
     if _sha(_text(actual)) != selected.source_ir_sha256:
         from .prepacked_device_capture import original_sibling_source
 
-        if not (directory.parent / 'bundle_preparation.json').is_file():
-            raise ValueError('sibling selection differs from original source SSA; no checked layout preparation')
+        if not (directory.parent / "bundle_preparation.json").is_file():
+            raise ValueError("sibling selection differs from original source SSA; no checked layout preparation")
         original, weight_preparation = original_sibling_source(
-            device, selected, actual_source=source, work=directory.parent,
+            device,
+            selected,
+            actual_source=source,
+            work=directory.parent,
         )
     prepared = prepare_sibling_source_host(actual, effects=selected.effects)
     cb, group = _command_buffer(prepared.core, device.device)
@@ -245,7 +275,11 @@ def prepare_host(device, selected, source, directory):
         from .device_offload import rewrite_groups_to_device
 
         census = rewrite_groups_to_device(
-            actual.clone(), device.device, select=device.select, capture=device.capture, model=device.model,
+            actual.clone(),
+            device.device,
+            select=device.select,
+            capture=device.capture,
+            model=device.model,
             require_complete_groups=True,
         )
         if census.moved != len(group.widths):
@@ -257,25 +291,43 @@ def prepare_host(device, selected, source, directory):
     from .exact_offload import _package_sha256
 
     symbol = prepared.writer.symbol + "_device"
-    entry = {"schema": "original_sibling_source_entry_v1", "name": symbol,
-             "source_ir_sha256": selected.source_ir_sha256, "core_ir_sha256": _sha(_text(prepared.core))}
+    entry = {
+        "schema": "original_sibling_source_entry_v1",
+        "name": symbol,
+        "source_ir_sha256": selected.source_ir_sha256,
+        "core_ir_sha256": _sha(_text(prepared.core)),
+    }
     rewrite = DeviceRewrite(
         device.device,
         routed=(Routed(symbol, (group.m, sum(group.widths)), (group.k,), ("i8", "i8", "i32"), group=0),),
-        signatures={symbol: (group.m, sum(group.widths), group.k)}, granularity=BY_GROUP,
-        entries={symbol: entry}, programs={symbol: cb}, model_sha256=selected.source_ir_sha256,
+        signatures={symbol: (group.m, sum(group.widths), group.k)},
+        granularity=BY_GROUP,
+        entries={symbol: entry},
+        programs={symbol: cb},
+        model_sha256=selected.source_ir_sha256,
         package_sha256=_package_sha256(Path(device.package_dir)),
         arg_access={symbol: ("read",) * (len(group.widths) + 1) + ("write",) * len(group.widths)},
         expected_interfaces={symbol: {"mlir": interface, "sha256": _sha(interface)}},
         call_buffers={symbol: [{"role": b.role, "shape": list(b.shape), "dtype": b.dtype} for b in buffers]},
     )
     host = RoutedSiblingHost(
-        original, prepared.module, prepared.core, prepared.writer, symbol, interface, rewrite,
-        {**prepared.receipt, "source_ir_sha256": selected.source_ir_sha256,
-         "prepared_source_ir_sha256": _sha(_text(actual)),
-         "weight_preparation": weight_preparation,
-         "interface_sha256": _sha(interface), "source_group": group.record(),
-         "original_target_and_linked_image_admission_required": True}, "",
+        original,
+        prepared.module,
+        prepared.core,
+        prepared.writer,
+        symbol,
+        interface,
+        rewrite,
+        {
+            **prepared.receipt,
+            "source_ir_sha256": selected.source_ir_sha256,
+            "prepared_source_ir_sha256": _sha(_text(actual)),
+            "weight_preparation": weight_preparation,
+            "interface_sha256": _sha(interface),
+            "source_group": group.record(),
+            "original_target_and_linked_image_admission_required": True,
+        },
+        "",
     )
     host = replace(host, integrity_sha256=_sha(json.dumps(_snapshot(host), sort_keys=True, allow_nan=False)))
     require_host(host, selected)
@@ -290,8 +342,9 @@ def prepare_host(device, selected, source, directory):
 
 def borrowed_bridge_source(symbol, borrowed_symbol, call, result_arguments):
     """Emit stock descriptor transport, reproducible from the source-bound ABI."""
-    if any(type(value) is not str or not value.isascii() or not value.isidentifier()
-           for value in (symbol, borrowed_symbol)):
+    if any(
+        type(value) is not str or not value.isascii() or not value.isidentifier() for value in (symbol, borrowed_symbol)
+    ):
         raise ValueError("sibling descriptor bridge needs closed C symbols")
     outputs = [index for index, row in enumerate(call) if row["role"].startswith("out_")]
     if len(outputs) < 2 or outputs != list(result_arguments):
@@ -314,8 +367,10 @@ def _borrowed_bridge(unit, host):
     if host.device_symbol not in unit.symbols:
         raise ValueError("sibling descriptor bridge lost its ordinary logical shim")
     return borrowed_bridge_source(
-        host.device_symbol, host.writer.borrowed_symbol,
-        host.rewrite.call_buffers[host.device_symbol], host.writer.result_arguments,
+        host.device_symbol,
+        host.writer.borrowed_symbol,
+        host.rewrite.call_buffers[host.device_symbol],
+        host.writer.result_arguments,
     )
 
 
@@ -331,30 +386,39 @@ def with_borrowed_bridges(unit, selected, host, *, symbols=None):
     """
     from .device_shim import ShimUnit
 
-    if (type(unit) is not ShimUnit or type(unit.text) is not str
+    if (
+        type(unit) is not ShimUnit
+        or type(unit.text) is not str
         or type(unit.symbols) is not tuple
         or any(type(symbol) is not str for symbol in unit.symbols)
-        or symbols is not None and (type(symbols) is not tuple
+        or symbols is not None
+        and (
+            type(symbols) is not tuple
             or any(type(symbol) is not str for symbol in symbols)
-            or len(set(symbols)) != len(symbols))):
+            or len(set(symbols)) != len(symbols)
+        )
+    ):
         raise ValueError("sibling bridge batch needs a logical shim and distinct original symbols")
     require_host(host, selected)
     components = component_hosts(host)
     original_symbols = tuple(component.device_symbol for component in components)
-    if (len(set(original_symbols)) != len(original_symbols)
-        or symbols is not None and not set(symbols) <= set(original_symbols)):
+    if (
+        len(set(original_symbols)) != len(original_symbols)
+        or symbols is not None
+        and not set(symbols) <= set(original_symbols)
+    ):
         raise ValueError("sibling bridge batch changed its original component roster")
     wanted = set(original_symbols if symbols is None else symbols)
-    bridges = tuple(_borrowed_bridge(unit, component) for component in components
-                    if component.device_symbol in wanted)
+    bridges = tuple(_borrowed_bridge(unit, component) for component in components if component.device_symbol in wanted)
     return replace(unit, text=unit.text + "".join("\n" + bridge for bridge in bridges))
 
 
 def require_emission(artifact, selected, host, *, entry_symbol):
     """Read the real LLVM entry in either supported textual spelling."""
     require_host(host, selected)
-    require_logical_emission(artifact, entry_symbol=entry_symbol,
-                             arity=len(host.rewrite.call_buffers[host.device_symbol]))
+    require_logical_emission(
+        artifact, entry_symbol=entry_symbol, arity=len(host.rewrite.call_buffers[host.device_symbol])
+    )
 
 
 def require_logical_emission(artifact, *, entry_symbol, arity):
@@ -366,8 +430,7 @@ def require_logical_emission(artifact, *, entry_symbol, arity):
 
     module = Parser(make_llvm_context(), artifact).parse_module()
     module.verify()
-    entries = [op for op in module.body.block.ops
-               if isinstance(op, llvm.FuncOp) and op.sym_name.data == entry_symbol]
+    entries = [op for op in module.body.block.ops if isinstance(op, llvm.FuncOp) and op.sym_name.data == entry_symbol]
     if len(entries) != 1:
         raise ValueError("sibling artifact has no unique contract-named LLVM kernel entry")
     entry = entries[0]

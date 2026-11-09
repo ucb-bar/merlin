@@ -16,6 +16,8 @@ from dataclasses import asdict, dataclass
 from xdsl.dialects import arith, builtin, func, scf
 from xdsl.ir import Block, Region
 
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.xdsl_dialects.rolling_window import (
     AwaitOp,
     BeginOp,
@@ -27,9 +29,6 @@ from merlin.xdsl_dialects.rolling_window import (
     StageRowOp,
     TransferType,
 )
-
-from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.window_transfer import Window2D
 
 SCHEMA = "merlin.rolling_window.v1"
 GROUP_SCHEMA = "merlin.grouped_rolling_window.v1"
@@ -54,8 +53,12 @@ class RollingWindowPlan:
             raise ValueError("rolling cache requires original typed window and caller-owned byte capacity")
         self.window.__post_init__()
         self.cache.__post_init__()
-        if (type(self.slots) is not int or type(self.image_windows) is not int or not 0 < self.image_windows < 1 << 63
-                or self.slots % self.image_windows):
+        if (
+            type(self.slots) is not int
+            or type(self.image_windows) is not int
+            or not 0 < self.image_windows < 1 << 63
+            or self.slots % self.image_windows
+        ):
             raise ValueError("image windows require distinct equal caller-owned row ranges")
         if (
             type(self.source_identity) is not str
@@ -291,8 +294,14 @@ def _materialize_rolling_window(plan, output_rows):
             source_y = binary(inner, arith.SubiOp, unbiased, w.padding[0])
             slot = binary(inner, arith.RemUIOp, unbiased, plan.image_slots)
             if plan.image_windows > 1:
-                slot = binary(inner, arith.AddiOp, slot,
-                    binary(inner, arith.MuliOp, binary(inner, arith.RemUIOp, image, plan.image_windows), plan.image_slots))
+                slot = binary(
+                    inner,
+                    arith.AddiOp,
+                    slot,
+                    binary(
+                        inner, arith.MuliOp, binary(inner, arith.RemUIOp, image, plan.image_windows), plan.image_slots
+                    ),
+                )
             destination = binary(
                 inner, arith.AddiOp, plan.cache.start, binary(inner, arith.MuliOp, slot, plan.row_stride_bytes)
             )
@@ -320,9 +329,12 @@ def _materialize_rolling_window(plan, output_rows):
         ready = AwaitOp.create(operands=[begin.transfer], result_types=[ResidentType()])
         consume = (
             ConsumeOp.create(operands=[ready.resident, image, y], result_types=[ConsumerType()])
-            if output_rows is None else
-            ConsumeGroupOp.create(operands=[ready.resident, image, y], result_types=[ConsumerType()],
-                properties={"output_rows": builtin.IntegerAttr(consumers, 64)})
+            if output_rows is None
+            else ConsumeGroupOp.create(
+                operands=[ready.resident, image, y],
+                result_types=[ConsumerType()],
+                properties={"output_rows": builtin.IntegerAttr(consumers, 64)},
+            )
         )
         out.add_ops((ready, consume, CompleteOp.create(operands=[consume.consumer])))
 
@@ -331,17 +343,20 @@ def _materialize_rolling_window(plan, output_rows):
             full, tail = divmod(plan.output_y_count, output_rows)
             first_count = output_rows if full else tail
             advance = w.stride[0]
-            epoch(out, image, plan.output_y_first, 0,
-                  plan.span_rows + (first_count - 1) * advance, first_count)
+            epoch(out, image, plan.output_y_first, 0, plan.span_rows + (first_count - 1) * advance, first_count)
             if full > 1:
+
                 def group(inner, index):
-                    y = binary(inner, arith.AddiOp, plan.output_y_first,
-                               binary(inner, arith.MuliOp, index, output_rows))
+                    y = binary(
+                        inner, arith.AddiOp, plan.output_y_first, binary(inner, arith.MuliOp, index, output_rows)
+                    )
                     epoch(inner, image, y, plan.span_rows - advance, output_rows * advance, output_rows)
+
                 loop(out, 1, full, group)
             if full and tail:
-                epoch(out, image, plan.output_y_first + full * output_rows,
-                      plan.span_rows - advance, tail * advance, tail)
+                epoch(
+                    out, image, plan.output_y_first + full * output_rows, plan.span_rows - advance, tail * advance, tail
+                )
             return
         epoch(out, image, plan.output_y_first, 0, plan.span_rows)
         if plan.output_y_count > 1:
@@ -356,8 +371,9 @@ def _materialize_rolling_window(plan, output_rows):
     block.add_op(func.ReturnOp())
     module = builtin.ModuleOp(
         [func.FuncOp("rolling_window", ([], []), Region(block))],
-        attributes={SCHEMA: builtin.StringAttr(plan.identity)} if output_rows is None else
-                   {GROUP_SCHEMA: builtin.StringAttr(_group_identity(plan, output_rows))},
+        attributes={SCHEMA: builtin.StringAttr(plan.identity)}
+        if output_rows is None
+        else {GROUP_SCHEMA: builtin.StringAttr(_group_identity(plan, output_rows))},
     )
     _verify_rolling_window(module, plan, output_rows)
     return module
@@ -541,8 +557,8 @@ def _verify_rolling_window(module, plan, output_rows):
             image,
             source_y,
             ((image * h + source_y) * width + plan.source_columns[0]) * ci,
-            plan.cache.start + ((unbiased % plan.image_slots)
-                + (image % plan.image_windows) * plan.image_slots) * plan.row_stride_bytes,
+            plan.cache.start
+            + ((unbiased % plan.image_slots) + (image % plan.image_windows) * plan.image_slots) * plan.row_stride_bytes,
             z3.And(source_y >= 0, source_y < h),
         ]
         prove(
@@ -573,23 +589,46 @@ def _verify_rolling_window(module, plan, output_rows):
         full, tail = divmod(plan.output_y_count, output_rows)
         first_count = output_rows if full else tail
         advance = w.stride[0]
-        require(len(operations) == 5 + int(full > 1) + 5 * int(bool(full and tail)),
-                "missing or extra grouped transport/consumer epochs")
-        epoch(View(), z3.IntVal(plan.output_y_first), env, image_domain, 0,
-              plan.span_rows + (first_count - 1) * advance, first_count)
+        require(
+            len(operations) == 5 + int(full > 1) + 5 * int(bool(full and tail)),
+            "missing or extra grouped transport/consumer epochs",
+        )
+        epoch(
+            View(),
+            z3.IntVal(plan.output_y_first),
+            env,
+            image_domain,
+            0,
+            plan.span_rows + (first_count - 1) * advance,
+            first_count,
+        )
         if full > 1:
             loop = operations[5]
             bounds(loop, (1, full, 1))
             group = z3.Int("rolling_output_group")
-            epoch(loop.body.block, plan.output_y_first + group * output_rows,
-                  {**env, loop.body.block.args[0]: group},
-                  [*image_domain, group >= 1, group < full],
-                  plan.span_rows - advance, output_rows * advance, output_rows)
+            epoch(
+                loop.body.block,
+                plan.output_y_first + group * output_rows,
+                {**env, loop.body.block.args[0]: group},
+                [*image_domain, group >= 1, group < full],
+                plan.span_rows - advance,
+                output_rows * advance,
+                output_rows,
+            )
         if full and tail:
+
             class TailView:
                 ops = operations[-5:]
-            epoch(TailView(), z3.IntVal(plan.output_y_first + full * output_rows), env, image_domain,
-                  plan.span_rows - advance, tail * advance, tail)
+
+            epoch(
+                TailView(),
+                z3.IntVal(plan.output_y_first + full * output_rows),
+                env,
+                image_domain,
+                plan.span_rows - advance,
+                tail * advance,
+                tail,
+            )
     else:
         epoch(View(), z3.IntVal(plan.output_y_first), env, image_domain, 0, plan.span_rows)
     if output_rows is None and plan.output_y_count > 1:
@@ -615,19 +654,26 @@ def _verify_rolling_window(module, plan, output_rows):
     # complete original dilated taps, and horizontal cropped-row coverage.
     a, c, base = z3.Ints("rolling_live_a rolling_live_c rolling_base_residue")
     domain = [a >= 0, a < horizon, c >= 0, c < horizon, base >= 0, base < plan.image_slots]
-    prove(z3.Implies((base + a) % plan.image_slots == (base + c) % plan.image_slots, a == c), domain, "live cache rows alias")
+    prove(
+        z3.Implies((base + a) % plan.image_slots == (base + c) % plan.image_slots, a == c),
+        domain,
+        "live cache rows alias",
+    )
     if plan.image_windows > 1:
-        prove((image % plan.image_windows) * plan.image_slots + a
-              != ((image + 1) % plan.image_windows) * plan.image_slots + c,
-              [image >= 0, image < b, a >= 0, a < plan.image_slots, c >= 0, c < plan.image_slots],
-              "adjacent original images share a private input row")
+        prove(
+            (image % plan.image_windows) * plan.image_slots + a
+            != ((image + 1) % plan.image_windows) * plan.image_slots + c,
+            [image >= 0, image < b, a >= 0, a < plan.image_slots, c >= 0, c < plan.image_slots],
+            "adjacent original images share a private input row",
+        )
     advance = w.stride[0]
     if output_rows is not None:
         member, tap = z3.Ints("rolling_group_member rolling_group_tap")
-        prove(z3.And(member * advance + tap * w.dilation[0] >= 0,
-                     member * advance + tap * w.dilation[0] < horizon),
-              [member >= 0, member < min(output_rows, plan.output_y_count), tap >= 0, tap < w.kernel[0]],
-              "group union misses an original consumer row tap")
+        prove(
+            z3.And(member * advance + tap * w.dilation[0] >= 0, member * advance + tap * w.dilation[0] < horizon),
+            [member >= 0, member < min(output_rows, plan.output_y_count), tap >= 0, tap < w.kernel[0]],
+            "group union misses an original consumer row tap",
+        )
         # The previous complete group's union contains exactly the retained
         # prefix of the next group. Every other current-union row is written
         # once by the actual checked frontier loop; injectivity above prevents
@@ -635,12 +681,20 @@ def _verify_rolling_window(module, plan, output_rows):
         group, retained = z3.Ints("rolling_group_inductive rolling_group_retained")
         old = (group - output_rows) * advance + output_rows * advance + retained
         current = group * advance + retained
-        prove(z3.And(old == current, old % plan.image_slots == current % plan.image_slots,
-                     output_rows * advance + retained < horizon),
-              [group >= plan.output_y_first + output_rows,
-               group < plan.output_y_first + plan.output_y_count,
-               retained >= 0, retained < plan.span_rows - advance],
-              "previous group does not preserve the current retained source rows")
+        prove(
+            z3.And(
+                old == current,
+                old % plan.image_slots == current % plan.image_slots,
+                output_rows * advance + retained < horizon,
+            ),
+            [
+                group >= plan.output_y_first + output_rows,
+                group < plan.output_y_first + plan.output_y_count,
+                retained >= 0,
+                retained < plan.span_rows - advance,
+            ],
+            "previous group does not preserve the current retained source rows",
+        )
     if advance < plan.span_rows:
         y = z3.Int("rolling_inductive_y")
         old = (y - 1) * advance + (advance + a)
@@ -702,13 +756,17 @@ def _verify_rolling_window(module, plan, output_rows):
             "original consumer reads only checked window view and completes at complete",
         ],
         target_qualification=False,
-        **({} if output_rows is None else dict(
-            output_rows_per_group=output_rows,
-            consumer_groups=b * ((plan.output_y_count + output_rows - 1) // output_rows),
-            source_row_union=horizon,
-            max_staged_rows_per_epoch=horizon,
-            completion="await all actual group transports before consumer; full consumer completion before any reuse",
-        )),
+        **(
+            {}
+            if output_rows is None
+            else dict(
+                output_rows_per_group=output_rows,
+                consumer_groups=b * ((plan.output_y_count + output_rows - 1) // output_rows),
+                source_row_union=horizon,
+                max_staged_rows_per_epoch=horizon,
+                completion="await all actual group transports before consumer; full consumer completion before any reuse",
+            )
+        ),
     )
 
 
@@ -827,8 +885,9 @@ def emit_rolling_window_lookup(plan, builder, output_y, output_x, ky, kx, channe
     offset = builder.op("add", builder.op("mul", builder.op("sub", ix, plan.source_columns[0]), ci), channel)
     slot = builder.op("urem", unbiased_y, plan.image_slots)
     if plan.image_windows > 1:
-        slot = builder.op("add", slot, builder.op("mul",
-            builder.op("urem", image, plan.image_windows), plan.image_slots))
+        slot = builder.op(
+            "add", slot, builder.op("mul", builder.op("urem", image, plan.image_windows), plan.image_slots)
+        )
     address = builder.op(
         "add",
         builder.op(

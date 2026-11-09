@@ -49,24 +49,35 @@ def verify_partition(source, partitioned, *, entry: str, symbols: tuple[str, ...
         if type(call) is not func.CallOp or call.callee.root_reference.data not in symbols:
             continue
         name = call.callee.root_reference.data
-        if (call.parent is not driver.body.block or call.attributes or
-            set(call.properties) != {"callee"} or call.callee.nested_references.data):
+        if (
+            call.parent is not driver.body.block
+            or call.attributes
+            or set(call.properties) != {"callee"}
+            or call.callee.nested_references.data
+        ):
             raise ValueError("outlined invocation has unmodeled effects, metadata or control")
         helper = by_name[name]
-        if (helper.attributes or set(helper.properties) - {"sym_name", "function_type", "sym_visibility"}
-            or getattr(helper.sym_visibility, "data", None) != "private" or len(helper.body.blocks) != 1):
+        if (
+            helper.attributes
+            or set(helper.properties) - {"sym_name", "function_type", "sym_visibility"}
+            or getattr(helper.sym_visibility, "data", None) != "private"
+            or len(helper.body.blocks) != 1
+        ):
             raise ValueError("outlined function must be a plain private definition")
         block = helper.body.block
         terminator = block.last_op
         if type(terminator) is not func.ReturnOp or terminator.attributes or terminator.properties:
             raise ValueError("outlined function has no ordinary return")
-        if (tuple(v.type for v in call.operands) != tuple(a.type for a in block.args) or
-            tuple(v.type for v in call.results) != tuple(v.type for v in terminator.operands)):
+        if tuple(v.type for v in call.operands) != tuple(a.type for a in block.args) or tuple(
+            v.type for v in call.results
+        ) != tuple(v.type for v in terminator.operands):
             raise ValueError("outlined invocation changed its ordered SSA boundary")
         mapping = dict(zip(block.args, call.operands, strict=True))
         for operation in tuple(block.ops)[:-1]:
-            if any(type(nested) is func.CallOp and nested.callee.root_reference.data in symbols
-                   for nested in operation.walk()):
+            if any(
+                type(nested) is func.CallOp and nested.callee.root_reference.data in symbols
+                for nested in operation.walk()
+            ):
                 raise ValueError("nested outlined invocations are outside this partition contract")
             driver.body.block.insert_op_before(operation.clone(value_mapper=mapping), call)
         for result, value in zip(call.results, terminator.operands, strict=True):
@@ -80,8 +91,9 @@ def verify_partition(source, partitioned, *, entry: str, symbols: tuple[str, ...
     restored.verify()
     if not source.is_structurally_equivalent(restored):
         raise ValueError("partition beta-expansion differs from the complete original source")
-    return PartitionVerification(ir_digest(source), ir_digest(partitioned),
-                                 hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
+    return PartitionVerification(
+        ir_digest(source), ir_digest(partitioned), hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    )
 
 
 def verify_region_preview(source, preview, *, entry, operations, inputs, outputs):

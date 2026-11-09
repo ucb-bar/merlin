@@ -4,6 +4,7 @@ These records describe source meaning, implementation candidates and target limi
 Accuracy policy, reference evaluation and admission remain independent consumers.
 Serialization and schema identities are preserved from the original contract owner.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -17,9 +18,16 @@ CONTRACT_SCHEMA = "target_neutral_quantized_epilogue_contract_v1"
 _GRANULARITIES = frozenset({"per_tensor", "per_axis"})
 _BIAS_DOMAINS = frozenset({"none", "real", "accumulator"})
 _ROUNDINGS = frozenset({"round_to_nearest_even"})
-_EXECUTABLE_STAGES = frozenset({
-    "bias_i32", "scale_f32", "round_to_nearest_even", "output_zero_point", "clamp", "relu",
-})
+_EXECUTABLE_STAGES = frozenset(
+    {
+        "bias_i32",
+        "scale_f32",
+        "round_to_nearest_even",
+        "output_zero_point",
+        "clamp",
+        "relu",
+    }
+)
 
 __all__ = [
     "CONTRACT_SCHEMA",
@@ -33,9 +41,9 @@ __all__ = [
 
 def canonical_sha256(value: Mapping[str, Any]) -> str:
     """Hash one receipt using the framework's canonical JSON representation."""
-    payload = json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
-    ).encode("utf-8")
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode(
+        "utf-8"
+    )
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -206,9 +214,7 @@ class QuantizedEpilogueCandidate:
         if self.activation == "relu":
             required.add("relu")
         if set(self.ordered_stages) != required:
-            raise ValueError(
-                f"candidate stage set {list(self.ordered_stages)!r} != {sorted(required)!r}"
-            )
+            raise ValueError(f"candidate stage set {list(self.ordered_stages)!r} != {sorted(required)!r}")
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> QuantizedEpilogueCandidate:
@@ -299,8 +305,7 @@ class QuantizedEpilogueCapability:
         if candidate.scale_granularity not in self.scale_granularities:
             reasons.append("candidate_scale_granularity_not_supported")
         if candidate.scale_granularity == "per_axis" and (
-            candidate.scale_axis != source.channel_axis
-            or len(candidate.scales) != source.channel_count
+            candidate.scale_axis != source.channel_axis or len(candidate.scales) != source.channel_count
         ):
             reasons.append("candidate_scale_axis_or_extent_not_supported")
         if candidate.bias_domain not in self.bias_domains:

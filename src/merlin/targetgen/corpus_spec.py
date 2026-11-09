@@ -22,12 +22,11 @@ from typing import Any
 from merlin.targetgen.capsule_dram import dtype_bits
 
 from .capsule_intent import _semantic_block as _semantic_block
-from .corpus_pool import build as build_maxpool2d
-from .corpus_sibling_feed import build as _build_sibling_feed
-
 from .corpus_activation import (
     activation_matmul_program as activation_matmul_program,
 )
+from .corpus_pool import build as build_maxpool2d
+from .corpus_sibling_feed import build as _build_sibling_feed
 
 # canonical dtype token -> (capsule.yaml spelling, MLIR spelling, is_integer). Keyed on the dtype, never
 # on a target — a target selects its dtypes via its compute-unit contract.
@@ -1224,10 +1223,10 @@ def build_resident_reuse(entry: dict, binding: CorpusBinding) -> tuple[dict, str
         "numeric_policy": _numeric_policy(binding, binding.accum_dtype, None),
         "expected": {
             "instruction_classes": binding.classes_for(op="matmul", output_dtype=adt),
-            "modes": {"resident_reuse": sum(
-                (mm.get("M", mm.get("M_tiles", 1) * D) + D - 1) // D
-                for mm in entry["matmuls"]
-            ) > 1},
+            "modes": {
+                "resident_reuse": sum((mm.get("M", mm.get("M_tiles", 1) * D) + D - 1) // D for mm in entry["matmuls"])
+                > 1
+            },
         },
         "required_oracle_tiers": list(binding.tiers),
         "vcs": "optional",
@@ -1469,9 +1468,13 @@ def build_residual_add(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     if ordered_scales is not None:
         import math
 
-        if (type(ordered_scales) is not list or len(ordered_scales) != 3
-                or any(type(value) not in (int, float) or not math.isfinite(value) or value <= 0
-                       for value in ordered_scales)):
+        if (
+            type(ordered_scales) is not list
+            or len(ordered_scales) != 3
+            or any(
+                type(value) not in (int, float) or not math.isfinite(value) or value <= 0 for value in ordered_scales
+            )
+        ):
             raise ValueError("residual source_scales requires three positive finite ordered scalars")
         attrs["source_scales"] = list(ordered_scales)
         ordered_text = "source_scales = [" + ", ".join(f"{float(value)!r} : f32" for value in ordered_scales) + "], "
@@ -2084,7 +2087,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     L = _iface_prelude(binding.target, entry.get("comment", ""))
     L += [
         f'  %{ifm} = merlin_iface.tensor {{name = "{ifm}", role = "input"}} : tensor<1x{H}x{W}x{ci}x{midt}>',
-        f'  %{weight} = merlin_iface.tensor {weight_attrs} : {weight_type}',
+        f"  %{weight} = merlin_iface.tensor {weight_attrs} : {weight_type}",
         *(
             [
                 f'  %{bias} = merlin_iface.tensor {{name = "{bias}", role = "bias"}} : '
@@ -2465,6 +2468,7 @@ BUILDERS["spatial_producer_pool"] = build_spatial_producer_pool
 def build_quantized_producer_sum(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     """Preserve the original producer Q1 and ordered residual Q2/activation."""
     from .corpus_quantized_sum import build as build_pair
+
     return build_pair(entry, binding)
 
 

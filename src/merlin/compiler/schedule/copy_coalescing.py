@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from merlin.sched.ir import Kernel
-
 from merlin.compiler.schedule.copy_coalescing_check import (
     CopyMergeLaw,
     _admitted,
@@ -20,6 +18,7 @@ from merlin.compiler.schedule.copy_coalescing_check import (
     verify_coalesced_copies,
 )
 from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable, _problem, _project
+from merlin.sched.ir import Kernel
 
 
 @dataclass(frozen=True)

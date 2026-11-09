@@ -112,11 +112,14 @@ def audit_built_device_host_compute(
         digests = tuple(file_sha256(path) for path in (artifact, llvm_ir, obj))
         key = (symbol, metric["elements"], metric["element_bytes"], *digests)
         if key in completed:
-            records.append({
-                **completed[key], "group": index,
-                "source_group": source_group if source_composition is None else None,
-                **({"source_groups": list(source_group)} if source_composition is not None else {}),
-            })
+            records.append(
+                {
+                    **completed[key],
+                    "group": index,
+                    "source_group": source_group if source_composition is None else None,
+                    **({"source_groups": list(source_group)} if source_composition is not None else {}),
+                }
+            )
             continue
         context = Context(allow_unregistered=True)
         for dialect in (builtin.Builtin, llvm.LLVM, func.Func):
@@ -279,7 +282,9 @@ def _composed_source_metrics(assigned, source, composition):
             if covered.intersection(members):
                 raise ValueError("component audit duplicates original work")
             covered.update(members)
-            subsource = source_subset(source, set(source["eligible_groups"] + source.get("optional_groups", [])) - members)
+            subsource = source_subset(
+                source, set(source["eligible_groups"] + source.get("optional_groups", [])) - members
+            )
             rows = [r for r in assigned if r["symbol"] == component["physical_symbol"]]
             subgroups, submetrics = _composed_source_metrics(rows, subsource, component)
             if set(groups).intersection(subgroups):
@@ -297,11 +302,14 @@ def _composed_source_metrics(assigned, source, composition):
         if not set(source["eligible_groups"]) <= covered | set(joined.values()):
             raise ValueError("component audit omits original required work")
         return groups, metrics
-    if (not isinstance(composition, Mapping)
+    if (
+        not isinstance(composition, Mapping)
         or composition.get("schema") != "merlin.original_sibling_source_composition.v1"
         or composition.get("original_source_denominator_unchanged") is not True
-        or len(assigned) != 1 or assigned[0].get("group") != composition.get("physical_group")
-        or assigned[0].get("symbol") != composition.get("physical_symbol")):
+        or len(assigned) != 1
+        or assigned[0].get("group") != composition.get("physical_group")
+        or assigned[0].get("symbol") != composition.get("physical_symbol")
+    ):
         raise ValueError("device audit needs its independently rederived original source composition")
     members = composition.get("members")
     if not isinstance(members, list) or len(members) < 2:
@@ -312,24 +320,33 @@ def _composed_source_metrics(assigned, source, composition):
             raise ValueError("source composition member is absent")
         index = member.get("source_group")
         original = source.get("source_group_contractions", {}).get(index)
-        if (not isinstance(original, Mapping) or original.get("dtypes") != ["i8", "i8", "i32"]
-            or len(original.get("parallel", [])) != 2 or len(original.get("reduction", [])) != 1):
+        if (
+            not isinstance(original, Mapping)
+            or original.get("dtypes") != ["i8", "i8", "i32"]
+            or len(original.get("parallel", [])) != 2
+            or len(original.get("reduction", [])) != 1
+        ):
             raise ValueError("composed device audit lacks original raw product geometry")
         m, n = original["parallel"]
         k = original["reduction"][0]
-        if (any(type(v) is not int or v <= 0 for v in (m, n, k))
+        if (
+            any(type(v) is not int or v <= 0 for v in (m, n, k))
             or member.get("geometry_m_k_n") != [m, k, n]
             or member.get("raw_output_elements") != m * n
             or member.get("raw_output_element_bytes") != 4
-            or member.get("source_useful_macs") != m * k * n):
+            or member.get("source_useful_macs") != m * k * n
+        ):
             raise ValueError("composed device budget differs from original product")
         indices.append(index)
         elements += m * n
-    if (len(set(indices)) != len(indices) or not set(source["eligible_groups"]) <= set(indices)
+    if (
+        len(set(indices)) != len(indices)
+        or not set(source["eligible_groups"]) <= set(indices)
         or composition.get("required_source_groups") != source["eligible_groups"]
         or composition.get("covered_source_groups") != indices
         or composition.get("raw_output_elements") != elements
-        or composition.get("raw_output_element_bytes") != 4):
+        or composition.get("raw_output_element_bytes") != 4
+    ):
         raise ValueError("composed device budget omits or duplicates original source work")
     physical = composition["physical_group"]
     return {physical: tuple(indices)}, {physical: {"elements": elements, "element_bytes": 4}}

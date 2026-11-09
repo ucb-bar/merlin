@@ -34,8 +34,9 @@ def _recognize_bf16_f32_chop_binary(op, *, subtract: bool) -> tuple[object, obje
 
     mode = "subtract" if subtract else "add"
     arithmetic_op = SubfOp if subtract else AddfOp
-    admitted_domain = ("finite-normal-exact-fp32-difference-or-zero-v1" if subtract
-                       else "finite-normal-exact-fp32-sum-v1")
+    admitted_domain = (
+        "finite-normal-exact-fp32-difference-or-zero-v1" if subtract else "finite-normal-exact-fp32-sum-v1"
+    )
     if type(op) is not GenericOp or len(op.inputs) != 2 or len(op.outputs) != 1 or len(op.results) != 1:
         raise InvalidLinalgPattern(f"BF16 {mode} needs two inputs and one tensor result")
     if op.successors or set(op.properties) != {"indexing_maps", "iterator_types", "operandSegmentSizes"}:

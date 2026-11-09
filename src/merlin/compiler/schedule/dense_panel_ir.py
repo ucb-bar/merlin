@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+
 from merlin.sched.ir import Call, Loop
 
 DRAIN = "merlin_dense_panel_drain"

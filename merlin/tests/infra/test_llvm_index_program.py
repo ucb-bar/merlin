@@ -25,18 +25,17 @@ class ExecutingBuilder:
 
 
 def test_actual_loop_indices_and_tail_expressions_reach_the_instruction_callback():
-    inner = Call("write", (("offset", Var("m") * 9 + Var("n") * 4),
-                           ("width", select("n", 2, 1, 4))))
+    inner = Call("write", (("offset", Var("m") * 9 + Var("n") * 4), ("width", select("n", 2, 1, 4))))
     kernel = Kernel("index_test", (), (Loop("m", 2, (Loop("n", 3, (inner,)),)),))
     observed = []
     report = emit_index_program(kernel, ExecutingBuilder(), lambda instr, args: observed.append((instr, args)))
-    assert observed == [("write", {"offset": m * 9 + n * 4, "width": 1 if n == 2 else 4})
-                        for m in range(2) for n in range(3)]
+    assert observed == [
+        ("write", {"offset": m * 9 + n * 4, "width": 1 if n == 2 else 4}) for m in range(2) for n in range(3)
+    ]
     assert report["kernel_sha256"] == kernel.digest()
 
 
-@pytest.mark.parametrize("change", [{"unit": "copy"}, {"produces": "ready"},
-                                     {"sets": (("mode", Const(1)),)}])
+@pytest.mark.parametrize("change", [{"unit": "copy"}, {"produces": "ready"}, {"sets": (("mode", Const(1)),)}])
 def test_unsupported_annotations_refuse_before_any_emission(change):
     call = replace(Call("copy", ()), **change)
     kernel = Kernel("annotated", (), (Call("first", ()), call))

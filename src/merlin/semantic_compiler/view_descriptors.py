@@ -1,4 +1,5 @@
 """Declared physical view contracts admitted by generated selection rules."""
+
 from __future__ import annotations
 
 import json
@@ -7,8 +8,9 @@ from hashlib import sha256
 from math import prod
 from typing import Any
 
-from .model import IndexMap, KernelRequest, SemanticNode, TensorType
 from .instruction import AddressConstraint
+from .model import IndexMap, KernelRequest, SemanticNode, TensorType
+
 
 @dataclass(frozen=True)
 class ViewDescriptor:
@@ -33,7 +35,10 @@ class ViewDescriptor:
 
     def __post_init__(self) -> None:
         if (
-            not self.name or not self.storage or type(self.extent) is not int or self.extent <= 0
+            not self.name
+            or not self.storage
+            or type(self.extent) is not int
+            or self.extent <= 0
             or type(self.physical_offset) is not int
         ):
             raise ValueError("view needs a name, storage and positive physical extent")
@@ -41,7 +46,8 @@ class ViewDescriptor:
             raise ValueError("view needs a declared contiguous element order")
         if self.kind == "reshape":
             if (
-                self.source_extent is not None or self.physical_offset != 0
+                self.source_extent is not None
+                or self.physical_offset != 0
                 or self.source_type.dtype != self.result_type.dtype
                 or self.source_type.numerical_policy != self.result_type.numerical_policy
                 or prod(self.source_type.shape) != prod(self.result_type.shape)
@@ -56,8 +62,10 @@ class ViewDescriptor:
             if (
                 len(self.source_type.shape) != len(self.result_type.shape)
                 or self.source_type.shape[1:] != self.result_type.shape[1:]
-                or type(self.source_extent) is not int or self.source_extent <= 0
-                or type(self.physical_offset) is not int or self.physical_offset < 0
+                or type(self.source_extent) is not int
+                or self.source_extent <= 0
+                or type(self.physical_offset) is not int
+                or self.physical_offset < 0
                 or self.source_extent % prod(self.source_type.shape)
             ):
                 raise ValueError("slice view needs outermost-axis contiguous physical geometry")
@@ -107,8 +115,9 @@ class ViewDescriptor:
             "physical_layout": self.physical_layout,
         }
         if self.kind == "slice":
-            row.update({"kind": self.kind, "source_extent": self.source_extent,
-                        "physical_offset": self.physical_offset})
+            row.update(
+                {"kind": self.kind, "source_extent": self.source_extent, "physical_offset": self.physical_offset}
+            )
         return row
 
     @classmethod
@@ -121,9 +130,15 @@ class ViewDescriptor:
         if set(row) != expected:
             raise ValueError("view has missing or unknown fields")
         return cls(
-            row["name"], row["storage"], TensorType.from_record(row["source_type"]),
-            TensorType.from_record(row["result_type"]), row["extent"], row["physical_layout"],
-            kind, row.get("source_extent"), row.get("physical_offset", 0),
+            row["name"],
+            row["storage"],
+            TensorType.from_record(row["source_type"]),
+            TensorType.from_record(row["result_type"]),
+            row["extent"],
+            row["physical_layout"],
+            kind,
+            row.get("source_extent"),
+            row.get("physical_offset", 0),
         )
 
 
@@ -148,17 +163,20 @@ class ConcatViewDescriptor:
         if not self.name or not self.storage or self.physical_layout != "contiguous_element_order":
             raise ValueError("concat view needs named contiguous storage")
         if (
-            len(self.source_types) < 2 or len(self.source_types) != len(self.source_extents)
+            len(self.source_types) < 2
+            or len(self.source_types) != len(self.source_extents)
             or not self.result_type.shape
             or any(len(source.shape) != len(self.result_type.shape) for source in self.source_types)
             or any(type(size) is not int or size <= 0 for size in self.source_extents)
-            or type(self.extent) is not int or self.extent <= 0
+            or type(self.extent) is not int
+            or self.extent <= 0
         ):
             raise ValueError("concat view needs equal-rank positive source extents")
         if (
-            any((source.dtype, source.numerical_policy)
-                != (self.result_type.dtype, self.result_type.numerical_policy)
-                for source in self.source_types)
+            any(
+                (source.dtype, source.numerical_policy) != (self.result_type.dtype, self.result_type.numerical_policy)
+                for source in self.source_types
+            )
             or any(source.shape[1:] != self.result_type.shape[1:] for source in self.source_types)
             or sum(source.shape[0] for source in self.source_types) != self.result_type.shape[0]
         ):
@@ -196,17 +214,29 @@ class ConcatViewDescriptor:
 
     @classmethod
     def from_record(cls, row: dict[str, Any]) -> ConcatViewDescriptor:
-        if set(row) != {
-            "kind", "name", "storage", "source_types", "result_type",
-            "source_extents", "extent", "physical_layout",
-        } or row["kind"] != "concat":
+        if (
+            set(row)
+            != {
+                "kind",
+                "name",
+                "storage",
+                "source_types",
+                "result_type",
+                "source_extents",
+                "extent",
+                "physical_layout",
+            }
+            or row["kind"] != "concat"
+        ):
             raise ValueError("concat view has missing or unknown fields")
         if not isinstance(row["source_types"], list) or not isinstance(row["source_extents"], list):
             raise ValueError("concat view sources must be lists")
         return cls(
-            row["name"], row["storage"],
+            row["name"],
+            row["storage"],
             tuple(TensorType.from_record(source) for source in row["source_types"]),
-            TensorType.from_record(row["result_type"]), tuple(row["source_extents"]),
-            row["extent"], row["physical_layout"],
+            TensorType.from_record(row["result_type"]),
+            tuple(row["source_extents"]),
+            row["extent"],
+            row["physical_layout"],
         )
-

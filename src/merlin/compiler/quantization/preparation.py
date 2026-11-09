@@ -72,8 +72,11 @@ class PreparationProfile:
     def identity(self) -> dict[str, Any]:
         body = self.document()
         return {
-            "id": body["id"], "schema": SCHEMA, "source": self.source_path,
-            "source_sha256": _sha(self.raw), "profile_sha256": _sha(_canonical(body)),
+            "id": body["id"],
+            "schema": SCHEMA,
+            "source": self.source_path,
+            "source_sha256": _sha(self.raw),
+            "profile_sha256": _sha(_canonical(body)),
             "compatibility_policy": body["compatibility_policy"],
         }
 
@@ -107,8 +110,16 @@ def _intent(recipe: Mapping[str, Any]) -> dict[str, Any]:
     # Unknown recipe extensions remain visible instead of disappearing from a
     # closed list of numerical algorithms. Only preparation metadata is omitted.
     ignored = {
-        "recipe_sha256", "why", "underivable", "status", "methodology", "preparation",
-        "recovery", "float_island", "framework_capture_policy", "unquantized",
+        "recipe_sha256",
+        "why",
+        "underivable",
+        "status",
+        "methodology",
+        "preparation",
+        "recovery",
+        "float_island",
+        "framework_capture_policy",
+        "unquantized",
     }
     body = {key: copy.deepcopy(value) for key, value in recipe.items() if key not in ignored}
     for role in ("weight", "activation"):
@@ -123,8 +134,15 @@ def _changes(before: Any, after: Any, prefix: str = "") -> list[dict[str, Any]]:
         for key in sorted(set(before) | set(after)):
             name = f"{prefix}.{key}" if prefix else str(key)
             if key not in before or key not in after:
-                result.append({"field": name, "requested": before.get(key), "proposed": after.get(key),
-                               "requested_present": key in before, "proposed_present": key in after})
+                result.append(
+                    {
+                        "field": name,
+                        "requested": before.get(key),
+                        "proposed": after.get(key),
+                        "requested_present": key in before,
+                        "proposed_present": key in after,
+                    }
+                )
             else:
                 result.extend(_changes(before[key], after[key], name))
         return result
@@ -157,23 +175,33 @@ def select_recipe(
         body = Q.with_gptq_weights(body, **document["gptq_weights"])
     changes = _changes(_intent(requested), _intent(body))
     proposal = {
-        "schema": "merlin.preparation_alternative.v1", "profile": identity, "model": model,
+        "schema": "merlin.preparation_alternative.v1",
+        "profile": identity,
+        "model": model,
         "output_path_sha256": _sha(_canonical(output_path)),
         "requested_recipe_sha256": requested["recipe_sha256"],
         "proposed_recipe_sha256": body["recipe_sha256"],
-        "requested_recipe": copy.deepcopy(dict(requested)), "proposed_recipe": copy.deepcopy(body),
+        "requested_recipe": copy.deepcopy(dict(requested)),
+        "proposed_recipe": copy.deepcopy(body),
         "changes": changes,
     }
     proposal["alternative_sha256"] = _sha(_canonical(proposal))
     if alternative_sha256 is not None and alternative_sha256 != proposal["alternative_sha256"]:
         raise ValueError("selected preparation alternative differs from the exact current proposal")
-    if (body.get("status") == Q.DERIVED and changes
-            and document["compatibility_policy"] == PRESERVE_REQUEST and alternative_sha256 is None):
+    if (
+        body.get("status") == Q.DERIVED
+        and changes
+        and document["compatibility_policy"] == PRESERVE_REQUEST
+        and alternative_sha256 is None
+    ):
         raise PreparationAlternativeRequired(proposal)
     body["preparation"] = {
-        "schema": "merlin.preparation_selection.v1", "profile": identity, "model": model,
+        "schema": "merlin.preparation_selection.v1",
+        "profile": identity,
+        "model": model,
         "requested_recipe_sha256": requested["recipe_sha256"],
-        "derived_recipe_sha256": body["recipe_sha256"], "changes": changes,
+        "derived_recipe_sha256": body["recipe_sha256"],
+        "changes": changes,
         "selected_alternative_sha256": alternative_sha256,
     }
     if profile.identity() != identity:

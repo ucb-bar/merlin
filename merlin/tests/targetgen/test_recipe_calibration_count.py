@@ -42,8 +42,10 @@ def test_package_and_portable_entries_preserve_facade_patches_and_source_owners(
     from merlin.targetgen import _recipe_quantizer, capture_cache
 
     assert _recipe_quantizer is application
+
     def replacement(model):
         return []
+
     monkeypatch.setattr(application, "layer_inventory", replacement)
     assert eager.layer_inventory is replacement
     spec = importlib.util.spec_from_file_location("registered_recipe_compatibility", _QUANTIZER)
@@ -65,8 +67,11 @@ def test_package_and_portable_entries_preserve_facade_patches_and_source_owners(
         copied = tmp_path / (name + ".py")
         copied.write_bytes(actual_source(module).read_bytes())
         with monkeypatch.context() as selected_owner:
-            selected_owner.setattr(paths, "module_source_path", lambda selected, target=module, path=copied:
-                                  path if selected == target else actual_source(selected))
+            selected_owner.setattr(
+                paths,
+                "module_source_path",
+                lambda selected, target=module, path=copied: path if selected == target else actual_source(selected),
+            )
             current = capture_cache.implementation_identity()
             metadata = {"loader_dependency_sources": list(current.values())}
             assert capture_cache.observed_sources_match(metadata)
@@ -76,7 +81,7 @@ def test_package_and_portable_entries_preserve_facade_patches_and_source_owners(
 
 @pytest.mark.parametrize("foreign", [False, True])
 def test_isolated_recipe_entry_uses_only_selected_sources_and_retains_patch_globals(foreign):
-    script = r'''
+    script = r"""
 import importlib.util, sys, types
 before = list(sys.path)
 if sys.argv[2] == "True":
@@ -99,9 +104,13 @@ else:
     try: module.calibration_limit({"framework_capture_policy":{"calibration_count":0}},100)
     except Refusal: pass
     else: raise AssertionError("direct-file patch lost its function globals")
-'''
-    result = subprocess.run([sys.executable, "-I", "-B", "-c", script, str(_QUANTIZER), str(foreign)],
-                            capture_output=True, text=True, timeout=30)
+"""
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", script, str(_QUANTIZER), str(foreign)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
     assert result.returncode == 0, result.stderr
 
 

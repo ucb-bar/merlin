@@ -86,11 +86,17 @@ class _MechanismObservations:
             group["sites"] += 1
             group["last_witness"] = witness
         elif len(self.groups) < self.max_groups:
-            self.groups[identity] = dict(instruction=instruction, roles=list(roles), sites=1,
-                                        recovered_fields_sha256=identity, fully_recovered=resolved,
-                                        fields={key: value for key, value in sorted(fields.items())[:8]},
-                                        omitted_fields=max(0, len(fields) - 8),
-                                        first_witness=witness, last_witness=witness)
+            self.groups[identity] = dict(
+                instruction=instruction,
+                roles=list(roles),
+                sites=1,
+                recovered_fields_sha256=identity,
+                fully_recovered=resolved,
+                fields={key: value for key, value in sorted(fields.items())[:8]},
+                omitted_fields=max(0, len(fields) - 8),
+                first_witness=witness,
+                last_witness=witness,
+            )
         else:
             self.omitted += 1
         if self.phase is None:
@@ -102,8 +108,9 @@ class _MechanismObservations:
         if self.run is not None and self.run["instruction"] != instruction:
             self._close_run()
         if self.run is None:
-            self.run = dict(instruction=instruction, roles=list(roles), sites=0,
-                            first_witness=witness, last_witness=witness)
+            self.run = dict(
+                instruction=instruction, roles=list(roles), sites=0, first_witness=witness, last_witness=witness
+            )
         self.run["sites"] += 1
         self.run["last_witness"] = witness
         if "sync" in roles:
@@ -113,46 +120,77 @@ class _MechanismObservations:
     def report(self, operands):
         self._close_phase()
         self._close_run()
-        repeated = sorted((group for group in self.groups.values() if group["sites"] > 1),
-                          key=lambda group: (-group["sites"], group["recovered_fields_sha256"]))
+        repeated = sorted(
+            (group for group in self.groups.values() if group["sites"] > 1),
+            key=lambda group: (-group["sites"], group["recovered_fields_sha256"]),
+        )
         invariants = []
         profiles = operands["field_profiles"]
         for field in operands["field_fingerprints"]:
-            if (field["distinct_values"] == 1 and field["sites"] > 1
-                    and not field["missing_sites"] and not field["unresolved_sites"]):
+            if (
+                field["distinct_values"] == 1
+                and field["sites"] > 1
+                and not field["missing_sites"]
+                and not field["unresolved_sites"]
+            ):
                 label = field["instruction"] + "." + field["field"]
-                invariants.append(dict(instruction=field["instruction"], field=field["field"], sites=field["sites"],
-                                       value_sha256=field["value_set_sha256"],
-                                       value_profile=profiles.get(label),
-                                       roles=list(self.roles.get(field["instruction"], ()))))
-        transfers = [dict(mechanism="repeated_transfer_operand_fields", status="observed_static_repetition",
-                          evidence=group, optimization_applicability="unknown",
-                          missing=["canonical_source_and_destination_accesses", "intervening_write_and_alias_effects",
-                                   "inherited_configuration_and_operand_bindings",
-                                   "capacity_and_lifetime_legality", "dynamic_execution_multiplicity"])
-                     for group in repeated if group["fully_recovered"] and
-                     set(group["roles"]) & {"operand_load", "weight_load", "dma"}]
+                invariants.append(
+                    dict(
+                        instruction=field["instruction"],
+                        field=field["field"],
+                        sites=field["sites"],
+                        value_sha256=field["value_set_sha256"],
+                        value_profile=profiles.get(label),
+                        roles=list(self.roles.get(field["instruction"], ())),
+                    )
+                )
+        transfers = [
+            dict(
+                mechanism="repeated_transfer_operand_fields",
+                status="observed_static_repetition",
+                evidence=group,
+                optimization_applicability="unknown",
+                missing=[
+                    "canonical_source_and_destination_accesses",
+                    "intervening_write_and_alias_effects",
+                    "inherited_configuration_and_operand_bindings",
+                    "capacity_and_lifetime_legality",
+                    "dynamic_execution_multiplicity",
+                ],
+            )
+            for group in repeated
+            if group["fully_recovered"] and set(group["roles"]) & {"operand_load", "weight_load", "dma"}
+        ]
         return dict(
-            schema="merlin.machine_mechanism_observations.v1", origin="selected_isa_recovered_operands",
-            scope="listed_instruction_sites", ordering="lexical_listing_not_dynamic_issue_trace",
+            schema="merlin.machine_mechanism_observations.v1",
+            origin="selected_isa_recovered_operands",
+            scope="listed_instruction_sites",
+            ordering="lexical_listing_not_dynamic_issue_trace",
             status="partial" if self.omitted or self.unresolved_sites or self.unmapped_role_sites else "observed",
-            repeated_operand_groups=repeated[:self.max_witnesses],
+            repeated_operand_groups=repeated[: self.max_witnesses],
             omitted_repeated_operand_groups=max(0, len(repeated) - self.max_witnesses),
             repetition_census="unknown_group_budget_exhausted" if self.omitted else "complete_recovered_field_tuples",
-            omitted_group_sites=self.omitted, unresolved_operand_sites=self.unresolved_sites,
+            omitted_group_sites=self.omitted,
+            unresolved_operand_sites=self.unresolved_sites,
             unmapped_instruction_role_sites=self.unmapped_role_sites,
-            invariant_fields=invariants[:self.max_witnesses],
+            invariant_fields=invariants[: self.max_witnesses],
             omitted_invariant_fields=max(0, len(invariants) - self.max_witnesses),
             invariant_field_census=operands["field_fingerprint_status"],
-            instruction_runs=self.runs, instruction_run_count=self.run_count,
-            fence_delimited_groups=self.boundaries, fence_delimited_group_count=self.boundary_count,
+            instruction_runs=self.runs,
+            instruction_run_count=self.run_count,
+            fence_delimited_groups=self.boundaries,
+            fence_delimited_group_count=self.boundary_count,
             fence_delimited_groups_sha256=self.boundary_sequence.hexdigest(),
-            candidates=transfers[:self.max_witnesses],
-            physical_vs_useful_reduction=dict(status="unknown", missing=["selected_field_extent_and_unit_bindings",
-                                                                         "complete_upstream_reduction_domain"]),
-            unknowns=["same_fields_do_not_establish_same_memory_region_or_redundant_work",
-                      "hardware_completion_overlap_and_timing_not_established",
-                      "retention_and_batching_legality_require_storage_effects"],
+            candidates=transfers[: self.max_witnesses],
+            physical_vs_useful_reduction=dict(
+                status="unknown",
+                missing=["selected_field_extent_and_unit_bindings", "complete_upstream_reduction_domain"],
+            ),
+            unknowns=[
+                "same_fields_do_not_establish_same_memory_region_or_redundant_work",
+                "hardware_completion_overlap_and_timing_not_established",
+                "retention_and_batching_legality_require_storage_effects",
+            ],
         )
 
 
@@ -185,8 +223,12 @@ def _field_kind_facts(kinds, fingerprints, values, witness):
         if kind is None or kind == "address":
             continue
         observed = values.get(label)
-        complete = (not row["missing_sites"] and not row["unresolved_sites"] and observed is not None
-                    and len(observed) == row["distinct_values"])
+        complete = (
+            not row["missing_sites"]
+            and not row["unresolved_sites"]
+            and observed is not None
+            and len(observed) == row["distinct_values"]
+        )
         ordered = sorted((json.loads(v) for v in observed or ()), key=lambda v: (type(v).__name__, v))
         grouped.setdefault(kind, []).append((label, tuple(ordered) if complete else None))
     facts = []
@@ -194,8 +236,15 @@ def _field_kind_facts(kinds, fingerprints, values, witness):
     # an explicit unknown; decoded values never acquire meaning from names.
     for kind in FIELD_KINDS:
         if kind != "address" and kind not in grouped:
-            facts.append(EvidenceFact("operand_fields." + kind, None, "unknown", (),
-                                      "no selected target field kind declaration binds an observed field"))
+            facts.append(
+                EvidenceFact(
+                    "operand_fields." + kind,
+                    None,
+                    "unknown",
+                    (),
+                    "no selected target field kind declaration binds an observed field",
+                )
+            )
     for kind, rows in sorted(grouped.items()):
         unknown = sorted(label for label, value in rows if value is None)
         reason = "selected target field kind declaration; recovered values at listed static sites"
@@ -264,8 +313,11 @@ def loop_nest(analysis, rows, *, sites, roles, evidence_id, counted=None):
     analysis = analysis or {}
     loops = analysis.get("loops")
     if not isinstance(loops, list):
-        reason = ("register lifter reports no loop analysis" if analysis.get("status") == "analyzed"
-                  else "register lifter did not analyze the span: " + str(analysis.get("reason", "unknown")))
+        reason = (
+            "register lifter reports no loop analysis"
+            if analysis.get("status") == "analyzed"
+            else "register lifter did not analyze the span: " + str(analysis.get("reason", "unknown"))
+        )
         return dict(value=None, status="unknown", reason=reason, evidence=[])
     members = _block_members(rows)
     calls = {row.addr for row in rows if decode_cpu(row).kind in CALLS}
@@ -283,21 +335,25 @@ def loop_nest(analysis, rows, *, sites, roles, evidence_id, counted=None):
         for klass, count in classes.items():
             for role in roles.get(klass, ()):
                 role_sites[role] += count
-        levels.append(dict(
-            header_pc=header,
-            nest_depth=loop.get("nest_depth"),
-            parent_header_pc=loop.get("parent_header_pc"),
-            latch_pcs=list(loop.get("latch_pcs") or ()),
-            trip_count=loop.get("trip_count") or dict(status="unknown", reason="lifter reports no trip count"),
-            induction=[dict(reg=row.get("reg"), init=row.get("init"), step=row.get("step"), status=row.get("status"))
-                       for row in loop.get("induction") or ()],
-            command_sites=len(own),
-            commands_in_body=len(pcs & set(sites)),
-            instruction_classes=dict(sorted(classes.items())),
-            role_sites=dict(sorted(role_sites.items())),
-            call_sites_in_body=len(pcs & calls),
-            evidence=[f"{evidence_id}#register_analysis.loops[header_pc={header}]"],
-        ))
+        levels.append(
+            dict(
+                header_pc=header,
+                nest_depth=loop.get("nest_depth"),
+                parent_header_pc=loop.get("parent_header_pc"),
+                latch_pcs=list(loop.get("latch_pcs") or ()),
+                trip_count=loop.get("trip_count") or dict(status="unknown", reason="lifter reports no trip count"),
+                induction=[
+                    dict(reg=row.get("reg"), init=row.get("init"), step=row.get("step"), status=row.get("status"))
+                    for row in loop.get("induction") or ()
+                ],
+                command_sites=len(own),
+                commands_in_body=len(pcs & set(sites)),
+                instruction_classes=dict(sorted(classes.items())),
+                role_sites=dict(sorted(role_sites.items())),
+                call_sites_in_body=len(pcs & calls),
+                evidence=[f"{evidence_id}#register_analysis.loops[header_pc={header}]"],
+            )
+        )
     proved = [level for level in levels if level["trip_count"].get("status") == "proved"]
     dynamic = (counted or {}).get("dynamic_command_count")
     in_loops = set().union(*(pcs for _, pcs in spans)) if spans else set()
@@ -308,13 +364,18 @@ def loop_nest(analysis, rows, *, sites, roles, evidence_id, counted=None):
         levels=levels,
         top_level_command_sites=len(set(sites) - set(placed)),
         calls_in_loop=len(calls & in_loops),
-        dynamic_command_count=dynamic if isinstance(dynamic, dict) else dict(
-            status="unknown", reason="lifter reports no dynamic command count"),
+        dynamic_command_count=dynamic
+        if isinstance(dynamic, dict)
+        else dict(status="unknown", reason="lifter reports no dynamic command count"),
     )
     status = "proved" if len(proved) == len(levels) else "partial" if proved else "observed"
-    return dict(value=value, status=status, evidence=[f"{evidence_id}#register_analysis.loops"],
-                scope=dict(basis="lifter_loop_analysis", ordering="static_cfg"),
-                limits=["trip counts hold only under the analyzed entry state; hardware timing is unknown"])
+    return dict(
+        value=value,
+        status=status,
+        evidence=[f"{evidence_id}#register_analysis.loops"],
+        scope=dict(basis="lifter_loop_analysis", ordering="static_cfg"),
+        limits=["trip counts hold only under the analyzed entry state; hardware timing is unknown"],
+    )
 
 
 def projection_summary(projection):
@@ -324,20 +385,27 @@ def projection_summary(projection):
     counted = projection.get("counted_control") or {}
     return dict(
         status=projection.get("status", "unknown"),
-        counted_control=dict(status=counted.get("status"), commands=counted.get("commands"),
-                             reason=counted.get("reason"),
-                             dynamic_command_count=counted.get("dynamic_command_count")),
+        counted_control=dict(
+            status=counted.get("status"),
+            commands=counted.get("commands"),
+            reason=counted.get("reason"),
+            dynamic_command_count=counted.get("dynamic_command_count"),
+        ),
         field_resolution=projection.get("field_resolution"),
-        loop_nest=dict(status=nest.get("status", "unknown"), reason=nest.get("reason"),
-                       depth=(nest.get("value") or {}).get("depth"),
-                       proved_trip_counts=(nest.get("value") or {}).get("proved_trip_counts"),
-                       trip_counts=[level["trip_count"] for level in (nest.get("value") or {}).get("levels", ())]),
+        loop_nest=dict(
+            status=nest.get("status", "unknown"),
+            reason=nest.get("reason"),
+            depth=(nest.get("value") or {}).get("depth"),
+            proved_trip_counts=(nest.get("value") or {}).get("proved_trip_counts"),
+            trip_counts=[level["trip_count"] for level in (nest.get("value") or {}).get("levels", ())],
+        ),
         operand_sequence_sha256=projection.get("operand_sequence_sha256"),
     )
 
 
-def machine_projection(rows, *, model, evidence_id, decoder, instruction_offset=0, entry_state=None,
-                       call_summaries=None):
+def machine_projection(
+    rows, *, model, evidence_id, decoder, instruction_offset=0, entry_state=None, call_summaries=None
+):
     """Return witnessed fields and CCA axes; unsupported semantics stay absent.
 
     ``entry_state`` and ``call_summaries`` are interprocedural lifter inputs
@@ -397,8 +465,18 @@ def machine_projection(rows, *, model, evidence_id, decoder, instruction_offset=
             klass = isa["FUNCT_CLASS"].get(fields["funct"], "UNKNOWN") if not row.relocations else "UNKNOWN"
             if klass != "UNKNOWN":
                 classes[klass] += 1
-            command(index, dict(pc=row.addr, word=row.hexcode, instruction=klass, fields={}, status="unknown",
-                                reason="unresolved_control_or_operands", identity_scope="encoded_static_site"))
+            command(
+                index,
+                dict(
+                    pc=row.addr,
+                    word=row.hexcode,
+                    instruction=klass,
+                    fields={},
+                    status="unknown",
+                    reason="unresolved_control_or_operands",
+                    identity_scope="encoded_static_site",
+                ),
+            )
             continue
         operands = [state[fields[name]].record() for name in ("rs1", "rs2")]
         klass, decoded = semantics.decode_instruction(fields["funct"], *operands, isa)
@@ -427,10 +505,16 @@ def machine_projection(rows, *, model, evidence_id, decoder, instruction_offset=
                 operands=dict(zip(("rs1", "rs2"), operands)),
             ),
         )
-    counted = lifter_call(finite_control_counts, rows, custom_opcode=isa["CUSTOM_OPCODE"], entry_state=entry_state,
-                          call_summaries=call_summaries)
-    nest = loop_nest(analysis, rows, sites=site_classes, roles=instruction_roles, evidence_id=evidence_id,
-                     counted=counted)
+    counted = lifter_call(
+        finite_control_counts,
+        rows,
+        custom_opcode=isa["CUSTOM_OPCODE"],
+        entry_state=entry_state,
+        call_summaries=call_summaries,
+    )
+    nest = loop_nest(
+        analysis, rows, sites=site_classes, roles=instruction_roles, evidence_id=evidence_id, counted=counted
+    )
     facts = []
     witness = (evidence_id + "#selected_machine_operands",)
 
@@ -481,8 +565,11 @@ def machine_projection(rows, *, model, evidence_id, decoder, instruction_offset=
     classified = sum(classes.values())
     if classified and not raw_classes["UNKNOWN"] and all(instruction_roles.get(name) for name in classes):
         config_sites = sum(count for name, count in classes.items() if "config" in instruction_roles[name])
-        fact("dispatch.config_fraction", config_sites / classified,
-             "selected role roster over classified listed instruction sites, not issued commands")
+        fact(
+            "dispatch.config_fraction",
+            config_sites / classified,
+            "selected role roster over classified listed instruction sites, not issued commands",
+        )
     operands = operand_summary.report()
     facts.extend(_field_kind_facts(field_kinds, operands["field_fingerprints"], field_values, witness))
     cca = cca_projection(model, op="accelerator_region", source="machine", backend=(target,), facts=tuple(facts))
@@ -511,23 +598,23 @@ def machine_projection(rows, *, model, evidence_id, decoder, instruction_offset=
         command_witnesses=commands,
         command_page=dict(instruction_offset=instruction_offset, next_instruction_offset=next_command_offset),
         mechanism_observations=mechanisms.report(operands),
-        **{
-            key: value
-            for key, value in operands.items()
-            if key not in ("count_basis", "unresolved_fields")
-        },
+        **{key: value for key, value in operands.items() if key not in ("count_basis", "unresolved_fields")},
         omitted_command_witnesses=command_count - len(commands),
         fence_sites=fences,
         operand_layout_roster=structure.get("operand_layout_roster")
         or dict(status="unknown", reason="selected_layout_roster_not_supplied"),
         operand_field_kinds=dict(sorted(field_kinds.items())),
-        field_resolution=dict(field_slots=field_slots, resolved_field_slots=resolved_slots,
-                              unresolved_command_sites=unresolved["unreachable_or_unresolved_control"],
-                              fraction=round(resolved_slots / field_slots, 4) if field_slots else None),
+        field_resolution=dict(
+            field_slots=field_slots,
+            resolved_field_slots=resolved_slots,
+            unresolved_command_sites=unresolved["unreachable_or_unresolved_control"],
+            fraction=round(resolved_slots / field_slots, 4) if field_slots else None,
+        ),
         loop_nest=nest,
         # Recorded only when the lifter consumed it; otherwise arguments stayed unconstrained.
-        entry_state=dict(entry_state) if entry_state and "entry_state" in inspect.signature(
-            register_facts).parameters else None,
+        entry_state=dict(entry_state)
+        if entry_state and "entry_state" in inspect.signature(register_facts).parameters
+        else None,
         call_summary_targets=sorted(call_summaries) if call_summaries else [],
         semantic_region_status="unknown",
         missing=["complete_semantic_region", "dynamic_loop_multiplicity", "hardware_completion_and_timing"],

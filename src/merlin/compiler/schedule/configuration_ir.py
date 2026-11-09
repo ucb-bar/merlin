@@ -16,11 +16,6 @@ from dataclasses import asdict, dataclass, field
 
 from xdsl.dialects import arith, builtin, func, memref, scf
 
-from merlin.sched.ir import Call, Const, Kernel
-from merlin.targetgen.isa_dialect_gen import build_dialect, decode_instruction, encode_instruction
-from merlin.transforms.certificates import ir_digest
-from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
-
 from merlin.compiler.schedule.configuration import (
     ConfigurationAdapter,
     ConfigurationEffects,
@@ -31,6 +26,10 @@ from merlin.compiler.schedule.configuration import (
 )
 from merlin.compiler.schedule.library_sources import shared_library_sources
 from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts, _parse
+from merlin.sched.ir import Call, Const, Kernel
+from merlin.targetgen.isa_dialect_gen import build_dialect, decode_instruction, encode_instruction
+from merlin.transforms.certificates import ir_digest
+from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
 
 def _json(value):

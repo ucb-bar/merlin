@@ -16,16 +16,26 @@ def source_subset(source, removed):
     return result
 
 
-def join_components(emitted, source, *, module, target, effects, capture=None, preparation_receipt=None,
-                    checked_projection=None, other_components=()):
+def join_components(
+    emitted,
+    source,
+    *,
+    module,
+    target,
+    effects,
+    capture=None,
+    preparation_receipt=None,
+    checked_projection=None,
+    other_components=(),
+):
     from xdsl.dialects import func
 
-    from merlin.runtime.modelinputs import file_sha256
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.llvmlower.device_shim import logical_buffers
     from merlin.llvmlower.sibling_components import prepare_sibling_components
     from merlin.llvmlower.sibling_readout_commands import require_writer_interface
     from merlin.llvmlower.sibling_source_route import _command_buffer
+    from merlin.runtime.modelinputs import file_sha256
     from merlin.targetgen.contract.interface_emit import emit_interface_mlir
     from merlin.xdsl_dialects._common import text
     from merlin.xdsl_dialects.lowering import output_fusion as OF
@@ -165,9 +175,10 @@ def join_components(emitted, source, *, module, target, effects, capture=None, p
         raise ValueError("joint source compositions overlap original or physical work")
     ordinary = [r for r in assigned if r["symbol"] not in symbols | other_symbols]
     joined = join_routed_source_groups(ordinary, source_subset(source, set(covered) | other_covered))
-    if set(joined.values()).intersection(covered) or not set(source["eligible_groups"]) <= set(covered) | set(
-        joined.values()
-    ) | other_covered:
+    if (
+        set(joined.values()).intersection(covered)
+        or not set(source["eligible_groups"]) <= set(covered) | set(joined.values()) | other_covered
+    ):
         raise ValueError("mixed source composition duplicates or omits original work")
     if preparation is not None:
         revalidate_build_preparation(path)

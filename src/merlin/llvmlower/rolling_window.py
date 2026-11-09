@@ -9,8 +9,7 @@ from xdsl.dialects.builtin import i8
 from xdsl.ir import SSAValue
 
 from merlin.compiler.schedule.llvm_program import FnBuilderControlAdapter
-from merlin.compiler.schedule.rolling_window import RollingWindowPlan
-from merlin.compiler.schedule.rolling_window import emit_rolling_window
+from merlin.compiler.schedule.rolling_window import RollingWindowPlan, emit_rolling_window
 from merlin.llvmlower.host_builder import PTR, FnBuilder
 
 
@@ -196,12 +195,15 @@ def emit_cached_spatial_row_panel(
                     control.branch(
                         control.op("and", valid, lookup["predicate"], "i1"),
                         lambda: control.loop(
-                            0, w.input_shape[-1], 1,
+                            0,
+                            w.input_shape[-1],
+                            1,
                             lambda channel: copy_byte(channel, control.op("add", lookup["cache_byte"], channel)),
                         ),
                         lambda: control.loop(0, w.input_shape[-1], 1, zero_byte),
                     )
                 else:
+
                     def byte(channel):
                         lookup = emit_rolling_window_lookup(plan.rolling, control, producer_y, x, ky, kx, channel)
                         control.branch(

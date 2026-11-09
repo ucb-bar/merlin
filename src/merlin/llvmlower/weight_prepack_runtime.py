@@ -101,11 +101,7 @@ def fixed_arguments(source, manifest, *, entry="forward"):
             if type(rows) is not list:
                 raise ValueError("weight prepacking requires explicit original session update indices")
             for row in rows:
-                if (
-                    type(row) is not dict
-                    or type(row.get("input_arg")) is not int
-                    or not 0 <= row["input_arg"] < arity
-                ):
+                if type(row) is not dict or type(row.get("input_arg")) is not int or not 0 <= row["input_arg"] < arity:
                     raise ValueError("weight prepacking has an invalid original session update index")
                 updates.add(row["input_arg"])
     fixed = []

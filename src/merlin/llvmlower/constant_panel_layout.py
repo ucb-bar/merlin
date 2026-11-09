@@ -54,9 +54,12 @@ def prepare_constant_panels(entry, array, columns, element_type, *, minimum_inpu
     """
     if type(minimum_input_channels) is not int or not 1 <= minimum_input_channels <= 1 << 20:
         raise ValueError("constant panel input-channel capability must be explicitly bounded")
-    if (columns is None or entry.get("op") != "conv2d"
-            or entry.get("kh", 1) * entry.get("kw", 1) <= 1
-            or entry.get("ci", 0) < minimum_input_channels):
+    if (
+        columns is None
+        or entry.get("op") != "conv2d"
+        or entry.get("kh", 1) * entry.get("kw", 1) <= 1
+        or entry.get("ci", 0) < minimum_input_channels
+    ):
         return array, None
     if array is None:
         raise ValueError("constant panels require the original immutable group prepack")
@@ -70,8 +73,13 @@ def prepare_constant_panels(entry, array, columns, element_type, *, minimum_inpu
         return array, None
     data = np.ascontiguousarray(array)
     dtype = str(element_type)
-    if (not dtype or dtype[0] not in "if" or not dtype[1:].isdigit()
-            or data.dtype.kind != dtype[0] or data.dtype.itemsize * 8 != int(dtype[1:])):
+    if (
+        not dtype
+        or dtype[0] not in "if"
+        or not dtype[1:].isdigit()
+        or data.dtype.kind != dtype[0]
+        or data.dtype.itemsize * 8 != int(dtype[1:])
+    ):
         raise ValueError("constant panel payload storage width differs from its source type")
     raw = data.tobytes()
     packed = encoding.pack_bytes(raw, max_storage_bytes=len(raw))

@@ -62,6 +62,7 @@ def test_changed_source_effects_and_context_do_not_reuse(proven, monkeypatch, ch
     elif change == "resource":
         r = replace(r, operand_bytes=r.operand_bytes + 1)
     elif change == "decoder":
+
         def project(call):
             op = ADAPTER.project(call)
             return replace(op, row=op.row + 1) if type(op) is Load else op
@@ -81,9 +82,16 @@ def test_current_budgets_and_effect_annotations_are_checked_before_reuse(proven)
         checks.verify_compact_dense(kernel, p, r, s, ADAPTER, static_budget=0)
     with pytest.raises(ValueError, match="budgets"):
         checks.verify_compact_dense(kernel, p, r, s, ADAPTER, static_budget=128, timeout_ms=0)
+
     def annotated(body):
-        return tuple(replace(stmt, body=annotated(stmt.body)) if type(stmt) is Loop
-                     else replace(stmt, unit="another_engine") if type(stmt) is Call else stmt for stmt in body)
+        return tuple(
+            replace(stmt, body=annotated(stmt.body))
+            if type(stmt) is Loop
+            else replace(stmt, unit="another_engine")
+            if type(stmt) is Call
+            else stmt
+            for stmt in body
+        )
 
     with pytest.raises(ValueError, match="unmodeled execution"):
         checks.verify_compact_dense(replace(kernel, body=annotated(kernel.body)), p, r, s, ADAPTER, static_budget=128)

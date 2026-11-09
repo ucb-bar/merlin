@@ -260,7 +260,10 @@ def compile_source_only(
                     dependencies=tuple(Path(path) for path, _ in build_service.source_pins),
                 ) as consumer:
                     obj = llvm_mlir_to_object(
-                        artifact, build, target=target, _build_service=build_service,
+                        artifact,
+                        build,
+                        target=target,
+                        _build_service=build_service,
                         build_timeout_s=math.ceil(remaining()),
                     )
                     consumer.returned(stdout=str(obj))

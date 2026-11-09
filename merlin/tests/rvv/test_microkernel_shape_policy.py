@@ -51,6 +51,7 @@ def selected_policy(monkeypatch):
         microkernel._SHAPE_POLICIES.clear()
         microkernel._SHAPE_POLICIES.update(shapes)
 
+
 # (MR, NR, M, N, lowers) — measured cells of the int8 lowering grid.
 MEASURED_CELLS = [
     # the champion block: fine when both parallel dims divide ...

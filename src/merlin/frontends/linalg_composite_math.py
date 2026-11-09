@@ -354,7 +354,6 @@ def _recognize_sigmoid(body, source):
     return "sigmoid_f32", (bits,)
 
 
-
 def _recognize_tanh_gelu(body, source):
     from xdsl.dialects.arith import AddfOp, MulfOp
     from xdsl.dialects.math import TanhOp

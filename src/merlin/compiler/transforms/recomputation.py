@@ -145,8 +145,7 @@ def _rewrite(candidate, ordinals, source):
 
 
 def _functions():
-    from merlin.compiler.schedule import fusion_semantics
-    from merlin.compiler.schedule import pointwise_source
+    from merlin.compiler.schedule import fusion_semantics, pointwise_source
     from merlin.compiler.transforms import multioutput as multioutput_fusion
     from merlin.llvmlower import layout_conformance
     from merlin.transforms import certificates, dense_ir, pure_scalar

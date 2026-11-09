@@ -8,10 +8,10 @@ from types import ModuleType
 
 import pytest
 import yaml
-from merlin_experiments.phase1.feedback import private_full_model_execution as PFX
-from merlin_experiments.phase1.feedback import private_numerical_selection as Q
 
 from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
+from merlin_experiments.phase1.feedback import private_full_model_execution as PFX
+from merlin_experiments.phase1.feedback import private_numerical_selection as Q
 
 
 @pytest.fixture

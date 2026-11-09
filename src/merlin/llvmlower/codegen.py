@@ -53,10 +53,17 @@ STAGES = _shared.STAGES
 def _run(cmd: list[str], *, timeout_s: float | None = None, inputs=(), outputs=(), stage="object"):
     """Legacy process selection; actual invocation lives in compiler.build.process."""
     return _process.run(
-        cmd, environment=child_environment(), timeout_limit_s=_COMPILE_TIMEOUT_S,
-        error=CodegenError, dependencies=(Path(__file__), Path(_shared.__file__)),
-        timeout_s=timeout_s, inputs=inputs, outputs=outputs, stage=stage,
+        cmd,
+        environment=child_environment(),
+        timeout_limit_s=_COMPILE_TIMEOUT_S,
+        error=CodegenError,
+        dependencies=(Path(__file__), Path(_shared.__file__)),
+        timeout_s=timeout_s,
+        inputs=inputs,
+        outputs=outputs,
+        stage=stage,
     )
+
 
 def compile_ll(
     ll_path: str | Path,
@@ -71,14 +78,24 @@ def compile_ll(
     from merlin.compiler.build.objects import compile_llvm_object
 
     return compile_llvm_object(
-        ll_path, out_obj, compiler=clang(), flags=(*flags, *extra_flags), run=_run, timeout_s=timeout_s,
+        ll_path,
+        out_obj,
+        compiler=clang(),
+        flags=(*flags, *extra_flags),
+        run=_run,
+        timeout_s=timeout_s,
     )
 
 
 def build_host_shared(ll_path: str | Path, out_so: str | Path, *, source_lowering=None) -> Path:
     """Preserve legacy tool selection; shared construction has one compiler owner."""
     return _shared.build_shared_library(
-        ll_path, out_so, run=_run, compiler=clang, object_compiler=host_llc,
+        ll_path,
+        out_so,
+        run=_run,
+        compiler=clang,
+        object_compiler=host_llc,
         runtime_compiler=lambda: os.environ.get("CC", "").strip() or clang(),
-        runtime_source=mlir_runtime_c, source_lowering=source_lowering,
+        runtime_source=mlir_runtime_c,
+        source_lowering=source_lowering,
     )

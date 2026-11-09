@@ -54,7 +54,6 @@ def finish_snapshot_invocation():
         close()
 
 
-
 def _checkpoint_command_admission():
     """Defer new background commands after a trusted epoch/final checkpoint.
 
@@ -71,8 +70,12 @@ def _checkpoint_command_admission():
     reason = joint_control.stop_reason()
     if reason is not None:
         raise P.NotMeasuredFailure(
-            "preparation_admission", "BACKGROUND_DEFERRED", reason, status="gated",
-            execution_status="deferred_before_command", correctness="unknown",
+            "preparation_admission",
+            "BACKGROUND_DEFERRED",
+            reason,
+            status="gated",
+            execution_status="deferred_before_command",
+            correctness="unknown",
         )
 
 
@@ -97,18 +100,27 @@ def snapshot_scoped_entrypoint(function):
         if type(selected.owner) is not CommonTransformService:
             raise ValueError("snapshot batching requires its original profile owner")
         _checkpoint_command_admission()
-        with setup_timing.selected(
-            selected.work_root.parent, selected.source_sha256,
-            operation=args[1] if len(args) > 1 and isinstance(args[1], str) else function.__name__,
-        ), contextlib.ExitStack() as stack:
+        with (
+            setup_timing.selected(
+                selected.work_root.parent,
+                selected.source_sha256,
+                operation=args[1] if len(args) > 1 and isinstance(args[1], str) else function.__name__,
+            ),
+            contextlib.ExitStack() as stack,
+        ):
             owner = selected.owner
-            stack.enter_context(setup_timing.timed_context(
-                "invocation_snapshot",
-                verified_snapshot_scope(
-                    owner.workspace, owner.bundle, repo=owner.repo,
-                    entry=selected.snapshot_entry_for_call(), guarded_exit=True,
-                ),
-            ))
+            stack.enter_context(
+                setup_timing.timed_context(
+                    "invocation_snapshot",
+                    verified_snapshot_scope(
+                        owner.workspace,
+                        owner.bundle,
+                        repo=owner.repo,
+                        entry=selected.snapshot_entry_for_call(),
+                        guarded_exit=True,
+                    ),
+                )
+            )
             token = _INVOCATION_PUBLICATION.set(stack.close)
             try:
                 return function(self, *args, **kwargs)
@@ -128,6 +140,7 @@ def selected_service(*, workspace, run_dir, repo):
         return None
     from .snapshot_execution import selected
     from .snapshot_inputs import SnapshotInputs
+
     owner_type = SnapshotInputs if selected() else CommonTransformService
     return owner_type(workspace=Path(workspace), bundle_manifest=manifest, repo=Path(repo))
 
@@ -149,6 +162,7 @@ def functional_service(run_dir):
     original = PC.verify_private_input_snapshot(Path(run_dir), environment)
     from .snapshot_execution import selected
     from .snapshot_inputs import SnapshotInputs
+
     owner_type = SnapshotInputs if selected() else CommonTransformService
     service = owner_type(
         workspace=original["workspace"], bundle_manifest=original["bundle_path"], repo=original["repo"]
@@ -166,8 +180,12 @@ def compiler_profile_binding(service, *, run_dir):
         return None
     from .snapshot_execution import selected
     from .snapshot_inputs import SnapshotInputs
+
     if selected():
-        if type(service) is not SnapshotInputs or service.bundle_manifest != Path(run_dir) / "input_bundle_manifest.yaml":
+        if (
+            type(service) is not SnapshotInputs
+            or service.bundle_manifest != Path(run_dir) / "input_bundle_manifest.yaml"
+        ):
             raise ValueError("external compiler selected another snapshot input owner")
         service._verify()
         return service.record()
@@ -208,6 +226,7 @@ def selfcheck_execution(bundle_manifest, *, context, submission, work_root):
     from merlin.targetgen.target_experiment import load_target_experiment
 
     from . import snapshot_execution
+
     if bundle_manifest is None:
         if snapshot_execution.selected():
             raise ValueError("snapshot execution requires its selected input bundle")
@@ -215,9 +234,14 @@ def selfcheck_execution(bundle_manifest, *, context, submission, work_root):
         return
     if snapshot_execution.selected():
         from .snapshot_inputs import SnapshotInputs
+
         owner = SnapshotInputs(workspace=Path.cwd(), bundle_manifest=bundle_manifest, repo=context.repo)
-        with snapshot_execution.execution(owner, target_experiment=load_target_experiment(context.descriptor),
-                candidate=Path(submission), work_root=Path(work_root)):
+        with snapshot_execution.execution(
+            owner,
+            target_experiment=load_target_experiment(context.descriptor),
+            candidate=Path(submission),
+            work_root=Path(work_root),
+        ):
             yield
         return
     workspace = Path.cwd()
@@ -367,9 +391,9 @@ def _public_python_roots(owner):
             roots.add(root)
         return tuple(sorted(roots))
 
-    return guarded_projection(owner.workspace, owner.bundle, owner.repo,
-                              ["original.public_python_roots.v1", sources], derive)
-
+    return guarded_projection(
+        owner.workspace, owner.bundle, owner.repo, ["original.public_python_roots.v1", sources], derive
+    )
 
 
 @setup_timing.measured("package_policy.public_grants")
@@ -554,7 +578,10 @@ class _Executor:
     def shared_snapshot_entry(self):
         """Own full cold custody and watched command-boundary payload checks."""
         from merlin.common.bundle_snapshot import (
-            MARKER, bundle_snapshot_root, shared_entry_scope, shared_entry_verification,
+            MARKER,
+            bundle_snapshot_root,
+            shared_entry_scope,
+            shared_entry_verification,
         )
 
         entry, binding = None, self._snapshot_identity()
@@ -592,7 +619,8 @@ class _Executor:
         guard after capacity becomes available. No old digest is reauthorized
         across the unwatched interval.
         """
-        from merlin.common import bundle_snapshot as B, read_lease_digest
+        from merlin.common import bundle_snapshot as B
+        from merlin.common import read_lease_digest
         from merlin.common.cpu_pool import current_thread_owns_cpu_lease
 
         if service is not self.owner or self._concurrent_selection() is None:
@@ -612,27 +640,39 @@ class _Executor:
             if marker.read_bytes() != self._snapshot_anchor:
                 raise ValueError("snapshot refresh changed its original marker")
             reusable = entry is not None and entry.reusable(root, self.owner.repo, B._policy_bytes(self.owner.bundle))
-            if (can_refresh and not reusable and read_lease_digest.enabled()
-                    and self._snapshot_refresh_attempts < 4
-                    and time.monotonic() >= self._snapshot_resource_retry_after):
+            if (
+                can_refresh
+                and not reusable
+                and read_lease_digest.enabled()
+                and self._snapshot_refresh_attempts < 4
+                and time.monotonic() >= self._snapshot_resource_retry_after
+            ):
                 self._snapshot_refresh_attempts += 1
                 replacement = None
                 diagnostics = {}
                 try:
                     with setup_timing.stage("snapshot_entry_refresh"):
                         replacement = B.shared_entry_verification(
-                            self.owner.workspace, self.owner.bundle, repo=self.owner.repo,
+                            self.owner.workspace,
+                            self.owner.bundle,
+                            repo=self.owner.repo,
                             diagnostics=diagnostics,
                         )
-                    if (self._snapshot_binding != binding or self._snapshot_identity() != binding
-                            or self._concurrent_selection() is None
-                            or marker.read_bytes() != self._snapshot_anchor):
+                    if (
+                        self._snapshot_binding != binding
+                        or self._snapshot_identity() != binding
+                        or self._concurrent_selection() is None
+                        or marker.read_bytes() != self._snapshot_anchor
+                    ):
                         raise ValueError("snapshot refresh changed its original selection")
                     if replacement is not None:
-                        if (replacement.marker_bytes != self._snapshot_anchor
-                                or replacement.document != json.loads(self._snapshot_anchor)
-                                or replacement.repo != self.owner.repo or replacement.root != root
-                                or replacement.policy_bytes != B._policy_bytes(self.owner.bundle)):
+                        if (
+                            replacement.marker_bytes != self._snapshot_anchor
+                            or replacement.document != json.loads(self._snapshot_anchor)
+                            or replacement.repo != self.owner.repo
+                            or replacement.root != root
+                            or replacement.policy_bytes != B._policy_bytes(self.owner.bundle)
+                        ):
                             raise ValueError("snapshot refresh changed its frozen input identity")
                         if entry is not None:
                             self._snapshot_retired_entries.append(entry)
@@ -674,11 +714,14 @@ class _Executor:
         """
         from merlin.common.bundle_snapshot import shared_entry_scope, shared_entry_verification
 
-        if (type(self) is not _Executor or self._snapshot_binding is None
-                or os.getpid() != self._snapshot_binding[0]
-                or threading.current_thread() is not self._snapshot_thread
-                or active_original_execution() is not self
-                or self._snapshot_identity() != self._snapshot_binding):
+        if (
+            type(self) is not _Executor
+            or self._snapshot_binding is None
+            or os.getpid() != self._snapshot_binding[0]
+            or threading.current_thread() is not self._snapshot_thread
+            or active_original_execution() is not self
+            or self._snapshot_identity() != self._snapshot_binding
+        ):
             raise ValueError("staged snapshot refresh requires its exact original owner thread")
         with self._snapshot_worker_lock:
             if self._snapshot_workers:
@@ -687,9 +730,7 @@ class _Executor:
             # None is the original safe no-sharing route, not an invitation to
             # manufacture authority. Stable entries need no new admission.
             if old is not None and not old.reusable(old.root, old.repo, old.policy_bytes):
-                replacement = shared_entry_verification(
-                    self.owner.workspace, self.owner.bundle, repo=self.owner.repo
-                )
+                replacement = shared_entry_verification(self.owner.workspace, self.owner.bundle, repo=self.owner.repo)
                 if self._snapshot_identity() != self._snapshot_binding:
                     if replacement is not None:
                         replacement.close()
@@ -848,14 +889,16 @@ class _Executor:
         with setup_timing.stage("package_policy"), self._policy_preparation(), _verification_compute():
             inventory.adopt_snapshot(self.snapshot_entry_for_call())
             with inventory.temporary_root(workspace):
-                policy = PC.package_sandbox_policy(self.target, workspace, package, inputs=self.inputs, scope=self.policy_scope)
+                policy = PC.package_sandbox_policy(
+                    self.target, workspace, package, inputs=self.inputs, scope=self.policy_scope
+                )
         return policy
 
     def _invoke(self, policy, package, argv, *, timeout, evidence=None, inputs=(), outputs=(), dependencies=()):
         from merlin.common import bwrap_args
         from merlin_experiments.phase2 import normal_resource_launch as resources
-
         from merlin_experiments.phase2.campaign import _verify_frozen_policy
+
         with setup_timing.stage("frozen_policy_verify"):
             _verify_frozen_policy(policy)
         owner = evidence or policy.workspace
@@ -1059,23 +1102,24 @@ def _request_snapshot_admission(service, candidate):
     if joint_control.selected() is None:
         yield
         return
-    raw = os.environ.get('MERLIN_COMPUTE_CPU_SLOTS')
+    raw = os.environ.get("MERLIN_COMPUTE_CPU_SLOTS")
     if not raw:
-        raise ValueError('joint snapshot admission requires the original shared compute root')
-    root = Path(raw) / 'immutable-snapshots'
+        raise ValueError("joint snapshot admission requires the original shared compute root")
+    root = Path(raw) / "immutable-snapshots"
     key = snapshot_admission.identity(service, candidate)
     from merlin.targetgen.capsule_scheduling import background_admission_selected
+
     # Explicit final frozen checks are allowed after editing stops. Ordinary
     # background queue work observes the same trusted stop as command admission.
     stop = joint_control.stop_reason if background_admission_selected() else None
     with snapshot_admission.admitted(root, key, stop_reason=stop):
         if snapshot_admission.identity(service, candidate) != key:
-            raise ValueError('compiler snapshot changed while awaiting request admission')
+            raise ValueError("compiler snapshot changed while awaiting request admission")
         try:
             yield
         finally:
             if snapshot_admission.identity(service, candidate) != key:
-                raise ValueError('compiler snapshot changed during its admitted request')
+                raise ValueError("compiler snapshot changed during its admitted request")
 
 
 @contextlib.contextmanager
@@ -1085,9 +1129,15 @@ def original_compiler_execution(service, *, target_experiment, candidate, work_r
     from merlin.targetgen.compiler_library import active_compiler_library, guarded_compiler_library_verification
 
     from . import snapshot_execution
+
     if snapshot_execution.selected():
-        with snapshot_execution.execution(service, target_experiment=target_experiment,
-                candidate=candidate, work_root=work_root, sandbox_inputs=sandbox_inputs):
+        with snapshot_execution.execution(
+            service,
+            target_experiment=target_experiment,
+            candidate=candidate,
+            work_root=work_root,
+            sandbox_inputs=sandbox_inputs,
+        ):
             yield
         return
     if service is None:

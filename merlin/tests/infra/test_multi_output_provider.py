@@ -10,18 +10,16 @@ import yaml
 from test_multi_output_source import scalar_sources, wrap
 from test_shared_lhs_provider import SharedLHSProvider
 
-from merlin.compiler.schedule.fusion_semantics import ElementwiseSemantics
-from merlin.compiler.schedule.fusion_semantics import scalar_graph
-from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.program_limits import DecodedInstruction
-from merlin.compiler.schedule.program_limits import EncodedAccess
-from merlin.compiler.schedule.program_limits import ProgramDecoder
-from merlin.compiler.schedule.program_limits import ProgramLimits
-from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
-from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
-from merlin.compiler.schedule.temporary_storage import StorageAdapter
-from merlin.compiler.schedule.temporary_storage import StorageEffects
-from merlin.compiler.schedule.temporary_storage import TemporaryObject
+from merlin.compiler.schedule.fusion_semantics import ElementwiseSemantics, scalar_graph
+from merlin.compiler.schedule.program_limits import (
+    AddressWindow,
+    DecodedInstruction,
+    EncodedAccess,
+    ProgramDecoder,
+    ProgramLimits,
+)
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets, ScheduleEncoding
+from merlin.compiler.schedule.temporary_storage import StorageAdapter, StorageEffects, TemporaryObject
 from merlin.sched.ir import Call, Const, Kernel, TensorArg, evaluate
 
 SPACES = ("private0", "private1", "input0", "input1", "input2", "input3", "output0", "output1")

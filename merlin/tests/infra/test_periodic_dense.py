@@ -4,10 +4,8 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compiler.schedule.periodic_dense import build_periodic_staged_dense
-from merlin.compiler.schedule.periodic_dense import verify_periodic_staged_dense
-from merlin.compiler.schedule.staged_dense import StagedDenseContract
-from merlin.compiler.schedule.staged_dense import StagedDenseProblem
+from merlin.compiler.schedule.periodic_dense import build_periodic_staged_dense, verify_periodic_staged_dense
+from merlin.compiler.schedule.staged_dense import StagedDenseContract, StagedDenseProblem
 from merlin.sched.ir import Loop, as_expr, select
 from merlin.sched.ir.expr import free_vars
 from merlin.sched.ir.kernel import concretize, instances

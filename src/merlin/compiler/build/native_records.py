@@ -19,9 +19,12 @@ def _destination(staged, relative):
     relative = Path(relative)
     path = staged / relative
     parents = (staged.joinpath(*relative.parts[:index]) for index in range(len(relative.parts) + 1))
-    if (relative.is_absolute() or ".." in relative.parts
-            or any(parent.is_symlink() for parent in parents)
-            or path.exists()):
+    if (
+        relative.is_absolute()
+        or ".." in relative.parts
+        or any(parent.is_symlink() for parent in parents)
+        or path.exists()
+    ):
         raise ValueError("target preparation destination already exists or is linked outside staging")
     return path
 
@@ -48,9 +51,16 @@ def publish_precision_plan(staged, manifest, precision_plan, *, binding=None, st
         raise ValueError("target precision plan destination already exists")
     if tile and (binding is None or staged_root is None):
         raise ValueError("source-bound constants require their selected support and staged compiler inputs")
-    static = prepared_static_inputs(
-        binding, precision_plan, Path(staged_root), json.loads((staged / "execution_plan.json").read_bytes()),
-    ) if tile else ()
+    static = (
+        prepared_static_inputs(
+            binding,
+            precision_plan,
+            Path(staged_root),
+            json.loads((staged / "execution_plan.json").read_bytes()),
+        )
+        if tile
+        else ()
+    )
     destinations = []
     for item in static:
         if item.payload is None:
@@ -64,18 +74,23 @@ def publish_precision_plan(staged, manifest, precision_plan, *, binding=None, st
         path.parent.mkdir(exist_ok=True)
         path.write_bytes(payload)
     plan_path.write_bytes(raw_plan)
-    manifest = {**manifest, "stage_artifacts": {
-        **tracked, "precision-plan.json": hashlib.sha256(raw_plan).hexdigest(),
-        **{relative: hashlib.sha256(payload).hexdigest() for _, payload, relative in destinations},
-    }}
+    manifest = {
+        **manifest,
+        "stage_artifacts": {
+            **tracked,
+            "precision-plan.json": hashlib.sha256(raw_plan).hexdigest(),
+            **{relative: hashlib.sha256(payload).hexdigest() for _, payload, relative in destinations},
+        },
+    }
     if tile:
         manifest["constant_inputs"] = [item.record() for item in static]
     _write_manifest(staged, manifest)
     return manifest
 
 
-def publish_ordered_records(staged, manifest, *, source_request, k_source_request,
-                            ordered_mn_record=None, ordered_k_record=None):
+def publish_ordered_records(
+    staged, manifest, *, source_request, k_source_request, ordered_mn_record=None, ordered_k_record=None
+):
     """Retain the original outer-M/N then ordered-K request digest chain."""
     rows = (
         ("ordered-k-tiling.json", ordered_k_record, "source_request_digest", k_source_request, "ordered-K"),
@@ -89,8 +104,13 @@ def publish_ordered_records(staged, manifest, *, source_request, k_source_reques
             raise ValueError(f"target manifest cannot track the {description} partition")
         path = _destination(staged, name)
         path.write_bytes(record)
-        manifest = {**manifest, field: source.digest(), "stage_artifacts": {
-            **tracked, name: hashlib.sha256(record).hexdigest(),
-        }}
+        manifest = {
+            **manifest,
+            field: source.digest(),
+            "stage_artifacts": {
+                **tracked,
+                name: hashlib.sha256(record).hexdigest(),
+            },
+        }
         _write_manifest(staged, manifest)
     return manifest

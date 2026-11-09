@@ -17,14 +17,14 @@ from merlin.targetgen.compiler_library import CompilerLibrarySelection, freeze_c
 def test_refactored_sdk_imports_and_runs_selected_edited_pass(tmp_path):
     assert public_modules(25) == public_modules(24)
     assert library_modules() == library_modules(26)
-    assert library_modules(25)[:len(library_modules(24))] == library_modules(24)
-    assert all(name != "merlin.compile" and not name.startswith("merlin.compile.")
-               for name in library_modules(26))
+    assert library_modules(25)[: len(library_modules(24))] == library_modules(24)
+    assert all(name != "merlin.compile" and not name.startswith("merlin.compile.") for name in library_modules(26))
     root = tmp_path / "sdk"
     document = export_shared_scheduling(root, version=26)
     assert document["schema"] == "merlin.shared_scheduling_library.v20"
     contract = freeze_compiler_library(
-        root, review_id=fork.REVIEW_PREFIX + "refactor-closure-test",
+        root,
+        review_id=fork.REVIEW_PREFIX + "refactor-closure-test",
         public_modules=tuple(document["public_modules"]),
         sources=tuple((row["path"], row["module"]) for row in document["members"]),
     )
@@ -73,7 +73,11 @@ print(json.dumps(order))
 """
         result = subprocess.run(
             [sys.executable, "-I", "-c", code, str(directory), json.dumps(document["public_modules"])],
-            cwd=tmp_path, capture_output=True, text=True, timeout=120, env=dict(os.environ),
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=dict(os.environ),
         )
         assert result.returncode == 0, result.stderr
         return json.loads(result.stdout.strip().splitlines()[-1])

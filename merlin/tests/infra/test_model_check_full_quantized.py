@@ -1,4 +1,5 @@
 """Direct full-chain grading selects sealed quantized outputs explicitly and keeps host-twin defaults."""
+
 from __future__ import annotations
 
 import argparse
@@ -41,9 +42,14 @@ def _setup(tmp_path, monkeypatch):
         Program("prefill", "prefill", ({"from": "input", "key": "x"},)),
         Program("decode", "decode", ({"from": "output", "program": "prefill", "output": 0, "carry": 0},), 2),
     )
-    model = Model("m", "w", {"kind": "causal", "prefill_tokens": 1, "decode_steps": 2}, programs,
-                  {"kind": "logits", "outputs": [{"program": p.name, "output": 0} for p in programs]},
-                  {"full": {"differential": "cached"}})
+    model = Model(
+        "m",
+        "w",
+        {"kind": "causal", "prefill_tokens": 1, "decode_steps": 2},
+        programs,
+        {"kind": "logits", "outputs": [{"program": p.name, "output": 0} for p in programs]},
+        {"full": {"differential": "cached"}},
+    )
     models = SimpleNamespace(target="t", path=configuration, model=lambda _: model)
     manifest = {"schema": B.MANIFEST_SCHEMA, "captures": str(tmp_path / "captures"), "models": {"m": {}}}
     (root / "MANIFEST.json").write_text(json.dumps(manifest))
@@ -54,11 +60,21 @@ def _setup(tmp_path, monkeypatch):
     np.savez(derived / "inputs.npz", x=start)
     out = tmp_path / "out"
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(out))
-    args = argparse.Namespace(model="m", split="visible", inputs=["visible/v00"], timeout_s=60,
-                              decode_steps=None, jobs=1, host_package=tmp_path / "host",
-                              submission=tmp_path / "compiler",
-                              program=None, work=out / "build/check", full_comparison="quantized-reference",
-                              quantized_reference_atol=2e-6, quantized_reference_rtol=1e-5)
+    args = argparse.Namespace(
+        model="m",
+        split="visible",
+        inputs=["visible/v00"],
+        timeout_s=60,
+        decode_steps=None,
+        jobs=1,
+        host_package=tmp_path / "host",
+        submission=tmp_path / "compiler",
+        program=None,
+        work=out / "build/check",
+        full_comparison="quantized-reference",
+        quantized_reference_atol=2e-6,
+        quantized_reference_rtol=1e-5,
+    )
     monkeypatch.setattr(FB.BuildSettings, "of", lambda *_: None)
     from merlin.llvmlower import c_runtime
 
@@ -68,23 +84,39 @@ def _setup(tmp_path, monkeypatch):
     def build(_stage, **kwargs):
         assert kwargs.get("offload", True), "direct mode must never build CPU-only twins"
         calls.append(kwargs["label"])
-        return {"status": "linked", "elf_sha256": "image", "elf_bytes": 1, "sections": {}, "build_hash": "build",
-                "seconds": 1, "reused": False, "dedup_weights": True, "device_routed": True}
+        return {
+            "status": "linked",
+            "elf_sha256": "image",
+            "elf_bytes": 1,
+            "sections": {},
+            "build_hash": "build",
+            "seconds": 1,
+            "reused": False,
+            "dedup_weights": True,
+            "device_routed": True,
+        }
 
     monkeypatch.setattr(FB, "build", build)
     monkeypatch.setattr(F, "reference_chain", lambda *_a: pytest.fail("direct mode must reuse sealed references"))
 
     def execute(_target, _record, _stage, inputs, _work, _deadline, **kwargs):
         assert not kwargs.get("twin"), "no host twin may execute under the direct selection"
-        return {"values": [np.asarray(inputs["in0"]) + np.float32(1)],
-                "row": {"seconds": 0.1, "cycles_functional": 10}}
+        return {"values": [np.asarray(inputs["in0"]) + np.float32(1)], "row": {"seconds": 0.1, "cycles_functional": 10}}
 
     monkeypatch.setattr(F, "execute", execute)
     report = R.new_report("check", model="m", split="visible", submission={"tree_sha256": "compiler"})
-    report["gates"] = {"build": {"status": "pass", "detail": "kernel build"},
-                       "kernel_exact": {"status": "pass", "partial": False, "detail": "exact kernel replay"}}
-    report["programs"] = [{"program": p.name, "census": {"denominator": 1, "device": 1},
-                            "kernels": [{"symbol": "kernel", "status": "pass"}]} for p in programs]
+    report["gates"] = {
+        "build": {"status": "pass", "detail": "kernel build"},
+        "kernel_exact": {"status": "pass", "partial": False, "detail": "exact kernel replay"},
+    }
+    report["programs"] = [
+        {
+            "program": p.name,
+            "census": {"denominator": 1, "device": 1},
+            "kernels": [{"symbol": "kernel", "status": "pass"}],
+        }
+        for p in programs
+    ]
     return args, report, models, model, bundle, calls
 
 
@@ -132,9 +164,17 @@ def test_partial_chain_and_failed_kernel_replay_cannot_be_complete(tmp_path, mon
     assert not calls and result["gates"]["quantized_reference"]["status"] == "fail"
 
 
-@pytest.mark.parametrize("change", [
-    "reference", "source_configuration", "resolved_protocol_configuration", "seal", "arity", "reference_nonfinite",
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "reference",
+        "source_configuration",
+        "resolved_protocol_configuration",
+        "seal",
+        "arity",
+        "reference_nonfinite",
+    ],
+)
 def test_sealed_reference_mismatch_refuses_before_build(tmp_path, monkeypatch, change):
     args, report, models, model, bundle, calls = _setup(tmp_path, monkeypatch)
     path = bundle.root / "m/visible/v00/int8.npz"
@@ -183,13 +223,20 @@ def _portable_reference(tmp_path, monkeypatch, *, selection="common"):
     recipe = host_math_recipe(policy)
     path = bundle.root / "m/visible/v00/reference_numeric_contract.json"
     reference = path.with_name("int8.npz")
-    contract = {**LN.numeric_contract(), "host_math": {
-        "policy": policy, "scalar_source_sha256": hashlib.sha256(recipe.source.encode()).hexdigest(),
-        "compile_flags": list(recipe.compile_flags),
-    }}
-    receipt = {"schema": "merlin.model_check.reference_numeric_contract.v1", "numeric_contract": contract,
-               "evaluator_sha256": hashlib.sha256(Path(LN.__file__).read_bytes()).hexdigest(),
-               "outputs_sha256": hashlib.sha256(reference.read_bytes()).hexdigest()}
+    contract = {
+        **LN.numeric_contract(),
+        "host_math": {
+            "policy": policy,
+            "scalar_source_sha256": hashlib.sha256(recipe.source.encode()).hexdigest(),
+            "compile_flags": list(recipe.compile_flags),
+        },
+    }
+    receipt = {
+        "schema": "merlin.model_check.reference_numeric_contract.v1",
+        "numeric_contract": contract,
+        "evaluator_sha256": hashlib.sha256(Path(LN.__file__).read_bytes()).hexdigest(),
+        "outputs_sha256": hashlib.sha256(reference.read_bytes()).hexdigest(),
+    }
     path.write_text(json.dumps(receipt))
     _seal(bundle.root)
     return args, report, models, model, bundle, calls, path, receipt
@@ -208,10 +255,23 @@ def test_portable_policy_requires_corresponding_sealed_numerical_receipt(tmp_pat
     assert proof["numeric_contract"]["numeric_contract"] == receipt["numeric_contract"]
 
 
-@pytest.mark.parametrize("change", [
-    "missing", "unsealed", "changed", "outputs", "version", "policy", "source", "flags",
-    "evaluator", "schema", "nonobject", "contract_type",
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "missing",
+        "unsealed",
+        "changed",
+        "outputs",
+        "version",
+        "policy",
+        "source",
+        "flags",
+        "evaluator",
+        "schema",
+        "nonobject",
+        "contract_type",
+    ],
+)
 def test_portable_reference_receipt_mismatch_refuses_before_build(tmp_path, monkeypatch, change):
     args, report, models, _model, bundle, calls, path, receipt = _portable_reference(tmp_path, monkeypatch)
     if change == "missing":
@@ -327,8 +387,13 @@ def test_float_policy_checks_all_elements_and_rejects_nonfinite_shape_dtype_or_a
     expected = np.array([1, 0], np.float32)
     accepted = np.array([1.00001, 0.000001], np.float32)
     assert FQ.compare_outputs([accepted], [expected], [{}], policy)[0]["pass"]
-    for value in [np.array([1, 0.001], np.float32), np.array([1, np.nan], np.float32),
-                  np.array([1, np.inf], np.float32), expected.astype(np.float64), expected.reshape(1, 2)]:
+    for value in [
+        np.array([1, 0.001], np.float32),
+        np.array([1, np.nan], np.float32),
+        np.array([1, np.inf], np.float32),
+        expected.astype(np.float64),
+        expected.reshape(1, 2),
+    ]:
         assert not FQ.compare_outputs([value], [expected], [{}], policy)[0]["pass"]
     assert not FQ.compare_outputs([], [expected], [{}], policy)[0]["pass"]
     assert not FQ.compare_outputs([expected, expected], [expected], [{}], policy)[0]["pass"]
@@ -488,8 +553,22 @@ def test_completed_comparison_survives_later_execution_error(tmp_path, monkeypat
 def test_completed_step_callback_cannot_change_default_host_twin_selection(tmp_path, monkeypatch):
     _args, _report, _models, model, _bundle, _calls = _setup(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="requires quantized-reference"):
-        F.run_input(model, target="t", builds={}, twins={}, caches={}, stages={}, specs={}, arrays={}, counts={},
-                    work=tmp_path, deadline=0, rows=[], twin_pool=None, completed_step=lambda *_: False)
+        F.run_input(
+            model,
+            target="t",
+            builds={},
+            twins={},
+            caches={},
+            stages={},
+            specs={},
+            arrays={},
+            counts={},
+            work=tmp_path,
+            deadline=0,
+            rows=[],
+            twin_pool=None,
+            completed_step=lambda *_: False,
+        )
 
 
 def test_step_comparisons_retain_declared_judged_order_instead_of_execution_order(tmp_path, monkeypatch):
@@ -506,26 +585,45 @@ def test_step_comparisons_retain_declared_judged_order_instead_of_execution_orde
     result = F.check(args, report, models=models, bundle=bundle, log=lambda *_: None)
     assert R.settle(result)["status"] == "pass"
     comparisons = result["model_metrics"]["per_input"][0]["quantized_reference"]
-    assert [(row["program"], row["step"]) for row in comparisons] == [
-        ("decode", 0), ("decode", 1), ("prefill", 0)
-    ]
+    assert [(row["program"], row["step"]) for row in comparisons] == [("decode", 0), ("decode", 1), ("prefill", 0)]
 
 
 def test_direct_comparison_cannot_silently_apply_to_fast_mode(tmp_path):
     output = tmp_path / "usage.json"
-    code = cli.main(["check", "--submission", str(tmp_path / "unused-compiler"), "--model", "m",
-                     "--split", "visible", "--mode", "fast", "--full-comparison", "quantized-reference",
-                     "--out", str(output)])
+    code = cli.main(
+        [
+            "check",
+            "--submission",
+            str(tmp_path / "unused-compiler"),
+            "--model",
+            "m",
+            "--split",
+            "visible",
+            "--mode",
+            "fast",
+            "--full-comparison",
+            "quantized-reference",
+            "--out",
+            str(output),
+        ]
+    )
     assert code == R.EXIT_USAGE
     assert "requires --mode full" in json.loads(output.read_text())["failures"][0]["detail"]
 
 
 def test_full_check_forwards_loaded_policy_when_cli_models_is_implicit(tmp_path, monkeypatch):
     args, report, models, _model, bundle, _calls = _setup(tmp_path, monkeypatch)
-    models.numerics = {"version": "merlin.model_check.numerics.v1", "functional": {
-        "atol": .125, "rtol": 0.0, "equal_nan": False, "finite_required": True,
-        "integer_boolean": "exact", "outputs": "all_declared_every_step",
-    }}
+    models.numerics = {
+        "version": "merlin.model_check.numerics.v1",
+        "functional": {
+            "atol": 0.125,
+            "rtol": 0.0,
+            "equal_nan": False,
+            "finite_required": True,
+            "integer_boolean": "exact",
+            "outputs": "all_declared_every_step",
+        },
+    }
     args.models = None
     args.quantized_reference_atol = args.quantized_reference_rtol = None
     original = F.execute
@@ -535,13 +633,13 @@ def test_full_check_forwards_loaded_policy_when_cli_models_is_implicit(tmp_path,
         nonlocal executions
         row = original(*a, **kw)
         if executions == 0:
-            row["values"][0] += np.float32(.1)
+            row["values"][0] += np.float32(0.1)
         executions += 1
         return row
 
     monkeypatch.setattr(F, "execute", observed)
     result = F.check(args, report, models=models, bundle=bundle, log=lambda *_: None)
-    assert result["comparison"]["float_policy"]["atol"] == .125
+    assert result["comparison"]["float_policy"]["atol"] == 0.125
     assert result["gates"]["quantized_reference"]["status"] == "pass"
     assert executions == 3
 
@@ -553,7 +651,12 @@ def test_host_fusion_override_reaches_provider_without_changing_reference_config
     args, report, models, _model, bundle, _calls = _setup(tmp_path, monkeypatch)
     original_configuration = models.path.read_bytes()
     settings = FB.BuildSettings(
-        "board", tmp_path / "boards", tmp_path / "host.dts", "scalar", 1, tmp_path / "host",
+        "board",
+        tmp_path / "boards",
+        tmp_path / "host.dts",
+        "scalar",
+        1,
+        tmp_path / "host",
         host_elementwise_fusion=not selected,
     )
     monkeypatch.setattr(FB.BuildSettings, "of", lambda *_: settings)
@@ -564,9 +667,7 @@ def test_host_fusion_override_reaches_provider_without_changing_reference_config
         observed.append(kwargs["settings"].host_elementwise_fusion)
         return FB.build(stage, **kwargs)
 
-    result = F.check(
-        args, report, models=models, bundle=bundle, build_provider=provider, log=lambda *_: None
-    )
+    result = F.check(args, report, models=models, bundle=bundle, build_provider=provider, log=lambda *_: None)
     assert observed == [selected, selected]
     assert settings.host_elementwise_fusion is not selected
     assert models.path.read_bytes() == original_configuration

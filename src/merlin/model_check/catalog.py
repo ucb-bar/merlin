@@ -393,8 +393,8 @@ def _dtype(value) -> str:
 
 def census(catalog: ProgramCatalog, *, refused: Mapping[str, str] | None = None) -> dict[str, Any]:
     """Every contraction of the original capture, classified ``device`` or ``host:<reason>``."""
-    from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.compiler.quantization.scope import captured_quantized_contraction
+    from merlin.frontends.linalg_mlir import parse_mlir_file
 
     module = parse_mlir_file(catalog.stage / "model.mlir")
     routed: dict[str, dict[str, Any]] = {}

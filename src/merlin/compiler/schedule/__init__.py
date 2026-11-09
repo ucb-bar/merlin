@@ -8,15 +8,6 @@ no instruction meaning or execution qualification.
 
 from __future__ import annotations
 
-from merlin.transforms.dense_planning import (
-    DenseBlock,
-    DenseChoice,
-    DenseProblem,
-    DenseResources,
-    choose_dense_block,
-    dense_blocks,
-)
-
 from merlin.compiler.schedule.blocks import (
     AXES,
     BANK_ALIGNED,
@@ -52,6 +43,14 @@ from merlin.compiler.schedule.blocks import (
     schedule_interface_program,
 )
 from merlin.compiler.schedule.derive import geometry_from_address_space
+from merlin.transforms.dense_planning import (
+    DenseBlock,
+    DenseChoice,
+    DenseProblem,
+    DenseResources,
+    choose_dense_block,
+    dense_blocks,
+)
 
 __all__ = [
     "DenseBlock",

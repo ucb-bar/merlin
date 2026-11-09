@@ -22,13 +22,7 @@ import sys
 import pytest
 
 from merlin.common.paths import artifacts_dir, merlin_dir
-from merlin.compiler.schedule import BANK_ALIGNED
-from merlin.compiler.schedule import CONTIGUOUS
-from merlin.compiler.schedule import LHS
-from merlin.compiler.schedule import NEST
-from merlin.compiler.schedule import ROLE
-from merlin.compiler.schedule import WEIGHT
-from merlin.compiler.schedule import Knobs
+from merlin.compiler.schedule import BANK_ALIGNED, CONTIGUOUS, LHS, NEST, ROLE, WEIGHT, Knobs
 from merlin.compiler.schedule import blocks as block_schedule
 
 TARGET = "gemmini"
@@ -219,6 +213,7 @@ def test_a_minted_package_emits_the_zero_path_convolution_op_for_op(minted):
 
 def test_the_vendored_pass_is_merlins_bytes_and_the_lineage_says_so(minted):
     import yaml
+
     from merlin.compiler.schedule.standalone import block_schedule_source
 
     mint, packages = minted

@@ -1,9 +1,16 @@
 """Explicit region-cover fixtures shared by source and emitted-C conformance."""
+
 from dataclasses import replace
+
 from merlin.compiler.partition.semantic import extract_semantic_region
 from merlin.xdsl_dialects.lowering.global_plan import (
-    BufferRepresentation, CycleInterval, GlobalPlan, RegionAlternative, ValueRepresentation,
+    BufferRepresentation,
+    CycleInterval,
+    GlobalPlan,
+    RegionAlternative,
+    ValueRepresentation,
 )
+
 
 def plan_for(source, groups):
     pure = [node for node in source.nodes if node.effect == "pure"]
@@ -26,4 +33,3 @@ def plan_for(source, groups):
             )
         )
     return GlobalPlan(tuple(alternatives), (), CycleInterval.unknown("uncalibrated"))
-

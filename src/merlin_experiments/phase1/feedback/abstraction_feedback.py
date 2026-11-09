@@ -41,17 +41,26 @@ SWEEP_SCHEMA = "merlin.phase1.coverage_sweep.v1"
 SEED_RECEIPT = "merlin.phase1.seed_emission.v1"
 SEED_ENV = "MERLIN_SEED_EMISSION_SELECTION"
 ARTIFACT = "lowered.llvm.mlir"
-COMPILER_STAGES = frozenset((
-    "parse", "lower_interface_to_target", "emit_command_buffer", "emit_analysis_bundle",
-    "emit_target_bundle", "emit_target_artifact", "lower_target_to_llvm",
-))
+COMPILER_STAGES = frozenset(
+    (
+        "parse",
+        "lower_interface_to_target",
+        "emit_command_buffer",
+        "emit_analysis_bundle",
+        "emit_target_bundle",
+        "emit_target_artifact",
+        "lower_target_to_llvm",
+    )
+)
 MAX_INVOCATIONS = 64
 MAX_STDERR_BYTES = 1 << 20
 MAX_RECORDS = 64
 MAX_SHAPES = 6
 MAX_EXTENT = 1 << 16
-QUALIFICATION = ("advisory author feedback: library-recorded decisions and byte identity of emitted artifacts; "
-                 "no numerical, RTL, timing or performance qualification")
+QUALIFICATION = (
+    "advisory author feedback: library-recorded decisions and byte identity of emitted artifacts; "
+    "no numerical, RTL, timing or performance qualification"
+)
 
 
 def _scrub(text, limit=300):
@@ -73,7 +82,7 @@ def case_admission(generated, *, case):
     if not root.is_dir():
         return {"status": "unavailable", "reason": "no retained compiler invocations", "records": []}
     calls = []
-    for record in sorted(root.glob("*/invocation.json"))[:MAX_INVOCATIONS * 4]:
+    for record in sorted(root.glob("*/invocation.json"))[: MAX_INVOCATIONS * 4]:
         try:
             document = json.loads(record.read_bytes()[:MAX_STDERR_BYTES])
         except (OSError, ValueError):
@@ -91,8 +100,13 @@ def case_admission(generated, *, case):
         rows, lost = parse_admission_stream(text)
         dropped += lost
         for row in rows:
-            key = (row["api"], row["admitted"], row["failed_premise"], row["fallback_route"],
-                   json.dumps(row.get("shape"), sort_keys=True))
+            key = (
+                row["api"],
+                row["admitted"],
+                row["failed_premise"],
+                row["fallback_route"],
+                json.dumps(row.get("shape"), sort_keys=True),
+            )
             if key in merged:
                 merged[key]["count"] += row["count"]
                 if stage not in merged[key]["stages"]:
@@ -105,8 +119,9 @@ def case_admission(generated, *, case):
                     "failed_premise": _scrub(row["failed_premise"]),
                     "fallback_route": _scrub(row["fallback_route"]),
                     "shape": row.get("shape"),
-                    "partial_refusals": ([_scrub(v) for v in row["partial_refusals"]]
-                                         if row.get("partial_refusals") else None),
+                    "partial_refusals": (
+                        [_scrub(v) for v in row["partial_refusals"]] if row.get("partial_refusals") else None
+                    ),
                     "count": row["count"],
                     "stages": [stage],
                 }
@@ -119,8 +134,10 @@ def case_admission(generated, *, case):
         "admitted_apis": sorted({r["api"] for r in records if r["admitted"]}),
         "refused_apis": sorted({r["api"] for r in records if not r["admitted"]}),
         **({"dropped": dropped} if dropped else {}),
-        "meaning": ("each record is one checked library consumer's decision in this case's compile; a refusal "
-                    "emitted the caller's own original route for that decision"),
+        "meaning": (
+            "each record is one checked library consumer's decision in this case's compile; a refusal "
+            "emitted the caller's own original route for that decision"
+        ),
     }
 
 
@@ -214,15 +231,25 @@ def seed_emission(selection, interface, *, contract, timeout, artifact_name=ARTI
     if receipt.is_file():
         return json.loads(receipt.read_bytes())
     work = Path(tempfile.mkdtemp(prefix="seed-", dir=selection.cache))
-    document = {"schema": SEED_RECEIPT, "seed_sha256": selection.sha256, "interface_sha256": _sha(text),
-                "artifact_name": artifact_name}
+    document = {
+        "schema": SEED_RECEIPT,
+        "seed_sha256": selection.sha256,
+        "interface_sha256": _sha(text),
+        "artifact_name": artifact_name,
+    }
     try:
         staged = work / "seed.interface.mlir"
         staged.write_bytes(text)
         generated = work / "generated"
         try:
-            lower_interface(_seed_package(selection, contract), staged, generated, contract=contract,
-                            timeout=timeout, artifact_name=artifact_name)
+            lower_interface(
+                _seed_package(selection, contract),
+                staged,
+                generated,
+                contract=contract,
+                timeout=timeout,
+                artifact_name=artifact_name,
+            )
         except Exception as error:  # noqa: BLE001 -- a seed refusal is evidence for this shape
             document.update(status="seed_not_emitted", reason=_scrub(f"{type(error).__name__}: {error}"))
         else:
@@ -263,21 +290,27 @@ def fallback_to_seed(generated, *, contract, timeout, artifact_name=ARTIFACT, se
         reason = _scrub(f"{type(error).__name__}: {error}")
         return {"fallback_to_seed": None, "basis": "seed emission unavailable: " + reason}
     if seed.get("status") != "emitted":
-        return {"fallback_to_seed": None, "basis": "the seed compiler emits no kernel for this input",
-                "seed_reason": seed.get("reason")}
+        return {
+            "fallback_to_seed": None,
+            "basis": "the seed compiler emits no kernel for this input",
+            "seed_reason": seed.get("reason"),
+        }
     kernel = _sha(artifact.read_bytes()) == seed["artifact_sha256"]
     buffer = generated / "command_buffer.json"
     return {
         "fallback_to_seed": kernel,
         "seed_identity": {
             "kernel_identical": kernel,
-            "command_buffer_identical": (_sha(buffer.read_bytes()) == seed["command_buffer_sha256"]
-                                         if buffer.is_file() else None),
+            "command_buffer_identical": (
+                _sha(buffer.read_bytes()) == seed["command_buffer_sha256"] if buffer.is_file() else None
+            ),
             "compared": artifact_name,
             "seed_sha256": selection.sha256[:16],
             "basis": "byte identity of this case's emitted kernel with the seed compiler's emission of the same input",
-            "meaning": ("true: this case's kernel equals the seed's, so it carries no optimization for this shape; "
-                        "false: the emitted kernel differs (not by itself an improvement)"),
+            "meaning": (
+                "true: this case's kernel equals the seed's, so it carries no optimization for this shape; "
+                "false: the emitted kernel differs (not by itself an improvement)"
+            ),
         },
     }
 
@@ -309,8 +342,15 @@ def attach_cases(observed, runs, *, contract, timeout, deadline=None, artifact_n
             row["fallback_to_seed"] = None
             continue
         remaining = timeout if deadline is None else max(1, min(timeout, int(deadline - time.monotonic())))
-        row.update(case_feedback(Path(runs) / name / "generated", case=name, contract=contract,
-                                 timeout=remaining, artifact_name=artifact_name))
+        row.update(
+            case_feedback(
+                Path(runs) / name / "generated",
+                case=name,
+                contract=contract,
+                timeout=remaining,
+                artifact_name=artifact_name,
+            )
+        )
 
 
 # --------------------------------------------------------------------------- emitted census
@@ -356,7 +396,7 @@ def census(artifact_text, *, target):
         "transfers": dict(sorted(transfers.items())),
         "unknown_instructions": unknown,
         "basis": "decoded emitted kernel; widths are rows x columns per command and counts are per-call executions "
-                 "of proved loop trip counts (None when a count is unproved); no timing",
+        "of proved loop trip counts (None when a count is unproved); no timing",
     }
 
 
@@ -390,8 +430,12 @@ def _template(public_cases, name, allowed):
     if name not in allowed:
         raise ValueError("coverage sweep template must be one selected public training case")
     directory = root / name
-    if (Path(name).name != name or directory.is_symlink() or not directory.is_dir()
-            or directory.resolve().parent != root.resolve()):
+    if (
+        Path(name).name != name
+        or directory.is_symlink()
+        or not directory.is_dir()
+        or directory.resolve().parent != root.resolve()
+    ):
         raise ValueError("coverage sweep template is not a direct selected public case")
     capsule = directory / "capsule.yaml"
     interface = directory / "capsule.interface.mlir"
@@ -410,8 +454,12 @@ def _synthetic_capsule(template_yaml, cb, *, name, directory, interface_text):
     for row in document.get("inputs") or []:
         if row.get("name") in tensors:
             row["shape"] = list(tensors[row["name"]]["shape"])
-    document.update(name=name, interface_mlir="capsule.interface.mlir", label="public",
-                    source_reference="author-named coverage sweep shape derived from a public template")
+    document.update(
+        name=name,
+        interface_mlir="capsule.interface.mlir",
+        label="public",
+        source_reference="author-named coverage sweep shape derived from a public template",
+    )
     directory.mkdir(parents=True)
     (directory / "capsule.interface.mlir").write_text(interface_text)
     (directory / "capsule.yaml").write_text(yaml.safe_dump(document, sort_keys=False))
@@ -431,9 +479,17 @@ def _numerical(submission, capsule_root, *, runs_root, context, contract, timeou
     from contextlib import redirect_stderr, redirect_stdout
 
     with (Path(runs_root) / "grader.log").open("w") as log, redirect_stdout(log), redirect_stderr(log):
-        score = CG.grade(submission, capsules_root=capsule_root, runs_root=runs_root, target=context.target,
-                         labels={"public", "dev"}, contract=contract, oracle_adapters=adapters,
-                         timeout=timeout, max_workers=1)
+        score = CG.grade(
+            submission,
+            capsules_root=capsule_root,
+            runs_root=runs_root,
+            target=context.target,
+            labels={"public", "dev"},
+            contract=contract,
+            oracle_adapters=adapters,
+            timeout=timeout,
+            max_workers=1,
+        )
     rows = score.get("per_capsule") or []
     if len(rows) != 1:
         return {"status": "unavailable", "reason": "functional check produced no single case row"}
@@ -442,8 +498,11 @@ def _numerical(submission, capsule_root, *, runs_root, context, contract, timeou
     return {
         "status": row.get("status"),
         "tiers": {t: tier_status(v) for t, v in (row.get("tiers") or {}).items()},
-        **({"failure_plane": _scrub(failure.get("plane")), "failure_category": _scrub(failure.get("category"))}
-           if failure else {}),
+        **(
+            {"failure_plane": _scrub(failure.get("plane")), "failure_category": _scrub(failure.get("category"))}
+            if failure
+            else {}
+        ),
         "engine": "spike",
         "qualification": "functional Spike check of an author-named shape; no RTL, timing or grade credit",
     }
@@ -497,26 +556,41 @@ def coverage_sweep(
         except Exception as error:  # noqa: BLE001 -- an unsupported resize is the author's answer
             row.update(status="not_built", reason=_scrub(f"{type(error).__name__}: {error}"))
             continue
-        case_dir = _synthetic_capsule(capsule_yaml, cb, name=label, directory=output / "cases" / label,
-                                      interface_text=text)
+        case_dir = _synthetic_capsule(
+            capsule_yaml, cb, name=label, directory=output / "cases" / label, interface_text=text
+        )
         generated = output / "compiled" / label / "generated"
         try:
             if package is None:
                 package = P.load_package(submission, contract=contract)
                 P.integrity_scan(package)
                 P.build_package(package)
-            lower_interface(package, case_dir / "capsule.interface.mlir", generated, contract=contract,
-                            timeout=max(1, remaining), artifact_name=artifact_name)
+            lower_interface(
+                package,
+                case_dir / "capsule.interface.mlir",
+                generated,
+                contract=contract,
+                timeout=max(1, remaining),
+                artifact_name=artifact_name,
+            )
         except Exception as error:  # noqa: BLE001 -- a compile refusal is reported, never raised
             row.update(status="compile_failed", reason=_scrub(f"{type(error).__name__}: {error}"))
         else:
             row["status"] = "compiled"
-        row.update(case_feedback(generated, case=label, contract=contract,
-                                 timeout=max(1, int(deadline - time.monotonic())), artifact_name=artifact_name))
+        row.update(
+            case_feedback(
+                generated,
+                case=label,
+                contract=contract,
+                timeout=max(1, int(deadline - time.monotonic())),
+                artifact_name=artifact_name,
+            )
+        )
         admission = row.get("abstraction_admission") or {}
         row["refusals"] = [
             {k: r[k] for k in ("api", "failed_premise", "fallback_route", "count")}
-            for r in admission.get("records", []) if not r["admitted"]
+            for r in admission.get("records", [])
+            if not r["admitted"]
         ]
         row["admitted_apis"] = admission.get("admitted_apis", [])
         if row["status"] == "compiled":
@@ -533,8 +607,14 @@ def coverage_sweep(
                 single.mkdir(parents=True)
                 shutil.copytree(case_dir, single / "cases" / label)
                 try:
-                    row["numerical"] = _numerical(submission, single / "cases", runs_root=single / "runs",
-                                                  context=context, contract=contract, timeout=left)
+                    row["numerical"] = _numerical(
+                        submission,
+                        single / "cases",
+                        runs_root=single / "runs",
+                        context=context,
+                        contract=contract,
+                        timeout=left,
+                    )
                 except Exception as error:  # noqa: BLE001
                     row["numerical"] = {"status": "unavailable", "reason": _scrub(f"{type(error).__name__}: {error}")}
         elif not numerical:
@@ -544,8 +624,10 @@ def coverage_sweep(
         "template": template,
         "shapes": rows,
         "limits": {"max_shapes": max_shapes, "max_extent": MAX_EXTENT, "timeout_s": timeout},
-        "scope": ("only the shapes named in this request, built from the named public template through the "
-                  "study's case-resizing path; no other case is read or compared"),
+        "scope": (
+            "only the shapes named in this request, built from the named public template through the "
+            "study's case-resizing path; no other case is read or compared"
+        ),
         "qualification": QUALIFICATION,
         "timing_qualified": False,
         "all_pass": None,

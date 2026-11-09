@@ -12,6 +12,7 @@ recommended or summarized into a setting. Any reference-side request naming a ra
 ``outside_selected_bank``; on-demand CCA of raw references is never computed in this mode.
 Candidate-side analysis of owned files is unchanged and uses the ordinary owner.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -29,13 +30,13 @@ BANK_OPERATIONS = ("applicability", "verify")
 _REPORTS = ("analysis.json", "cca.json", "cca.mlir", "instructions.dis")
 GAPS = {
     OUTSIDE: "This arm serves precomputed CCA only for the units of its selected bank. List them with "
-        "--reference-analysis inventory and select one with --reference-entry UNIT_ID (and "
-        "--reference-region REGION_ID for one occurrence) or a cca-evidence/ path. Raw reference-kernels/ "
-        "files stay readable as ordinary files; no on-demand CCA is computed for them.",
+    "--reference-analysis inventory and select one with --reference-entry UNIT_ID (and "
+    "--reference-region REGION_ID for one occurrence) or a cca-evidence/ path. Raw reference-kernels/ "
+    "files stay readable as ordinary files; no on-demand CCA is computed for them.",
     "bank_operation_requires_cca_bank_arm": "applicability and verify are served by a CCA bank arm's "
-        "analysis service only.",
+    "analysis service only.",
     "unknown_or_ambiguous_unit_id": "No bank unit has this ID, or the prefix matches several units; the "
-        "reply lists the matching candidates. Use a full UNIT_ID or a unique prefix from inventory.",
+    "reply lists the matching candidates. Use a full UNIT_ID or a unique prefix from inventory.",
     "cca_bank_requires_original_bundle": "Reference analysis needs the run's original host bundle manifest.",
     "cca_bank_requires_one_readonly_grant": "The bundle must carry exactly one read-only cca-evidence bank grant.",
     "cca_bank_alias_does_not_match_original_grant": "cca-evidence/ must be the original granted bank alias.",
@@ -43,7 +44,7 @@ GAPS = {
     "cca_bank_unverified": "A bank file, the unit roster or a file pin failed verification; the bank is not served.",
     "cca_bank_record_inconsistent": "A unit's precomputed CCA JSON, MLIR and analysis records disagree.",
     "cca_bank_dependency_unavailable": "The broker environment lacks Merlin's mining workflow "
-        "(install 'merlin[mining]') needed to verify the bank.",
+    "(install 'merlin[mining]') needed to verify the bank.",
 }
 
 
@@ -92,8 +93,12 @@ def open_bank(workspace, bundle_manifest, repo, pin):
     from merlin.targetgen.sandbox import bwrap as BW
 
     manifest = Path(bundle_manifest)
-    if (manifest.is_relative_to(workspace) or manifest.is_symlink() or not manifest.is_file()
-            or manifest.stat().st_size > 4 << 20):
+    if (
+        manifest.is_relative_to(workspace)
+        or manifest.is_symlink()
+        or not manifest.is_file()
+        or manifest.stat().st_size > 4 << 20
+    ):
         raise _Refused("cca_bank_requires_original_bundle")
     bundle = yaml.safe_load(manifest.read_text())
     grants = [row for row in bundle.get("allowed", []) if row.get("as") == GRANT]
@@ -165,7 +170,7 @@ def _select(value, bank):
             raise _AnalysisGap("unknown_or_ambiguous_unit_id", candidates=matches[:8], matching=len(matches))
         unit = units[matches[0]]
     if path.startswith(GRANT + "/"):
-        relative = path[len(GRANT) + 1:]
+        relative = path[len(GRANT) + 1 :]
         owners = []
         for candidate in bank["units"]:
             if relative == candidate["card"]:
@@ -195,28 +200,40 @@ def _select(value, bank):
 
 
 def _bank_record(bank, pin):
-    return dict(sha256=pin, label=bank.get("label"), schema=bank.get("schema"), semantics=bank.get("semantics"),
-                units=len(bank["units"]), served="precomputed_selected_units_only",
-                on_demand_analysis="not_performed")
+    return dict(
+        sha256=pin,
+        label=bank.get("label"),
+        schema=bank.get("schema"),
+        semantics=bank.get("semantics"),
+        units=len(bank["units"]),
+        served="precomputed_selected_units_only",
+        on_demand_analysis="not_performed",
+    )
 
 
 def _extents(analysis):
     """Shape-side facts of one occurrence: proved loop trip counts, transfer shapes per role, entry symbol."""
     trips = ((analysis.get("cfg") or {}).get("trip_counts") or {}).get("proved") or []
-    width = (((analysis.get("derived_effects") or {}).get("facts") or {}).get("role_transfer_width") or {})
+    width = ((analysis.get("derived_effects") or {}).get("facts") or {}).get("role_transfer_width") or {}
     shapes = {}
     for role, entry in ((width.get("value") or {}).get("data_movement") or {}).items():
-        rows = [dict(rows=row.get("rows"), cols=row.get("cols"), count=row.get("count"))
-                for row in (entry or {}).get("shapes") or () if isinstance(row, dict)]
+        rows = [
+            dict(rows=row.get("rows"), cols=row.get("cols"), count=row.get("count"))
+            for row in (entry or {}).get("shapes") or ()
+            if isinstance(row, dict)
+        ]
         if rows:
             shapes[role] = rows[:6]
     extent = analysis.get("static_function_extent") or {}
-    return dict(loop_trip_counts=[row.get("value") for row in trips if isinstance(row, dict)][:16],
-                loop_trip_counts_status="proved" if trips else "unknown",
-                transfer_shapes=shapes or None, transfer_shapes_status=width.get("status", "unknown"),
-                entry_symbol=analysis.get("symbol") or extent.get("symbol") or None,
-                address_range=analysis.get("address_range"),
-                instructions=analysis.get("listed_instructions"))
+    return dict(
+        loop_trip_counts=[row.get("value") for row in trips if isinstance(row, dict)][:16],
+        loop_trip_counts_status="proved" if trips else "unknown",
+        transfer_shapes=shapes or None,
+        transfer_shapes_status=width.get("status", "unknown"),
+        entry_symbol=analysis.get("symbol") or extent.get("symbol") or None,
+        address_range=analysis.get("address_range"),
+        instructions=analysis.get("listed_instructions"),
+    )
 
 
 def _inventory(value, root, bank, pin):
@@ -227,7 +244,7 @@ def _inventory(value, root, bank, pin):
         unit, _ = _select(dict(path=path), bank)
         units = [unit]
     rows = []
-    for unit in units[offset:offset + limit]:
+    for unit in units[offset : offset + limit]:
         raw, pin_card = _pinned(root, bank, unit["card"])
         card = json.loads(raw)
         if card.get("kernel_id") != unit["kernel_id"]:
@@ -246,31 +263,53 @@ def _inventory(value, root, bank, pin):
             for item in (analysis.get("mechanism_projection") or {}).get("field_fingerprints", []):
                 fields.add(item["instruction"] + "." + item["field"])
         # A compact, unranked summary of the card so a unit can be chosen without opening every file.
-        summary = dict(originals=sorted({o.get("artifact_id") for o in occurrences if o.get("artifact_id")}),
-                       symbols=sorted({o["symbol"] for o in occurrences if o.get("symbol")}),
-                       accelerator_sites=[o.get("accelerator_sites") for o in occurrences],
-                       instruction_classes=sorted({k for o in occurrences
-                                                   for k in (o.get("instruction_class_static_sites") or {})}),
-                       observation_fields=sorted(fields))
-        rows.append(dict(unit_id=unit["kernel_id"], mechanisms=mechanisms, extents=extents, summary=summary,
-                         card=pin_card,
-                         occurrences=[dict(region_id=row["region_id"], original_id=row["original_id"],
-                                           files={name: GRANT + "/" + relative
-                                                  for name, relative in row["files"].items()})
-                                      for row in _occurrences(unit)],
-                         card_occurrences=occurrences))
-    return dict(kind="cca_bank_inventory", bank=_bank_record(bank, pin), total=len(units), offset=offset,
-                units=rows, next_offset=offset + len(rows) if offset + len(rows) < len(units) else None,
-                ordering="unit_id",
-                interface=dict(
-                    lift="--reference-analysis lift --reference-entry UNIT_ID [--reference-region REGION_ID]",
-                    compare="--reference-analysis compare --reference-entry UNIT_ID --reference-region REGION_ID "
-                            "--candidate-path OWNED_FILE [--candidate-symbol SYMBOL]",
-                    applicability="--reference-analysis applicability --reference-entry UNIT_ID --reference-region "
-                                  "REGION_ID --candidate-path OWNED_FILE [--candidate-symbol SYMBOL] "
-                                  "[--candidate-shape DIM=N,...]",
-                    files="every listed cca-evidence/ file is also readable directly"),
-                semantic_equivalence="unknown", performance="unknown")
+        summary = dict(
+            originals=sorted({o.get("artifact_id") for o in occurrences if o.get("artifact_id")}),
+            symbols=sorted({o["symbol"] for o in occurrences if o.get("symbol")}),
+            accelerator_sites=[o.get("accelerator_sites") for o in occurrences],
+            instruction_classes=sorted(
+                {k for o in occurrences for k in (o.get("instruction_class_static_sites") or {})}
+            ),
+            observation_fields=sorted(fields),
+        )
+        rows.append(
+            dict(
+                unit_id=unit["kernel_id"],
+                mechanisms=mechanisms,
+                extents=extents,
+                summary=summary,
+                card=pin_card,
+                occurrences=[
+                    dict(
+                        region_id=row["region_id"],
+                        original_id=row["original_id"],
+                        files={name: GRANT + "/" + relative for name, relative in row["files"].items()},
+                    )
+                    for row in _occurrences(unit)
+                ],
+                card_occurrences=occurrences,
+            )
+        )
+    return dict(
+        kind="cca_bank_inventory",
+        bank=_bank_record(bank, pin),
+        total=len(units),
+        offset=offset,
+        units=rows,
+        next_offset=offset + len(rows) if offset + len(rows) < len(units) else None,
+        ordering="unit_id",
+        interface=dict(
+            lift="--reference-analysis lift --reference-entry UNIT_ID [--reference-region REGION_ID]",
+            compare="--reference-analysis compare --reference-entry UNIT_ID --reference-region REGION_ID "
+            "--candidate-path OWNED_FILE [--candidate-symbol SYMBOL]",
+            applicability="--reference-analysis applicability --reference-entry UNIT_ID --reference-region "
+            "REGION_ID --candidate-path OWNED_FILE [--candidate-symbol SYMBOL] "
+            "[--candidate-shape DIM=N,...]",
+            files="every listed cca-evidence/ file is also readable directly",
+        ),
+        semantic_equivalence="unknown",
+        performance="unknown",
+    )
 
 
 def _cca(root, bank, occurrence, analysis):
@@ -294,7 +333,7 @@ def _lift(value, root, bank, pin, *, compare=False):
     if compare and len(occurrences) != 1:
         raise ValueError("analysis_compare_requires_one_region")
     regions, ccas = [], []
-    for occurrence in occurrences[offset:offset + limit]:
+    for occurrence in occurrences[offset : offset + limit]:
         files = occurrence["files"]
         raw, analysis_pin = _pinned(root, bank, files["analysis.json"])
         analysis = json.loads(raw)
@@ -302,20 +341,38 @@ def _lift(value, root, bank, pin, *, compare=False):
             raise _Refused("cca_bank_record_inconsistent")
         ccas.append(_cca(root, bank, occurrence, analysis))
         _, listing = _pinned(root, bank, files["instructions.dis"])
-        regions.append(dict(analysis, bank_occurrence=dict(
-            unit_id=unit["kernel_id"], region_id=occurrence["region_id"], original_id=occurrence["original_id"],
-            analysis=analysis_pin, instructions=listing,
-            files={name: GRANT + "/" + relative for name, relative in files.items()})))
+        regions.append(
+            dict(
+                analysis,
+                bank_occurrence=dict(
+                    unit_id=unit["kernel_id"],
+                    region_id=occurrence["region_id"],
+                    original_id=occurrence["original_id"],
+                    analysis=analysis_pin,
+                    instructions=listing,
+                    files={name: GRANT + "/" + relative for name, relative in files.items()},
+                ),
+            )
+        )
     _, card = _pinned(root, bank, unit["card"])
-    report = dict(kind="static_instruction_analysis", source="precomputed_cca_bank",
-                  count_basis="listed_instruction_sites", total=len(occurrences), offset=offset, regions=regions,
-                  next_offset=offset + len(regions) if offset + len(regions) < len(occurrences) else None,
-                  bank=_bank_record(bank, pin), input=card,
-                  reference_entry=dict(id=unit["kernel_id"], kind="cca_bank_unit", semantic_compatibility="unknown"),
-                  selected_target_correspondence="unknown",
-                  next_action=("Complete region records are in the detail file named in this reply; pass "
-                               "--reference-region REGION_ID (from inventory) to select one occurrence. "
-                               "Observation field names are listed per unit in inventory summaries."))
+    report = dict(
+        kind="static_instruction_analysis",
+        source="precomputed_cca_bank",
+        count_basis="listed_instruction_sites",
+        total=len(occurrences),
+        offset=offset,
+        regions=regions,
+        next_offset=offset + len(regions) if offset + len(regions) < len(occurrences) else None,
+        bank=_bank_record(bank, pin),
+        input=card,
+        reference_entry=dict(id=unit["kernel_id"], kind="cca_bank_unit", semantic_compatibility="unknown"),
+        selected_target_correspondence="unknown",
+        next_action=(
+            "Complete region records are in the detail file named in this reply; pass "
+            "--reference-region REGION_ID (from inventory) to select one occurrence. "
+            "Observation field names are listed per unit in inventory summaries."
+        ),
+    )
     return report, ccas[0] if len(ccas) == 1 else None
 
 
@@ -352,15 +409,34 @@ def _bank_decoder(root, bank):
     return dict(contract=contract, facts=root / DECODER[1])
 
 
-def handle(value, *, base, workspace, bundle_manifest, repo, pin, facts=None, contract=None, target=None,
-           descriptor=None, compiler_sha256=None, observation_fields=()):
+def handle(
+    value,
+    *,
+    base,
+    workspace,
+    bundle_manifest,
+    repo,
+    pin,
+    facts=None,
+    contract=None,
+    target=None,
+    descriptor=None,
+    compiler_sha256=None,
+    observation_fields=(),
+):
     """Serve one validated reference-analysis request in bank mode."""
     from . import reference_analysis as A
 
     operation = value.get("operation")
     packet = dict(identity=document_digest(dict(schema="merlin.reference_bank_selection.v1", bank_sha256=pin)))
-    analyze = dict(workspace=workspace, facts=facts, contract=contract, target=target, descriptor=descriptor,
-                   candidate_build_manifest=bundle_manifest)
+    analyze = dict(
+        workspace=workspace,
+        facts=facts,
+        contract=contract,
+        target=target,
+        descriptor=descriptor,
+        candidate_build_manifest=bundle_manifest,
+    )
     if operation == "candidate":
         report, _ = A._analyze(value, reference_root=None, candidate=True, **analyze)
         report["input_role"] = "candidate_artifact"
@@ -399,28 +475,44 @@ def handle(value, *, base, workspace, bundle_manifest, repo, pin, facts=None, co
     if operation == "compare" and "candidate" not in value:  # a top-down schedule alone: comparison (a)
         from . import reference_applicability as R
 
-        return R.respond_schedule(left, value, base=base, packet=packet, workspace=workspace,
-                                  decoding_context=context, compiler_sha256=compiler_sha256)
+        return R.respond_schedule(
+            left,
+            value,
+            base=base,
+            packet=packet,
+            workspace=workspace,
+            decoding_context=context,
+            compiler_sha256=compiler_sha256,
+        )
     if operation == "compare":
         right, ours = A._analyze(value["candidate"], reference_root=None, candidate=True, compare=True, **analyze)
         right["input_role"] = "candidate_artifact"
         if applicability:
             from . import reference_applicability as R
 
-            return R.respond(left, right, value, base=base, packet=packet, workspace=workspace, facts=facts,
-                             contract=contract, target=target, descriptor=descriptor,
-                             decoding_context={key: analyze[key]
-                                               for key in ("facts", "contract", "target", "descriptor")},
-                             compiler_sha256=compiler_sha256)
+            return R.respond(
+                left,
+                right,
+                value,
+                base=base,
+                packet=packet,
+                workspace=workspace,
+                facts=facts,
+                contract=contract,
+                target=target,
+                descriptor=descriptor,
+                decoding_context={key: analyze[key] for key in ("facts", "contract", "target", "descriptor")},
+                compiler_sha256=compiler_sha256,
+            )
         region = left["regions"][0]
         left = A._compare(left, right, expert, ours, observation_fields=observation_fields)
         if value.get("candidate_schedule"):
             from .reference_applicability import _candidate_effects
             from .schedule_attribution import attribute_schedule
 
-            emitted, _, _ = _candidate_effects(value["candidate"], right["regions"][0], workspace=workspace,
-                                               **context)
-            brief, full = attribute_schedule(workspace, value["candidate_schedule"], reference=region,
-                                             emitted=emitted, decoding_context=context)
+            emitted, _, _ = _candidate_effects(value["candidate"], right["regions"][0], workspace=workspace, **context)
+            brief, full = attribute_schedule(
+                workspace, value["candidate_schedule"], reference=region, emitted=emitted, decoding_context=context
+            )
             left = dict(schedule_attribution=brief, **left, schedule_attribution_detail=full)
     return A._response(base, packet, left, compiler_sha256, workspace=workspace)

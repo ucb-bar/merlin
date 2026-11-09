@@ -14,12 +14,8 @@ from xdsl.dialects import arith, builtin, func, linalg
 from xdsl.parser import Parser
 
 from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
-from merlin.compiler.schedule.pointwise_source import PointwiseBindings
-from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
-from merlin.compiler.schedule.pointwise_source import read_pointwise_source
-from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.program_limits import DecodedInstruction
-from merlin.compiler.schedule.program_limits import ProgramLimits
+from merlin.compiler.schedule.pointwise_source import PointwiseBindings, compile_source_pointwise, read_pointwise_source
+from merlin.compiler.schedule.program_limits import AddressWindow, DecodedInstruction, ProgramLimits
 from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 from merlin.compiler.schedule.temporary_storage import TemporaryObject
 from merlin.sched.ir import Kernel, TensorArg

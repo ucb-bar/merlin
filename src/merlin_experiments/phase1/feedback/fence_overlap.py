@@ -315,8 +315,19 @@ def mechanisms(profile: dict, selection) -> dict:
     found = {}
     if available:
         found["suggested_mechanisms"] = [
-            {key: hint.get(key) for key in ("id", "api", "facet", "workload_check", "opportunity_status",
-                                          "source_call_sites", "prerequisites", "next_action")}
+            {
+                key: hint.get(key)
+                for key in (
+                    "id",
+                    "api",
+                    "facet",
+                    "workload_check",
+                    "opportunity_status",
+                    "source_call_sites",
+                    "prerequisites",
+                    "next_action",
+                )
+            }
             for hint in available
         ]
     if unconfirmed:

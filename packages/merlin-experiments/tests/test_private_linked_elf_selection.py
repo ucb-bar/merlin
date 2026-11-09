@@ -13,14 +13,14 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from merlin_experiments.phase1.feedback import private_full_models as PFM
 
 from merlin import model as baremetal_model
-from merlin.runtime import modelinputs as model_execution_inputs
 from merlin.compiler.planning import model as route_before_build
 from merlin.llvmlower.device_build import DeviceRouting
+from merlin.runtime import modelinputs as model_execution_inputs
 from merlin.targetgen.contract.build_service import file_digest
 from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+from merlin_experiments.phase1.feedback import private_full_models as PFM
 
 
 def _not_an_isa_evaluator(*, elf, evidence_root):
@@ -41,9 +41,8 @@ def _service(target, dependency):
 
 def _attempt(tmp_path, monkeypatch, *, fault=None, selected=True, eligible=True):
     """Run the real automatic caller with explicitly unqualified dependencies."""
-    from merlin_experiments.phase0 import capture_execution_attestation, capture_selection
-
     from merlin.targetgen import target_registry
+    from merlin_experiments.phase0 import capture_execution_attestation, capture_selection
 
     target = "owned_fixture"
     package = tmp_path / "candidate"

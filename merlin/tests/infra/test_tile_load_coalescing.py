@@ -25,9 +25,12 @@ def test_every_original_row_lane_and_source_index_is_preserved(columns, rows, st
                 assert destination not in local_samples
                 local_samples.add(destination)
                 observed.append((row, column, destination))
-    expected = [(row, column, (base + column // tile * stride + row, column % tile))
-                for first in range(0, columns, tile) for row in range(rows)
-                for column in range(first, min(columns, first + tile))]
+    expected = [
+        (row, column, (base + column // tile * stride + row, column % tile))
+        for first in range(0, columns, tile)
+        for row in range(rows)
+        for column in range(first, min(columns, first + tile))
+    ]
     assert sorted(observed) == sorted(expected)
     assert len(observed) == rows * columns
     assert max(row for row, _ in local_samples) < capacity
@@ -35,8 +38,15 @@ def test_every_original_row_lane_and_source_index_is_preserved(columns, rows, st
 
 def test_unknown_overlap_capacity_and_element_indices_refuse():
     plan = TileLoadCoalescing(16, 65, 16, 64, 4096, 256, 5376)
-    for change in ({"rows": 17}, {"block_stride": 15}, {"max_columns": 63}, {"columns": True},
-                   {"local_base": -1}, {"capacity_rows": 5135}, {"columns": 1 << 63}):
+    for change in (
+        {"rows": 17},
+        {"block_stride": 15},
+        {"max_columns": 63},
+        {"columns": True},
+        {"local_base": -1},
+        {"capacity_rows": 5135},
+        {"columns": 1 << 63},
+    ):
         with pytest.raises(ValueError, match="complete bounded"):
             replace(plan, **change)
     for row, column in ((-1, 0), (16, 0), (0, 65), (True, 0)):

@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 import yaml
-from merlin_experiments.phase1.feedback import private_model_math_policy as P
 
 from merlin.model_check import models as M
 from merlin.runtime import linalg_numpy as LN
 from merlin.runtime.host_math import host_math_recipe
+from merlin_experiments.phase1.feedback import private_model_math_policy as P
 
 
 def _fixture(tmp_path, *, policy="portable_exp_trig", own=None, receipt_policy=None, receipt=True):
@@ -164,10 +164,10 @@ def test_snapshot_loader_does_not_read_changed_original_path(tmp_path):
 
 def test_real_source_preflight_refuses_portable_archive_conflict_before_candidate(tmp_path, monkeypatch):
     import test_private_source_preflight as fixtures
-    from merlin_experiments.phase1.feedback import private_full_models as gate
-    from merlin_experiments.phase1.feedback import private_linkage_support as linkage
 
     from merlin.targetgen.host_linkage_contract import SCHEMA, SUPPLIER
+    from merlin_experiments.phase1.feedback import private_full_models as gate
+    from merlin_experiments.phase1.feedback import private_linkage_support as linkage
 
     options = fixtures._arguments(tmp_path, monkeypatch)
     selected = {"policy": "portable_trig", "pins": [], "recipe": P.recipe_identity("portable_trig")}

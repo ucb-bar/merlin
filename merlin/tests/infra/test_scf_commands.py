@@ -5,11 +5,13 @@ from dataclasses import replace
 import pytest
 from xdsl.dialects import arith, builtin, func, scf
 
-from merlin.compiler.schedule.scf_commands import SCHEMA
-from merlin.compiler.schedule.scf_commands import emit_scf_commands
-from merlin.compiler.schedule.scf_commands import materialize_scf_commands
-from merlin.compiler.schedule.scf_commands import unroll_small_command_loops
-from merlin.compiler.schedule.scf_commands import verify_scf_commands
+from merlin.compiler.schedule.scf_commands import (
+    SCHEMA,
+    emit_scf_commands,
+    materialize_scf_commands,
+    unroll_small_command_loops,
+    verify_scf_commands,
+)
 from merlin.sched.ir import Call, Kernel, Loop, Stage, Var, evaluate, instances, select
 
 
@@ -181,10 +183,8 @@ def test_huge_loop_stays_counted_and_budget_refusal_preserves_original():
 @pytest.mark.parametrize("prefetch", [False, True])
 def test_periodic_dense_uses_exact_original_macro_operands_after_scf_transform(shape, prefetch):
     from merlin.compiler.schedule.llvm_program import emit_index_program
-    from merlin.compiler.schedule.periodic_dense import build_periodic_staged_dense
-    from merlin.compiler.schedule.periodic_dense import verify_periodic_staged_dense
-    from merlin.compiler.schedule.staged_dense import StagedDenseContract
-    from merlin.compiler.schedule.staged_dense import StagedDenseProblem
+    from merlin.compiler.schedule.periodic_dense import build_periodic_staged_dense, verify_periodic_staged_dense
+    from merlin.compiler.schedule.staged_dense import StagedDenseContract, StagedDenseProblem
 
     contract = StagedDenseContract(
         "selected-test-hardware",
@@ -229,8 +229,7 @@ def test_print_parse_preserves_real_event_edges_and_full_stage_payload():
 
 @pytest.mark.parametrize("extent,batch", [(2, 2), (3, 2), (8, 4), (9, 4), (1_000_000, 4)])
 def test_issue_groups_partition_actual_control_without_expanding_runtime_iterations(extent, batch):
-    from merlin.compiler.schedule.scf_commands import ISSUE_GROUP
-    from merlin.compiler.schedule.scf_commands import group_scf_command_loops
+    from merlin.compiler.schedule.scf_commands import ISSUE_GROUP, group_scf_command_loops
 
     kernel = Kernel("queued", (), (Loop("i", extent, (Call("paired_compute", (("index", Var("i")),)),)),))
     module = materialize_scf_commands(kernel)
@@ -286,8 +285,7 @@ def test_queue_completion_is_real_and_missing_hooks_never_erase_group_semantics(
 
 @pytest.mark.parametrize("control", ["missing_contract", "selector_mutation", "malformed_marker"])
 def test_issue_group_selection_and_contract_cannot_drift(control):
-    from merlin.compiler.schedule.scf_commands import ISSUE_GROUP
-    from merlin.compiler.schedule.scf_commands import group_scf_command_loops
+    from merlin.compiler.schedule.scf_commands import ISSUE_GROUP, group_scf_command_loops
 
     kernel = Kernel("queued", (), (Loop("i", 3, (Call("compute", (("i", Var("i")),)),)),))
     module = materialize_scf_commands(kernel)
@@ -318,17 +316,22 @@ def test_real_transform_orders_preserve_commands_and_completion_regions(order):
 
     from merlin.compiler.schedule.scf_commands import group_scf_command_loops
 
-    kernel = Kernel("ordered", (), (
-        Loop("load", 2, (Call("fetch", (("i", Var("load")),)),)),
-        Loop("compute", 4, (Call("paired_compute", (("i", Var("compute")),)),)),
-    ))
+    kernel = Kernel(
+        "ordered",
+        (),
+        (
+            Loop("load", 2, (Call("fetch", (("i", Var("load")),)),)),
+            Loop("compute", 4, (Call("paired_compute", (("i", Var("compute")),)),)),
+        ),
+    )
     original = materialize_scf_commands(kernel)
     actual = original
 
     def compute_loop(loop):
-        return any(type(op) is func.CallOp and
-                   json.loads(op.attributes[SCHEMA].data)["instruction"] == "paired_compute"
-                   for op in loop.body.block.ops)
+        return any(
+            type(op) is func.CallOp and json.loads(op.attributes[SCHEMA].data)["instruction"] == "paired_compute"
+            for op in loop.body.block.ops
+        )
 
     for transform in order:
         before = verify_scf_commands(actual)["command_ir_sha256"]
@@ -338,10 +341,16 @@ def test_real_transform_orders_preserve_commands_and_completion_regions(order):
             actual = unroll_small_command_loops(actual, preserve_issue_groups=True)
         assert verify_scf_commands(actual)["command_ir_sha256"] != before
     calls, completions = [], []
-    emit_scf_commands(actual, ExecuteIndices(), lambda name, args, meta: calls.append((name, args)),
-                      enter_issue_group=lambda op: completions.append("enter"),
-                      exit_issue_group=lambda op: completions.append("complete"))
+    emit_scf_commands(
+        actual,
+        ExecuteIndices(),
+        lambda name, args, meta: calls.append((name, args)),
+        enter_issue_group=lambda op: completions.append("enter"),
+        exit_issue_group=lambda op: completions.append("complete"),
+    )
     assert calls == record(original)
     assert completions == ["enter", "complete"] * 2
-    assert verify_scf_commands(original)["command_ir_sha256"] == verify_scf_commands(
-        materialize_scf_commands(kernel))["command_ir_sha256"]
+    assert (
+        verify_scf_commands(original)["command_ir_sha256"]
+        == verify_scf_commands(materialize_scf_commands(kernel))["command_ir_sha256"]
+    )

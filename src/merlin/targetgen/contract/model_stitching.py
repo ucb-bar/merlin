@@ -22,9 +22,7 @@ def _composition_plan(graph: dict, functions: list[dict], crossings: list[dict],
     """
     by_candidate = {candidate["operation_id"]: candidate for candidate in candidates}
     rows_by_id = {row["operation_id"]: row for row in graph["operations"]}
-    planned_operation_ids = {
-        step["operation_id"] for function in functions for step in function["top_level_steps"]
-    }
+    planned_operation_ids = {step["operation_id"] for function in functions for step in function["top_level_steps"]}
     if not set(by_candidate).issubset(planned_operation_ids):
         raise ValueError("outlined candidate is not a direct function operation")
     by_consumer: dict[str, list[dict]] = {}
@@ -47,8 +45,7 @@ def _composition_plan(graph: dict, functions: list[dict], crossings: list[dict],
         function_id = function["operation_id"]
         blocks = blocks_by_owner.get(function_id, [])
         linear = len(blocks) == 1 and not any(
-            rows_by_id[step["operation_id"]]["successor_block_ids"]
-            for step in function["top_level_steps"]
+            rows_by_id[step["operation_id"]]["successor_block_ids"] for step in function["top_level_steps"]
         )
         steps = []
         if linear:
@@ -110,9 +107,9 @@ def _composition_plan(graph: dict, functions: list[dict], crossings: list[dict],
                 "symbol": function["symbol"],
                 "order": "single_block_lexical" if linear else "unestablished",
                 "steps": steps,
-                "unplanned_operation_ids": [] if linear else [
-                    step["operation_id"] for step in function["top_level_steps"]
-                ],
+                "unplanned_operation_ids": []
+                if linear
+                else [step["operation_id"] for step in function["top_level_steps"]],
             }
         )
     unplanned_edges = [edge["edge_id"] for edge in crossings if edge["edge_id"] not in planned_edge_ids]
@@ -120,7 +117,8 @@ def _composition_plan(graph: dict, functions: list[dict], crossings: list[dict],
         obligations.append({"kind": "boundary_order_lowering", "edge_ids": unplanned_edges})
     host_ids = [
         step["operation_id"]
-        for function in functions for step in function["top_level_steps"]
+        for function in functions
+        for step in function["top_level_steps"]
         if step["kind"] == "host_unlowered"
     ]
     if host_ids:
@@ -136,7 +134,8 @@ def _composition_plan(graph: dict, functions: list[dict], crossings: list[dict],
         return False
 
     outside = [
-        row["operation_id"] for row in graph["operations"]
+        row["operation_id"]
+        for row in graph["operations"]
         if row["mlir_operation"] not in {"builtin.module", "func.func"} and not inside_function(row)
     ]
     if outside:

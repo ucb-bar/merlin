@@ -66,9 +66,13 @@ def _declared_loader_profile(directory: Path, capsule: dict) -> tuple[Path, byte
     if name is None and digest is None:
         return None
     if (
-        not isinstance(name, str) or not name or Path(name).name != name
-        or name in (".", "..") or name in _CAPSULE_FILES
-        or not isinstance(digest, str) or len(digest) != 64
+        not isinstance(name, str)
+        or not name
+        or Path(name).name != name
+        or name in (".", "..")
+        or name in _CAPSULE_FILES
+        or not isinstance(digest, str)
+        or len(digest) != 64
         or any(c not in "0123456789abcdef" for c in digest)
     ):
         raise ValueError("public cohort loader profile declaration is invalid")
@@ -91,10 +95,14 @@ def _declared_owned_source_documents(directory: Path, capsule: dict) -> tuple[tu
     selected = capsule.get("owned_host_source")
     if selected is None:
         return ()
+    from merlin.compiler.build import siblings as owned_shared_source
     from merlin.compiler.build.spatial import _local_document, source_document_fields
 
-    from merlin.compiler.build import siblings as owned_shared_source
-    fields = owned_shared_source.source_document_fields(selected) if owned_shared_source.selected(capsule) else source_document_fields(selected)
+    fields = (
+        owned_shared_source.source_document_fields(selected)
+        if owned_shared_source.selected(capsule)
+        else source_document_fields(selected)
+    )
     documents = tuple(_local_document(directory, selected[key]) for key in fields)
     names = [path.name for path, _ in documents]
     if len(set(names)) != len(names) or any(name in _CAPSULE_FILES for name in names):

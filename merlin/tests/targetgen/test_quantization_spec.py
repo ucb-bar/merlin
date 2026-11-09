@@ -56,7 +56,10 @@ assert not any(name.split('.')[0] in {'torch', 'torchao', 'aet'} for name in sys
 """
     child = subprocess.run(
         [sys.executable, "-I", "-c", script, str(Path(merlin.__file__).resolve().parent.parent)],
-        cwd=tmp_path, capture_output=True, text=True, timeout=30,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     assert child.returncode == 0, child.stderr
 
@@ -586,14 +589,18 @@ def test_external_application_profile_is_explicit_source_bound_and_withholds_cha
     # methodology. The profile is an independent, explicitly selected input.
     spec, hardware = _spec(), _hardware()
     method = {
-        "scale_granularity": "per_tensor", "bias": "host_float", "epilogue": "integer_domain",
-        "rounding": "from_output_path", "clamp": "from_output_path",
+        "scale_granularity": "per_tensor",
+        "bias": "host_float",
+        "epilogue": "integer_domain",
+        "rounding": "from_output_path",
+        "clamp": "from_output_path",
         "calibration": {"activation": "minmax", "weight": "minmax"},
         "recovery": {"cross_layer_equalization": False, "bias_correction": False},
         "float_island": {"dtype": "fp32", "ops": ["softmax"]},
     }
     path = {
-        "schema": "output_path_v1", "accumulator": {"dtype": "i32"},
+        "schema": "output_path_v1",
+        "accumulator": {"dtype": "i32"},
         "accumulator_stages": [],
         "readout": [
             {"kind": "convert", "to": "f32", "rounding": "half_even"},
@@ -612,7 +619,9 @@ def test_external_application_profile_is_explicit_source_bound_and_withholds_cha
     with pytest.raises(PreparationAlternativeRequired) as refused:
         capture_recipe_candidates(spec, contract, preparation_profile=profile)
     selected = capture_recipe_candidates(
-        spec, contract, preparation_profile=profile,
+        spec,
+        contract,
+        preparation_profile=profile,
         alternative_sha256=refused.value.proposal["alternative_sha256"],
     )[0]["recipe"]
     assert selected["status"] == quant_recipe.DERIVED

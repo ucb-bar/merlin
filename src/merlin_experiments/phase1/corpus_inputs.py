@@ -191,9 +191,12 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
 
             selected_profile = author_profiles.resolve((bundle.get("author_profile") or {}).get("name"))
             private = {row.get("path") for row in bundle.get("host_inputs", ())}
-            if (selected_profile is None or not selected_profile.raw_rtl_study
-                    or selected_profile.disclosure["derived_target_contract"]
-                    or str(path) not in private):
+            if (
+                selected_profile is None
+                or not selected_profile.raw_rtl_study
+                or selected_profile.disclosure["derived_target_contract"]
+                or str(path) not in private
+            ):
                 raise ValueError("reviewed Phase 1 bundle does not grant the selected capability contract read-only")
             # The new study withholds the declaration from the author only.
             # All source/capability and operand checks above still apply to

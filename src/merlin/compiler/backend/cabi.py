@@ -56,8 +56,12 @@ class CRegionABI:
         if type(self.resource_kind) is not str or not self.resource_kind.strip():
             raise ValueError("C call must declare the implementation resource kind")
         letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"
-        if (type(self.symbol) is not str or not self.symbol or self.symbol[0] not in letters or
-                any(c not in letters + "0123456789" for c in self.symbol)):
+        if (
+            type(self.symbol) is not str
+            or not self.symbol
+            or self.symbol[0] not in letters
+            or any(c not in letters + "0123456789" for c in self.symbol)
+        ):
             raise ValueError("C call requires an explicit C symbol")
         for ports in (self.inputs, self.outputs):
             if type(ports) is not tuple or any(type(port) is not TensorPort for port in ports):
@@ -75,9 +79,15 @@ class CRegionABI:
             if type(paths) is not tuple or len(paths) != len(set(paths)):
                 raise ValueError("C call artifact paths must be immutable and unique")
             for path in paths:
-                if (type(path) is not str or not path or "\\" in path or ":" in path or
-                        PurePosixPath(path).is_absolute() or ".." in PurePosixPath(path).parts or
-                        PurePosixPath(path).as_posix() != path):
+                if (
+                    type(path) is not str
+                    or not path
+                    or "\\" in path
+                    or ":" in path
+                    or PurePosixPath(path).is_absolute()
+                    or ".." in PurePosixPath(path).parts
+                    or PurePosixPath(path).as_posix() != path
+                ):
                     raise ValueError("C call artifacts require portable relative paths")
         if set(self.link_inputs) & set(self.payloads):
             raise ValueError("C call payloads and link inputs must be distinct")
@@ -90,10 +100,21 @@ class CRegionABI:
     def from_compilation(cls, compilation):
         compilation.verify()
         raw = compilation.metadata.get("c_call")
-        fields = {"schema", "symbol", "inputs", "outputs", "buffer_alignment", "link_inputs", "payloads",
-                  "completion", "scratch_bytes", "resource_kind"}
+        fields = {
+            "schema",
+            "symbol",
+            "inputs",
+            "outputs",
+            "buffer_alignment",
+            "link_inputs",
+            "payloads",
+            "completion",
+            "scratch_bytes",
+            "resource_kind",
+        }
         if type(raw) is not dict or set(raw) != fields or raw["schema"] != "merlin.c_call.v1":
             raise ValueError("compiled region has no supported explicit C call contract")
+
         def ports(values):
             if not isinstance(values, (list, tuple)):
                 raise ValueError("C call ports must be an ordered sequence")
@@ -105,12 +126,21 @@ class CRegionABI:
                     raise ValueError("C call tensor shape must be an ordered sequence")
                 result.append(TensorPort(tuple(value["shape"]), value["dtype"]))
             return tuple(result)
+
         for key in ("link_inputs", "payloads"):
             if not isinstance(raw[key], (list, tuple)):
                 raise ValueError("C call artifact paths must be an ordered sequence")
-        result = cls(raw["symbol"], ports(raw["inputs"]), ports(raw["outputs"]), raw["buffer_alignment"],
-                     tuple(raw["link_inputs"]), tuple(raw["payloads"]), raw["completion"], raw["scratch_bytes"],
-                     resource_kind=raw["resource_kind"])
+        result = cls(
+            raw["symbol"],
+            ports(raw["inputs"]),
+            ports(raw["outputs"]),
+            raw["buffer_alignment"],
+            tuple(raw["link_inputs"]),
+            tuple(raw["payloads"]),
+            raw["completion"],
+            raw["scratch_bytes"],
+            resource_kind=raw["resource_kind"],
+        )
         products = {a.path.relative_to(compilation.directory).as_posix(): a for a in compilation.artifacts}
         for path in (*result.link_inputs, *result.payloads):
             if path not in products:

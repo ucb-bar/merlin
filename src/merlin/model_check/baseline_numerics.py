@@ -1,4 +1,5 @@
 """Offline supplied-output comparison; no execution, placement or reference-origin certificate."""
+
 from __future__ import annotations
 
 import argparse
@@ -62,8 +63,10 @@ def _quality(values, fp, judged):
     result = NR._quality(judged["kind"], values, fp, judged)
     if result["available"]:
         metrics = result["legacy_metrics"]
-        if any(not isinstance(metrics.get(r["metric"]), (int, float))
-               or not math.isfinite(metrics[r["metric"]]) for r in judged.get("admission", [])):
+        if any(
+            not isinstance(metrics.get(r["metric"]), (int, float)) or not math.isfinite(metrics[r["metric"]])
+            for r in judged.get("admission", [])
+        ):
             return {"available": False, "reason": "required quality metric is missing or nonfinite"}
     return result
 
@@ -90,34 +93,55 @@ def _case(case, reader, model, definition, policy):
             rows.append({**row, "errors": NR.array_errors(a, r)})
             if (program, i) in selected:
                 judged_values[(program, step["step"], i)] = (a, r)
-    order = [(r["program"], s, r["output"]) for r in model.judged["outputs"]
-             for s in range(definition["stages"][r["program"]]["steps"])]
+    order = [
+        (r["program"], s, r["output"])
+        for r in model.judged["outputs"]
+        for s in range(definition["stages"][r["program"]]["steps"])
+    ]
     judged = [judged_values[key][0] for key in order]
     quantized = [judged_values[key][1] for key in order]
     quality = case.get("quality") or {}
     fp = list(reader.arrays(quality["fp32"]).values()) if quality.get("fp32") else []
-    result = {"id": case["id"], "split": case["split"], "draw": case["draw"], "comparisons": rows,
-              "functional_passed": all(r["pass"] for r in rows),
-              "actual_vs_fp32": _quality(judged, fp, model.judged),
-              "quantized_reference_vs_fp32": _quality(quantized, fp, model.judged)}
+    result = {
+        "id": case["id"],
+        "split": case["split"],
+        "draw": case["draw"],
+        "comparisons": rows,
+        "functional_passed": all(r["pass"] for r in rows),
+        "actual_vs_fp32": _quality(judged, fp, model.judged),
+        "quantized_reference_vs_fp32": _quality(quantized, fp, model.judged),
+    }
     if quality.get("native_baseline"):
         baseline = list(reader.arrays(quality["native_baseline"]).values())
         result["native_baseline_vs_fp32"] = _quality(baseline, fp, model.judged)
     if model.judged.get("reporting", {}).get("perplexity"):
         selection = model.judged["reporting"]["perplexity"]
-        if any(selection.get(k) != v for k, v in {
-            "targets": "teacher_forced_continuation", "score_tokens": "decode_steps",
-            "exclude_final_decode_logit": True, "padding": "none", "threshold": "report_only",
-        }.items()):
+        if any(
+            selection.get(k) != v
+            for k, v in {
+                "targets": "teacher_forced_continuation",
+                "score_tokens": "decode_steps",
+                "exclude_final_decode_logit": True,
+                "padding": "none",
+                "threshold": "report_only",
+            }.items()
+        ):
             raise ValueError("unsupported continuation PPL reporting policy")
         result["perplexity"] = {}
         for name, arrays in (("actual", judged), ("quantized", quantized), ("fp32", fp)):
             result["perplexity"][name] = (
-                NR.perplexity(np.concatenate([a.reshape(-1, a.shape[-1]) for a in arrays]),
-                              inputs["tokens"], model.chain["prefill_tokens"], model.chain["decode_steps"])
-                if arrays and "tokens" in inputs and all(a.ndim >= 2 for a in arrays)
+                NR.perplexity(
+                    np.concatenate([a.reshape(-1, a.shape[-1]) for a in arrays]),
+                    inputs["tokens"],
+                    model.chain["prefill_tokens"],
+                    model.chain["decode_steps"],
+                )
+                if arrays
+                and "tokens" in inputs
+                and all(a.ndim >= 2 for a in arrays)
                 and (name != "fp32" or all(a.dtype == np.dtype("float32") for a in arrays))
-                else {"available": False, "reason": "missing/malformed logits or FP32 reference/tokens"})
+                else {"available": False, "reason": "missing/malformed logits or FP32 reference/tokens"}
+            )
     return result
 
 
@@ -125,25 +149,39 @@ def _admission(rows, model, protocol, field="actual_vs_fp32"):
     cohort = protocol["profiles"]["quality_v1"]
     count = cohort["observations_per_model_per_split"]
     draws = model.judged.get("reference", {}).get("seeds", {}).get("count", 1)
-    expected = {(f"{prefix}{i:02}", split, d) for split, prefix in (("visible", "v"), ("sealed", "s"))
-                for i in range(count) for d in range(draws)}
+    expected = {
+        (f"{prefix}{i:02}", split, d)
+        for split, prefix in (("visible", "v"), ("sealed", "s"))
+        for i in range(count)
+        for d in range(draws)
+    }
     observed = {(r["id"], r["split"], r["draw"]) for r in rows}
     if observed != expected:
-        return {"status": "unavailable", "reason": "complete exact visible/sealed id/draw cohort required",
-                "expected_chains": len(expected), "observed_chains": len(observed)}
+        return {
+            "status": "unavailable",
+            "reason": "complete exact visible/sealed id/draw cohort required",
+            "expected_chains": len(expected),
+            "observed_chains": len(observed),
+        }
     result = {}
     for split in ("visible", "sealed"):
         group = [r for r in rows if r["split"] == split]
         needs_baseline = any("max_ratio_to_baseline" in rule for rule in model.judged.get("admission", []))
-        if any(not r[field]["available"] or (needs_baseline and not
-               r.get("native_baseline_vs_fp32", {}).get("available")) for r in group):
+        if any(
+            not r[field]["available"] or (needs_baseline and not r.get("native_baseline_vs_fp32", {}).get("available"))
+            for r in group
+        ):
             return {"status": "unavailable", "reason": "missing aligned FP/native-baseline quality outputs"}
-        result[split] = M.admission(model.judged.get("admission", []),
-                                   [r[field]["legacy_metrics"] for r in group],
-                                   [r["native_baseline_vs_fp32"]["legacy_metrics"] for r in group]
-                                   if needs_baseline else [])
-    return {"status": "pass" if all(r["status"] == "pass" for r in result.values()) else "fail",
-            "splits": result, "scope": "numerical rules on supplied cohort; origin/execution not certified"}
+        result[split] = M.admission(
+            model.judged.get("admission", []),
+            [r[field]["legacy_metrics"] for r in group],
+            [r["native_baseline_vs_fp32"]["legacy_metrics"] for r in group] if needs_baseline else [],
+        )
+    return {
+        "status": "pass" if all(r["status"] == "pass" for r in result.values()) else "fail",
+        "splits": result,
+        "scope": "numerical rules on supplied cohort; origin/execution not certified",
+    }
 
 
 def compare(manifest_path: Path) -> dict:
@@ -156,16 +194,20 @@ def compare(manifest_path: Path) -> dict:
         sha = hashlib.sha256(path.read_bytes()).hexdigest()
         reader.files[str(path)] = sha
         checker_sources.append({"path": str(path), "sha256": sha})
-    _, manifest_bytes = reader.read({"path": str(manifest_path),
-                                    "sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest()})
+    _, manifest_bytes = reader.read(
+        {"path": str(manifest_path), "sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest()}
+    )
     manifest = yaml.safe_load(manifest_bytes)
     if manifest.get("schema") != SCHEMA or manifest.get("profile") not in {"functional_v1", "quality_v1"}:
         raise ValueError("select a versioned functional_v1 or quality_v1 baseline manifest")
     protocol_path, payload = reader.read(manifest["protocol"])
     protocol = yaml.safe_load(payload)
     schema = protocol.get("schema", "")
-    if (not isinstance(schema, str) or not schema.startswith("merlin.")
-            or not schema.endswith(".experiment_protocol.v1")):
+    if (
+        not isinstance(schema, str)
+        or not schema.startswith("merlin.")
+        or not schema.endswith(".experiment_protocol.v1")
+    ):
         raise ValueError("unsupported workload protocol")
     policy_path = (protocol_path.parent / protocol["authority"]["numerical_contract"]).absolute()
     selected_policy, policy_bytes = reader.read(manifest["numerical_policy"])
@@ -180,10 +222,13 @@ def compare(manifest_path: Path) -> dict:
         if models_path.resolve() in {policy_path.resolve(), protocol_path.resolve()} or models_bytes != expected:
             raise ValueError("resolved models configuration differs from the selected baseline/protocol geometry")
         models = MD.load(models_path, source_bytes=models_bytes)
-        configuration = {"path": str(models_path), "sha256": hashlib.sha256(models_bytes).hexdigest(),
-                         "baseline_sha256": hashlib.sha256(policy_bytes).hexdigest(),
-                         "protocol_sha256": hashlib.sha256(payload).hexdigest(),
-                         "scope": "geometry-only selection; no capture, reference or execution qualification"}
+        configuration = {
+            "path": str(models_path),
+            "sha256": hashlib.sha256(models_bytes).hexdigest(),
+            "baseline_sha256": hashlib.sha256(policy_bytes).hexdigest(),
+            "protocol_sha256": hashlib.sha256(payload).hexdigest(),
+            "scope": "geometry-only selection; no capture, reference or execution qualification",
+        }
     else:
         if "models_configuration" in manifest:
             raise ValueError("resolved models configuration requires an explicit protocol selection")
@@ -197,18 +242,23 @@ def compare(manifest_path: Path) -> dict:
     derived = yaml.safe_load(input_manifest_bytes)["models"][model.name]["derived"]
     member = definition["external_evaluation_input"]["derived_member"].split("/", 2)[2]
     if model.chain != definition["chain"] or [(p.name, p.steps) for p in model.programs] != [
-            (p, stage["steps"]) for p, stage in definition["stages"].items()]:
+        (p, stage["steps"]) for p, stage in definition["stages"].items()
+    ]:
         raise ValueError("protocol and numerical model chain/program roster differ")
-    if (sum(s["steps"] for s in definition["stages"].values()) != definition["selected_chain_steps"]
-            or sum(s["steps"] * len(s["outputs"]) for s in definition["stages"].values())
-            != definition["declared_arrays_per_chain"]):
+    if (
+        sum(s["steps"] for s in definition["stages"].values()) != definition["selected_chain_steps"]
+        or sum(s["steps"] * len(s["outputs"]) for s in definition["stages"].values())
+        != definition["declared_arrays_per_chain"]
+    ):
         raise ValueError("protocol total step/output counts disagree")
     policy = MD.selected_float_policy(models)
     reader.read(manifest["reference_manifest"])  # identity only; this is not a trusted-reference certificate
     cases = manifest["cases"]
     keys = [(r["id"], r["split"], r["draw"]) for r in cases]
-    if not keys or len(set(keys)) != len(keys) or any(
-        s not in {"visible", "sealed"} or type(d) is not int or d < 0 for _, s, d in keys
+    if (
+        not keys
+        or len(set(keys)) != len(keys)
+        or any(s not in {"visible", "sealed"} or type(d) is not int or d < 0 for _, s, d in keys)
     ):
         raise ValueError("empty, duplicate or invalid case id/split/draw roster")
     if manifest["profile"] == "functional_v1":
@@ -229,25 +279,47 @@ def compare(manifest_path: Path) -> dict:
             count, total = sum(s["scored_tokens"] for s in scores), sum(s["nll_sum"] for s in scores)
             mean = total / count
             overflow = mean > math.log(np.finfo(np.float64).max)
-            ppl[name] = {"available": True, "scored_tokens": count, "nll_sum": total, "nll": mean,
-                         "ppl": None if overflow else math.exp(mean), "ppl_overflow": overflow, "report_only": True}
+            ppl[name] = {
+                "available": True,
+                "scored_tokens": count,
+                "nll_sum": total,
+                "nll": mean,
+                "ppl": None if overflow else math.exp(mean),
+                "ppl_overflow": overflow,
+                "report_only": True,
+            }
         else:
             ppl[name] = {"available": False, "report_only": True}
     implementation = manifest.get("implementation", {})
-    if (not isinstance(implementation, dict) or set(implementation) - {"name", "revision", "numerical_variant"}
-            or any(not isinstance(v, str) for v in implementation.values())):
+    if (
+        not isinstance(implementation, dict)
+        or set(implementation) - {"name", "revision", "numerical_variant"}
+        or any(not isinstance(v, str) for v in implementation.values())
+    ):
         raise ValueError("unsupported implementation metadata")
-    return {"schema": RESULT_SCHEMA, "model": model.name, "profile": manifest["profile"],
-            "numerical_status": ("pass" if passed else "fail" if not functional
-                                 or admission["status"] == "fail" else "incomplete"),
-            "functional_passed": functional, "quality_admission": admission, "cases": rows,
-            "quality_admission_selected": manifest["profile"] == "quality_v1", "perplexity": ppl,
-            "quantized_reference_quality_admission": _admission(rows, model, protocol, "quantized_reference_vs_fp32"),
-            "implementation": implementation, "float_policy": policy, "artifacts": reader.finish(),
-            "checker_sources": checker_sources,
-            **({"models_configuration": configuration} if configuration is not None else {}),
-            "execution_qualified": False, "reference_origin_certified": False, "placement_qualified": False,
-            "scope": "Offline supplied-output checks only; no execution or model qualification."}
+    return {
+        "schema": RESULT_SCHEMA,
+        "model": model.name,
+        "profile": manifest["profile"],
+        "numerical_status": (
+            "pass" if passed else "fail" if not functional or admission["status"] == "fail" else "incomplete"
+        ),
+        "functional_passed": functional,
+        "quality_admission": admission,
+        "cases": rows,
+        "quality_admission_selected": manifest["profile"] == "quality_v1",
+        "perplexity": ppl,
+        "quantized_reference_quality_admission": _admission(rows, model, protocol, "quantized_reference_vs_fp32"),
+        "implementation": implementation,
+        "float_policy": policy,
+        "artifacts": reader.finish(),
+        "checker_sources": checker_sources,
+        **({"models_configuration": configuration} if configuration is not None else {}),
+        "execution_qualified": False,
+        "reference_origin_certified": False,
+        "placement_qualified": False,
+        "scope": "Offline supplied-output checks only; no execution or model qualification.",
+    }
 
 
 def main(argv=None):

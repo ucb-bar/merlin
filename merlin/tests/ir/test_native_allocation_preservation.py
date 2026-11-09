@@ -19,20 +19,23 @@ def test_nonzero_bank_origin_is_enforced_by_solver_and_independent_checker():
 
 
 def test_result_free_event_keeps_dependency_and_occupies_no_reserved_storage():
-    graph = CandidateGraph((
-        Value(0, "input", "memory", 1, (), "x", "input"),
-        Value(1, "command", "memory", 0, (0,), None, "event", completion_offset=2),
-        Value(2, "command", "memory", 0, (1,), None, "event", completion_offset=1),
-    ), (0,))
+    graph = CandidateGraph(
+        (
+            Value(0, "input", "memory", 1, (), "x", "input"),
+            Value(1, "command", "memory", 0, (0,), None, "event", completion_offset=2),
+            Value(2, "command", "memory", 0, (1,), None, "event", completion_offset=1),
+        ),
+        (0,),
+    )
     banks = (StorageBank("memory", "physical", 8, "byte", start=4),)
     assert list(topological_orders(graph, limit=4)) == [(1, 2)]
     assert instruction_schedule(graph, (1, 2))[2][0] > instruction_schedule(graph, (1, 2))[1][1]
     with pytest.raises(ValueError, match="consumer before"):
         instruction_schedule(graph, (2, 1))
-    result = allocate(graph, (1, 2), banks, fixed_inputs={"x": 4},
-                      reservations=(Reservation("memory", 5, 3),))
+    result = allocate(graph, (1, 2), banks, fixed_inputs={"x": 4}, reservations=(Reservation("memory", 5, 3),))
     assert result.status == "feasible"
-    assert check_assignment(graph, (1, 2), result.addresses, banks, fixed_inputs={"x": 4},
-                            reservations=(Reservation("memory", 5, 3),))[0]
+    assert check_assignment(
+        graph, (1, 2), result.addresses, banks, fixed_inputs={"x": 4}, reservations=(Reservation("memory", 5, 3),)
+    )[0]
     with pytest.raises(ValueError, match="consumes no storage"):
         Value(3, "command", "memory", 1, (), None, "event")

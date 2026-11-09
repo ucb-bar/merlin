@@ -29,8 +29,17 @@ def selection(tmp_path, *, prepare=None, hardware=None, **controls):
         pytest.fail("discovery test must never build or execute a provider")
 
     config = SourceDenseLowering(
-        selected, storage, adapter, "host", 64, 80, implementation, build,
-        private_ownership=True, external_buffers_disjoint=True, verification_timeout_ms=20_000,
+        selected,
+        storage,
+        adapter,
+        "host",
+        64,
+        80,
+        implementation,
+        build,
+        private_ownership=True,
+        external_buffers_disjoint=True,
+        verification_timeout_ms=20_000,
     )
     return replace(config, **controls), problem, seen
 
@@ -46,12 +55,15 @@ def run(tmp_path, config, module):
     return result, builder
 
 
-@pytest.mark.parametrize("tile,widths,shape,shared", [
-    ((2, 3, 4), (1, 1, 4), (5, 14, 13), False),
-    ((3, 2, 5), (2, 1, 4), (7, 9, 16), True),
-    ((2, 3, 4), (2, 2, 4), (1, 7, 9), False),
-    ((2, 3, 4), (4, 4, 4), (3, 8, 5), False),
-])
+@pytest.mark.parametrize(
+    "tile,widths,shape,shared",
+    [
+        ((2, 3, 4), (1, 1, 4), (5, 14, 13), False),
+        ((3, 2, 5), (2, 1, 4), (7, 9, 16), True),
+        ((2, 3, 4), (2, 2, 4), (1, 7, 9), False),
+        ((2, 3, 4), (4, 4, 4), (3, 8, 5), False),
+    ],
+)
 def test_current_source_and_selected_resources_drive_dense_model_discovery(tmp_path, tile, widths, shape, shared):
     config, _, seen = selection(tmp_path, hardware=dict(tile=tile, widths=widths, shape=shape, shared=shared))
     module, operation = source(shape, config.selected_contracts.dense.dtypes)
@@ -74,22 +86,39 @@ def test_current_source_and_selected_resources_drive_dense_model_discovery(tmp_p
     assert record["bindings"][0]["schedule"]["kernel_sha256"] == binding.compilation.compiled.kernel.digest()
 
 
-@pytest.mark.parametrize("unavailable", [
-    "ownership", "alias", "qualification", "completion", "continuation", "accumulator", "code_budget",
-    "arithmetic", "initialization", "unknown_effect", "source_budget", "capability", "reduction_tail",
-])
+@pytest.mark.parametrize(
+    "unavailable",
+    [
+        "ownership",
+        "alias",
+        "qualification",
+        "completion",
+        "continuation",
+        "accumulator",
+        "code_budget",
+        "arithmetic",
+        "initialization",
+        "unknown_effect",
+        "source_budget",
+        "capability",
+        "reduction_tail",
+    ],
+)
 def test_unavailable_dense_routes_preserve_exact_source_without_provider(tmp_path, unavailable):
     config, _, seen = selection(tmp_path)
     module, operation = source((5, 14, 13), config.selected_contracts.dense.dtypes)
     if unavailable in ("ownership", "alias", "code_budget", "source_budget"):
         key, value = {
-            "ownership": ("private_ownership", False), "alias": ("external_buffers_disjoint", False),
-            "code_budget": ("static_budget", 0), "source_budget": ("max_source_elements", 4),
+            "ownership": ("private_ownership", False),
+            "alias": ("external_buffers_disjoint", False),
+            "code_budget": ("static_budget", 0),
+            "source_budget": ("max_source_elements", 4),
         }[unavailable]
         config = replace(config, **{key: value})
     elif unavailable in ("qualification", "completion", "continuation"):
         key, value = {
-            "qualification": ("qualification_identity", None), "completion": ("synchronous_completion", False),
+            "qualification": ("qualification_identity", None),
+            "completion": ("synchronous_completion", False),
             "continuation": ("exact_accumulator_continuation", False),
         }[unavailable]
         config = replace(config, adapter=replace(config.adapter, **{key: value}))
@@ -111,8 +140,11 @@ def test_unavailable_dense_routes_preserve_exact_source_without_provider(tmp_pat
         software["isa"]["facts_sha256"] = hashlib.sha256(selected.facts_bytes).hexdigest()
         selected.software_path.write_text(yaml.safe_dump(software))
         current = read_scheduling_contracts(selected.facts_path, selected.software_path, target=selected.target)
-        config = replace(config, selected_contracts=current,
-                         adapter=replace(config.adapter, configuration_identity=current.hardware_identity))
+        config = replace(
+            config,
+            selected_contracts=current,
+            adapter=replace(config.adapter, configuration_identity=current.hardware_identity),
+        )
     elif unavailable == "unknown_effect":
         operation.attributes["opaque_effect"] = builtin.UnitAttr()
     elif unavailable == "initialization":
@@ -237,7 +269,8 @@ def test_shared_zero_initializer_remains_available_to_other_source_users(tmp_pat
     terminator = function.body.block.last_op
     terminator.operands = (*terminator.operands, operation.outputs[0])
     function.properties["function_type"] = builtin.FunctionType.from_lists(
-        [arg.type for arg in function.body.block.args], [value.type for value in terminator.operands],
+        [arg.type for arg in function.body.block.args],
+        [value.type for value in terminator.operands],
     )
     result, _ = run(tmp_path, config, module)
     assert len(seen) == 1

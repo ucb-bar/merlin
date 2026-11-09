@@ -578,9 +578,16 @@ def all_edit_points(*, codegen_provider=None, support_target=None) -> list[tuple
     for region in REGIONS.values():
         for point in region.edit_points:
             if point.file == _FS and point.seam in {"schedule:op_match", "schedule:vector_sizes"}:
-                point = replace(point, file=selected or point.file, forkable_now=selected is not None,
-                                how_to_add=(point.how_to_add if selected else
-                                    "select an OOT codegen provider to locate its editable schedule policy"))
+                point = replace(
+                    point,
+                    file=selected or point.file,
+                    forkable_now=selected is not None,
+                    how_to_add=(
+                        point.how_to_add
+                        if selected
+                        else "select an OOT codegen provider to locate its editable schedule policy"
+                    ),
+                )
             result.append((region.key, point))
     return result
 

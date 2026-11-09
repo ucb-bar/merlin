@@ -322,7 +322,10 @@ def recognize_static_projected_pointwise(op) -> StaticProjectedPointwisePattern:
 
 
 def _recognize_static_scalar_pointwise(
-    op, shell: _StaticLinalgShell, *, allow_i32_add=False,
+    op,
+    shell: _StaticLinalgShell,
+    *,
+    allow_i32_add=False,
     additional_signatures: Mapping[str, tuple[tuple[str, ...], str]] | None = None,
 ) -> StaticPointwisePattern:
     """Common closed scalar body for strict identity and opt-in projections."""

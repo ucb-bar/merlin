@@ -36,8 +36,17 @@ def _identifiers(text):
 
 
 def lower(
-    text, *, work, pipeline, features, timeout, audit, data_layout, index_bits,
-    lowering_selection, unsupported,
+    text,
+    *,
+    work,
+    pipeline,
+    features,
+    timeout,
+    audit,
+    data_layout,
+    index_bits,
+    lowering_selection,
+    unsupported,
 ):
     """Run a selected scalar pipeline with a shared total deadline and byte custody."""
     from . import pipeline as pipeline_owner
@@ -87,36 +96,57 @@ def lower(
     for product in (lowered, translated):
         product.unlink(missing_ok=True)
     recipe = LoweringRecipe(
-        work, features=features, sources={
-            "prepared_mlir": source, "pipeline_driver": Path(pipeline_owner.__file__),
+        work,
+        features=features,
+        sources={
+            "prepared_mlir": source,
+            "pipeline_driver": Path(pipeline_owner.__file__),
             "translation_transport": Path(__file__),
         },
     )
+
     def invoke(command, stage, input_path, output_path):
         command = list(map(str, command))
         recipe.command(command)
         with shared_compute_pool(timeout_s=remaining()):
             kwargs = dict(
-                directory=work.resolve(), stage=stage, inputs=(input_path,), outputs=(output_path,),
-                capture_output=True, text=True, timeout=remaining(), env=dict(os.environ),
+                directory=work.resolve(),
+                stage=stage,
+                inputs=(input_path,),
+                outputs=(output_path,),
+                capture_output=True,
+                text=True,
+                timeout=remaining(),
+                env=dict(os.environ),
             )
             result = run_in_build_view(command, **kwargs)
             if result is None:
                 result = invocation_record.run(
-                    command, dependencies=(Path(__file__), Path(pipeline_owner.__file__)), **kwargs,
+                    command,
+                    dependencies=(Path(__file__), Path(pipeline_owner.__file__)),
+                    **kwargs,
                 )
         remaining()
         if result.returncode or not output_path.is_file():
             raise PipelineError(f"stock-cli {stage} failed:\n{result.stdout}\n{result.stderr}")
 
     invoke(
-        [llvm_install() / "bin" / "mlir-opt", source,
-         "--pass-pipeline=builtin.module(" + pipeline + ")", "-o", lowered],
-        "stock_upstream_lowering", source, lowered,
+        [
+            llvm_install() / "bin" / "mlir-opt",
+            source,
+            "--pass-pipeline=builtin.module(" + pipeline + ")",
+            "-o",
+            lowered,
+        ],
+        "stock_upstream_lowering",
+        source,
+        lowered,
     )
     invoke(
         [mlir_translate(), "--mlir-to-llvmir", lowered, "-o", translated],
-        "stock_llvm_translation", lowered, translated,
+        "stock_llvm_translation",
+        lowered,
+        translated,
     )
     result = _fix_float_literals(translated.read_text(encoding="utf-8"))
     if lowering_selection is not None:

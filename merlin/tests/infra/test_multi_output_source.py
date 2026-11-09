@@ -159,8 +159,7 @@ def test_multi_output_fixture_has_one_producer_two_complete_consumers(case):
 def test_original_three_dispatch_mapping_computes_each_scalar_body_once(tmp_path, case):
     from test_multi_output_provider import MultiOutputProvider, original_model
 
-    from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
-    from merlin.compiler.schedule.pointwise_source import read_pointwise_source
+    from merlin.compiler.schedule.pointwise_source import compile_source_pointwise, read_pointwise_source
     from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 
     module = source(case)

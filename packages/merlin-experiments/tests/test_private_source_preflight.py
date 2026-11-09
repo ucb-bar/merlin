@@ -12,22 +12,21 @@ from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
-from merlin_experiments.phase1.feedback import private_full_models as PFM
-from merlin_experiments.phase1.feedback import private_source_preflight as preflight
 
 from merlin import model as baremetal_model
-from merlin.runtime import modelinputs as model_execution_inputs
 from merlin.compiler.planning import model as route_before_build
+from merlin.runtime import modelinputs as model_execution_inputs
 from merlin.targetgen.contract.build_service import file_digest
+from merlin_experiments.phase1.feedback import private_full_models as PFM
+from merlin_experiments.phase1.feedback import private_source_preflight as preflight
 
 TARGET = "owned_fixture"
 MODELS = ("first", "second")
 
 
 def _arguments(tmp_path, monkeypatch, *, misplaced=None, obligations=None):
-    from merlin_experiments.phase0 import capture_execution_attestation, capture_selection
-
     from merlin.targetgen import target_registry
+    from merlin_experiments.phase0 import capture_execution_attestation, capture_selection
 
     package = tmp_path / "host-package"
     package.mkdir()
@@ -425,12 +424,11 @@ def test_real_model_loop_refuses_next_program_after_semantic_refusal_masks_candi
 def test_selected_contract_survives_build_and_post_build_checks(tmp_path, monkeypatch, failure):
     from types import SimpleNamespace
 
-    from merlin_experiments.phase1.feedback import private_compilation_inputs as compilation
-    from merlin_experiments.phase1.feedback import private_program_checks as checks
-
     from merlin.llvmlower.device_build import executable_kernel_entry
     from merlin.runtime.backends import base as backends
     from merlin.targetgen import target_registry
+    from merlin_experiments.phase1.feedback import private_compilation_inputs as compilation
+    from merlin_experiments.phase1.feedback import private_program_checks as checks
 
     observed_contract = target_registry.observed_contract
     candidate, arguments = _independent_program_arguments(tmp_path, monkeypatch)
@@ -441,9 +439,15 @@ def test_selected_contract_survives_build_and_post_build_checks(tmp_path, monkey
         row["capability_contract_sha256"] = file_digest(capability)
     arguments["private_spec"].write_text(json.dumps(document))
     monkeypatch.setattr(target_registry, "observed_contract", observed_contract)
-    monkeypatch.setattr(backends, "harness_build_recipe", lambda target: SimpleNamespace(
-        require_kernel_stack_frame=lambda: SimpleNamespace(
-            entry_symbol=target_registry.load_contract(target)["entry_symbol"])))
+    monkeypatch.setattr(
+        backends,
+        "harness_build_recipe",
+        lambda target: SimpleNamespace(
+            require_kernel_stack_frame=lambda: SimpleNamespace(
+                entry_symbol=target_registry.load_contract(target)["entry_symbol"]
+            )
+        ),
+    )
     seen = []
 
     def build(**kwargs):

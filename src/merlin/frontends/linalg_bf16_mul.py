@@ -90,22 +90,36 @@ def recognize_bf16_product_rne(op) -> tuple[object, object, object, str, str]:
         raise InvalidLinalgPattern("BF16 multiply scalar arguments differ from its tensor elements")
     body = tuple(block.ops)
     if tuple(type(inner) for inner in body) != (
-        ExtFOp, ExtFOp, MulfOp, BitcastOp, ConstantOp, ConstantOp, ConstantOp,
-        ShRUIOp, AndIOp, AddiOp, AddiOp, ShRUIOp, TruncIOp, BitcastOp, YieldOp,
+        ExtFOp,
+        ExtFOp,
+        MulfOp,
+        BitcastOp,
+        ConstantOp,
+        ConstantOp,
+        ConstantOp,
+        ShRUIOp,
+        AndIOp,
+        AddiOp,
+        AddiOp,
+        ShRUIOp,
+        TruncIOp,
+        BitcastOp,
+        YieldOp,
     ):
         raise InvalidLinalgPattern("BF16 multiply body must use the checked nearest-even bit program")
-    (lhs, rhs, product, bits, shift, half, one, high, lsb,
-     bias, biased, rounded, narrow, result, yield_op) = body
+    (lhs, rhs, product, bits, shift, half, one, high, lsb, bias, biased, rounded, narrow, result, yield_op) = body
     literals = (shift.properties.get("value"), half.properties.get("value"), one.properties.get("value"))
     if (
         any(inner.attributes for inner in body)
         or any(inner.properties for inner in (lhs, rhs, bits, high, lsb, rounded, narrow, result, yield_op))
-        or set(product.properties) != {"fastmath"} or product.fastmath.data
-        or any(set(inner.properties) != {"overflowFlags"} or inner.properties["overflowFlags"].data
-               for inner in (bias, biased))
+        or set(product.properties) != {"fastmath"}
+        or product.fastmath.data
+        or any(
+            set(inner.properties) != {"overflowFlags"} or inner.properties["overflowFlags"].data
+            for inner in (bias, biased)
+        )
         or any(set(inner.properties) != {"value"} for inner in (shift, half, one))
-        or any(not isinstance(literal, IntegerAttr) or str(literal.type) != "i32"
-               for literal in literals)
+        or any(not isinstance(literal, IntegerAttr) or str(literal.type) != "i32" for literal in literals)
         or tuple(literal.value.data for literal in literals) != (16, 32767, 1)
         or tuple(lhs.operands) != (block.args[0],)
         or tuple(rhs.operands) != (block.args[1],)
@@ -122,8 +136,7 @@ def recognize_bf16_product_rne(op) -> tuple[object, object, object, str, str]:
         or any(not isinstance(inner.results[0].type, Float32Type) for inner in (lhs, rhs, product))
         or not isinstance(bits.results[0].type, IntegerType)
         or str(bits.results[0].type) != "i32"
-        or any(str(inner.results[0].type) != "i32" for inner in (shift, half, one, high, lsb,
-                                                                  bias, biased, rounded))
+        or any(str(inner.results[0].type) != "i32" for inner in (shift, half, one, high, lsb, bias, biased, rounded))
         or str(narrow.results[0].type) != "i16"
         or not isinstance(result.results[0].type, BFloat16Type)
     ):

@@ -562,10 +562,13 @@ def run_entrypoints(
     owned_source = capsule.get("owned_host_source") is not None
     candidate_artifact_name = "candidate-" + fourth_output_name if owned_source else fourth_output_name
     from merlin.compiler.build import siblings as owned_shared_source
+
     shared_source = owned_shared_source.selected(capsule)
     projection_validate = None
     if shared_source:
-        iface_path, projection_validate = owned_shared_source.compiler_input(capsule, paths.generated, target=pkg.target)
+        iface_path, projection_validate = owned_shared_source.compiler_input(
+            capsule, paths.generated, target=pkg.target
+        )
     with public_abi_source(capsule, iface_path, paths.generated) as compiler_source:
         cb, artifact = lower_interface(
             pkg,

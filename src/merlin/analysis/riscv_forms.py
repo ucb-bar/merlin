@@ -4,7 +4,6 @@ Observations retain their exact supported domain and explicit unknowns.
 No accelerator semantics, execution multiplicity or hardware law is inferred.
 """
 
-
 from itertools import product
 
 from .riscv_decode import (

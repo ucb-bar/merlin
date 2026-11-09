@@ -98,10 +98,7 @@ def contract(symbol: str) -> dict:
 
 def neutral_adapter():
     """The library tests' instruction boundary: generic block ops <-> calls, and the exact inverse."""
-    from merlin.compiler.schedule.blocks import Compute
-    from merlin.compiler.schedule.blocks import Load
-    from merlin.compiler.schedule.blocks import Preload
-    from merlin.compiler.schedule.blocks import Store
+    from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
     from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
     from merlin.sched.ir import Call, as_expr
 
@@ -160,8 +157,7 @@ def neutral_adapter():
 
 def dense_inputs(shape=(5, 14, 13), tile=(2, 3, 4)):
     """Problem, resources and storage in the planning form every dense pass consumes."""
-    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
-    from merlin.compiler.schedule.compact_dense import DenseMemoryView
+    from merlin.compiler.schedule.compact_dense import DenseLoopStorage, DenseMemoryView
     from merlin.transforms.dense_planning import DenseProblem, DenseResources
 
     p = DenseProblem(*shape, *tile, 1, 1, 4)  # m,k,n, primitive tile m,k,n, lhs/rhs/accumulator bytes
@@ -187,9 +183,7 @@ def execute(kernel, adapter, p) -> tuple[list[list[int]], dict]:
     """Run every projected actual call on host integers; the pass's own oracle, independent of the pass."""
     from dataclasses import replace
 
-    from merlin.compiler.schedule.blocks import Compute
-    from merlin.compiler.schedule.blocks import Load
-    from merlin.compiler.schedule.blocks import Preload
+    from merlin.compiler.schedule.blocks import Compute, Load, Preload
     from merlin.sched.ir import evaluate, instances
 
     lhs = [[(i * p.k + j) % 7 - 3 for j in range(p.k)] for i in range(p.m)]
@@ -229,13 +223,19 @@ def execute(kernel, adapter, p) -> tuple[list[list[int]], dict]:
 
 def example() -> dict:
     from merlin.compiler.schedule.compact_dense import schedule_compact_dense
-    from merlin.compiler.schedule.dense_panel_pipeline import DensePanelOverlapAdmission
-    from merlin.compiler.schedule.dense_panel_pipeline import DenseRetainedReductionAdmission
-    from merlin.compiler.schedule.dense_segmented_pipeline import DenseSegmentedAdmission
-    from merlin.compiler.schedule.dense_segmented_pipeline import schedule_dense_segmented_pipeline
-    from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-    from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-    from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+    from merlin.compiler.schedule.dense_panel_pipeline import (
+        DensePanelOverlapAdmission,
+        DenseRetainedReductionAdmission,
+    )
+    from merlin.compiler.schedule.dense_segmented_pipeline import (
+        DenseSegmentedAdmission,
+        schedule_dense_segmented_pipeline,
+    )
+    from merlin.compiler.schedule.schedule_ir import (
+        dense_schedule_text,
+        make_dense_schedule_plan,
+        parse_dense_schedule_plan,
+    )
     from merlin.transforms.dense_planning import dense_blocks
 
     adapter = neutral_adapter()

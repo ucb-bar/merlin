@@ -104,7 +104,8 @@ def test_logical_borrowed_bridge_transports_all_results_without_tensor_arithmeti
     buffers, reason = device_shim.logical_buffers(host.interface)
     assert not reason
     unit = device_shim.emit_logical_translation_unit(
-        device.device, {host.device_symbol: (buffers, host.rewrite.call_buffers[host.device_symbol])},
+        device.device,
+        {host.device_symbol: (buffers, host.rewrite.call_buffers[host.device_symbol])},
         kernel_symbol_for=lambda _: "selected_device_kernel",
     )
     unit = with_borrowed_bridge(unit, selected, host)
@@ -117,8 +118,8 @@ def test_logical_borrowed_bridge_transports_all_results_without_tensor_arithmeti
 
 def test_owned_model_entry_consumes_sibling_route_in_real_host_preparation(tmp_path, monkeypatch):
     from merlin import model as baremetal_model
-    from merlin.compiler.planning import model as route_before_build
     from merlin.compiler.build.owned import OwnedHostModelCompiler
+    from merlin.compiler.planning import model as route_before_build
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.runtime.backends.zephyr_model import prepare_for_lowering
 
@@ -130,13 +131,21 @@ def test_owned_model_entry_consumes_sibling_route_in_real_host_preparation(tmp_p
     capture.mkdir()
     (capture / "model.mlir").write_bytes(source.read_bytes())
     service = OwnedHostModelCompiler.select(
-        host_package=fixed, target=device.device, board_catalog=tmp_path / "boards",
-        board="board", dts=tmp_path / "board.dts",
+        host_package=fixed,
+        target=device.device,
+        board_catalog=tmp_path / "boards",
+        board="board",
+        dts=tmp_path / "board.dts",
     )
     original_device = replace(device, sibling_source=None)
-    monkeypatch.setattr(route_before_build, "plan_before_build", lambda *a, **kw: {
-        "device_routing": original_device, "offload": {"groups": 2},
-    })
+    monkeypatch.setattr(
+        route_before_build,
+        "plan_before_build",
+        lambda *a, **kw: {
+            "device_routing": original_device,
+            "offload": {"groups": 2},
+        },
+    )
 
     def build(**kwargs):
         assert kwargs["respect_captured_quantization_scope"] is True
@@ -145,7 +154,10 @@ def test_owned_model_entry_consumes_sibling_route_in_real_host_preparation(tmp_p
         out.mkdir()
         frozen = device_preparation.freeze_device_offload_selection(kwargs["device"])
         final, _ = prepare_for_lowering(
-            capture / "model.mlir", out, device=kwargs["device"], blocking=False,
+            capture / "model.mlir",
+            out,
+            device=kwargs["device"],
+            blocking=False,
             device_offload_invocation=frozen,
         )
         result = parse_mlir_file(final)
@@ -158,10 +170,18 @@ def test_owned_model_entry_consumes_sibling_route_in_real_host_preparation(tmp_p
         return {"status": "ordinary_original_host_prepared", "raw_device_groups": 1}
 
     monkeypatch.setattr(baremetal_model, "compile_saved_model", build)
-    assert service.compile(
-        capture=capture, candidate_package=device.package_dir, datapath="int8", linked_elf_admission=object(),
-        output=tmp_path / "owned_build", arena_mb=1, sibling_source=selected,
-    )["raw_device_groups"] == 1
+    assert (
+        service.compile(
+            capture=capture,
+            candidate_package=device.package_dir,
+            datapath="int8",
+            linked_elf_admission=object(),
+            output=tmp_path / "owned_build",
+            arena_mb=1,
+            sibling_source=selected,
+        )["raw_device_groups"]
+        == 1
+    )
 
 
 def test_complete_source_group_contract_refuses_an_uncovered_accelerator_group(tmp_path, monkeypatch):
@@ -216,9 +236,10 @@ def test_actual_llvm_entry_reader_accepts_generic_form_and_refuses_partial_abi(t
 
 
 def composed_source_roster(module):
-    from merlin_experiments.phase1.feedback.private_group_provenance import source_group_roster
     from test_source_region import sibling_roots
     from xdsl.dialects.builtin import ArrayAttr, StringAttr
+
+    from merlin_experiments.phase1.feedback.private_group_provenance import source_group_roster
 
     roots = sibling_roots(module)
     groups = []
@@ -247,8 +268,19 @@ def test_source_composition_join_derives_all_original_members_without_collapsing
     assert "execution" in joined["scope"]
 
 
-@pytest.mark.parametrize("damage", ["missing_member", "reordered_members", "wrong_pitch", "narrow_commit",
-                                    "invented_source", "wrong_contraction", "uncovered_required", "physical_alias"])
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "missing_member",
+        "reordered_members",
+        "wrong_pitch",
+        "narrow_commit",
+        "invented_source",
+        "wrong_contraction",
+        "uncovered_required",
+        "physical_alias",
+    ],
+)
 def test_source_composition_join_refuses_changed_source_programs_and_coverage(tmp_path, monkeypatch, damage):
     from copy import deepcopy
 
@@ -275,9 +307,13 @@ def test_source_composition_join_refuses_changed_source_programs_and_coverage(tm
         roster["source_group_contractions"][0]["reduction"] = [3]
     elif damage == "uncovered_required":
         roster["eligible_groups"].append(2)
-        roster["eligible_group_provenance"].append({
-            "source_group": 2, "source_region_id": "extra_region", "source_node_ids": ["extra_node"],
-        })
+        roster["eligible_group_provenance"].append(
+            {
+                "source_group": 2,
+                "source_region_id": "extra_region",
+                "source_node_ids": ["extra_node"],
+            }
+        )
     else:
         emitted["routed"].append(deepcopy(emitted["routed"][0]))
     with pytest.raises(ValueError):
@@ -318,29 +354,35 @@ def test_composition_join_preserves_original_eligibility_through_checked_weight_
     import struct
 
     import numpy as np
-    from merlin_experiments.phase1.feedback.private_group_provenance import join_sibling_source_composition
 
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.llvmlower import weight_prepack
     from merlin.llvmlower.compilation_recipe import CompilationRecipe
+    from merlin_experiments.phase1.feedback.private_group_provenance import join_sibling_source_composition
 
     original = sibling_source()
     roster = composed_source_roster(original)
     bundle = tmp_path / "capture"
     bundle.mkdir()
     (bundle / "model.mlir").write_text(text(original, generic=True))
-    header = json.dumps({
-        "b": {"dtype": "I8", "shape": [2, 2], "data_offsets": [0, 4]},
-        "w": {"dtype": "I8", "shape": [2, 2], "data_offsets": [4, 8]},
-    }).encode()
+    header = json.dumps(
+        {
+            "b": {"dtype": "I8", "shape": [2, 2], "data_offsets": [0, 4]},
+            "w": {"dtype": "I8", "shape": [2, 2], "data_offsets": [4, 8]},
+        }
+    ).encode()
     header += b" " * ((-len(header)) % 8)
     payload = np.array([1, -2, 3, 4, -5, 6, 7, 8], dtype=np.int8).tobytes()
     (bundle / "weights.safetensors").write_bytes(struct.pack("<Q", len(header)) + header + payload)
-    (bundle / "weights.safetensors.manifest.json").write_text(json.dumps({
-        "0": {"kind": "input", "dtype": "int8", "shape": [2, 2]},
-        "1": {"kind": "param", "weight": "b", "dtype": "int8", "shape": [2, 2]},
-        "2": {"kind": "buffer", "weight": "w", "dtype": "int8", "shape": [2, 2]},
-    }))
+    (bundle / "weights.safetensors.manifest.json").write_text(
+        json.dumps(
+            {
+                "0": {"kind": "input", "dtype": "int8", "shape": [2, 2]},
+                "1": {"kind": "param", "weight": "b", "dtype": "int8", "shape": [2, 2]},
+                "2": {"kind": "buffer", "weight": "w", "dtype": "int8", "shape": [2, 2]},
+            }
+        )
+    )
     monkeypatch.setattr(weight_prepack, "_default_cache_root", lambda: tmp_path / "cache")
     from merlin.targetgen.owned_host_model_execution import _resolve_weight_preparation
 
@@ -350,7 +392,10 @@ def test_composition_join_preserves_original_eligibility_through_checked_weight_
     preparation_work.mkdir()
     compilation = CompilationRecipe(preparation_work, producer=Path(device_preparation.__file__))
     prepared = weight_prepack.prepare_build_bundle(
-        bundle, preparation_work, features={weight_prepack.FEATURE}, compilation=compilation,
+        bundle,
+        preparation_work,
+        features={weight_prepack.FEATURE},
+        compilation=compilation,
     )
     receipt = tmp_path / "preparation/bundle_preparation.json"
     prepared_module = parse_mlir_file(prepared / "model.mlir")
@@ -388,7 +433,11 @@ def test_composition_join_preserves_original_eligibility_through_checked_weight_
     # The square fixture has the same abstract raw core before/after packing;
     # input-layout ancestry is recorded by the explicit checked receipt.
     joined = join_sibling_source_composition(
-        emitted, roster, module=original, target=device.device, preparation_receipt=receipt,
+        emitted,
+        roster,
+        module=original,
+        target=device.device,
+        preparation_receipt=receipt,
     )
     assert joined["source_ir_sha256"] != joined["prepared_source_ir_sha256"]
     assert joined["covered_source_groups"] == joined["required_source_groups"] == [0, 1]
@@ -399,13 +448,21 @@ def test_composition_join_preserves_original_eligibility_through_checked_weight_
         entry["source_ir_sha256"] = joined["prepared_source_ir_sha256"]
     with pytest.raises(ValueError, match="source and complete ABI"):
         join_sibling_source_composition(
-            imported_owner, roster, module=original, target=device.device, preparation_receipt=receipt,
+            imported_owner,
+            roster,
+            module=original,
+            target=device.device,
+            preparation_receipt=receipt,
         )
     # A valid preparation from another original source cannot borrow eligibility.
     other = sibling_source(seed=1)
     with pytest.raises(ValueError, match="ancestry differs"):
         join_sibling_source_composition(
-            emitted, roster, module=other, target=device.device, preparation_receipt=receipt,
+            emitted,
+            roster,
+            module=other,
+            target=device.device,
+            preparation_receipt=receipt,
         )
     # Original-value mutation invalidates the existing inverse-byte preparation proof.
     stored = prepared / "weights.safetensors"
@@ -413,25 +470,34 @@ def test_composition_join_preserves_original_eligibility_through_checked_weight_
     stored.write_bytes(raw[:-1] + bytes([raw[-1] ^ 1]))
     with pytest.raises((ValueError, weight_prepack.PrepackRefused)):
         join_sibling_source_composition(
-            emitted, roster, module=original, target=device.device, preparation_receipt=receipt,
+            emitted,
+            roster,
+            module=original,
+            target=device.device,
+            preparation_receipt=receipt,
         )
 
 
 def test_composition_preserves_original_node_order_after_canonical_eligibility_join(tmp_path, monkeypatch):
-    from merlin_experiments.phase1.feedback.private_group_provenance import join_sibling_source_composition
     from xdsl.dialects.builtin import ArrayAttr, StringAttr
+
+    from merlin_experiments.phase1.feedback.private_group_provenance import join_sibling_source_composition
 
     module = sibling_source()
     roster = composed_source_roster(module)
-    root = next(op for op in module.walk() if getattr(op.attributes.get("prov.region_id"), "data", None)
-                == "original_region_0")
+    root = next(
+        op for op in module.walk() if getattr(op.attributes.get("prov.region_id"), "data", None) == "original_region_0"
+    )
     root.attributes["prov.source_node_ids"] = ArrayAttr([StringAttr("node_z"), StringAttr("node_a")])
     roster["eligible_group_provenance"][0]["source_node_ids"] = ["node_a", "node_z"]
     _, source, _, device, work = route(tmp_path, monkeypatch, module=module)
     frozen = device_preparation.freeze_device_offload_selection(device)
     device_preparation.prepare_sibling_device_host(device, source, work, frozen)
     joined = join_sibling_source_composition(
-        frozen.sibling_host.rewrite.to_sidecar(), roster, module=module, target=device.device,
+        frozen.sibling_host.rewrite.to_sidecar(),
+        roster,
+        module=module,
+        target=device.device,
     )
     assert joined["members"][0]["source_node_ids"] == ["node_z", "node_a"]
 
@@ -445,24 +511,29 @@ def test_readonly_dense_offsets_compose_with_exact_original_borrowed_wrapper(tmp
     module = sibling_source()
     if not dense:
         function = module.body.block.first_op
-        function.properties["arg_attrs"] = ArrayAttr([
-            DictionaryAttr({"bufferization.buffer_layout": StridedLayoutAttr([3, 1], 0)}),
-            DictionaryAttr({}), DictionaryAttr({}),
-        ])
+        function.properties["arg_attrs"] = ArrayAttr(
+            [
+                DictionaryAttr({"bufferization.buffer_layout": StridedLayoutAttr([3, 1], 0)}),
+                DictionaryAttr({}),
+                DictionaryAttr({}),
+            ]
+        )
     _, source, selected, device, work = route(tmp_path, monkeypatch, module=module)
     frozen = device_preparation.freeze_device_offload_selection(device)
     device_preparation.prepare_sibling_device_host(device, source, work, frozen)
     host = frozen.sibling_host
     buffers, _ = device_shim.logical_buffers(host.interface)
     actual = host.module.clone()
-    chosen, retained, _ = bind(actual, host, selected,
-                              {host.device_symbol: (buffers, host.rewrite.call_buffers[host.device_symbol])})
+    chosen, retained, _ = bind(
+        actual, host, selected, {host.device_symbol: (buffers, host.rewrite.call_buffers[host.device_symbol])}
+    )
     name = host.writer.symbol
     assert (0 in chosen.get(name, [])) is dense
     assert (0 in retained.get(name, [])) is not dense
     wrapper = next(o for o in actual.body.block.ops if getattr(o, "sym_name", None) and o.sym_name.data == name)
-    assert all("bufferization.buffer_layout" not in tuple(wrapper.arg_attrs)[i].data
-               for i in host.writer.result_arguments)
+    assert all(
+        "bufferization.buffer_layout" not in tuple(wrapper.arg_attrs)[i].data for i in host.writer.result_arguments
+    )
     actual.verify()
     require_host(host, selected)  # Binding changed only the independently parsed input, never frozen custody.
 

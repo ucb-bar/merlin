@@ -16,8 +16,12 @@ def documents(tmp_path):
     module, rewrite, *_ = fixture()
     from merlin.frontends.linalg_mlir import parse_mlir_text
 
-    module = parse_mlir_text(text(module, generic=True).replace("2x5x5x3xi8", "1x5x5x3xi8")
-                             .replace("50x17xi8", "25x17xi8").replace("18x17xi8", "9x17xi8"))
+    module = parse_mlir_text(
+        text(module, generic=True)
+        .replace("2x5x5x3xi8", "1x5x5x3xi8")
+        .replace("50x17xi8", "25x17xi8")
+        .replace("18x17xi8", "9x17xi8")
+    )
     entries = deepcopy(rewrite.entries)
     entries["producer"]["batch"] = 1
     entries["pool"]["M"] = 25
@@ -30,7 +34,11 @@ def documents(tmp_path):
     for name, entry in entries.items():
         entry.update(name=name, kind="op", source_role="handauthored_compiler_test", source_reference="original SSA")
     rewrite = replace(
-        rewrite, granularity="group", entries=entries, signatures={name: () for name in entries}, call_buffers=buffers,
+        rewrite,
+        granularity="group",
+        entries=entries,
+        signatures={name: () for name in entries},
+        call_buffers=buffers,
         programs={name: {"schema": "group_program_v1", "entry": deepcopy(entry)} for name, entry in entries.items()},
     )
     from merlin.llvmlower.connected_spatial import extract_connected_spatial_region
@@ -39,15 +47,22 @@ def documents(tmp_path):
     module, rewrite = region.module, region.rewrite
     (tmp_path / "region.mlir").write_text(text(module, generic=True))
     rewrite.write_sidecar(tmp_path)
+
     def pin(name):
         return {"file": name, "sha256": hashlib.sha256((tmp_path / name).read_bytes()).hexdigest()}
+
     selected = {
         "schema": "merlin.owned_spatial_source.v2",
-        "source_graph": pin("region.mlir"), "source_rewrite": pin("device_signatures.json"),
+        "source_graph": pin("region.mlir"),
+        "source_rewrite": pin("device_signatures.json"),
     }
     source = {
-        "name": "original_region", "kind": "model_slice", "source_role": "handauthored_compiler_test",
-        "source_reference": "original SSA", "op": "spatial_producer_pool", "components": list(entries.values()),
+        "name": "original_region",
+        "kind": "model_slice",
+        "source_role": "handauthored_compiler_test",
+        "source_reference": "original SSA",
+        "op": "spatial_producer_pool",
+        "components": list(entries.values()),
     }
     binding = CorpusBinding(rewrite.device, 16, "int8", "i32", True, ["L2"], "exact_int", requant_output_dtype="i8")
     return module, rewrite, selected, source, binding

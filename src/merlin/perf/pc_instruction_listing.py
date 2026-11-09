@@ -5,6 +5,7 @@ readers. Calls delimit listed bodies by their return PC, not by the first `ret`:
 static listings can contain return instructions before out-of-line tail blocks.
 It never executes scalar instructions or initializes missing architectural state.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -33,9 +34,15 @@ class ListingRegion:
                 runs[-1][1] += 1
             else:
                 runs.append([index, index + 1])
-        return {"region_id": self.region_id, "parent": self.parent,
-                "entry_pc": self.entry_pc, "call_index": self.call_index,
-                "return_pc": self.return_pc, "index_runs": runs, "closed": self.closed}
+        return {
+            "region_id": self.region_id,
+            "parent": self.parent,
+            "entry_pc": self.entry_pc,
+            "call_index": self.call_index,
+            "return_pc": self.return_pc,
+            "index_runs": runs,
+            "closed": self.closed,
+        }
 
 
 def read_listing(lines: Iterable[str]) -> tuple[RawInsn, ...]:
@@ -99,8 +106,16 @@ def listing_regions(insns: Sequence[RawInsn]) -> tuple[ListingRegion, ...]:
     """
     if not insns:
         return ()
-    rows = [{"parent": None, "entry_pc": insns[0].addr, "call_index": None,
-             "return_pc": None, "indices": [], "closed": False}]
+    rows = [
+        {
+            "parent": None,
+            "entry_pc": insns[0].addr,
+            "call_index": None,
+            "return_pc": None,
+            "indices": [],
+            "closed": False,
+        }
+    ]
     stack = [0]
     for index, insn in enumerate(insns):
         while len(stack) > 1 and insn.addr == rows[stack[-1]]["return_pc"]:
@@ -110,15 +125,21 @@ def listing_regions(insns: Sequence[RawInsn]) -> tuple[ListingRegion, ...]:
             return_pc = insn.addr + riscv_width(insn)
             next_pc = insns[index + 1].addr if index + 1 < len(insns) else None
             included = next_pc is not None and next_pc != return_pc
-            rows.append({"parent": stack[-1], "entry_pc": next_pc if included else None,
-                         "call_index": index, "return_pc": return_pc,
-                         "indices": [], "closed": False})
+            rows.append(
+                {
+                    "parent": stack[-1],
+                    "entry_pc": next_pc if included else None,
+                    "call_index": index,
+                    "return_pc": return_pc,
+                    "indices": [],
+                    "closed": False,
+                }
+            )
             if included:
                 stack.append(len(rows) - 1)
     if len(stack) == 1 and _is_return(insns[-1]):
         rows[0]["closed"] = True
-    return tuple(ListingRegion(region_id=i, **{**row, "indices": tuple(row["indices"])})
-                 for i, row in enumerate(rows))
+    return tuple(ListingRegion(region_id=i, **{**row, "indices": tuple(row["indices"])}) for i, row in enumerate(rows))
 
 
 def _is_return(insn: RawInsn) -> bool:
@@ -130,8 +151,28 @@ def _direct_jump(insn: RawInsn) -> bool:
     return insn.mnemonic in ("j", "c.j") or (insn.mnemonic == "jal" and not _link_call(insn))
 
 
-_CONDITIONAL = frozenset(("c.beqz", "c.bnez", "beq", "bne", "blt", "bge", "bltu", "bgeu", "beqz", "bnez",
-                           "blez", "bgez", "bltz", "bgtz", "bgt", "ble", "bgtu", "bleu"))
+_CONDITIONAL = frozenset(
+    (
+        "c.beqz",
+        "c.bnez",
+        "beq",
+        "bne",
+        "blt",
+        "bge",
+        "bltu",
+        "bgeu",
+        "beqz",
+        "bnez",
+        "blez",
+        "bgez",
+        "bltz",
+        "bgtz",
+        "bgt",
+        "ble",
+        "bgtu",
+        "bleu",
+    )
+)
 
 
 def listed_backedges(insns: Sequence[RawInsn]) -> tuple[dict[str, Any], ...]:
@@ -146,9 +187,15 @@ def listed_backedges(insns: Sequence[RawInsn]) -> tuple[dict[str, Any], ...]:
         except ValueError:
             continue
         if target <= insn.addr and target in addresses:
-            out.append({"from_pc": insn.addr, "to_pc": target,
-                        "conditional": insn.mnemonic in _CONDITIONAL,
-                        "trip_count": None, "basis": "listed_branch_target"})
+            out.append(
+                {
+                    "from_pc": insn.addr,
+                    "to_pc": target,
+                    "conditional": insn.mnemonic in _CONDITIONAL,
+                    "trip_count": None,
+                    "basis": "listed_branch_target",
+                }
+            )
     return tuple(out)
 
 
@@ -171,16 +218,33 @@ def inventory(insns: Sequence[RawInsn], *, table: Mapping[str, Any] | None = Non
     for region in listing_regions(insns):
         body = [insns[index] for index in region.indices]
         row = region.to_dict()
-        row.update({"listed_instructions": len(body), "mnemonics": dict(Counter(i.mnemonic for i in body)),
-                    "backedges": list(listed_backedges(body))})
+        row.update(
+            {
+                "listed_instructions": len(body),
+                "mnemonics": dict(Counter(i.mnemonic for i in body)),
+                "backedges": list(listed_backedges(body)),
+            }
+        )
         if table:
             row["selected_decode"] = audit_decoded(decode_stream(body, table), table=table).to_dict()
         regions.append(row)
-    return {"schema": "merlin.pc_instruction_listing.v1", "listed_instructions": len(insns),
-            "unique_pcs": len(seen), "repeated_pc_rows": repeats, "conflicting_word_rows": conflicts,
-            "regions": regions, "count_basis": "listed_instruction_sites",
-            "unknown": ["producer_capture_semantics", "dynamic_loop_multiplicity", "register_values",
-                        "memory_values", "cycle_values", "exact_source_and_target_binding"]}
+    return {
+        "schema": "merlin.pc_instruction_listing.v1",
+        "listed_instructions": len(insns),
+        "unique_pcs": len(seen),
+        "repeated_pc_rows": repeats,
+        "conflicting_word_rows": conflicts,
+        "regions": regions,
+        "count_basis": "listed_instruction_sites",
+        "unknown": [
+            "producer_capture_semantics",
+            "dynamic_loop_multiplicity",
+            "register_values",
+            "memory_values",
+            "cycle_values",
+            "exact_source_and_target_binding",
+        ],
+    }
 
 
 def control_flow(insns: Sequence[RawInsn]) -> dict[str, Any]:
@@ -201,8 +265,7 @@ def control_flow(insns: Sequence[RawInsn]) -> dict[str, Any]:
         return {"blocks": [], "natural_loops": [], "unresolved": ["repeated_pc_body"]}
     ordered = sorted(by_pc)
     leaders = {ordered[0], insns[0].addr}
-    leaders.update(right for left, right in zip(ordered, ordered[1:])
-                   if right != left + riscv_width(by_pc[left]))
+    leaders.update(right for left, right in zip(ordered, ordered[1:]) if right != left + riscv_width(by_pc[left]))
     edges: dict[int, list[int]] = {}
     unresolved = []
     terminal = set()
@@ -304,16 +367,39 @@ def control_flow(insns: Sequence[RawInsn]) -> dict[str, Any]:
                     if pred in visited and pred not in members:
                         members.add(pred)
                         todo.append(pred)
-            loops.append({"header_pc": header, "latch_pc": latch, "block_pcs": sorted(members),
-                          "trip_count": None, "basis": "cfg_header_dominates_latch"})
-    return {"blocks": [{"pc": key, "last_pc": pcs[-1], "listed_instructions": len(pcs),
-                        "successors": successors[key], "reachable_from_entry": key in visited,
-                        "immediate_dominator": idom.get(key)} for key, pcs in blocks.items()],
-            "natural_loops": loops, "unresolved": unresolved}
+            loops.append(
+                {
+                    "header_pc": header,
+                    "latch_pc": latch,
+                    "block_pcs": sorted(members),
+                    "trip_count": None,
+                    "basis": "cfg_header_dominates_latch",
+                }
+            )
+    return {
+        "blocks": [
+            {
+                "pc": key,
+                "last_pc": pcs[-1],
+                "listed_instructions": len(pcs),
+                "successors": successors[key],
+                "reachable_from_entry": key in visited,
+                "immediate_dominator": idom.get(key),
+            }
+            for key, pcs in blocks.items()
+        ],
+        "natural_loops": loops,
+        "unresolved": unresolved,
+    }
 
 
-def match_symbol_bodies(insns: Sequence[RawInsn], regions: Sequence[ListingRegion], *,
-                        symbols: Mapping[str, Sequence[RawInsn]], candidate_sha256: str) -> tuple[dict[str, Any], ...]:
+def match_symbol_bodies(
+    insns: Sequence[RawInsn],
+    regions: Sequence[ListingRegion],
+    *,
+    symbols: Mapping[str, Sequence[RawInsn]],
+    candidate_sha256: str,
+) -> tuple[dict[str, Any], ...]:
     """Match complete contiguous body bytes; preserve every identical symbol.
 
     Candidate symbols/extent and ELF pin must come from the selected ELF reader.
@@ -322,8 +408,7 @@ def match_symbol_bodies(insns: Sequence[RawInsn], regions: Sequence[ListingRegio
     """
     import hashlib
 
-    if (len(candidate_sha256) != 64 or
-            any(char not in "0123456789abcdef" for char in candidate_sha256)):
+    if len(candidate_sha256) != 64 or any(char not in "0123456789abcdef" for char in candidate_sha256):
         raise ValueError("candidate requires an exact lowercase SHA256")
     indexed: dict[str, list[dict[str, Any]]] = {}
     for name, body in symbols.items():
@@ -331,17 +416,23 @@ def match_symbol_bodies(insns: Sequence[RawInsn], regions: Sequence[ListingRegio
             continue
         data = instruction_bytes(body)
         indexed.setdefault(hashlib.sha256(data).hexdigest(), []).append(
-            {"symbol": name, "entry_pc": body[0].addr, "size_bytes": len(data),
-             "candidate_sha256": candidate_sha256})
+            {"symbol": name, "entry_pc": body[0].addr, "size_bytes": len(data), "candidate_sha256": candidate_sha256}
+        )
     out = []
     for region in regions:
         body = [insns[index] for index in region.indices]
         contiguous = all(right.addr == left.addr + riscv_width(left) for left, right in zip(body, body[1:]))
         body_hash = hashlib.sha256(instruction_bytes(body)).hexdigest()
-        out.append({"region_id": region.region_id, "body_sha256": body_hash,
-                    "contiguous_body": contiguous,
-                    "matches": indexed.get(body_hash, []) if contiguous else [],
-                    "basis": "complete_listed_body_bytes", "whole_elf_identity": "unknown"})
+        out.append(
+            {
+                "region_id": region.region_id,
+                "body_sha256": body_hash,
+                "contiguous_body": contiguous,
+                "matches": indexed.get(body_hash, []) if contiguous else [],
+                "basis": "complete_listed_body_bytes",
+                "whole_elf_identity": "unknown",
+            }
+        )
     return tuple(out)
 
 
@@ -356,24 +447,40 @@ def pc_relative_constants(insns: Sequence[RawInsn]) -> tuple[dict[str, Any], ...
     for first, second in zip(insns, insns[1:]):
         a, b = int(first.hexcode, 16), int(second.hexcode, 16)
         rd = (a >> 7) & 31
-        if (riscv_width(first) != 4 or riscv_width(second) != 4 or second.addr != first.addr + 4
-                or a & 127 != 0x17 or b & 0x707F != 0x13 or rd == 0
-                or (b >> 7) & 31 != rd or (b >> 15) & 31 != rd):
+        if (
+            riscv_width(first) != 4
+            or riscv_width(second) != 4
+            or second.addr != first.addr + 4
+            or a & 127 != 0x17
+            or b & 0x707F != 0x13
+            or rd == 0
+            or (b >> 7) & 31 != rd
+            or (b >> 15) & 31 != rd
+        ):
             continue
         high, low = a & 0xFFFFF000, b >> 20
         high = high - (1 << 32) if high & (1 << 31) else high
         low = low - (1 << 12) if low & (1 << 11) else low
-        out.append({"first_pc": first.addr, "second_pc": second.addr, "register": rd,
-                    "value": (first.addr + high + low) % (1 << 64),
-                    "basis": "adjacent_rv64_auipc_addi", "pointee_value": None})
+        out.append(
+            {
+                "first_pc": first.addr,
+                "second_pc": second.addr,
+                "register": rd,
+                "value": (first.addr + high + low) % (1 << 64),
+                "basis": "adjacent_rv64_auipc_addi",
+                "pointee_value": None,
+            }
+        )
     return tuple(out)
 
 
 def normalized_text(insns: Iterable[RawInsn]) -> str:
     """Existing objdump-tokenizer input, retaining listed words and addresses."""
-    return "".join(f"{insn.addr:x}: {insn.hexcode} {insn.mnemonic} {','.join(insn.operands)}\n"
-                   + "".join(f"{insn.addr:x}: {relocation}\n" for relocation in insn.relocations)
-                   for insn in insns)
+    return "".join(
+        f"{insn.addr:x}: {insn.hexcode} {insn.mnemonic} {','.join(insn.operands)}\n"
+        + "".join(f"{insn.addr:x}: {relocation}\n" for relocation in insn.relocations)
+        for insn in insns
+    )
 
 
 def lift_schedule(insns: Sequence[RawInsn], *, table: Mapping[str, Any], evidence, roles_of=None):
@@ -390,6 +497,17 @@ def lift_schedule(insns: Sequence[RawInsn], *, table: Mapping[str, Any], evidenc
     from merlin.kernels.kernel_evidence import analyze_disassembly
 
     model = analyze_disassembly(normalized_text(insns), table=table, evidence=evidence, roles_of=roles_of)
-    return replace(model, complete=False, unknowns=tuple(sorted({*model.unknowns,
-        "listing_multiplicity_not_established", "selected_isa_correspondence_not_established",
-        "register_and_memory_values_not_supplied"})))
+    return replace(
+        model,
+        complete=False,
+        unknowns=tuple(
+            sorted(
+                {
+                    *model.unknowns,
+                    "listing_multiplicity_not_established",
+                    "selected_isa_correspondence_not_established",
+                    "register_and_memory_values_not_supplied",
+                }
+            )
+        ),
+    )

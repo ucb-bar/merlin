@@ -8,6 +8,13 @@ The consumer checks every operation; unsupported decisions are never ignored.
 from xdsl.dialects.builtin import ModuleOp, StringAttr
 from xdsl.ir import Block, Region
 
+from merlin.compiler.schedule.schedule_ir import (
+    _binding,
+    dense_schedule_text,
+    make_dense_schedule_plan,
+    parse_dense_schedule_plan,
+    read_dense_schedule_plan,
+)
 from merlin.xdsl_dialects.schedule import (
     BindOp,
     DispatchGranularity,
@@ -15,14 +22,6 @@ from merlin.xdsl_dialects.schedule import (
     GroupDispatchOp,
     HandleType,
     PlanOp,
-)
-
-from merlin.compiler.schedule.schedule_ir import (
-    _binding,
-    dense_schedule_text,
-    make_dense_schedule_plan,
-    parse_dense_schedule_plan,
-    read_dense_schedule_plan,
 )
 
 

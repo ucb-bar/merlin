@@ -77,12 +77,16 @@ def implementation_paths() -> tuple[Path, ...]:
     owners = (repairs, provenance, casts, linalg, dead, matmul)
     selected = (globals()[name] for _, _, name in _PREPROCESS)
     legacy = Path(__file__).parents[2] / "llvmlower" / "passes_xdsl.py"
-    return tuple(dict.fromkeys((
-        Path(__file__),
-        *((legacy,) if legacy.is_file() else ()),
-        *(Path(owner.__file__) for owner in owners),
-        *(Path(function.__code__.co_filename) for function in selected),
-    )))
+    return tuple(
+        dict.fromkeys(
+            (
+                Path(__file__),
+                *((legacy,) if legacy.is_file() else ()),
+                *(Path(owner.__file__) for owner in owners),
+                *(Path(function.__code__.co_filename) for function in selected),
+            )
+        )
+    )
 
 
 def add_c_interface(module) -> int:
@@ -100,15 +104,19 @@ def add_c_interface(module) -> int:
     for op in module.walk():
         if isinstance(op, FuncOp):
             private_scalar = (
-                op.sym_visibility is not None and op.sym_visibility.data == "private"
-                and all(isinstance(t, IntegerType | IndexType | AnyFloat)
-                    for t in (*op.function_type.inputs, *op.function_type.outputs))
+                op.sym_visibility is not None
+                and op.sym_visibility.data == "private"
+                and all(
+                    isinstance(t, IntegerType | IndexType | AnyFloat)
+                    for t in (*op.function_type.inputs, *op.function_type.outputs)
+                )
             )
             if private_scalar:
                 continue
             op.attributes["llvm.emit_c_interface"] = UnitAttr()
             n += 1
     return n
+
 
 _PREPROCESS = (
     ("dead_tensor_ops_pruned", "xdsl-pruned", "prune_dead_pure_tensor_ops"),
@@ -118,6 +126,7 @@ _PREPROCESS = (
 
 PREPROCESS_STAGES = ("xdsl-parsed", *(stage for _, stage, _ in _PREPROCESS))
 
+
 def _layer_norm_chunked_sums_selected() -> bool:
     """Whether the numerics-changing ``layer-norm-chunked-sums`` pass runs (default off)."""
     import os
@@ -125,6 +134,7 @@ def _layer_norm_chunked_sums_selected() -> bool:
     from merlin.llvmlower.optional_passes import switched
 
     return switched("layer-norm-chunked-sums", os.environ.get("MERLIN_LAYER_NORM_CHUNKED_SUMS") == "1")
+
 
 def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
     from functools import partial
@@ -160,6 +170,7 @@ def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
         observe=partial(record_stage, audit, generic=True) if audit is not None else None,
         initial_stage=PREPROCESS_STAGES[0],
     )
+
 
 def preprocess_text(mlir_text: str, *, audit=None) -> tuple[str, dict]:
     """Run Merlin xDSL passes, optionally observing each completed rewrite without changing it."""
@@ -200,6 +211,7 @@ def preprocess_text(mlir_text: str, *, audit=None) -> tuple[str, dict]:
         audit._flush()
     return upstream, stats
 
+
 def preprocess_text_with_transform_map(mlir_text: str) -> tuple[str, dict, dict]:
     """Preprocess one entry and receipt-map every top-level source op/result.
 
@@ -215,6 +227,7 @@ def preprocess_text_with_transform_map(mlir_text: str) -> tuple[str, dict, dict]
     stats = _preprocess_module(module, on_quant_rewrite=transform_map.record)
     upstream = module_to_text(module, generic=True)
     return upstream, stats, transform_map.finish(upstream)
+
 
 class _SourceTransformMap:
     """Track raw top-level operation identities through the structural rewrite."""

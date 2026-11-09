@@ -1,4 +1,5 @@
 """Reconcile staged invocation and lifted tensor bindings with parsed IR."""
+
 from __future__ import annotations
 
 import json
@@ -23,11 +24,9 @@ _WEIGHT_DTYPES = {
     "bool": ("i1", "BOOL", 1),
 }
 
+
 def _entry_type(module, entry: str):
-    functions = [
-        op for op in module.walk()
-        if op.name == "func.func" and op.sym_name.data == entry
-    ]
+    functions = [op for op in module.walk() if op.name == "func.func" and op.sym_name.data == entry]
     if len(functions) != 1:
         raise ValueError("compiler input signature does not name exactly one parsed function")
     return functions[0].function_type
@@ -45,13 +44,19 @@ def _weight_header(raw: bytes | _ArchiveInfo) -> dict:
 
 
 def _payload_bytes(raw: bytes | _ArchiveInfo) -> int:
-    return raw.file_bytes - raw.payload_start if isinstance(raw, _ArchiveInfo) else (
-        len(raw) - 8 - int.from_bytes(raw[:8], "little")
+    return (
+        raw.file_bytes - raw.payload_start
+        if isinstance(raw, _ArchiveInfo)
+        else (len(raw) - 8 - int.from_bytes(raw[:8], "little"))
     )
 
 
 def _argument_bindings(
-    function_type, runtime_inputs: list, members: dict[str, bytes | _ArchiveInfo], *, materialized: bool = False,
+    function_type,
+    runtime_inputs: list,
+    members: dict[str, bytes | _ArchiveInfo],
+    *,
+    materialized: bool = False,
 ) -> list[dict]:
     """Join captured argument indices to runtime inputs or exact weight tensors."""
     manifest = json.loads(members["weights.safetensors.manifest.json"])
@@ -99,11 +104,17 @@ def _argument_bindings(
         dtype_name = row.get("dtype")
         dtype = _WEIGHT_DTYPES.get(dtype_name) if isinstance(dtype_name, str) else None
         if (
-            not isinstance(kind, str) or kind not in roles or set(row) != fields
-            or not isinstance(file, str) or file not in files
-            or kind == "param" and file != "weights.safetensors"
-            or kind == "constant" and file != CONSTANT_FILE
-            or not isinstance(name, str) or not name
+            not isinstance(kind, str)
+            or kind not in roles
+            or set(row) != fields
+            or not isinstance(file, str)
+            or file not in files
+            or kind == "param"
+            and file != "weights.safetensors"
+            or kind == "constant"
+            and file != CONSTANT_FILE
+            or not isinstance(name, str)
+            or not name
             or dtype is None
             or not isinstance(row.get("shape"), list)
             or any(type(extent) is not int or extent < 0 for extent in row["shape"])
@@ -119,9 +130,11 @@ def _argument_bindings(
         for extent in actual["shape"]:
             elements *= extent
         if (
-            not isinstance(offsets, list) or len(offsets) != 2
+            not isinstance(offsets, list)
+            or len(offsets) != 2
             or any(type(offset) is not int for offset in offsets)
-            or offsets[0] < 0 or offsets[1] - offsets[0] != elements * dtype[2]
+            or offsets[0] < 0
+            or offsets[1] - offsets[0] != elements * dtype[2]
             or offsets[1] > payload_lengths[file]
         ):
             raise ValueError("weight safetensors payload differs from declared shape")
@@ -152,7 +165,9 @@ def _check_signature(module, signature: dict, members: dict[str, bytes]) -> None
     a staged directory because its manifest is caller-owned data.
     """
     if not isinstance(signature, dict) or signature.get("schema") not in {
-        "merlin.compile-signature.v1", "merlin.compile-signature.v2", "merlin.compile-signature.v3",
+        "merlin.compile-signature.v1",
+        "merlin.compile-signature.v2",
+        "merlin.compile-signature.v3",
     }:
         raise ValueError("compiler input signature has an unsupported schema")
     entry = signature.get("entry")
@@ -164,7 +179,10 @@ def _check_signature(module, signature: dict, members: dict[str, bytes]) -> None
         if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
             raise ValueError("compiler input signature has invalid runtime inputs")
         expected = _argument_bindings(
-            function_type, rows, members, materialized=signature["schema"] == "merlin.compile-signature.v3",
+            function_type,
+            rows,
+            members,
+            materialized=signature["schema"] == "merlin.compile-signature.v3",
         )
         if signature.get("arguments") != expected:
             raise ValueError("compiler input signature arguments differ from parsed function")
@@ -191,4 +209,3 @@ def _check_signature(module, signature: dict, members: dict[str, bytes]) -> None
                 or row != _tensor_abi(type_)
             ):
                 raise ValueError(f"compiler input signature {direction} differ from parsed function")
-

@@ -12,9 +12,11 @@ from test_readout_model_fusion import command, params
 from xdsl.dialects import builtin
 
 from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
-from merlin.compiler.schedule.pointwise_source import PointwiseScheduleCandidate
-from merlin.compiler.schedule.pointwise_source import PointwiseScheduleRewrite
-from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
+from merlin.compiler.schedule.pointwise_source import (
+    PointwiseScheduleCandidate,
+    PointwiseScheduleRewrite,
+    compile_source_pointwise,
+)
 from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 
 

@@ -137,8 +137,12 @@ def test_refactored_source_owners_are_bound_and_revalidated(tmp_path, monkeypatc
 
     paths = pipeline.implementation_paths()
     modules = {path.as_posix().split("/merlin/")[-1] for path in paths}
-    assert {"compiler/lower/scalar/pipeline.py", "compiler/lower/llvm/normalize.py",
-            "compiler/passes/fragments.py", "compiler/selection/features.py"} <= modules
+    assert {
+        "compiler/lower/scalar/pipeline.py",
+        "compiler/lower/llvm/normalize.py",
+        "compiler/passes/fragments.py",
+        "compiler/selection/features.py",
+    } <= modules
     # A changed canonical owner must invalidate a prepared source transaction,
     # even though the compatibility driver's bytes remain unchanged.
     selected = tmp_path / "selected-policy.py"

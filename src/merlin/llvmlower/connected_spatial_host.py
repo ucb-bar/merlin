@@ -33,8 +33,7 @@ def _digest(value):
 def _check_source(plan, entry):
     """Check every source geometry, observer and ordered coefficient boundary."""
     from merlin.compiler.schedule.blocks import SpatialMaxReadout
-    from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan
-    from merlin.compiler.schedule.spatial_producer import SpatialProducerPlan
+    from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
     from merlin.compiler.schedule.spatial_readout import prove_spatial_readout
     from merlin.compiler.schedule.window_transfer import Window2D
     from merlin.llvmlower.requantization import f32

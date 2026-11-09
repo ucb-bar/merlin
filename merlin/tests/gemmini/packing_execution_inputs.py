@@ -20,8 +20,8 @@ from merlin.common.digest import sha256_file
 from merlin.common.paths import repo_root
 from merlin.common.strict_json import loads
 from merlin.compiler.frontend.materialized import MaterializedModelInputs
-from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.runtime.modelinputs import strict_tree_sha256
 
 SCHEMA = "merlin.test.gemmini_packing_pair.v1"
 PUBLIC_COMPILER_SHA = "29213759089b71de26f8a5ab26ca6ef1b8071dc0bb690041eb7de5d0efb53f24"

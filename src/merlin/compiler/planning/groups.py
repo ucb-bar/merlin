@@ -61,9 +61,11 @@ class GroupPlan:
         if module is not self.source or target != self.target:
             raise ValueError("group plan belongs to another source or target")
         current = tuple(module.walk())
-        if len(current) != len(self._operations) or any(
-            left is not right for left, right in zip(current, self._operations, strict=True)
-        ) or ir_digest(module) != self.source_sha256:
+        if (
+            len(current) != len(self._operations)
+            or any(left is not right for left, right in zip(current, self._operations, strict=True))
+            or ir_digest(module) != self.source_sha256
+        ):
             raise ValueError("group plan source changed; plan the realized program again")
         selected = None if weight_args is None else frozenset(weight_args)
         if selected != self.weight_args:
@@ -91,12 +93,19 @@ def plan_groups(module, target: str, *, oracle=None, weight_args=None) -> GroupP
     oracle = oracle or compute_groups.TargetOracle(target)
     groups = tuple(compute_groups.form_groups(module, target, oracle=oracle))
     current = tuple(module.walk())
-    if ir_digest(module) != before or len(current) != len(operations) or any(
-        left is not right for left, right in zip(current, operations, strict=True)
+    if (
+        ir_digest(module) != before
+        or len(current) != len(operations)
+        or any(left is not right for left, right in zip(current, operations, strict=True))
     ):
         raise ValueError("group planning changed the source program")
     return GroupPlan(
-        module, target, groups, oracle,
+        module,
+        target,
+        groups,
+        oracle,
         None if weight_args is None else frozenset(weight_args),
-        before, operations, _group_identity(groups, operations),
+        before,
+        operations,
+        _group_identity(groups, operations),
     )

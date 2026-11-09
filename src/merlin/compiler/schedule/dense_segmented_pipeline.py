@@ -31,6 +31,7 @@ from merlin.transforms.dense_planning import dense_blocks
 OUTPUT_GROUP_PREFETCH = "prefetch_rhs_between_output_groups"
 SEGMENTED_ISSUE_ORDERS = (*ISSUE_ORDERS, "prefetch_rhs_between_k_tiles", OUTPUT_GROUP_PREFETCH)
 
+
 @dataclass(frozen=True)
 class DenseSegmentedAdmission:
     """Separate, explicit conjunction of overlap and ordered reduction laws.
@@ -47,15 +48,26 @@ class DenseSegmentedAdmission:
     execution: str = "ordered_accumulator_commits_disjoint_future_loads_full_drain"
 
     def __post_init__(self):
-        if (type(self.overlap) is not DensePanelOverlapAdmission
-                or type(self.reduction) is not DenseRetainedReductionAdmission
-                or type(self.qualification_identity) is not str or not self.qualification_identity.strip()
-                or self.execution != "ordered_accumulator_commits_disjoint_future_loads_full_drain"):
+        if (
+            type(self.overlap) is not DensePanelOverlapAdmission
+            or type(self.reduction) is not DenseRetainedReductionAdmission
+            or type(self.qualification_identity) is not str
+            or not self.qualification_identity.strip()
+            or self.execution != "ordered_accumulator_commits_disjoint_future_loads_full_drain"
+        ):
             raise ValueError("segmented reduction needs a separate selected combined execution law")
         self.overlap.__post_init__()
         self.reduction.__post_init__()
-        for field in ("hardware_identity", "numerical_policy_identity", "load_configuration", "descriptor",
-                      "pending_compute_pairs", "pending_loads", "pending_readouts", "readout_configuration"):
+        for field in (
+            "hardware_identity",
+            "numerical_policy_identity",
+            "load_configuration",
+            "descriptor",
+            "pending_compute_pairs",
+            "pending_loads",
+            "pending_readouts",
+            "readout_configuration",
+        ):
             if getattr(self.overlap, field) != getattr(self.reduction, field):
                 raise ValueError("segmented component laws disagree on selected execution or numerical state")
 
@@ -71,27 +83,38 @@ def _assignment(problem, block, resources, storage, window_offsets=None):
     counts = (block.m * kt * problem.tile_m, block.k * block.n * problem.tile_k)
     if window_offsets is None:
         window_offsets = ((0, 0), (0, counts[1]))
-    if (type(window_offsets) is not tuple or len(window_offsets) != 2
-            or any(type(slot) is not tuple or len(slot) != 2 for slot in window_offsets)
-            or any(type(x) is not int or x < 0 for slot in window_offsets for x in slot)
-            or window_offsets[0][0] != window_offsets[1][0]):
+    if (
+        type(window_offsets) is not tuple
+        or len(window_offsets) != 2
+        or any(type(slot) is not tuple or len(slot) != 2 for slot in window_offsets)
+        or any(type(x) is not int or x < 0 for slot in window_offsets for x in slot)
+        or window_offsets[0][0] != window_offsets[1][0]
+    ):
         raise ValueError("segmented windows require one retained LHS offset and two bounded RHS offsets")
     lhs = replace(storage.lhs, base=storage.lhs.base + window_offsets[0][0], capacity=counts[0])
-    rhs = tuple(replace(storage.rhs, base=storage.rhs.base + offset[1], capacity=counts[1])
-                for offset in window_offsets)
+    rhs = tuple(
+        replace(storage.rhs, base=storage.rhs.base + offset[1], capacity=counts[1]) for offset in window_offsets
+    )
     for view, parent in ((lhs, storage.lhs), *((v, storage.rhs) for v in rhs)):
-        if (view.base < parent.base or view.base + view.capacity > parent.base + parent.capacity
-                or view.base % parent.alignment):
+        if (
+            view.base < parent.base
+            or view.base + view.capacity > parent.base + parent.capacity
+            or view.base % parent.alignment
+        ):
             raise ValueError("segmented live window escapes or misaligns its original assigned view")
     views = (lhs, *rhs, storage.accumulator)
     for i, left in enumerate(views):
-        for right in views[i + 1:]:
-            if (left.backing == right.backing
-                    and left.base * left.unit_bytes < (right.base + right.capacity) * right.unit_bytes
-                    and right.base * right.unit_bytes < (left.base + left.capacity) * left.unit_bytes):
+        for right in views[i + 1 :]:
+            if (
+                left.backing == right.backing
+                and left.base * left.unit_bytes < (right.base + right.capacity) * right.unit_bytes
+                and right.base * right.unit_bytes < (left.base + left.capacity) * left.unit_bytes
+            ):
                 raise ValueError("segmented simultaneously live windows alias")
-    if (lhs.capacity * lhs.unit_bytes + sum(v.capacity * v.unit_bytes for v in rhs) > resources.operand_bytes
-            or block.m * block.n * problem.tile_m * storage.accumulator.unit_bytes > resources.accumulator_bytes):
+    if (
+        lhs.capacity * lhs.unit_bytes + sum(v.capacity * v.unit_bytes for v in rhs) > resources.operand_bytes
+        or block.m * block.n * problem.tile_m * storage.accumulator.unit_bytes > resources.accumulator_bytes
+    ):
         raise ValueError("retained LHS plus two RHS segments exceed original byte capacity")
     return lhs, rhs
 
@@ -117,8 +140,9 @@ def dense_segmented_blocks(problem, resources, storage):
             return 0
         rhs_rows_per_k = n * problem.tile_k
         remaining = resources.operand_bytes - lhs_rows * storage.lhs.unit_bytes
-        bound = min(storage.rhs.capacity // (2 * rhs_rows_per_k),
-                    remaining // (2 * rhs_rows_per_k * storage.rhs.unit_bytes))
+        bound = min(
+            storage.rhs.capacity // (2 * rhs_rows_per_k), remaining // (2 * rhs_rows_per_k * storage.rhs.unit_bytes)
+        )
         # Both default slots must start on the original view's alignment.
         quantum = storage.rhs.alignment // gcd(storage.rhs.alignment, rhs_rows_per_k)
         bound = min(bound, problem.tiles[1], resources.max_k_blocks)
@@ -135,9 +159,20 @@ def dense_segmented_blocks(problem, resources, storage):
 
 
 def build_dense_segmented_pipeline(
-    problem, block, resources, storage, adapter, *, name, dtypes,
-    prefetch=True, outer_order=("m", "n"), window_offsets=None, issue_order="compute_then_prefetch",
-    output_readout=None, bias_source=None,
+    problem,
+    block,
+    resources,
+    storage,
+    adapter,
+    *,
+    name,
+    dtypes,
+    prefetch=True,
+    outer_order=("m", "n"),
+    window_offsets=None,
+    issue_order="compute_then_prefetch",
+    output_readout=None,
+    bias_source=None,
 ):
     """Emit real initial/frontier loads, ordered sums, stores and full drains.
 
@@ -168,9 +203,11 @@ def build_dense_segmented_pipeline(
         output_readout.validate_problem(problem)
     from merlin.sched.ir.kernel import DTYPE_BYTES
 
-    if (tuple(DTYPE_BYTES.get(t) for t in dtypes)
-            != (problem.lhs_bytes, problem.rhs_bytes, problem.accumulator_bytes)
-            or not adapter.synchronous_completion or not adapter.exact_accumulator_continuation):
+    if (
+        tuple(DTYPE_BYTES.get(t) for t in dtypes) != (problem.lhs_bytes, problem.rhs_bytes, problem.accumulator_bytes)
+        or not adapter.synchronous_completion
+        or not adapter.exact_accumulator_continuation
+    ):
         raise ValueError("segmented source needs exact original integer widths and serial continuation semantics")
     lhs, rhs = _assignment(problem, block, resources, storage, window_offsets)
     kt = problem.tiles[1]
@@ -209,30 +246,64 @@ def build_dense_segmented_pipeline(
 
     def output_group(mg, ng, *, slot=0, future_group=None, initial=False):
         def depth(k, count, final):
-            return (select(k, count - 1, problem.k % problem.tile_k, problem.tile_k)
-                    if final and problem.k % problem.tile_k else Const(problem.tile_k))
+            return (
+                select(k, count - 1, problem.k % problem.tile_k, problem.tile_k)
+                if final and problem.k % problem.tile_k
+                else Const(problem.tile_k)
+            )
 
         def columns(group, n):
             return _edge(group, n, problem.n, problem.tile_n)
 
         def loads(slot, base, count, final=False, group=None):
             group = ng if group is None else group
+
             def load(k, n):
-                return (call(Load("weight", (base + k, group.base + n), (base + k) * problem.tile_k,
-                                  (group.base + n) * problem.tile_n, depth(k, count, final),
-                                  columns(group, n),
-                                  rhs[slot].base + (k * block.n + n) * problem.tile_k, 1)),)
+                return (
+                    call(
+                        Load(
+                            "weight",
+                            (base + k, group.base + n),
+                            (base + k) * problem.tile_k,
+                            (group.base + n) * problem.tile_n,
+                            depth(k, count, final),
+                            columns(group, n),
+                            rhs[slot].base + (k * block.n + n) * problem.tile_k,
+                            1,
+                        )
+                    ),
+                )
+
             return nest((count, group.blocks), load)
 
         def computes(slot, base, count, first=False, final=False):
             def compute(k, m, n):
                 rows, cols = _edge(mg, m, problem.m, problem.tile_m), columns(ng, n)
-                continuation = (select(k, 0, 0, 1) if first and bias_source is None else Const(1))
+                continuation = select(k, 0, 0, 1) if first and bias_source is None else Const(1)
                 acc = storage.accumulator.base + (m * block.n + n) * problem.tile_m
-                return (call(Preload(rhs[slot].base + (k * block.n + n) * problem.tile_k,
-                                     (base + k, ng.base + n), acc, continuation, rows, cols, depth(k, count, final))),
-                        call(Compute(lhs.base + (m * kt + base + k) * problem.tile_m,
-                                     (mg.base + m, base + k), rows, depth(k, count, final), True)))
+                return (
+                    call(
+                        Preload(
+                            rhs[slot].base + (k * block.n + n) * problem.tile_k,
+                            (base + k, ng.base + n),
+                            acc,
+                            continuation,
+                            rows,
+                            cols,
+                            depth(k, count, final),
+                        )
+                    ),
+                    call(
+                        Compute(
+                            lhs.base + (m * kt + base + k) * problem.tile_m,
+                            (mg.base + m, base + k),
+                            rows,
+                            depth(k, count, final),
+                            True,
+                        )
+                    ),
+                )
+
             return nest((count, mg.blocks, ng.blocks), compute)
 
         def stage(slot, base, *, first=False, final_frontier=False):
@@ -242,18 +313,30 @@ def build_dense_segmented_pipeline(
 
         result = []
         if bias_source is not None:
+
             def initialize(m, n):
-                return (epoch((call(InitializeAccumulator(
-                    (mg.base + m, ng.base + n), (ng.base + n) * problem.tile_n,
-                    _edge(mg, m, problem.m, problem.tile_m), columns(ng, n),
-                    storage.accumulator.base + (m * block.n + n) * problem.tile_m)),)),)
+                return (
+                    epoch(
+                        (
+                            call(
+                                InitializeAccumulator(
+                                    (mg.base + m, ng.base + n),
+                                    (ng.base + n) * problem.tile_n,
+                                    _edge(mg, m, problem.m, problem.tile_m),
+                                    columns(ng, n),
+                                    storage.accumulator.base + (m * block.n + n) * problem.tile_m,
+                                )
+                            ),
+                        )
+                    ),
+                )
+
             result.extend(nest((mg.blocks, ng.blocks), initialize))
         if output_lookahead:
             if initial:
                 result.append(epoch(loads(slot, Const(0), kt, True)))
             current = computes(slot, Const(0), kt, first=True, final=True)
-            future = (() if future_group is None else
-                      loads(1 - slot, Const(0), kt, True, group=future_group))
+            future = () if future_group is None else loads(1 - slot, Const(0), kt, True, group=future_group)
             result.append(epoch((*current, *future)))
         else:
             result.append(epoch(loads(0, Const(0), last if segments == 1 else block.k, segments == 1)))
@@ -262,9 +345,13 @@ def build_dense_segmented_pipeline(
             pairs, tail = divmod(segments - 3, 2)
             if pairs:
                 period = variable("segment_period_")
-                result.append(Loop(period, pairs, (
-                    *stage(1, (Var(period) * 2 + 1) * block.k),
-                    *stage(0, (Var(period) * 2 + 2) * block.k))))
+                result.append(
+                    Loop(
+                        period,
+                        pairs,
+                        (*stage(1, (Var(period) * 2 + 1) * block.k), *stage(0, (Var(period) * 2 + 2) * block.k)),
+                    )
+                )
             if tail:
                 index = 1 + 2 * pairs
                 result.extend(stage(index % 2, Const(index * block.k)))
@@ -272,18 +359,33 @@ def build_dense_segmented_pipeline(
             index = segments - 2
             result.extend(stage(index % 2, Const(index * block.k), first=index == 0, final_frontier=True))
         if not output_lookahead:
-            result.append(epoch(computes((segments - 1) % 2, Const((segments - 1) * block.k), last,
-                                         first=segments == 1, final=True)))
+            result.append(
+                epoch(
+                    computes((segments - 1) % 2, Const((segments - 1) * block.k), last, first=segments == 1, final=True)
+                )
+            )
 
         def store(m, n):
             tiled = type(output_readout) is DenseTiledIntegerReadout
             operation = TiledIntegerStore if tiled else Store
-            return (epoch((call(operation(
-                (mg.base + m) * problem.tile_m, (ng.base + n) * problem.tile_n,
-                _edge(mg, m, problem.m, problem.tile_m), columns(ng, n),
-                storage.accumulator.base + (m * block.n + n) * problem.tile_m,
-                output_readout.identity if output_readout is not None else None,
-                **({"readout_tile": ng.base + n} if tiled else {}))),)),)
+            return (
+                epoch(
+                    (
+                        call(
+                            operation(
+                                (mg.base + m) * problem.tile_m,
+                                (ng.base + n) * problem.tile_n,
+                                _edge(mg, m, problem.m, problem.tile_m),
+                                columns(ng, n),
+                                storage.accumulator.base + (m * block.n + n) * problem.tile_m,
+                                output_readout.identity if output_readout is not None else None,
+                                **({"readout_tile": ng.base + n} if tiled else {}),
+                            )
+                        ),
+                    )
+                ),
+            )
+
         result.extend(nest((mg.blocks, ng.blocks), store))
         return tuple(result)
 
@@ -295,29 +397,36 @@ def build_dense_segmented_pipeline(
             return _Group(var, trips, index * block.n, blocks, last)
 
         def stage(index, slot, *, initial=False, following=None, last=False):
-            return output_group(mg, group(index, last=last), slot=slot,
-                                future_group=following, initial=initial)
+            return output_group(mg, group(index, last=last), slot=slot, future_group=following, initial=initial)
 
         tail = None if not tail_n else group(Const(full_n), tail_n, last=True)
         if full_n == 1:
             result = list(stage(Const(0), 0, initial=True, following=tail))
         else:
-            result = list(stage(Const(0), 0, initial=True,
-                                following=group(Const(1), last=full_n == 2 and not tail_n)))
+            result = list(stage(Const(0), 0, initial=True, following=group(Const(1), last=full_n == 2 and not tail_n)))
             middle = full_n - 2
             pairs, odd = divmod(middle, 2)
             if pairs:
                 period = variable("output_group_period_")
                 index = Var(period) * 2 + 1
-                result.append(Loop(period, pairs, (
-                    *stage(index, 1, following=group(index + 1)),
-                    *stage(index + 1, 0, following=group(index + 2,
-                        last=not tail_n and not odd, var=period, trips=pairs)))))
+                result.append(
+                    Loop(
+                        period,
+                        pairs,
+                        (
+                            *stage(index, 1, following=group(index + 1)),
+                            *stage(
+                                index + 1,
+                                0,
+                                following=group(index + 2, last=not tail_n and not odd, var=period, trips=pairs),
+                            ),
+                        ),
+                    )
+                )
             if odd:
                 index = Const(1 + 2 * pairs)
                 result.extend(stage(index, 1, following=group(index + 1, last=not tail_n)))
-            result.extend(stage(Const(full_n - 1), (full_n - 1) % 2,
-                                following=tail, last=not tail_n))
+            result.extend(stage(Const(full_n - 1), (full_n - 1) % 2, following=tail, last=not tail_n))
         if tail is not None:
             result.extend(output_group(mg, tail, slot=full_n % 2))
         return tuple(result)
@@ -325,8 +434,9 @@ def build_dense_segmented_pipeline(
     body = []
     full = replace(block, k=kt)
     for mg in _groups(problem.tiles[0], block.m, "outer_m"):
-        retained = _emit_lhs_panel(problem, full, replace(storage, lhs=lhs), call, nest, mg,
-                                   _Group(None, 1, Const(0), kt, True))
+        retained = _emit_lhs_panel(
+            problem, full, replace(storage, lhs=lhs), call, nest, mg, _Group(None, 1, Const(0), kt, True)
+        )
         row = [epoch(retained)]
         if output_lookahead:
             row.extend(output_groups(mg))
@@ -335,13 +445,21 @@ def build_dense_segmented_pipeline(
                 group = output_group(mg, ng)
                 row.extend((Loop(ng.var, ng.trips, group),) if ng.var is not None else group)
         body.extend((Loop(mg.var, mg.trips, tuple(row)),) if mg.var is not None else row)
-    kernel = Kernel(name, (
-        TensorArg("lhs", (problem.m, problem.k), dtypes[0], "read"),
-        TensorArg("rhs", (problem.k, problem.n), dtypes[1], "read"),
-        *((TensorArg("bias", (problem.n,), bias_source.dtype, "read"),) if bias_source is not None else ()),
-        TensorArg("output", (problem.m, problem.n),
-                  dtypes[2] if output_readout is None else output_readout.output_dtype,
-                  "write")), tuple(body))
+    kernel = Kernel(
+        name,
+        (
+            TensorArg("lhs", (problem.m, problem.k), dtypes[0], "read"),
+            TensorArg("rhs", (problem.k, problem.n), dtypes[1], "read"),
+            *((TensorArg("bias", (problem.n,), bias_source.dtype, "read"),) if bias_source is not None else ()),
+            TensorArg(
+                "output",
+                (problem.m, problem.n),
+                dtypes[2] if output_readout is None else output_readout.output_dtype,
+                "write",
+            ),
+        ),
+        tuple(body),
+    )
     if check_structure(kernel):
         raise ValueError("segmented construction changed source control or completion scopes")
     check_integer_domain(kernel, adapter.index_bits)
@@ -367,8 +485,7 @@ def interleave_dense_segmented_frontier(kernel, adapter, *, issue_order="prefetc
     from merlin.sched.ir.expr import free_vars
     from merlin.sched.primitives import _bound_vars, _loop_at, _splice
 
-    if (type(kernel) is not Kernel or check_structure(kernel)
-            or issue_order not in SEGMENTED_ISSUE_ORDERS[1:]):
+    if type(kernel) is not Kernel or check_structure(kernel) or issue_order not in SEGMENTED_ISSUE_ORDERS[1:]:
         raise ValueError("frontier interleaving requires actual closed commands and an explicit interleaving order")
     check_integer_domain(kernel, adapter.index_bits)
     paths = []
@@ -384,6 +501,7 @@ def interleave_dense_segmented_frontier(kernel, adapter, *, issue_order="prefetc
                     paths.append(current)
             else:
                 discover(statement.body, current)
+
     discover(kernel.body)
     if not paths:
         raise ValueError("frontier issue order requires at least one actual mixed prefetch epoch")
@@ -412,38 +530,44 @@ def interleave_dense_segmented_frontier(kernel, adapter, *, issue_order="prefetc
             raise ValueError("frontier issue requires one complete current stream then one future stream and drain")
         (ck, cm, cn), paired = chain(epoch.body[0], 3)
         (fk, fn), loads = chain(epoch.body[1], 2)
-        if (len(paired) != 2 or len(loads) != 1
-                or any(type(c) is not Call or not _plain(c) for c in (*paired, *loads))):
+        if len(paired) != 2 or len(loads) != 1 or any(type(c) is not Call or not _plain(c) for c in (*paired, *loads)):
             raise ValueError("frontier issue cannot split a physical pair or move unknown effects")
         preload, compute, load = (adapter.project(c) for c in (*paired, *loads))
         coordinates = {ck.var, cm.var, cn.var}
         output_frontier = issue_order == OUTPUT_GROUP_PREFETCH
         if output_frontier and (fk.extent != ck.extent or fn.extent > cn.extent):
             raise ValueError("output-group frontier differs from complete K and bounded following N")
-        if (type(preload) is not Preload or type(compute) is not Compute or type(load) is not Load
-                or load.role != "weight" or fk.extent > ck.extent
-                or (not output_frontier and fn.extent != cn.extent)
-                or coordinates & free_vars(compute.input_block[0]) != {cm.var}
-                or coordinates & free_vars(compute.input_block[1]) != {ck.var}
-                or coordinates & free_vars(preload.weight_block[0]) != {ck.var}
-                or coordinates & free_vars(preload.weight_block[1]) != {cn.var}):
+        if (
+            type(preload) is not Preload
+            or type(compute) is not Compute
+            or type(load) is not Load
+            or load.role != "weight"
+            or fk.extent > ck.extent
+            or (not output_frontier and fn.extent != cn.extent)
+            or coordinates & free_vars(compute.input_block[0]) != {cm.var}
+            or coordinates & free_vars(compute.input_block[1]) != {ck.var}
+            or coordinates & free_vars(preload.weight_block[0]) != {ck.var}
+            or coordinates & free_vars(preload.weight_block[1]) != {cn.var}
+        ):
             raise ValueError("frontier issue axes differ from actual independent K/M/N source domains")
         renamed = _remap(_remap(loads, fk.var, ck.var), fn.var, cn.var)
         projected = adapter.project(renamed[0])
         k_offset, n_offset = (0, cn.extent) if output_frontier else (ck.extent, 0)
-        if (not equivalent(projected.block[0], preload.weight_block[0] + k_offset)
-                or not equivalent(projected.block[1], preload.weight_block[1] + n_offset)):
-            raise ValueError("future RHS frontier differs from its exact following source group"
-                             if output_frontier else
-                             "future RHS frontier is not the exact following K segment with the same columns")
+        if not equivalent(projected.block[0], preload.weight_block[0] + k_offset) or not equivalent(
+            projected.block[1], preload.weight_block[1] + n_offset
+        ):
+            raise ValueError(
+                "future RHS frontier differs from its exact following source group"
+                if output_frontier
+                else "future RHS frontier is not the exact following K segment with the same columns"
+            )
         following = ()
         if fk.extent < ck.extent:
             name = ck.var + "_frontier_suffix"
             while name in used:
                 name += "_"
             used.add(name)
-            following = (Loop(name, ck.extent - fk.extent,
-                              _remap(ck.body, ck.var, name, offset=fk.extent)),)
+            following = (Loop(name, ck.extent - fk.extent, _remap(ck.body, ck.var, name, offset=fk.extent)),)
         if issue_order in ("prefetch_rhs_between_k_tiles", OUTPUT_GROUP_PREFETCH):
             # The existing typed fusion primitive substitutes the future K
             # coordinate into the current K loop. All M/N compute order stays
@@ -465,42 +589,83 @@ def interleave_dense_segmented_frontier(kernel, adapter, *, issue_order="prefetc
             rewritten = replace(epoch, body=(prefix, *following, Call(DRAIN, ())))
             actual = replace(actual, body=_splice(actual.body, path, (rewritten,)))
             pairs_before_load = cm.extent
-        records.append(dict(loop_transform=asdict(request), epoch=path,
-                            interleaved_k_tiles=fk.extent, compute_only_suffix=ck.extent - fk.extent,
-                            output_columns=cn.extent, compute_pairs_before_frontier=pairs_before_load))
+        records.append(
+            dict(
+                loop_transform=asdict(request),
+                epoch=path,
+                interleaved_k_tiles=fk.extent,
+                compute_only_suffix=ck.extent - fk.extent,
+                output_columns=cn.extent,
+                compute_pairs_before_frontier=pairs_before_load,
+            )
+        )
     if check_structure(actual):
         raise ValueError("frontier interleaving changed loop scope or completion ownership")
     check_integer_domain(actual, adapter.index_bits)
-    return actual, dict(schema="merlin.segmented_frontier_issue.v1", source_kernel_sha256=kernel.digest(),
-                        actual_kernel_sha256=actual.digest(), regions=records, issue_order=issue_order,
-                        completion="original full epoch drain retained", target_execution="not_established")
+    return actual, dict(
+        schema="merlin.segmented_frontier_issue.v1",
+        source_kernel_sha256=kernel.digest(),
+        actual_kernel_sha256=actual.digest(),
+        regions=records,
+        issue_order=issue_order,
+        completion="original full epoch drain retained",
+        target_execution="not_established",
+    )
 
 
 def verify_dense_segmented_pipeline(
-    kernel, problem, block, resources, storage, adapter, admission, *, static_budget,
-    timeout_ms=5000, output_readout=None, bias_source=None,
+    kernel,
+    problem,
+    block,
+    resources,
+    storage,
+    adapter,
+    admission,
+    *,
+    static_budget,
+    timeout_ms=5000,
+    output_readout=None,
+    bias_source=None,
 ):
     """Check actual complete source, epochs and addresses under the NEW law."""
     if type(admission) is not DenseSegmentedAdmission:
         raise ValueError("segmented pipeline needs explicit combined execution admission")
     admission.__post_init__()
-    if (admission.overlap.hardware_identity != adapter.configuration_identity
-            or admission.overlap.numerical_policy_identity != adapter.numerical_policy_identity):
+    if (
+        admission.overlap.hardware_identity != adapter.configuration_identity
+        or admission.overlap.numerical_policy_identity != adapter.numerical_policy_identity
+    ):
         raise ValueError("segmented law differs from original selected adapter")
     _assignment(problem, block, resources, storage)
-    bound = replace(admission.overlap,
-                    max_issued_compute_pairs=min(admission.overlap.max_issued_compute_pairs,
-                                                 admission.reduction.max_issued_compute_pairs),
-                    max_issued_loads=min(admission.overlap.max_issued_loads, admission.reduction.max_issued_loads),
-                    max_issued_readouts=min(admission.overlap.max_issued_readouts,
-                                           admission.reduction.max_issued_readouts))
+    bound = replace(
+        admission.overlap,
+        max_issued_compute_pairs=min(
+            admission.overlap.max_issued_compute_pairs, admission.reduction.max_issued_compute_pairs
+        ),
+        max_issued_loads=min(admission.overlap.max_issued_loads, admission.reduction.max_issued_loads),
+        max_issued_readouts=min(admission.overlap.max_issued_readouts, admission.reduction.max_issued_readouts),
+    )
     report = _verify_dense_epochs(
-        kernel, problem, resources, storage, adapter, bound,
-        static_budget=static_budget, timeout_ms=timeout_ms, output_readout=output_readout,
-        bias_source=bias_source, ordered_accumulator_commits=True, source_phase_fission=True)
-    report.update(schema="merlin.dense_segmented_pipeline.v1", admission=asdict(admission),
-                  ordered_accumulator_commits=admission.qualification_identity,
-                  retained_operand="lhs", segment_k_tiles=block.k)
+        kernel,
+        problem,
+        resources,
+        storage,
+        adapter,
+        bound,
+        static_budget=static_budget,
+        timeout_ms=timeout_ms,
+        output_readout=output_readout,
+        bias_source=bias_source,
+        ordered_accumulator_commits=True,
+        source_phase_fission=True,
+    )
+    report.update(
+        schema="merlin.dense_segmented_pipeline.v1",
+        admission=asdict(admission),
+        ordered_accumulator_commits=admission.qualification_identity,
+        retained_operand="lhs",
+        segment_k_tiles=block.k,
+    )
     return report
 
 
@@ -527,13 +692,20 @@ class DenseSegmentedPipelineResult:
 
         from merlin.compiler.schedule.library_sources import shared_library_sources
 
-        if (self.kernel.digest() != self.checked_kernel_sha256
-                or _digest(asdict(self.admission)) != self.checked_admission_sha256
-                or sha256(Path(__file__).read_bytes()).hexdigest() != self.checked_owner_sha256
-                or tuple(sorted(shared_library_sources(version=15).items())) != self.checked_library_sources
-                or _digest((None if self.output_readout is None else asdict(self.output_readout),
-                            None if self.bias_source is None else asdict(self.bias_source),
-                            self.readout_qualification_identity)) != self.checked_boundary_sha256):
+        if (
+            self.kernel.digest() != self.checked_kernel_sha256
+            or _digest(asdict(self.admission)) != self.checked_admission_sha256
+            or sha256(Path(__file__).read_bytes()).hexdigest() != self.checked_owner_sha256
+            or tuple(sorted(shared_library_sources(version=15).items())) != self.checked_library_sources
+            or _digest(
+                (
+                    None if self.output_readout is None else asdict(self.output_readout),
+                    None if self.bias_source is None else asdict(self.bias_source),
+                    self.readout_qualification_identity,
+                )
+            )
+            != self.checked_boundary_sha256
+        ):
             raise ValueError("segmented checked commands, capability, source boundary or owner changed")
 
     def materialize_scf(self):
@@ -550,8 +722,9 @@ class DenseSegmentedPipelineResult:
         from merlin.compiler.schedule.llvm_program import emit_index_effect_program
 
         self.revalidate()
-        report = emit_index_effect_program(self.kernel, control, lower_effect,
-            complete_epoch=complete_epoch, completion_instruction=DRAIN)
+        report = emit_index_effect_program(
+            self.kernel, control, lower_effect, complete_epoch=complete_epoch, completion_instruction=DRAIN
+        )
         self.revalidate()
         return report
 
@@ -569,9 +742,22 @@ class DenseSegmentedPipelineResult:
     fallback_route="caller-selected original route; this consumer emits nothing on refusal",
 )
 def schedule_dense_segmented_pipeline(
-    problem, resources, storage, adapter, admission, *, name, dtypes, schedule_plan,
-    source_identity, external_buffers_disjoint, static_budget=128, timeout_ms=5000,
-    output_readout=None, bias_source=None, readout_qualification_identity=None,
+    problem,
+    resources,
+    storage,
+    adapter,
+    admission,
+    *,
+    name,
+    dtypes,
+    schedule_plan,
+    source_identity,
+    external_buffers_disjoint,
+    static_budget=128,
+    timeout_ms=5000,
+    output_readout=None,
+    bias_source=None,
+    readout_qualification_identity=None,
 ):
     """Consume the ordinary typed source-bound block/placement/issue decision."""
     from hashlib import sha256
@@ -584,34 +770,65 @@ def schedule_dense_segmented_pipeline(
     if external_buffers_disjoint is not True:
         raise ValueError("segmented source requires original external-buffer nonalias ownership")
     if output_readout is not None:
-        if (type(output_readout) not in (DenseIntegerReadout, DenseTiledIntegerReadout)
-                or type(readout_qualification_identity) is not str or not readout_qualification_identity.strip()):
+        if (
+            type(output_readout) not in (DenseIntegerReadout, DenseTiledIntegerReadout)
+            or type(readout_qualification_identity) is not str
+            or not readout_qualification_identity.strip()
+        ):
             raise ValueError("segmented readout requires original typed numerical execution qualification")
     elif readout_qualification_identity is not None:
         raise ValueError("segmented readout qualification has no original numerical boundary")
     decision = read_dense_schedule_plan(
-        schedule_plan, problem, resources, storage, adapter, source_identity=source_identity,
-        dtypes=dtypes, static_budget=static_budget, output_readout=output_readout, bias_source=bias_source)
-    if (decision.pipeline_kind != "retained_lhs_segmented_k" or decision.pipeline_prefetch is None
-            or decision.pipeline_issue_order not in SEGMENTED_ISSUE_ORDERS):
+        schedule_plan,
+        problem,
+        resources,
+        storage,
+        adapter,
+        source_identity=source_identity,
+        dtypes=dtypes,
+        static_budget=static_budget,
+        output_readout=output_readout,
+        bias_source=bias_source,
+    )
+    if (
+        decision.pipeline_kind != "retained_lhs_segmented_k"
+        or decision.pipeline_prefetch is None
+        or decision.pipeline_issue_order not in SEGMENTED_ISSUE_ORDERS
+    ):
         raise ValueError("segmented consumer requires its exact explicit typed pipeline decision")
     kernel = build_dense_segmented_pipeline(
-        problem, decision.block, resources, decision.storage, adapter, name=name, dtypes=dtypes,
-        prefetch=decision.pipeline_prefetch, outer_order=decision.outer_order,
-        window_offsets=decision.pipeline_window_offsets, output_readout=output_readout, bias_source=bias_source,
-        issue_order=(OUTPUT_GROUP_PREFETCH if decision.pipeline_issue_order == OUTPUT_GROUP_PREFETCH
-                     else "compute_then_prefetch"))
+        problem,
+        decision.block,
+        resources,
+        decision.storage,
+        adapter,
+        name=name,
+        dtypes=dtypes,
+        prefetch=decision.pipeline_prefetch,
+        outer_order=decision.outer_order,
+        window_offsets=decision.pipeline_window_offsets,
+        output_readout=output_readout,
+        bias_source=bias_source,
+        issue_order=(
+            OUTPUT_GROUP_PREFETCH if decision.pipeline_issue_order == OUTPUT_GROUP_PREFETCH else "compute_then_prefetch"
+        ),
+    )
     issue_report = None
     if decision.pipeline_issue_order == OUTPUT_GROUP_PREFETCH:
-        issue_report = dict(schema="merlin.segmented_output_group_lookahead.v1", rhs_slots=2,
-                            lhs_slots=1, full_k_tiles=decision.block.k,
-                            completion="original full epoch drains before RHS/ACC reuse",
-                            target_execution="not_established")
+        issue_report = dict(
+            schema="merlin.segmented_output_group_lookahead.v1",
+            rhs_slots=2,
+            lhs_slots=1,
+            full_k_tiles=decision.block.k,
+            completion="original full epoch drains before RHS/ACC reuse",
+            target_execution="not_established",
+        )
     elif decision.pipeline_issue_order != "compute_then_prefetch":
         if not decision.pipeline_prefetch:
             raise ValueError("frontier interleaving requires an explicit prefetched epoch")
         kernel, issue_report = interleave_dense_segmented_frontier(
-            kernel, adapter, issue_order=decision.pipeline_issue_order)
+            kernel, adapter, issue_order=decision.pipeline_issue_order
+        )
     transform_source = kernel.digest()
     if decision.loop_transforms:
         from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
@@ -622,26 +839,62 @@ def schedule_dense_segmented_pipeline(
         kernel = propose_loop_transforms(kernel, decision.loop_transforms, index_bits=adapter.index_bits)
     check_dense_schedule_commands(decision, sum(1 for _ in _calls(kernel.body)), static_budget)
     report = verify_dense_segmented_pipeline(
-        kernel, problem, decision.block, resources, decision.storage, adapter, admission,
-        static_budget=static_budget, timeout_ms=timeout_ms, output_readout=output_readout, bias_source=bias_source)
+        kernel,
+        problem,
+        decision.block,
+        resources,
+        decision.storage,
+        adapter,
+        admission,
+        static_budget=static_budget,
+        timeout_ms=timeout_ms,
+        output_readout=output_readout,
+        bias_source=bias_source,
+    )
     report["frontier_issue"] = issue_report
     report["loop_transforms"] = dict(
-        source_kernel_sha256=transform_source, actual_kernel_sha256=kernel.digest(),
+        source_kernel_sha256=transform_source,
+        actual_kernel_sha256=kernel.digest(),
         requests=[asdict(request) for request in decision.loop_transforms],
         legality="original complete source and actual epoch hazard checks",
     )
     report["schedule_ir"] = dict(
-        sha256=decision.plan_sha256, text=decision.plan_text, source_identity=source_identity,
-        pipeline_kind=decision.pipeline_kind, prefetch=decision.pipeline_prefetch,
+        sha256=decision.plan_sha256,
+        text=decision.plan_text,
+        source_identity=source_identity,
+        pipeline_kind=decision.pipeline_kind,
+        prefetch=decision.pipeline_prefetch,
         pipeline_issue_order=decision.pipeline_issue_order,
-        decisions_consumed=("block_tiles", "outer_order", "row_bases", "panel_pipeline", "pipeline_window_offsets",
-                            "pipeline_issue_order", "loop_transforms"))
+        decisions_consumed=(
+            "block_tiles",
+            "outer_order",
+            "row_bases",
+            "panel_pipeline",
+            "pipeline_window_offsets",
+            "pipeline_issue_order",
+            "loop_transforms",
+        ),
+    )
     result = DenseSegmentedPipelineResult(
-        kernel, report, source_identity, admission, kernel.digest(), _digest(asdict(admission)),
-        sha256(Path(__file__).read_bytes()).hexdigest(), tuple(sorted(shared_library_sources(version=15).items())),
-        output_readout, bias_source, readout_qualification_identity,
-        _digest((None if output_readout is None else asdict(output_readout),
-                 None if bias_source is None else asdict(bias_source), readout_qualification_identity)))
+        kernel,
+        report,
+        source_identity,
+        admission,
+        kernel.digest(),
+        _digest(asdict(admission)),
+        sha256(Path(__file__).read_bytes()).hexdigest(),
+        tuple(sorted(shared_library_sources(version=15).items())),
+        output_readout,
+        bias_source,
+        readout_qualification_identity,
+        _digest(
+            (
+                None if output_readout is None else asdict(output_readout),
+                None if bias_source is None else asdict(bias_source),
+                readout_qualification_identity,
+            )
+        ),
+    )
     result.revalidate()
     return result
 
@@ -651,8 +904,19 @@ def schedule_dense_segmented_pipeline(
     fallback_route="caller-selected original route; the unchanged input checked result keeps its tile-width loads",
 )
 def admit_segmented_tile_loads(
-    original, proposal, problem, block, resources, storage, adapter, *,
-    project, encode_band, static_budget=128, timeout_ms=5000, max_static_nodes=4096,
+    original,
+    proposal,
+    problem,
+    block,
+    resources,
+    storage,
+    adapter,
+    *,
+    project,
+    encode_band,
+    static_budget=128,
+    timeout_ms=5000,
+    max_static_nodes=4096,
 ):
     """Compose exact wide addressing with the original combined execution law.
 
@@ -667,14 +931,33 @@ def admit_segmented_tile_loads(
     if type(original) is not DenseSegmentedPipelineResult:
         raise ValueError("segmented wide loads require their original checked combined-law result")
     return _admit_dense_tile_loads(
-        original, proposal, problem, block, resources, storage, adapter,
-        verifier=verify_dense_segmented_pipeline, project=project, encode_band=encode_band,
-        static_budget=static_budget, timeout_ms=timeout_ms, max_static_nodes=max_static_nodes,
+        original,
+        proposal,
+        problem,
+        block,
+        resources,
+        storage,
+        adapter,
+        verifier=verify_dense_segmented_pipeline,
+        project=project,
+        encode_band=encode_band,
+        static_budget=static_budget,
+        timeout_ms=timeout_ms,
+        max_static_nodes=max_static_nodes,
     )
 
 
 def batch_dense_segmented_readouts(
-    result, problem, block, resources, storage, adapter, admission, *, static_budget=128, timeout_ms=5000,
+    result,
+    problem,
+    block,
+    resources,
+    storage,
+    adapter,
+    admission,
+    *,
+    static_budget=128,
+    timeout_ms=5000,
 ):
     """Reuse the existing pure-store pass under unchanged combined compute law.
 
@@ -688,32 +971,60 @@ def batch_dense_segmented_readouts(
         raise ValueError("segmented readout batching needs original checked result and combined admission")
     result.revalidate()
     admission.__post_init__()
-    if (admission.qualification_identity != result.admission.qualification_identity
-            or admission.execution != result.admission.execution):
+    if (
+        admission.qualification_identity != result.admission.qualification_identity
+        or admission.execution != result.admission.execution
+    ):
         raise ValueError("readout batching cannot change the combined compute law")
-    for chosen, original in ((admission.overlap, result.admission.overlap),
-                             (admission.reduction, result.admission.reduction)):
-        if replace(chosen, max_issued_readouts=original.max_issued_readouts,
-                   pending_readouts=original.pending_readouts,
-                   readout_configuration=original.readout_configuration) != original:
+    for chosen, original in (
+        (admission.overlap, result.admission.overlap),
+        (admission.reduction, result.admission.reduction),
+    ):
+        if (
+            replace(
+                chosen,
+                max_issued_readouts=original.max_issued_readouts,
+                pending_readouts=original.pending_readouts,
+                readout_configuration=original.readout_configuration,
+            )
+            != original
+        ):
             raise ValueError("readout batching cannot change original operand or reduction capability")
     if type(result.output_readout) is DenseTiledIntegerReadout:
         raise ValueError("varying per-tile readout configuration has no segmented batch law")
     budget = min(admission.overlap.max_issued_readouts, admission.reduction.max_issued_readouts)
     proposal, groups = _propose(result.kernel, adapter, budget)
     report = verify_dense_segmented_pipeline(
-        proposal, problem, block, resources, storage, adapter, admission,
-        static_budget=static_budget, timeout_ms=timeout_ms,
-        output_readout=result.output_readout, bias_source=result.bias_source)
+        proposal,
+        problem,
+        block,
+        resources,
+        storage,
+        adapter,
+        admission,
+        static_budget=static_budget,
+        timeout_ms=timeout_ms,
+        output_readout=result.output_readout,
+        bias_source=result.bias_source,
+    )
     report["schedule_ir"] = result.realization["schedule_ir"]
     report["frontier_issue"] = result.realization.get("frontier_issue")
     report["input_schedule"] = result.realization
     report["readout_batching"] = dict(
-        source_kernel_sha256=result.kernel.digest(), actual_kernel_sha256=proposal.digest(), groups=groups,
+        source_kernel_sha256=result.kernel.digest(),
+        actual_kernel_sha256=proposal.digest(),
+        groups=groups,
         removed_dynamic_drains=result.realization["dynamic_epoch_drains"] - report["dynamic_epoch_drains"],
-        target_execution="not_established")
-    rewritten = replace(result, kernel=proposal, realization=report, admission=admission,
-                        checked_kernel_sha256=proposal.digest(), checked_admission_sha256=_digest(asdict(admission)))
+        target_execution="not_established",
+    )
+    rewritten = replace(
+        result,
+        kernel=proposal,
+        realization=report,
+        admission=admission,
+        checked_kernel_sha256=proposal.digest(),
+        checked_admission_sha256=_digest(asdict(admission)),
+    )
     result.revalidate()
     rewritten.revalidate()
     return rewritten

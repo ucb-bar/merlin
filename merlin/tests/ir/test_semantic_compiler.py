@@ -444,16 +444,20 @@ def test_mutable_source_containers_never_reuse_a_stale_digest(container) -> None
         values = (pair,) if container == "attribute_pair" else [pair]
         node = replace(source.nodes[1], attrs=values)
         source = replace(source, nodes=(source.nodes[0], node, *source.nodes[2:]))
-        mutate = (lambda: pair.__setitem__(1, "after")) if container == "attribute_pair" else (
-            lambda: values.__setitem__(0, ("note", "after"))
+        mutate = (
+            (lambda: pair.__setitem__(1, "after"))
+            if container == "attribute_pair"
+            else (lambda: values.__setitem__(0, ("note", "after")))
         )
     else:
         rows = [[1, 0], [0, 1]]
         mapping = IndexMap(2, rows, (0, 0))
         node = replace(source.nodes[1], index_maps=(mapping, mapping))
         source = replace(source, nodes=(source.nodes[0], node, *source.nodes[2:]))
+
         def mutate():
             rows[0][1] = 1
+
     first = source.digest()
     mutate()
     assert source.digest() != first

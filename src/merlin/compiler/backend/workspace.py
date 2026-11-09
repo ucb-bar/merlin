@@ -3,6 +3,7 @@
 The v1/v2 contracts stay unchanged. This third contract gives the ordinary
 pointer call a workspace pointer as context, without persistent state or loaders.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -22,21 +23,39 @@ class TensorWorkspace:
     alignment: int
 
     def __post_init__(self):
-        if (type(self.sources) is not tuple or not self.sources or len(set(self.sources)) != len(self.sources)
-                or any(type(pair) is not tuple or len(pair) != 2
-                       or any(type(n) is not int or n < 0 for n in pair) for pair in self.sources)
-                or type(self.ports) is not tuple or len(self.ports) != len(self.sources)
-                or any(type(port) is not TensorPort for port in self.ports)
-                or type(self.offsets) is not tuple or len(self.offsets) != len(self.ports)):
+        if (
+            type(self.sources) is not tuple
+            or not self.sources
+            or len(set(self.sources)) != len(self.sources)
+            or any(
+                type(pair) is not tuple or len(pair) != 2 or any(type(n) is not int or n < 0 for n in pair)
+                for pair in self.sources
+            )
+            or type(self.ports) is not tuple
+            or len(self.ports) != len(self.sources)
+            or any(type(port) is not TensorPort for port in self.ports)
+            or type(self.offsets) is not tuple
+            or len(self.offsets) != len(self.ports)
+        ):
             raise ValueError("tensor workspace needs exact source results and ordered static ports")
-        if (type(self.alignment) is not int or self.alignment <= 0 or self.alignment & (self.alignment - 1)
-                or type(self.bytes) is not int or self.bytes <= 0 or self.bytes % self.alignment):
+        if (
+            type(self.alignment) is not int
+            or self.alignment <= 0
+            or self.alignment & (self.alignment - 1)
+            or type(self.bytes) is not int
+            or self.bytes <= 0
+            or self.bytes % self.alignment
+        ):
             raise ValueError("tensor workspace needs positive bounded aligned storage")
         end = 0
         for port, offset in zip(self.ports, self.offsets, strict=True):
             port.__post_init__()
-            if (type(offset) is not int or offset < end or offset % self.alignment
-                    or self.alignment < _WIDTH[port.dtype]):
+            if (
+                type(offset) is not int
+                or offset < end
+                or offset % self.alignment
+                or self.alignment < _WIDTH[port.dtype]
+            ):
                 raise ValueError("tensor workspace ports overlap or lack dense storage alignment")
             end = offset + prod(port.shape) * _WIDTH[port.dtype]
         if end > self.bytes:
@@ -44,9 +63,13 @@ class TensorWorkspace:
 
     def record(self):
         self.__post_init__()
-        return {"sources": [list(pair) for pair in self.sources],
-                "ports": [{"shape": list(port.shape), "dtype": port.dtype} for port in self.ports],
-                "offsets": list(self.offsets), "bytes": self.bytes, "alignment": self.alignment}
+        return {
+            "sources": [list(pair) for pair in self.sources],
+            "ports": [{"shape": list(port.shape), "dtype": port.dtype} for port in self.ports],
+            "offsets": list(self.offsets),
+            "bytes": self.bytes,
+            "alignment": self.alignment,
+        }
 
     @classmethod
     def pack(cls, sources, ports):
@@ -65,14 +88,23 @@ class TensorWorkspace:
     def from_record(cls, raw):
         if type(raw) is not dict or set(raw) != {"sources", "ports", "offsets", "bytes", "alignment"}:
             raise ValueError("tensor workspace requires its exact versioned fields")
-        if (type(raw["sources"]) not in (list, tuple) or type(raw["ports"]) not in (list, tuple)
-                or type(raw["offsets"]) not in (list, tuple)
-                or any(type(row) is not dict or set(row) != {"shape", "dtype"}
-                       or type(row["shape"]) not in (list, tuple) for row in raw["ports"])):
+        if (
+            type(raw["sources"]) not in (list, tuple)
+            or type(raw["ports"]) not in (list, tuple)
+            or type(raw["offsets"]) not in (list, tuple)
+            or any(
+                type(row) is not dict or set(row) != {"shape", "dtype"} or type(row["shape"]) not in (list, tuple)
+                for row in raw["ports"]
+            )
+        ):
             raise ValueError("tensor workspace requires exact dense port and source rosters")
-        return cls(tuple(tuple(pair) for pair in raw["sources"]),
-                   tuple(TensorPort(tuple(row["shape"]), row["dtype"]) for row in raw["ports"]),
-                   tuple(raw["offsets"]), raw["bytes"], raw["alignment"])
+        return cls(
+            tuple(tuple(pair) for pair in raw["sources"]),
+            tuple(TensorPort(tuple(row["shape"]), row["dtype"]) for row in raw["ports"]),
+            tuple(raw["offsets"]),
+            raw["bytes"],
+            raw["alignment"],
+        )
 
 
 @dataclass(frozen=True)
@@ -101,8 +133,11 @@ class CWorkspaceABI:
     def from_compilation(cls, compilation):
         compilation.verify()
         raw = compilation.metadata.get("c_call")
-        if (type(raw) is not dict or set(raw) != set(CRegionABI.__dataclass_fields__) | {"schema", "workspace"}
-                or raw.get("schema") != "merlin.c_call.v3"):
+        if (
+            type(raw) is not dict
+            or set(raw) != set(CRegionABI.__dataclass_fields__) | {"schema", "workspace"}
+            or raw.get("schema") != "merlin.c_call.v3"
+        ):
             raise ValueError("compiled region has no supported source-workspace C call contract")
         base = {key: value for key, value in raw.items() if key != "workspace"}
         base["schema"] = "merlin.c_call.v1"

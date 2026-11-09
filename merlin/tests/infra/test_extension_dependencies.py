@@ -36,5 +36,7 @@ def test_analysis_does_not_require_experiments_or_transitive_aet_url():
     assert not any(dependency.startswith("merlin-experiments") for dependency in dependencies)
     assert project["optional-dependencies"]["dse"] == []
     assert project["optional-dependencies"]["mining"] == []
-    assert not any((repo_root() / "packages" / owner / "pyproject.toml").exists()
-                   for owner in ("merlin-experiments", "merlin-analysis", "merlin-dse", "merlin-mining"))
+    assert not any(
+        (repo_root() / "packages" / owner / "pyproject.toml").exists()
+        for owner in ("merlin-experiments", "merlin-analysis", "merlin-dse", "merlin-mining")
+    )

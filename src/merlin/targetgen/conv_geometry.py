@@ -315,8 +315,10 @@ def geometries(src) -> list[ConvGeometry]:
     nothing" so the caller falls back rather than failing a build over one capture.
     """
     from merlin.common import mlir_query as mq
-    from merlin.compiler.ir.contraction_shapes import _shaped
-    from merlin.compiler.ir.contraction_shapes import indexing_maps  # noqa: PLC2701
+    from merlin.compiler.ir.contraction_shapes import (
+        _shaped,
+        indexing_maps,  # noqa: PLC2701
+    )
 
     try:
         module = mq.parse(src)

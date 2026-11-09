@@ -495,9 +495,12 @@ def test_the_named_mr_cap_reaches_the_block_table_and_beats_the_env():
     assert "mr_cap = _mr_named[0] if _mr_named else perop_mr_cap()" in prep
     # and the sentinel is swapped for the plain request so it can never reach lowering
     assert any(
-        isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr)
-        and isinstance(node.right, ast.Set) and len(node.right.elts) == 1
-        and isinstance(node.right.elts[0], ast.Name) and node.right.elts[0].id == "PEROP_BLOCK_NAME"
+        isinstance(node, ast.BinOp)
+        and isinstance(node.op, ast.BitOr)
+        and isinstance(node.right, ast.Set)
+        and len(node.right.elts) == 1
+        and isinstance(node.right.elts[0], ast.Name)
+        and node.right.elts[0].id == "PEROP_BLOCK_NAME"
         for node in ast.walk(ast.parse(prep))
     )
 

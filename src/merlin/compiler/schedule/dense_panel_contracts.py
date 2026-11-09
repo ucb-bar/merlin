@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout
 
 

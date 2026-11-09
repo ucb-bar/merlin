@@ -102,8 +102,15 @@ def compile_command_buffer(cb: dict[str, Any], workdir: str | Path, harts: int =
     return elf
 
 
-def run_elf(elf: str | Path, harts: int = 4, isa: str = DEFAULT_ISA, timeout: int = 300,
-            *, dram_base: int | None = None, mem_bytes: int | None = None) -> str:
+def run_elf(
+    elf: str | Path,
+    harts: int = 4,
+    isa: str = DEFAULT_ISA,
+    timeout: int = 300,
+    *,
+    dram_base: int | None = None,
+    mem_bytes: int | None = None,
+) -> str:
     """Run the ELF on spike; returns raw console output."""
     if (dram_base is None) != (mem_bytes is None):
         raise ValueError("Spike memory origin and size must be supplied together")

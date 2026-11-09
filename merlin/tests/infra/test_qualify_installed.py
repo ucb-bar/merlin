@@ -280,10 +280,14 @@ def test_versions_and_assisted_extra_come_from_projects(tmp_path):
         '[project]\nname="custom-core"\nversion="9.8.7"\n[project.optional-dependencies]\nxdsl=["xdsl>=1"]\nexperiments=["approved-agent==1"]\nanalysis=["approved-analysis==2"]\n'
     )
     projects = Q.projects(tmp_path, ("xdsl", "experiments"), include_analysis=True)
-    assert projects == [{
-        "name": "custom-core", "version": "9.8.7", "path": str(tmp_path),
-        "extras": ["xdsl", "experiments", "analysis"],
-    }]
+    assert projects == [
+        {
+            "name": "custom-core",
+            "version": "9.8.7",
+            "path": str(tmp_path),
+            "extras": ["xdsl", "experiments", "analysis"],
+        }
+    ]
     with pytest.raises(Q.QualificationFailed, match="does not declare"):
         Q.projects(tmp_path, ("undeclared",))
 
@@ -590,11 +594,15 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
     )
     report = json.loads((output / "report.json").read_text())
     assert report["requested_ref"] == "named-ref" and report["ref"] == "b" * 40
-    expected_extras = list(dict.fromkeys((
-        *Q.SUITES[suite]["core_extras"],
-        *(("experiments",) if Q.SUITES[suite].get("include_experiments", True) else ()),
-        *(("analysis",) if Q.SUITES[suite].get("include_analysis", False) else ()),
-    )))
+    expected_extras = list(
+        dict.fromkeys(
+            (
+                *Q.SUITES[suite]["core_extras"],
+                *(("experiments",) if Q.SUITES[suite].get("include_experiments", True) else ()),
+                *(("analysis",) if Q.SUITES[suite].get("include_analysis", False) else ()),
+            )
+        )
+    )
     if missing_extra and expected_extras:
         assert not success and report["status"] == "failed"
         assert not any(name.endswith("-sdist") for name, _ in calls)

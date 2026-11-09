@@ -9,8 +9,7 @@ from test_rolling_spatial import Integers, make_plan
 from merlin.compiler.schedule.blocks import SpatialMaxReadout
 from merlin.compiler.schedule.program_limits import AddressWindow
 from merlin.compiler.schedule.rolling_spatial import emit_rolling_spatial_producer
-from merlin.compiler.schedule.spatial_readout_cache import emit_cached_spatial_max
-from merlin.compiler.schedule.spatial_readout_cache import propose_spatial_readout_cache
+from merlin.compiler.schedule.spatial_readout_cache import emit_cached_spatial_max, propose_spatial_readout_cache
 from merlin.llvmlower.requantization import quantized
 
 

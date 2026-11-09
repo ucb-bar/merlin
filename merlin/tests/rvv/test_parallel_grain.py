@@ -15,6 +15,7 @@ and `convert-scf-to-openmp` has not yet run (a decision made at the `mid` split 
 loops that do not exist yet), and it must FAIL CLOSED -- a loop it cannot price, or one carrying a
 reduction, keeps its parallelism rather than being serialized on an assumption.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -24,8 +25,7 @@ import pytest
 import merlin.llvmlower.lower  # noqa: F401 — the production import that wires the lowering
 from merlin.llvmlower import toolchain
 from merlin.llvmlower.impr_features import apply_pipeline, apply_schedule, get, normalize
-from merlin.llvmlower.parallel_grain import (FEATURE_PREFIX, RUNNER_PRELUDE, feature_name,
-                                             threshold_of)
+from merlin.llvmlower.parallel_grain import FEATURE_PREFIX, RUNNER_PRELUDE, feature_name, threshold_of
 
 #: One cheap `scf.parallel` (32 stores) and one expensive one (4096 x 64 loads/stores), the two
 #: shapes the whole-model lowerings actually contain.
@@ -99,7 +99,7 @@ def test_a_grain_point_is_registered_from_its_name_and_absent_by_default():
     build must normalize to the empty set, or the frozen baseline is not byte-identical."""
     name = feature_name(12345)
     assert name == f"{FEATURE_PREFIX}12345"
-    assert normalize({name}) == frozenset({name})       # resolves purely from the string
+    assert normalize({name}) == frozenset({name})  # resolves purely from the string
     assert normalize(None) == frozenset()
     with pytest.raises(KeyError):
         get(f"{FEATURE_PREFIX}notanumber")
@@ -142,16 +142,30 @@ def test_every_lowering_runner_carries_the_rewrite_and_the_same_argv_gate():
         assert "_MID_STAGES, _LATE_STAGES," in src, "a runner variant never runs the late stage"
         assert "_POST_OPENMP_STAGES" in src, "a runner variant skips the post-OpenMP stage"
     lowering = open(pipeline.__file__, encoding="utf-8").read()
-    function = next(node for node in ast.parse(lowering).body
-                    if isinstance(node, ast.FunctionDef) and node.name == "lower_to_llvm_ir")
-    command = next(node.value for node in ast.walk(function)
-                   if isinstance(node, ast.Assign) and isinstance(node.value, ast.List)
-                   and any(isinstance(target, ast.Name) and target.id == "command" for target in node.targets))
+    function = next(
+        node
+        for node in ast.parse(lowering).body
+        if isinstance(node, ast.FunctionDef) and node.name == "lower_to_llvm_ir"
+    )
+    command = next(
+        node.value
+        for node in ast.walk(function)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.List)
+        and any(isinstance(target, ast.Name) and target.id == "command" for target in node.targets)
+    )
     # command[0] is Python; runner argv[8:18] must retain these exact gate slots.
     assert [ast.unparse(value) for value in command.elts[9:19]] == [
-        "_concat_dps_gate", "_grain_gate", "_panel_parallel_gate", "_team_work_gate",
-        "_team_cap_gate", "_coarsen_gate", "_fold_broadcast_gate", "_named_broadcast_gate",
-        "_alloca_scope_gate", "data_layout or ''",
+        "_concat_dps_gate",
+        "_grain_gate",
+        "_panel_parallel_gate",
+        "_team_work_gate",
+        "_team_cap_gate",
+        "_coarsen_gate",
+        "_fold_broadcast_gate",
+        "_named_broadcast_gate",
+        "_alloca_scope_gate",
+        "data_layout or ''",
     ]
 
 
@@ -171,7 +185,7 @@ def _run_stages_split(pipeline_text: str, late_labels: tuple[str, ...]) -> list:
 
     class _PM:
         def __init__(self, text):
-            inner = text[len("builtin.module("):-1] if text.startswith("builtin.module(") else text
+            inner = text[len("builtin.module(") : -1] if text.startswith("builtin.module(") else text
             events.append(("pm", inner))
 
         @staticmethod
@@ -190,11 +204,11 @@ def _run_stages_split(pipeline_text: str, late_labels: tuple[str, ...]) -> list:
     _sys.modules["torch_mlir.passmanager"] = module
     try:
         namespace: dict = {"sys": _sys}
-        exec(SELFCOPY_PRELUDE, namespace)                       # noqa: S102 — the shipped source
-        late = tuple((label, lambda ctx, mod, label=label: events.append(("late", label)) or 0)
-                     for label in late_labels)
-        namespace["_run_stages"](None, types.SimpleNamespace(operation=None), pipeline_text,
-                                 False, (), late)
+        exec(SELFCOPY_PRELUDE, namespace)  # noqa: S102 — the shipped source
+        late = tuple(
+            (label, lambda ctx, mod, label=label: events.append(("late", label)) or 0) for label in late_labels
+        )
+        namespace["_run_stages"](None, types.SimpleNamespace(operation=None), pipeline_text, False, (), late)
     finally:
         for k, v in saved.items():
             if v is None:
@@ -205,9 +219,11 @@ def _run_stages_split(pipeline_text: str, late_labels: tuple[str, ...]) -> list:
 
 
 #: The multicore tail of `build_rvv_pipeline`, in order.
-_PARALLEL_TAIL = ("canonicalize,cse,one-shot-bufferize,func.func(buffer-loop-hoisting),"
-                  "scf-forall-to-parallel,func.func(convert-linalg-to-parallel-loops),"
-                  "convert-scf-to-openmp,canonicalize,convert-scf-to-cf")
+_PARALLEL_TAIL = (
+    "canonicalize,cse,one-shot-bufferize,func.func(buffer-loop-hoisting),"
+    "scf-forall-to-parallel,func.func(convert-linalg-to-parallel-loops),"
+    "convert-scf-to-openmp,canonicalize,convert-scf-to-cf"
+)
 
 
 def test_with_no_late_stage_the_pass_list_reaches_one_pass_manager_unsplit():
@@ -230,8 +246,7 @@ def test_the_late_stage_runs_between_the_parallel_loops_and_the_openmp_conversio
 def test_a_serial_pipeline_still_runs_the_late_stage_instead_of_dropping_it():
     """There is no OpenMP conversion to stop in front of; running the rewrite at the end (where it
     finds nothing and says so) is visible, while dropping it silently is not."""
-    events = _run_stages_split("canonicalize,func.func(convert-linalg-to-loops)",
-                               ("parallel_grain",))
+    events = _run_stages_split("canonicalize,func.func(convert-linalg-to-loops)", ("parallel_grain",))
     assert [e[0] for e in events] == ["pm", "late"]
 
 
@@ -252,9 +267,12 @@ def _grain(mlir_text: str, threshold: int, tmp_path) -> tuple[str, int, str]:
         "mod.operation.verify()\n"
         "print('N', n)\n"
         "print('MODULE')\n"
-        "print(str(mod.operation))\n", encoding="utf-8")
-    proc = subprocess.run([str(toolchain.m2m_python()), str(script), str(src)],
-                          capture_output=True, text=True, timeout=900)
+        "print(str(mod.operation))\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)], capture_output=True, text=True, timeout=900
+    )
     assert proc.returncode == 0, proc.stderr
     head, _, module = proc.stdout.partition("MODULE\n")
     lines = head.splitlines()

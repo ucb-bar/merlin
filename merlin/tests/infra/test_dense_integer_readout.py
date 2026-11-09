@@ -196,7 +196,7 @@ def test_original_scalar_and_column_readout_representations_have_same_bits_and_o
     from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout
 
     scalar = DenseTiledIntegerReadout.from_source_scales(0.125, columns=19, tile_columns=16, relu=True)
-    vector = DenseTiledIntegerReadout.from_source_scales([0.125]*19, columns=19, tile_columns=16, relu=True)
+    vector = DenseTiledIntegerReadout.from_source_scales([0.125] * 19, columns=19, tile_columns=16, relu=True)
     assert scalar.identity == vector.identity
     assert scalar.column_scale_bits == vector.column_scale_bits
     for column in (0, 15, 16, 18):
@@ -204,12 +204,24 @@ def test_original_scalar_and_column_readout_representations_have_same_bits_and_o
             assert scalar.evaluate(accumulator, column) == vector.evaluate(accumulator, column)
 
 
-@pytest.mark.parametrize('scales,columns', [
-    (True, 19), (None, 19), (0.125, True), (0.125, 0), (0.125, 262145),
-    ([0.125]*18, 19), ([0.125, True], 2), (0.0, 19), (-0.5, 19),
-    (float('nan'), 19), (float('inf'), 19), (1e-100, 19),
-    ([0.125]*15+[0.25]*4, 19),
-])
+@pytest.mark.parametrize(
+    "scales,columns",
+    [
+        (True, 19),
+        (None, 19),
+        (0.125, True),
+        (0.125, 0),
+        (0.125, 262145),
+        ([0.125] * 18, 19),
+        ([0.125, True], 2),
+        (0.0, 19),
+        (-0.5, 19),
+        (float("nan"), 19),
+        (float("inf"), 19),
+        (1e-100, 19),
+        ([0.125] * 15 + [0.25] * 4, 19),
+    ],
+)
 def test_source_readout_normalization_keeps_original_domain_and_tile_refusals(scales, columns):
     from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout
 

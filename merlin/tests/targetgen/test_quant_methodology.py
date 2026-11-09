@@ -96,10 +96,14 @@ def _derive(path, **kw):
 def _profile(*, policy="preserve_request_v1", **changes):
     from merlin.compiler.quantization.preparation import SCHEMA, profile_from_mapping
 
-    return profile_from_mapping({
-        "schema": SCHEMA, "id": "application-policy", "compatibility_policy": policy,
-        "methodology": {**copy.deepcopy(METHODOLOGY), **changes},
-    })
+    return profile_from_mapping(
+        {
+            "schema": SCHEMA,
+            "id": "application-policy",
+            "compatibility_policy": policy,
+            "methodology": {**copy.deepcopy(METHODOLOGY), **changes},
+        }
+    )
 
 
 def test_methodology_compatibility_is_the_canonical_module_identity():
@@ -126,8 +130,9 @@ def test_explicit_profile_preserves_requested_intent_or_requires_exact_alternati
     assert selected["weight"]["granularity"] == "tensor"
     assert selected["preparation"]["selected_alternative_sha256"] == proposal["alternative_sha256"]
     with pytest.raises(ValueError, match="exact current proposal"):
-        select_recipe(requested, coarser, _path(scale={"columns_per_scale": 8}),
-                      alternative_sha256=proposal["alternative_sha256"])
+        select_recipe(
+            requested, coarser, _path(scale={"columns_per_scale": 8}), alternative_sha256=proposal["alternative_sha256"]
+        )
 
 
 def test_profile_retains_complete_reviewed_model_policy_and_legacy_derivation():
@@ -194,7 +199,9 @@ def test_profile_preserves_selected_dynamic_site_quality_and_static_planes():
 
     dynamic = QR.with_site_agreement(
         QR.with_dynamic_contractions(_derive(_path())),
-        cosine_min=0.99, rel_rmse_max=0.05, basis="existing independently selected quality bar",
+        cosine_min=0.99,
+        rel_rmse_max=0.05,
+        basis="existing independently selected quality bar",
     )[QR.DYNAMIC]
     method = copy.deepcopy(METHODOLOGY)
     method["model_variants"][0]["changes"]["dynamic"] = dynamic

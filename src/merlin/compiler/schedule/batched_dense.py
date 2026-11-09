@@ -25,7 +25,8 @@ class BatchMatrixView:
 
     def __post_init__(self):
         if (
-            type(self.shape) is not tuple or not 2 <= len(self.shape) <= 8
+            type(self.shape) is not tuple
+            or not 2 <= len(self.shape) <= 8
             or any(type(n) is not int or n <= 0 for n in self.shape)
             or prod(self.shape) * 4 >= 1 << 63
             or type(self.batch_axes) is not tuple
@@ -56,9 +57,11 @@ class BatchedDenseProblem:
 
     def __post_init__(self):
         if (
-            type(self.batch_shape) is not tuple or not 1 <= len(self.batch_shape) <= 6
+            type(self.batch_shape) is not tuple
+            or not 1 <= len(self.batch_shape) <= 6
             or any(type(n) is not int or n <= 0 for n in self.batch_shape)
-            or type(self.lhs) is not BatchMatrixView or type(self.rhs) is not BatchMatrixView
+            or type(self.lhs) is not BatchMatrixView
+            or type(self.rhs) is not BatchMatrixView
         ):
             raise ValueError("independent products require explicit positive bounded batch axes")
         for view in (self.lhs, self.rhs):
@@ -94,10 +97,14 @@ class BatchedDenseProblem:
 
     def record(self):
         self.__post_init__()
-        return {"schema": "merlin.batched_dense_problem.v1", **asdict(self),
-                "output_shape": self.output_shape, "products": self.products,
-                "numeric_law": "independent zero-seeded signed-i8 products, modular-i32 accumulation",
-                "target_effects": "not established by geometry"}
+        return {
+            "schema": "merlin.batched_dense_problem.v1",
+            **asdict(self),
+            "output_shape": self.output_shape,
+            "products": self.products,
+            "numeric_law": "independent zero-seeded signed-i8 products, modular-i32 accumulation",
+            "target_effects": "not established by geometry",
+        }
 
 
 def counted_batched_dense_products(problem, *, name, instruction):
@@ -117,25 +124,31 @@ def counted_batched_dense_products(problem, *, name, instruction):
     """
     from merlin.sched.ir import Call, Kernel, Loop, Var, add, check_structure, mul
 
-    if (type(problem) is not BatchedDenseProblem
-        or any(type(value) is not str or not value
-               or any(c.isspace() or c in "(),:" for c in value)
-               for value in (name, instruction))):
+    if type(problem) is not BatchedDenseProblem or any(
+        type(value) is not str or not value or any(c.isspace() or c in "(),:" for c in value)
+        for value in (name, instruction)
+    ):
         raise ValueError("counted products require an explicit problem, kernel name and instruction")
     problem.__post_init__()
     indices = tuple(Var(f"batch{axis}") for axis in range(len(problem.batch_shape)))
-    product = add(*(mul(index, prod(problem.batch_shape[axis + 1:]))
-                    for axis, index in enumerate(indices)))
+    product = add(*(mul(index, prod(problem.batch_shape[axis + 1 :])) for axis, index in enumerate(indices)))
 
     def offset(view):
-        return add(*(mul(indices[axis], prod(view.shape[physical + 1:]))
-                     for physical, axis in enumerate(view.batch_axes)))
+        return add(
+            *(mul(indices[axis], prod(view.shape[physical + 1 :])) for physical, axis in enumerate(view.batch_axes))
+        )
 
-    body = (Call(instruction, (
-        ("product", product), ("lhs_offset", offset(problem.lhs)),
-        ("rhs_offset", offset(problem.rhs)),
-        ("output_offset", mul(product, problem.m * problem.n)),
-    )),)
+    body = (
+        Call(
+            instruction,
+            (
+                ("product", product),
+                ("lhs_offset", offset(problem.lhs)),
+                ("rhs_offset", offset(problem.rhs)),
+                ("output_offset", mul(product, problem.m * problem.n)),
+            ),
+        ),
+    )
     for axis in reversed(range(len(indices))):
         body = (Loop(indices[axis].name, problem.batch_shape[axis], body),)
     kernel = Kernel(name, (), body, (("offset_unit", "elements"),))
@@ -153,10 +166,15 @@ def partition_batched_dense_storage(storage, *, groups, row_counts):
     """
     from merlin.compiler.schedule.compact_dense import DenseLoopStorage
 
-    if (type(storage) is not DenseLoopStorage or storage.accumulator is None
-        or type(groups) is not int or not 1 <= groups <= 4096
-        or type(row_counts) is not tuple or len(row_counts) != 3
-        or any(type(n) is not int or n <= 0 for n in row_counts)):
+    if (
+        type(storage) is not DenseLoopStorage
+        or storage.accumulator is None
+        or type(groups) is not int
+        or not 1 <= groups <= 4096
+        or type(row_counts) is not tuple
+        or len(row_counts) != 3
+        or any(type(n) is not int or n <= 0 for n in row_counts)
+    ):
         raise ValueError("batch storage needs complete owned windows and bounded positive row counts")
     views = (storage.lhs, storage.rhs, storage.accumulator)
     for view, rows in zip(views, row_counts, strict=True):
@@ -164,15 +182,22 @@ def partition_batched_dense_storage(storage, *, groups, row_counts):
         if groups * rows > view.capacity or rows % view.alignment:
             raise ValueError("batch suballocations exceed or misalign the original private window")
     for index, left in enumerate(views):
-        for right in views[index + 1:]:
-            if (left.backing == right.backing
+        for right in views[index + 1 :]:
+            if (
+                left.backing == right.backing
                 and left.base * left.unit_bytes < (right.base + right.capacity) * right.unit_bytes
-                and right.base * right.unit_bytes < (left.base + left.capacity) * left.unit_bytes):
+                and right.base * right.unit_bytes < (left.base + left.capacity) * left.unit_bytes
+            ):
                 raise ValueError("original private batch windows have possible byte overlap")
-    return tuple(DenseLoopStorage(*(
-        replace(view, base=view.base + group * rows, capacity=rows)
-        for view, rows in zip(views, row_counts, strict=True)
-    )) for group in range(groups))
+    return tuple(
+        DenseLoopStorage(
+            *(
+                replace(view, base=view.base + group * rows, capacity=rows)
+                for view, rows in zip(views, row_counts, strict=True)
+            )
+        )
+        for group in range(groups)
+    )
 
 
 def partition_dense_phases(kernel, *, phases, classify, completion_instruction, max_static_nodes=4096):
@@ -188,12 +213,19 @@ def partition_dense_phases(kernel, *, phases, classify, completion_instruction, 
     """
     from merlin.sched.ir import Call, Kernel, Loop, check_structure
 
-    if (type(kernel) is not Kernel or check_structure(kernel)
-        or type(phases) is not tuple or not 2 <= len(phases) <= 16
+    if (
+        type(kernel) is not Kernel
+        or check_structure(kernel)
+        or type(phases) is not tuple
+        or not 2 <= len(phases) <= 16
         or any(type(p) is not str or not p for p in phases)
-        or len(set(phases)) != len(phases) or not callable(classify)
-        or type(completion_instruction) is not str or not completion_instruction
-        or type(max_static_nodes) is not int or not 1 <= max_static_nodes <= 65536):
+        or len(set(phases)) != len(phases)
+        or not callable(classify)
+        or type(completion_instruction) is not str
+        or not completion_instruction
+        or type(max_static_nodes) is not int
+        or not 1 <= max_static_nodes <= 65536
+    ):
         raise ValueError("phase partition needs checked source and explicit bounded phase/effect inputs")
     counts = dict.fromkeys(phases, 0)
     nodes, completions = 0, 0
@@ -219,8 +251,14 @@ def partition_dense_phases(kernel, *, phases, classify, completion_instruction, 
                     raise ValueError("phase completion has an unknown payload or observable event")
                 completions += multiplicity
             else:
-                if (statement.unit or statement.produces or statement.awaits or statement.stages
-                    or statement.sets or statement.assumes):
+                if (
+                    statement.unit
+                    or statement.produces
+                    or statement.awaits
+                    or statement.stages
+                    or statement.sets
+                    or statement.assumes
+                ):
                     raise ValueError("phase partition needs an independent event/state transport proof")
                 phase = classify(statement)
                 if type(phase) is not str or phase not in selected:
@@ -236,10 +274,13 @@ def partition_dense_phases(kernel, *, phases, classify, completion_instruction, 
     if any(check_structure(part) for part in actual.values()):
         raise ValueError("phase partition changed original counted binder scope")
     return actual, {
-        "schema": "merlin.dense_phase_partition.v1", "original_kernel_sha256": kernel.digest(),
+        "schema": "merlin.dense_phase_partition.v1",
+        "original_kernel_sha256": kernel.digest(),
         "phase_kernel_sha256": {p: actual[p].digest() for p in phases},
-        "original_dynamic_calls": counts, "original_dynamic_completions": completions,
-        "static_nodes": nodes, "execution_authority": "not established",
+        "original_dynamic_calls": counts,
+        "original_dynamic_completions": completions,
+        "static_nodes": nodes,
+        "execution_authority": "not established",
         "completion_owner": "consumer must prove and emit replacement phase completions",
     }
 

@@ -12,13 +12,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from merlin_experiments.phase1.feedback import private_completed_build as C
 
+from merlin import model as BM
 from merlin.common import bundle_snapshot as B
 from merlin.common import invocation_record as I
-from merlin import model as BM
 from merlin.llvmlower.compilation_recipe import CompilationRecipe
 from merlin.targetgen.sandbox import bwrap
+from merlin_experiments.phase1.feedback import private_completed_build as C
 
 
 def sha(path):
@@ -158,13 +158,17 @@ def test_completed_production_survives_later_checker_refusal_and_rechecks_curren
     assert invocation["outcome"] == "returned"
 
 
-@pytest.mark.parametrize("changed", ["source.c", "source.o", "model.elf", "compilation_recipe.json", "builder_stage", "builder_isa"])
+@pytest.mark.parametrize(
+    "changed", ["source.c", "source.o", "model.elf", "compilation_recipe.json", "builder_stage", "builder_isa"]
+)
 def test_changed_consumed_product_or_recipe_refuses_hit(build, changed):
     if changed in ("builder_stage", "builder_isa"):
         snapshot = build.core.parents[3]
         for relative in (
-            "src/merlin/model.py", "src/merlin/compiler/build/modeloptions.py",
-            "src/merlin/compiler/build/saved.py", "src/merlin/runtime/model.py",
+            "src/merlin/model.py",
+            "src/merlin/compiler/build/modeloptions.py",
+            "src/merlin/compiler/build/saved.py",
+            "src/merlin/runtime/model.py",
             "src/merlin/verification/model.py",
             "src/merlin/compiler/backend/isa.py",
         ):
@@ -178,13 +182,19 @@ def test_changed_consumed_product_or_recipe_refuses_hit(build, changed):
             build.release["files"]["src/merlin/model.py"] = sha(selected)
             with pytest.raises(ValueError, match="unknown selected"):
                 C._builder_paths(snapshot, build.release)
-            selected.write_text("from merlin.compiler.backend.isa import implementation_functions as _host_isa_functions\n")
+            selected.write_text(
+                "from merlin.compiler.backend.isa import implementation_functions as _host_isa_functions\n"
+            )
             build.release["files"]["src/merlin/model.py"] = sha(selected)
         assert len(C._builder_paths(snapshot, build.release)) == (6 if changed == "builder_isa" else 5)
     first = build.invoke("first")
-    path = (build.core.parents[3] / "src/merlin/compiler/backend/isa.py" if changed == "builder_isa" else
-            build.core.parents[3] / "src/merlin/compiler/build/saved.py" if changed == "builder_stage"
-            else Path(first["output"]["elf"]).parent / changed)
+    path = (
+        build.core.parents[3] / "src/merlin/compiler/backend/isa.py"
+        if changed == "builder_isa"
+        else build.core.parents[3] / "src/merlin/compiler/build/saved.py"
+        if changed == "builder_stage"
+        else Path(first["output"]["elf"]).parent / changed
+    )
     old_stat = path.stat()
     path.write_bytes(path.read_bytes() + b"changed")
     import os
@@ -318,10 +328,9 @@ def test_actual_guarded_framework_release_accepts_distinct_original_profile_owne
     """Exercise the real immutable snapshot/import transport, without a compiler."""
     import sys
 
+    from merlin.common.paths import repo_root
     from merlin_experiments import frozen_python as FP
     from merlin_experiments import source_snapshot as S
-
-    from merlin.common.paths import repo_root
 
     root = repo_root()
     snapshot = tmp_path / "frozen-source"

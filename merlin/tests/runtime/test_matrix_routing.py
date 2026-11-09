@@ -201,7 +201,7 @@ def test_matrix_offers_keep_unknown_cost_and_query_original_sites_once(synthetic
 
     extension = MatrixExtension(replace(matrix, select=original))
     assert extension.offers(first) == ()
-    offer, = extension.offers(second)
+    (offer,) = extension.offers(second)
     assert queried[0] is first and queried[1] is second and len(queried) == 2
     assert offer.detail is second
     assert (offer.owner, offer.unit) == (matrix.support_target, matrix.unit)
@@ -230,8 +230,11 @@ def test_matrix_preparation_uses_offers_without_changing_explicit_selection(synt
 
     monkeypatch.setattr(MatrixExtension, "offers", observe)
     prepared, _ = prepare_for_lowering(
-        _model(tmp_path), tmp_path, features=frozenset({OPU_MATMUL_NAME}),
-        blocking=False, matrix=replace(matrix, select=original),
+        _model(tmp_path),
+        tmp_path,
+        features=frozenset({OPU_MATMUL_NAME}),
+        blocking=False,
+        matrix=replace(matrix, select=original),
     )
     assert len(offered) == len(selected) == 2
     assert all(row[0] is selected[index] and row[1] == () for index, row in enumerate(offered))
@@ -250,8 +253,11 @@ def test_matrix_offer_selector_refusal_propagates_before_rewrite(synthetic_matri
 
     with pytest.raises(ValueError) as raised:
         prepare_for_lowering(
-            _model(tmp_path), tmp_path, features=frozenset({OPU_MATMUL_NAME}),
-            blocking=False, matrix=replace(matrix, select=original),
+            _model(tmp_path),
+            tmp_path,
+            features=frozenset({OPU_MATMUL_NAME}),
+            blocking=False,
+            matrix=replace(matrix, select=original),
         )
     assert raised.value is refusal
     assert not (tmp_path / "matrix_routing.json").exists()

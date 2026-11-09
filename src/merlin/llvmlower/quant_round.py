@@ -137,16 +137,16 @@ VEC_FEATURE = "fuse_quantize_round_convert_vec"
 
 
 from .quant_round_chain import (  # noqa: E402,F401  (helpers live in a dependency-free leaf)
-    _integral_limit,
-    _float_width,
     _const_float,
-    _single_use,
     _constant_zero,
-    _guarded_scale_value,
-    _is_zero_guarded_scale,
     _dynamic_scale_of_quant_input,
+    _float_width,
+    _guarded_scale_value,
     _int_range,
+    _integral_limit,
+    _is_zero_guarded_scale,
     _match_chain,
+    _single_use,
 )
 
 

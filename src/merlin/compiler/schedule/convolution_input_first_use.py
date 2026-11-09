@@ -18,6 +18,7 @@ class ConvolutionInputLead:
     from actual first readers at admitted beat bandwidth, startup and finite
     load/reader capacity; no private schedule positions or output data enter.
     """
+
     policy: str
     hardware_identity: str
     qualification_identity: str
@@ -31,21 +32,32 @@ class ConvolutionInputLead:
     bank_count: int | None = None
 
     def require(self, hardware_identity):
-        if (self.policy not in ("prefix", "bounded", "bank_advance") or self.hardware_identity != hardware_identity
-                or any(type(v) is not str or not v.strip() for v in
-                    (self.hardware_identity, self.qualification_identity))
-                or any(type(v) is not int or not 0 < v < 1 << 31 for v in
-                    (self.load_entries, self.reader_entries, self.request_bytes, self.beat_bytes,
-                     self.startup_cycles, self.compute_cycles_per_row))
-                or self.request_bytes % self.beat_bytes):
+        if (
+            self.policy not in ("prefix", "bounded", "bank_advance")
+            or self.hardware_identity != hardware_identity
+            or any(type(v) is not str or not v.strip() for v in (self.hardware_identity, self.qualification_identity))
+            or any(
+                type(v) is not int or not 0 < v < 1 << 31
+                for v in (
+                    self.load_entries,
+                    self.reader_entries,
+                    self.request_bytes,
+                    self.beat_bytes,
+                    self.startup_cycles,
+                    self.compute_cycles_per_row,
+                )
+            )
+            or self.request_bytes % self.beat_bytes
+        ):
             raise ValueError("input lead requires its selected original finite resources and service scope")
-        if self.policy == "bank_advance" and any(type(v) is not int or not 0 < v < 1 << 31
-                                                for v in (self.bank_rows,self.bank_count)):
+        if self.policy == "bank_advance" and any(
+            type(v) is not int or not 0 < v < 1 << 31 for v in (self.bank_rows, self.bank_count)
+        ):
             raise ValueError("bank advance requires its original selected row-bank geometry")
 
     def service(self, rows, columns, compute_rows):
         """Conservative packet alignment; estimates guide issue, never wait."""
-        ceil = lambda a,b: (a+b-1)//b
+        ceil = lambda a, b: (a + b - 1) // b
         # Each strided source row may cross an extra original request boundary.
         packets = rows * ceil(columns + self.request_bytes - 1, self.request_bytes)
         beats = ceil(rows * columns, self.beat_bytes)
@@ -70,11 +82,15 @@ class ConvolutionInputFirstUseAdmission:
 
     def require(self):
         values = asdict(self)
-        if any(type(values[k]) is not str or not values[k].strip() for k in
-               ("hardware_identity", "numerical_policy_identity", "qualification_identity")) or any(
+        if any(
+            type(values[k]) is not str or not values[k].strip()
+            for k in ("hardware_identity", "numerical_policy_identity", "qualification_identity")
+        ) or any(
             type(values[k]) is not bool or not values[k] for k in values if not k.endswith("identity") and k != "lead"
         ):
-            raise ValueError("first-use input needs actual RAW, configuration, progress, array retention and full completion admission")
+            raise ValueError(
+                "first-use input needs actual RAW, configuration, progress, array retention and full completion admission"
+            )
         if self.lead is not None:
             if type(self.lead) is not ConvolutionInputLead:
                 raise ValueError("input lead needs its typed selected source/resource policy")
@@ -95,8 +111,12 @@ class PendingConvolutionInput:
         from merlin.compiler.schedule.window_transfer import ConvolutionResidentInputRows
 
         schedule.verify_current()
-        if (type(group) is not ConvolutionOutputGroup or type(rows) is not ConvolutionResidentInputRows
-                or type(admission) is not ConvolutionInputFirstUseAdmission or schedule.epoch_law is None):
+        if (
+            type(group) is not ConvolutionOutputGroup
+            or type(rows) is not ConvolutionResidentInputRows
+            or type(admission) is not ConvolutionInputFirstUseAdmission
+            or schedule.epoch_law is None
+        ):
             raise ValueError("pending input needs original source, complete group, ring and target law")
         group.__post_init__()
         rows.revalidate()
@@ -106,18 +126,39 @@ class PendingConvolutionInput:
         ci = w.input_shape[-1]
         oh, ow = w.output_spatial
         live = (oh - 1) * w.stride[0] + (w.kernel[0] - 1) * w.dilation[0] + 1
-        if (admission.hardware_identity != schedule.epoch_law.hardware_identity
-                or admission.numerical_policy_identity != schedule.epoch_law.numerical_policy_identity
-                or rows.source_identity != schedule.source.identity or rows.window != w
-                or group.output_rows != oh or group.row_blocks != oh or ow > p.row_tile
-                or getattr(rows, "image_windows", 1) != 1 or live > rows.slots
-                or not rows.disjoint_from(group.panel.rhs_base,group.panel.rhs_rows)):
-            raise ValueError("pending input requires the original complete image and injective single ring under its selected target")
+        if (
+            admission.hardware_identity != schedule.epoch_law.hardware_identity
+            or admission.numerical_policy_identity != schedule.epoch_law.numerical_policy_identity
+            or rows.source_identity != schedule.source.identity
+            or rows.window != w
+            or group.output_rows != oh
+            or group.row_blocks != oh
+            or ow > p.row_tile
+            or getattr(rows, "image_windows", 1) != 1
+            or live > rows.slots
+            or not rows.disjoint_from(group.panel.rhs_base, group.panel.rhs_rows)
+        ):
+            raise ValueError(
+                "pending input requires the original complete image and injective single ring under its selected target"
+            )
         self.schedule, self.group, self.rows, self.admission = schedule, group, rows, admission
         self.image = image
         self.identity = schedule.identity, asdict(group), rows.record(), asdict(admission)
-        self.first_uses = tuple((row, min(((ky, y) for ky in range(w.kernel[0]) for y in range(oh)
-            if y * w.stride[0] + ky * w.dilation[0] == row), default=None)) for row in range(live))
+        self.first_uses = tuple(
+            (
+                row,
+                min(
+                    (
+                        (ky, y)
+                        for ky in range(w.kernel[0])
+                        for y in range(oh)
+                        if y * w.stride[0] + ky * w.dilation[0] == row
+                    ),
+                    default=None,
+                ),
+            )
+            for row in range(live)
+        )
         part = rows.stage_channels or ci
         if part % p.channel_tile and part < ci:
             raise ValueError("pending input transfer starts must match original counted channel readers")
@@ -131,14 +172,17 @@ class PendingConvolutionInput:
         w = p.window
         chunks = (w.input_shape[-1] + p.channel_tile - 1) // p.channel_tile
         width = self.group.row_blocks * self.group.panel.column_blocks
-        transfers = sorted(((first[0] * w.kernel[1] * chunks + interval[0] // p.channel_tile) * width + first[1],
-                            row, interval) for row, first in self.first_uses if first is not None
-                           for interval in self.channel_intervals)
+        transfers = sorted(
+            ((first[0] * w.kernel[1] * chunks + interval[0] // p.channel_tile) * width + first[1], row, interval)
+            for row, first in self.first_uses
+            if first is not None
+            for interval in self.channel_intervals
+        )
         lead = self.admission.lead
         if lead is None:
-            return tuple((first, first, row, interval) for first,row,interval in transfers)
+            return tuple((first, first, row, interval) for first, row, interval in transfers)
         if lead.policy == "prefix":
-            return tuple((0, first, row, interval) for first,row,interval in transfers)
+            return tuple((0, first, row, interval) for first, row, interval in transfers)
         # All input is immutable and the complete ring is injective. Earliest
         # release is invocation start; latest is this transfer's actual first
         # reader. Backward spacing reserves original reader bandwidth and bounds
@@ -149,31 +193,34 @@ class PendingConvolutionInput:
         if lead.policy == "bank_advance":
             if any(w.padding):
                 raise ValueError("bank advance initially requires original unpadded source rows")
-            for first,row,interval in transfers:
-                selected=set()
-                for c in range(interval[0],interval[0]+interval[1],p.channel_tile):
+            for first, row, interval in transfers:
+                selected = set()
+                for c in range(interval[0], interval[0] + interval[1], p.channel_tile):
                     for x in range(w.input_shape[2]):
-                        address,_=self.rows.physical_cell(row*self.rows.rows_per_source_row*p.channel_tile+x*w.input_shape[-1]+c)
-                        bank=address//lead.bank_rows
-                        if not 0<=bank<lead.bank_count:
+                        address, _ = self.rows.physical_cell(
+                            row * self.rows.rows_per_source_row * p.channel_tile + x * w.input_shape[-1] + c
+                        )
+                        bank = address // lead.bank_rows
+                        if not 0 <= bank < lead.bank_count:
                             raise ValueError("input bank map leaves its selected physical row space")
                         selected.add(bank)
-                banks[row,interval]=selected
-                for bank in selected:bank_first[bank]=min(first,bank_first.get(bank,first))
+                banks[row, interval] = selected
+                for bank in selected:
+                    bank_first[bank] = min(first, bank_first.get(bank, first))
             # Same-bank deadlines may precede original KY first-use order.
             # Order independent immutable DMA by those bank deadlines before
             # spacing, so late first-bank rows do not prefill the next bank.
-            transfers.sort(key=lambda item:(min(bank_first[b]for b in banks[item[1],item[2]]),item[0]))
+            transfers.sort(key=lambda item: (min(bank_first[b] for b in banks[item[1], item[2]]), item[0]))
         result = []
         next_release = None
         source_width = w.input_shape[2]
-        for first,row,interval in reversed(transfers):
+        for first, row, interval in reversed(transfers):
             latency, spacing = lead.service(source_width, interval[1], w.output_spatial[1])
-            deadline=(min(bank_first[b]for b in banks[row,interval])if lead.policy=="bank_advance"else first)
+            deadline = min(bank_first[b] for b in banks[row, interval]) if lead.policy == "bank_advance" else first
             release = deadline - latency
             if next_release is not None:
                 release = min(release, next_release - spacing)
-            result.append((max(0,release), first, row, interval))
+            result.append((max(0, release), first, row, interval))
             next_release = release
         return tuple(reversed(result))
 
@@ -188,19 +235,41 @@ class PendingConvolutionInput:
         w = self.rows.window
         h, width, ci = w.input_shape[1:]
         source_y = builder.op("sub", row, w.padding[0])
-        source = builder.op("add", builder.op("mul", builder.op("add",
-            builder.op("mul", self.image, h), source_y), width * ci), 0)
-        self.rows.emit_stage(builder, dict(image=self.image, input_row=source_y,
-            source_byte=source, cache_byte=builder.op("mul", builder.op("urem", row, self.rows.slots),
-                self.rows.rows_per_source_row * self.rows.channel_tile),
-            valid=builder.cmp("ult", source_y, h), row_bytes=width * ci), issue, channel_interval=channel_interval)
+        source = builder.op(
+            "add", builder.op("mul", builder.op("add", builder.op("mul", self.image, h), source_y), width * ci), 0
+        )
+        self.rows.emit_stage(
+            builder,
+            dict(
+                image=self.image,
+                input_row=source_y,
+                source_byte=source,
+                cache_byte=builder.op(
+                    "mul",
+                    builder.op("urem", row, self.rows.slots),
+                    self.rows.rows_per_source_row * self.rows.channel_tile,
+                ),
+                valid=builder.cmp("ult", source_y, h),
+                row_bytes=width * ci,
+            ),
+            issue,
+            channel_interval=channel_interval,
+        )
 
     def start(self, schedule, group, rows, origins, counts, builder, issue, *, columns=None):
         self._check()
         oh, ow = rows.window.output_spatial
-        if (self.started or self.closed or schedule is not self.schedule or group != self.group or rows != self.rows
-                or tuple(origins) != tuple(y * ow for y in range(oh)) or counts != (ow,) * oh
-                or columns is not None and columns != group.panel.column_blocks):
+        if (
+            self.started
+            or self.closed
+            or schedule is not self.schedule
+            or group != self.group
+            or rows != self.rows
+            or tuple(origins) != tuple(y * ow for y in range(oh))
+            or counts != (ow,) * oh
+            or columns is not None
+            and columns != group.panel.column_blocks
+        ):
             raise ValueError("pending input must bind its exact complete original M traversal once")
         self.started = True
         if self.admission.lead is not None and self.admission.lead.policy == "prefix":
@@ -209,8 +278,8 @@ class PendingConvolutionInput:
             for row, first in self.first_uses:
                 if first is None:
                     self._stage(builder, issue, row)
-        if self.admission.lead is not None and self.admission.lead.policy in ("bounded","bank_advance"):
-            for release,first,row,interval in self.releases:
+        if self.admission.lead is not None and self.admission.lead.policy in ("bounded", "bank_advance"):
+            for release, first, row, interval in self.releases:
                 if release == 0:
                     self._stage(builder, issue, row, interval)
 
@@ -224,42 +293,67 @@ class PendingConvolutionInput:
         if type(n) is not int or not 0 <= n < columns:
             raise ValueError("pending input reader changes its original N traversal")
         lead = self.admission.lead
-        for release,first,row,interval in self.releases:
+        for release, first, row, interval in self.releases:
             if lead is not None and (lead.policy == "prefix" or release == 0):
                 continue
             run, inner = divmod(release, columns * self.group.row_blocks)
             rn, rm = divmod(inner, self.group.row_blocks)
             tap, rc = divmod(run, chunks)
             rky, rkx = divmod(tap, p.window.kernel[1])
-            if (rn != n or rm != m or type(ky) is int and ky != rky or type(kx) is int and kx != rkx):
+            if rn != n or rm != m or type(ky) is int and ky != rky or type(kx) is int and kx != rkx:
                 continue
             condition = builder.op("and", builder.cmp("eq", ky, rky), builder.cmp("eq", kx, rkx), "i1")
             condition = builder.op("and", condition, builder.cmp("eq", channel, rc * p.channel_tile), "i1")
-            builder.branch(condition, lambda row=row, interval=interval:
-                self._stage(builder, issue, row, interval), lambda: None)
+            builder.branch(
+                condition, lambda row=row, interval=interval: self._stage(builder, issue, row, interval), lambda: None
+            )
 
     def finish(self, complete, fields):
         self._check()
-        if (not self.started or self.closed or self.visited != set(range(self.group.row_blocks)) or not callable(complete)):
+        if (
+            not self.started
+            or self.closed
+            or self.visited != set(range(self.group.row_blocks))
+            or not callable(complete)
+        ):
             raise ValueError("pending input requires every original reader and a real final completion")
         complete("spatial_group_last_use", fields)
         self.closed = True
 
     def record(self):
         self._check()
-        return dict(source_identity=self.schedule.source.identity,
+        return dict(
+            source_identity=self.schedule.source.identity,
             first_uses=[dict(source_row=row, first_KY_M=first) for row, first in self.first_uses],
             original_channel_transfers=self.channel_intervals,
-            source_release_pairs=[dict(release_pair=a, first_reader_pair=b, source_row=c, channel_interval=d)
-                for a,b,c,d in self.releases],
+            source_release_pairs=[
+                dict(release_pair=a, first_reader_pair=b, source_row=c, channel_interval=d)
+                for a, b, c, d in self.releases
+            ],
             lead=None if self.admission.lead is None else asdict(self.admission.lead),
-            storage=self.rows.record(), readiness="actual target scratchpad RAW; no ready token or early drain",
-            completion="real original spatial_group_last_use drain completes compute and all input DMA")
+            storage=self.rows.record(),
+            readiness="actual target scratchpad RAW; no ready token or early drain",
+            completion="real original spatial_group_last_use drain completes compute and all input DMA",
+        )
 
 
-def emit_pending_input_images(schedule, group, rows, admission, builder, issue, complete, *,
-        array_law, readout_law, readout_transfer_law, ready_readout, output_tiles,
-        rhs_frontier=None, rhs_issue=None):
+def emit_pending_input_images(
+    schedule,
+    group,
+    rows,
+    admission,
+    builder,
+    issue,
+    complete,
+    *,
+    array_law,
+    readout_law,
+    readout_transfer_law,
+    ready_readout,
+    output_tiles,
+    rhs_frontier=None,
+    rhs_issue=None,
+):
     """Ordinary counted image and original K/N/M consumer, with pending input."""
     from merlin.compiler.schedule.convolution_output_groups import emit_rolling_convolution_output_group
 
@@ -277,20 +371,44 @@ def emit_pending_input_images(schedule, group, rows, admission, builder, issue, 
 
     def image_body(image):
         pending = PendingConvolutionInput(schedule, group, rows, admission, image=image)
-        consumer = emit_rolling_convolution_output_group(schedule, group, builder, issue, complete,
-            output_row=builder.op("mul", image, oh * ow), row_counts=(ow,) * oh,
-            tile_origins=tuple(y * ow for y in range(oh)), output_tiles=output_tiles,
-            input_rows=rows, array_law=array_law, readout_law=readout_law,
-            readout_transfer_law=readout_transfer_law, ready_readout=ready_readout,
-            defer_consumer=True, pending_input=pending)
+        consumer = emit_rolling_convolution_output_group(
+            schedule,
+            group,
+            builder,
+            issue,
+            complete,
+            output_row=builder.op("mul", image, oh * ow),
+            row_counts=(ow,) * oh,
+            tile_origins=tuple(y * ow for y in range(oh)),
+            output_tiles=output_tiles,
+            input_rows=rows,
+            array_law=array_law,
+            readout_law=readout_law,
+            readout_transfer_law=readout_transfer_law,
+            ready_readout=ready_readout,
+            defer_consumer=True,
+            pending_input=pending,
+        )
 
         def after_run(run, reduction, depth):
             def stage():
                 for n, (column, columns) in enumerate(rhs_frontier.next_columns):
-                    local = builder.op("add", rhs_frontier.rhs_base, builder.op("mul",
-                        builder.op("add", builder.op("mul", run, len(rhs_frontier.next_columns)), n), rhs_frontier.tile))
-                    rhs_issue("load_weight", dict(reduction_row=reduction, output_column=column,
-                        local_row=local, rows=depth, columns=columns))
+                    local = builder.op(
+                        "add",
+                        rhs_frontier.rhs_base,
+                        builder.op(
+                            "mul",
+                            builder.op("add", builder.op("mul", run, len(rhs_frontier.next_columns)), n),
+                            rhs_frontier.tile,
+                        ),
+                    )
+                    rhs_issue(
+                        "load_weight",
+                        dict(
+                            reduction_row=reduction, output_column=column, local_row=local, rows=depth, columns=columns
+                        ),
+                    )
+
             builder.branch(builder.cmp("eq", image, batches - 1), stage, lambda: None)
 
         consumer.advance(0, runs, after_run=None if rhs_frontier is None else after_run)
@@ -300,5 +418,9 @@ def emit_pending_input_images(schedule, group, rows, admission, builder, issue, 
         complete("input_last_use", dict(local_row=rows.base))
 
     builder.loop(0, batches, 1, image_body)
-    return dict(schema="merlin.convolution_pending_input.v1", **checked.record(),
-        original_input_rows_per_image=len(checked.first_uses), original_K_runs=runs)
+    return dict(
+        schema="merlin.convolution_pending_input.v1",
+        **checked.record(),
+        original_input_rows_per_image=len(checked.first_uses),
+        original_K_runs=runs,
+    )

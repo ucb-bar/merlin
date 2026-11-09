@@ -15,13 +15,12 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from math import lcm
 
+from merlin.compiler.schedule.compact_dense import DenseMemoryView
 from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, Ptr, TensorArg, Var
 from merlin.sched.ir.kernel import DTYPE_BYTES, check_structure
 from merlin.semantic_compiler.allocate import allocate, check_assignment
 from merlin.semantic_compiler.allocation_types import CandidateGraph, Reservation, StorageBank, Value
 from merlin.semantic_compiler.rules import AddressConstraint
-
-from merlin.compiler.schedule.compact_dense import DenseMemoryView
 
 ROLES = ("maximum", "exponentials", "lanes", "normalizer")
 # Inclusive instruction phases: a source and destination of one instruction
@@ -509,9 +508,8 @@ class RowSoftmaxSourceCompilation:
     def revalidate(self):
         from math import prod
 
-        from merlin.transforms.certificates import ir_digest
-
         from merlin.compiler.schedule.library_sources import shared_library_sources
+        from merlin.transforms.certificates import ir_digest
 
         library = hashlib.sha256(json.dumps(shared_library_sources(), sort_keys=True).encode()).hexdigest()
         if (
@@ -575,10 +573,9 @@ def compile_source_rows(
 
     from xdsl.dialects import builtin
 
-    from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
-
     from merlin.compiler.schedule.library_sources import shared_library_sources
     from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
+    from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
     if (
         type(module) is not builtin.ModuleOp
@@ -771,11 +768,10 @@ def compile_row_softmax(
     This synchronous schedule-to-C path is not final machine-byte conformance
     or ordinary full-model target integration.
     """
-    from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
-
     from merlin.compiler.schedule.row_softmax_verification import verify_row_softmax
     from merlin.compiler.schedule.schedule_pipeline import shared_library_sources
     from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
+    from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
     specs = (
         PassSpec("row_semantics", 0, produces=("row_source",), mutates_ir=False, ir_level="schedule"),

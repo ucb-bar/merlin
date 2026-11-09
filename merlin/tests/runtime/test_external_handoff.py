@@ -17,7 +17,9 @@ def image(tmp_path, platform):
     path = directory / "model.elf"
     path.write_bytes(b"fixture ELF bytes, never executed")
     result = Compilation(
-        directory, "fixture", "0" * 64,
+        directory,
+        "fixture",
+        "0" * 64,
         (Artifact.from_file(path, kind="elf", role="executable"),),
         Deployment("test-system", platform, "rv64im", "lp64", 2),
     )
@@ -51,7 +53,8 @@ def test_portable_handoff_preserves_platform_and_collects_failure(tmp_path, monk
     log = results / "console.txt"
     log.write_text("reported failure\n")
     report = {
-        "schema": "merlin.external_result.v1", "request_sha256": prepared.request_sha256,
+        "schema": "merlin.external_result.v1",
+        "request_sha256": prepared.request_sha256,
         "exit_code": 7,
         "artifacts": [{"path": "console.txt", "sha256": hashlib.sha256(log.read_bytes()).hexdigest()}],
     }
@@ -71,8 +74,12 @@ def test_handoff_refuses_unbound_or_missing_observations(tmp_path, corruption):
     results.mkdir()
     (results / "console.txt").write_bytes(b"observed")
     record = {"path": "console.txt", "sha256": hashlib.sha256(b"observed").hexdigest()}
-    report = {"schema": "merlin.external_result.v1", "request_sha256": prepared.request_sha256,
-              "exit_code": 0, "artifacts": [record]}
+    report = {
+        "schema": "merlin.external_result.v1",
+        "request_sha256": prepared.request_sha256,
+        "exit_code": 0,
+        "artifacts": [record],
+    }
     if corruption == "payload":
         (prepared.directory / "payload/model.elf").write_bytes(b"changed")
     elif corruption == "identity":

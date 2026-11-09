@@ -5,6 +5,7 @@ reordered. This keeps upstream canonicalization from replacing an initialization
 with an immutable dense buffer that must then be copied before a reduction.
 The independent replay checker reconstructs the entire original module.
 """
+
 from __future__ import annotations
 
 from xdsl.dialects import tensor
@@ -17,30 +18,44 @@ from merlin.llvmlower.prov_cse import PROV_PREFIX
 
 
 def _eligible(operation):
-    if (type(operation) is not tensor.SplatOp or len(operation.operands) != 1 or
-            len(operation.results) != 1 or operation.properties or operation.regions or operation.successors or
-            any(not key.startswith(PROV_PREFIX) for key in operation.attributes)):
+    if (
+        type(operation) is not tensor.SplatOp
+        or len(operation.operands) != 1
+        or len(operation.results) != 1
+        or operation.properties
+        or operation.regions
+        or operation.successors
+        or any(not key.startswith(PROV_PREFIX) for key in operation.attributes)
+    ):
         return False
     result = operation.results[0]
     typ = result.type
-    if (type(typ) is not TensorType or any(d < 0 for d in typ.get_shape()) or
-            operation.operands[0].type != typ.element_type):
+    if (
+        type(typ) is not TensorType
+        or any(d < 0 for d in typ.get_shape())
+        or operation.operands[0].type != typ.element_type
+    ):
         return False
     uses = tuple(result.uses)
     return bool(uses) and all(
-        isinstance(use.operation, LinalgStructuredOperation) and
-        len(use.operation.inputs) <= use.index < len(use.operation.inputs) + len(use.operation.outputs) and
-        use.operation.operands[use.index] is result
+        isinstance(use.operation, LinalgStructuredOperation)
+        and len(use.operation.inputs) <= use.index < len(use.operation.inputs) + len(use.operation.outputs)
+        and use.operation.operands[use.index] is result
         for use in uses
     )
 
 
 def _metadata_only_empty(operation):
-    return (type(operation) is tensor.EmptyOp and bool(operation.attributes) and
-            all(key.startswith(PROV_PREFIX) for key in operation.attributes) and
-            not operation.properties and not operation.operands and len(operation.results) == 1 and
-            type(operation.results[0].type) is TensorType and
-            all(d >= 0 for d in operation.results[0].type.get_shape()))
+    return (
+        type(operation) is tensor.EmptyOp
+        and bool(operation.attributes)
+        and all(key.startswith(PROV_PREFIX) for key in operation.attributes)
+        and not operation.properties
+        and not operation.operands
+        and len(operation.results) == 1
+        and type(operation.results[0].type) is TensorType
+        and all(d >= 0 for d in operation.results[0].type.get_shape())
+    )
 
 
 def normalize_destinations(original):
@@ -63,10 +78,14 @@ def normalize_destinations(original):
         selected.append((ordinal, empty, fill))
     transformed.verify()
     ordinals = {operation: n for n, operation in enumerate(transformed.walk())}
-    records = tuple({"original_ordinal": ordinal, "empty_ordinal": ordinals[empty],
-                     "fill_ordinal": ordinals[fill]} for ordinal, empty, fill in selected)
-    records += tuple({"original_ordinal": ordinal, "empty_metadata_ordinal": ordinals[empty],
-                      "attributes": attrs} for ordinal, empty, attrs in metadata)
+    records = tuple(
+        {"original_ordinal": ordinal, "empty_ordinal": ordinals[empty], "fill_ordinal": ordinals[fill]}
+        for ordinal, empty, fill in selected
+    )
+    records += tuple(
+        {"original_ordinal": ordinal, "empty_metadata_ordinal": ordinals[empty], "attributes": attrs}
+        for ordinal, empty, attrs in metadata
+    )
     verify_destinations(original, transformed, records)
     return transformed, records
 
@@ -87,7 +106,8 @@ def verify_destinations(original, transformed, records):
     replay_ops = tuple(replay.walk())
     touched = set()
     if tuple(record["original_ordinal"] for record in metadata) != tuple(
-            n for n, op in enumerate(original_ops) if _metadata_only_empty(op)):
+        n for n, op in enumerate(original_ops) if _metadata_only_empty(op)
+    ):
         raise ValueError("destination initialization changed its provenance-only empty inventory")
     for record in metadata:
         if set(record) != {"original_ordinal", "empty_metadata_ordinal", "attributes"}:
@@ -97,8 +117,11 @@ def verify_destinations(original, transformed, records):
             raise ValueError("destination initialization metadata changed its original operation binding")
         touched.add(position)
         old, empty = original_ops[record["original_ordinal"]], replay_ops[position]
-        if (type(empty) is not tensor.EmptyOp or empty.attributes or
-                record["attributes"] != {key: str(value) for key, value in old.attributes.items()}):
+        if (
+            type(empty) is not tensor.EmptyOp
+            or empty.attributes
+            or record["attributes"] != {key: str(value) for key, value in old.attributes.items()}
+        ):
             raise ValueError("destination initialization changed detached provenance or semantic attributes")
         empty.attributes.update(old.attributes)
     for record in splats:
@@ -110,12 +133,20 @@ def verify_destinations(original, transformed, records):
         touched.update(positions)
         empty, fill = (replay_ops[n] for n in positions)
         old = original_ops[record["original_ordinal"]]
-        if (type(empty) is not tensor.EmptyOp or type(fill) is not FillOp or
-                empty.next_op is not fill or empty.parent is not fill.parent or
-                empty.attributes or empty.properties or empty.operands or
-                len(empty.results) != 1 or empty.results[0].type != old.results[0].type or
-                len(tuple(empty.results[0].uses)) != 1 or len(fill.inputs) != 1 or
-                tuple(fill.outputs) != (empty.results[0],)):
+        if (
+            type(empty) is not tensor.EmptyOp
+            or type(fill) is not FillOp
+            or empty.next_op is not fill
+            or empty.parent is not fill.parent
+            or empty.attributes
+            or empty.properties
+            or empty.operands
+            or len(empty.results) != 1
+            or empty.results[0].type != old.results[0].type
+            or len(tuple(empty.results[0].uses)) != 1
+            or len(fill.inputs) != 1
+            or tuple(fill.outputs) != (empty.results[0],)
+        ):
             raise ValueError("destination initialization replay has a changed destination or scalar binding")
         expected = FillOp(inputs=list(fill.inputs), outputs=list(fill.outputs), res=[old.results[0].type])
         expected.attributes.update(old.attributes)

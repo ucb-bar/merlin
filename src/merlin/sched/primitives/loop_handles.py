@@ -4,6 +4,7 @@ Handles identify an occurrence, not a binder spelling. They expire after any
 rewrite. Explicit result handles are returned for subsequent composition; no
 handle is silently rebound to a similar loop in a different program.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -19,8 +20,12 @@ def _valid(kernel):
 
 
 def _at(kernel, path):
-    if (type(path) is not tuple or not path or len(path) > 64
-            or any(type(index) is not int or index < 0 for index in path)):
+    if (
+        type(path) is not tuple
+        or not path
+        or len(path) > 64
+        or any(type(index) is not int or index < 0 for index in path)
+    ):
         raise PrimitiveError("loop occurrence requires a nonempty bounded structural path")
     body = kernel.body
     for index in path:
@@ -78,8 +83,12 @@ def _expression(value, names):
     if type(value) is Scaled:
         return replace(value, expr=_expression(value.expr, names))
     if type(value) is Select:
-        return replace(value, var=names.get(value.var, value.var),
-                       then=_expression(value.then, names), other=_expression(value.other, names))
+        return replace(
+            value,
+            var=names.get(value.var, value.var),
+            then=_expression(value.then, names),
+            other=_expression(value.other, names),
+        )
     if isinstance(value, Expr):
         raise PrimitiveError("binder hygiene cannot interpret an unknown index expression")
     if type(value) is Ptr:
@@ -121,6 +130,7 @@ def uniquify_loop_binders(kernel, *, prefix="schedule_loop"):
         used.add(handle.loop.var)
         used.update(name for pair in handle.loop.iter_args for name in pair)
         used.update((*handle.loop.yields, *handle.loop.results))
+
     def reserve_events(body):
         for statement in body:
             if type(statement) is Loop:
@@ -129,6 +139,7 @@ def uniquify_loop_binders(kernel, *, prefix="schedule_loop"):
                 used.update(statement.awaits)
                 if statement.produces:
                     used.add(statement.produces)
+
     reserve_events(kernel.body)
     bindings = []
     serial = 0
@@ -149,11 +160,14 @@ def uniquify_loop_binders(kernel, *, prefix="schedule_loop"):
             if type(statement) is Loop:
                 name = fresh()
                 bindings.append((here, statement.var, name))
-                result.append(replace(statement, var=name,
-                    body=walk(statement.body, {**scope, statement.var: name}, here)))
+                result.append(
+                    replace(statement, var=name, body=walk(statement.body, {**scope, statement.var: name}, here))
+                )
             elif type(statement) is Call:
-                fields = {field: tuple((key, _expression(value, scope)) for key, value in getattr(statement, field))
-                          for field in ("args", "sets", "assumes")}
+                fields = {
+                    field: tuple((key, _expression(value, scope)) for key, value in getattr(statement, field))
+                    for field in ("args", "sets", "assumes")
+                }
                 result.append(replace(statement, **fields))
             else:
                 raise PrimitiveError("binder hygiene requires typed Loop/Call statements")
@@ -179,8 +193,7 @@ def transform_loop(kernel, handle, *, action, factor=None, cuts=(), names=()):
     continue to use their existing source-family APIs until their handle mapping
     is specified. This helper does not guess a descendant after reorder/fusion.
     """
-    from merlin.compiler.schedule.loop_schedule import LoopTransform
-    from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
+    from merlin.compiler.schedule.loop_schedule import LoopTransform, propose_loop_transforms
 
     if type(handle) is not LoopHandle:
         raise PrimitiveError("typed loop occurrence handle required")
@@ -203,6 +216,9 @@ def transform_loop(kernel, handle, *, action, factor=None, cuts=(), names=()):
     if before_body[:start] != after_body[:start] or (suffix and before_body[-suffix:] != after_body[-suffix:]):
         raise PrimitiveError("loop edit changed statements outside the selected occurrence")
     stop = len(after_body) - suffix
-    replacements = tuple(locate_loop(actual, (*handle.statement_path[:-1], index))
-                         for index in range(start, stop) if type(after_body[index]) is Loop)
+    replacements = tuple(
+        locate_loop(actual, (*handle.statement_path[:-1], index))
+        for index in range(start, stop)
+        if type(after_body[index]) is Loop
+    )
     return LoopEdit(actual, handle, hygiene, replacements)

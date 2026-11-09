@@ -11,12 +11,12 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from merlin.runtime import modelinputs as MI
 from merlin.compiler.backend import host as host
 from merlin.compiler.backend.isa import implementation_functions as _host_isa_functions
 from merlin.compiler.backend.isa import require_host_isa_dts
 from merlin.compiler.build.modeloptions import BaremetalModelError, _output_root, _sha, prepare_saved
 from merlin.compiler.build.saved import build_saved, select_build
+from merlin.runtime import modelinputs as MI
 from merlin.runtime.backends import spike as spike_backend  # noqa: F401 -- retained operator patch surface
 from merlin.runtime.backends import spike_model as spike_model
 from merlin.runtime.model import (

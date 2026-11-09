@@ -110,12 +110,15 @@ def test_storage_permission_and_capacity_are_explicit():
         emit(window, 2, budget=53)
 
 
-@pytest.mark.parametrize("shape,padding", [
-    ((2, 3, 5, 3), (1, 2, 0, 3)),
-    ((1, 2, 3, 1), (0, 0, 0, 0)),
-    ((2, 1, 4, 17), (2, 1, 3, 2)),
-    ((1, 2, 7, 5), (0, 0, 1, 0)),
-])
+@pytest.mark.parametrize(
+    "shape,padding",
+    [
+        ((2, 3, 5, 3), (1, 2, 0, 3)),
+        ((1, 2, 3, 1), (0, 0, 0, 0)),
+        ((2, 1, 4, 17), (2, 1, 3, 2)),
+        ((1, 2, 7, 5), (0, 0, 1, 0)),
+    ],
+)
 def test_complete_unit_window_uses_exact_copy_fill_spans(tmp_path, shape, padding):
     directory = Path("/work/merlin/toolchains/llvm-a47bddcc/install/bin")
     if not all((directory / name).is_file() for name in ("mlir-translate", "clang")):
@@ -125,13 +128,24 @@ def test_complete_unit_window_uses_exact_copy_fill_spans(tmp_path, shape, paddin
     size = int(count * shape[-1])
     builder = FnBuilder([PTR, PTR])
     receipt = emit_nhwc_window_panel(
-        builder, window, *builder.entry.args, builder.const(0), int(count),
-        source_destination_disjoint=True, maximum_panel_bytes=size,
+        builder,
+        window,
+        *builder.entry.args,
+        builder.const(0),
+        int(count),
+        source_destination_disjoint=True,
+        maximum_panel_bytes=size,
     )
-    module = ModuleOp([llvm.FuncOp(
-        "pack", llvm.LLVMFunctionType([PTR, PTR], llvm.LLVMVoidType()),
-        linkage=llvm.LinkageAttr("external"), body=builder.finish(),
-    )])
+    module = ModuleOp(
+        [
+            llvm.FuncOp(
+                "pack",
+                llvm.LLVMFunctionType([PTR, PTR], llvm.LLVMVoidType()),
+                linkage=llvm.LinkageAttr("external"),
+                body=builder.finish(),
+            )
+        ]
+    )
     module.verify()
     stream = io.StringIO()
     Printer(stream=stream).print_op(module)
@@ -142,10 +156,16 @@ def test_complete_unit_window_uses_exact_copy_fill_spans(tmp_path, shape, paddin
     source.write_text(text)
     ll = tmp_path / "unit.ll"
     library = tmp_path / ("unit-" + hashlib.sha256(text.encode()).hexdigest()[:16] + ".so")
-    subprocess.run([str(directory / "mlir-translate"), "--mlir-to-llvmir", str(source), "-o", str(ll)],
-                   check=True, capture_output=True)
-    subprocess.run([str(directory / "clang"), "-O1", "-shared", "-fPIC", str(ll), "-o", str(library)],
-                   check=True, capture_output=True)
+    subprocess.run(
+        [str(directory / "mlir-translate"), "--mlir-to-llvmir", str(source), "-o", str(ll)],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [str(directory / "clang"), "-O1", "-shared", "-fPIC", str(ll), "-o", str(library)],
+        check=True,
+        capture_output=True,
+    )
     fn = ctypes.CDLL(str(library)).pack
     fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
     values = (np.arange(np.prod(shape)) * 7 % 251 - 125).astype(np.int8).reshape(shape)
@@ -153,12 +173,12 @@ def test_complete_unit_window_uses_exact_copy_fill_spans(tmp_path, shape, paddin
     expected = np.pad(values, ((0, 0), (pt, pb), (pl, pr), (0, 0))).ravel()
     for source_alignment, destination_alignment in ((0, 0), (1, 2), (3, 7)):
         data = np.full(values.size + source_alignment + 16, 97, dtype=np.int8)
-        data[source_alignment:source_alignment + values.size] = values.ravel()
+        data[source_alignment : source_alignment + values.size] = values.ravel()
         output = np.full(size + destination_alignment + 16, 97, dtype=np.int8)
         fn(data.ctypes.data + source_alignment, output.ctypes.data + destination_alignment)
-        np.testing.assert_array_equal(output[destination_alignment:destination_alignment + size], expected)
-        assert np.all(output[:destination_alignment] == 97) and np.all(output[destination_alignment + size:] == 97)
-        assert np.all(data[source_alignment + values.size:] == 97)
+        np.testing.assert_array_equal(output[destination_alignment : destination_alignment + size], expected)
+        assert np.all(output[:destination_alignment] == 97) and np.all(output[destination_alignment + size :] == 97)
+        assert np.all(data[source_alignment + values.size :] == 97)
 
 
 @pytest.mark.parametrize("columns", [1, 3])

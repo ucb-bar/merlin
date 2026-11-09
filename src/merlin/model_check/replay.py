@@ -357,7 +357,11 @@ def run_image(target: str, elf: Path, *, dram_base: int, dram_bytes: int, timeou
     with compute_step(timeout) as remaining:
         started = time.monotonic()
         done = subprocess.run(
-            argv, cwd=engine["cwd"], env=engine["environment"], capture_output=True, timeout=remaining,
+            argv,
+            cwd=engine["cwd"],
+            env=engine["environment"],
+            capture_output=True,
+            timeout=remaining,
         )
     wall = time.monotonic() - started
     console = done.stdout.decode("latin-1") + done.stderr.decode("latin-1")

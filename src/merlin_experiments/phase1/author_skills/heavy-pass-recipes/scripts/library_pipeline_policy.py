@@ -143,16 +143,22 @@ def registry(caps):
     the passes before it choose the block and state the typed plan, the passes after it transform the
     checked result (array retention)."""
     from merlin.compiler.schedule.compact_dense import emit_compact_dense
-    from merlin.compiler.schedule.dense_array_retention import DenseArrayRetentionAdmission
-    from merlin.compiler.schedule.dense_array_retention import propose_dense_array_retention
-    from merlin.compiler.schedule.dense_array_retention import verify_dense_array_retention
-    from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_compute_order
-    from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_operand_hoists
+    from merlin.compiler.schedule.dense_array_retention import (
+        DenseArrayRetentionAdmission,
+        propose_dense_array_retention,
+        verify_dense_array_retention,
+    )
+    from merlin.compiler.schedule.dense_panel_pipeline import (
+        dense_retained_compute_order,
+        dense_retained_operand_hoists,
+    )
     from merlin.compiler.schedule.dense_ready_readout import schedule_dense_pipeline
     from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
-    from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-    from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-    from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+    from merlin.compiler.schedule.schedule_ir import (
+        dense_schedule_text,
+        make_dense_schedule_plan,
+        parse_dense_schedule_plan,
+    )
     from merlin.transforms.pipeline_policy import RegisteredPass
     from merlin.transforms.pipeline_state import PassSpec
 
@@ -500,26 +506,38 @@ def target_example(owner):
     from merlin.transforms.pipeline_policy import PipelinePolicy, execute_policy
     from merlin.transforms.shape_policy import PerformanceDomain, propose_shape_policies
 
-    if any(not callable(getattr(owner, name, None))
-           for name in ("prepare", "evaluate", "binding")):
+    if any(not callable(getattr(owner, name, None)) for name in ("prepare", "evaluate", "binding")):
         raise ValueError("target adapter requires prepare, evaluate and binding hooks")
     setup = owner.prepare()
     training = setup["training"]
     paths = setup["alternatives"]
     incumbent = setup["incumbent"]
-    proposals = propose_shape_policies(training, paths, design=setup["design"], incumbent=incumbent,
-        axes=setup.get("axes", ()), features=setup.get("features", ()))
+    proposals = propose_shape_policies(
+        training,
+        paths,
+        design=setup["design"],
+        incumbent=incumbent,
+        axes=setup.get("axes", ()),
+        features=setup.get("features", ()),
+    )
     if not proposals:
-        return dict(evidence="target owner feedback", proposals=[], executions=[],
-                    status="no_training_supported_proposal", performance_qualification=False)
+        return dict(
+            evidence="target owner feedback",
+            proposals=[],
+            executions=[],
+            status="no_training_supported_proposal",
+            performance_qualification=False,
+        )
     # The first TRAINING-ranked proposal is frozen before any heldout callback.
     proposal = proposals[0]
     requests = proposal.requests(training)
     if requests["missing_boundary_sources"] and callable(getattr(owner, "boundaries", None)):
         facts = tuple(owner.boundaries(requests))
         from merlin.transforms.pass_exploration import ExplorationGeometry
-        proposal = proposal.freeze_boundaries(tuple(ExplorationGeometry(
-            training[0].geometry.family, f.shapes) for f in facts), facts=facts)
+
+        proposal = proposal.freeze_boundaries(
+            tuple(ExplorationGeometry(training[0].geometry.family, f.shapes) for f in facts), facts=facts
+        )
         requests = proposal.requests(training)
     extra = tuple(owner.evaluate(requests))
     cases = (*training, *extra)
@@ -529,8 +547,9 @@ def target_example(owner):
     for case in cases:
         case.__post_init__()
         observed = dict(case.observations)
-        domain = PerformanceDomain.from_observation(next(iter(observed.values())).identity,
-            implementation_sha256=case.implementation_sha256)
+        domain = PerformanceDomain.from_observation(
+            next(iter(observed.values())).identity, implementation_sha256=case.implementation_sha256
+        )
         row = dict(geometry_sha256=case.geometry.identity)
         artifacts = []
         for label in ("incumbent", "selected"):
@@ -538,9 +557,13 @@ def target_example(owner):
             if bound["facts"] != case.facts:
                 raise ValueError("target binding differs from original observed source facts")
             args = (bound["session"], bound["registry"], bound["facts"])
-            result = (execute_policy(args[0], PipelinePolicy((fallback,), incumbent),
-                      args[1], args[2], output=bound["output"]) if label == "incumbent" else
-                      policy.execute(*args, output=bound["output"], domain=domain))
+            result = (
+                execute_policy(
+                    args[0], PipelinePolicy((fallback,), incumbent), args[1], args[2], output=bound["output"]
+                )
+                if label == "incumbent"
+                else policy.execute(*args, output=bound["output"], domain=domain)
+            )
             program = result.artifact
             if type(program) is not EmittedProgram:
                 raise ValueError("target terminal pass must return its actual EmittedProgram")
@@ -548,20 +571,32 @@ def target_example(owner):
             digest = hashlib.sha256(program.data).hexdigest()
             variant = result.receipt["selected_variant"]
             original = observed.get(variant)
-            if (original is None or original.program_sha256 != digest
-                    or original.identity.artifact_format != program.format):
+            if (
+                original is None
+                or original.program_sha256 != digest
+                or original.identity.artifact_format != program.format
+            ):
                 raise ValueError("current target emission differs from the original observed program")
-            row[label] = dict(variant=variant, program_sha256=digest,
-                              feedback_sha256=original.feedback_sha256,
-                              cycles=original.cycles, eligible=original.eligible,
-                              passes=[p["name"] for p in result.receipt["passes"]])
+            row[label] = dict(
+                variant=variant,
+                program_sha256=digest,
+                feedback_sha256=original.feedback_sha256,
+                cycles=original.cycles,
+                eligible=original.eligible,
+                passes=[p["name"] for p in result.receipt["passes"]],
+            )
             artifacts.append(program.data)
         row["changed_emission"] = artifacts[0] != artifacts[1]
         executions.append(row)
-    return dict(evidence="target owner feedback; original emitted bytes rechecked",
-                proposal=proposal.report, requests=proposal.requests(cases), policy=policy.report,
-                executions=executions, performance_qualification=False,
-                qualification="declared panel only; target owner retains numerical/timing authority")
+    return dict(
+        evidence="target owner feedback; original emitted bytes rechecked",
+        proposal=proposal.report,
+        requests=proposal.requests(cases),
+        policy=policy.report,
+        executions=executions,
+        performance_qualification=False,
+        qualification="declared panel only; target owner retains numerical/timing authority",
+    )
 
 
 def example(facts=None, panel_files=None, pins_file=None, holdout=("model_layer", "thin"), extra=()) -> dict:

@@ -283,8 +283,8 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
         # A RoCC endpoint whose funct table comes from the target's own C ISA header. Reuses the RoCC
         # decoder unchanged: the ONLY difference from an RTL-derived table is where the codes were
         # read, and the decoder never cared.
-        from merlin.common import provenance as _prov
         from merlin.analysis import rocc_commands as _rocc
+        from merlin.common import provenance as _prov
         from merlin.targetgen.rtl.circt_introspect import _functs_from_headers
 
         enc = block.get("encoding") or {}

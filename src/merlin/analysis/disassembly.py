@@ -133,8 +133,11 @@ def _parse_line(line: str, section: str) -> RawInsn | None:
     # scalar columns while recovering only custom .insn directives.
     columns = right.split()
     byte_count = 0
-    while (byte_count < len(columns) and len(columns[byte_count]) == 2
-           and all(char in "0123456789abcdefABCDEF" for char in columns[byte_count])):
+    while (
+        byte_count < len(columns)
+        and len(columns[byte_count]) == 2
+        and all(char in "0123456789abcdefABCDEF" for char in columns[byte_count])
+    ):
         byte_count += 1
     if byte_count in (2, 4) and byte_count < len(columns):
         raw_bytes = bytes.fromhex("".join(columns[:byte_count]))
@@ -144,8 +147,7 @@ def _parse_line(line: str, section: str) -> RawInsn | None:
     # An optional complete encoding column, not any hexadecimal-looking word:
     # the scalar mnemonic "add" is also valid hexadecimal. Wordless objdump
     # listings must retain it as a mnemonic with an unknown encoding.
-    encoded = len(parts) >= 2 and len(parts[0]) in (4, 8) and all(
-        char in "0123456789abcdefABCDEF" for char in parts[0])
+    encoded = len(parts) >= 2 and len(parts[0]) in (4, 8) and all(char in "0123456789abcdefABCDEF" for char in parts[0])
     hexword = parts[0] if encoded else ""
     if not encoded:
         parts = ["", *right.split(None, 1)]
@@ -186,8 +188,13 @@ def _tokenize_lines(text: str) -> list[RawInsn]:
         insn = _parse_line(line, section)
         if insn is not None:
             insn.section_name = section_name
-            if (not insn.hexcode and insn.mnemonic.startswith("R_") and out
-                    and out[-1].addr == insn.addr and out[-1].section_name == section_name):
+            if (
+                not insn.hexcode
+                and insn.mnemonic.startswith("R_")
+                and out
+                and out[-1].addr == insn.addr
+                and out[-1].section_name == section_name
+            ):
                 out[-1].relocations += (line.partition(":")[2].strip(),)
                 continue
             out.append(insn)

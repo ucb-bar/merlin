@@ -82,11 +82,20 @@ def capacities(facts_path: str | None) -> dict:
     return {
         "source": source,
         "array": (space.array_rows, space.array_cols),
-        "operand": {"name": operand.store.name, "rows": operand.capacity_rows(), "row_bytes": operand.store.row_bytes,
-                    "row_elems": operand.store.elems_per_row(), "basis": operand.basis},
-        "accumulator": {"name": accumulator.store.name, "rows": accumulator.capacity_rows(),
-                        "row_bytes": accumulator.store.row_bytes, "row_elems": accumulator.store.elems_per_row(),
-                        "basis": accumulator.basis},
+        "operand": {
+            "name": operand.store.name,
+            "rows": operand.capacity_rows(),
+            "row_bytes": operand.store.row_bytes,
+            "row_elems": operand.store.elems_per_row(),
+            "basis": operand.basis,
+        },
+        "accumulator": {
+            "name": accumulator.store.name,
+            "rows": accumulator.capacity_rows(),
+            "row_bytes": accumulator.store.row_bytes,
+            "row_elems": accumulator.store.elems_per_row(),
+            "basis": accumulator.basis,
+        },
     }
 
 
@@ -99,9 +108,8 @@ def derived_shape(caps: dict) -> tuple[int, int, int]:
 
 def shared_upstream(shape, caps):
     """Problem, storage and resources every pipeline shares, all from the capacity facts."""
+    from merlin.compiler.schedule.compact_dense import DenseLoopStorage, DenseMemoryView
     from merlin.compiler.selection.capacity import _capacity_fit_tile
-    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
-    from merlin.compiler.schedule.compact_dense import DenseMemoryView
     from merlin.transforms.dense_planning import DenseProblem, DenseResources
 
     rows_edge, cols_edge = caps["array"]
@@ -128,17 +136,15 @@ def shared_upstream(shape, caps):
     )
     # Whole-layer residency (merlin.compiler.selection.capacity): the largest edge-aligned tile whose operands fit the
     # operand store and whose output fits the accumulator, and how many such tiles cover the layer.
-    mt, kt, nt, cover = _capacity_fit_tile(p.m, p.k, p.n, cols_edge, op["rows"] * op["row_elems"],
-                                           acc["rows"] * acc["row_elems"])
+    mt, kt, nt, cover = _capacity_fit_tile(
+        p.m, p.k, p.n, cols_edge, op["rows"] * op["row_elems"], acc["rows"] * acc["row_elems"]
+    )
     return p, storage, resources, {"resident_tile": (mt, kt, nt), "resident_tiles_cover": cover}
 
 
 def adapter():
     """Neutral instruction boundary, with the fresh-capture/STAY pair array retention emits."""
-    from merlin.compiler.schedule.blocks import Compute
-    from merlin.compiler.schedule.blocks import Load
-    from merlin.compiler.schedule.blocks import Preload
-    from merlin.compiler.schedule.blocks import Store
+    from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
     from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
     from merlin.sched.ir import Call, as_expr
 
@@ -147,26 +153,48 @@ def adapter():
 
     def encode(op):
         if isinstance(op, Load):
-            return call(op.role + "_load", ("a", "b", "src_row", "src_col", "rows", "cols", "dst", "step"),
-                        (*op.block, op.dram_row, op.dram_col, op.rows, op.cols, op.row, op.step))
+            return call(
+                op.role + "_load",
+                ("a", "b", "src_row", "src_col", "rows", "cols", "dst", "step"),
+                (*op.block, op.dram_row, op.dram_col, op.rows, op.cols, op.row, op.step),
+            )
         if isinstance(op, Preload) and op.weight_row is None:
-            return call("keep_descriptor", ("acc", "continue", "rows", "cols", "depth"),
-                        (op.accumulator_row, op.accumulate, op.rows, op.cols, op.weight_rows))
+            return call(
+                "keep_descriptor",
+                ("acc", "continue", "rows", "cols", "depth"),
+                (op.accumulator_row, op.accumulate, op.rows, op.cols, op.weight_rows),
+            )
         if isinstance(op, Preload):
-            return call("preload", ("weight", "k", "n", "acc", "continue", "rows", "cols", "depth"),
-                        (op.weight_row, *op.weight_block, op.accumulator_row, op.accumulate, op.rows, op.cols,
-                         op.weight_rows))
+            return call(
+                "preload",
+                ("weight", "k", "n", "acc", "continue", "rows", "cols", "depth"),
+                (op.weight_row, *op.weight_block, op.accumulator_row, op.accumulate, op.rows, op.cols, op.weight_rows),
+            )
         if isinstance(op, Compute):
-            return call("compute" if op.fresh_weights else "stay", ("lhs", "m", "k", "rows", "depth"),
-                        (op.input_row, *op.input_block, op.rows, op.cols))
-        return call("store", ("row", "col", "rows", "cols", "acc"),
-                    (op.dram_row, op.dram_col, op.rows, op.cols, op.accumulator_row))
+            return call(
+                "compute" if op.fresh_weights else "stay",
+                ("lhs", "m", "k", "rows", "depth"),
+                (op.input_row, *op.input_block, op.rows, op.cols),
+            )
+        return call(
+            "store",
+            ("row", "col", "rows", "cols", "acc"),
+            (op.dram_row, op.dram_col, op.rows, op.cols, op.accumulator_row),
+        )
 
     def project(c):
         a = dict(c.args)
         if c.instr in ("lhs_load", "weight_load"):
-            return Load(c.instr.removesuffix("_load"), (a["a"], a["b"]), a["src_row"], a["src_col"], a["rows"],
-                        a["cols"], a["dst"], a["step"])
+            return Load(
+                c.instr.removesuffix("_load"),
+                (a["a"], a["b"]),
+                a["src_row"],
+                a["src_col"],
+                a["rows"],
+                a["cols"],
+                a["dst"],
+                a["step"],
+            )
         if c.instr == "keep_descriptor":
             return Preload(None, None, a["acc"], a["continue"], a["rows"], a["cols"], a["depth"])
         if c.instr == "preload":
@@ -184,9 +212,7 @@ def adapter():
 
 def execute(kernel, a, p) -> dict:
     """Run the projected calls on host integers and compare with the source product; returns call counts."""
-    from merlin.compiler.schedule.blocks import Compute
-    from merlin.compiler.schedule.blocks import Load
-    from merlin.compiler.schedule.blocks import Preload
+    from merlin.compiler.schedule.blocks import Compute, Load, Preload
     from merlin.sched.ir import evaluate, instances
 
     lhs = [[(i * p.k + j) % 7 - 3 for j in range(p.k)] for i in range(p.m)]
@@ -204,14 +230,17 @@ def execute(kernel, a, p) -> dict:
             columns, stride = (p.tile_k, p.tile_m) if op.role == "lhs" else (p.tile_n, p.tile_k)
             for i in range(op.rows):
                 for j in range(op.cols):
-                    memory[op.role, op.row + i + j // columns * stride, j % columns] = (
-                        source[op.dram_row + i][op.dram_col + j])
+                    memory[op.role, op.row + i + j // columns * stride, j % columns] = source[op.dram_row + i][
+                        op.dram_col + j
+                    ]
         elif isinstance(op, Preload):
             pending = op
         elif isinstance(op, Compute):
             if op.fresh_weights:
-                array = [[memory["weight", pending.weight_row + k, n] for n in range(pending.cols)]
-                         for k in range(pending.weight_rows)]
+                array = [
+                    [memory["weight", pending.weight_row + k, n] for n in range(pending.cols)]
+                    for k in range(pending.weight_rows)
+                ]
             for i in range(op.rows):
                 for n in range(pending.cols):
                     slot = pending.accumulator_row + i, n
@@ -231,15 +260,18 @@ def execute(kernel, a, p) -> dict:
 
 
 def _laws(a, block, *, segmented):
-    from merlin.compiler.schedule.dense_panel_pipeline import DensePanelOverlapAdmission
-    from merlin.compiler.schedule.dense_panel_pipeline import DenseRetainedReductionAdmission
+    from merlin.compiler.schedule.dense_panel_pipeline import (
+        DensePanelOverlapAdmission,
+        DenseRetainedReductionAdmission,
+    )
 
     # Execution laws are target declarations (test-only identities here). Issued counts are compiler
     # epoch budgets; pending counts are YOUR queue depths, read from your own facts.
     ids = (a.configuration_identity, a.numerical_policy_identity)
     if not segmented:
-        return DenseRetainedReductionAdmission(*ids, "test-only-ordered-commit-law", block.m * block.k * block.n,
-                                               (block.m + block.n) * block.k, 2, 2)
+        return DenseRetainedReductionAdmission(
+            *ids, "test-only-ordered-commit-law", block.m * block.k * block.n, (block.m + block.n) * block.k, 2, 2
+        )
     overlap = DensePanelOverlapAdmission(*ids, "test-only-disjoint-epoch-law", 4096, 4096, 2, 2)
     reduction = DenseRetainedReductionAdmission(*ids, "test-only-ordered-commit-law", 4096, 4096, 2, 2)
     return overlap, reduction
@@ -256,62 +288,96 @@ def _pick(blocks, accepts):
 def compact(p, s, r, a):
     from merlin.compiler.schedule.dense_ready_readout import schedule_dense_pipeline
 
-    result = schedule_dense_pipeline(p, r, s, a, name="compact", dtypes=DTYPES, static_budget=128,
-        external_buffers_disjoint=True, timeout_ms=20_000)
+    result = schedule_dense_pipeline(
+        p, r, s, a, name="compact", dtypes=DTYPES, static_budget=128, external_buffers_disjoint=True, timeout_ms=20_000
+    )
     return {"calls": execute(result.kernel, a, p)}
 
 
 def retained(p, s, r, a):
     from merlin.compiler.schedule.compact_dense import emit_compact_dense
-    from merlin.compiler.schedule.dense_array_retention import DenseArrayRetentionAdmission
-    from merlin.compiler.schedule.dense_array_retention import propose_dense_array_retention
-    from merlin.compiler.schedule.dense_array_retention import verify_dense_array_retention
-    from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_compute_order
-    from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_operand_hoists
+    from merlin.compiler.schedule.dense_array_retention import (
+        DenseArrayRetentionAdmission,
+        propose_dense_array_retention,
+        verify_dense_array_retention,
+    )
+    from merlin.compiler.schedule.dense_panel_pipeline import (
+        dense_retained_compute_order,
+        dense_retained_operand_hoists,
+    )
     from merlin.compiler.schedule.dense_ready_readout import schedule_dense_pipeline
     from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
-    from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-    from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-    from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+    from merlin.compiler.schedule.schedule_ir import (
+        dense_schedule_text,
+        make_dense_schedule_plan,
+        parse_dense_schedule_plan,
+    )
     from merlin.transforms.dense_planning import dense_blocks
 
-    b = _pick(dense_blocks(p, r, k_limit=lambda m, n: s.k_limit(p, r, m, n)),
-              lambda b: b.k == p.tiles[1])  # premise: the whole K panel stays resident
+    b = _pick(
+        dense_blocks(p, r, k_limit=lambda m, n: s.k_limit(p, r, m, n)), lambda b: b.k == p.tiles[1]
+    )  # premise: the whole K panel stays resident
     law = _laws(a, b, segmented=False)
     raw = emit_compact_dense(p, b, s, a, name="retained", dtypes=DTYPES, outer_order=("m", "n"))
     transforms = dense_retained_operand_hoists(raw, a, role="lhs")
     transforms += dense_retained_compute_order(propose_loop_transforms(raw, transforms), a, order=("k", "n", "m"))
-    plan = make_dense_schedule_plan(p, r, s, a, source_identity=SOURCE, dtypes=DTYPES, static_budget=128,
-                                    block_tiles=(b.m, b.k, b.n), outer_order=("m", "n"),
-                                    loop_transforms=transforms, pipeline_kind="retained_full_k",
-                                    pipeline_prefetch=False)
+    plan = make_dense_schedule_plan(
+        p,
+        r,
+        s,
+        a,
+        source_identity=SOURCE,
+        dtypes=DTYPES,
+        static_budget=128,
+        block_tiles=(b.m, b.k, b.n),
+        outer_order=("m", "n"),
+        loop_transforms=transforms,
+        pipeline_kind="retained_full_k",
+        pipeline_prefetch=False,
+    )
     text = dense_schedule_text(plan)  # editable decision IR in the schedule dialect
-    result = schedule_dense_pipeline(p, r, s, a, pipeline_admission=law, name="retained", dtypes=DTYPES,
-        schedule_plan=parse_dense_schedule_plan(text), source_identity=SOURCE,
-        external_buffers_disjoint=True, static_budget=128)
+    result = schedule_dense_pipeline(
+        p,
+        r,
+        s,
+        a,
+        pipeline_admission=law,
+        name="retained",
+        dtypes=DTYPES,
+        schedule_plan=parse_dense_schedule_plan(text),
+        source_identity=SOURCE,
+        external_buffers_disjoint=True,
+        static_budget=128,
+    )
     result.revalidate()
     result.materialize_scf().verify()
-    array_law = DenseArrayRetentionAdmission(a.configuration_identity, a.numerical_policy_identity,
-                                             "test-only-array-capture-stay-law")
+    array_law = DenseArrayRetentionAdmission(
+        a.configuration_identity, a.numerical_policy_identity, "test-only-array-capture-stay-law"
+    )
     proposal = propose_dense_array_retention(result.kernel, a, array_law)
     report = verify_dense_array_retention(proposal, p, b, r, s, a, law, static_budget=256)
     from merlin.compiler.schedule.scf_commands import materialize_scf_commands
 
     materialize_scf_commands(proposal.kernel).verify()
-    return {"block": (b.m, b.k, b.n), "calls": execute(proposal.kernel, a, p),
-            "panel_calls": execute(result.kernel, a, p), "retained_pairs": report["retained_pairs"],
-            "loop_transforms": [t.action for t in transforms],
-            "schedule_ir_ops": sorted({line.split('"')[1] for line in text.splitlines() if '"schedule.' in line})}
+    return {
+        "block": (b.m, b.k, b.n),
+        "calls": execute(proposal.kernel, a, p),
+        "panel_calls": execute(result.kernel, a, p),
+        "retained_pairs": report["retained_pairs"],
+        "loop_transforms": [t.action for t in transforms],
+        "schedule_ir_ops": sorted({line.split('"')[1] for line in text.splitlines() if '"schedule.' in line}),
+    }
 
 
 def segmented(p, s, r, a, *, readout_mode="disjoint"):
-    from merlin.compiler.schedule.dense_panel_pipeline import DenseReadoutComputeAdmission
-    from merlin.compiler.schedule.dense_panel_pipeline import DenseReadyReadoutAdmission
+    from merlin.compiler.schedule.dense_panel_pipeline import DenseReadoutComputeAdmission, DenseReadyReadoutAdmission
     from merlin.compiler.schedule.dense_ready_readout import schedule_dense_pipeline
     from merlin.compiler.schedule.dense_segmented_pipeline import DenseSegmentedAdmission
-    from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-    from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-    from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+    from merlin.compiler.schedule.schedule_ir import (
+        dense_schedule_text,
+        make_dense_schedule_plan,
+        parse_dense_schedule_plan,
+    )
     from merlin.transforms.dense_planning import dense_blocks
 
     # Premises: at least two K segments to pipeline, two accumulator windows, and more than one output
@@ -327,31 +393,64 @@ def segmented(p, s, r, a, *, readout_mode="disjoint"):
     rs = replace(rs, max_k_blocks=b.k)
     overlap, reduction = _laws(a, b, segmented=True)
     law = DenseSegmentedAdmission(overlap, reduction, "test-only-combined-law")
-    plan = make_dense_schedule_plan(p, rs, s, a, source_identity=SOURCE, dtypes=DTYPES, static_budget=128,
-                                    block_tiles=(b.m, b.k, b.n), pipeline_kind="retained_lhs_segmented_k",
-                                    pipeline_prefetch=True)
+    plan = make_dense_schedule_plan(
+        p,
+        rs,
+        s,
+        a,
+        source_identity=SOURCE,
+        dtypes=DTYPES,
+        static_budget=128,
+        block_tiles=(b.m, b.k, b.n),
+        pipeline_kind="retained_lhs_segmented_k",
+        pipeline_prefetch=True,
+    )
+
     def store(component):
-        return replace(component, max_issued_readouts=b.m * b.n, pending_readouts=2,
-                       readout_configuration="ordered_snapshot_before_store_issue")
+        return replace(
+            component,
+            max_issued_readouts=b.m * b.n,
+            pending_readouts=2,
+            readout_configuration="ordered_snapshot_before_store_issue",
+        )
 
     law = replace(law, overlap=store(law.overlap), reduction=store(law.reduction))
     cls = DenseReadyReadoutAdmission if readout_mode == "ready" else DenseReadoutComputeAdmission
-    capability = cls(a.configuration_identity, a.numerical_policy_identity,
-                     "test-only-selected-readout-completion", "test-only-store-snapshot", b.m * b.n, 2)
-    result = schedule_dense_pipeline(p, rs, s, a, name="segmented", dtypes=DTYPES,
-        schedule_plan=parse_dense_schedule_plan(dense_schedule_text(plan)), source_identity=SOURCE,
-        external_buffers_disjoint=True, pipeline_admission=law, batch_readouts=True,
-        readout_mode=readout_mode, readout_admission=capability,
-        readout_group_path=() if readout_mode == "ready" else ("outer_m", "outer_n"))
+    capability = cls(
+        a.configuration_identity,
+        a.numerical_policy_identity,
+        "test-only-selected-readout-completion",
+        "test-only-store-snapshot",
+        b.m * b.n,
+        2,
+    )
+    result = schedule_dense_pipeline(
+        p,
+        rs,
+        s,
+        a,
+        name="segmented",
+        dtypes=DTYPES,
+        schedule_plan=parse_dense_schedule_plan(dense_schedule_text(plan)),
+        source_identity=SOURCE,
+        external_buffers_disjoint=True,
+        pipeline_admission=law,
+        batch_readouts=True,
+        readout_mode=readout_mode,
+        readout_admission=capability,
+        readout_group_path=() if readout_mode == "ready" else ("outer_m", "outer_n"),
+    )
     batched = result.original
     base_report = batched.realization["input_schedule"]
     result.revalidate()
     result.materialize_scf().verify()
-    return {"block": (b.m, b.k, b.n), "calls": execute(result.kernel, a, p),
-            "overlapped_compute_pairs": base_report.get("overlapped_compute_pairs"),
-            "disjoint_readout_epochs": sum(1 for e in result.realization["epochs"]
-                                          if e.get("disjoint_readout_compute")),
-            "epoch_drains": (batched.realization["dynamic_epoch_drains"], result.realization["dynamic_epoch_drains"])}
+    return {
+        "block": (b.m, b.k, b.n),
+        "calls": execute(result.kernel, a, p),
+        "overlapped_compute_pairs": base_report.get("overlapped_compute_pairs"),
+        "disjoint_readout_epochs": sum(1 for e in result.realization["epochs"] if e.get("disjoint_readout_compute")),
+        "epoch_drains": (batched.realization["dynamic_epoch_drains"], result.realization["dynamic_epoch_drains"]),
+    }
 
 
 def ready(p, s, r, a):
@@ -366,8 +465,15 @@ def example(facts: str | None = None, shape: tuple[int, int, int] | None = None,
     shape = shape or derived_shape(caps)
     p, s, r, fit = shared_upstream(shape, caps)
     a = adapter()
-    out = {"facts": caps["source"], "capacities": caps, "shape": shape, "tile": (p.tile_m, p.tile_k, p.tile_n),
-           "tiles": p.tiles, "capacity_fit": fit, "pipelines": {}}
+    out = {
+        "facts": caps["source"],
+        "capacities": caps,
+        "shape": shape,
+        "tile": (p.tile_m, p.tile_k, p.tile_n),
+        "tiles": p.tiles,
+        "capacity_fit": fit,
+        "pipelines": {},
+    }
     for name in pipelines:
         out["pipelines"][name] = PIPELINES[name](p, s, r, a)
     out["verified"] = "every pipeline reproduced the source product from its projected calls"
@@ -375,8 +481,10 @@ def example(facts: str | None = None, shape: tuple[int, int, int] | None = None,
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0],
-                                 epilog="See the shape-schedule-selection skill, reference/capacity-pipeline.md.")
+    ap = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0],
+        epilog="See the shape-schedule-selection skill, reference/capacity-pipeline.md.",
+    )
     ap.add_argument("--facts", default=None, help="RTL facts JSON (default: rtl_facts/facts.json if present)")
     ap.add_argument("--shape", default=None, help="M,K,N (default: derived from the capacities)")
     ap.add_argument("--pipeline", action="append", choices=sorted(PIPELINES), help="run only these (repeatable)")

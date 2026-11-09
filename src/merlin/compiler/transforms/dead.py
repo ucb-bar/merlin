@@ -30,7 +30,8 @@ def _dead_tensor_operation_is_pure(op) -> bool:
         return False
     if any(
         isinstance(value.type, MemRefType | UnrankedMemRefType)
-        or isinstance(value.type, TensorType) and value.type.encoding != NoneAttr()
+        or isinstance(value.type, TensorType)
+        and value.type.encoding != NoneAttr()
         for value in (*op.operands, *op.results)
     ):
         return False
@@ -45,11 +46,7 @@ def _dead_tensor_operation_is_pure(op) -> bool:
             return False
         # The structured tensor operation is value-only only when its actual
         # scalar body is known pure. Its generic container has no such trait.
-        return all(
-            _dead_tensor_operation_is_pure(child)
-            for region in op.regions
-            for child in region.block.ops
-        )
+        return all(_dead_tensor_operation_is_pure(child) for region in op.regions for child in region.block.ops)
     if op.regions:
         return False
     if isinstance(op, YieldOp):
@@ -57,6 +54,7 @@ def _dead_tensor_operation_is_pure(op) -> bool:
     if isinstance(op, tensor.EmptyOp):
         return get_effects(op) == set()
     return get_effects(op) == set() and is_speculatable(op)
+
 
 def prune_dead_pure_tensor_ops(module) -> int:
     """Erase dead top-level pure tensor-expression cones; return the number of erased ops.

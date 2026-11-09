@@ -15,9 +15,7 @@ def group_reports(grouping: GroupPlan, offload=None) -> dict:
     reports = {}
     try:
         report = grouping.report()
-        reports["compute_groups"] = {
-            key: report[key] for key in ("schema", "summary", "absorption_refusals", "groups")
-        }
+        reports["compute_groups"] = {key: report[key] for key in ("schema", "summary", "absorption_refusals", "groups")}
     except Exception as error:  # noqa: BLE001 -- diagnostics do not authorize or block emission
         reports["compute_groups"] = {"error": f"{type(error).__name__}: {error}"}
     try:
@@ -46,8 +44,12 @@ def group_reports(grouping: GroupPlan, offload=None) -> dict:
 
         grouping.require_current(grouping.source, grouping.target, weight_args=grouping.weight_args)
         report = group_capsule_entries.entries(
-            grouping.target, grouping.source, weight_args=grouping.weight_args,
-            with_raw=False, oracle=grouping.oracle, groups=grouping.groups,
+            grouping.target,
+            grouping.source,
+            weight_args=grouping.weight_args,
+            with_raw=False,
+            oracle=grouping.oracle,
+            groups=grouping.groups,
         )
         reports["group_programs"] = {
             key: report[key] for key in ("schema", "accelerator_groups", "stated", "distinct", "unstated", "entries")

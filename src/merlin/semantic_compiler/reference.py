@@ -14,8 +14,18 @@ from math import isnan, prod
 from struct import pack, unpack
 
 from .model import IndexMap, KernelRequest, SemanticNode, TensorType, pointwise_identity_maps
-
-from .reference_values import TensorValue, _i32, _wrap_i32, _matmul_maps, _f32_add_rne, _f32_div_rne, _f32_reduce_maps, _checked_f32_pointwise_maps, _flat_index, _BF16_RELU_ATTRS
+from .reference_values import (
+    _BF16_RELU_ATTRS,
+    TensorValue,
+    _checked_f32_pointwise_maps,
+    _f32_add_rne,
+    _f32_div_rne,
+    _f32_reduce_maps,
+    _flat_index,
+    _i32,
+    _matmul_maps,
+    _wrap_i32,
+)
 
 ReferencePrimitive = Callable[[SemanticNode, tuple[TensorValue, ...]], TensorValue]
 

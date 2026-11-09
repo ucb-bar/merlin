@@ -1,22 +1,35 @@
 """Trusted runtime bundles retain independent byte and ABI binding."""
+
 import hashlib
+
 import pytest
 
-from merlin.compiler.frontend.materialized import MaterializedModelInputs
 from merlin import model as baremetal_model
+from merlin.compiler.frontend.materialized import MaterializedModelInputs
 
 
 def binding(tmp_path):
-    names = ["model.mlir", "weights.safetensors", "weights.safetensors.manifest.json",
-             "inputs.npz", "input_order.json", "golden.npy", "goldens.npz", "output_order.json"]
+    names = [
+        "model.mlir",
+        "weights.safetensors",
+        "weights.safetensors.manifest.json",
+        "inputs.npz",
+        "input_order.json",
+        "golden.npy",
+        "goldens.npz",
+        "output_order.json",
+    ]
     artifacts = {}
     for name in names:
         raw = name.encode()
         (tmp_path / name).write_bytes(raw)
         artifacts[name] = {"sha256": hashlib.sha256(raw).hexdigest(), "size_bytes": len(raw)}
-    return MaterializedModelInputs.bind(tmp_path, artifacts=artifacts,
-                                       validator_identity={"worker_sha256": "a" * 64},
-                                       source_identity={"content_sha256": "b" * 64, "artifacts": artifacts})
+    return MaterializedModelInputs.bind(
+        tmp_path,
+        artifacts=artifacts,
+        validator_identity={"worker_sha256": "a" * 64},
+        source_identity={"content_sha256": "b" * 64, "artifacts": artifacts},
+    )
 
 
 def test_bound_materialization_never_creates_original_issuer_receipt(tmp_path):
@@ -49,6 +62,9 @@ def test_symlink_ancestor_cannot_select_or_reopen_materialization(tmp_path):
     with pytest.raises(ValueError, match="symbolic links"):
         selected.verify(alias)
     with pytest.raises(ValueError, match="symbolic links"):
-        MaterializedModelInputs.bind(alias, artifacts=selected.verify(real),
-                                    validator_identity={"worker_sha256": "a" * 64},
-                                    source_identity={"content_sha256": "b" * 64, "artifacts": selected.verify(real)})
+        MaterializedModelInputs.bind(
+            alias,
+            artifacts=selected.verify(real),
+            validator_identity={"worker_sha256": "a" * 64},
+            source_identity={"content_sha256": "b" * 64, "artifacts": selected.verify(real)},
+        )

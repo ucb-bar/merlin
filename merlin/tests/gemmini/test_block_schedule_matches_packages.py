@@ -36,25 +36,27 @@ import sys
 import pytest
 
 from merlin.common.paths import artifacts_dir, merlin_dir, runs_dir
-from merlin.compiler.schedule import BANK_ALIGNED
-from merlin.compiler.schedule import CONTIGUOUS
-from merlin.compiler.schedule import LHS
-from merlin.compiler.schedule import NEST
-from merlin.compiler.schedule import ROLE
-from merlin.compiler.schedule import WEIGHT
-from merlin.compiler.schedule import BlockScheduleError
-from merlin.compiler.schedule import Compute
-from merlin.compiler.schedule import Contraction
-from merlin.compiler.schedule import ConvContraction
-from merlin.compiler.schedule import Geometry
-from merlin.compiler.schedule import Knobs
-from merlin.compiler.schedule import Load
-from merlin.compiler.schedule import Preload
-from merlin.compiler.schedule import Store
-from merlin.compiler.schedule import geometry_from_address_space
-from merlin.compiler.schedule import schedule_contraction
-from merlin.compiler.schedule import schedule_convolution
-from merlin.compiler.schedule import schedule_interface_program
+from merlin.compiler.schedule import (
+    BANK_ALIGNED,
+    CONTIGUOUS,
+    LHS,
+    NEST,
+    ROLE,
+    WEIGHT,
+    BlockScheduleError,
+    Compute,
+    Contraction,
+    ConvContraction,
+    Geometry,
+    Knobs,
+    Load,
+    Preload,
+    Store,
+    geometry_from_address_space,
+    schedule_contraction,
+    schedule_convolution,
+    schedule_interface_program,
+)
 from merlin.targetgen.address_space import derive_address_space
 
 TARGET = "gemmini"

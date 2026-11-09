@@ -7,13 +7,23 @@ An UNSAT result applies only to one candidate, order and bounded model.
 
 from __future__ import annotations
 
-from .allocation_schedule import _defer_boundary_copies, _direct_view_alias, _geometry, _instruction_predecessors, _qualified_in_place_pair, _view_alias_roots, _view_problem, instruction_schedule, interference_edges, live_ranges, topological_orders
-
 from collections.abc import Iterator
 from itertools import chain
-
 from typing import TYPE_CHECKING
 
+from .allocation_schedule import (
+    _defer_boundary_copies,
+    _direct_view_alias,
+    _geometry,
+    _instruction_predecessors,
+    _qualified_in_place_pair,
+    _view_alias_roots,
+    _view_problem,
+    instruction_schedule,
+    interference_edges,
+    live_ranges,
+    topological_orders,
+)
 from .allocation_types import AllocationResult, CandidateGraph, Reservation, StorageBank, Value
 
 if TYPE_CHECKING:
@@ -153,7 +163,9 @@ def _boundary_problem(
             return "fixed boundary ABI has an invalid address"
         value = boundaries[name]
         bank = banks.get(value.storage)
-        if bank is not None and (address < bank.start or address + value.extent > bank.capacity or address % bank.alignment):
+        if bank is not None and (
+            address < bank.start or address + value.extent > bank.capacity or address % bank.alignment
+        ):
             return "fixed boundary ABI exceeds physical storage"
     if fixed_outputs is None:
         return ""
@@ -166,7 +178,9 @@ def _boundary_problem(
             return "fixed output ABI has an invalid address"
         value = graph.value(value_id)
         bank = banks.get(value.storage)
-        if bank is not None and (address < bank.start or address + value.extent > bank.capacity or address % bank.alignment):
+        if bank is not None and (
+            address < bank.start or address + value.extent > bank.capacity or address % bank.alignment
+        ):
             return "fixed output ABI exceeds physical storage"
     return ""
 
@@ -215,7 +229,11 @@ def check_assignment(
         address = addresses[value.id]
         if not isinstance(address, int) or isinstance(address, bool):
             return False, "non-integer address"
-        if address < (bank.start if value.extent else 0) or address + value.extent > bank.capacity or address % bank.alignment:
+        if (
+            address < (bank.start if value.extent else 0)
+            or address + value.extent > bank.capacity
+            or address % bank.alignment
+        ):
             return False, "out-of-range or misaligned address"
         if value.kind == "view":
             offset = value.validity[0].value
@@ -230,7 +248,11 @@ def check_assignment(
         for reservation in reservations:
             if bank.backing != bank_map[reservation.storage].backing:
                 continue
-            if value.extent and address < reservation.start + reservation.extent and reservation.start < address + value.extent:
+            if (
+                value.extent
+                and address < reservation.start + reservation.extent
+                and reservation.start < address + value.extent
+            ):
                 return False, "assignment overlaps reserved physical storage"
         if value.source_node in fixed_inputs and value.kind in {"input", "constant"}:
             if address != fixed_inputs[value.source_node]:
@@ -368,7 +390,11 @@ def allocate(
         if bank is None:
             return AllocationResult("unqualified_target", order, {}, "unknown storage bank")
         addr = variables[value.id]
-        solver.add(addr >= (bank.start if value.extent else 0), addr + value.extent <= bank.capacity, addr % bank.alignment == 0)
+        solver.add(
+            addr >= (bank.start if value.extent else 0),
+            addr + value.extent <= bank.capacity,
+            addr % bank.alignment == 0,
+        )
         for reservation in reservations:
             if value.extent and bank.backing == bank_map[reservation.storage].backing:
                 solver.add(

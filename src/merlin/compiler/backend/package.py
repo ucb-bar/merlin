@@ -58,12 +58,20 @@ class _Selection:
 
     def current(self):
         tool = self.package.tool
-        if (self.package.directory != self.root or not tool.is_file() or tool.is_symlink()
-                or not tool.resolve().is_relative_to(self.root)):
+        if (
+            self.package.directory != self.root
+            or not tool.is_file()
+            or tool.is_symlink()
+            or not tool.resolve().is_relative_to(self.root)
+        ):
             raise ValueError("selected package tool or directory changed")
-        return {"source": _tree(self.root), "contract": _tree(self.contract / "schemas"),
-                "tool": {"path": str(tool), "sha256": hashlib.sha256(tool.read_bytes()).hexdigest()},
-                "manifest": self.package.manifest, "formats": _formats(self.declared["tensors"])}
+        return {
+            "source": _tree(self.root),
+            "contract": _tree(self.contract / "schemas"),
+            "tool": {"path": str(tool), "sha256": hashlib.sha256(tool.read_bytes()).hexdigest()},
+            "manifest": self.package.manifest,
+            "formats": _formats(self.declared["tensors"]),
+        }
 
     def revalidate(self):
         if json.dumps(self.current(), sort_keys=True) != json.dumps(self.identity, sort_keys=True):
@@ -110,20 +118,28 @@ def _select(request):
     context.load_dialect(Builtin)
     module = Parser(context, to_generic_form(request.source.text)).parse_module()
     module.verify()
-    if (len(module.body.blocks) != 1 or module.body.block.args or module.properties
-            or set(module.attributes) != {"merlin_iface.version", "merlin_iface.target", "merlin_iface.abi_version"}
-            or not isinstance(module.attributes.get("merlin_iface.version"), StringAttr)
-            or module.attributes["merlin_iface.version"].data != "0.1"
-            or any(not isinstance(op, UnregisteredOp)
-                   or not isinstance(op.attributes.get("op_name__"), StringAttr)
-                   or not op.attributes["op_name__"].data.startswith("merlin_iface.")
-                   or op.regions for op in module.body.block.ops)):
+    if (
+        len(module.body.blocks) != 1
+        or module.body.block.args
+        or module.properties
+        or set(module.attributes) != {"merlin_iface.version", "merlin_iface.target", "merlin_iface.abi_version"}
+        or not isinstance(module.attributes.get("merlin_iface.version"), StringAttr)
+        or module.attributes["merlin_iface.version"].data != "0.1"
+        or any(
+            not isinstance(op, UnregisteredOp)
+            or not isinstance(op.attributes.get("op_name__"), StringAttr)
+            or not op.attributes["op_name__"].data.startswith("merlin_iface.")
+            or op.regions
+            for op in module.body.block.ops
+        )
+    ):
         raise ValueError("package transport admits only flat merlin_iface operations")
     declared = parse_interface_mlir(request.source.text)
     leaves = [op for op in module.body.block.ops if op.attributes["op_name__"].data == "merlin_iface.tensor"]
     names = [op.attributes.get("name") for op in leaves]
-    if (any(not isinstance(item, StringAttr) or not item.data for item in names)
-            or len({item.data for item in names}) != len(names)):
+    if any(not isinstance(item, StringAttr) or not item.data for item in names) or len(
+        {item.data for item in names}
+    ) != len(names):
         raise ValueError("interface tensor declarations need unique nonempty logical identities")
     for op, logical in zip(leaves, names, strict=True):
         if len(op.results) != 1 or not isinstance(op.results[0].type, TensorType):
@@ -168,20 +184,25 @@ def compile(request):
     def check_source():
         selected.revalidate()
         for path in (source, stages / "input.interface.mlir"):
-            if (not path.is_file() or path.is_symlink()
-                    or path.read_text(encoding="utf-8") != request.source.text):
+            if not path.is_file() or path.is_symlink() or path.read_text(encoding="utf-8") != request.source.text:
                 raise ValueError("selected interface source changed during package compilation")
 
     def invoke(package, entry, input_mlir, output_json=None, **kwargs):
         check_source()
-        result = package_runtime.run_entrypoint(package, entry, input_mlir, output_json,
-                                               invocation_directory=request.output, **kwargs)
+        result = package_runtime.run_entrypoint(
+            package, entry, input_mlir, output_json, invocation_directory=request.output, **kwargs
+        )
         check_source()
         return result
 
     command, _ = capsule_common.lower_interface(
-        selected.package, source, stages, contract=selected.contract, timeout=selected.timeout,
-        invoke=invoke, artifact_name="target-artifact.txt",
+        selected.package,
+        source,
+        stages,
+        contract=selected.contract,
+        timeout=selected.timeout,
+        invoke=invoke,
+        artifact_name="target-artifact.txt",
     )
     check_source()
     if command.get("abi_version") != "0.1" or command.get("target") != selected.package.target:
@@ -198,13 +219,26 @@ def compile(request):
     for path in sorted(request.output.rglob("*")):
         if not path.is_file():
             continue
-        role = ("command-buffer" if path.name == "command_buffer.json" else
-                "invocation-record" if path.name == "invocation.json" else "intermediate")
+        role = (
+            "command-buffer"
+            if path.name == "command_buffer.json"
+            else "invocation-record"
+            if path.name == "invocation.json"
+            else "intermediate"
+        )
         products.append(Artifact.from_file(path, kind="json" if path.suffix == ".json" else "data", role=role))
     check_source()
-    return Compilation(request.output, name, request.source.sha256, tuple(products), metadata={
-        "scope": "experiment ABI 0.1 structural command-buffer transport",
-        "selected_package": selected.identity, "emitted_formats": formats,
-        "artifact_language": "opaque text declared by the package; not assumed to be LLVM",
-        "numerical_verification": "not_run", "execution_observed": False,
-    })
+    return Compilation(
+        request.output,
+        name,
+        request.source.sha256,
+        tuple(products),
+        metadata={
+            "scope": "experiment ABI 0.1 structural command-buffer transport",
+            "selected_package": selected.identity,
+            "emitted_formats": formats,
+            "artifact_language": "opaque text declared by the package; not assumed to be LLVM",
+            "numerical_verification": "not_run",
+            "execution_observed": False,
+        },
+    )

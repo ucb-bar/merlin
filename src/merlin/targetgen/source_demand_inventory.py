@@ -54,18 +54,27 @@ def _declared_data_operand_format(op) -> str | None:
         return None
     name = mq.op_name(op)
     if name in {"tensor.collapse_shape", "tensor.expand_shape", "tensor.cast"}:
-        if (len(op.operands) != 1 or data.element_type != result.element_type
-                or prod(data.get_shape()) != prod(result.get_shape())):
+        if (
+            len(op.operands) != 1
+            or data.element_type != result.element_type
+            or prod(data.get_shape()) != prod(result.get_shape())
+        ):
             return None
     elif name in {"quant_ext.quantize_per_tensor", "quant_ext.dequantize_per_tensor"}:
         if len(op.operands) != 3 or data.get_shape() != result.get_shape():
             return None
         scale, zero = (static_tensor(value) for value in op.operands[1:])
-        if (scale is None or zero is None or scale.get_shape() or zero.get_shape()
-                or not isinstance(scale.element_type, Float32Type)
-                or not isinstance(zero.element_type, IntegerType) or zero.element_type.width.data != 64):
+        if (
+            scale is None
+            or zero is None
+            or scale.get_shape()
+            or zero.get_shape()
+            or not isinstance(scale.element_type, Float32Type)
+            or not isinstance(zero.element_type, IntegerType)
+            or zero.element_type.width.data != 64
+        ):
             return None
-        floating, integer = ((data, result) if name == "quant_ext.quantize_per_tensor" else (result, data))
+        floating, integer = (data, result) if name == "quant_ext.quantize_per_tensor" else (result, data)
         if not isinstance(floating.element_type, Float32Type) or not isinstance(integer.element_type, IntegerType):
             return None
     else:
@@ -79,16 +88,15 @@ def _observe_declared_data_formats(module, demands):
     from dataclasses import replace
 
     from merlin.common import mlir_query as mq
+
     from .capsule_source import ModelDemandIncomplete
 
-    carriers = [op for op in mq.walk(module)
-                if mq.attr_str(op, "prov.op") not in {None, "fill"}]
+    carriers = [op for op in mq.walk(module) if mq.attr_str(op, "prov.op") not in {None, "fill"}]
     if len(carriers) != len(demands):
         raise ModelDemandIncomplete("declared operand observation lacks complete ordered carrier identity")
     observed = []
     for op, demand in zip(carriers, demands, strict=True):
-        if (mq.op_name(op) != demand.carrier_op
-                or mq.attr_str(op, "prov.region_id") != demand.region_id):
+        if mq.op_name(op) != demand.carrier_op or mq.attr_str(op, "prov.region_id") != demand.region_id:
             raise ModelDemandIncomplete("declared operand observation names another source carrier")
         fmt = _declared_data_operand_format(op) if demand.captured_input_formats == () else None
         observed.append(replace(demand, elem_fmt=fmt, captured_input_formats=(fmt,)) if fmt is not None else demand)

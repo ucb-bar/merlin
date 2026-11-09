@@ -49,17 +49,25 @@ def execute(prepared: PreparedRun) -> int:
     target = prepared.request.context.target
     descriptor = prepared.request.context.descriptor
     scope = getattr(options, "validation_scope", "full")
-    full_requirements = {} if scope == "capsules" else {
-        "require_model_check": target == "gemmini",  # target-ok: Explicit Gemmini full-model Phase 1 path.
-        "required_models": private_full_models.requirements_for(descriptor),
-        "required_programs": private_full_models.program_requirements_for(descriptor),
-        "execution_gate": private_full_model_execution.gate_for(
-            descriptor, required_programs=private_full_models.program_requirements_for(descriptor)
-        ),
-        "hidden_capsule_mode": hidden_capsule_policy.resolve(descriptor, options.hidden_capsule_mode)["mode"],
-    }
+    full_requirements = (
+        {}
+        if scope == "capsules"
+        else {
+            "require_model_check": target == "gemmini",  # target-ok: Explicit Gemmini full-model Phase 1 path.
+            "required_models": private_full_models.requirements_for(descriptor),
+            "required_programs": private_full_models.program_requirements_for(descriptor),
+            "execution_gate": private_full_model_execution.gate_for(
+                descriptor, required_programs=private_full_models.program_requirements_for(descriptor)
+            ),
+            "hidden_capsule_mode": hidden_capsule_policy.resolve(descriptor, options.hidden_capsule_mode)["mode"],
+        }
+    )
     grade = certification._selected_grade_result(
-        returncode, prepared.run_dir, validation_scope=scope, descriptor=descriptor, **full_requirements,
+        returncode,
+        prepared.run_dir,
+        validation_scope=scope,
+        descriptor=descriptor,
+        **full_requirements,
     )
     private_json(
         prepared.run_dir / "submission_qualification.json",
@@ -68,9 +76,16 @@ def execute(prepared: PreparedRun) -> int:
             "qualification_only": True,
             "authoring_converged": False,
             "validation_scope": scope,
-            **({"capsule_complete": grade["complete"], "external_full_models_complete": False,
-                "overall_release_qualified": False, "phase2_iteration_ready": False}
-               if scope == "capsules" else {}),
+            **(
+                {
+                    "capsule_complete": grade["complete"],
+                    "external_full_models_complete": False,
+                    "overall_release_qualified": False,
+                    "phase2_iteration_ready": False,
+                }
+                if scope == "capsules"
+                else {}
+            ),
             "target": target,
             "selected_source_tree_sha256": seed.get("selected_source_tree_sha256"),
             "initial_candidate_sha256": initial_candidate_sha256,

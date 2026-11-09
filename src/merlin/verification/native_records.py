@@ -12,8 +12,9 @@ from pathlib import Path
 from merlin.compiler.quantization.native import precision_plan_bytes, prepared_static_inputs
 
 
-def check_ordered_records(artifact, manifest, *, source_request, k_source_request,
-                          ordered_mn_record=None, ordered_k_record=None):
+def check_ordered_records(
+    artifact, manifest, *, source_request, k_source_request, ordered_mn_record=None, ordered_k_record=None
+):
     """Require exact requested records and refuse undeclared decompositions."""
     rows = (
         ("ordered-k-tiling.json", ordered_k_record, "source_request_digest", k_source_request, "ordered-K"),
@@ -24,8 +25,12 @@ def check_ordered_records(artifact, manifest, *, source_request, k_source_reques
         if record is None:
             if path.exists() or path.is_symlink() or field in manifest:
                 raise ValueError(f"native artifact has an unrequested {description} partition")
-        elif (manifest.get(field) != source.digest() or path.is_symlink() or not path.is_file()
-              or path.read_bytes() != record):
+        elif (
+            manifest.get(field) != source.digest()
+            or path.is_symlink()
+            or not path.is_file()
+            or path.read_bytes() != record
+        ):
             raise ValueError(f"{description} partition differs from the original source")
 
 
@@ -45,13 +50,20 @@ def check_precision_plan(artifact, manifest, precision_plan, *, binding=None, st
     if binding is None or staged_root is None:
         raise ValueError("source-bound constants require their selected support and staged compiler inputs")
     prepared = prepared_static_inputs(
-        binding, precision_plan, Path(staged_root), json.loads((artifact / "execution_plan.json").read_bytes()),
+        binding,
+        precision_plan,
+        Path(staged_root),
+        json.loads((artifact / "execution_plan.json").read_bytes()),
     )
     if manifest.get("constant_inputs") != [item.record() for item in prepared]:
         raise ValueError("source-bound constant inputs differ from staged compiler inputs")
     for item in prepared:
         if item.payload is not None:
             destination = artifact / item.record()["path"]
-            if (destination.is_symlink() or not destination.is_file()
-                    or destination.parent.is_symlink() or destination.read_bytes() != item.payload):
+            if (
+                destination.is_symlink()
+                or not destination.is_file()
+                or destination.parent.is_symlink()
+                or destination.read_bytes() != item.payload
+            ):
                 raise ValueError("source-bound constant payload differs from staged parameter")

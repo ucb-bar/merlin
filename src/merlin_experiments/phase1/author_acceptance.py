@@ -376,11 +376,18 @@ def check_withheld_sandbox(ctx) -> Check:
         return Check("withheld-in-bwrap", SKIP, "bwrap is not installed")
     if not ctx.staged.get("descriptor"):
         return Check("withheld-in-bwrap", SKIP, "needs --inputs (the descriptor selects toolchain binds)")
-    manifest = (Path(ctx.staged["descriptor"]).parent / "input_bundles" /
-                ctx.staged["bundle"] / "input_bundle_manifest.yaml")
+    manifest = (
+        Path(ctx.staged["descriptor"]).parent / "input_bundles" / ctx.staged["bundle"] / "input_bundle_manifest.yaml"
+    )
     proc, built = run_child(
-        _SANDBOX_ARGV, operator_roots(ctx.framework), (), ctx.ws, ctx.staged["descriptor"], ctx.framework,
-        manifest, cwd=ctx.work
+        _SANDBOX_ARGV,
+        operator_roots(ctx.framework),
+        (),
+        ctx.ws,
+        ctx.staged["descriptor"],
+        ctx.framework,
+        manifest,
+        cwd=ctx.work,
     )
     if built is None:
         return Check("withheld-in-bwrap", FAIL, f"sandbox argv composition failed: {_tail(proc)}")
@@ -658,15 +665,27 @@ def check_library_inventory(ctx) -> Check:
     if result is None or result["code"] != 0:
         return Check("library-inventory", FAIL, f"inventory did not run: {_tail(proc)}")
     if result["foreign"]:
-        return Check("library-inventory", FAIL,
-                     f"merlin modules came from outside the staged library: {result['foreign'][:4]}", result)
+        return Check(
+            "library-inventory",
+            FAIL,
+            f"merlin modules came from outside the staged library: {result['foreign'][:4]}",
+            result,
+        )
     text = out.read_text(encoding="utf-8") if out.is_file() else ""
     rows = sum(1 for line in text.splitlines() if line.startswith("| capability |"))
     if "capabilities: scheduling_capabilities(" not in text or not rows or "## Per-family library passes" not in text:
-        return Check("library-inventory", FAIL, f"inventory lacks the staged capability catalog or the family "
-                     f"table: {text[:300]!r}", result)
-    return Check("library-inventory", PASS,
-                 f"{rows} capabilities from the staged library ({result['loaded']} modules) and a family table", result)
+        return Check(
+            "library-inventory",
+            FAIL,
+            f"inventory lacks the staged capability catalog or the family table: {text[:300]!r}",
+            result,
+        )
+    return Check(
+        "library-inventory",
+        PASS,
+        f"{rows} capabilities from the staged library ({result['loaded']} modules) and a family table",
+        result,
+    )
 
 
 def _stdout_json(proc):
@@ -683,20 +702,46 @@ def _shape_choice_inputs(root: Path) -> list[str]:
     root.mkdir(parents=True, exist_ok=True)
     files = {
         "knobs.json": {"schema": "merlin.tuning_knobs.v1", "knobs": {"plan": {"values": ["a", "b"]}}},
-        "cases.json": [{"case": "wide", "m": 4, "k": 8, "n": 32}, {"case": "tall", "m": 32, "k": 8, "n": 4},
-                       {"case": "small", "m": 4, "k": 8, "n": 8}],
-        "facts.json": {"arrays": [{"name": "array", "rows": 4, "cols": 4}],
-                       "memories": [{"name": "operand_sram", "banks": 1, "depth": 64, "bytes": 256},
-                                    {"name": "acc_sram", "banks": 1, "depth": 16, "bytes": 256}],
-                       "datapaths": [{"name": "operand_sram", "dtype": "i8"}, {"name": "acc_sram", "dtype": "i32"}]},
-        "results.json": {"rows": [{"case": c, "settings": {"plan": p}, "cycles": cycles, "domain": "acceptance"}
-                                  for c, p, cycles in (("wide", "a", 20), ("wide", "b", 10), ("tall", "a", 30),
-                                                       ("tall", "b", 15), ("small", "a", 5), ("small", "b", 9))]},
+        "cases.json": [
+            {"case": "wide", "m": 4, "k": 8, "n": 32},
+            {"case": "tall", "m": 32, "k": 8, "n": 4},
+            {"case": "small", "m": 4, "k": 8, "n": 8},
+        ],
+        "facts.json": {
+            "arrays": [{"name": "array", "rows": 4, "cols": 4}],
+            "memories": [
+                {"name": "operand_sram", "banks": 1, "depth": 64, "bytes": 256},
+                {"name": "acc_sram", "banks": 1, "depth": 16, "bytes": 256},
+            ],
+            "datapaths": [{"name": "operand_sram", "dtype": "i8"}, {"name": "acc_sram", "dtype": "i32"}],
+        },
+        "results.json": {
+            "rows": [
+                {"case": c, "settings": {"plan": p}, "cycles": cycles, "domain": "acceptance"}
+                for c, p, cycles in (
+                    ("wide", "a", 20),
+                    ("wide", "b", 10),
+                    ("tall", "a", 30),
+                    ("tall", "b", 15),
+                    ("small", "a", 5),
+                    ("small", "b", 9),
+                )
+            ]
+        },
     }
     for name, value in files.items():
         (root / name).write_text(json.dumps(value))
-    return ["--knobs", str(root / "knobs.json"), "--cases", str(root / "cases.json"), "--results",
-            str(root / "results.json"), "--facts", str(root / "facts.json"), "--json"]
+    return [
+        "--knobs",
+        str(root / "knobs.json"),
+        "--cases",
+        str(root / "cases.json"),
+        "--results",
+        str(root / "results.json"),
+        "--facts",
+        str(root / "facts.json"),
+        "--json",
+    ]
 
 
 #: The plans capacity_pipeline_example.py realizes by default (its PIPELINES).
@@ -712,10 +757,17 @@ def check_capacity_schedule_example(ctx) -> Check:
         return Check(name, FAIL, f"example did not verify: {_tail(proc)}")
     out = _stdout_json(proc) or {}
     plans = out.get("pipelines") or {}
-    detail = {"example": result, "facts": out.get("facts"), "shape": out.get("shape"),
-              "blocks": {k: v.get("block") for k, v in plans.items()}}
-    if set(plans) != set(CAPACITY_PLANS) or not plans["retained"].get("retained_pairs") or not (
-            plans["segmented"].get("disjoint_readout_epochs")):
+    detail = {
+        "example": result,
+        "facts": out.get("facts"),
+        "shape": out.get("shape"),
+        "blocks": {k: v.get("block") for k, v in plans.items()},
+    }
+    if (
+        set(plans) != set(CAPACITY_PLANS)
+        or not plans["retained"].get("retained_pairs")
+        or not (plans["segmented"].get("disjoint_readout_epochs"))
+    ):
         return Check(name, FAIL, f"example did not realize every plan: {sorted(plans)}", detail)
     argv = _shape_choice_inputs(ctx.work / "shape-choice")
     table_proc, table = _run_skill_script(ctx, "shape-schedule-selection", "shape_choice_table.py", argv)
@@ -730,9 +782,14 @@ def check_capacity_schedule_example(ctx) -> Check:
     foreign = sorted({*result["foreign"], *table["foreign"]})
     if foreign:
         return Check(name, FAIL, f"merlin modules came from outside the staged library: {foreign[:4]}", detail)
-    return Check(name, PASS, f"{len(plans)} plans from {out.get('facts')} capacities and a choice table with its capacity "
-                 f"guard verified "
-                 f"against the staged library ({result['loaded']} modules)", detail)
+    return Check(
+        name,
+        PASS,
+        f"{len(plans)} plans from {out.get('facts')} capacities and a choice table with its capacity "
+        f"guard verified "
+        f"against the staged library ({result['loaded']} modules)",
+        detail,
+    )
 
 
 def check_heavy_pass_recipes(ctx) -> Check:

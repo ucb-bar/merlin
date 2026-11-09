@@ -20,8 +20,7 @@ def _record(value):
 
 
 def _size(buffer, alignment):
-    widths = {"i1": 1, "i8": 1, "i16": 2, "i32": 4, "i64": 8,
-              "f16": 2, "bf16": 2, "f32": 4, "f64": 8}
+    widths = {"i1": 1, "i8": 1, "i16": 2, "i32": 4, "i64": 8, "f16": 2, "bf16": 2, "f32": 4, "f64": 8}
     if buffer.dtype not in widths or any(type(d) is not int or d <= 0 for d in buffer.shape):
         raise ValueError(f"execution memory bound has unsupported static storage type: {buffer.dtype}")
     size = prod(buffer.shape) * widths[buffer.dtype]
@@ -36,8 +35,11 @@ def _source_peak(program, alignment, selected):
     per-operation peaks alone would undercount that overlap. Internal source
     values remain conservatively counted even if a backend later removes them.
     """
-    boundaries = {node: (item.alternative.nodes[0], item.alternative.nodes[-1])
-                  for item in selected for node in item.alternative.nodes}
+    boundaries = {
+        node: (item.alternative.nodes[0], item.alternative.nodes[-1])
+        for item in selected
+        for node in item.alternative.nodes
+    }
     producers = {name: index for index, node in enumerate(program.nodes) for name in node.outputs}
     uses = {name: [] for name in program.buffers}
     for index, node in enumerate(program.nodes):
@@ -54,8 +56,13 @@ def _source_peak(program, alignment, selected):
         start = boundaries.get(start, (start, start))[0]
         end = boundaries.get(end, (end, end))[1]
         intervals.append((start, end, _size(buffer, alignment)))
-    return max((sum(size for start, end, size in intervals if start <= step <= end)
-                for step in range(-1, len(program.nodes) + 1)), default=0)
+    return max(
+        (
+            sum(size for start, end, size in intervals if start <= step <= end)
+            for step in range(-1, len(program.nodes) + 1)
+        ),
+        default=0,
+    )
 
 
 @dataclass(frozen=True)
@@ -94,17 +101,25 @@ class SelectedExecution:
     def record(self):
         self.revalidate()
         return {
-            "schema": "merlin.selected_execution.v1", "source_sha256": self.source.stamp.source_sha256,
-            "topology_sha256": self.topology.sha256, "plan": self.plan.to_dict(),
+            "schema": "merlin.selected_execution.v1",
+            "source_sha256": self.source.stamp.source_sha256,
+            "topology_sha256": self.topology.sha256,
+            "plan": self.plan.to_dict(),
             "policy": {"kind": "bounded-first-compatible", "provider_order": list(self.policy)},
-            "memory_domain": self.memory_domain, "storage_bound_bytes": self.storage_bound_bytes,
-            "storage_scope": ("source liveness widened to region boundaries without alias reuse "
-                              "plus maximum serial scratch"),
+            "memory_domain": self.memory_domain,
+            "storage_bound_bytes": self.storage_bound_bytes,
+            "storage_scope": (
+                "source liveness widened to region boundaries without alias reuse plus maximum serial scratch"
+            ),
             "execution_order": [
-                {"slot": index, "alternative": item.alternative.id, "provider": item.proposal.provider,
-                 "resource": item.proposal.resource,
-                 "shared_group": self.topology.resource(item.proposal.resource).shared_group,
-                 "source_ordinals": list(item.proposal.operation_ordinals)}
+                {
+                    "slot": index,
+                    "alternative": item.alternative.id,
+                    "provider": item.proposal.provider,
+                    "resource": item.proposal.resource,
+                    "shared_group": self.topology.resource(item.proposal.resource).shared_group,
+                    "source_ordinals": list(item.proposal.operation_ordinals),
+                }
                 for index, item in enumerate(self.selected)
             ],
             "source_observations": [item.source_observation() for item in self.selected],
@@ -112,7 +127,6 @@ class SelectedExecution:
             "rejected": [{"alternative": identity, "reason": reason} for identity, reason in self.rejected],
             "qualification": "not_established",
         }
-
 
     def _context_record(self):
         from merlin.compiler.backend.stateful import context_reservations
@@ -156,9 +170,11 @@ def select_execution(source, candidates, *, preferred_providers=(), max_states=4
         raise ValueError("execution selection requires a nonempty bounded immutable candidate roster")
     if type(max_states) is not int or not 0 < max_states <= 100_000:
         raise ValueError("execution search requires a bounded positive state budget")
-    if (type(preferred_providers) is not tuple or
-        any(type(value) is not str or not value for value in preferred_providers) or
-        len(set(preferred_providers)) != len(preferred_providers)):
+    if (
+        type(preferred_providers) is not tuple
+        or any(type(value) is not str or not value for value in preferred_providers)
+        or len(set(preferred_providers)) != len(preferred_providers)
+    ):
         raise ValueError("provider preference must be an ordered tuple of distinct names")
     source.revalidate()
     if type(candidates[0]) is not AdmittedProposal:
@@ -212,14 +228,31 @@ def select_execution(source, candidates, *, preferred_providers=(), max_states=4
         detail = "; ".join(sorted(set(failures.values()))) or "no complete source cover"
         raise ValueError("no compatible execution plan: " + detail)
     selected, domain, bound = found
-    plan = GlobalPlan(tuple(item.alternative for item in selected), (),
-                      CycleInterval.unknown("declaration policy; no performance comparison"),
-                      notes=("serial issue and synchronous completion; no concurrency inferred",))
+    plan = GlobalPlan(
+        tuple(item.alternative for item in selected),
+        (),
+        CycleInterval.unknown("declaration policy; no performance comparison"),
+        notes=("serial issue and synchronous completion; no concurrency inferred",),
+    )
     selected_ids = {item.alternative.id for item in selected}
-    rejected = tuple((item.alternative.id, failures.get(item.alternative.id, "not selected by declared cover policy"))
-                     for item in ordered if item.alternative.id not in selected_ids)
-    result = SelectedExecution(source, topology, candidates, selected, plan, domain, bound, rejected,
-                               preferred_providers, _record(plan.to_dict()), _record((preferred_providers, rejected)),
-                               (source, topology, candidates, selected, plan))
+    rejected = tuple(
+        (item.alternative.id, failures.get(item.alternative.id, "not selected by declared cover policy"))
+        for item in ordered
+        if item.alternative.id not in selected_ids
+    )
+    result = SelectedExecution(
+        source,
+        topology,
+        candidates,
+        selected,
+        plan,
+        domain,
+        bound,
+        rejected,
+        preferred_providers,
+        _record(plan.to_dict()),
+        _record((preferred_providers, rejected)),
+        (source, topology, candidates, selected, plan),
+    )
     result.revalidate()
     return result

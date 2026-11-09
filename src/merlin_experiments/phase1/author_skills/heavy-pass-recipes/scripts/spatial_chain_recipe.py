@@ -99,14 +99,10 @@ def geometry(caps) -> dict:
 def plan(caps, g, workspace_bytes=None):
     from merlin.compiler.schedule.blocks import SpatialMaxReadout
     from merlin.compiler.schedule.program_limits import AddressWindow
-    from merlin.compiler.schedule.rolling_spatial import RollingPackedSpatialPlan
-    from merlin.compiler.schedule.rolling_spatial import propose_rolling_spatial_choices
-    from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan
-    from merlin.compiler.schedule.spatial_producer import SpatialProducerPlan
-    from merlin.compiler.schedule.spatial_readout import RoundedReadout
-    from merlin.compiler.schedule.spatial_readout import SpatialReadoutChain
-    from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
-    from merlin.compiler.schedule.window_transfer import Window2D
+    from merlin.compiler.schedule.rolling_spatial import RollingPackedSpatialPlan, propose_rolling_spatial_choices
+    from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
+    from merlin.compiler.schedule.spatial_readout import RoundedReadout, SpatialReadoutChain
+    from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan, Window2D
 
     edge = min(caps["array"])
     b, h, w, c = g["input"]

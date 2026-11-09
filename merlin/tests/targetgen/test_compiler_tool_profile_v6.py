@@ -12,8 +12,7 @@ import pytest
 import yaml
 
 from merlin.common.paths import repo_root
-from merlin.compiler.schedule.export import _NAMESPACES
-from merlin.compiler.schedule.export import PUBLIC_MODULES
+from merlin.compiler.schedule.export import _NAMESPACES, PUBLIC_MODULES
 from merlin.targetgen.common_transforms import CommonTransformService
 from merlin.targetgen.package_runtime import _py_imports_merlin
 from merlin.targetgen.sandbox import bwrap

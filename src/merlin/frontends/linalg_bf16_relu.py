@@ -33,35 +33,48 @@ def recognize_bf16_sign_clamp_relu(op) -> tuple[object, object]:
         raise InvalidLinalgPattern("BF16 ReLU requires one input and one tensor result")
     if op.successors or set(op.properties) != {"indexing_maps", "iterator_types", "operandSegmentSizes"}:
         raise InvalidLinalgPattern("BF16 ReLU has an unknown Linalg property or successor")
-    if any(not key.startswith("prov.") and key not in {"merlin.numeric_semantics", "merlin.input_domain"}
-           for key in op.attributes):
+    if any(
+        not key.startswith("prov.") and key not in {"merlin.numeric_semantics", "merlin.input_domain"}
+        for key in op.attributes
+    ):
         raise InvalidLinalgPattern("BF16 ReLU has an unknown Linalg attribute")
     policy = op.attributes.get("merlin.numeric_semantics")
     domain = op.attributes.get("merlin.input_domain")
     if (
-        not isinstance(policy, StringAttr) or policy.data != "bf16-sign-clamp-v1"
-        or not isinstance(domain, StringAttr) or domain.data != "finite-normal-or-zero-bf16"
+        not isinstance(policy, StringAttr)
+        or policy.data != "bf16-sign-clamp-v1"
+        or not isinstance(domain, StringAttr)
+        or domain.data != "finite-normal-or-zero-bf16"
     ):
         raise InvalidLinalgPattern("BF16 ReLU requires its exact numerical policy and input domain")
     segments = op.properties["operandSegmentSizes"]
-    if not isinstance(segments, DenseArrayBase) or str(segments.elt_type) != "i32" or (
-        tuple(segments.iter_values()) != (1, 1)
+    if (
+        not isinstance(segments, DenseArrayBase)
+        or str(segments.elt_type) != "i32"
+        or (tuple(segments.iter_values()) != (1, 1))
     ):
         raise InvalidLinalgPattern("BF16 ReLU has an inconsistent operand segment")
     values = (*op.inputs, *op.outputs, *op.results)
-    if any(not isinstance(value.type, TensorType) or not isinstance(value.type.element_type, BFloat16Type)
-           or not isinstance(value.type.encoding, NoneAttr) for value in values):
+    if any(
+        not isinstance(value.type, TensorType)
+        or not isinstance(value.type.element_type, BFloat16Type)
+        or not isinstance(value.type.encoding, NoneAttr)
+        for value in values
+    ):
         raise InvalidLinalgPattern("BF16 ReLU requires default-encoded BF16 tensors")
     shapes = tuple(tuple(value.type.get_shape()) for value in values)
-    if len(shapes[0]) != 2 or any(shape != shapes[0] for shape in shapes) or (
-        any(type(dim) is not int or dim <= 0 for dim in shapes[0])
+    if (
+        len(shapes[0]) != 2
+        or any(shape != shapes[0] for shape in shapes)
+        or (any(type(dim) is not int or dim <= 0 for dim in shapes[0]))
     ):
         raise InvalidLinalgPattern("BF16 ReLU requires one positive static rank-two shape")
     maps = op.get_indexing_maps()
     d0, d1 = AffineDimExpr(0), AffineDimExpr(1)
     identity = AffineMap(2, 0, (d0, d1))
     if (
-        len(maps) != 2 or any(not isinstance(item, AffineMapAttr) or item.data != identity for item in maps)
+        len(maps) != 2
+        or any(not isinstance(item, AffineMapAttr) or item.data != identity for item in maps)
         or not isinstance(op.iterator_types, ArrayAttr)
         or any(not isinstance(item, IteratorTypeAttr) for item in op.iterator_types)
         or tuple(item.data for item in op.iterator_types) != (IteratorType.PARALLEL,) * 2
@@ -78,14 +91,19 @@ def recognize_bf16_sign_clamp_relu(op) -> tuple[object, object]:
     zero, maximum, yield_op = body
     literal = zero.properties.get("value")
     if (
-        zero.attributes or set(zero.properties) != {"value"}
-        or not isinstance(literal, FloatAttr) or not isinstance(literal.type, BFloat16Type)
-        or literal.value.data != 0.0 or copysign(1.0, literal.value.data) != 1.0
+        zero.attributes
+        or set(zero.properties) != {"value"}
+        or not isinstance(literal, FloatAttr)
+        or not isinstance(literal.type, BFloat16Type)
+        or literal.value.data != 0.0
+        or copysign(1.0, literal.value.data) != 1.0
         or tuple(zero.results) != (maximum.operands[1],)
         or maximum.operands[0] is not block.args[0]
-        or maximum.attributes or set(maximum.properties) != {"fastmath"}
+        or maximum.attributes
+        or set(maximum.properties) != {"fastmath"}
         or maximum.fastmath.data
-        or yield_op.attributes or yield_op.properties
+        or yield_op.attributes
+        or yield_op.properties
         or tuple(yield_op.operands) != tuple(maximum.results)
     ):
         raise InvalidLinalgPattern("BF16 ReLU does not yield exact maximumf(input, +0)")

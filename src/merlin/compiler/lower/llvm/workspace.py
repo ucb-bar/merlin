@@ -3,6 +3,7 @@
 Only private return descriptors are added. No arithmetic, copies, public result
 or input roles change, and the ordinary native memory admission remains required.
 """
+
 from __future__ import annotations
 
 from merlin.compiler.backend.cabi import TensorPort
@@ -23,17 +24,30 @@ def plan(operations, outputs):
             if value in outputs or type(value.type) is not builtin.TensorType:
                 continue
             uses = tuple(use for use in value.uses if use.operation in operations)
-            consumers = tuple(use.operation for use in uses
-                              if not isinstance(use.operation, LinalgStructuredOperation)
-                              or value in use.operation.inputs)
-            barrier = any(isinstance(user, LinalgStructuredOperation) and
-                          any(iterator.data.value == "reduction" for iterator in user.get_iterator_types())
-                          for user in consumers)
+            consumers = tuple(
+                use.operation
+                for use in uses
+                if not isinstance(use.operation, LinalgStructuredOperation) or value in use.operation.inputs
+            )
+            barrier = any(
+                isinstance(user, LinalgStructuredOperation)
+                and any(iterator.data.value == "reduction" for iterator in user.get_iterator_types())
+                for user in consumers
+            )
             if barrier or len(set(consumers)) > 1:
                 values.append(value)
                 sources.append((ordinal, index))
-    if any(operation.name in {"tensor.collapse_shape", "tensor.expand_shape", "tensor.extract_slice",
-                              "tensor.insert_slice", "tensor.cast"} for operation in operations):
+    if any(
+        operation.name
+        in {
+            "tensor.collapse_shape",
+            "tensor.expand_shape",
+            "tensor.extract_slice",
+            "tensor.insert_slice",
+            "tensor.cast",
+        }
+        for operation in operations
+    ):
         raise ValueError("source workspace view/alias admission is unavailable")
     if not values:
         return None, ()
@@ -64,7 +78,7 @@ def promote(module, *, limit):
     transformed.verify()
     replay = transformed.clone()
     root = replay.body.block.first_op
-    root.get_return_op().operands = root.get_return_op().operands[:len(returned)]
+    root.get_return_op().operands = root.get_return_op().operands[: len(returned)]
     root.update_function_type()
     if not original.is_structurally_equivalent(replay):
         raise ValueError("private workspace promotion changed public outputs or source computations")

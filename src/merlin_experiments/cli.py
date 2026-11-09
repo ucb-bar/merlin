@@ -8,9 +8,10 @@ import os
 import sys
 from pathlib import Path
 
-from . import runner
 from merlin.development.definition import SpecError, load_spec
 from merlin.development.definition import catalog as catalog
+
+from . import runner
 
 
 def _source(value: str, catalog_path: Path | None) -> Path:

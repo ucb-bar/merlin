@@ -153,11 +153,13 @@ def _read_json(path: Path):
 def declaration_problems(document) -> list[str]:
     """Why a parsed declaration would be refused (empty when it is accepted)."""
     if not isinstance(document, dict) or document.get("schema") != SCHEMA:
-        return [f"{DECLARATION} must be a JSON object with \"schema\": \"{SCHEMA}\""]
+        return [f'{DECLARATION} must be a JSON object with "schema": "{SCHEMA}"']
     problems = []
     if _relative(document.get("settings_file")) is None:
-        problems.append("settings_file must be a relative .json path inside the tree, with no hidden or '..' "
-                        f"component, at most {MAX_TEXT} characters")
+        problems.append(
+            "settings_file must be a relative .json path inside the tree, with no hidden or '..' "
+            f"component, at most {MAX_TEXT} characters"
+        )
     knobs = document.get("knobs")
     if not isinstance(knobs, dict) or not 0 < len(knobs) <= MAX_KNOBS:
         return problems + [f"knobs must map 1 to {MAX_KNOBS} names to specs"]
@@ -166,8 +168,10 @@ def declaration_problems(document) -> list[str]:
         if not isinstance(name, str) or not 0 < len(name) <= MAX_NAME:
             problems.append(f"knob name {name!r} must be 1 to {MAX_NAME} characters")
         if not isinstance(values, list) or not 0 < len(values) <= MAX_VALUES or not all(scalar(v) for v in values):
-            problems.append(f"knob {name!r}: values must list 1 to {MAX_VALUES} JSON scalars "
-                            "(null, booleans, integers, finite floats, strings of at most 64 characters)")
+            problems.append(
+                f"knob {name!r}: values must list 1 to {MAX_VALUES} JSON scalars "
+                "(null, booleans, integers, finite floats, strings of at most 64 characters)"
+            )
     return problems
 
 
@@ -181,9 +185,11 @@ def declaration(root) -> dict | None:
         raise KnobError(f"{Path(root) / DECLARATION}: " + "; ".join(problems))
     knobs = {}
     for name, spec in document["knobs"].items():
-        knobs[name] = {"values": list(spec["values"]),
-                       "mechanism": spec.get("mechanism") if isinstance(spec.get("mechanism"), str) else None,
-                       "note": spec.get("note")[:MAX_TEXT] if isinstance(spec.get("note"), str) else None}
+        knobs[name] = {
+            "values": list(spec["values"]),
+            "mechanism": spec.get("mechanism") if isinstance(spec.get("mechanism"), str) else None,
+            "note": spec.get("note")[:MAX_TEXT] if isinstance(spec.get("note"), str) else None,
+        }
     return {"settings_file": _relative(document["settings_file"]), "knobs": knobs}
 
 
@@ -251,12 +257,14 @@ def knob(name: str, *, default, values, root=None):
         if spec is not None:
             extra = [v for v in spec["values"] if not _member(v, values)]
             if extra:
-                raise KnobError(f"knob {name!r}: declared value(s) {extra!r} are not accepted by this call "
-                                f"site {list(values)!r}")
+                raise KnobError(
+                    f"knob {name!r}: declared value(s) {extra!r} are not accepted by this call site {list(values)!r}"
+                )
         value = settings(tree, declared).get(name, default)
         if not _member(value, values):
-            raise KnobError(f"knob {name!r}: setting {value!r} in {declared['settings_file']} is not one of "
-                            f"{list(values)!r}")
+            raise KnobError(
+                f"knob {name!r}: setting {value!r} in {declared['settings_file']} is not one of {list(values)!r}"
+            )
     _CONSULTED[name] = value
     return value
 
@@ -280,14 +288,22 @@ def alternatives(root) -> list[dict]:
         for value in spec["values"]:
             if name in current and same_value(current[name], value):
                 continue
-            found.append({"knob": name, "value": value, "current": current.get(name),
-                          "mechanism": spec["mechanism"], "settings_file": declared["settings_file"]})
+            found.append(
+                {
+                    "knob": name,
+                    "value": value,
+                    "current": current.get(name),
+                    "mechanism": spec["mechanism"],
+                    "settings_file": declared["settings_file"],
+                }
+            )
     return found
 
 
 # ---------------------------------------------------------------------------------------------
 # Writing
 # ---------------------------------------------------------------------------------------------
+
 
 def _write(path: Path, document: dict, *, sort_keys: bool = True) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -306,11 +322,16 @@ def declare(root, knobs: Mapping[str, Knob], *, settings_file: str = DEFAULT_SET
     root = Path(root)
     if _relative(settings_file) is None or not isinstance(knobs, Mapping) or not 0 < len(knobs) <= MAX_KNOBS:
         raise KnobError(f"declare needs 1 to {MAX_KNOBS} knobs and a relative .json settings_file")
-    if any(type(spec) is not Knob or not isinstance(name, str) or not 0 < len(name) <= MAX_NAME
-           for name, spec in knobs.items()):
+    if any(
+        type(spec) is not Knob or not isinstance(name, str) or not 0 < len(name) <= MAX_NAME
+        for name, spec in knobs.items()
+    ):
         raise KnobError(f"declare takes {{name: Knob}} with names of 1 to {MAX_NAME} characters")
-    document = {"schema": SCHEMA, "settings_file": settings_file,
-                "knobs": {name: spec.spec() for name, spec in knobs.items()}}
+    document = {
+        "schema": SCHEMA,
+        "settings_file": settings_file,
+        "knobs": {name: spec.spec() for name, spec in knobs.items()},
+    }
     exists, current = _read_json(root / settings_file)
     if exists and not isinstance(current, dict):
         raise KnobError(f"{settings_file} must hold a JSON object")
@@ -359,9 +380,12 @@ def check(root) -> dict:
             report["problems"].append(f"{name}: current setting {current[name]!r} is not a declared value")
         if any(_member(v, spec["values"][:i]) for i, v in enumerate(spec["values"])):
             report["problems"].append(f"{name}: declared values repeat")
-    report.update(valid=not report["problems"], settings_file=declared["settings_file"],
-                  current={name: current.get(name) for name in declared["knobs"]},
-                  alternatives=alternatives(root) if exists else [])
+    report.update(
+        valid=not report["problems"],
+        settings_file=declared["settings_file"],
+        current={name: current.get(name) for name in declared["knobs"]},
+        alternatives=alternatives(root) if exists else [],
+    )
     return report
 
 
@@ -415,12 +439,23 @@ class KnobSettings:
             canonical = json.dumps(document, sort_keys=True, separators=(",", ":"), allow_nan=False)
         except (TypeError, ValueError):
             raise KnobError("tuning settings need finite canonical JSON") from None
-        if (type(document) is not dict or self.settings_json != canonical
-                or len(canonical.encode()) > MAX_BYTES or type(self.changes) is not tuple
-                or len(self.changes) > MAX_KNOBS or any(type(row) is not tuple or len(row) != 2 for row in self.changes)
-                or any(type(name) is not str or not name or name not in document or not scalar(value)
-                       or not same_value(document[name], value) for name, value in self.changes)
-                or len({name for name, _ in self.changes}) != len(self.changes)):
+        if (
+            type(document) is not dict
+            or self.settings_json != canonical
+            or len(canonical.encode()) > MAX_BYTES
+            or type(self.changes) is not tuple
+            or len(self.changes) > MAX_KNOBS
+            or any(type(row) is not tuple or len(row) != 2 for row in self.changes)
+            or any(
+                type(name) is not str
+                or not name
+                or name not in document
+                or not scalar(value)
+                or not same_value(document[name], value)
+                for name, value in self.changes
+            )
+            or len({name for name, _ in self.changes}) != len(self.changes)
+        ):
             raise KnobError(f"tuning settings need complete immutable values and at most {MAX_KNOBS} distinct changes")
 
     @property
@@ -451,19 +486,24 @@ def bounded_settings(root, *, knob_names=None, max_candidates=16, max_changed_kn
     """
     from itertools import combinations
 
-    if (type(max_candidates) is not int or not 1 <= max_candidates <= 256
-            or type(max_changed_knobs) is not int or max_changed_knobs not in (1, 2)):
+    if (
+        type(max_candidates) is not int
+        or not 1 <= max_candidates <= 256
+        or type(max_changed_knobs) is not int
+        or max_changed_knobs not in (1, 2)
+    ):
         raise KnobError("tuning needs 1 to 256 candidates and one or two changed knobs")
     declared = declaration(root)
     if declared is None:
         raise KnobError("bounded tuning requires an existing knob declaration")
     current = settings(root, declared)
-    if any(name in current and not _member(current[name], spec["values"])
-           for name, spec in declared["knobs"].items()):
+    if any(name in current and not _member(current[name], spec["values"]) for name, spec in declared["knobs"].items()):
         raise KnobError("present baseline knob settings must be declared values")
-    if (knob_names is not None and (type(knob_names) is not tuple
-            or any(type(name) is not str or name not in declared["knobs"] for name in knob_names)
-            or len(set(knob_names)) != len(knob_names))):
+    if knob_names is not None and (
+        type(knob_names) is not tuple
+        or any(type(name) is not str or name not in declared["knobs"] for name in knob_names)
+        or len(set(knob_names)) != len(knob_names)
+    ):
         raise KnobError("knob subset must name distinct declared knobs")
     selected = set(declared["knobs"] if knob_names is None else knob_names)
 

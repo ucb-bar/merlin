@@ -130,17 +130,22 @@ def test_scanners_cover_src_and_extensions_once(tmp_path, monkeypatch, name):
     legacy.parent.mkdir(parents=True)
     legacy.symlink_to("../../src/merlin", target_is_directory=True)
     actual = [str(path) for path in gate._iter_targets(False)]
-    assert actual == ["src/merlin/probe.py", "src/merlin_experiments/probe.py",
-                      "packages/merlin-analysis/src/merlin_analysis/probe.py"]
+    assert actual == [
+        "src/merlin/probe.py",
+        "src/merlin_experiments/probe.py",
+        "packages/merlin-analysis/src/merlin_analysis/probe.py",
+    ]
 
 
 def test_consolidated_research_namespace_keeps_exact_historical_debt_identity():
     gate = _gate("_source_layout")
     assert gate.policy_path("src/merlin_experiments/phase1/audit.py") == (
-        "packages/merlin-experiments/src/merlin_experiments/phase1/audit.py")
+        "packages/merlin-experiments/src/merlin_experiments/phase1/audit.py"
+    )
     assert gate.policy_path("src/merlin_dse/cli.py") == "packages/merlin-dse/src/merlin_dse/cli.py"
     assert gate.policy_path("src/merlin/targetgen/capsule_grade.py") == (
-        "merlin/python/merlin/targetgen/capsule_grade.py")
+        "merlin/python/merlin/targetgen/capsule_grade.py"
+    )
 
 
 def test_staged_renames_are_scanned_and_an_unreadable_index_still_fails(tmp_path, monkeypatch):

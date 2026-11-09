@@ -5,29 +5,31 @@ from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, i64
 
 from merlin.compiler.schedule.llvm_index_bounds import FnBuilderBoundedControlAdapter
-from merlin.compiler.schedule.scf_commands import emit_scf_commands
-from merlin.compiler.schedule.scf_commands import materialize_scf_commands
+from merlin.compiler.schedule.scf_commands import emit_scf_commands, materialize_scf_commands
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.sched.ir import Call, Kernel, Loop, Var, evaluate, instances
 
 
 def finish(builder, inputs=()):
-    module = ModuleOp([
-        llvm.FuncOp("indices", llvm.LLVMFunctionType(list(inputs), llvm.LLVMVoidType()), body=builder.finish())
-    ])
+    module = ModuleOp(
+        [llvm.FuncOp("indices", llvm.LLVMFunctionType(list(inputs), llvm.LLVMVoidType()), body=builder.finish())]
+    )
     module.verify()
     return module
 
 
 def test_actual_scf_indices_bound_every_original_instance_and_emit_real_llvm():
-    kernel = Kernel("columns", (), (
-        Loop("i", 3, (Loop("j", 2, (Call("read", (("column", Var("i") * 64 + Var("j") * 16),)),)),)),
-    ))
+    kernel = Kernel(
+        "columns", (), (Loop("i", 3, (Loop("j", 2, (Call("read", (("column", Var("i") * 64 + Var("j") * 16),)),)),)),)
+    )
     builder = FnBuilder([])
     control = FnBuilderBoundedControlAdapter(builder)
     observed = []
-    emit_scf_commands(materialize_scf_commands(kernel), control,
-                      lambda instruction, args, metadata: observed.append(control.bounds(args["column"])))
+    emit_scf_commands(
+        materialize_scf_commands(kernel),
+        control,
+        lambda instruction, args, metadata: observed.append(control.bounds(args["column"])),
+    )
     assert observed == [(0, 144)]
     concrete = [evaluate(call.arg("column"), env) for call, env in instances(kernel)]
     assert min(concrete) == observed[0][0] and max(concrete) == observed[0][1]

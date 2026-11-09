@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from merlin_experiments.phase2.common_transforms import supports_check
 
 from merlin.common.paths import repo_root
 from merlin.compiler.schedule.api_catalog import scheduling_capabilities
@@ -20,6 +19,7 @@ from merlin.targetgen.tool_profile import (
     verify_tool_profile,
 )
 from merlin.targetgen.tool_profile_shared import prepare_shared_source_release, reviewed_shared_manifest
+from merlin_experiments.phase2.common_transforms import supports_check
 
 NEW = {
     "merlin.compile.scheduling.dense_readout_overlap",

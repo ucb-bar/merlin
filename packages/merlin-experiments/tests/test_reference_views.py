@@ -1,4 +1,5 @@
 """Original source/ABI/artifact joins remain distinct from execution authority."""
+
 from __future__ import annotations
 
 import copy
@@ -10,28 +11,32 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from merlin_experiments.phase1.feedback import reference_analysis as analysis
-from merlin_experiments.phase1.feedback import reference_experiments as selected
-from merlin_experiments.phase1.feedback.reference_views import artifact_views, compare_views, source_view
 from test_reference_analysis_tool import _request, _world
 
 from merlin.kernels.kernel_evidence import ArtifactPin, KernelEvidence
 from merlin.targetgen.contract.interface_emit import emit_interface_mlir
 from merlin.verify.lean_contract import document_digest
+from merlin_experiments.phase1.feedback import reference_analysis as analysis
+from merlin_experiments.phase1.feedback import reference_experiments as selected
+from merlin_experiments.phase1.feedback.reference_views import artifact_views, compare_views, source_view
 
 
 def inputs():
     tensors = dict(w=dict(shape=[4, 3], dtype="i8", role="weight"))
-    commands = [dict(opcode="RES_PACK", operands=dict(src="w", dst="resident"),
-                     attributes=dict(layout="packed_rhs"))]
+    commands = [dict(opcode="RES_PACK", operands=dict(src="w", dst="resident"), attributes=dict(layout="packed_rhs"))]
     for i in range(2):
         tensors["a" + str(i)] = dict(shape=[2, 4], dtype="i8", role="input")
         tensors["y" + str(i)] = dict(shape=[2, 3], dtype="i32", role="output")
-        commands.extend([
-            dict(opcode="MATMUL_RESIDENT", operands=dict(lhs="a" + str(i), rhs="resident", dst="acc" + str(i))),
-            dict(opcode="COMMIT", operands=dict(src="acc" + str(i), dst="y" + str(i)),
-                 attributes=dict(epilogue=[], output_dtype="i32")),
-        ])
+        commands.extend(
+            [
+                dict(opcode="MATMUL_RESIDENT", operands=dict(lhs="a" + str(i), rhs="resident", dst="acc" + str(i))),
+                dict(
+                    opcode="COMMIT",
+                    operands=dict(src="acc" + str(i), dst="y" + str(i)),
+                    attributes=dict(epilogue=[], output_dtype="i32"),
+                ),
+            ]
+        )
     commands.append(dict(opcode="EVICT", operands=dict(handle="resident")))
     cb = dict(abi_version="0.1", target="fixture", tensors=tensors, commands=commands)
     source = emit_interface_mlir(cb).encode()
@@ -57,12 +62,16 @@ def test_live_artifact_analysis_reopens_every_candidate_leaf_without_changing_by
     with selected.invocation(fixture["path"], fixture["sha"], tasks=False):
         response = analysis.handle(
             _request("candidate", path.relative_to(tmp_path).as_posix(), format="artifact_views"),
-            workspace=tmp_path, compiler_sha256=fixture["compiler"])
+            workspace=tmp_path,
+            compiler_sha256=fixture["compiler"],
+        )
         assert response["status"] == "analyzed"
         report = response["report"]
         # Keep source byte equivalence independent of the files' visible names.
-        assert report["inputs"] == artifact_views(
-            source_mlir=source, command_buffer=raw["command_buffer"], emitted_mlir=emitted)["inputs"]
+        assert (
+            report["inputs"]
+            == artifact_views(source_mlir=source, command_buffer=raw["command_buffer"], emitted_mlir=emitted)["inputs"]
+        )
         assert all("path" not in pin for pin in report["inputs"].values())
         assert report["artifact_inputs"][role]["path"] == bundle[role]["path"]
         before = selected.project(current_compiler_sha256=fixture["compiler"])
@@ -76,14 +85,18 @@ def test_live_artifact_analysis_reopens_every_candidate_leaf_without_changing_by
 
 def observe(source=None, cb=None, emitted=None, **kw):
     original_source, original_cb, original_emitted = inputs()
-    return artifact_views(source_mlir=source or original_source,
-        command_buffer=json.dumps(cb or original_cb).encode(), emitted_mlir=emitted or original_emitted, **kw)
+    return artifact_views(
+        source_mlir=source or original_source,
+        command_buffer=json.dumps(cb or original_cb).encode(),
+        emitted_mlir=emitted or original_emitted,
+        **kw,
+    )
 
 
 def test_complete_source_operands_outputs_numeric_and_abi_join_without_execution_credit():
     report = observe()
     assert report["source_command_join"] == "matches_declared_source"
-    group, = report["source"]["groups"]
+    (group,) = report["source"]["groups"]
     assert group["rhs"] == "w" and len(group["members"]) == 2
     assert list(report["source"]["outputs"]) == ["y0", "y1"]
     assert report["emitted"]["abi_arity"] == 5
@@ -93,27 +106,45 @@ def test_complete_source_operands_outputs_numeric_and_abi_join_without_execution
 
 
 def test_direct_whole_operation_output_uses_original_typed_abi_without_product_capture_credit():
+    from merlin.compiler.ir.logical_abi import kernel_abi_from_commands
     from merlin_experiments.phase1.feedback.reference_capture_views import candidate_view
 
-    from merlin.compiler.ir.logical_abi import kernel_abi_from_commands
-
-    cb = dict(abi_version="0.1", target="fixture", tensors=dict(
-        image=dict(shape=[2, 7, 7, 2], dtype="i8", role="input"),
-        weight=dict(shape=[18, 3], dtype="i8", role="weight"),
-        bias=dict(shape=[3], dtype="i32", role="bias"),
-        result=dict(shape=[98, 3], dtype="i8", role="output")), commands=[
-            dict(opcode="RES_PACK", operands=dict(src="weight", dst="packed"),
-                 attributes=dict(layout="packed_conv_rhs")),
-            dict(opcode="CONV2D", operands=dict(ifm="image", weight="packed", dst="result"),
-                 attributes=dict(kernel=[3, 3, 2, 3], stride=[1, 1], padding=[1, 1, 1, 1],
-                                 dilation=[1, 1], bias="bias", epilogue=["bias_add"],
-                                 output_dtype="i8", layout="nhwc")),
+    cb = dict(
+        abi_version="0.1",
+        target="fixture",
+        tensors=dict(
+            image=dict(shape=[2, 7, 7, 2], dtype="i8", role="input"),
+            weight=dict(shape=[18, 3], dtype="i8", role="weight"),
+            bias=dict(shape=[3], dtype="i32", role="bias"),
+            result=dict(shape=[98, 3], dtype="i8", role="output"),
+        ),
+        commands=[
+            dict(
+                opcode="RES_PACK", operands=dict(src="weight", dst="packed"), attributes=dict(layout="packed_conv_rhs")
+            ),
+            dict(
+                opcode="CONV2D",
+                operands=dict(ifm="image", weight="packed", dst="result"),
+                attributes=dict(
+                    kernel=[3, 3, 2, 3],
+                    stride=[1, 1],
+                    padding=[1, 1, 1, 1],
+                    dilation=[1, 1],
+                    bias="bias",
+                    epilogue=["bias_add"],
+                    output_dtype="i8",
+                    layout="nhwc",
+                ),
+            ),
             dict(opcode="EVICT", operands=dict(handle="packed")),
-        ])
+        ],
+    )
     source = emit_interface_mlir(cb).encode()
     cb["kernel_abi"] = kernel_abi_from_commands(cb)
-    emitted = (b"builtin.module { llvm.func @kernel_entry(%a: !llvm.ptr, %b: !llvm.ptr, "
-               b"%c: !llvm.ptr, %d: !llvm.ptr) { llvm.return } }")
+    emitted = (
+        b"builtin.module { llvm.func @kernel_entry(%a: !llvm.ptr, %b: !llvm.ptr, "
+        b"%c: !llvm.ptr, %d: !llvm.ptr) { llvm.return } }"
+    )
     report = observe(source=source, cb=cb, emitted=emitted)
     assert report["source_command_join"] == "matches_declared_source"
     assert report["source"]["outputs"] == dict(result=dict(shape=[98, 3], dtype="i8", role="output"))
@@ -128,12 +159,19 @@ def test_direct_whole_operation_output_uses_original_typed_abi_without_product_c
     assert dict(axis="source.abi_roster", status="mismatch") in refused["mismatches"]
 
 
-@pytest.mark.parametrize("mutation,axis", [
-    ("input_shape", "source.tensor"), ("output_shape", "source.tensor"),
-    ("output_dtype", "source.tensor"), ("numeric", "source.commands"),
-    ("missing_liveout", "source.tensor"), ("missing_numeric", "source.commands"),
-    ("operand", "source.commands"), ("abi", "source.abi_roster"),
-])
+@pytest.mark.parametrize(
+    "mutation,axis",
+    [
+        ("input_shape", "source.tensor"),
+        ("output_shape", "source.tensor"),
+        ("output_dtype", "source.tensor"),
+        ("numeric", "source.commands"),
+        ("missing_liveout", "source.tensor"),
+        ("missing_numeric", "source.commands"),
+        ("operand", "source.commands"),
+        ("abi", "source.abi_roster"),
+    ],
+)
 def test_candidate_declarations_cannot_replace_original_source_contract(mutation, axis):
     source, cb, _ = inputs()
     if mutation == "input_shape":
@@ -167,9 +205,12 @@ def test_wrong_actual_entry_arity_is_a_mismatch_not_zero_work_or_success():
 def capture_for(source, cb, emitted, *, arity=5):
     raw = b'{"funct":1,"rs1":0,"rs2":0}\n{"kind":"fence"}\n'
     isa = dict(FUNCT_CLASS={1: "MOVE"})
-    artifacts = tuple(ArtifactPin(kind, "original/" + kind, hashlib.sha256(data).hexdigest())
-        for kind, data in dict(source=source, command_buffer=json.dumps(cb).encode(), emitted=emitted,
-                              capture=raw).items())
+    artifacts = tuple(
+        ArtifactPin(kind, "original/" + kind, hashlib.sha256(data).hexdigest())
+        for kind, data in dict(
+            source=source, command_buffer=json.dumps(cb).encode(), emitted=emitted, capture=raw
+        ).items()
+    )
     artifacts += (ArtifactPin("isa", "original/selected-isa", document_digest(isa)),)
     evidence = KernelEvidence("original-native", capture_kind="native_issue", artifacts=artifacts)
     return dict(raw=raw, evidence=evidence, abi_arity=arity), isa
@@ -192,9 +233,14 @@ def test_wrong_capture_source_pin_and_incomplete_isa_stay_unknown():
     source, cb, emitted = inputs()
     capture, isa = capture_for(source, cb, emitted)
     bad = copy.copy(capture)
-    bad["evidence"] = KernelEvidence("wrong-source", capture_kind="native_issue", artifacts=tuple(
-        ArtifactPin(pin.kind, pin.uri, "a" * 64) if pin.kind == "source" else pin
-        for pin in capture["evidence"].artifacts))
+    bad["evidence"] = KernelEvidence(
+        "wrong-source",
+        capture_kind="native_issue",
+        artifacts=tuple(
+            ArtifactPin(pin.kind, pin.uri, "a" * 64) if pin.kind == "source" else pin
+            for pin in capture["evidence"].artifacts
+        ),
+    )
     assert observe(native_capture=bad, isa=isa)["native"]["reason"] == "native_capture_artifact_binding_mismatch"
     assert observe(native_capture=capture, isa={})["native"]["command_counts"] is None
 
@@ -205,9 +251,13 @@ def test_raw_event_counts_survive_recurrence_compaction_and_partial_scope_cannot
     source, cb, emitted = inputs()
     capture, isa = capture_for(source, cb, emitted)
     capture["raw"] *= 10
-    capture["evidence"] = replace(capture["evidence"], artifacts=tuple(
-        replace(pin, sha256=hashlib.sha256(capture["raw"]).hexdigest()) if pin.kind == "capture" else pin
-        for pin in capture["evidence"].artifacts))
+    capture["evidence"] = replace(
+        capture["evidence"],
+        artifacts=tuple(
+            replace(pin, sha256=hashlib.sha256(capture["raw"]).hexdigest()) if pin.kind == "capture" else pin
+            for pin in capture["evidence"].artifacts
+        ),
+    )
     report = observe(native_capture=capture, isa=isa)
     assert report["native"]["command_counts"] == dict(MOVE=10)
     assert report["native"]["fence_count"] == 10
@@ -269,28 +319,34 @@ def test_broker_uses_host_descriptor_capability_not_capsule_contract_directory(t
     capsule_contract = tmp_path / "capsule-contract"
     capsule_contract.mkdir()
     capability = tmp_path / "target.yaml"
-    capability.write_text('name: fixture\n')
+    capability.write_text("name: fixture\n")
     descriptor = tmp_path / "descriptor.yaml"
     descriptor.write_text("target: fixture\n")
-    experiment = SimpleNamespace(target="fixture", declared_contract="target.yaml",
-                                 declared_contract_path=lambda: capability)
+    experiment = SimpleNamespace(
+        target="fixture", declared_contract="target.yaml", declared_contract_path=lambda: capability
+    )
     monkeypatch.delenv("MERLIN_TARGET_CONTRACT", raising=False)
     monkeypatch.setattr(target_experiment, "load_target_experiment", lambda path: experiment)
+
     class Observer:
         def isa_constants(self, target):
             return dict(CUSTOM_OPCODE=1, FUNCT3=0, FUNCT_CLASS={})
 
         def decode_instruction(self, *args):
             return "UNKNOWN", {}
+
     def bind(**kw):
         assert kw["contract"] == dict(name="fixture")  # read actual capability YAML, not directory
         return SimpleNamespace(operand_observer=Observer())
+
     monkeypatch.setattr(semantics, "bind", bind)
     folder = tmp_path / "variants/current"
     folder.mkdir(parents=True)
     source, cb, emitted = inputs()
-    emitted = emitted.replace(b"llvm.return", b'"llvm.inline_asm"() <{asm_string = "fence", '
-        b'constraints = "", has_side_effects}> : () -> () llvm.return')
+    emitted = emitted.replace(
+        b"llvm.return",
+        b'"llvm.inline_asm"() <{asm_string = "fence", constraints = "", has_side_effects}> : () -> () llvm.return',
+    )
     bundle = dict(schema="merlin.reference_artifact_views.v1")
     for role, data in dict(source=source, command_buffer=json.dumps(cb).encode(), emitted=emitted).items():
         path = folder / role
@@ -299,10 +355,17 @@ def test_broker_uses_host_descriptor_capability_not_capsule_contract_directory(t
     path = folder / "views.json"
     path.write_text(json.dumps(bundle))
     with selected.invocation(fixture["path"], fixture["sha"]):
-        response = analysis.broker_response(_request("candidate", path.relative_to(tmp_path).as_posix(),
-            format="artifact_views"), workspace=tmp_path, facts=fixture["facts"],
-            compiler_sha256=fixture["compiler"], rid="broker-capability", started_ns=time.time_ns(),
-            contract=capsule_contract, descriptor=descriptor, target="fixture")
+        response = analysis.broker_response(
+            _request("candidate", path.relative_to(tmp_path).as_posix(), format="artifact_views"),
+            workspace=tmp_path,
+            facts=fixture["facts"],
+            compiler_sha256=fixture["compiler"],
+            rid="broker-capability",
+            started_ns=time.time_ns(),
+            contract=capsule_contract,
+            descriptor=descriptor,
+            target="fixture",
+        )
     assert response["status"] == "analyzed"
     assert response["report"]["emitted"]["selected_decode"]["command_counts"] == dict(FENCE=1)
     assert response["report"]["native"]["command_counts"] is None

@@ -71,6 +71,7 @@ def collapse_overrank_matmul(module) -> int:
         block.detach_op(op)
     return len(targets)
 
+
 def lower_bf16_matmul_f32acc(module) -> int:
     """Rewrite every 16-bit-float (bf16 OR fp16) contraction to accumulate in f32; returns count.
 

@@ -18,19 +18,36 @@ LAYOUT = "e-p:64:64-i64:64-n32:64-S128"
 
 
 def request(tmp_path, **parameters):
-    return CompileRequest(Source(SOURCE, kind="upstream-mlir"), tmp_path / "out", CompileOptions(parameters={
-        "scalar.data-layout": LAYOUT, "scalar.index-bits": 64, **parameters,
-    }))
+    return CompileRequest(
+        Source(SOURCE, kind="upstream-mlir"),
+        tmp_path / "out",
+        CompileOptions(
+            parameters={
+                "scalar.data-layout": LAYOUT,
+                "scalar.index-bits": 64,
+                **parameters,
+            }
+        ),
+    )
 
 
-@pytest.mark.parametrize("parameters", [
-    {"scalar.index-bits": True}, {"scalar.data-layout": ""}, {"scalar.extra": True},
-    {"scalar.emit": "image"}, {"scalar.emit": []}, {"scalar.emit": "object"},
-    {"scalar.emit": "object", "scalar.target-flags": ["-march=native"]},
-    {"scalar.emit": "object", "scalar.target-flags": ["--target=unknown", "-o=injected"]},
-    {"scalar.target-flags": ["--target=unknown"]},
-    {"scalar.workspace-bytes": True}, {"scalar.workspace-bytes": -1}, {"scalar.workspace-bytes": 32},
-])
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        {"scalar.index-bits": True},
+        {"scalar.data-layout": ""},
+        {"scalar.extra": True},
+        {"scalar.emit": "image"},
+        {"scalar.emit": []},
+        {"scalar.emit": "object"},
+        {"scalar.emit": "object", "scalar.target-flags": ["-march=native"]},
+        {"scalar.emit": "object", "scalar.target-flags": ["--target=unknown", "-o=injected"]},
+        {"scalar.target-flags": ["--target=unknown"]},
+        {"scalar.workspace-bytes": True},
+        {"scalar.workspace-bytes": -1},
+        {"scalar.workspace-bytes": 32},
+    ],
+)
 def test_invalid_selection_refuses_before_tools_and_outputs(tmp_path, monkeypatch, parameters):
     monkeypatch.setattr(scalar, "_tools", lambda *args: pytest.fail("native tools reached"))
     with pytest.raises(ValueError):
@@ -52,9 +69,14 @@ def test_layout_mismatch_cannot_reach_native_lowering(tmp_path, monkeypatch):
     from merlin.llvmlower import pipeline, target_data_layout
 
     monkeypatch.setattr(scalar, "_tools", lambda *args: {"clang": {"path": "diagnostic", "sha256": "0" * 64}})
-    monkeypatch.setattr(target_data_layout, "observe_index_width", lambda *args: {
-        "data_layout": "e-p:32:32", "index_bits": 32,
-    })
+    monkeypatch.setattr(
+        target_data_layout,
+        "observe_index_width",
+        lambda *args: {
+            "data_layout": "e-p:32:32",
+            "index_bits": 32,
+        },
+    )
     monkeypatch.setattr(pipeline, "lower_to_llvm_ir", lambda *a, **k: pytest.fail("lowering reached"))
     value = request(tmp_path, **{"scalar.emit": "object", "scalar.target-flags": ["--target=unknown"]})
     with pytest.raises(ValueError, match="actual object compiler"):
@@ -86,8 +108,9 @@ def test_prepared_and_model_sources_use_existing_owners_and_publish_no_image(tmp
     monkeypatch.setattr(pipeline, "lower_to_llvm_ir", prepared)
     monkeypatch.setattr(lower, "lower_model", model)
     for kind in ("mlir", "upstream-mlir"):
-        result = api.compile(Source(SOURCE, kind=kind), backend=scalar, output=tmp_path / kind,
-                             options=request(tmp_path).options)
+        result = api.compile(
+            Source(SOURCE, kind=kind), backend=scalar, output=tmp_path / kind, options=request(tmp_path).options
+        )
         reopened = api.Compilation.load(result.manifest)
         assert reopened.deployment is None
         record = json.loads((reopened.directory / "scalar.json").read_text())
@@ -178,33 +201,69 @@ def test_native_weighted_scalar_region_joins_selected_image_and_preserves_input(
         pytest.skip("select actual stock MLIR/LLVM tools for numerical scalar image execution")
     flags = ["--target=x86_64-unknown-linux-gnu"]
     observed = target_data_layout.observe_index_width(compiler, flags)
-    options = CompileOptions(parameters={"scalar.data-layout": observed["data_layout"], "scalar.index-bits": 64,
-                                         "scalar.emit": "object", "scalar.target-flags": flags,
-                                         "scalar.call-entry": "kernel"})
+    options = CompileOptions(
+        parameters={
+            "scalar.data-layout": observed["data_layout"],
+            "scalar.index-bits": 64,
+            "scalar.emit": "object",
+            "scalar.target-flags": flags,
+            "scalar.call-entry": "kernel",
+        }
+    )
     source = bind_source(parse_mlir_text(WEIGHTED), entry="compute", context=PipelineContext(), graph_mode="ssa")
     hardware = tmp_path / "hardware.yaml"
-    hardware.write_text(yaml.safe_dump({
-        "schema": "merlin.execution_topology.v1",
-        "resources": [{"id": "cpu0", "kind": "cpu", "features": [], "shared_group": "cpu0"}],
-        "memory_domains": [{"id": "ram", "capacity_bytes": 65536, "alignment_bytes": 64}],
-        "access": [{"resource": "cpu0", "domain": "ram", "read": True, "write": True,
-                    "addressability": "shared", "visibility": "coherent", "completion": "synchronous"}],
-    }))
+    hardware.write_text(
+        yaml.safe_dump(
+            {
+                "schema": "merlin.execution_topology.v1",
+                "resources": [{"id": "cpu0", "kind": "cpu", "features": [], "shared_group": "cpu0"}],
+                "memory_domains": [{"id": "ram", "capacity_bytes": 65536, "alignment_bytes": 64}],
+                "access": [
+                    {
+                        "resource": "cpu0",
+                        "domain": "ram",
+                        "read": True,
+                        "write": True,
+                        "addressability": "shared",
+                        "visibility": "coherent",
+                        "completion": "synchronous",
+                    }
+                ],
+            }
+        )
+    )
     topology = select_topology(hardware)
     nodes = tuple(range(len(source.operations)))
     incoming, outgoing = proposal_boundary(source, nodes)
-    variant = replace(source.cpu_alternatives[0], id="whole", nodes=nodes, implementation="scalar-native",
-                      placement="cpu0", inputs=incoming, outputs=outgoing)
-    claim = SourceProposal(variant, scalar.name, "cpu0", "ram", "logical_tensor_v1", source.stamp.source_sha256,
-                           tuple(source.operation_ordinals[n] for n in nodes), source_numerical_identity(source, nodes))
+    variant = replace(
+        source.cpu_alternatives[0],
+        id="whole",
+        nodes=nodes,
+        implementation="scalar-native",
+        placement="cpu0",
+        inputs=incoming,
+        outputs=outgoing,
+    )
+    claim = SourceProposal(
+        variant,
+        scalar.name,
+        "cpu0",
+        "ram",
+        "logical_tensor_v1",
+        source.stamp.source_sha256,
+        tuple(source.operation_ordinals[n] for n in nodes),
+        source_numerical_identity(source, nodes),
+    )
+
     def original_validator(bound, proposed):
         assert proposed.alternative.nodes == tuple(range(len(bound.operations)))
         bound.module.verify()
+
     proposal = admit_proposal(source, claim, topology, validate_implementation=original_validator)
     startup = tmp_path / "startup"
     startup.mkdir()
     main = startup / "main.c"
-    main.write_text('''#include <stdio.h>
+    main.write_text("""#include <stdio.h>
 #include "model.h"
 int main(void) {
   _Alignas(64) unsigned char arena[64];
@@ -219,16 +278,26 @@ int main(void) {
   puts("weighted-scalar-plan-executed");
   return 0;
 }
-''')
+""")
     artifact = Artifact.from_file(main, kind="c-source", role="entry")
     entry = Compilation(startup, "caller.startup", artifact.sha256, (artifact,))
     entry.write()
-    image = CImageLink(Path(compiler).resolve(), tuple([*flags, "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror"]),
-                       entry, ("main.c",), Deployment("fixture-cpu", "linux", "x86_64", "sysv", 1))
-    backend = PlannedCompiler(select_execution(source, (proposal,)),
-                              {scalar.name: RegionBackend(scalar, "kernel", options)}, image=image)
-    compiled = api.compile(ir_text(source.module), backend=backend, output=tmp_path / "compiled",
-                           options=CompileOptions(parameters={"merlin.emit": "c-dispatch", "merlin.entry": "model"}))
+    image = CImageLink(
+        Path(compiler).resolve(),
+        tuple([*flags, "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror"]),
+        entry,
+        ("main.c",),
+        Deployment("fixture-cpu", "linux", "x86_64", "sysv", 1),
+    )
+    backend = PlannedCompiler(
+        select_execution(source, (proposal,)), {scalar.name: RegionBackend(scalar, "kernel", options)}, image=image
+    )
+    compiled = api.compile(
+        ir_text(source.module),
+        backend=backend,
+        output=tmp_path / "compiled",
+        options=CompileOptions(parameters={"merlin.emit": "c-dispatch", "merlin.entry": "model"}),
+    )
     region = Compilation.load(compiled.directory / "regions/0")
     abi = CRegionABI.from_compilation(region)
     assert len(abi.inputs) == len(abi.outputs) == 1 and abi.scratch_bytes == 0
@@ -254,8 +323,9 @@ int main(void) {
         call_owner.admit(generic, selected, index_bits=32, data_layout=observed["data_layout"])
     for fault in ("input_write", "workspace"):
         module = call_owner._parse_native(generic)
-        compute = next(op for op in module.body.block.ops
-                       if type(op) is llvm.FuncOp and op.sym_name.data == selected.compute)
+        compute = next(
+            op for op in module.body.block.ops if type(op) is llvm.FuncOp and op.sym_name.data == selected.compute
+        )
         if fault == "input_write":
             store = next(op for op in compute.walk() if type(op) is llvm.StoreOp)
             store.operands = (store.operands[0], compute.body.blocks.first.args[1])
@@ -270,12 +340,14 @@ int main(void) {
     from merlin.llvmlower import codegen
 
     original_run = codegen._run
+
     def mutate_after_translation(command, **kwargs):
         result = original_run(command, **kwargs)
         if kwargs.get("stage") == "scalar_call_translation":
             selected_source = kwargs["inputs"][0]
             selected_source.write_text(selected_source.read_text() + "\n")
         return result
+
     with monkeypatch.context() as mutation:
         mutation.setattr(codegen, "_run", mutate_after_translation)
         direct = replace(options, parameters={**options.parameters, "scalar.call-entry": "compute"})
@@ -289,28 +361,35 @@ def test_scalar_call_selection_cannot_turn_prepared_scalars_or_effects_into_tens
     value = request(tmp_path, **{"scalar.call-entry": "identity"})
     with pytest.raises(ValueError, match="object emission"):
         scalar.validate(value)
-    value = request(tmp_path, **{"scalar.emit": "object", "scalar.target-flags": ["--target=unknown"],
-                                 "scalar.call-entry": "identity"})
+    value = request(
+        tmp_path,
+        **{"scalar.emit": "object", "scalar.target-flags": ["--target=unknown"], "scalar.call-entry": "identity"},
+    )
     with pytest.raises(ValueError, match="original tensor MLIR"):
         scalar.validate(value)
     from merlin.compiler.lower.llvm.call import prepare
 
     with pytest.raises(ValueError, match="semantic or ABI attributes"):
-        prepare(WEIGHTED.replace(
-            " -> tensor<2x2xf32> {", " -> tensor<2x2xf32> attributes {llvm.readnone} {", 1),
-            "compute", "wrapper")
+        prepare(
+            WEIGHTED.replace(" -> tensor<2x2xf32> {", " -> tensor<2x2xf32> attributes {llvm.readnone} {", 1),
+            "compute",
+            "wrapper",
+        )
 
 
 def test_source_workspace_is_bounded_private_storage_without_new_arithmetic(tmp_path, monkeypatch):
     from merlin.compiler.lower.llvm.call import prepare
     from merlin.frontends.linalg_mlir import parse_mlir_text
 
-    source = WEIGHTED.replace(" %o=tensor.empty()", ''' %w2=arith.constant dense<[[1.0,2.0],[3.0,4.0]]>:tensor<2x2xf32>
+    source = WEIGHTED.replace(
+        " %o=tensor.empty()",
+        """ %w2=arith.constant dense<[[1.0,2.0],[3.0,4.0]]>:tensor<2x2xf32>
  %e2=tensor.empty():tensor<2x2xf32>
  %f2=linalg.fill ins(%z:f32) outs(%e2:tensor<2x2xf32>) -> tensor<2x2xf32>
  %m2=linalg.matmul ins(%m,%w2:tensor<2x2xf32>,tensor<2x2xf32>)
  outs(%f2:tensor<2x2xf32>) -> tensor<2x2xf32>
- %o=tensor.empty()''').replace("ins(%m,%b:", "ins(%m2,%b:")
+ %o=tensor.empty()""",
+    ).replace("ins(%m,%b:", "ins(%m2,%b:")
     original = parse_mlir_text(source)
     selected = prepare(source, "compute", "private_source", workspace_bytes=16)
     assert selected.workspace.bytes == 16 and len(selected.outputs) == 1
@@ -326,13 +405,21 @@ def test_source_workspace_is_bounded_private_storage_without_new_arithmetic(tmp_
     assert original.is_structurally_equivalent(private)
     monkeypatch.setattr(scalar, "_tools", lambda *args: pytest.fail("native tools reached"))
     monkeypatch.setenv("MERLIN_COMPILER_DRIVER", "stock-cli")
-    options = {"scalar.data-layout": LAYOUT, "scalar.index-bits": 64, "scalar.emit": "object",
-               "scalar.target-flags": ["--target=x86_64-unknown-linux-gnu"], "scalar.call-entry": "compute",
-               "scalar.workspace-bytes": 15}
+    options = {
+        "scalar.data-layout": LAYOUT,
+        "scalar.index-bits": 64,
+        "scalar.emit": "object",
+        "scalar.target-flags": ["--target=x86_64-unknown-linux-gnu"],
+        "scalar.call-entry": "compute",
+        "scalar.workspace-bytes": 15,
+    }
     with pytest.raises(ValueError, match="workspace.*ceiling"):
         scalar.validate(CompileRequest(Source(source), tmp_path / "too-small", CompileOptions(parameters=options)))
-    alias = source.replace(" %m2=", ''' %view=tensor.cast %m : tensor<2x2xf32> to tensor<2x2xf32>
- %m2=''').replace("ins(%m,%w2", "ins(%view,%w2")
+    alias = source.replace(
+        " %m2=",
+        """ %view=tensor.cast %m : tensor<2x2xf32> to tensor<2x2xf32>
+ %m2=""",
+    ).replace("ins(%m,%w2", "ins(%view,%w2")
     # The source still has a real materialization barrier via the second use;
     # unknown/view aliases do not acquire workspace permission by shape alone.
     with pytest.raises(ValueError, match="view/alias"):
@@ -359,12 +446,17 @@ def test_public_export_system_compilation_plans_bound_weights_runs_and_refuses_u
     checkout = root()
     producer = capture_python_path(checkout=checkout)
     compiler = toolchain.clang()
-    if (not producer.is_file() or not checkout.is_dir() or not Path(compiler).is_file() or
-            platform.machine() != "x86_64" or toolchain._env("MERLIN_COMPILER_DRIVER") != "stock-cli"):
+    if (
+        not producer.is_file()
+        or not checkout.is_dir()
+        or not Path(compiler).is_file()
+        or platform.machine() != "x86_64"
+        or toolchain._env("MERLIN_COMPILER_DRIVER") != "stock-cli"
+    ):
         pytest.skip("select pinned Torch capture and actual native MLIR/LLVM on Linux x86_64")
     assert capture_pin(checkout)["ok"]
     script = tmp_path / "export.py"
-    script.write_text('''import json,sys,torch
+    script.write_text("""import json,sys,torch
 from pathlib import Path
 class Weighted(torch.nn.Module):
     def __init__(self, workspace=False):
@@ -390,10 +482,10 @@ for name,workspace in (("model",False),("workspace",True)):
     else:
         reference=exported.module()(x).detach().contiguous().view(torch.int32).flatten().tolist()
         (root/"workspace-reference.json").write_text(json.dumps(reference))
-''')
+""")
     subprocess.run([str(producer), str(script), str(tmp_path)], check=True, capture_output=True, text=True)
     hardware = tmp_path / "hardware.yaml"
-    hardware.write_text('''schema: merlin.execution_topology.v1
+    hardware.write_text("""schema: merlin.execution_topology.v1
 resources:
 - {id: cpu0, kind: cpu, features: [], shared_group: cpu0}
 memory_domains:
@@ -401,18 +493,25 @@ memory_domains:
 access:
 - {resource: cpu0, domain: ram, read: true, write: true, addressability: shared,
    visibility: coherent, completion: synchronous}
-''')
+""")
     topology = select_topology(hardware)
     flags = ["--target=x86_64-unknown-linux-gnu"]
     observed = observe_index_width(compiler, flags)
-    component = scalar_cpu(resource="cpu0", memory_domain="ram", options=api.CompileOptions(parameters={
-        "scalar.data-layout": observed["data_layout"], "scalar.index-bits": observed["index_bits"],
-        "scalar.target-flags": flags,
-    }))
+    component = scalar_cpu(
+        resource="cpu0",
+        memory_domain="ram",
+        options=api.CompileOptions(
+            parameters={
+                "scalar.data-layout": observed["data_layout"],
+                "scalar.index-bits": observed["index_bits"],
+                "scalar.target-flags": flags,
+            }
+        ),
+    )
     startup = tmp_path / "startup"
     startup.mkdir()
     main = startup / "main.c"
-    main.write_text('''#include <stdint.h>
+    main.write_text("""#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include "model.h"
@@ -432,14 +531,20 @@ int main(void) {
   for(int i=0;i<4;++i) {uint32_t bits;memcpy(&bits,&output[i],sizeof bits);printf("%u\\n",bits);}
   return 0;
 }
-''')
+""")
     artifact = Artifact.from_file(main, kind="c-source", role="entry")
     entry = Compilation(startup, "caller.startup", artifact.sha256, (artifact,))
     entry.write()
-    image = CImageLink(Path(compiler).resolve(), tuple([*flags, "-std=c11", "-O2"]), entry, ("main.c",),
-                       Deployment("fixture-cpu", "linux", "x86_64", "sysv", 1))
-    backend = SystemCompiler(topology=topology, components=(component,),
-                             preferred_providers=("merlin.scalar",), image=image)
+    image = CImageLink(
+        Path(compiler).resolve(),
+        tuple([*flags, "-std=c11", "-O2"]),
+        entry,
+        ("main.c",),
+        Deployment("fixture-cpu", "linux", "x86_64", "sysv", 1),
+    )
+    backend = SystemCompiler(
+        topology=topology, components=(component,), preferred_providers=("merlin.scalar",), image=image
+    )
     options = api.CompileOptions(parameters={"merlin.emit": "c-dispatch", "merlin.entry": "model"})
     result = api.compile(tmp_path / "model.pt2", backend=backend, output=tmp_path / "compiled", options=options)
     system = json.loads((result.directory / "system.json").read_text())
@@ -450,8 +555,10 @@ int main(void) {
     scalar_record = json.loads((result.directory / "regions/0/scalar.json").read_text())
     normalization = scalar_record["call"]["initialization"]
     assert any("fill_ordinal" in item for item in normalization["replacements"])
-    assert any("empty_metadata_ordinal" in item and "prov.origin_node_ids" in item["attributes"]
-               for item in normalization["replacements"])
+    assert any(
+        "empty_metadata_ordinal" in item and "prov.origin_node_ids" in item["attributes"]
+        for item in normalization["replacements"]
+    )
     assert scalar_record["call"]["memory"]["tensor_scratch_bytes"] == 0
     assert len(system["selection"]["execution_order"]) == 1
     assert result.metadata["stage"] == "linked_image" and not result.metadata["execution_verified"]
@@ -464,17 +571,27 @@ int main(void) {
     failure = json.loads((tmp_path / "refused/system-failure.json").read_text())
     assert failure["status"] == "failed" and failure["fallback"].startswith("not_attempted")
     actual = (tmp_path / "refused/regions/0/call.native.mlir").read_text()
-    workspace_component = scalar_cpu(resource="cpu0", memory_domain="ram", options=api.CompileOptions(parameters={
-        **component.binding.options.parameters, "scalar.workspace-bytes": 256,
-    }))
-    workspace_backend = SystemCompiler(topology=topology, components=(workspace_component,),
-                                       preferred_providers=("merlin.scalar",), image=image)
-    with_workspace = api.compile(tmp_path / "workspace.pt2", backend=workspace_backend,
-                                 output=tmp_path / "with-workspace", options=options)
+    workspace_component = scalar_cpu(
+        resource="cpu0",
+        memory_domain="ram",
+        options=api.CompileOptions(
+            parameters={
+                **component.binding.options.parameters,
+                "scalar.workspace-bytes": 256,
+            }
+        ),
+    )
+    workspace_backend = SystemCompiler(
+        topology=topology, components=(workspace_component,), preferred_providers=("merlin.scalar",), image=image
+    )
+    with_workspace = api.compile(
+        tmp_path / "workspace.pt2", backend=workspace_backend, output=tmp_path / "with-workspace", options=options
+    )
     workspace_run = api.run(with_workspace, runner=linux)
     assert workspace_run.status == "completed"
     assert list(map(int, workspace_run.stdout.splitlines())) == json.loads(
-        (tmp_path / "workspace-reference.json").read_bytes())
+        (tmp_path / "workspace-reference.json").read_bytes()
+    )
     workspace_record = json.loads((with_workspace.directory / "regions/0/scalar.json").read_bytes())
     assert workspace_record["call"]["memory"]["source_workspace_bytes"] == 32
     assert workspace_record["call"]["memory"]["additional_tensor_scratch_bytes"] == 0
@@ -486,4 +603,3 @@ int main(void) {
     assert with_workspace.metadata["execution_verified"] is False
     assert '"llvm.alloca"' in actual or '"llvm.call"' in actual
     assert not (tmp_path / "refused/compilation.json").exists()
-

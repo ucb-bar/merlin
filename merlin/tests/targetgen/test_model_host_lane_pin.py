@@ -93,11 +93,9 @@ def test_target_experiment_selects_scalar_lane_for_rocket():
 
 
 def test_selected_dts_checks_every_hart_before_host_execution(tmp_path):
-    from merlin.compiler.backend.isa import dts_string_values, require_host_isa_dts
-    from merlin.compiler.backend.isa import split_isa
-
     from merlin.compile import host_lane
     from merlin.compiler.backend import isa
+    from merlin.compiler.backend.isa import dts_string_values, require_host_isa_dts, split_isa
     from merlin.compiler.selection import host
 
     assert host_lane is host
@@ -301,10 +299,9 @@ def test_qa_loop_exports_verified_snapshot_only_to_host_grading(monkeypatch, tmp
     import os
     from types import SimpleNamespace
 
+    from merlin.targetgen import target_experiment
     from merlin_experiments.phase1 import author_toolchain, compiler_library, joint_control, session
     from merlin_experiments.phase1.providers import execution
-
-    from merlin.targetgen import target_experiment
 
     source = inspect.getsource(session)
     assert "verify_snapshot_binding" in source
@@ -331,9 +328,12 @@ def test_qa_loop_exports_verified_snapshot_only_to_host_grading(monkeypatch, tmp
     composed = []
     monkeypatch.setattr(bwrap, "compose_command", lambda parts, *a: composed.append(parts) or "command")
     context = SimpleNamespace(repo=tmp_path, descriptor=tmp_path / "descriptor.yaml")
-    assert execution.sandbox_command(
-        "true", tmp_path / "workspace", {}, ["provider-bind"], context=context, codex_mode=True
-    ) == "command"
+    assert (
+        execution.sandbox_command(
+            "true", tmp_path / "workspace", {}, ["provider-bind"], context=context, codex_mode=True
+        )
+        == "command"
+    )
     [parts] = composed
     for key in ("ROOT", "REQUIRED", "RECORD"):
         variable = f"MERLIN_MODEL_HOST_LANE_SNAPSHOT_{key}"

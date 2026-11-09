@@ -14,12 +14,12 @@ from weakref import WeakKeyDictionary, ref
 
 from merlin.common import invocation_record as I
 from merlin.common.digest import sha256_file
-from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.llvmlower import compilation_recipe as C
 from merlin.llvmlower import lower as L
 from merlin.llvmlower import source_recomputation as S
 from merlin.llvmlower import source_recomputation_policy as P
 from merlin.llvmlower.source_multioutput import _callback, _check_callback
+from merlin.runtime.modelinputs import strict_tree_sha256
 
 _ISSUED = WeakKeyDictionary()
 

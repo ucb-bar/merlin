@@ -33,8 +33,9 @@ def layout_workspace(tmp_path, monkeypatch):
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
 
     def check(*flags):
-        return subprocess.run([sys.executable, str(LINT), *flags], cwd=tmp_path,
-                              capture_output=True, text=True, timeout=15)
+        return subprocess.run(
+            [sys.executable, str(LINT), *flags], cwd=tmp_path, capture_output=True, text=True, timeout=15
+        )
 
     return tmp_path, contract, check
 

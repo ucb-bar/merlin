@@ -20,7 +20,9 @@ def test_missing_request_is_not_a_successful_model_export(tmp_path):
 
 def test_refused_interface_keeps_its_call_in_the_denominator(tmp_path):
     module = mq.parse("module { func.func @forward() { return } }")
-    rewrite = SimpleNamespace(entries={"requested": {}}, routed=[SimpleNamespace(symbol="requested")], skipped=(), to_sidecar=lambda: {})
+    rewrite = SimpleNamespace(
+        entries={"requested": {}}, routed=[SimpleNamespace(symbol="requested")], skipped=(), to_sidecar=lambda: {}
+    )
     result = export_rewrite(module, rewrite, binder=None, output=tmp_path / "export", source_reference="source.mlir")
     assert result["status"] == "incomplete"
     assert result["device_calls"] == 1

@@ -5,6 +5,7 @@ Host epilogues and outputs remain original SSA. This adapter assembles source,
 pointer transport and actual callback products; it is not an execution grant or
 a replacement for final source-work, borrowed-call, object and numerical gates.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -31,8 +32,13 @@ class SourceProgram:
     device_symbol: str
 
     def revalidate(self):
-        current = prepare_source_program(self.source, effects=self.prepared.writer.borrowed_effects,
-            target=self.target, entry_symbol=self.entry_symbol, device_symbol=self.device_symbol)
+        current = prepare_source_program(
+            self.source,
+            effects=self.prepared.writer.borrowed_effects,
+            target=self.target,
+            entry_symbol=self.entry_symbol,
+            device_symbol=self.device_symbol,
+        )
         fields = ("source", "host", "core", "entry_transport", "core_transport", "abi", "core_abi", "source_members")
         if any(getattr(self, field) != getattr(current, field) for field in fields):
             raise ValueError("prepared source program changed; replan from the original source")
@@ -67,61 +73,100 @@ def prepare_source_program(source, *, effects, target, entry_symbol="kernel_entr
         raise ValueError("explicit target binding identifier required")
     module = parse_mlir_text(source)
     before = text(module, generic=True)
-    original_owners = [op for op in module.body.block.ops if isinstance(op, func.FuncOp)
-                       and op.sym_name.data == "forward"]
+    original_owners = [
+        op for op in module.body.block.ops if isinstance(op, func.FuncOp) and op.sym_name.data == "forward"
+    ]
     if len(original_owners) != 1 or len(original_owners[0].body.blocks) != 1:
         raise ValueError("source program requires one original closed forward block")
     original_owner = original_owners[0]
     original_roots = []
     for ordinal, op in enumerate(original_owner.body.block.ops):
         inputs = tuple(getattr(op, "inputs", ()))
-        if (op.name in ("linalg.generic", "linalg.matmul") and len(inputs) == 2 and len(op.results) == 1
-                and tuple(str(value.type.element_type) for value in (*inputs, op.results[0])) == ("i8", "i8", "i32")):
+        if (
+            op.name in ("linalg.generic", "linalg.matmul")
+            and len(inputs) == 2
+            and len(op.results) == 1
+            and tuple(str(value.type.element_type) for value in (*inputs, op.results[0])) == ("i8", "i8", "i32")
+        ):
             original_roots.append((ordinal, op, read_zero_seeded_integer_matmul(op)))
     prepared = prepare_sibling_source_host(module, effects=effects)
-    owner = next(op for op in prepared.module.body.block.ops if isinstance(op, func.FuncOp)
-                 and op.sym_name.data == "forward")
+    owner = next(
+        op for op in prepared.module.body.block.ops if isinstance(op, func.FuncOp) and op.sym_name.data == "forward"
+    )
     owner.attributes["llvm.emit_c_interface"] = UnitAttr()
     original_inputs, original_outputs = tensor_abi(module)
-    abi = tuple((row["name"], tuple(row["shape"]), row["dtype"],
-                 "read" if index < len(original_inputs) else "write")
-                for index, row in enumerate((*original_inputs, *original_outputs)))
+    abi = tuple(
+        (row["name"], tuple(row["shape"]), row["dtype"], "read" if index < len(original_inputs) else "write")
+        for index, row in enumerate((*original_inputs, *original_outputs))
+    )
     callee = next(op for op in prepared.core.body.block.ops if isinstance(op, func.FuncOp))
     types = (*callee.function_type.inputs, *callee.function_type.outputs)
     count = len(callee.function_type.inputs)
     if any(len(typ.get_shape()) != 2 for typ in types):
         raise ValueError("initial source-program transport supports the exact rank-two sibling family")
-    buffers = tuple(LogicalBuffer("core_" + str(i), "input" if i < count else "output",
-        "input_" + str(i) if i < count else "out_" + str(i - count), tuple(typ.get_shape()), str(typ.element_type))
-        for i, typ in enumerate(types))
-    core_abi = tuple((b.name, b.shape, b.dtype, "read" if i < count else "write")
-                     for i, b in enumerate(buffers))
-    transport = emit_logical_translation_unit(target, {"source_core_transport": (
-        buffers, [{"role": b.role, "shape": list(b.shape), "dtype": b.dtype} for b in buffers])},
-        kernel_symbol_for=lambda _: device_symbol)
+    buffers = tuple(
+        LogicalBuffer(
+            "core_" + str(i),
+            "input" if i < count else "output",
+            "input_" + str(i) if i < count else "out_" + str(i - count),
+            tuple(typ.get_shape()),
+            str(typ.element_type),
+        )
+        for i, typ in enumerate(types)
+    )
+    core_abi = tuple((b.name, b.shape, b.dtype, "read" if i < count else "write") for i, b in enumerate(buffers))
+    transport = emit_logical_translation_unit(
+        target,
+        {
+            "source_core_transport": (
+                buffers,
+                [{"role": b.role, "shape": list(b.shape), "dtype": b.dtype} for b in buffers],
+            )
+        },
+        kernel_symbol_for=lambda _: device_symbol,
+    )
     if transport.skipped or transport.symbols != ("source_core_transport",):
         raise ValueError("ordinary source-core pointer transport refused the complete ABI")
     n = len(buffers)
-    bridge = (transport.text + "\nvoid _mlir_ciface_" + prepared.writer.borrowed_symbol + "("
+    bridge = (
+        transport.text
+        + "\nvoid _mlir_ciface_"
+        + prepared.writer.borrowed_symbol
+        + "("
         + ",".join("const merlin_lmemref_2d*d" + str(i) for i in range(n))
         + ") {source_core_transport_results result;_mlir_ciface_source_core_transport(&result,"
-        + ",".join("d" + str(i) for i in range(n)) + ");}\n")
+        + ",".join("d" + str(i) for i in range(n))
+        + ");}\n"
+    )
     # Read members from the actual outlined core; the existing outliner retains
     # source region attributes. These are source links, not instruction credit.
     roots = [op for op in prepared.core.walk() if op.name in ("linalg.generic", "linalg.matmul")]
-    if (len(roots) != len(original_roots)
-            or any(read_zero_seeded_integer_matmul(root) != geometry
-                   or root.attributes.get("prov.region_id") != original.attributes.get("prov.region_id")
-                   for root, (_, original, geometry) in zip(roots, original_roots, strict=True))):
+    if len(roots) != len(original_roots) or any(
+        read_zero_seeded_integer_matmul(root) != geometry
+        or root.attributes.get("prov.region_id") != original.attributes.get("prov.region_id")
+        for root, (_, original, geometry) in zip(roots, original_roots, strict=True)
+    ):
         raise ValueError("outlined core does not retain every ordered original integer root")
     # Ordinals refer to ORIGINAL source, not positions after view CSE/hoisting.
-    members = tuple((ordinal, getattr(op.attributes.get("prov.region_id"), "data", None))
-                    for ordinal, op, _ in original_roots)
+    members = tuple(
+        (ordinal, getattr(op.attributes.get("prov.region_id"), "data", None)) for ordinal, op, _ in original_roots
+    )
     if text(module, generic=True) != before:
         raise ValueError("source-program preparation changed original SSA")
-    return SourceProgram(source, text(prepared.module, generic=True), text(prepared.core, generic=True),
-        emit_ranked_source_entry(module, entry_symbol=entry_symbol), bridge, abi, core_abi, members,
-        prepared, target, entry_symbol, device_symbol)
+    return SourceProgram(
+        source,
+        text(prepared.module, generic=True),
+        text(prepared.core, generic=True),
+        emit_ranked_source_entry(module, entry_symbol=entry_symbol),
+        bridge,
+        abi,
+        core_abi,
+        members,
+        prepared,
+        target,
+        entry_symbol,
+        device_symbol,
+    )
 
 
 @dataclass(frozen=True)
@@ -156,14 +201,22 @@ def emit_source_program(program, *, emit_device, emit_host):
     current = program.revalidate()
     outputs = []
     for source, callback, options in (
-        (current.core, emit_device, {"symbol": current.device_symbol, "abi": current.core_abi,
-                                    "source_members": current.source_members}),
+        (
+            current.core,
+            emit_device,
+            {"symbol": current.device_symbol, "abi": current.core_abi, "source_members": current.source_members},
+        ),
         (current.host, emit_host, {"writers": (current.prepared.writer,)}),
     ):
         product = callback(parse_mlir_text(source), **options)
-        if (type(product) is not SourceEmission or product.source_sha256 != _sha(source)
-                or type(product.data) is not bytes or not product.data or len(product.data) > 64 << 20
-                or product.format not in ("llvm_ir", "llvm_dialect", "object")):
+        if (
+            type(product) is not SourceEmission
+            or product.source_sha256 != _sha(source)
+            or type(product.data) is not bytes
+            or not product.data
+            or len(product.data) > 64 << 20
+            or product.format not in ("llvm_ir", "llvm_dialect", "object")
+        ):
             raise ValueError("actual emission does not match the prepared source component")
         outputs.append(product)
         program.revalidate()
@@ -174,24 +227,41 @@ def emit_source_program(program, *, emit_device, emit_host):
     from xdsl.parser import Parser
 
     from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
+
     emitted = Parser(make_llvm_context(), device.data.decode()).parse_module()
     emitted.verify()
-    symbols = [op for op in emitted.body.block.ops if isinstance(op, llvm.FuncOp)
-               and op.sym_name.data == current.device_symbol]
-    if (len(symbols) != 1 or not symbols[0].body.blocks
-            or symbols[0].linkage != llvm.LinkageAttr("external")
-            or tuple(symbols[0].function_type.inputs) != (llvm.LLVMPointerType(),) * len(current.core_abi)
-            or symbols[0].function_type.output != llvm.LLVMVoidType()):
+    symbols = [
+        op for op in emitted.body.block.ops if isinstance(op, llvm.FuncOp) and op.sym_name.data == current.device_symbol
+    ]
+    if (
+        len(symbols) != 1
+        or not symbols[0].body.blocks
+        or symbols[0].linkage != llvm.LinkageAttr("external")
+        or tuple(symbols[0].function_type.inputs) != (llvm.LLVMPointerType(),) * len(current.core_abi)
+        or symbols[0].function_type.output != llvm.LLVMVoidType()
+    ):
         raise ValueError("actual device function does not implement the complete logical pointer ABI")
-    return SourceProgramEmission(device, host, current.entry_transport, current.core_transport, {
-        "schema": "merlin.source_program_emission.v1", "source_sha256": _sha(current.source),
-        "host_source_sha256": _sha(current.host), "core_source_sha256": _sha(current.core),
-        "device_product_sha256": _sha(device.data), "host_product_sha256": _sha(host.data),
-        "entry_transport_sha256": _sha(current.entry_transport), "core_transport_sha256": _sha(current.core_transport),
-        "logical_abi": current.abi, "device_abi": current.core_abi,
-        "outlined_source_members": current.source_members,
-        "original_epilogues_and_outputs_retained": True,
-        "scope": "actual component emission and ABI transport; final owner admission remains required",
-        "physical_effects_qualified": False, "target_execution": False,
-        "unavoidable_source_work_attribution": "requires independent final owner audit",
-    })
+    return SourceProgramEmission(
+        device,
+        host,
+        current.entry_transport,
+        current.core_transport,
+        {
+            "schema": "merlin.source_program_emission.v1",
+            "source_sha256": _sha(current.source),
+            "host_source_sha256": _sha(current.host),
+            "core_source_sha256": _sha(current.core),
+            "device_product_sha256": _sha(device.data),
+            "host_product_sha256": _sha(host.data),
+            "entry_transport_sha256": _sha(current.entry_transport),
+            "core_transport_sha256": _sha(current.core_transport),
+            "logical_abi": current.abi,
+            "device_abi": current.core_abi,
+            "outlined_source_members": current.source_members,
+            "original_epilogues_and_outputs_retained": True,
+            "scope": "actual component emission and ABI transport; final owner admission remains required",
+            "physical_effects_qualified": False,
+            "target_execution": False,
+            "unavoidable_source_work_attribution": "requires independent final owner audit",
+        },
+    )

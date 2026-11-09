@@ -21,41 +21,65 @@ def _owners():
     from merlin.compiler.frontend.preprocess import implementation_paths
     from merlin.compiler.quantization.linalg import lower_quant_ext
 
-    paths = tuple(dict.fromkeys((
-        Path(__file__), *implementation_paths(), Path(lower_quant_ext.__code__.co_filename),
-    )))
+    paths = tuple(
+        dict.fromkeys(
+            (
+                Path(__file__),
+                *implementation_paths(),
+                Path(lower_quant_ext.__code__.co_filename),
+            )
+        )
+    )
     return {str(path.absolute()): _sha(path.read_bytes()) for path in paths}
 
 
 def revalidate(record):
     """Reopen fixed actual owners; record paths cannot authorize arbitrary reads."""
-    if (not isinstance(record, dict) or record.get("schema") != "merlin.captured-quantization-legalization.v1"
-            or record.get("source_owners") != _owners()):
+    if (
+        not isinstance(record, dict)
+        or record.get("schema") != "merlin.captured-quantization-legalization.v1"
+        or record.get("source_owners") != _owners()
+    ):
         raise ValueError("captured quantization legalization implementation changed after selection")
 
 
 def _admit(operation):
     from xdsl.dialects import builtin
 
-    if (getattr(getattr(operation, "op_name", None), "data", None) != "quant_ext.quantize_per_tensor"
-            or operation.regions or operation.successors or len(operation.operands) != 3
-            or len(operation.results) != 1
-            or set(operation.properties) != {"quant_min", "quant_max", "output_dtype"}
-            or any(key != "op_name__" and not key.startswith("prov.") for key in operation.attributes)):
+    if (
+        getattr(getattr(operation, "op_name", None), "data", None) != "quant_ext.quantize_per_tensor"
+        or operation.regions
+        or operation.successors
+        or len(operation.operands) != 3
+        or len(operation.results) != 1
+        or set(operation.properties) != {"quant_min", "quant_max", "output_dtype"}
+        or any(key != "op_name__" and not key.startswith("prov.") for key in operation.attributes)
+    ):
         raise ValueError("captured quantization legalization requires the exact closed per-tensor marker")
     value, scale, zero = (operand.type for operand in operation.operands)
     result = operation.results[0].type
-    if (any(type(typ) is not builtin.TensorType or not typ.has_static_shape()
-            or type(typ.encoding) is not builtin.NoneAttr for typ in (value, scale, zero, result))
-            or value.get_shape() != result.get_shape() or scale.get_shape() != () or zero.get_shape() != ()
-            or value.element_type not in (builtin.f16, builtin.bf16, builtin.f32)
-            or scale.element_type != builtin.f32 or zero.element_type not in (builtin.i32, builtin.i64)
-            or result.element_type != builtin.i8
-            or operation.properties["output_dtype"] != builtin.StringAttr("int8")):
+    if (
+        any(
+            type(typ) is not builtin.TensorType
+            or not typ.has_static_shape()
+            or type(typ.encoding) is not builtin.NoneAttr
+            for typ in (value, scale, zero, result)
+        )
+        or value.get_shape() != result.get_shape()
+        or scale.get_shape() != ()
+        or zero.get_shape() != ()
+        or value.element_type not in (builtin.f16, builtin.bf16, builtin.f32)
+        or scale.element_type != builtin.f32
+        or zero.element_type not in (builtin.i32, builtin.i64)
+        or result.element_type != builtin.i8
+        or operation.properties["output_dtype"] != builtin.StringAttr("int8")
+    ):
         raise ValueError("captured quantization marker has unsupported typed arithmetic/storage")
     bounds = [operation.properties[name] for name in ("quant_min", "quant_max")]
-    if (any(type(bound) is not builtin.IntegerAttr or type(bound.value.data) is not int for bound in bounds)
-            or not -128 <= bounds[0].value.data < bounds[1].value.data <= 127):
+    if (
+        any(type(bound) is not builtin.IntegerAttr or type(bound.value.data) is not int for bound in bounds)
+        or not -128 <= bounds[0].value.data < bounds[1].value.data <= 127
+    ):
         raise ValueError("captured quantization marker has invalid signed-i8 clamp bounds")
 
 
@@ -70,9 +94,13 @@ def _source_arithmetic(operation, trace):
     from xdsl.dialects import arith, builtin, tensor
 
     source_ids = operation.attributes.get("prov.source_node_ids")
-    if (not isinstance(trace, dict) or trace.get("status") != "complete"
-            or type(source_ids) is not builtin.ArrayAttr or len(source_ids) != 1
-            or any(type(value) is not builtin.StringAttr for value in source_ids)):
+    if (
+        not isinstance(trace, dict)
+        or trace.get("status") != "complete"
+        or type(source_ids) is not builtin.ArrayAttr
+        or len(source_ids) != 1
+        or any(type(value) is not builtin.StringAttr for value in source_ids)
+    ):
         raise ValueError("captured quantization legalization needs exact prepared source correspondence")
     nodes = (trace.get("graphs", {}).get("prepared") or {}).get("nodes", ())
     selected = [node for node in nodes if node.get("id") == source_ids.data[0].data]
@@ -80,10 +108,15 @@ def _source_arithmetic(operation, trace):
         raise ValueError("captured quantization has an unproved source primitive/qparam producer")
     node = selected[0]
     args = node.get("args")
-    if (not isinstance(args, list) or len(args) != 6 or node.get("kwargs") != {}
-            or type(args[1]) not in (float, int) or type(args[2]) is not int
-            or any(type(args[index]) is not int for index in (3, 4))
-            or args[5] != {"kind": "dtype", "value": "torch.int8"}):
+    if (
+        not isinstance(args, list)
+        or len(args) != 6
+        or node.get("kwargs") != {}
+        or type(args[1]) not in (float, int)
+        or type(args[2]) is not int
+        or any(type(args[index]) is not int for index in (3, 4))
+        or args[5] != {"kind": "dtype", "value": "torch.int8"}
+    ):
         raise ValueError("captured quantization has unknown or runtime qparam arithmetic/domain")
     scale = args[1]
     try:
@@ -93,8 +126,8 @@ def _source_arithmetic(operation, trace):
     if not math.isfinite(scale) or scale <= 0 or exact != scale:
         raise ValueError("captured scalar scale precision/domain did not survive f32 externalization")
     if not args[3] <= args[2] <= args[4] or any(
-            operation.properties[name].value.data != args[index]
-            for name, index in (("quant_min", 3), ("quant_max", 4))):
+        operation.properties[name].value.data != args[index] for name, index in (("quant_min", 3), ("quant_max", 4))
+    ):
         raise ValueError("captured quantization zero-point/clamp order differs from its source")
     values = []
     for operand in operation.operands[1:]:
@@ -104,10 +137,16 @@ def _source_arithmetic(operation, trace):
         values.append(splat.input.owner.value.value.data)
     if values != [scale, args[2]]:
         raise ValueError("captured scalar qparams differ from their prepared source values")
-    return {"source_node_id": node["id"], "primitive": node["target"], "scale": scale,
-            "scale_precision": "exact_f32_python_scalar", "zero_point": args[2],
-            "quant_min": args[3], "quant_max": args[4],
-            "order": "f32 reciprocal; f32 multiply; nearest-even; add zero point; clamp; signed-i8"}
+    return {
+        "source_node_id": node["id"],
+        "primitive": node["target"],
+        "scale": scale,
+        "scale_precision": "exact_f32_python_scalar",
+        "zero_point": args[2],
+        "quant_min": args[3],
+        "quant_max": args[4],
+        "order": "f32 reciprocal; f32 multiply; nearest-even; add zero point; clamp; signed-i8",
+    }
 
 
 def legalize(module, *, trace=None):
@@ -134,13 +173,20 @@ def legalize(module, *, trace=None):
     original = text(module, generic=True)
     normalized = module.clone()
     rewrites = []
+
     def record(old, replacements, replacement):
-        rewrites.append({"marker": old.op_name.data,
-                         "source_attributes": {key: str(value) for key, value in old.attributes.items()
-                                               if key.startswith("prov.")},
-                         "properties": {key: str(value) for key, value in old.properties.items()},
-                         "replacement_operations": [op.name for op in replacements],
-                         "result_operation": replacement.name})
+        rewrites.append(
+            {
+                "marker": old.op_name.data,
+                "source_attributes": {
+                    key: str(value) for key, value in old.attributes.items() if key.startswith("prov.")
+                },
+                "properties": {key: str(value) for key, value in old.properties.items()},
+                "replacement_operations": [op.name for op in replacements],
+                "result_operation": replacement.name,
+            }
+        )
+
     if lower_quant_ext(normalized, on_rewrite=record) != len(markers):
         raise ValueError("captured quantization legalization did not cover every admitted marker")
     normalized.verify()
@@ -149,9 +195,12 @@ def legalize(module, *, trace=None):
     if text(module, generic=True) != original or _owners() != owners:
         raise ValueError("captured quantization source/implementation changed during legalization")
     return normalized, {
-        "schema": "merlin.captured-quantization-legalization.v1", "input_ir_sha256": _sha(original.encode()),
-        "output_ir_sha256": _sha(text(normalized, generic=True).encode()), "source_owners": owners,
-        "pass": "merlin.compiler.quantization.linalg.lower_quant_ext", "rewrites": rewrites,
+        "schema": "merlin.captured-quantization-legalization.v1",
+        "input_ir_sha256": _sha(original.encode()),
+        "output_ir_sha256": _sha(text(normalized, generic=True).encode()),
+        "source_owners": owners,
+        "pass": "merlin.compiler.quantization.linalg.lower_quant_ext",
+        "rewrites": rewrites,
         "source_arithmetic": arithmetic,
         "scope": "explicit shared marker legalization; no new precision choice or numerical qualification",
     }

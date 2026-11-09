@@ -11,10 +11,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from merlin.compiler.schedule.spill_conformance import SpillClass, validate_spill_classes
 from merlin.sched.ir import Call
 from merlin.targetgen.isa_spec import resolve_fact_integer
-
-from merlin.compiler.schedule.spill_conformance import SpillClass, validate_spill_classes
 
 
 def _fields(value, keys, label):
@@ -32,8 +31,11 @@ class SelectedSpillContract:
         declarations = json.loads(self.declarations_json)
         if emitters is None:
             emitters = {}
-        if (type(emitters) is not dict or set(emitters) - set(declarations)
-                or any(not callable(emit) for emit in emitters.values())):
+        if (
+            type(emitters) is not dict
+            or set(emitters) - set(declarations)
+            or any(not callable(emit) for emit in emitters.values())
+        ):
             raise ValueError("device spill emitters must name declared classes and be callable")
         if qualification_identity is not None and (
             type(qualification_identity) is not str or not qualification_identity.strip()
@@ -58,30 +60,51 @@ class SelectedSpillContract:
 
             def emit(read, write, *, selected=selector, declared=row):
                 direction = (read.space, write.space)
-                routes = {(declared["register_bank"], declared["spill_bank"]): declared["store"],
-                          (declared["spill_bank"], declared["register_bank"]): declared["reload"]}
+                routes = {
+                    (declared["register_bank"], declared["spill_bank"]): declared["store"],
+                    (declared["spill_bank"], declared["register_bank"]): declared["reload"],
+                }
                 instruction = routes.get(direction)
-                if (instruction is None or read.writes or not write.writes
-                        or read.size != declared["width_bits"] // 8 or write.size != read.size):
+                if (
+                    instruction is None
+                    or read.writes
+                    or not write.writes
+                    or read.size != declared["width_bits"] // 8
+                    or write.size != read.size
+                ):
                     raise ValueError("device spill request exceeds its selected class or transfer direction")
                 call = emitters[selected](read, write)
                 if type(call) is not Call or call.instr != instruction:
                     raise ValueError("device spill emitter returned an undeclared store/reload instruction")
                 effect = adapter.project(call)
-                if (effect is None or not effect.exact_copy or effect.completion != "synchronous"
-                        or effect.accesses != (read, write)):
+                if (
+                    effect is None
+                    or not effect.exact_copy
+                    or effect.completion != "synchronous"
+                    or effect.accesses != (read, write)
+                ):
                     raise ValueError("selected device spill instruction changed exact operands or completion")
                 return call
 
-            classes.append(SpillClass(row["register_bank"], row["spill_bank"], row["width_bits"] // 8,
-                                      row["alignment"], emit, qualification_identity))
+            classes.append(
+                SpillClass(
+                    row["register_bank"],
+                    row["spill_bank"],
+                    row["width_bits"] // 8,
+                    row["alignment"],
+                    emit,
+                    qualification_identity,
+                )
+            )
         result = tuple(classes)
         validate_spill_classes(result, banks)
-        return result, {"schema": "merlin.selected_device_spill_binding.v1",
-                        "qualification_identity": qualification_identity,
-                        "selected_classes": [name for name in declarations if name not in unavailable],
-                        "unavailable_classes": unavailable,
-                        "cost_policy": "longest-unused-gap; timing UNKNOWN"}
+        return result, {
+            "schema": "merlin.selected_device_spill_binding.v1",
+            "qualification_identity": qualification_identity,
+            "selected_classes": [name for name in declarations if name not in unavailable],
+            "unavailable_classes": unavailable,
+            "cost_policy": "longest-unused-gap; timing UNKNOWN",
+        }
 
 
 def resolve_spill_contract(declaration, facts, isa, storage):
@@ -97,8 +120,9 @@ def resolve_spill_contract(declaration, facts, isa, storage):
     for selector, item in row["classes"].items():
         if type(selector) is not str or not selector:
             raise ValueError("device spill class selectors must be nonempty strings")
-        _fields(item, ("register_bank", "spill_bank", "width_bits", "alignment", "store", "reload", "execution"),
-                "class")
+        _fields(
+            item, ("register_bank", "spill_bank", "width_bits", "alignment", "store", "reload", "execution"), "class"
+        )
         if any(type(item[key]) is not str or item[key] not in banks for key in ("register_bank", "spill_bank")):
             raise ValueError("device spills require declared private device register and spill banks")
         source, destination = banks[item["register_bank"]], banks[item["spill_bank"]]
@@ -107,16 +131,23 @@ def resolve_spill_contract(declaration, facts, isa, storage):
         register_banks.add(item["register_bank"])
         if type(item["execution"]) is not str or not item["execution"]:
             raise ValueError("device spill execution must be explicit or unknown")
-        reason = (None if item["execution"] == "synchronous_bit_preserving_bytes"
-                  else "unsupported_or_unknown_execution")
-        bits = (resolve_fact_integer(item["width_bits"], facts, label="device register bits", minimum=1)
-                if item["width_bits"] is not None else None)
-        alignment = (resolve_fact_integer(item["alignment"], facts, label="device spill alignment", minimum=1)
-                     if item["alignment"] is not None else None)
+        reason = None if item["execution"] == "synchronous_bit_preserving_bytes" else "unsupported_or_unknown_execution"
+        bits = (
+            resolve_fact_integer(item["width_bits"], facts, label="device register bits", minimum=1)
+            if item["width_bits"] is not None
+            else None
+        )
+        alignment = (
+            resolve_fact_integer(item["alignment"], facts, label="device spill alignment", minimum=1)
+            if item["alignment"] is not None
+            else None
+        )
         if bits is not None and bits % 8:
             raise ValueError("device register spills require complete byte representations")
-        for name, read, write in ((item["store"], source.resource, destination.resource),
-                                  (item["reload"], destination.resource, source.resource)):
+        for name, read, write in (
+            (item["store"], source.resource, destination.resource),
+            (item["reload"], destination.resource, source.resource),
+        ):
             isa.instruction(name)
             effect = effects.get(name)
             if effect is None or not effect["exact_copy"] or effect["nonmemory_effects"]:
@@ -129,8 +160,13 @@ def resolve_spill_contract(declaration, facts, isa, storage):
                 binding = access["space"]
                 return space == binding.get("resource") or space in {c["resource"] for c in binding.get("choices", ())}
 
-            if (len(accesses) != 2 or accesses[0]["writes"] or not accesses[1]["writes"]
-                    or not possible(accesses[0], read) or not possible(accesses[1], write)):
+            if (
+                len(accesses) != 2
+                or accesses[0]["writes"]
+                or not accesses[1]["writes"]
+                or not possible(accesses[0], read)
+                or not possible(accesses[1], write)
+            ):
                 raise ValueError("device spill store/reload cannot realize its declared memory direction")
         normalized[selector] = {**item, "width_bits": bits, "alignment": alignment, "unavailable": reason}
     return SelectedSpillContract(json.dumps(normalized, sort_keys=True, separators=(",", ":"), allow_nan=False))

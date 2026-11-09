@@ -9,10 +9,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 import yaml
-from merlin_experiments.phase1.feedback import private_full_model_execution as PFX
-from merlin_experiments.phase1.feedback import private_full_models as PFM
 
 from merlin.common.paths import repo_root
+from merlin_experiments.phase1.feedback import private_full_model_execution as PFX
+from merlin_experiments.phase1.feedback import private_full_models as PFM
 
 ROSTER = {"net": ("model",), "policy": ("encode", "step")}
 EXECUTED = {

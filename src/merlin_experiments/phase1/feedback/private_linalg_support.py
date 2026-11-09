@@ -17,7 +17,6 @@ from typing import Any
 
 from merlin.common import mlir_query as mq
 from merlin.common.digest import is_sha256
-from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
 from merlin.frontends.linalg_boolean_patterns import (
     DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA,
     STATIC_BOOLEAN_SOURCE_BODY_SCHEMA,
@@ -78,6 +77,7 @@ from merlin.frontends.linalg_patterns import (
     validate_static_pointwise_source_body,
     validate_static_projected_pointwise_source_body,
 )
+from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
 from merlin.targetgen.host_linkage_contract import (
     required_composite_math_symbol,
     validate_source_linkage_contract,

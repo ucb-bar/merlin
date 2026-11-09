@@ -124,13 +124,17 @@ class PointwiseTiling:
         mapping = self.input_map(operand)
         row_invariant = all(not any(row[:-1]) for row in mapping.coefficients)
         column_invariant = all(row[-1] == 0 for row in mapping.coefficients)
-        return tuple(min(extent, tile) if self.compact_broadcasts and invariant else extent
-                     for extent, tile, invariant in zip(
-                         self.shape, self.tile_shape, (row_invariant, column_invariant), strict=True))
+        return tuple(
+            min(extent, tile) if self.compact_broadcasts and invariant else extent
+            for extent, tile, invariant in zip(
+                self.shape, self.tile_shape, (row_invariant, column_invariant), strict=True
+            )
+        )
 
     def input_tile_counts(self, operand: int):
-        return tuple((extent + tile - 1) // tile
-                     for extent, tile in zip(self.input_shape(operand), self.tile_shape, strict=True))
+        return tuple(
+            (extent + tile - 1) // tile for extent, tile in zip(self.input_shape(operand), self.tile_shape, strict=True)
+        )
 
     @property
     def input_packed_bytes(self):
@@ -139,8 +143,7 @@ class PointwiseTiling:
     def input_tile_strides(self, operand: int):
         """Tile offsets for one step in the output's row/column tile grid."""
         rows, columns = self.input_tile_counts(operand)
-        return (columns if rows == self.tile_counts[0] else 0,
-                1 if columns == self.tile_counts[1] else 0)
+        return (columns if rows == self.tile_counts[0] else 0, 1 if columns == self.tile_counts[1] else 0)
 
     def body_request(self):
         *operands, result = self.source.nodes

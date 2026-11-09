@@ -354,9 +354,11 @@ class KernelRequest:
         object.__setattr__(self, "physical_extents", tuple(sorted(extents.items())))
         object.__setattr__(self, "boundary_layouts", tuple(sorted(layouts.items())))
         object.__setattr__(self, "_by_id", seen)
-        object.__setattr__(self, "_digest_cacheable", all(
-            _immutable_identity_value(getattr(self, item.name)) for item in fields(self) if item.init
-        ))
+        object.__setattr__(
+            self,
+            "_digest_cacheable",
+            all(_immutable_identity_value(getattr(self, item.name)) for item in fields(self) if item.init),
+        )
 
     def node(self, node_id: str) -> SemanticNode:
         return self._by_id[node_id]

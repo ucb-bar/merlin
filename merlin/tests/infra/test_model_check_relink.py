@@ -14,8 +14,8 @@ from merlin.model_check import full_build as FB
 
 @pytest.fixture
 def image(tmp_path, monkeypatch, request):
-    from merlin.common.paths import module_source_path
     from merlin import model as baremetal_model
+    from merlin.common.paths import module_source_path
     from merlin.llvmlower.compilation_recipe import CompilationRecipe
     from merlin.targetgen.rtl.facts import observed_facts
 
@@ -57,22 +57,45 @@ def image(tmp_path, monkeypatch, request):
             Path(argv[argv.index("-o") + 1]).write_bytes(b"observed fixture output")
             return SimpleNamespace(returncode=0)
 
-        recipe.run([tool, build / "model_main.c", "-I", build / "cgen", "-o", build / "model_main.o"],
-                   runner=returned, inputs=[build / "model_main.c"], output=build / "model_main.o", cwd=build)
+        recipe.run(
+            [tool, build / "model_main.c", "-I", build / "cgen", "-o", build / "model_main.o"],
+            runner=returned,
+            inputs=[build / "model_main.c"],
+            output=build / "model_main.o",
+            cwd=build,
+        )
         elf = build / "model.elf"
-        recipe.run([tool, build / "model_main.o", build / "weights_blob.o", "-o", elf], runner=returned,
-                   inputs=[build / "model_main.o", build / "weights_blob.o"], output=elf, cwd=build)
+        recipe.run(
+            [tool, build / "model_main.o", build / "weights_blob.o", "-o", elf],
+            runner=returned,
+            inputs=[build / "model_main.o", build / "weights_blob.o"],
+            output=elf,
+            cwd=build,
+        )
         recipe.completed(elf)
-        return {"output": {"elf": str(elf), "elf_sha256": FB.sha256(elf), "build_hash": "unit-observation",
-                           "compilation_recipe": {"path": str(recipe.path), "sha256": FB.sha256(recipe.path)}}}
+        return {
+            "output": {
+                "elf": str(elf),
+                "elf_sha256": FB.sha256(elf),
+                "build_hash": "unit-observation",
+                "compilation_recipe": {"path": str(recipe.path), "sha256": FB.sha256(recipe.path)},
+            }
+        }
 
     monkeypatch.setattr(baremetal_model, "compile_saved_model", compiler)
     monkeypatch.setattr(FB, "elf_sections", lambda path: {})
     monkeypatch.setattr(FB, "_routing", lambda *args: "unit device route; no hardware qualification")
     with observed_facts("neutral", {"facts": {}}):
-        record = FB.build(stage, target="neutral", label="unit", submission=host,
-                          submission_sha256="unused", settings=FB.BuildSettings("board", board, dts, "typed", 1, host),
-                          directory=tmp_path / "image-cache", offload=bool(getattr(request, "param", False)))
+        record = FB.build(
+            stage,
+            target="neutral",
+            label="unit",
+            submission=host,
+            submission_sha256="unused",
+            settings=FB.BuildSettings("board", board, dts, "typed", 1, host),
+            directory=tmp_path / "image-cache",
+            offload=bool(getattr(request, "param", False)),
+        )
         yield stage, Path(record["build_dir"]), record
 
 
@@ -91,11 +114,13 @@ def test_relink_checks_blob_identity_and_call_before_reusing_objects(image, tmp_
     inputs = {"in0": np.array([8, 9], np.float32)}
     directory = tmp_path / "step"
     if change:
-        with pytest.raises(FB.FullBuildError,
-                           match="weights blob|argument-table call|inputs changed|stored build origin"):
+        with pytest.raises(
+            FB.FullBuildError, match="weights blob|argument-table call|inputs changed|stored build origin"
+        ):
             FB.relink(record, stage, inputs, directory)
         assert not commands
     else:
+
         def run(argv, cwd):
             commands.append(([str(a) for a in argv], cwd))
             Path(argv[argv.index("-o") + 1]).write_bytes(b"relinked fixture output")
@@ -155,9 +180,12 @@ def test_changed_origin_cannot_relink_even_when_original_elf_is_unchanged(image,
         (build / "blob_weights.json").write_text('{"args":[],"dead_args":[]}')
     else:
         path = {
-            "object": build / "weights_blob.o", "recipe": build / "compilation_recipe.json",
-            "tool": tmp_path / "inert-tool", "header": build / "cgen/model_gen.h",
-            "board": tmp_path / "boards.yaml", "host": tmp_path / "host/manifest.yaml",
+            "object": build / "weights_blob.o",
+            "recipe": build / "compilation_recipe.json",
+            "tool": tmp_path / "inert-tool",
+            "header": build / "cgen/model_gen.h",
+            "board": tmp_path / "boards.yaml",
+            "host": tmp_path / "host/manifest.yaml",
         }[mutation]
         path.write_bytes(path.read_bytes() + b"\n")
     commands = []
@@ -185,8 +213,13 @@ def test_missing_or_changed_origin_selection_cannot_authorize_relink(image, tmp_
 @pytest.mark.parametrize("location", ["capture", "build", "cache", "ancestor", "symlink"])
 def test_relink_output_cannot_remove_or_overlap_original_inputs(image, tmp_path, location):
     stage, build, record = image
-    output = {"capture": stage, "build": build, "cache": Path(record["cache_directory"]),
-              "ancestor": tmp_path, "symlink": tmp_path / "link"}[location]
+    output = {
+        "capture": stage,
+        "build": build,
+        "cache": Path(record["cache_directory"]),
+        "ancestor": tmp_path,
+        "symlink": tmp_path / "link",
+    }[location]
     if location == "symlink":
         output.symlink_to(stage, target_is_directory=True)
     before = FB.sha256(stage / "weights.safetensors")
@@ -252,8 +285,9 @@ def test_device_relink_requires_current_policy_on_actual_new_image(image, tmp_pa
     service = None
     if status is not None:
         owner = Path(inspect.getsourcefile(_policy)).resolve()
-        service = LinkedElfAdmissionService("neutral", partial(_policy, status=status, seen=seen),
-                                            ((str(owner), FB.sha256(owner)),))
+        service = LinkedElfAdmissionService(
+            "neutral", partial(_policy, status=status, seen=seen), ((str(owner), FB.sha256(owner)),)
+        )
     inputs, directory = {"in0": np.array([8, 9], np.float32)}, tmp_path / "step"
     if status == "accepted":
         elf = FB.relink(record, stage, inputs, directory, admission=service)
@@ -269,9 +303,16 @@ def test_ordinary_build_repairs_stale_relink_products_instead_of_reusing_image(i
     stage, build, record = image
     path = build / artifact
     path.write_bytes(path.read_bytes() + b"\n")
-    repaired = FB.build(stage, target="neutral", label="unit", submission=tmp_path / "host",
-                        submission_sha256="unused", settings=FB.BuildSettings(**record["key"]["settings"]),
-                        directory=Path(record["cache_directory"]), offload=False)
+    repaired = FB.build(
+        stage,
+        target="neutral",
+        label="unit",
+        submission=tmp_path / "host",
+        submission_sha256="unused",
+        settings=FB.BuildSettings(**record["key"]["settings"]),
+        directory=Path(record["cache_directory"]),
+        offload=False,
+    )
     assert not repaired["reused"] and repaired["relink_binding"]
     assert FB._verify_relink(repaired, stage)["status"] == "completed"
 
@@ -286,15 +327,18 @@ def test_relink_waits_for_build_lock_and_checks_origin_after_acquiring_it(image,
     from concurrent.futures import ThreadPoolExecutor
 
     stage, build, record = image
-    script = '''import fcntl,sys
+    script = """import fcntl,sys
 with open(sys.argv[1], 'r') as stream:
     fcntl.flock(stream, fcntl.LOCK_EX)
     print('locked', flush=True)
     sys.stdin.readline()
-'''
-    process = subprocess.Popen([sys.executable, "-I", "-S", "-B", "-c", script,
-                                str(Path(record["cache_directory"]) / ".lock")],
-                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-I", "-S", "-B", "-c", script, str(Path(record["cache_directory"]) / ".lock")],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
     attempted, checked = threading.Event(), threading.Event()
     original_lock, original_check = fcntl.flock, FB._verify_relink
 
@@ -314,8 +358,14 @@ with open(sys.argv[1], 'r') as stream:
         assert process.stdout.readline().strip() == "locked"
         with ThreadPoolExecutor(max_workers=1) as pool:
             try:
-                future = pool.submit(contextvars.copy_context().run, FB.relink, record, stage,
-                                     {"in0": np.array([8, 9], np.float32)}, tmp_path / "step")
+                future = pool.submit(
+                    contextvars.copy_context().run,
+                    FB.relink,
+                    record,
+                    stage,
+                    {"in0": np.array([8, 9], np.float32)},
+                    tmp_path / "step",
+                )
                 assert attempted.wait(5) and not checked.is_set() and not future.done()
                 (build / "weights_blob.o").write_bytes(b"changed while waiting for the build lock")
             finally:

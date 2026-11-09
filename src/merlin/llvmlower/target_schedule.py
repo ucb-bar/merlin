@@ -16,19 +16,11 @@ from pathlib import Path
 
 from xdsl.dialects import arith, builtin
 
-from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection
-from merlin.compiler.schedule.configuration_ir import _bounded_text
-from merlin.compiler.schedule.configuration_ir import _call
-from merlin.compiler.schedule.configuration_ir import _constant
-from merlin.compiler.schedule.configuration_ir import _names
+from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection, _bounded_text, _call, _constant, _names
 from merlin.compiler.schedule.program_limits import ProgramLimits
-from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
-from merlin.compiler.schedule.schedule_pipeline import _rewrite_snapshot
-from merlin.compiler.schedule.schedule_pipeline import compile_schedule
+from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding, _rewrite_snapshot, compile_schedule
 from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
-from merlin.compiler.schedule.temporary_storage import StorageAdapter
-from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
-from merlin.compiler.schedule.temporary_storage import TemporaryObject
+from merlin.compiler.schedule.temporary_storage import StorageAdapter, StorageOptimizationUnavailable, TemporaryObject
 from merlin.sched.ir import Call, Kernel, evaluate
 from merlin.targetgen.isa_dialect_gen import build_dialect, encode_instruction
 from merlin.transforms.certificates import ir_digest

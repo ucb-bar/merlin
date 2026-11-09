@@ -25,9 +25,16 @@ def tree(tmp_path, name, *, vector, width=256):
 @pytest.fixture
 def board():
     return Board(
-        name="configuration-fixture", dram_bytes=1 << 28, dram_base=0x80000000,
-        harts=2, vector_harts=2, console=CONSOLE_HTIF, flow=FLOW_ZEPHYR,
-        fpu_sharing=False, zephyr_vector_ext=True, vlen=128,
+        name="configuration-fixture",
+        dram_bytes=1 << 28,
+        dram_base=0x80000000,
+        harts=2,
+        vector_harts=2,
+        console=CONSOLE_HTIF,
+        flow=FLOW_ZEPHYR,
+        fpu_sharing=False,
+        zephyr_vector_ext=True,
+        vlen=128,
     )
 
 
@@ -63,9 +70,7 @@ def test_scalar_configuration_and_vector_save_floor(tmp_path, board):
 
 def test_conditional_defaults_remain_unknown(tmp_path):
     selected = tree(tmp_path, "selected", vector=True)
-    (selected.base / "arch" / "Kconfig").write_text(
-        "config RISCV_VECTOR_MAX_LEN\n  int\n  default 512 if SOC_WIDE\n"
-    )
+    (selected.base / "arch" / "Kconfig").write_text("config RISCV_VECTOR_MAX_LEN\n  int\n  default 512 if SOC_WIDE\n")
     assert selected.default_int("RISCV_VECTOR_MAX_LEN") is None
 
 

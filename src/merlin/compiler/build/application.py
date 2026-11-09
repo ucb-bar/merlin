@@ -65,7 +65,17 @@ def _sha(data):
 
 
 def _render(
-    source, adapter, name, capacity, compiled, *, plan, memory_plan=None, state=None, parameters=None, native_root=None,
+    source,
+    adapter,
+    name,
+    capacity,
+    compiled,
+    *,
+    plan,
+    memory_plan=None,
+    state=None,
+    parameters=None,
+    native_root=None,
 ):
     # Materialization consumes the choice already used to compile/export each
     # region. Re-running provider enumeration here could silently select a
@@ -142,11 +152,18 @@ def _render(
     if parameters is not None:
         parameters.check(source)
     driver, driver_files = emit_program_c(
-        program, name + "_driver", calls,
+        program,
+        name + "_driver",
+        calls,
         read_only_inputs=parameters.node_ids if parameters is not None else (),
     )
     interface, interface_files = emit_application_c(
-        source, driver, driver_files, name, capacity=capacity, parameters=parameters,
+        source,
+        driver,
+        driver_files,
+        name,
+        capacity=capacity,
+        parameters=parameters,
     )
     from merlin.compiler.build.linkage import merge_linkage_requirements
 
@@ -169,9 +186,14 @@ def _render(
         initialization, state_files = state.emit_initializers(name, input_order=interface["inputs"])
         state_record = {**state.record(), **initialization}
         if parameters is not None:
-            state_record["ports"] = [{**row, "source_input_index": row["input_index"],
-                                      "input_index": interface["inputs"].index(row["node_id"])}
-                                     for row in state_record["ports"]]
+            state_record["ports"] = [
+                {
+                    **row,
+                    "source_input_index": row["input_index"],
+                    "input_index": interface["inputs"].index(row["node_id"]),
+                }
+                for row in state_record["ports"]
+            ]
         interface["model_state"] = state_record
         files["application-state.json"] = _json(state_record)
         for filename, text in state_files.items():
@@ -256,7 +278,17 @@ original-model accuracy or execution on an integrated SoC or FPGA.
 
 
 def compile_semantic_application(
-    source, *, adapter, snapshot, target_source, destination, limits, name, capacity, state=None, source_folding=None,
+    source,
+    *,
+    adapter,
+    snapshot,
+    target_source,
+    destination,
+    limits,
+    name,
+    capacity,
+    state=None,
+    source_folding=None,
     parameters=None,
 ):
     """Compile every selected region; fail without substituting a different route."""
@@ -342,7 +374,15 @@ def compile_semantic_application(
 
 
 def verify_semantic_application(
-    source, *, adapter, snapshot, target_source, artifact, state=None, source_folding=None, parameters=None,
+    source,
+    *,
+    adapter,
+    snapshot,
+    target_source,
+    artifact,
+    state=None,
+    source_folding=None,
+    parameters=None,
 ):
     """Replay source partitioning, region exports, buffer planning and C generation."""
     manifest = json.loads((artifact / "manifest.json").read_bytes())

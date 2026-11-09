@@ -110,19 +110,28 @@ SATURATE = b"""module {func.func @forward(%x:i32)->i8 {
 
 
 def test_clamp_minmax_and_signed_compare_select_have_identical_bitvector_semantics():
-    selected = SATURATE.replace(b"%l=arith.maxsi %x,%lo:i32", b"""
+    selected = SATURATE.replace(
+        b"%l=arith.maxsi %x,%lo:i32",
+        b"""
     %p=arith.cmpi slt,%x,%lo:i32
-    %l=arith.select %p,%lo,%x:i32""").replace(b"%h=arith.minsi %l,%hi:i32", b"""
+    %l=arith.select %p,%lo,%x:i32""",
+    ).replace(
+        b"%h=arith.minsi %l,%hi:i32",
+        b"""
     %q=arith.cmpi sgt,%l,%hi:i32
-    %h=arith.select %q,%hi,%l:i32""")
+    %h=arith.select %q,%hi,%l:i32""",
+    )
     assert verify_scalar_transform(SATURATE, selected).verified
 
 
-@pytest.mark.parametrize("changed", [
-    SATURATE.replace(b"constant -128", b"constant -127"),
-    SATURATE.replace(b"arith.maxsi", b"arith.maxui"),
-    SATURATE.replace(b"%h:i32 to i8", b"%x:i32 to i8"),
-])
+@pytest.mark.parametrize(
+    "changed",
+    [
+        SATURATE.replace(b"constant -128", b"constant -127"),
+        SATURATE.replace(b"arith.maxsi", b"arith.maxui"),
+        SATURATE.replace(b"%h:i32 to i8", b"%x:i32 to i8"),
+    ],
+)
 def test_saturation_changes_are_refuted_over_all_accumulator_bits(changed):
     receipt = verify_scalar_transform(SATURATE, changed)
     assert receipt.status == "refuted" and receipt.counterexample is not None

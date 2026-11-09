@@ -116,9 +116,7 @@ def _prepare_sibling_writer(host, *, effects, symbol):
     if type(effects) is not BorrowedBufferEffects:
         raise ValueError("original independently selected borrowed effects required")
     effects.__post_init__()
-    callee = next(
-        op for op in host.body.block.ops if isinstance(op, func.FuncOp) and op.sym_name.data == symbol
-    )
+    callee = next(op for op in host.body.block.ops if isinstance(op, func.FuncOp) and op.sym_name.data == symbol)
     calls = [
         op
         for op in host.walk()

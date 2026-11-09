@@ -183,8 +183,8 @@ def selected_engine_binding(*, descriptor: Path, target: str) -> dict:
             raise ValueError("oracle timing engine differs from the required engine")
         binding = {"target": target, "config": config, "engine": engine}
         if engine == "verilator":
-            from merlin.runtime.modelinputs import selected_firrtl
             from merlin.runtime.backends import base as backends
+            from merlin.runtime.modelinputs import selected_firrtl
 
             facts_path = os.environ.get("MERLIN_RTL_FACTS", "").strip()
             if not facts_path:
@@ -214,8 +214,8 @@ def selected_engine_binding(*, descriptor: Path, target: str) -> dict:
                 receipt=receipt,
             )
         elif engine == "gsim":
-            from merlin.runtime.modelinputs import selected_firrtl
             from merlin.runtime.backends import base as backends
+            from merlin.runtime.modelinputs import selected_firrtl
             from merlin.targetgen import gsim_emulator
 
             facts_path = os.environ.get("MERLIN_RTL_FACTS", "").strip()

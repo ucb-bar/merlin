@@ -20,9 +20,13 @@ class StorageBank:
 
     def __post_init__(self) -> None:
         if (
-            not self.name or not self.backing or not self.unit
+            not self.name
+            or not self.backing
+            or not self.unit
             or any(type(x) is not int for x in (self.capacity, self.alignment, self.start))
-            or self.capacity <= 0 or self.alignment <= 0 or not 0 <= self.start <= self.capacity
+            or self.capacity <= 0
+            or self.alignment <= 0
+            or not 0 <= self.start <= self.capacity
         ):
             raise ValueError("storage bank needs positive geometry and explicit units")
 

@@ -5,6 +5,7 @@ qualification. Callers supply the supported context identities and complete
 state requests, encode the actual setters/consumers, and use ordinary
 configuration-effect verification on the resulting program.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -21,8 +22,14 @@ class ConfigurationRequest:
         if (
             type(self.state) is not tuple
             or not self.state
-            or any(type(pair) is not tuple or len(pair) != 2 or type(pair[0]) is not str
-                   or not pair[0] or type(pair[1]) is not int for pair in self.state)
+            or any(
+                type(pair) is not tuple
+                or len(pair) != 2
+                or type(pair[0]) is not str
+                or not pair[0]
+                or type(pair[1]) is not int
+                for pair in self.state
+            )
             or len({key for key, _ in self.state}) != len(self.state)
         ):
             raise ValueError("configuration request requires complete unique integer state fields")
@@ -63,12 +70,19 @@ def assign_configuration_contexts(
     """
     if any(type(n) is not int or n <= 0 for n in (max_requests, max_fields)):
         raise ValueError("configuration assignment requires explicit positive budgets")
-    if (type(requests) is not tuple or len(requests) > max_requests
-            or any(type(request) is not ConfigurationRequest for request in requests)):
+    if (
+        type(requests) is not tuple
+        or len(requests) > max_requests
+        or any(type(request) is not ConfigurationRequest for request in requests)
+    ):
         raise ValueError("configuration requests exceed the typed bounded source roster")
-    if (type(contexts) is not tuple or not contexts or len(contexts) > max_requests
-            or any(type(context) is not int or context < 0 for context in contexts)
-            or len(set(contexts)) != len(contexts)):
+    if (
+        type(contexts) is not tuple
+        or not contexts
+        or len(contexts) > max_requests
+        or any(type(context) is not int or context < 0 for context in contexts)
+        or len(set(contexts)) != len(contexts)
+    ):
         raise ValueError("supported configuration contexts must be explicit unique nonnegative identities")
     states, bindings, by_consumer = [], [], {}
     for request in requests:

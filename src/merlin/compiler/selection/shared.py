@@ -64,10 +64,7 @@ def _name_modules() -> dict[str, str]:
         from merlin import llvmlower
 
         owners = Path(llvmlower.__path__[0])
-        modules = {
-            f"merlin.llvmlower.{stem}": owners / (stem + ".py")
-            for stem in _SHARED_MODULES
-        }
+        modules = {f"merlin.llvmlower.{stem}": owners / (stem + ".py") for stem in _SHARED_MODULES}
         modules["merlin.compiler.quantization.scope"] = (
             Path(__file__).resolve().parents[1] / "quantization" / "scope.py"
         )

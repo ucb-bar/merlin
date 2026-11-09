@@ -38,8 +38,6 @@ from itertools import product
 from math import prod
 from pathlib import Path
 
-from merlin.sched.ir import Call, Const, Kernel, Loop, Scaled, Select, Sum, Var, check_structure
-
 from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
 from merlin.compiler.schedule.compact_dense import _digest
 from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
@@ -51,6 +49,7 @@ from merlin.compiler.schedule.dense_panel_pipeline import (
     _serial_projection,
 )
 from merlin.compiler.schedule.library_sources import admission_point
+from merlin.sched.ir import Call, Const, Kernel, Loop, Scaled, Select, Sum, Var, check_structure
 
 COMPLETION = Call(DRAIN, ())
 #: Premises every merged K stream needs; the readout flag additionally merges the readout epoch.
@@ -185,8 +184,10 @@ def _plan(kernel, adapter, law, admission, *, merge_readout=True, protected_epoc
     def operand_chain(statement):
         if not _is_chain(statement):
             return False
+
         def protected(op):
             return type(op) is Loop and (op.var in protected_epochs or any(protected(child) for child in op.body))
+
         if protected(statement):
             return False
         kinds = _kinds(statement, adapter)
@@ -473,10 +474,13 @@ def _effective_admission(admission):
 
     admission.__post_init__()
     if type(admission) is DenseSegmentedAdmission:
-        return replace(admission.overlap, **{
-            name: min(getattr(admission.overlap, name), getattr(admission.reduction, name))
-            for name in ("max_issued_compute_pairs", "max_issued_loads", "max_issued_readouts")
-        })
+        return replace(
+            admission.overlap,
+            **{
+                name: min(getattr(admission.overlap, name), getattr(admission.reduction, name))
+                for name in ("max_issued_compute_pairs", "max_issued_loads", "max_issued_readouts")
+            },
+        )
     if type(admission) not in (DensePanelOverlapAdmission, DenseRetainedReductionAdmission):
         raise ValueError("dense panel epochs need a recognized original execution admission")
     return admission
@@ -484,19 +488,29 @@ def _effective_admission(admission):
 
 def _composition_context_identity(context):
     source, problem, block, resources, storage, adapter, admission = context
-    return _digest((source.source_identity, source.kernel.digest(),
-                    source.realization.get("schedule_ir"),
-                    *(asdict(v) for v in (problem, block, resources, storage, admission)), repr(adapter)))
+    return _digest(
+        (
+            source.source_identity,
+            source.kernel.digest(),
+            source.realization.get("schedule_ir"),
+            *(asdict(v) for v in (problem, block, resources, storage, admission)),
+            repr(adapter),
+        )
+    )
 
 
 def _verify_composition_source(context, *, static_budget, timeout_ms):
     """Reopen the original executable plan and its route's full source proof."""
     from merlin.compiler.schedule.dense_panel_pipeline import (
-        DenseRetainedReductionAdmission, _windows,
-        verify_dense_panel_pipeline, verify_dense_retained_reduction,
+        DenseRetainedReductionAdmission,
+        _windows,
+        verify_dense_panel_pipeline,
+        verify_dense_retained_reduction,
     )
     from merlin.compiler.schedule.dense_segmented_pipeline import (
-        DenseSegmentedAdmission, _assignment, verify_dense_segmented_pipeline,
+        DenseSegmentedAdmission,
+        _assignment,
+        verify_dense_segmented_pipeline,
     )
     from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan, read_dense_schedule_plan
 
@@ -508,10 +522,16 @@ def _verify_composition_source(context, *, static_budget, timeout_ms):
     if type(plan.get("text")) is not str:
         raise ValueError("dense panel epochs require the original consumed scheduling plan")
     decision = read_dense_schedule_plan(
-        parse_dense_schedule_plan(plan["text"]), problem, resources, storage, adapter,
+        parse_dense_schedule_plan(plan["text"]),
+        problem,
+        resources,
+        storage,
+        adapter,
         source_identity=source.source_identity,
-        dtypes=tuple(arg.dtype for arg in source.kernel.args), static_budget=static_budget,
-        output_readout=source.output_readout, bias_source=source.bias_source,
+        dtypes=tuple(arg.dtype for arg in source.kernel.args),
+        static_budget=static_budget,
+        output_readout=source.output_readout,
+        bias_source=source.bias_source,
     )
     if decision.block != block or decision.pipeline_kind != kind:
         raise ValueError("dense panel epochs context differs from its original block or route")
@@ -526,9 +546,19 @@ def _verify_composition_source(context, *, static_budget, timeout_ms):
         verifier = verify_dense_retained_reduction
     else:
         verifier = verify_dense_panel_pipeline
-    verifier(source.kernel, problem, block, resources, actual_storage, adapter, admission,
-             static_budget=static_budget, timeout_ms=timeout_ms,
-             output_readout=source.output_readout, bias_source=source.bias_source)
+    verifier(
+        source.kernel,
+        problem,
+        block,
+        resources,
+        actual_storage,
+        adapter,
+        admission,
+        static_budget=static_budget,
+        timeout_ms=timeout_ms,
+        output_readout=source.output_readout,
+        bias_source=source.bias_source,
+    )
     source.revalidate()
     return actual_storage
 
@@ -540,6 +570,7 @@ def _selected_plan(kernel, adapter, law, admission, context):
     # RHS-only staging epoch. Preserve its original completion rather than
     # weakening the existing next-reader proof.
     protected = []
+
     def visit(body):
         for statement in body:
             if type(statement) is not Loop:
@@ -550,9 +581,11 @@ def _selected_plan(kernel, adapter, law, admission, context):
                     protected.append(statement.var)
             else:
                 visit(statement.body)
+
     visit(kernel.body)
-    return _plan(kernel, adapter, law, _effective_admission(admission),
-                 merge_readout=False, protected_epochs=tuple(protected))
+    return _plan(
+        kernel, adapter, law, _effective_admission(admission), merge_readout=False, protected_epochs=tuple(protected)
+    )
 
 
 def _prove_output_block(stream, adapter, block, deadline):
@@ -560,14 +593,20 @@ def _prove_output_block(stream, adapter, block, deadline):
     import z3
 
     def expression(value, env):
-        if type(value) is int: return z3.IntVal(value)
-        if type(value) is Const: return z3.IntVal(value.value)
-        if type(value) is Var: return env[value.name]
-        if type(value) is Sum: return z3.Sum(*(expression(v, env) for v in value.terms))
-        if type(value) is Scaled: return expression(value.expr, env) * value.factor
+        if type(value) is int:
+            return z3.IntVal(value)
+        if type(value) is Const:
+            return z3.IntVal(value.value)
+        if type(value) is Var:
+            return env[value.name]
+        if type(value) is Sum:
+            return z3.Sum(*(expression(v, env) for v in value.terms))
+        if type(value) is Scaled:
+            return expression(value.expr, env) * value.factor
         if type(value) is Select:
             return z3.If(env[value.var] == value.equals, expression(value.then, env), expression(value.other, env))
         raise ValueError("dense panel epochs output scope has an unknown expression")
+
     pairs, pending = [], None
     for call, local in _sites(stream["elements"]):
         op = adapter.project(call)
@@ -595,18 +634,29 @@ def _prove_output_block(stream, adapter, block, deadline):
         remaining = int((deadline - time.monotonic()) * 1000)
         if remaining <= 0:
             raise ValueError("dense panel epochs output-block scope proof budget exhausted (UNKNOWN)")
-        solver = z3.Solver(); solver.set(timeout=remaining)
-        solver.add(*constraints, *domain,
-                   z3.Or(expression(m, env) / block.m != anchor_m,
-                         expression(n, env) / block.n != anchor_n))
+        solver = z3.Solver()
+        solver.set(timeout=remaining)
+        solver.add(
+            *constraints,
+            *domain,
+            z3.Or(expression(m, env) / block.m != anchor_m, expression(n, env) / block.n != anchor_n),
+        )
         if solver.check() != z3.unsat:
             raise ValueError("dense panel epochs cross an original output-block boundary or scope is UNKNOWN")
     return len(pairs)
 
 
 def _identity(original, kernel, law, adapter, storage, context=None):
-    return _digest((original.kernel.digest(), kernel.digest(), asdict(law), repr(adapter), asdict(storage),
-                    None if context is None else _composition_context_identity(context)))
+    return _digest(
+        (
+            original.kernel.digest(),
+            kernel.digest(),
+            asdict(law),
+            repr(adapter),
+            asdict(storage),
+            None if context is None else _composition_context_identity(context),
+        )
+    )
 
 
 def _owner():
@@ -654,8 +704,9 @@ class DensePanelEpochResult:
     def revalidate(self):
         self.original.revalidate()
         source = self._source()
-        if ((self._context is None and source is not self.original)
-                or (self._context is not None and source is not self._context[0])):
+        if (self._context is None and source is not self.original) or (
+            self._context is not None and source is not self._context[0]
+        ):
             raise ValueError("dense panel epochs: checked source/context owner changed")
         source.revalidate()
         if source.kernel != self.original.kernel:
@@ -664,7 +715,8 @@ class DensePanelEpochResult:
         if (
             self.kernel != expected
             or self.kernel.digest() != self.realization["kernel_sha256"]
-            or self.checked_identity != _identity(self.original, self.kernel, self.law, self._adapter, self._storage, self._context)
+            or self.checked_identity
+            != _identity(self.original, self.kernel, self.law, self._adapter, self._storage, self._context)
             or self.owner_sha256 != _owner()
         ):
             raise ValueError("dense panel epochs: original schedule, actual commands, law or owner changed")
@@ -803,8 +855,16 @@ def schedule_dense_panel_epochs(
         "target_execution": "not_established",
     }
     checked = DensePanelEpochResult(
-        result, actual, report, law, _identity(result, actual, law, adapter, storage, context), _owner(), adapter, storage,
-        source if context is not None else None, context
+        result,
+        actual,
+        report,
+        law,
+        _identity(result, actual, law, adapter, storage, context),
+        _owner(),
+        adapter,
+        storage,
+        source if context is not None else None,
+        context,
     )
     checked.revalidate()
     return checked

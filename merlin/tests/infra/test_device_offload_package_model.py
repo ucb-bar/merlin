@@ -24,8 +24,8 @@ from xdsl.dialects import func
 
 from merlin.common import mlir_query as mq
 from merlin.common.digest import sha256_file
-from merlin.model import compile_saved_model
 from merlin.llvmlower.device_build import DeviceRouting
+from merlin.model import compile_saved_model
 from merlin.model_check import full_build as FB
 from merlin.runtime.backends import base, spike_model
 from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService

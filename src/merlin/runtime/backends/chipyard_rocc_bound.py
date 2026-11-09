@@ -493,7 +493,15 @@ class BoundRoCCBackend:
         return selected_storage_budget(self._data()["contract"])
 
     def render_harness(
-        self, cb, *, target, inputs=None, readback_policy=None, warm_profile=None, source_owned_mutables=(), blobs=None,
+        self,
+        cb,
+        *,
+        target,
+        inputs=None,
+        readback_policy=None,
+        warm_profile=None,
+        source_owned_mutables=(),
+        blobs=None,
         host_storage_limit_bytes=None,
         prepack_authorizations=None,
     ):
@@ -510,8 +518,10 @@ class BoundRoCCBackend:
         if budget is not None:
             budget = self.logical_storage_budget_bytes()
         if host_storage_limit_bytes is not None:
-            _require(type(host_storage_limit_bytes) is int and 0 < host_storage_limit_bytes <= 256 << 20,
-                     "prospective logical host storage exceeds its fixed software ceiling")
+            _require(
+                type(host_storage_limit_bytes) is int and 0 < host_storage_limit_bytes <= 256 << 20,
+                "prospective logical host storage exceeds its fixed software ceiling",
+            )
             budget = min(budget, host_storage_limit_bytes) if budget is not None else host_storage_limit_bytes
         return render_harness(
             cb,
@@ -531,10 +541,17 @@ class BoundRoCCBackend:
         return from_contract(self._data()["contract"])
 
     def build_source_paths(self):
-        from merlin.runtime import complete_call_timing, direct_kernel_harness, harness_render, kernel_call_timing
-        from merlin.runtime import storage_binding, prepack_authority, captured_constants
-        from merlin.perf import storage_encoding
         from merlin.compiler.schedule import tensor_storage
+        from merlin.perf import storage_encoding
+        from merlin.runtime import (
+            captured_constants,
+            complete_call_timing,
+            direct_kernel_harness,
+            harness_render,
+            kernel_call_timing,
+            prepack_authority,
+            storage_binding,
+        )
 
         # These files decide the emitted harness bytes. The counter's selected
         # Rocket/ISA source pins are verified by the timing selections and
@@ -546,8 +563,10 @@ class BoundRoCCBackend:
             Path(direct_kernel_harness.__file__).resolve(),
             Path(harness_render.__file__).resolve(),
             Path(kernel_call_timing.__file__).resolve(),
-            *(Path(module.__file__).resolve() for module in (
-                storage_binding, prepack_authority, captured_constants, storage_encoding, tensor_storage)),
+            *(
+                Path(module.__file__).resolve()
+                for module in (storage_binding, prepack_authority, captured_constants, storage_encoding, tensor_storage)
+            ),
         )
 
     def _engine(self, engine):
@@ -587,8 +606,13 @@ class BoundRoCCBackend:
         paths = [block["binary"]["path"]]
         if isinstance(block.get("receipt"), dict):
             paths += M.receipt_paths(block["receipt"]["path"])
-        key = (self.target, engine, hashlib.sha256(self._selection_json.encode()).hexdigest(),
-               json.dumps(block, sort_keys=True, default=str), os.environ.get("MERLIN_GSIM_STARTUP_PRELOAD", ""))
+        key = (
+            self.target,
+            engine,
+            hashlib.sha256(self._selection_json.encode()).hexdigest(),
+            json.dumps(block, sort_keys=True, default=str),
+            os.environ.get("MERLIN_GSIM_STARTUP_PRELOAD", ""),
+        )
         return M.cached(key, paths, lambda: self._validated_engine_identity(engine))
 
     def _validated_engine_identity(self, engine):

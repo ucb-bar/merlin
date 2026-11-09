@@ -8,7 +8,11 @@ is introduced by this counted transport and consumer order.
 from dataclasses import asdict, dataclass, replace
 
 from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.rolling_window import emit_rolling_window, materialize_rolling_window, propose_rolling_window
+from merlin.compiler.schedule.rolling_window import (
+    emit_rolling_window,
+    materialize_rolling_window,
+    propose_rolling_window,
+)
 from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
 
 
@@ -223,6 +227,7 @@ def emit_rolling_spatial_producer(plan, builder, lower, *, synchronous_completio
                 if pool_consumer is not None:
                     pool_consumer(image=image, pool_y=pool_y, output_x=output_x, output_pixels=output_columns)
                     return
+
                 def channels(column, count):
                     def row(ky):
                         original_y = op("add", op("sub", op("mul", pool_y, sh), pt), ky)

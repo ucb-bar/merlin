@@ -127,18 +127,16 @@ def test_original_public_compiler_executes_checked_source_recomputation(tmp_path
     document, selected_pin = read_selection(selected)
     if document["trace_contract"] is None:
         pytest.skip("select the original trace runtime; custom execution is unestablished")
-    from merlin_experiments.phase1.feedback import private_instruction_coordinator as C
-    from merlin_experiments.phase1.feedback import private_instruction_declaration as D
-
-    from merlin.model import compile_saved_model
-    from merlin.model import read_full_outputs
-    from merlin.runtime.modelinputs import selected_execution_firrtl
     from merlin.compiler.planning.model import plan_before_build
     from merlin.llvmlower import compilation_recipe as CR
     from merlin.llvmlower import optional_passes
+    from merlin.model import compile_saved_model, read_full_outputs
     from merlin.runtime.input_observation import revalidate_observation
+    from merlin.runtime.modelinputs import selected_execution_firrtl
     from merlin.targetgen import target_registry
     from merlin.targetgen.elf_lanes import executable_sections
+    from merlin_experiments.phase1.feedback import private_instruction_coordinator as C
+    from merlin_experiments.phase1.feedback import private_instruction_declaration as D
 
     case = original_case()  # original plan and implementation pins before issuers
     case_check, case_code = case.revalidate, case.revalidate.__func__.__code__

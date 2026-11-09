@@ -23,10 +23,12 @@ _TYPES_SEP = " : ("
 
 _RESULT_SEP = ") -> "
 
+
 def _skip_space(text: str, at: int) -> int:
     while at < len(text) and text[at].isspace():
         at += 1
     return at
+
 
 def _split_operand_types(line: str, at: int) -> tuple[str, str, str, str] | None:
     """Parse ``wty, sty, zty) -> outty`` starting at ``at``; ``outty`` runs to end of line.
@@ -48,6 +50,7 @@ def _split_operand_types(line: str, at: int) -> tuple[str, str, str, str] | None
     fields.append(line[at:end])
     outty = line[end + len(_RESULT_SEP) :]
     return (*fields, outty) if outty else None
+
 
 @dataclass
 class _Dequant:
@@ -71,6 +74,7 @@ class _Dequant:
     scale_type: str
     zero_type: str
     result_type: str
+
 
 def _parse_dequant(line: str) -> _Dequant | None:
     """Split a dequantize line into :class:`_Dequant`, or ``None`` if it is not one."""
@@ -111,6 +115,7 @@ def _parse_dequant(line: str) -> _Dequant | None:
         parsed = _split_operand_types(body, types_at + len(_TYPES_SEP))
         if parsed is not None:
             return _Dequant(indent, result, operands, int(body[digits_at:digits_end]), *parsed)
+
 
 def _dequant_to_generic(op: _Dequant) -> str:
     ind, res = op.indent, op.result
@@ -153,7 +158,9 @@ def _dequant_to_generic(op: _Dequant) -> str:
         f"{ind}}} -> {outty}"
     )
 
+
 _FUNC_HEAD = "func.func @"
+
 
 def _attach_c_interface(text: str) -> tuple[str, int]:
     """Attach ``attributes {llvm.emit_c_interface}`` to the FIRST ``func.func`` in ``text``.
@@ -236,6 +243,7 @@ def _attach_c_interface(text: str) -> tuple[str, int]:
         signature = text[start : args_close + 1]
         return (f"{text[:start]}{signature} {results} attributes {{llvm.emit_c_interface}} {{{text[body_at + 1 :]}"), 1
 
+
 _EXTRACT_HEAD = '"tensor.extract_slice"('
 
 _INSERT_HEAD = '"tensor.insert_slice"('
@@ -250,6 +258,7 @@ _OFFSETS_FIELD = "static_offsets = array<i64: "
 
 _OPERAND_TYPES = ": (tensor<"
 
+
 def _array_field(props: str, field: str, *, last: bool) -> tuple[int, int] | None:
     """(value start, value end) of ``field = array<i64: …>`` inside a properties dict."""
     at = props.rfind(field) if last else props.find(field)
@@ -258,6 +267,7 @@ def _array_field(props: str, field: str, *, last: bool) -> tuple[int, int] | Non
     value_at = at + len(field)
     value_end = props.find(">", value_at)
     return None if value_end <= value_at else (value_at, value_end)
+
 
 def _slice_op_span(line: str, head_at: int, head: str, n_types: int):
     """Split a generic-form slice op into (args, props, attrs, types, end-of-op).
@@ -291,6 +301,7 @@ def _slice_op_span(line: str, head_at: int, head: str, n_types: int):
         types.append(line[dims_at:dims_end])
         at = dims_end + len(closer)
     return (line[args_at:args_end], line[props_at:props_end], line[attrs_at:colon], types, at)
+
 
 def _fix_extract_slices(line: str) -> str:
     """Left-pad rank-reduced ``tensor.extract_slice`` static_sizes to the SOURCE rank.
@@ -330,6 +341,7 @@ def _fix_extract_slices(line: str) -> str:
         out.append(line[i:at])
         out.append(f"{_EXTRACT_HEAD}{args}{_PROPS_OPEN}{fixed}{_PROPS_CLOSE}{attrs}{_OPERAND_TYPES}{src}>)")
         i = end
+
 
 def _fix_insert_slices(line: str) -> str:
     """Reset ``tensor.insert_slice`` strides that overrun the destination back to 1.
@@ -397,6 +409,7 @@ def _fix_insert_slices(line: str) -> str:
             f"{_INSERT_HEAD}{args}{_PROPS_OPEN}{fixed}{_PROPS_CLOSE}{attrs}{_OPERAND_TYPES}{src}>, tensor<{dst}>)"
         )
         i = end
+
 
 def preprocess_text_textual(mlir_text: str) -> tuple[str, dict]:
     """Whole-model variant of :func:`preprocess_text` (pure text; no xDSL roundtrip)."""

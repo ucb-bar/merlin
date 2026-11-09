@@ -350,11 +350,7 @@ def generate(zephyr_plan: dict[str, Any]) -> list[Artifact]:
     samples = zephyr_plan.get("samples", [])
     sample = samples[0] if samples else f"{short}_sample"
 
-    driver_kconfig = (
-        f"config {sym}\n"
-        f'    bool "Merlin {target} accelerator support"\n'
-        f"    depends on MERLIN_RUNTIME\n"
-    )
+    driver_kconfig = f'config {sym}\n    bool "Merlin {target} accelerator support"\n    depends on MERLIN_RUNTIME\n'
 
     return [
         Artifact("zephyr/module.yml", _module_yml(module_name)),

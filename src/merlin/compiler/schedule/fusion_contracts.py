@@ -10,13 +10,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, replace
 
-from merlin.sched.ir import Call, evaluate
-from merlin.targetgen.isa_spec import resolve_fact_integer
-from merlin.verification.epilogue_applicability import ReadoutCapability
-
 from merlin.compiler.schedule.fusion import FusionCapability
 from merlin.compiler.schedule.fusion_semantics import ElementwiseSemantics, UnsupportedElementwise, scalar_graph
 from merlin.compiler.schedule.storage_contracts import binding_value, resolve_element_count
+from merlin.sched.ir import Call, evaluate
+from merlin.targetgen.isa_spec import resolve_fact_integer
+from merlin.verification.epilogue_applicability import ReadoutCapability
 
 
 def _fields(value, fields, label):
@@ -40,8 +39,11 @@ class SelectedFusionContract:
         specification = json.loads(self.declarations_json)
         if emitters is None:
             emitters = {}
-        if (type(emitters) is not dict or set(emitters) - set(specification["readouts"])
-                or any(not callable(emit) for emit in emitters.values())):
+        if (
+            type(emitters) is not dict
+            or set(emitters) - set(specification["readouts"])
+            or any(not callable(emit) for emit in emitters.values())
+        ):
             raise ValueError("fusion emitters must name declared readouts and be callable")
         if qualification_identity is not None and (
             type(qualification_identity) is not str or not qualification_identity.strip()
@@ -78,8 +80,9 @@ class SelectedFusionContract:
                 physical = specification["readouts"].get(row["readout"])
                 if physical is None or physical["max_elements"] is None or elements > physical["max_elements"]:
                     raise UnsupportedElementwise("actual readout instruction exceeds its selected RTL resource domain")
-            return ElementwiseSemantics(row["scalar_ir"].encode(), elements, tuple(row["stages"]),
-                                        tuple(row["byte_orders"]), row["readout"])
+            return ElementwiseSemantics(
+                row["scalar_ir"].encode(), elements, tuple(row["stages"]), tuple(row["byte_orders"]), row["readout"]
+            )
 
         def project(call):
             effect = adapter.project(call)
@@ -89,19 +92,26 @@ class SelectedFusionContract:
             if selected is not None and effect.elementwise is not None:
                 actual = effect.elementwise
                 graph = scalar_graph(actual.function_ir, max_operations, max_ir_bytes)
-                if (graph != admitted[call.instr] or replace(actual, function_ir=selected.function_ir) != selected):
+                if graph != admitted[call.instr] or replace(actual, function_ir=selected.function_ir) != selected:
                     raise ValueError("provider elementwise projection disagrees with selected semantics/layout")
             return replace(effect, elementwise=selected)
 
         capabilities, unavailable = [], {}
         for selector, readout in specification["readouts"].items():
             if not qualified or selector not in emitters or readout["max_elements"] is None:
-                unavailable[selector] = ("missing_execution_qualification" if not qualified else
-                                         "missing_physical_emitter" if selector not in emitters
-                                         else "unknown_RTL_bound")
+                unavailable[selector] = (
+                    "missing_execution_qualification"
+                    if not qualified
+                    else "missing_physical_emitter"
+                    if selector not in emitters
+                    else "unknown_RTL_bound"
+                )
                 continue
-            routes = tuple((r["producer"], r["consumer"], r["result"]) for r in readout["routes"]
-                           if {r["producer"], r["consumer"], r["result"]} <= set(admitted))
+            routes = tuple(
+                (r["producer"], r["consumer"], r["result"])
+                for r in readout["routes"]
+                if {r["producer"], r["consumer"], r["result"]} <= set(admitted)
+            )
             if not routes:
                 unavailable[selector] = "unsupported_computation_or_execution"
                 continue
@@ -115,15 +125,27 @@ class SelectedFusionContract:
                     raise ValueError("physical fusion emitter returned an undeclared instruction composition")
                 return call
 
-            capabilities.append(FusionCapability(
-                ReadoutCapability(selector, frozenset(readout["applies"]), readout["evidence"]), emit,
-                adapter.configuration_identity, adapter.numerical_policy_identity, qualification_identity,
-            ))
-        return replace(adapter, project=project), tuple(capabilities), {
-            "schema": "merlin.selected_fusion_binding.v1", "qualification_identity": qualification_identity,
-            "admitted_instructions": sorted(admitted), "unavailable_instructions": refusals,
-            "selected_readouts": [cap.readout.selector for cap in capabilities], "unavailable_readouts": unavailable,
-        }
+            capabilities.append(
+                FusionCapability(
+                    ReadoutCapability(selector, frozenset(readout["applies"]), readout["evidence"]),
+                    emit,
+                    adapter.configuration_identity,
+                    adapter.numerical_policy_identity,
+                    qualification_identity,
+                )
+            )
+        return (
+            replace(adapter, project=project),
+            tuple(capabilities),
+            {
+                "schema": "merlin.selected_fusion_binding.v1",
+                "qualification_identity": qualification_identity,
+                "admitted_instructions": sorted(admitted),
+                "unavailable_instructions": refusals,
+                "selected_readouts": [cap.readout.selector for cap in capabilities],
+                "unavailable_readouts": unavailable,
+            },
+        )
 
 
 def resolve_fusion_contract(declaration, facts, isa, storage):
@@ -138,11 +160,18 @@ def resolve_fusion_contract(declaration, facts, isa, storage):
     normalized = {}
     for name, item in elementwise.items():
         instruction = isa.instruction(name)
-        _fields(item, ("scalar_ir", "elements", "element_bits", "stages", "byte_orders", "readout", "execution"),
-                "elementwise declaration")
-        if (name not in effects or effects[name]["exact_copy"]
-                or effects[name]["nonmemory_effects"] and not effects[name]["configuration_reads"]
-                or effects[name]["completion"] != "synchronous"):
+        _fields(
+            item,
+            ("scalar_ir", "elements", "element_bits", "stages", "byte_orders", "readout", "execution"),
+            "elementwise declaration",
+        )
+        if (
+            name not in effects
+            or effects[name]["exact_copy"]
+            or effects[name]["nonmemory_effects"]
+            and not effects[name]["configuration_reads"]
+            or effects[name]["completion"] != "synchronous"
+        ):
             raise ValueError("fusion requires synchronous memory-only effects or checked read-only configuration")
         if type(item["scalar_ir"]) is not str or not item["scalar_ir"]:
             raise ValueError("fusion computation must be explicit scalar MLIR text")
@@ -159,8 +188,13 @@ def resolve_fusion_contract(declaration, facts, isa, storage):
             raise ValueError("fusion readout identity must be explicit or absent")
         if type(item["execution"]) is not str or not item["execution"]:
             raise ValueError("fusion element execution semantics must be explicit or unknown")
-        normalized[name] = {**item, "element_bits": widths, "stages": stages, "byte_orders": orders,
-                            "elements": resolve_element_count(item["elements"], instruction)}
+        normalized[name] = {
+            **item,
+            "element_bits": widths,
+            "stages": stages,
+            "byte_orders": orders,
+            "elements": resolve_element_count(item["elements"], instruction),
+        }
     readouts = row["readouts"]
     if type(readouts) is not dict or len(readouts) > 256:
         raise ValueError("fusion readouts must be a bounded mapping")
@@ -172,8 +206,11 @@ def resolve_fusion_contract(declaration, facts, isa, storage):
         _strings(readout["applies"], "readout stages")
         if type(readout["evidence"]) is not str or not readout["evidence"]:
             raise ValueError("fusion requires explicit readout declaration evidence")
-        maximum = (None if readout["max_elements"] is None else
-                   resolve_fact_integer(readout["max_elements"], facts, label="fusion maximum elements", minimum=1))
+        maximum = (
+            None
+            if readout["max_elements"] is None
+            else resolve_fact_integer(readout["max_elements"], facts, label="fusion maximum elements", minimum=1)
+        )
         if type(readout["routes"]) is not list or not readout["routes"] or len(readout["routes"]) > 256:
             raise ValueError("fusion requires bounded explicit instruction compositions")
         for route in readout["routes"]:

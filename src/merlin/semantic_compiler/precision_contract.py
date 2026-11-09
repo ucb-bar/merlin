@@ -328,5 +328,3 @@ class DiagnosticMatmulTile:
             "output": self.output.record(),
             "quality_status": "unqualified",
         }
-
-

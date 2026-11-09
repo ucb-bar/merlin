@@ -110,8 +110,12 @@ from pathlib import Path
 from typing import Any
 
 from merlin.compiler.ir.convolution import (
-    BoundedIm2ColSource, BoundedIm2ColArm, BoundedIm2ColRewrite,
-    _bounded_plain, _is_copy_body, _reassoc,
+    BoundedIm2ColArm,
+    BoundedIm2ColRewrite,
+    BoundedIm2ColSource,
+    _bounded_plain,
+    _is_copy_body,
+    _reassoc,
 )
 from merlin.verification.convolution import verify_bounded_match
 
@@ -211,16 +215,12 @@ def _single_use(value) -> bool:
     return len(list(value.uses)) == 1
 
 
-
-
 def _identity(map_, rank: int) -> bool:
     return (
         map_.num_dims == rank
         and len(map_.results) == rank
         and all(_dim_pos(r) == i for i, r in enumerate(map_.results))
     )
-
-
 
 
 # --------------------------------------------------------------------------------------------------
@@ -844,14 +844,6 @@ def ensure_registered() -> str:
     return FEATURE
 
 
-
-
-
-
-
-
-
-
 def _bounded_capture(definition, consumer):
     """Prove lexical dominance without moving a pure view or crossing isolation.
 
@@ -893,9 +885,11 @@ def match_bounded_im2col(operation, *, selected_contracts=None, dtypes=None, max
     from xdsl.dialects.linalg.ops import GenericOp
     from xdsl.utils.exceptions import VerifyException
 
-    from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
-    from merlin.compiler.schedule.dense_source import read_source_dense
-    from merlin.compiler.schedule.dense_source import read_zero_seeded_integer_matmul
+    from merlin.compiler.schedule.dense_source import (
+        DenseSourceUnavailable,
+        read_source_dense,
+        read_zero_seeded_integer_matmul,
+    )
     from merlin.llvmlower.layout_conformance import _reshape as static_reshape
 
     if type(operation) is not GenericOp:
@@ -961,11 +955,20 @@ def match_bounded_im2col(operation, *, selected_contracts=None, dtypes=None, max
     weight = operation.inputs[0]
     while isinstance(weight.owner, (tensor.CollapseShapeOp, tensor.ExpandShapeOp)):
         view = weight.owner
-        properties = ("reassociation",) if type(view) is tensor.CollapseShapeOp else (
-            "reassociation", "static_output_shape",
+        properties = (
+            ("reassociation",)
+            if type(view) is tensor.CollapseShapeOp
+            else (
+                "reassociation",
+                "static_output_shape",
+            )
         )
-        if (not _bounded_plain(view, properties) or len(view.operands) != 1
-                or not _bounded_capture(view, operation) or not static_reshape(view)):
+        if (
+            not _bounded_plain(view, properties)
+            or len(view.operands) != 1
+            or not _bounded_capture(view, operation)
+            or not static_reshape(view)
+        ):
             return None
         try:
             view.verify(verify_nested_ops=False)
@@ -1040,9 +1043,7 @@ def _bounded_slice_props(offsets, sizes):
     from xdsl.dialects.builtin import DYNAMIC_INDEX, DenseArrayBase, i64
 
     return {
-        "static_offsets": DenseArrayBase.from_list(
-            i64, [v if type(v) is int else DYNAMIC_INDEX for v in offsets]
-        ),
+        "static_offsets": DenseArrayBase.from_list(i64, [v if type(v) is int else DYNAMIC_INDEX for v in offsets]),
         "static_sizes": DenseArrayBase.from_list(i64, sizes),
         "static_strides": DenseArrayBase.from_list(i64, [1] * len(sizes)),
     }
@@ -1186,5 +1187,3 @@ def rewrite_bounded_match(match, width):
     if not original_packing.results[0].uses:
         Rewriter.erase_op(original_packing)
     return BoundedIm2ColRewrite(source, identity, width, tuple(operations), tuple(arms), result)
-
-

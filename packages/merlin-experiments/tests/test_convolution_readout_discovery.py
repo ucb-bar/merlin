@@ -1,4 +1,5 @@
 """Convolution readout discovery separates defaults, opt-in and qualification."""
+
 import importlib
 import json
 
@@ -10,11 +11,18 @@ from merlin_experiments.phase1.feedback import case_declarations, mechanism_hint
 
 
 def selection():
-    catalog = json.loads((repo_root()/"docs/design/joint_optimization_catalog.json").read_text())
-    capabilities = {suggestions.ALIASES[t]: "supported" for row in catalog["mechanisms"]
-                    for t in row["required_traits"] if not suggestions.ALIASES[t].startswith("workload.")}
-    return suggestions.select(catalog, capabilities=capabilities,
-        public_modules=tuple(row["compiler"]["module"] for row in catalog["mechanisms"]))
+    catalog = json.loads((repo_root() / "docs/design/joint_optimization_catalog.json").read_text())
+    capabilities = {
+        suggestions.ALIASES[t]: "supported"
+        for row in catalog["mechanisms"]
+        for t in row["required_traits"]
+        if not suggestions.ALIASES[t].startswith("workload.")
+    }
+    return suggestions.select(
+        catalog,
+        capabilities=capabilities,
+        public_modules=tuple(row["compiler"]["module"] for row in catalog["mechanisms"]),
+    )
 
 
 def readout_row(selected):
@@ -40,38 +48,49 @@ def test_capability_symbols_resolve_and_old_inventory_does_not_gain_capability()
 
 
 def test_operation_menu_links_readout_only_from_convolution_family():
-    catalog = json.loads((repo_root()/operations.CATALOG).read_text())
+    catalog = json.loads((repo_root() / operations.CATALOG).read_text())
     assert operations.validate(catalog, repo=repo_root())
-    owners = [f["id"] for f in catalog["families"]
-              if any(m.get("id") == "convolution_readout_epochs" for m in f["mechanisms"])]
+    owners = [
+        f["id"]
+        for f in catalog["families"]
+        if any(m.get("id") == "convolution_readout_epochs" for m in f["mechanisms"])
+    ]
     assert owners == ["convolution"]
 
 
 def test_known_dense_excludes_both_conv_epoch_actions(monkeypatch, tmp_path):
-    dense = dict(operation=dict(op="matmul", attributes=dict(lhs="a", weight="w")),
-        inputs=[dict(name="a", role="input", shape=[4, 8]), dict(name="w", role="weight", shape=[8, 12])])
+    dense = dict(
+        operation=dict(op="matmul", attributes=dict(lhs="a", weight="w")),
+        inputs=[dict(name="a", role="input", shape=[4, 8]), dict(name="w", role="weight", shape=[8, 12])],
+    )
     monkeypatch.setattr(case_declarations, "load", lambda *_: dense)
     selected = mechanism_hints.for_case(selection(), "arbitrary-case", tmp_path)
     assert readout_row(selected)["status"] == "unsupported"
     found, unknown = mechanism_hints.fence_hints(selected, why="fence-bound", limit=100)
-    assert not {r["id"] for r in (*found, *unknown)} & {
-        "convolution_readout_epochs", "convolution_compute_epochs"}
+    assert not {r["id"] for r in (*found, *unknown)} & {"convolution_readout_epochs", "convolution_compute_epochs"}
 
 
 def test_a_pure_windowed_reduction_is_not_a_convolution_producer(monkeypatch, tmp_path):
-    pool = dict(semantic=dict(semantic_family="reduction"),
+    pool = dict(
+        semantic=dict(semantic_family="reduction"),
         operation=dict(op="maxpool", attributes=dict(kernel=[2, 2], stride=[2, 2])),
-        inputs=[dict(name="a", role="input", shape=[1, 4, 4, 4])])
+        inputs=[dict(name="a", role="input", shape=[1, 4, 4, 4])],
+    )
     monkeypatch.setattr(case_declarations, "load", lambda *_: pool)
     selected = mechanism_hints.for_case(selection(), "arbitrary-case", tmp_path)
     assert readout_row(selected)["status"] == "unsupported"
 
 
 def test_confirmed_convolution_surfaces_missing_readout_seam_in_compact_hints(monkeypatch, tmp_path):
-    conv = dict(operation=dict(op="conv2d", attributes=dict(ifm="x", weight="w", layout="NHWC",
-        kernel=[3, 3, 8, 12], stride=[1, 1], padding=[0, 0, 0, 0])),
-        inputs=[dict(name="x", role="input", shape=[1, 5, 7, 8]),
-                dict(name="w", role="weight", shape=[3, 3, 8, 12])])
+    conv = dict(
+        operation=dict(
+            op="conv2d",
+            attributes=dict(
+                ifm="x", weight="w", layout="NHWC", kernel=[3, 3, 8, 12], stride=[1, 1], padding=[0, 0, 0, 0]
+            ),
+        ),
+        inputs=[dict(name="x", role="input", shape=[1, 5, 7, 8]), dict(name="w", role="weight", shape=[3, 3, 8, 12])],
+    )
     monkeypatch.setattr(case_declarations, "load", lambda *_: conv)
     selected = mechanism_hints.for_case(selection(), "arbitrary-case", tmp_path)
     found, _ = mechanism_hints.fence_hints(selected, why="fence-bound")
@@ -81,18 +100,21 @@ def test_confirmed_convolution_surfaces_missing_readout_seam_in_compact_hints(mo
 
 
 def test_default_call_is_not_observed_readout_application(tmp_path):
-    root = tmp_path/"submission"
+    root = tmp_path / "submission"
     root.mkdir()
-    path = root/"lowering.py"
+    path = root / "lowering.py"
     prefix = "from merlin.compile.scheduling.convolution_exploration import emit_convolution_schedule as emit\n"
-    path.write_text(prefix+"emit(schedule, builder, lower, complete=drain)\n"
-                    +"emit(schedule, builder, lower, complete=drain, readout_law=None)\n")
+    path.write_text(
+        prefix
+        + "emit(schedule, builder, lower, complete=drain)\n"
+        + "emit(schedule, builder, lower, complete=drain, readout_law=None)\n"
+    )
     selected = mechanism_hints.with_source_evidence(selection(), tmp_path)
     observed = mechanism_hints.opportunity(readout_row(selected), selected)
     assert observed["consumer_call_sites"] and not observed["source_call_sites"]
     assert observed["opportunity_status"] == "applicability_unknown"
     assert any("consumer receipt" in p for p in observed["prerequisites"])
-    path.write_text(prefix+"emit(schedule, builder, lower, complete=drain, readout_law=selected_law)\n")
+    path.write_text(prefix + "emit(schedule, builder, lower, complete=drain, readout_law=selected_law)\n")
     selected = mechanism_hints.with_source_evidence(selection(), tmp_path)
     # Source observation remains conditional: workload and source premises are
     # not inferred from an import or this keyword.

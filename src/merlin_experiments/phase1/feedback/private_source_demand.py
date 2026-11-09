@@ -311,7 +311,10 @@ def derive(
     from .private_placement_feedback import describe
 
     receipt["placement_feedback"] = describe(
-        groups, capability, demanded=set(demand), unknown_host=set(unknown),
+        groups,
+        capability,
+        demanded=set(demand),
+        unknown_host=set(unknown),
         missing_direct=len(missing) + len(data_missing),
     )
     if unknown or missing or data_missing or receipt["n_unresolved_raw_regions"]:

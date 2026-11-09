@@ -1,18 +1,19 @@
 """Drafts expose missing semantics without manufacturing selection or qualification."""
+
 import copy
 import hashlib
 import json
 
 import pytest
 import yaml
-
-from merlin.compiler.schedule.dense_contracts import DENSE_FIELDS
-from merlin.compiler.schedule.dense_contracts import DENSE_POINTER_FIELDS
-from merlin.compiler.schedule.dense_contracts import dense_contract_draft
-from merlin.compiler.schedule.selected_contracts import inspect_scheduling_draft
-from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
-from merlin.compiler.schedule.selected_contracts import scheduling_spec_draft
 from test_selected_dense_contracts import inputs
+
+from merlin.compiler.schedule.dense_contracts import DENSE_FIELDS, DENSE_POINTER_FIELDS, dense_contract_draft
+from merlin.compiler.schedule.selected_contracts import (
+    inspect_scheduling_draft,
+    read_scheduling_contracts,
+    scheduling_spec_draft,
+)
 
 
 def encoded(value):
@@ -20,8 +21,12 @@ def encoded(value):
 
 
 def test_missing_sections_have_editable_unknowns_and_no_assumed_semantics():
-    software = {"schema": "merlin.software_spec.v1", "target": "independent", "status": "reviewed",
-                "existing_public_field": {"retain": True}}
+    software = {
+        "schema": "merlin.software_spec.v1",
+        "target": "independent",
+        "status": "reviewed",
+        "existing_public_field": {"retain": True},
+    }
     before = copy.deepcopy(software)
     draft = scheduling_spec_draft(software, target="independent", dense_schema="merlin.dense_schedule.v2")
     assert software == before and draft["status"] == "draft"
@@ -32,8 +37,9 @@ def test_missing_sections_have_editable_unknowns_and_no_assumed_semantics():
     assert all(value is None for value in dense["semantics"].values())
     assert all(value is None for value in dense["instructions"].values())
     assert draft["scheduling"]["configuration"] is None  # Empty would assert no config effects.
-    result = inspect_scheduling_draft(b'{"facts":{"target":"independent"}}', encoded(draft),
-                                     target="independent", require_dense=True)
+    result = inspect_scheduling_draft(
+        b'{"facts":{"target":"independent"}}', encoded(draft), target="independent", require_dense=True
+    )
     assert result["status"] == "incomplete" and result["qualification"] == "not_established"
     assert ["scheduling", "dense", "semantics", "completion"] in result["unknown_fields"]
     assert not result["dense"]["family_requirements_are_target_facts"]
@@ -79,13 +85,14 @@ def test_queued_acceptance_does_not_become_synchronous_completion(tmp_path):
     result = inspect_scheduling_draft(selected.facts_bytes, encoded(document), target="neutral", require_dense=True)
     assert result["status"] == "incomplete"
     assert result["dense"]["family_semantic_mismatches"] == [
-        {"field": "completion", "declared": "queued_acceptance", "family_requires": "synchronous"}]
+        {"field": "completion", "declared": "queued_acceptance", "family_requires": "synchronous"}
+    ]
 
 
 def test_changed_facts_pin_is_not_repaired_and_different_isa_is_not_overwritten(tmp_path):
     selected, *_ = inputs(tmp_path)
     document = yaml.safe_load(selected.software_bytes)
-    changed = selected.facts_bytes + b'\n'
+    changed = selected.facts_bytes + b"\n"
     result = inspect_scheduling_draft(changed, encoded(document), target="neutral", require_dense=True)
     assert result["status"] == "incomplete" and "pin" in result["isa"]["reason"]
     with pytest.raises(ValueError, match="replace"):

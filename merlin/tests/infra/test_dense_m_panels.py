@@ -6,11 +6,12 @@ import pytest
 from test_compact_dense import ADAPTER
 from test_dense_array_retention import execute
 
-from merlin.compiler.schedule.compact_dense import DenseLoopStorage
-from merlin.compiler.schedule.compact_dense import DenseMemoryView
-from merlin.compiler.schedule.dense_panel_pipeline import DenseRetainedReductionAdmission
-from merlin.compiler.schedule.dense_panel_pipeline import dense_m_panel_capacity
-from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_m_panels
+from merlin.compiler.schedule.compact_dense import DenseLoopStorage, DenseMemoryView
+from merlin.compiler.schedule.dense_panel_pipeline import (
+    DenseRetainedReductionAdmission,
+    dense_m_panel_capacity,
+    schedule_dense_m_panels,
+)
 from merlin.transforms.dense_planning import DenseProblem, DenseResources
 
 
@@ -120,9 +121,18 @@ def test_selected_n_width_does_not_enumerate_unrelated_panel_choices():
     p, r, s, law = fixture(shape=(8, 6, 4096))
     r = replace(r, candidate_budget=8)
     s = replace(s, rhs=replace(s.rhs, capacity=12))
-    attempt = schedule_dense_m_panels(p, r, s, ADAPTER, law, n_tiles=2,
-        name="one_width", dtypes=("i8", "i8", "i32"), source_identity="b" * 64,
-        external_buffers_disjoint=True)
+    attempt = schedule_dense_m_panels(
+        p,
+        r,
+        s,
+        ADAPTER,
+        law,
+        n_tiles=2,
+        name="one_width",
+        dtypes=("i8", "i8", "i32"),
+        source_identity="b" * 64,
+        external_buffers_disjoint=True,
+    )
     assert attempt.result is not None and attempt.feedback["selected_m_tiles"] == 2
     assert attempt.feedback["capacity"]["n_tiles"] == 2
 

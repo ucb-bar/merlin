@@ -99,11 +99,17 @@ def emit_program_c(
                 "compiled calls need valid symbols, placement, synchronous completion and power-of-two buffer alignment"
             )
         if call.workspace_offset is not None:
-            if (type(call.workspace_offset) is not int or call.workspace_offset < memory.arena_bytes
-                    or type(call.workspace_bytes) is not int or call.workspace_bytes <= 0
-                    or type(call.workspace_alignment) is not int or call.workspace_alignment <= 0
-                    or call.workspace_alignment & (call.workspace_alignment - 1)
-                    or call.workspace_offset % call.workspace_alignment or call.context_index is not None):
+            if (
+                type(call.workspace_offset) is not int
+                or call.workspace_offset < memory.arena_bytes
+                or type(call.workspace_bytes) is not int
+                or call.workspace_bytes <= 0
+                or type(call.workspace_alignment) is not int
+                or call.workspace_alignment <= 0
+                or call.workspace_alignment & (call.workspace_alignment - 1)
+                or call.workspace_offset % call.workspace_alignment
+                or call.context_index is not None
+            ):
                 raise ValueError("source workspace requires aligned disjoint arena storage without a context slot")
         elif call.workspace_bytes != 0 or call.workspace_alignment != 1:
             raise ValueError("workspace requirements need an actual arena offset")
@@ -331,10 +337,15 @@ int {name}_run({name}_state *state, void *arena, size_t arena_bytes,
         "calls": [
             {
                 "node": index,
-                **{k: v for k, v in vars(calls[index]).items()
-                   if (k != "context_index" or v is not None) and (k != "buffer_alignment" or v != 1)
-                   and (k != "workspace_offset" or v is not None) and (k != "workspace_bytes" or v != 0)
-                   and (k != "workspace_alignment" or v != 1)},
+                **{
+                    k: v
+                    for k, v in vars(calls[index]).items()
+                    if (k != "context_index" or v is not None)
+                    and (k != "buffer_alignment" or v != 1)
+                    and (k != "workspace_offset" or v is not None)
+                    and (k != "workspace_bytes" or v != 0)
+                    and (k != "workspace_alignment" or v != 1)
+                },
                 "inputs": node.inputs,
                 "outputs": node.outputs,
             }

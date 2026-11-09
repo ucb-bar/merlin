@@ -14,15 +14,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from merlin.compiler.ir.logical_abi import DERIVATION_RECIPE_KEYS
-from merlin.compiler.ir.logical_abi import IM2COL_RECIPE_KEY
-from merlin.compiler.ir.logical_abi import POOL_ATTR_ARITY
-from merlin.compiler.ir.logical_abi import POOL_PAD_VALUE_ATTR
-from merlin.compiler.ir.logical_abi import PRODUCING_KEYS
-from merlin.compiler.ir.logical_abi import _produces
-from merlin.compiler.ir.logical_abi import declared_output_dtypes
-from merlin.compiler.ir.logical_abi import harness_derived_tensors
-from merlin.compiler.ir.logical_abi import pool_params
+from merlin.compiler.ir.logical_abi import (
+    DERIVATION_RECIPE_KEYS,
+    IM2COL_RECIPE_KEY,
+    POOL_ATTR_ARITY,
+    POOL_PAD_VALUE_ATTR,
+    PRODUCING_KEYS,
+    _produces,
+    declared_output_dtypes,
+    harness_derived_tensors,
+    pool_params,
+)
 
 from .tensor import Tensor, pool_out_dims  # noqa: F401  (pool_out_dims re-exported: see its docstring)
 
@@ -406,8 +408,10 @@ def row_major_view_shape(cb, operands, attrs, source_shape, source_dtype, *, pro
     if name not in produced or set(attrs) != {"source_shape", "shape"}:
         raise ValueError("ROW_MAJOR_VIEW requires an already produced value and exact shape fields")
     before, after = attrs["source_shape"], attrs["shape"]
-    if any(type(shape) is not list or not shape or len(shape) > 32
-           or any(type(n) is not int or n <= 0 for n in shape) for shape in (before, after)):
+    if any(
+        type(shape) is not list or not shape or len(shape) > 32 or any(type(n) is not int or n <= 0 for n in shape)
+        for shape in (before, after)
+    ):
         raise ValueError("ROW_MAJOR_VIEW requires positive static shapes")
     if tuple(before) != tuple(source_shape) or prod(before) != prod(after):
         raise ValueError("ROW_MAJOR_VIEW changes the source extent or element count")

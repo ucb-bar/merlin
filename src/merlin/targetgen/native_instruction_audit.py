@@ -14,8 +14,8 @@ def audit_native_instruction_tier(native, *, target, module, policy, allow_empty
     try:
         elf = _pinned_native_file(native, "elf")
         from merlin.common.facts_view import interface as facts_interface
-        from merlin.runtime.modelinputs import selected_firrtl
         from merlin.perf.isa_prohibition import scan_elf
+        from merlin.runtime.modelinputs import selected_firrtl
         from merlin.targetgen import elf_lanes
         from merlin.targetgen.rocc.decode import decode_module
         from merlin.targetgen.rtl.facts import observed_facts
@@ -51,10 +51,7 @@ def audit_native_instruction_tier(native, *, target, module, policy, allow_empty
             instructions = decoded.get("instructions")
             if (
                 not isinstance(instructions, list)
-                or (
-                    not instructions
-                    and allow_empty_instructions is not True
-                )
+                or (not instructions and allow_empty_instructions is not True)
                 or any(row.get("class") == "UNKNOWN" for row in instructions)
             ):
                 raise NativeModelExecutionError("candidate LLVM has missing/unknown selected ISA decode")

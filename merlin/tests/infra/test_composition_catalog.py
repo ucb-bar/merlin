@@ -52,14 +52,14 @@ def test_small_sdk_and_explicit_additional_inventory_are_distinct():
     assert all(row["source_availability"]["missing_modules"] is None for row in rows)
     # Selecting a namespace never grants its descendants.
     narrow = composition_capabilities(selected_modules=("merlin.compile",))
-    assert all(row["source_availability"]["status"] == "missing_selected_modules"
-               for row in narrow["capabilities"])
+    assert all(row["source_availability"]["status"] == "missing_selected_modules" for row in narrow["capabilities"])
     host = next(row for row in full["capabilities"] if row["name"] == "connected_spatial_original_host_route")
     assert host["access"] == "original_host_owner"
 
 
-@pytest.mark.parametrize("selection", ["merlin.compile", ["merlin.compile"], ("merlin.*",),
-                                       ("merlin.compile", "merlin.compile"), (True,)])
+@pytest.mark.parametrize(
+    "selection", ["merlin.compile", ["merlin.compile"], ("merlin.*",), ("merlin.compile", "merlin.compile"), (True,)]
+)
 def test_invalid_or_recursive_module_selection_refuses(selection):
     with pytest.raises(ValueError, match="exact bounded module tuple"):
         composition_capabilities(selected_modules=selection)

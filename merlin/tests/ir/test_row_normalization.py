@@ -393,9 +393,10 @@ def _compile_ordinary(tmp_path, original, enabled, monkeypatch, **lowering_optio
     report = lowered.stats["automatic_host_rows"]
     assert json.loads((lowered.workdir / "automatic-host-rows.json").read_text()) == json.loads(json.dumps(report))
     assert report["source_file_sha256"] == hashlib.sha256(prepared.read_bytes()).hexdigest()
-    assert report["upstream_file_sha256"] == hashlib.sha256(
-        (lowered.workdir / "model.upstream.mlir").read_bytes()
-    ).hexdigest()
+    assert (
+        report["upstream_file_sha256"]
+        == hashlib.sha256((lowered.workdir / "model.upstream.mlir").read_bytes()).hexdigest()
+    )
     identity = hashlib.sha256(lowered.ll_path.read_bytes()).hexdigest()[:16]
     observer = tmp_path / "observe.c"
     observer.write_text(_ALLOCATION_OBSERVER)

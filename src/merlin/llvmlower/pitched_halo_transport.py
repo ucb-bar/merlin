@@ -77,19 +77,25 @@ class PitchedNHWCHalo:
         row, column = divmod(inner, self.logical_row_bytes)
         source_image_bytes = self.window.input_shape[1] * self.source_row_bytes
         base = image * self.image_pitch_bytes
-        leading = (source_address + image * source_image_bytes - allocation_address - base
-                   - self.payload_offset) & (self.copy_alignment - 1)
+        leading = (source_address + image * source_image_bytes - allocation_address - base - self.payload_offset) & (
+            self.copy_alignment - 1
+        )
         return base + leading + row * self.row_pitch_bytes + column
 
     def summary(self):
         self.__post_init__()
-        return dict(schema="merlin.pitched_nhwc_halo.v1",
-                    window=dict(input_shape=self.window.input_shape, padding=self.window.padding),
-                    copy_alignment=self.copy_alignment, logical_bytes=self.logical_bytes,
-                    private_bytes=self.private_bytes, row_pitch_bytes=self.row_pitch_bytes,
-                    image_pitch_bytes=self.image_pitch_bytes,
-                    leading_slack_bytes=self.copy_alignment - 1,
-                    source_alignment_assumed=False, source_overread_bytes=0)
+        return dict(
+            schema="merlin.pitched_nhwc_halo.v1",
+            window=dict(input_shape=self.window.input_shape, padding=self.window.padding),
+            copy_alignment=self.copy_alignment,
+            logical_bytes=self.logical_bytes,
+            private_bytes=self.private_bytes,
+            row_pitch_bytes=self.row_pitch_bytes,
+            image_pitch_bytes=self.image_pitch_bytes,
+            leading_slack_bytes=self.copy_alignment - 1,
+            source_alignment_assumed=False,
+            source_overread_bytes=0,
+        )
 
 
 def _image_base(builder, layout, source, allocation, image):
@@ -99,8 +105,9 @@ def _image_base(builder, layout, source, allocation, image):
     allocation_offset = ops.op("mul", image, layout.image_pitch_bytes)
     source_address = builder.add(llvm.PtrToIntOp(source, i64)).output
     allocation_address = builder.add(llvm.PtrToIntOp(allocation, i64)).output
-    delta = ops.op("sub", ops.op("add", source_address, source_offset),
-                   ops.op("add", allocation_address, allocation_offset))
+    delta = ops.op(
+        "sub", ops.op("add", source_address, source_offset), ops.op("add", allocation_address, allocation_offset)
+    )
     leading = ops.op("and", ops.op("sub", delta, layout.payload_offset), layout.copy_alignment - 1)
     return ops, source_offset, ops.op("add", allocation_offset, leading)
 
@@ -128,16 +135,18 @@ def emit_pitched_halo_address(builder, layout, source, allocation, logical_offse
     return builder.gep(allocation, offset, i8)
 
 
-def emit_pitched_nhwc_halo(builder, layout, source, allocation, *,
-                           source_destination_disjoint, maximum_private_bytes):
+def emit_pitched_nhwc_halo(builder, layout, source, allocation, *, source_destination_disjoint, maximum_private_bytes):
     """Copy exact source rows and zero halo; caller owns capacity and lifetime."""
     if type(builder) is not FnBuilder or type(layout) is not PitchedNHWCHalo:
         raise ValueError("pitched halo needs the original builder and typed layout")
     layout.__post_init__()
     if source_destination_disjoint is not True:
         raise ValueError("pitched halo needs disjoint original source and private storage")
-    if (type(maximum_private_bytes) is not int or maximum_private_bytes < layout.private_bytes
-            or maximum_private_bytes >= 1 << 63):
+    if (
+        type(maximum_private_bytes) is not int
+        or maximum_private_bytes < layout.private_bytes
+        or maximum_private_bytes >= 1 << 63
+    ):
         raise ValueError("pitched halo exceeds caller-selected private capacity")
     if any(not isinstance(v, SSAValue) or v.type != PTR for v in (source, allocation)):
         raise ValueError("pitched halo needs original byte-addressable pointers")
@@ -149,9 +158,18 @@ def emit_pitched_nhwc_halo(builder, layout, source, allocation, *,
 
         def fill(offset, count):
             if count:
-                builder.add(llvm.CallIntrinsicOp("llvm.memset.p0.i64", [
-                    builder.gep(allocation, ops.value(offset), i8), builder.const(0, i8),
-                    builder.const(count), builder.const(0, i1)], []))
+                builder.add(
+                    llvm.CallIntrinsicOp(
+                        "llvm.memset.p0.i64",
+                        [
+                            builder.gep(allocation, ops.value(offset), i8),
+                            builder.const(0, i8),
+                            builder.const(count),
+                            builder.const(0, i1),
+                        ],
+                        [],
+                    )
+                )
 
         fill(destination_base, pt * layout.row_pitch_bytes)
 
@@ -159,19 +177,37 @@ def emit_pitched_nhwc_halo(builder, layout, source, allocation, *,
             dst = ops.op("add", destination_base, ops.op("mul", ops.op("add", y, pt), layout.row_pitch_bytes))
             src = ops.op("add", source_base, ops.op("mul", y, layout.source_row_bytes))
             fill(dst, pl * c)
-            builder.add(llvm.CallIntrinsicOp("llvm.memcpy.p0.p0.i64", [
-                builder.gep(allocation, ops.op("add", dst, pl * c), i8),
-                builder.gep(source, src, i8), builder.const(layout.source_row_bytes), builder.const(0, i1)], []))
-            fill(ops.op("add", dst, pl * c + layout.source_row_bytes),
-                 layout.row_pitch_bytes - pl * c - layout.source_row_bytes)
+            builder.add(
+                llvm.CallIntrinsicOp(
+                    "llvm.memcpy.p0.p0.i64",
+                    [
+                        builder.gep(allocation, ops.op("add", dst, pl * c), i8),
+                        builder.gep(source, src, i8),
+                        builder.const(layout.source_row_bytes),
+                        builder.const(0, i1),
+                    ],
+                    [],
+                )
+            )
+            fill(
+                ops.op("add", dst, pl * c + layout.source_row_bytes),
+                layout.row_pitch_bytes - pl * c - layout.source_row_bytes,
+            )
 
         builder.for_loop(0, h, 1, row, retain_loop=True)
         fill(ops.op("add", destination_base, (pt + h) * layout.row_pitch_bytes), pb * layout.row_pitch_bytes)
 
     builder.for_loop(0, b, 1, image, retain_loop=True)
-    return dict(schema="merlin.pitched_nhwc_halo_preparation.v1", private_bytes=layout.private_bytes,
-                row_pitch_bytes=layout.row_pitch_bytes, image_pitch_bytes=layout.image_pitch_bytes,
-                logical_bytes=layout.logical_bytes, copy_alignment=layout.copy_alignment,
-                source_overread_bytes=0, source_alignment_assumed=False, device_arithmetic=False,
-                initialization="exact complete original source rows and integer-zero halo before every consumer",
-                unobserved_slack="at most alignment-1 bytes per image; never read by mapped logical coordinates")
+    return dict(
+        schema="merlin.pitched_nhwc_halo_preparation.v1",
+        private_bytes=layout.private_bytes,
+        row_pitch_bytes=layout.row_pitch_bytes,
+        image_pitch_bytes=layout.image_pitch_bytes,
+        logical_bytes=layout.logical_bytes,
+        copy_alignment=layout.copy_alignment,
+        source_overread_bytes=0,
+        source_alignment_assumed=False,
+        device_arithmetic=False,
+        initialization="exact complete original source rows and integer-zero halo before every consumer",
+        unobserved_slack="at most alignment-1 bytes per image; never read by mapped logical coordinates",
+    )

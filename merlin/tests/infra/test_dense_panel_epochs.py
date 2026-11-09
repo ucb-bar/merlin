@@ -15,19 +15,15 @@ import pytest
 from test_compact_dense import ADAPTER
 from test_dense_panel_pipeline import setup
 
-from merlin.compiler.schedule.blocks import Compute
-from merlin.compiler.schedule.blocks import InitializeAccumulator
-from merlin.compiler.schedule.blocks import Load
-from merlin.compiler.schedule.blocks import Preload
-from merlin.compiler.schedule.blocks import Store
-from merlin.compiler.schedule.dense_panel_epochs import EPOCH_FLAGS
-from merlin.compiler.schedule.dense_panel_epochs import DensePanelEpochLaw
-from merlin.compiler.schedule.dense_panel_epochs import DensePanelEpochResult
-from merlin.compiler.schedule.dense_panel_epochs import propose_dense_panel_epochs
-from merlin.compiler.schedule.dense_panel_epochs import schedule_dense_panel_epochs
-from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
-from merlin.compiler.schedule.dense_panel_pipeline import _serial_projection
-from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_panel_pipeline
+from merlin.compiler.schedule.blocks import Compute, InitializeAccumulator, Load, Preload, Store
+from merlin.compiler.schedule.dense_panel_epochs import (
+    EPOCH_FLAGS,
+    DensePanelEpochLaw,
+    DensePanelEpochResult,
+    propose_dense_panel_epochs,
+    schedule_dense_panel_epochs,
+)
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN, _serial_projection, schedule_dense_panel_pipeline
 from merlin.compiler.schedule.dense_panel_readout import batch_dense_panel_readouts
 from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
 from merlin.sched.ir import evaluate, instances

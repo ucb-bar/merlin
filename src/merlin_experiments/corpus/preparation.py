@@ -18,12 +18,19 @@ from merlin_experiments.corpus.preparation_io import private_json as private_jso
 
 from ..spec import SpecError, read_yaml
 from .phase_selection import validate_phase_selections
-
+from .preparation_generation import (
+    _members as _members,
+)
+from .preparation_generation import (
+    _require_enforceable_instruction_policy as _require_enforceable_instruction_policy,
+)
 from .preparation_generation import (
     _verify_completed_frozen_sources as _verify_completed_frozen_sources,
+)
+from .preparation_generation import (
     _verify_completed_generation as _verify_completed_generation,
-    _require_enforceable_instruction_policy as _require_enforceable_instruction_policy,
-    _members as _members,
+)
+from .preparation_generation import (
     generation_lineage as generation_lineage,
 )
 
@@ -856,9 +863,11 @@ def _stage_capability_contract(
         record["operand_protocol_selection"] = {
             **copy.deepcopy(operand_selection),
             "selected_contract_sha256": selected_sha256,
-            "scope": ("explicit reviewed additive operand revision; original facts and existing fields retained"
-                      if operand_revision is not None else
-                      "source-derived operand observations only; original facts and semantic declarations retained"),
+            "scope": (
+                "explicit reviewed additive operand revision; original facts and existing fields retained"
+                if operand_revision is not None
+                else "source-derived operand observations only; original facts and semantic declarations retained"
+            ),
         }
     if operand_revision is not None:
         record["operand_protocol_revision"] = copy.deepcopy(operand_revision)
@@ -868,7 +877,7 @@ def _stage_capability_contract(
 def compiler_source_selection(common_substrate=None, python_source_root=None):
     """Select fresh SDK26 or validate an explicitly selected frozen shared release."""
     from merlin.common.paths import python_source_dir
-    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V19, _SHARED_SUBSTRATES, substrate_inventory
+    from merlin.targetgen.tool_profile import _SHARED_SUBSTRATES, COMMON_SUBSTRATE_V19, substrate_inventory
 
     version = COMMON_SUBSTRATE_V19 if common_substrate is None else common_substrate
     substrate_inventory(version)  # Unknown versions refuse before output creation.
@@ -877,7 +886,9 @@ def compiler_source_selection(common_substrate=None, python_source_root=None):
         raise SpecError("compiler source selection requires an existing canonical absolute directory")
     if python_source_root is None:
         if version != COMMON_SUBSTRATE_V19:
-            raise SpecError("legacy compiler selection requires its explicit frozen source root or archived environment")
+            raise SpecError(
+                "legacy compiler selection requires its explicit frozen source root or archived environment"
+            )
         return version, root
     if version not in _SHARED_SUBSTRATES:
         raise SpecError("this legacy compiler selection must run in its original archived environment")
@@ -981,8 +992,13 @@ def scaffold(
         reference_root = experiment / "reference-kernels"
         references = public_references.stage(public_reference_manifest, reference_root)
         inputs["public_reference_sources"] = references
-        public_references.declare(document, destination=reference_root, variants=variants,
-                                  source_sha256=references["sha256"], repo=repo_root())
+        public_references.declare(
+            document,
+            destination=reference_root,
+            variants=variants,
+            source_sha256=references["sha256"],
+            repo=repo_root(),
+        )
     if cca_bank is not None:
         # One coverage bank arm's pinned precomputed bank, beside its unchanged raw references.
         from merlin.common.paths import repo_root
@@ -991,13 +1007,19 @@ def scaffold(
         from . import public_references
 
         selected = resolve_author_profile(author_profile) if author_profile else None
-        if (public_reference_manifest is None or type(cca_bank) is not tuple or len(cca_bank) != 2
-                or selected is None or selected.bank_sha256 != cca_bank[1]):
+        if (
+            public_reference_manifest is None
+            or type(cca_bank) is not tuple
+            or len(cca_bank) != 2
+            or selected is None
+            or selected.bank_sha256 != cca_bank[1]
+        ):
             raise SpecError("a CCA bank requires its bank-arm author profile, the same pin and public references")
         bank_root = experiment / public_references.BANK_GRANT
         inputs["cca_bank"] = public_references.stage_bank(Path(cca_bank[0]), cca_bank[1], bank_root)
-        public_references.declare_bank(document, destination=bank_root, variants=variants,
-                                       sha256=cca_bank[1], repo=repo_root())
+        public_references.declare_bank(
+            document, destination=bank_root, variants=variants, sha256=cca_bank[1], repo=repo_root()
+        )
     if public_scalability is not None:
         from .public_scalability import KEY, verify
 
@@ -1039,8 +1061,11 @@ def scaffold(
     operand_selection = None
     operand_revision = None
     if operand_protocol_revision is not None:
-        if (operand_protocol_selection is None or type(operand_protocol_revision) is not tuple
-                or len(operand_protocol_revision) != 2):
+        if (
+            operand_protocol_selection is None
+            or type(operand_protocol_revision) is not tuple
+            or len(operand_protocol_revision) != 2
+        ):
             raise SpecError("observer revision requires an explicit selection and pinned review")
         review_source, review_sha = operand_protocol_revision
         staged_review = experiment / "contracts/operand-revision.json"
@@ -1198,25 +1223,41 @@ def scaffold(
             host_index_bits=host_index_bits,
             arms=arms,
             **(
-                {"public_inputs": tuple([
-                    *([str(Path(public_scalability["path"]) / "public_sources")]
-                      if public_scalability is not None else []),
-                    *([program_view["path"]] if program_view is not None else []),
-                ])}
-                if public_scalability is not None or program_view is not None else {}
+                {
+                    "public_inputs": tuple(
+                        [
+                            *(
+                                [str(Path(public_scalability["path"]) / "public_sources")]
+                                if public_scalability is not None
+                                else []
+                            ),
+                            *([program_view["path"]] if program_view is not None else []),
+                        ]
+                    )
+                }
+                if public_scalability is not None or program_view is not None
+                else {}
             ),
         )
     inputs["bundle_generation"] = {"diagnostics": diagnostics.getvalue()}
     if author_profile:
         from merlin_experiments.phase1.author_profiles import stage_release_bundles
 
-        inputs["author_profile"] = stage_release_bundles(experiment, promoted, profile=author_profile,
-            source_selection=author_profile_sources, common_inputs=author_profile_common_inputs)
+        inputs["author_profile"] = stage_release_bundles(
+            experiment,
+            promoted,
+            profile=author_profile,
+            source_selection=author_profile_sources,
+            common_inputs=author_profile_common_inputs,
+        )
     inputs["bundle_generation"]["compiler_source"] = {
         "common_substrate": substrate,
         "python_source_root": str(compiler_root),
-        **({"preparation": "owned_sdk26_snapshot", "library_sha256": generated_sdk["library_sha256"]}
-           if generated_sdk is not None else {}),
+        **(
+            {"preparation": "owned_sdk26_snapshot", "library_sha256": generated_sdk["library_sha256"]}
+            if generated_sdk is not None
+            else {}
+        ),
     }
     if selected_levels is not None or selected_variants is not None:
         inputs["bundle_generation"]["selection"] = {"arms": list(arms), "variants": list(variants)}
@@ -1235,8 +1276,13 @@ def _select_host_capability(document, selection, *, descriptor, root=None):
         raise SpecError("host capability selection requires an exact source file and digest")
     source, digest = Path(selection[0]), selection[1]
     ordinary_tree(source)
-    if (not source.is_absolute() or source != source.resolve() or not source.is_file()
-            or not isinstance(digest, str) or sha256_file(source) != digest):
+    if (
+        not source.is_absolute()
+        or source != source.resolve()
+        or not source.is_file()
+        or not isinstance(digest, str)
+        or sha256_file(source) != digest
+    ):
         raise SpecError("selected host capability source changed or is indirect")
     owner = (root or repo_root()).resolve()
     matrix = HostLaneMatrix.from_mapping(document.get("host_lane"), descriptor=descriptor)
@@ -1255,16 +1301,22 @@ def _select_host_capability(document, selection, *, descriptor, root=None):
     host = document["host_lane"]
     profile = host["profiles"][matrix.default] if "profiles" in host else host
     profile["capability_spec_sha256"] = digest
-    return {"path": str(source), "sha256": digest, "profile": matrix.default,
-            "capability_spec": lane.capability_spec, "package_sha256": before["package_sha256"],
-            "scope": "reviewed source support declaration only; no numerical or runtime qualification"}
+    return {
+        "path": str(source),
+        "sha256": digest,
+        "profile": matrix.default,
+        "capability_spec": lane.capability_spec,
+        "package_sha256": before["package_sha256"],
+        "scope": "reviewed source support declaration only; no numerical or runtime qualification",
+    }
 
 
 def verify_host_capability(document, record, *, descriptor, root=None):
     """Reopen the selected support/package before inspect or seal, without rewriting."""
     selected = copy.deepcopy(document)
-    actual = _select_host_capability(selected, (Path(record["path"]), record["sha256"]),
-                                     descriptor=descriptor, root=root)
+    actual = _select_host_capability(
+        selected, (Path(record["path"]), record["sha256"]), descriptor=descriptor, root=root
+    )
     if actual != record or selected != document:
         raise SpecError("prepared host capability source, profile or package changed")
 
@@ -1388,11 +1440,18 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
             else {}
         ),
         **(
-            {"public_programs": {"required": True, "source_cases": len(programs[2]),
-                                 "suite_sha256": (te.workload_spec or {})["public_program_suite"]["sha256"],
-                                 "engine": "spike", "tiers": ["L0", "L1", "L2"],
-                                 "status": "admitted_not_executed"}}
-            if programs is not None else {}
+            {
+                "public_programs": {
+                    "required": True,
+                    "source_cases": len(programs[2]),
+                    "suite_sha256": (te.workload_spec or {})["public_program_suite"]["sha256"],
+                    "engine": "spike",
+                    "tiers": ["L0", "L1", "L2"],
+                    "status": "admitted_not_executed",
+                }
+            }
+            if programs is not None
+            else {}
         ),
         "public_source": public["n_source_capsules"],
         "public_admitted": public["n_admitted_capsules"],

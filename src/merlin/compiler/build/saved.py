@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from merlin.runtime import modelinputs as MI
 from merlin.compiler.backend import host
 from merlin.compiler.backend.host import HostPackage
+from merlin.runtime import modelinputs as MI
 from merlin.runtime.backends import spike_model
 from merlin.runtime.boards import CONSOLE_HTIF, FLOW_BAREMETAL, Board, load_boards
 

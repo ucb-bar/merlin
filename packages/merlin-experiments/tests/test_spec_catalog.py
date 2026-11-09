@@ -40,10 +40,9 @@ def test_importing_catalog_does_not_import_cli_or_execution():
 
 
 def test_cli_retains_the_same_catalog_function():
-    from merlin_experiments.cli import catalog as cli_catalog
-
     from merlin.development import definition
     from merlin_experiments import load_spec, runner, spec
+    from merlin_experiments.cli import catalog as cli_catalog
 
     assert cli_catalog is catalog is definition.catalog
     assert spec is definition
@@ -82,14 +81,16 @@ def test_loading_declarations_rechecks_the_same_lazy_adapter_registry(tmp_path, 
     from merlin_experiments import adapters
 
     source = tmp_path / "definition.yaml"
-    source.write_text("schema_version: 1\nid: sample\ntarget: device\nphases:\n  0:\n    adapter: declaration_fixture\n    config: {}\n")
+    source.write_text(
+        "schema_version: 1\nid: sample\ntarget: device\nphases:\n  0:\n    adapter: declaration_fixture\n    config: {}\n"
+    )
     first = adapters.Adapter("declaration_fixture", "0", "unused.py")
     monkeypatch.setitem(adapters.ADAPTERS, first.name, first)
-    assert definition.load_spec(source).document["phases"] == {
-        "0": {"adapter": "declaration_fixture", "config": {}}
-    }
+    assert definition.load_spec(source).document["phases"] == {"0": {"adapter": "declaration_fixture", "config": {}}}
     replacement = adapters.Adapter(
-        "declaration_fixture", "0", "unused.py",
+        "declaration_fixture",
+        "0",
+        "unused.py",
         options={"required": adapters.Option(required=True)},
     )
     monkeypatch.setitem(adapters.ADAPTERS, first.name, replacement)

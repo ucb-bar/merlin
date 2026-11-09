@@ -54,14 +54,16 @@ def render_schedule(knobs: dict[str, Any], *, codegen_provider=None, support_tar
 
 def _rvv_blocking_lowers(MR, NR, M, N, *, codegen_provider=None, support_target=None):
     provider = _codegen(codegen_provider, support_target=support_target)
-    return _checked_call(provider, provider.blocking_cost_api()._rvv_blocking_lowers,
-                         MR, NR, M, N, operation="blocking")
+    return _checked_call(
+        provider, provider.blocking_cost_api()._rvv_blocking_lowers, MR, NR, M, N, operation="blocking"
+    )
 
 
 def _rvv_best_block(MR_cap, NR_cap, extents, *, codegen_provider=None, support_target=None):
     provider = _codegen(codegen_provider, support_target=support_target)
-    return _checked_call(provider, provider.blocking_cost_api()._rvv_best_block,
-                         MR_cap, NR_cap, extents, operation="blocking")
+    return _checked_call(
+        provider, provider.blocking_cost_api()._rvv_best_block, MR_cap, NR_cap, extents, operation="blocking"
+    )
 
 
 def _rvv_microkernel_resolver(spec, *, codegen_provider=None, support_target=None):
@@ -75,8 +77,12 @@ def _rvv_microkernel_shape_policy(spec, shapes, *, codegen_provider=None, suppor
 
 
 def microkernel_features(
-    mk: dict[str, Any], target: str = _LEGACY_SUPPORT, shapes: Any = (), *,
-    codegen_provider=None, support_target=None,
+    mk: dict[str, Any],
+    target: str = _LEGACY_SUPPORT,
+    shapes: Any = (),
+    *,
+    codegen_provider=None,
+    support_target=None,
 ) -> list[str]:
     """Use an explicit provider or a deliberately registered target resolver.
 
@@ -116,8 +122,10 @@ def policy_source_record(codegen_provider, *, operation=None) -> dict:
     paths = tuple(dict.fromkeys((Path(__file__), Path(microkernel.__file__), *(Path(path) for path in selected))))
     return {
         "schema": "merlin.vector-policy-sources.v1",
-        "members": [{"path": str(path.resolve(strict=True)),
-                     "sha256": hashlib.sha256(path.read_bytes()).hexdigest()} for path in paths],
+        "members": [
+            {"path": str(path.resolve(strict=True)), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+            for path in paths
+        ],
         "complete_dependency_identity": False,
         "scope": "observed_source_snapshot; import_drift_checked; loaded_python_code_not_attested",
     }
@@ -132,10 +140,19 @@ def _checked_call(provider, action, *args, operation=None, **kwargs):
 
 
 def mint_fork(
-    parent: RvvPackage | str | Path, overrides: dict[str, Any], *, version: int,
-    depth: int, timestamp: str, source_evidence: list[str], lever: str,
-    target: str = _LEGACY_SUPPORT, out_root: str | Path = "out/artifacts/targets",
-    generated_by_agent: bool = False, codegen_provider=None, support_target=None,
+    parent: RvvPackage | str | Path,
+    overrides: dict[str, Any],
+    *,
+    version: int,
+    depth: int,
+    timestamp: str,
+    source_evidence: list[str],
+    lever: str,
+    target: str = _LEGACY_SUPPORT,
+    out_root: str | Path = "out/artifacts/targets",
+    generated_by_agent: bool = False,
+    codegen_provider=None,
+    support_target=None,
 ) -> Path:
     """Delegate fork creation to the optional mining workflow."""
     try:
@@ -144,9 +161,20 @@ def mint_fork(
         if exc.name != f"{__package__}.fork":
             raise
         raise ModuleNotFoundError(
-            "Merlin installation lacks fork creation; reinstall 'merlin[mining]'.", name=exc.name,
+            "Merlin installation lacks fork creation; reinstall 'merlin[mining]'.",
+            name=exc.name,
         ) from exc
-    return create(parent, overrides, version=version, depth=depth, timestamp=timestamp,
-                  source_evidence=source_evidence, lever=lever, target=target, out_root=out_root,
-                  generated_by_agent=generated_by_agent, codegen_provider=codegen_provider,
-                  support_target=support_target)
+    return create(
+        parent,
+        overrides,
+        version=version,
+        depth=depth,
+        timestamp=timestamp,
+        source_evidence=source_evidence,
+        lever=lever,
+        target=target,
+        out_root=out_root,
+        generated_by_agent=generated_by_agent,
+        codegen_provider=codegen_provider,
+        support_target=support_target,
+    )

@@ -90,8 +90,7 @@ def test_actual_marker_and_unchanged_source_checker_rejects_mutations(fault):
     original_text, selected_text = generic(SOURCE), str(selected)
     verify_instrumentation(source, selected, table)
     assert str(selected) == selected_text and generic(SOURCE) == original_text
-    fn = next(op for op in selected.body.block.ops
-              if isinstance(op, func.FuncOp) and op.sym_name.data == "forward")
+    fn = next(op for op in selected.body.block.ops if isinstance(op, func.FuncOp) and op.sym_name.data == "forward")
     constant, marker = list(fn.body.block.ops)[:2]
     if fault == "id":
         constant.properties["value"] = builtin.IntegerAttr(4, builtin.i32)
@@ -105,8 +104,11 @@ def test_actual_marker_and_unchanged_source_checker_rejects_mutations(fault):
         marker.properties["callee"] = builtin.SymbolRefAttr("bump")
         marker.operands = [fn.body.block.args[0]]
     elif fault == "abi":
-        declaration = next(op for op in selected.body.block.ops
-                          if isinstance(op, func.FuncOp) and op.sym_name.data == op_profile.MARK_SYM)
+        declaration = next(
+            op
+            for op in selected.body.block.ops
+            if isinstance(op, func.FuncOp) and op.sym_name.data == op_profile.MARK_SYM
+        )
         declaration.attributes["llvm.emit_c_interface"] = builtin.UnitAttr()
     elif fault == "table":
         table[0]["result_type"] = "i7"
@@ -121,8 +123,9 @@ def test_actual_marker_and_unchanged_source_checker_rejects_mutations(fault):
 def test_profile_checker_retains_negative_zero_source_words():
     source = parse("module { func.func @forward() -> f32 { %z = arith.constant -0.0 : f32\n return %z : f32 } }")
     selected, table = instrument_module(source)
-    constant = next(op for op in selected.walk()
-                    if isinstance(op, arith.ConstantOp) and isinstance(op.value, builtin.FloatAttr))
+    constant = next(
+        op for op in selected.walk() if isinstance(op, arith.ConstantOp) and isinstance(op.value, builtin.FloatAttr)
+    )
     constant.properties["value"] = builtin.FloatAttr(0.0, builtin.f32)
     with pytest.raises(op_profile.OpProfileError, match="metadata"):
         verify_instrumentation(source, selected, table)
@@ -188,8 +191,9 @@ def test_actual_compiled_outputs_and_effect_interval_marker_order(tmp_path):
     from xdsl.dialects.builtin import UnitAttr
 
     broken = parse(selected)
-    marker = next(op for op in broken.body.block.ops
-        if isinstance(op, func.FuncOp) and op.sym_name.data == op_profile.MARK_SYM)
+    marker = next(
+        op for op in broken.body.block.ops if isinstance(op, func.FuncOp) and op.sym_name.data == op_profile.MARK_SYM
+    )
     marker.attributes["llvm.emit_c_interface"] = UnitAttr()
     stream = StringIO()
     Printer(stream=stream, print_generic_format=True).print_op(broken)
@@ -276,9 +280,13 @@ def test_ordinary_generic_model_build_profiles_and_executes_on_rv64gc(tmp_path, 
     }"""
     # The second complete result models carried state. Profiling must preserve
     # both results, not merely the printed prefix of the first tensor.
-    source = source.replace("%x: tensor<5xf32>) -> tensor<5xf32>",
-        "%x: tensor<5xf32>, %state: tensor<5xf32>) -> (tensor<5xf32>, tensor<5xf32>)")
-    source = source.replace("return %out : tensor<5xf32>", """
+    source = source.replace(
+        "%x: tensor<5xf32>) -> tensor<5xf32>",
+        "%x: tensor<5xf32>, %state: tensor<5xf32>) -> (tensor<5xf32>, tensor<5xf32>)",
+    )
+    source = source.replace(
+        "return %out : tensor<5xf32>",
+        """
         %next = linalg.generic {
           indexing_maps = [affine_map<(i)->(i)>, affine_map<(i)->(i)>, affine_map<(i)->(i)>],
           iterator_types = ["parallel"]
@@ -287,20 +295,30 @@ def test_ordinary_generic_model_build_profiles_and_executes_on_rv64gc(tmp_path, 
           %sum = arith.addf %old, %value : f32
           linalg.yield %sum : f32
         } -> tensor<5xf32>
-        return %out, %next : tensor<5xf32>, tensor<5xf32>""")
+        return %out, %next : tensor<5xf32>, tensor<5xf32>""",
+    )
     if padded:
-        source = source.replace("%next = linalg.generic", """%v = arith.constant -7.0 : f32
+        source = (
+            source.replace(
+                "%next = linalg.generic",
+                """%v = arith.constant -7.0 : f32
         %pad = tensor.splat %v : tensor<8xf32>
-        %next = linalg.generic""").replace(
-            "return %out, %next : tensor<5xf32>, tensor<5xf32>", """
+        %next = linalg.generic""",
+            )
+            .replace(
+                "return %out, %next : tensor<5xf32>, tensor<5xf32>",
+                """
         %padded = "tensor.insert_slice"(%next,%pad) <{static_offsets=array<i64:1>,
           static_sizes=array<i64:5>,static_strides=array<i64:1>,operandSegmentSizes=array<i32:1,1,0,0,0>}>
           : (tensor<5xf32>,tensor<8xf32>) -> tensor<8xf32>
-        return %out, %padded : tensor<5xf32>, tensor<8xf32>""").replace(
-            "-> (tensor<5xf32>, tensor<5xf32>)", "-> (tensor<5xf32>, tensor<8xf32>)")
+        return %out, %padded : tensor<5xf32>, tensor<8xf32>""",
+            )
+            .replace("-> (tensor<5xf32>, tensor<5xf32>)", "-> (tensor<5xf32>, tensor<8xf32>)")
+        )
     (bundle / "model.mlir").write_text(generic(source))
     (bundle / "weights.safetensors.manifest.json").write_text(
-        '{"0":{"kind":"input","name":"values"},"1":{"kind":"input","name":"state"}}')
+        '{"0":{"kind":"input","name":"values"},"1":{"kind":"input","name":"state"}}'
+    )
     values = np.array([-5, -0.75, 0, 1.25, 7], dtype=np.float32)
     state = np.array([3, 4, 5, 6, 7], dtype=np.float32)
     np.savez(bundle / "inputs.npz", in0=values, in1=state)
@@ -311,9 +329,19 @@ def test_ordinary_generic_model_build_profiles_and_executes_on_rv64gc(tmp_path, 
     results = []
     for selected in (False, True):
         built = spike_model.build(
-            bundle, work / str(selected), arena_mb=1, op_profile=selected, full_readback=True, backend=backend,
+            bundle,
+            work / str(selected),
+            arena_mb=1,
+            op_profile=selected,
+            full_readback=True,
+            backend=backend,
             cflags_override=[
-                "-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin",
+                "-march=rv64gc",
+                "-mabi=lp64d",
+                "-mcmodel=medany",
+                "-O2",
+                "-ffreestanding",
+                "-fno-builtin",
             ],
         )
         raw = spike_model.run_raw(built["elf"], mem_bytes=built["mem_bytes"], isa="rv64gc", timeout=60)
@@ -333,7 +361,8 @@ def test_ordinary_generic_model_build_profiles_and_executes_on_rv64gc(tmp_path, 
             continue
         table = json.loads((work / str(selected) / "op_profile_table.json").read_text())
         assert (work / str(selected) / "op_profile_table.json").read_bytes() == (
-            work / str(selected) / "lower/op_profile_table.json").read_bytes()
+            work / str(selected) / "lower/op_profile_table.json"
+        ).read_bytes()
         report = summarize(table, text)
         (work / str(selected) / "operation_profile.json").write_text(json.dumps(report))
         assert report["executions"] == 1 and report["marks"] == len(table) + 1

@@ -57,10 +57,14 @@ class Grader:
         # Import only this explicitly selected export's actual source layout.
         # Recorded exports can retain the former split research distribution.
         roots = [self.export / "src"]
-        roots.extend(path for path in (
-            self.export / "packages" / "merlin-experiments" / "src",
-            self.export / "packages" / "merlin-timing" / "src",
-        ) if path.is_dir())
+        roots.extend(
+            path
+            for path in (
+                self.export / "packages" / "merlin-experiments" / "src",
+                self.export / "packages" / "merlin-timing" / "src",
+            )
+            if path.is_dir()
+        )
         env["PYTHONPATH"] = os.pathsep.join(str(p) for p in roots)
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["TMPDIR"] = str(work)
@@ -108,9 +112,25 @@ def run_child(grader: Grader, submission: Path, case: str, work: Path) -> dict:
     _rmtree(out)
     result.unlink(missing_ok=True)
     argv = grader.prefix() + [
-        grader.python, "-P", str(CHILD), "--export", str(grader.export), "--descriptor", str(grader.descriptor),
-        "--suite-root", str(grader.suite_root), "--submission", str(submission), "--case", case,
-        "--out", str(out), "--result", str(result), "--timeout", str(grader.budget_s),
+        grader.python,
+        "-P",
+        str(CHILD),
+        "--export",
+        str(grader.export),
+        "--descriptor",
+        str(grader.descriptor),
+        "--suite-root",
+        str(grader.suite_root),
+        "--submission",
+        str(submission),
+        "--case",
+        case,
+        "--out",
+        str(out),
+        "--result",
+        str(result),
+        "--timeout",
+        str(grader.budget_s),
     ]
     if grader.rtl_facts:
         argv += ["--rtl-facts", str(grader.rtl_facts)]
@@ -120,8 +140,15 @@ def run_child(grader: Grader, submission: Path, case: str, work: Path) -> dict:
     doc: dict
     try:
         with (work / "child.log").open("wb") as log:
-            subprocess.run(argv, cwd=work, env=grader.child_env(work), stdout=log, stderr=subprocess.STDOUT,
-                           timeout=grader.budget_s + grader.slack_s, check=False)
+            subprocess.run(
+                argv,
+                cwd=work,
+                env=grader.child_env(work),
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                timeout=grader.budget_s + grader.slack_s,
+                check=False,
+            )
         doc = json.loads(result.read_text(encoding="utf-8")) if result.is_file() else {"error": "child wrote no result"}
     except subprocess.TimeoutExpired:
         doc = {"error": f"child exceeded {grader.budget_s + grader.slack_s} s"}
@@ -140,9 +167,13 @@ def case_run_dir(grade_dir: Path, case: str) -> Path | None:
 
 
 def _sum_classes(counts: dict, names: tuple[str, ...]) -> int:
-    return sum(int(v) for k, v in counts.items()
-               if k.startswith(CLASS_PREFIX) and k[len(CLASS_PREFIX):].partition("_")[0] in names
-               and isinstance(v, (int, float)))
+    return sum(
+        int(v)
+        for k, v in counts.items()
+        if k.startswith(CLASS_PREFIX)
+        and k[len(CLASS_PREFIX) :].partition("_")[0] in names
+        and isinstance(v, (int, float))
+    )
 
 
 def _roofline(structural: dict) -> tuple[float | None, str | None]:
@@ -152,7 +183,8 @@ def _roofline(structural: dict) -> tuple[float | None, str | None]:
         terms["compute"] = float(compute)
     for side in ("read", "write"):
         value = ((structural.get("logical_request_ideal_service") or {}).get(side) or {}).get(
-            "ideal_requested_service_cycles")
+            "ideal_requested_service_cycles"
+        )
         if isinstance(value, (int, float)) and value > 0:
             terms[f"{side} requests"] = float(value)
     if not terms:
@@ -195,8 +227,14 @@ def _fast_estimate(run_dir: Path | None, performance: dict) -> dict | None:
     if not isinstance(commands, int) or not isinstance(fences, int) or commands <= 0:
         return None
     # Recorded totals: target.commands counts non-fence commands, as the census does.
-    counted = {"commands": commands, "fences": fences, "sites": None, "unproved_sites": 0,
-               "complete": True, "source": "recorded feature counts"}
+    counted = {
+        "commands": commands,
+        "fences": fences,
+        "sites": None,
+        "unproved_sites": 0,
+        "complete": True,
+        "source": "recorded feature counts",
+    }
     try:
         return fast_estimate.estimate(counted, structural, fast_estimate.calibration(facts))
     except (OSError, ValueError, TypeError, KeyError, ZeroDivisionError):
@@ -234,17 +272,28 @@ def summarize(case: str, doc: dict) -> dict:
     if complete:
         row.update(status="timed", evidence="complete Spike timing model", model_cycles=cycles)
     elif estimate and estimate.get("status") == "ESTIMATED":
-        row.update(status="fast_estimate", evidence="fast census estimate (band "
-                   f"{estimate.get('low_cycles')}-{estimate.get('high_cycles')})", model_cycles=estimate["cycles"],
-                   fast_estimate={k: estimate.get(k) for k in ("cycles", "low_cycles", "high_cycles",
-                                                               "lower_bound", "limited_by")})
+        row.update(
+            status="fast_estimate",
+            evidence=f"fast census estimate (band {estimate.get('low_cycles')}-{estimate.get('high_cycles')})",
+            model_cycles=estimate["cycles"],
+            fast_estimate={
+                k: estimate.get(k) for k in ("cycles", "low_cycles", "high_cycles", "lower_bound", "limited_by")
+            },
+        )
     else:
-        row.update(status="UNKNOWN", evidence=None, model_cycles=None,
-                   unknown_reason=(estimate or {}).get("reason") or row["timing_reason"])
+        row.update(
+            status="UNKNOWN",
+            evidence=None,
+            model_cycles=None,
+            unknown_reason=(estimate or {}).get("reason") or row["timing_reason"],
+        )
     model = row["model_cycles"]
     peak, useful = structural.get("structural_peak_macs_per_cycle"), structural.get("useful_macs")
-    row["utilization_pct"] = (round(100.0 * useful / (model * peak), 2)
-                              if model and isinstance(peak, (int, float)) and peak and useful else None)
+    row["utilization_pct"] = (
+        round(100.0 * useful / (model * peak), 2)
+        if model and isinstance(peak, (int, float)) and peak and useful
+        else None
+    )
     row["headroom_cycles"] = int(model - bound) if model and bound else None
     stores = _sum_classes(counts, STORE_CLASSES)
     loads = _sum_classes(counts, (LOAD_CLASS,))
@@ -261,7 +310,7 @@ def summarize(case: str, doc: dict) -> dict:
         widths["write_bytes_per_store"] = round(counts["target.requested_write_bytes"] / stores, 1)
     for key, value in counts.items():
         if key.startswith(PUBLICATION_PREFIX) and value:
-            widths["publication." + key[len(PUBLICATION_PREFIX):]] = value
+            widths["publication." + key[len(PUBLICATION_PREFIX) :]] = value
     row["transfer_widths"] = widths
     fallback = counts.get(PUBLICATION_PREFIX + "aggregate_fallback")
     evidence = _evidence_lines(run_dir)
@@ -270,8 +319,9 @@ def summarize(case: str, doc: dict) -> dict:
     return row
 
 
-def emission_digest(submission: Path, capsule_mlir: Path, work: Path, grader: Grader,
-                    timeout_s: int = 900) -> str | None:
+def emission_digest(
+    submission: Path, capsule_mlir: Path, work: Path, grader: Grader, timeout_s: int = 900
+) -> str | None:
     """Digest of what the compiler emits for one case, or ``None`` when it does not emit.
 
     The command is the submission's own ``commands.emit_analysis_bundle`` (target artifact on stdout
@@ -298,8 +348,9 @@ def emission_digest(submission: Path, capsule_mlir: Path, work: Path, grader: Gr
     env = grader.child_env(work)
     env["PYTHONPATH"] = os.pathsep.join([str(submission / "compiler_library"), env["PYTHONPATH"]])
     try:
-        proc = subprocess.run(grader.prefix() + resolved, cwd=submission, env=env, capture_output=True,
-                              timeout=timeout_s, check=False)
+        proc = subprocess.run(
+            grader.prefix() + resolved, cwd=submission, env=env, capture_output=True, timeout=timeout_s, check=False
+        )
     except (OSError, subprocess.SubprocessError):
         return None
     if proc.returncode != 0 or not proc.stdout:
@@ -310,8 +361,9 @@ def emission_digest(submission: Path, capsule_mlir: Path, work: Path, grader: Gr
     return digest.hexdigest()
 
 
-def run_cases(grader: Grader, submission: Path, cases: list[str], work: Path, workers: int,
-              progress=None) -> dict[str, dict]:
+def run_cases(
+    grader: Grader, submission: Path, cases: list[str], work: Path, workers: int, progress=None
+) -> dict[str, dict]:
     """Time ``cases`` with ``workers`` concurrent children; returns rows by case."""
     rows: dict[str, dict] = {}
 

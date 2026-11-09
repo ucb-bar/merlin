@@ -30,7 +30,11 @@ from typing import Any
 
 from merlin.compiler.passes.contract import (
     PAR_TAG_PREFIX as PAR_TAG_PREFIX,
+)
+from merlin.compiler.passes.contract import (
     class_token as class_token,
+)
+from merlin.compiler.passes.contract import (
     par_tag_for as par_tag_for,
 )
 
@@ -72,9 +76,6 @@ GROUPED_CONV_CLASS = "linalg.conv2d_grouped_direct"
 CONV_ARM_FEATURE = "conv_register_block"
 
 
-
-
-
 def tag_for(op: str, mr: int, nr: int) -> str:
     """Attribute name for op class ``op`` at block ``(mr, nr)`` — the tagger/schedule join key."""
     return f"{TAG_PREFIX}{class_token(op)}_{int(mr)}x{int(nr)}"
@@ -83,9 +84,6 @@ def tag_for(op: str, mr: int, nr: int) -> str:
 #: Attribute prefix for the MULTICORE split. Same join-key contract as :data:`TAG_PREFIX`: one
 #: distinct attribute per distinct (op class, forall tile) pair, set by the tagger and matched by the
 #: parallel schedule. See :func:`parallel_chunk_table` for why the split is derived per op.
-
-
-
 
 
 def _even_split(extent: int, harts: int, admits) -> "tuple[int, int] | None":
@@ -448,7 +446,13 @@ def mr_cap_for_registers(mr_cap: int, *, vlen: int | None, nr: int, dtypes, vreg
 
 
 def _solve_block(
-    mr_cap: int, nr_cap: int, pairs, *, mr_vlen: int | None, dtypes, codegen_provider=None,
+    mr_cap: int,
+    nr_cap: int,
+    pairs,
+    *,
+    mr_vlen: int | None,
+    dtypes,
+    codegen_provider=None,
 ) -> tuple[int, int]:
     """``(MR, NR)`` for one contraction, with the MR cap DERIVED from its own block when asked.
 
@@ -536,7 +540,11 @@ def block_table(
         # vlen is known (see nr_cap_for_dtypes). vlen=None -> the caller's cap, unchanged.
         shape_nr_cap = nr_cap_for_dtypes(nr_cap, vlen, getattr(s, "dtypes", ()))
         mr, nr = _solve_block(
-            mr_cap, shape_nr_cap, [(par[-2], par[-1])], mr_vlen=mr_vlen, dtypes=getattr(s, "dtypes", ()),
+            mr_cap,
+            shape_nr_cap,
+            [(par[-2], par[-1])],
+            mr_vlen=mr_vlen,
+            dtypes=getattr(s, "dtypes", ()),
             codegen_provider=provider,
         )
         if nr <= 1:
@@ -696,10 +704,7 @@ def conv_shapes(src, *, with_strides: bool = False) -> "list[Any]":
     schedule legality. Returns ``[]`` (never raises) on an unreadable module, so an observer failure
     costs a vectorization rather than a build.
     """
-    from merlin.compiler.ir.contraction_shapes import ContractionShape
-    from merlin.compiler.ir.contraction_shapes import _iterator_types
-    from merlin.compiler.ir.contraction_shapes import _shaped
-    from merlin.compiler.ir.contraction_shapes import indexing_maps
+    from merlin.compiler.ir.contraction_shapes import ContractionShape, _iterator_types, _shaped, indexing_maps
 
     from ..common import mlir_query as mq
 

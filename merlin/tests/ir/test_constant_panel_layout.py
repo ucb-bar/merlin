@@ -9,18 +9,33 @@ from xdsl.ir import Block
 
 from merlin.compiler.schedule.tensor_storage import column_panel_storage
 from merlin.llvmlower.constant_panel_layout import (
-    constant_panel_request, prepare_constant_panels, request_constant_panels,
+    constant_panel_request,
+    prepare_constant_panels,
+    request_constant_panels,
 )
-from merlin.llvmlower.group_host_call import _logical_group_call
 from merlin.llvmlower.device_shim import logical_buffers
+from merlin.llvmlower.group_host_call import _logical_group_call
 from merlin.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
 from merlin.targetgen.corpus_spec import CorpusBinding, build_conv2d
 
 
 def entry(columns=6, taps=3):
-    return dict(name="source", kind="layer", source_role="source", source_reference="typed source",
-                op="conv2d", Himg=5, Wimg=5, kh=1, kw=taps, ci=4, N=columns,
-                stride=[1, 1], padding=[0, 0, 0, 0], dilation=[1, 1])
+    return dict(
+        name="source",
+        kind="layer",
+        source_role="source",
+        source_reference="typed source",
+        op="conv2d",
+        Himg=5,
+        Wimg=5,
+        kh=1,
+        kw=taps,
+        ci=4,
+        N=columns,
+        stride=[1, 1],
+        padding=[0, 0, 0, 0],
+        dilation=[1, 1],
+    )
 
 
 @pytest.mark.parametrize("columns,panel", [(6, 2), (15, 3), (8, 4)])
@@ -37,8 +52,16 @@ def test_original_source_bytes_bind_physical_call_and_interface(columns, panel):
         return Block(arg_types=[TensorType(dtype, array.shape)]).args[0]
 
     operands, constants, roles, why = _logical_group_call(
-        group, stated, source, pair, {"weight": {"array": "fixed"}}, {"fixed": original}, "",
-        bind_weight=bind, constant_panel_columns=panel)
+        group,
+        stated,
+        source,
+        pair,
+        {"weight": {"array": "fixed"}},
+        {"fixed": original},
+        "",
+        bind_weight=bind,
+        constant_panel_columns=panel,
+    )
     storage = column_panel_storage(12, columns, panel, "i8")
     assert not why and not constants and roles == ["input_0", "weight_0"]
     assert np.array_equal(bound[0], original.reshape(12, columns // panel, panel).transpose(1, 0, 2))
@@ -64,9 +87,11 @@ def test_source_without_original_immutable_payload_cannot_pack():
 
 
 def test_unsupported_sources_retain_original_bytes():
-    for source, original in [(entry(5), np.arange(60, dtype=np.int8).reshape(12, 5)),
-                             (entry(6, 1), np.arange(24, dtype=np.int8).reshape(4, 6)),
-                             (dict(entry(), ci=1), np.arange(18, dtype=np.int8).reshape(3, 6))]:
+    for source, original in [
+        (entry(5), np.arange(60, dtype=np.int8).reshape(12, 5)),
+        (entry(6, 1), np.arange(24, dtype=np.int8).reshape(4, 6)),
+        (dict(entry(), ci=1), np.arange(18, dtype=np.int8).reshape(3, 6)),
+    ]:
         actual, storage = prepare_constant_panels(source, original, 2, i8, minimum_input_channels=2)
         assert actual is original and storage is None
 
@@ -102,8 +127,10 @@ def test_inconsistent_physical_interface_encoding_refuses():
 
 def test_original_layout_policy_gates_and_replays_request(tmp_path):
     from dataclasses import replace
-    from test_host_graph_policy import select
+
     from test_host_graph_optimizations import _source
+    from test_host_graph_policy import select
+
     from merlin.frontends.linalg_mlir import parse_mlir_text
 
     policy = replace(select(tmp_path), constant_panel_columns=3)

@@ -19,8 +19,7 @@ from test_private_copy_elimination import command as original_command
 from test_selected_storage_contracts import STORAGE_EXECUTOR, inputs, provider_project
 from test_spilled_pointwise_source import INCREMENT, source_text
 
-from merlin.compiler.schedule.pointwise_source import PointwiseBindings
-from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
+from merlin.compiler.schedule.pointwise_source import PointwiseBindings, compile_source_pointwise
 from merlin.compiler.schedule.program_limits import AddressWindow
 from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 from merlin.compiler.schedule.temporary_storage import TemporaryObject

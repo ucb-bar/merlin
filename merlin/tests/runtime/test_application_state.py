@@ -172,12 +172,12 @@ def test_compiled_initializers_preserve_bits_and_validate_all_destinations(tmp_p
     assert call(overlap, (ctypes.c_size_t * 2)(size, size)) == -1
     assert a.raw == b.raw
     assert call(destinations, (ctypes.c_size_t * 2)(size, size)) == 0
-    assert a.raw[1:size + 1] == initial[0] and b.raw[1:size + 1] == initial[1]
-    assert a.raw[:1] == b.raw[:1] == b"x" and a.raw[size + 1:] == b.raw[size + 1:] == b"z\0"
+    assert a.raw[1 : size + 1] == initial[0] and b.raw[1 : size + 1] == initial[1]
+    assert a.raw[:1] == b.raw[:1] == b"x" and a.raw[size + 1 :] == b.raw[size + 1 :] == b"z\0"
     # Initializing one destination may overwrite the caller's pointer table.
     # Later destinations must still use the pointers validated before copying.
     table = (ctypes.c_void_p * 4)()
     table[0], table[1] = ctypes.addressof(table) + ctypes.sizeof(ctypes.c_void_p), ctypes.addressof(b) + 1
     assert call(table, (ctypes.c_size_t * 2)(size, size)) == 0
     assert ctypes.string_at(ctypes.addressof(table) + ctypes.sizeof(ctypes.c_void_p), size) == initial[0]
-    assert b.raw[1:size + 1] == initial[1]
+    assert b.raw[1 : size + 1] == initial[1]

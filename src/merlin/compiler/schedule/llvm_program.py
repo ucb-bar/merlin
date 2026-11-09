@@ -19,8 +19,7 @@ class FnBuilderIndexAdapter:
     """
 
     def __init__(self, builder):
-        if any(not callable(getattr(builder, name, None)) for name in
-               ("const", "add", "add_i", "mul_i", "for_loop")):
+        if any(not callable(getattr(builder, name, None)) for name in ("const", "add", "add_i", "mul_i", "for_loop")):
             raise ValueError("LLVM index emission requires the FnBuilder interface")
         self.builder = builder
 
@@ -50,10 +49,13 @@ class FnBuilderIndexAdapter:
             raise ValueError("LLVM index selection only supports equality")
         if type(lhs) is int and type(rhs) is int:
             return lhs == rhs  # both operands constant: fold, as ``branch`` folds a constant predicate
-        return self.builder.add(llvm.ICmpOp(
-            self.value(lhs), self.value(rhs),
-            IntegerAttr(llvm.ICmpPredicateFlag.EQ.to_int(), i64),
-        )).results[0]
+        return self.builder.add(
+            llvm.ICmpOp(
+                self.value(lhs),
+                self.value(rhs),
+                IntegerAttr(llvm.ICmpPredicateFlag.EQ.to_int(), i64),
+            )
+        ).results[0]
 
     def select(self, condition, lhs, rhs):
         from xdsl.dialects import llvm
@@ -67,9 +69,13 @@ class FnBuilderIndexAdapter:
         return self.builder.add(llvm.SelectOp(condition, self.value(lhs), self.value(rhs))).results[0]
 
     def loop(self, start, stop, step, callback):
-        if (any(type(value) is not int for value in (start, stop, step))
-                or not 0 <= start <= stop < (1 << 63) or not 0 < step < (1 << 63)
-                or stop and step > (1 << 63) - stop):
+        if (
+            any(type(value) is not int for value in (start, stop, step))
+            or not 0 <= start <= stop < (1 << 63)
+            or not 0 < step < (1 << 63)
+            or stop
+            and step > (1 << 63) - stop
+        ):
             raise ValueError("LLVM index loop requires bounded ascending signed-i64 bounds and step")
         self.builder.for_loop(start, stop, step, callback, retain_loop=True)
 
@@ -86,9 +92,14 @@ class FnBuilderIndexAdapter:
 
         from merlin.llvmlower.llvm_loop_metadata import disable_loop_unroll
 
-        if (any(type(v) is not int for v in (start, stop, step))
-                or not 0 <= start <= stop < 1 << 63 or not 0 < step < 1 << 63
-                or stop + step >= 1 << 63 or type(initial) is not tuple or not initial):
+        if (
+            any(type(v) is not int for v in (start, stop, step))
+            or not 0 <= start <= stop < 1 << 63
+            or not 0 < step < 1 << 63
+            or stop + step >= 1 << 63
+            or type(initial) is not tuple
+            or not initial
+        ):
             raise ValueError("LLVM carried loop requires explicit i64 handles and ascending static bounds")
         values = tuple(self.value(v) for v in initial)
         b = self.builder
@@ -100,8 +111,9 @@ class FnBuilderIndexAdapter:
         b.add(llvm.BrOp(header, b.const(start), *values))
         b.blk = header
         index, *carried = header.args
-        condition = b.add(llvm.ICmpOp(index, b.const(stop),
-            IntegerAttr(llvm.ICmpPredicateFlag.SLT.to_int(), i64))).results[0]
+        condition = b.add(
+            llvm.ICmpOp(index, b.const(stop), IntegerAttr(llvm.ICmpPredicateFlag.SLT.to_int(), i64))
+        ).results[0]
         b.add(llvm.CondBrOp(condition, active, [], after, carried))
         b.blk = active
         result = callback(index, tuple(carried))
@@ -127,8 +139,14 @@ class FnBuilderControlAdapter(FnBuilderIndexAdapter):
         from xdsl.dialects.builtin import i1
         from xdsl.ir import SSAValue
 
-        operations = {"add": llvm.AddOp, "sub": llvm.SubOp, "mul": llvm.MulOp,
-                      "udiv": llvm.UDivOp, "urem": llvm.URemOp, "and": llvm.AndOp}
+        operations = {
+            "add": llvm.AddOp,
+            "sub": llvm.SubOp,
+            "mul": llvm.MulOp,
+            "udiv": llvm.UDivOp,
+            "urem": llvm.URemOp,
+            "and": llvm.AndOp,
+        }
         if opcode not in operations or dtype not in ("i64", "i1") or dtype == "i1" and opcode != "and":
             raise ValueError("unsupported typed LLVM control arithmetic")
         if dtype == "i1":
@@ -142,16 +160,21 @@ class FnBuilderControlAdapter(FnBuilderIndexAdapter):
         from xdsl.dialects import llvm
         from xdsl.dialects.builtin import IntegerAttr, i64
 
-        flags = {"eq": llvm.ICmpPredicateFlag.EQ, "slt": llvm.ICmpPredicateFlag.SLT,
-                 "ult": llvm.ICmpPredicateFlag.ULT, "ule": llvm.ICmpPredicateFlag.ULE}
+        flags = {
+            "eq": llvm.ICmpPredicateFlag.EQ,
+            "slt": llvm.ICmpPredicateFlag.SLT,
+            "ult": llvm.ICmpPredicateFlag.ULT,
+            "ule": llvm.ICmpPredicateFlag.ULE,
+        }
         if predicate not in flags:
             raise ValueError("unsupported LLVM control predicate")
         if type(lhs) is int and type(rhs) is int:
             mask = (1 << 64) - 1
             a, b = (lhs, rhs) if predicate in ("eq", "slt") else (lhs & mask, rhs & mask)
             return a == b if predicate == "eq" else a < b if predicate in ("slt", "ult") else a <= b
-        return self.builder.add(llvm.ICmpOp(self.value(lhs), self.value(rhs),
-            IntegerAttr(flags[predicate].to_int(), i64))).results[0]
+        return self.builder.add(
+            llvm.ICmpOp(self.value(lhs), self.value(rhs), IntegerAttr(flags[predicate].to_int(), i64))
+        ).results[0]
 
     def branch(self, predicate, yes, no):
         from xdsl.dialects import llvm
@@ -187,9 +210,18 @@ def emit_index_program(kernel, builder, lower_call):
                 if statement.iter_args or statement.yields or statement.results:
                     raise ValueError("raw index emission cannot erase carried completion; use the checked SCF bridge")
                 validate(statement.body)
-            elif any((statement.unit, statement.produces, statement.awaits, statement.stages,
-                      statement.sets, statement.assumes)):
+            elif any(
+                (
+                    statement.unit,
+                    statement.produces,
+                    statement.awaits,
+                    statement.stages,
+                    statement.sets,
+                    statement.assumes,
+                )
+            ):
                 raise ValueError("LLVM index bridge cannot erase execution or configuration annotations")
+
     validate(kernel.body)
 
     def value(expression, env):
@@ -214,14 +246,16 @@ def emit_index_program(kernel, builder, lower_call):
     def emit(body, env):
         for statement in body:
             if isinstance(statement, Loop):
-                builder.loop(0, statement.extent, 1,
-                             lambda index: emit(statement.body, {**env, statement.var: index}))
+                builder.loop(0, statement.extent, 1, lambda index: emit(statement.body, {**env, statement.var: index}))
             else:
                 lower_call(statement.instr, {name: value(expr, env) for name, expr in statement.args})
 
     emit(kernel.body, {})
-    return {"kernel_sha256": kernel.digest(), "index_bits": 64,
-            "scope": "actual counted-loop/index emission; target effects and machine conformance remain separate"}
+    return {
+        "kernel_sha256": kernel.digest(),
+        "index_bits": 64,
+        "scope": "actual counted-loop/index emission; target effects and machine conformance remain separate",
+    }
 
 
 def emit_index_effect_program(kernel, control, lower_effect, *, complete_epoch, completion_instruction):
@@ -234,8 +268,12 @@ def emit_index_effect_program(kernel, control, lower_effect, *, complete_epoch, 
     use the checked SCF bridge when those annotations need actual lowering.
     Checked scheduling owners revalidate source/effect premises around this call.
     """
-    if (not callable(lower_effect) or not callable(complete_epoch)
-            or type(completion_instruction) is not str or not completion_instruction):
+    if (
+        not callable(lower_effect)
+        or not callable(complete_epoch)
+        or type(completion_instruction) is not str
+        or not completion_instruction
+    ):
         raise ValueError("counted effects require an encoder, original completion callback and instruction")
     drains = 0
 
@@ -250,7 +288,11 @@ def emit_index_effect_program(kernel, control, lower_effect, *, complete_epoch, 
             lower_effect(tag, values)
 
     receipt = emit_index_program(kernel, control, lower)
-    return {**receipt, "completion_mapping": {
-        "kind": "explicit_checked_full_epoch_drains", "emitted_static_drains": drains,
-        "target_execution": "caller_obligation",
-    }}
+    return {
+        **receipt,
+        "completion_mapping": {
+            "kind": "explicit_checked_full_epoch_drains",
+            "emitted_static_drains": drains,
+            "target_execution": "caller_obligation",
+        },
+    }

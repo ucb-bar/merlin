@@ -1,4 +1,5 @@
 """Native command ordering, storage alias legality and live ranges."""
+
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -6,6 +7,7 @@ from itertools import chain
 
 from .allocation_types import CandidateGraph, StorageBank, Value
 from .instruction import AddressConstraint
+
 
 def _instruction_predecessors(graph: CandidateGraph) -> dict[int, frozenset[int]]:
     """Find producers through non-emitting nodes as well as direct operands."""
@@ -284,4 +286,3 @@ def _view_problem(graph: CandidateGraph) -> str:
             ):
                 return "non-emitting view lacks a checked contiguous address relation"
     return ""
-

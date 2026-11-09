@@ -11,6 +11,7 @@ catalog, their admission over the candidate's shape and the selected RTL facts, 
 capability. Only a bank arm is served. Nothing is ranked, recommended or applied; semantic
 equivalence and performance stay unknown.
 """
+
 from __future__ import annotations
 
 import json
@@ -28,8 +29,11 @@ def validate_shape(value):
     """An author-declared candidate shape: named positive integer dimensions, never inferred."""
     if value is None or value == {}:
         return None
-    if (not isinstance(value, dict) or set(value) - set(_DIMENSIONS)
-            or any(type(v) is not int or not 0 < v <= _MAX_DIMENSION for v in value.values())):
+    if (
+        not isinstance(value, dict)
+        or set(value) - set(_DIMENSIONS)
+        or any(type(v) is not int or not 0 < v <= _MAX_DIMENSION for v in value.values())
+    ):
         raise ValueError("invalid_analysis_request")
     return dict(value)
 
@@ -60,13 +64,25 @@ def _candidate_effects(selector, region, *, workspace, facts, contract, target, 
     decoder = A._operand_decoder(contract, facts, target, descriptor=descriptor, include_structure=True)
     structure = selected_structure(decoder, _contract_document(contract, target, descriptor)) if decoder else None
     extent = region.get("static_function_extent")
-    span = ((extent["address"], extent["address"] + extent["size_bytes"]) if extent
-            else tuple(region["address_range"]) if region.get("address_range") else None)
+    span = (
+        (extent["address"], extent["address"] + extent["size_bytes"])
+        if extent
+        else tuple(region["address_range"])
+        if region.get("address_range")
+        else None
+    )
     evidence_id = (region.get("evidence") or {}).get("evidence_id") or region.get("stable_id")
     if not decoder or span is None:
         effects = derive_effects(region, structure or {}, evidence_id=evidence_id)
-        return effects, structure, ("selected operand decoder unavailable" if not decoder
-                                    else "candidate span has no function extent or address range")
+        return (
+            effects,
+            structure,
+            (
+                "selected operand decoder unavailable"
+                if not decoder
+                else "candidate span has no function extent or address range"
+            ),
+        )
     path, label = A._path(workspace, selector["path"], candidate=True)
     raw, _ = A._read(path, label, allow_elf=True)
     try:
@@ -133,75 +149,138 @@ def summary(differences):
         label = " ".join(str(row[key]) for key in ("effect", "role", "operand") if row.get(key))
         if row.get("difference") == "unknown":
             sides = [row.get(side) for side in ("candidate", "reference")]
-            reason = row.get("reason") or next((side["reason"] for side in sides
-                                                if isinstance(side, dict) and side.get("reason")), None)
+            reason = row.get("reason") or next(
+                (side["reason"] for side in sides if isinstance(side, dict) and side.get("reason")), None
+            )
             reason = str(reason or "not established on both sides")[:160]
             unknown.setdefault(reason, []).append(label)
         elif row.get("difference") == "differs":
-            observed.append(dict(effect=label, unit=_side(row, "reference"), yours=_side(row, "candidate"),
-                                 routes=[r["capability"] for r in row.get("routes") or ()
-                                         if r.get("family_match") is not False]))
-    return dict(observed_differences=observed,
-                same=sum(row.get("difference") == "same" for row in differences),
-                unknown_by_reason=[dict(reason=reason, effects=sorted(set(labels)), count=len(labels))
-                                   for reason, labels in sorted(unknown.items(), key=lambda item: -len(item[1]))])
+            observed.append(
+                dict(
+                    effect=label,
+                    unit=_side(row, "reference"),
+                    yours=_side(row, "candidate"),
+                    routes=[r["capability"] for r in row.get("routes") or () if r.get("family_match") is not False],
+                )
+            )
+    return dict(
+        observed_differences=observed,
+        same=sum(row.get("difference") == "same" for row in differences),
+        unknown_by_reason=[
+            dict(reason=reason, effects=sorted(set(labels)), count=len(labels))
+            for reason, labels in sorted(unknown.items(), key=lambda item: -len(item[1]))
+        ],
+    )
 
 
 def _compact(report):
     """Bounded reply: every difference and route with its admission status; full record in detail."""
+
     def route(row):
         admission = row["admission"]
-        return dict(capability=row["capability"], family_match=row["family_match"], admission=dict(
-            {key: admission[key] for key in ("status", "predicate", "violated_bounds", "missing", "reason",
-                                             "satisfied_n_tiles", "admitted_block_count", "required_operand_rows",
-                                             "operand_rows") if key in admission}))
+        return dict(
+            capability=row["capability"],
+            family_match=row["family_match"],
+            admission=dict(
+                {
+                    key: admission[key]
+                    for key in (
+                        "status",
+                        "predicate",
+                        "violated_bounds",
+                        "missing",
+                        "reason",
+                        "satisfied_n_tiles",
+                        "admitted_block_count",
+                        "required_operand_rows",
+                        "operand_rows",
+                    )
+                    if key in admission
+                }
+            ),
+        )
 
     applicability = report["applicability"]
-    return dict(kind=report["kind"], summary=summary(applicability["differences"]),
-                reference=report["reference"], candidate=dict(
-                    {k: v for k, v in report["candidate"].items() if k != "derived_effects"}),
-                decoder_structure=report["decoder_structure"],
-                differences=[dict(effect=row["effect"], difference=row["difference"], status=row["status"],
-                                  direction=row.get("direction"), needed_change=row.get("needed_change"),
-                                  **{k: row[k] for k in ("comparison", "larger_means") if row.get(k)},
-                                  **({"beyond_reference": row["beyond_reference"]}
-                                     if row.get("beyond_reference") is not None else {}),
-                                  **{k: row[k] for k in ("role", "operand", "consumer_port", "attribution",
-                                                         "operand_attribution", "attribution_basis") if row.get(k)},
-                                  reference=_side(row, "reference"), candidate=_side(row, "candidate"),
-                                  **({"reason": row["reason"]} if row.get("reason") else {}),
-                                  routes=[route(r) for r in row.get("routes", []) if r["family_match"] is not False],
-                                  **({"other_family_routes": [r["capability"] for r in row["routes"]
-                                                              if r["family_match"] is False]}
-                                     if any(r["family_match"] is False for r in row.get("routes", [])) else {}),
-                                  **({"routes_if_established": row["routes_if_established"]}
-                                     if row.get("routes_if_established") else {}),
-                                  **({"routes_basis": row["routes_basis"]} if row.get("routes_basis") else {}),
-                                  **({"missing_capability": row["missing_capability"]}
-                                     if "missing_capability" in row else {}))
-                             for row in applicability["differences"]],
-                missing_capabilities=applicability["missing_capabilities"],
-                partial_recipe=applicability.get("partial_recipe"),
-                candidate_shape=applicability["candidate_shape"],
-                selected_geometry={k: v for k, v in applicability["selected_geometry"].items() if k != "sources"},
-                ordering=applicability["ordering"], choice=applicability["choice"],
-                projection="route usage, requirements, symbols and per-width admission rows are in the detail file",
-                semantic_equivalence="unknown", performance="unknown")
+    return dict(
+        kind=report["kind"],
+        summary=summary(applicability["differences"]),
+        reference=report["reference"],
+        candidate=dict({k: v for k, v in report["candidate"].items() if k != "derived_effects"}),
+        decoder_structure=report["decoder_structure"],
+        differences=[
+            dict(
+                effect=row["effect"],
+                difference=row["difference"],
+                status=row["status"],
+                direction=row.get("direction"),
+                needed_change=row.get("needed_change"),
+                **{k: row[k] for k in ("comparison", "larger_means") if row.get(k)},
+                **({"beyond_reference": row["beyond_reference"]} if row.get("beyond_reference") is not None else {}),
+                **{
+                    k: row[k]
+                    for k in (
+                        "role",
+                        "operand",
+                        "consumer_port",
+                        "attribution",
+                        "operand_attribution",
+                        "attribution_basis",
+                    )
+                    if row.get(k)
+                },
+                reference=_side(row, "reference"),
+                candidate=_side(row, "candidate"),
+                **({"reason": row["reason"]} if row.get("reason") else {}),
+                routes=[route(r) for r in row.get("routes", []) if r["family_match"] is not False],
+                **(
+                    {"other_family_routes": [r["capability"] for r in row["routes"] if r["family_match"] is False]}
+                    if any(r["family_match"] is False for r in row.get("routes", []))
+                    else {}
+                ),
+                **({"routes_if_established": row["routes_if_established"]} if row.get("routes_if_established") else {}),
+                **({"routes_basis": row["routes_basis"]} if row.get("routes_basis") else {}),
+                **({"missing_capability": row["missing_capability"]} if "missing_capability" in row else {}),
+            )
+            for row in applicability["differences"]
+        ],
+        missing_capabilities=applicability["missing_capabilities"],
+        partial_recipe=applicability.get("partial_recipe"),
+        candidate_shape=applicability["candidate_shape"],
+        selected_geometry={k: v for k, v in applicability["selected_geometry"].items() if k != "sources"},
+        ordering=applicability["ordering"],
+        choice=applicability["choice"],
+        projection="route usage, requirements, symbols and per-width admission rows are in the detail file",
+        semantic_equivalence="unknown",
+        performance="unknown",
+    )
 
 
-def respond(left, right, value, *, base, packet, workspace, facts, contract, target, descriptor,
-            compiler_sha256, decoding_context=None):
+def respond(
+    left,
+    right,
+    value,
+    *,
+    base,
+    packet,
+    workspace,
+    facts,
+    contract,
+    target,
+    descriptor,
+    compiler_sha256,
+    decoding_context=None,
+):
     """Decode with the compare selection; resource admission keeps the run's selected RTL facts."""
     from merlin.kernels.mechanism_applicability import applicability, selected_geometry
 
     from .result_details import compact_row
 
     reference, candidate = left["regions"][0], dict(right["regions"][0])
-    decoding_context = decoding_context or dict(facts=facts, contract=contract, target=target,
-                                                descriptor=descriptor)
+    decoding_context = decoding_context or dict(facts=facts, contract=contract, target=target, descriptor=descriptor)
     try:
-        effects, structure, effects_gap = _candidate_effects(value["candidate"], candidate, workspace=workspace,
-                                                             **decoding_context)
+        effects, structure, effects_gap = _candidate_effects(
+            value["candidate"], candidate, workspace=workspace, **decoding_context
+        )
     except (AttributeError, IndexError, LookupError, TypeError, ValueError) as error:
         from merlin.kernels.decoded_effects import derive_effects
 
@@ -211,40 +290,81 @@ def respond(left, right, value, *, base, packet, workspace, facts, contract, tar
 
     candidate["derived_effects"] = effects
     geometry, reason = selected_geometry(target, _facts_document(facts))
-    result = applicability(reference, candidate, shape=validate_shape(value.get("shape")), geometry=geometry,
-                           geometry_reason=reason, structure=structure)
+    result = applicability(
+        reference,
+        candidate,
+        shape=validate_shape(value.get("shape")),
+        geometry=geometry,
+        geometry_reason=reason,
+        structure=structure,
+    )
     ref_structure = ((reference.get("derived_effects") or {}).get("inputs") or {}).get("structure_sha256")
     cand_structure = effects["inputs"]["structure_sha256"]
     occurrence = reference.get("bank_occurrence") or {}
     report = dict(
-        kind="reference_applicability", bank=left.get("bank"),
-        reference=dict(unit_id=occurrence.get("unit_id"), region_id=occurrence.get("region_id"),
-                       original_id=occurrence.get("original_id"), analysis=occurrence.get("analysis")),
-        candidate=dict(input=right.get("input"), region_id=candidate.get("stable_id"), symbol=candidate.get("symbol"),
-                       derived_effects_basis=effects["basis"], derived_effects_gap=effects_gap,
-                       derived_effects=effects),
-        decoder_structure=dict(status="unknown" if None in (ref_structure, cand_structure)
-                               else "same" if ref_structure == cand_structure else "differs",
-                               reference=ref_structure, candidate=cand_structure),
+        kind="reference_applicability",
+        bank=left.get("bank"),
+        reference=dict(
+            unit_id=occurrence.get("unit_id"),
+            region_id=occurrence.get("region_id"),
+            original_id=occurrence.get("original_id"),
+            analysis=occurrence.get("analysis"),
+        ),
+        candidate=dict(
+            input=right.get("input"),
+            region_id=candidate.get("stable_id"),
+            symbol=candidate.get("symbol"),
+            derived_effects_basis=effects["basis"],
+            derived_effects_gap=effects_gap,
+            derived_effects=effects,
+        ),
+        decoder_structure=dict(
+            status="unknown"
+            if None in (ref_structure, cand_structure)
+            else "same"
+            if ref_structure == cand_structure
+            else "differs",
+            reference=ref_structure,
+            candidate=cand_structure,
+        ),
         applicability=result,
-        next_action=("Read the detail file for each route's symbols, usage and requirements; choosing, composing "
-                     "and implementing a route, then re-running applicability on the new emission, is author work."),
-        semantic_equivalence="unknown", performance="unknown")
+        next_action=(
+            "Read the detail file for each route's symbols, usage and requirements; choosing, composing "
+            "and implementing a route, then re-running applicability on the new emission, is author work."
+        ),
+        semantic_equivalence="unknown",
+        performance="unknown",
+    )
     brief = None
     if value.get("candidate_schedule"):
         from .schedule_attribution import attribute_schedule
 
         brief, report["schedule_attribution"] = attribute_schedule(
-            workspace, value["candidate_schedule"], reference=reference, emitted=effects,
-            decoding_context=decoding_context)
-    response = dict(base, status="analyzed", selection_identity=packet["identity"], report=report,
-                    report_identity=document_digest(report), current_compiler_sha256=compiler_sha256)
+            workspace,
+            value["candidate_schedule"],
+            reference=reference,
+            emitted=effects,
+            decoding_context=decoding_context,
+        )
+    response = dict(
+        base,
+        status="analyzed",
+        selection_identity=packet["identity"],
+        report=report,
+        report_identity=document_digest(report),
+        current_compiler_sha256=compiler_sha256,
+    )
     detail = compact_row(dict(name="reference_applicability", **response), workspace=workspace)["detail"]
     compact = _compact(report) if brief is None else dict(schedule_attribution=brief, **_compact(report))
-    return dict(response, report=compact, detail=detail, report_in_detail=True,
-                detail_key="report.applicability",
-                detail_note="The detail file holds the full record; per-route usage, requirements and admission "
-                            "rows are under report.applicability.differences[].routes.")
+    return dict(
+        response,
+        report=compact,
+        detail=detail,
+        report_in_detail=True,
+        detail_key="report.applicability",
+        detail_note="The detail file holds the full record; per-route usage, requirements and admission "
+        "rows are under report.applicability.differences[].routes.",
+    )
 
 
 def respond_schedule(left, value, *, base, packet, workspace, decoding_context, compiler_sha256):
@@ -254,15 +374,34 @@ def respond_schedule(left, value, *, base, packet, workspace, decoding_context, 
 
     reference = left["regions"][0]
     occurrence = reference.get("bank_occurrence") or {}
-    brief, full = attribute_schedule(workspace, value["candidate_schedule"], reference=reference, emitted=None,
-                                     decoding_context=decoding_context)
-    report = dict(kind="reference_schedule_comparison", bank=left.get("bank"),
-                  reference=dict(unit_id=occurrence.get("unit_id"), region_id=occurrence.get("region_id"),
-                                 original_id=occurrence.get("original_id"), analysis=occurrence.get("analysis")),
-                  schedule_attribution=full, semantic_equivalence="unknown", performance="unknown")
-    response = dict(base, status="analyzed", selection_identity=packet["identity"], report=report,
-                    report_identity=document_digest(report), current_compiler_sha256=compiler_sha256)
+    brief, full = attribute_schedule(
+        workspace, value["candidate_schedule"], reference=reference, emitted=None, decoding_context=decoding_context
+    )
+    report = dict(
+        kind="reference_schedule_comparison",
+        bank=left.get("bank"),
+        reference=dict(
+            unit_id=occurrence.get("unit_id"),
+            region_id=occurrence.get("region_id"),
+            original_id=occurrence.get("original_id"),
+            analysis=occurrence.get("analysis"),
+        ),
+        schedule_attribution=full,
+        semantic_equivalence="unknown",
+        performance="unknown",
+    )
+    response = dict(
+        base,
+        status="analyzed",
+        selection_identity=packet["identity"],
+        report=report,
+        report_identity=document_digest(report),
+        current_compiler_sha256=compiler_sha256,
+    )
     detail = compact_row(dict(name="reference_schedule_comparison", **response), workspace=workspace)["detail"]
-    return dict(response, report=dict(schedule_attribution=brief, kind=report["kind"],
-                                      reference=report["reference"]),
-                detail=detail, report_in_detail=True)
+    return dict(
+        response,
+        report=dict(schedule_attribution=brief, kind=report["kind"], reference=report["reference"]),
+        detail=detail,
+        report_in_detail=True,
+    )

@@ -90,9 +90,10 @@ print(json.dumps({"ok": result.ok, "status": trace["status"], "blockers": trace[
 """
     completed = subprocess.run(
         [python, "-c", script, str(source), os.environ.get("MERLIN_M2M_DIR", "")],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
     assert completed.returncode == 0, completed.stderr[-3000:]
     result = json.loads(completed.stdout.strip().splitlines()[-1])
-    assert result == {"ok": True, "status": "complete", "blockers": [],
-                      "bn_count": 1, "carried": 1, "unresolved": []}
+    assert result == {"ok": True, "status": "complete", "blockers": [], "bn_count": 1, "carried": 1, "unresolved": []}

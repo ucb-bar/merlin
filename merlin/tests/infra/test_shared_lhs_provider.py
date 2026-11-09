@@ -316,8 +316,7 @@ def test_runtime_trace_keeps_physical_provenance_across_members():
 
     import pytest
 
-    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
-    from merlin.compiler.schedule.compact_dense import DenseMemoryView
+    from merlin.compiler.schedule.compact_dense import DenseLoopStorage, DenseMemoryView
     from merlin.transforms.dense_planning import DenseProblem
 
     problem = DenseProblem(2, 2, 2, 2, 2, 2, 1, 1, 4)
@@ -483,10 +482,7 @@ class OriginalGroupBindings:
 
         from test_compact_dense import encode
 
-        from merlin.compiler.schedule.blocks import Compute
-        from merlin.compiler.schedule.blocks import Load
-        from merlin.compiler.schedule.blocks import Preload
-        from merlin.compiler.schedule.blocks import Store
+        from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
         from merlin.sched.ir import Const, as_expr
 
         call = encode(operation)

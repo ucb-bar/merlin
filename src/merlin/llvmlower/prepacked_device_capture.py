@@ -43,8 +43,10 @@ def rebind(device, *, source: Path, prepared: Path, work: Path, compilation=None
                 "connected_spatial",
             )
         )
-        or device.descriptor_results and not callable(device.descriptor_effects)
-        or not device.descriptor_results and device.descriptor_effects is not None
+        or device.descriptor_results
+        and not callable(device.descriptor_effects)
+        or not device.descriptor_results
+        and device.descriptor_effects is not None
     ):
         raise PrepackRefused("weight preparation has no checked composition with this source-bound device route")
     # The descriptor owner is an unissued factory here. It must independently
@@ -112,21 +114,24 @@ def original_sibling_source(device, selected, *, actual_source, work):
     revalidate_build_preparation(receipt)
     record = json.loads(receipt.read_bytes())
     binding = json.loads(capture_receipt.read_bytes())
-    source = Path(record['source_bundle'])
-    prepared = Path(record['prepared_bundle'])
+    source = Path(record["source_bundle"])
+    prepared = Path(record["prepared_bundle"])
     actual_source = Path(actual_source).resolve()
     capture = Path(device.capture).resolve()
-    if (actual_source != prepared / 'model.mlir'
-            or capture not in (prepared, actual_source)
-            or binding.get('preparation_sha256') != sha256_file(receipt)
-            or Path(binding.get('prepared_capture', '')).resolve() != capture
-            or Path(binding.get('source_capture', '')).resolve() not in (source, source / 'model.mlir')):
-        raise PrepackRefused('sibling source does not consume its original checked weight preparation')
-    original = mq.parse(source / 'model.mlir').clone()
+    if (
+        actual_source != prepared / "model.mlir"
+        or capture not in (prepared, actual_source)
+        or binding.get("preparation_sha256") != sha256_file(receipt)
+        or Path(binding.get("prepared_capture", "")).resolve() != capture
+        or Path(binding.get("source_capture", "")).resolve() not in (source, source / "model.mlir")
+    ):
+        raise PrepackRefused("sibling source does not consume its original checked weight preparation")
+    original = mq.parse(source / "model.mlir").clone()
     if hashlib.sha256(text(original, generic=True).encode()).hexdigest() != selected.source_ir_sha256:
-        raise PrepackRefused('prepared sibling source lost its original source selection')
+        raise PrepackRefused("prepared sibling source lost its original source selection")
     return original, {
-        'path': str(receipt.resolve()), 'sha256': sha256_file(receipt),
-        'capture_binding': {'path': str(capture_receipt.resolve()), 'sha256': sha256_file(capture_receipt)},
-        'scope': 'checked bit-preserving immutable weight layout; original source and effects retained',
+        "path": str(receipt.resolve()),
+        "sha256": sha256_file(receipt),
+        "capture_binding": {"path": str(capture_receipt.resolve()), "sha256": sha256_file(capture_receipt)},
+        "scope": "checked bit-preserving immutable weight layout; original source and effects retained",
     }

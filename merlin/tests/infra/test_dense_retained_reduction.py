@@ -6,16 +6,20 @@ import pytest
 from test_compact_dense import ADAPTER, fixture, mutate
 
 from merlin.compiler.schedule.compact_dense import emit_compact_dense
-from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
-from merlin.compiler.schedule.dense_panel_pipeline import DenseRetainedReductionAdmission
-from merlin.compiler.schedule.dense_panel_pipeline import _serial_projection
-from merlin.compiler.schedule.dense_panel_pipeline import complete_dense_retained_reduction
-from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_operand_hoists
-from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_panel_pipeline
-from merlin.compiler.schedule.dense_panel_pipeline import verify_dense_retained_reduction
-from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+from merlin.compiler.schedule.dense_panel_pipeline import (
+    DRAIN,
+    DenseRetainedReductionAdmission,
+    _serial_projection,
+    complete_dense_retained_reduction,
+    dense_retained_operand_hoists,
+    schedule_dense_panel_pipeline,
+    verify_dense_retained_reduction,
+)
+from merlin.compiler.schedule.schedule_ir import (
+    dense_schedule_text,
+    make_dense_schedule_plan,
+    parse_dense_schedule_plan,
+)
 from merlin.transforms.dense_planning import dense_blocks
 
 
@@ -217,10 +221,12 @@ def test_overlapping_stage_writes_refuse_even_when_serial_source_is_valid():
 @pytest.mark.parametrize("batch", [False, True])
 def test_final_wide_lhs_k_bands_and_rhs_n_bands_use_retained_hazard_checker(batch):
     from merlin.compiler.schedule.panel_tile_loads import admit_panel_tile_loads
-    from merlin.compiler.schedule.tile_load_coalescing import TileLoadAddressLaw
-    from merlin.compiler.schedule.tile_load_coalescing import TileLoadMapping
-    from merlin.compiler.schedule.tile_load_coalescing import _linear
-    from merlin.compiler.schedule.tile_load_coalescing import propose_tile_load_coalescing
+    from merlin.compiler.schedule.tile_load_coalescing import (
+        TileLoadAddressLaw,
+        TileLoadMapping,
+        _linear,
+        propose_tile_load_coalescing,
+    )
     from merlin.sched.ir import Const
 
     p, r, s, b, a = inputs(shape=(8, 8, 8), tile=(2, 2, 2))
@@ -371,8 +377,7 @@ def test_residency_choice_transfer_estimates_equal_independently_checked_actual_
     ],
 )
 def test_shape_and_original_separate_capacity_select_both_residency_families(shape, expected):
-    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
-    from merlin.compiler.schedule.compact_dense import DenseMemoryView
+    from merlin.compiler.schedule.compact_dense import DenseLoopStorage, DenseMemoryView
     from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_choices
     from merlin.transforms.dense_planning import DenseProblem, DenseResources
 

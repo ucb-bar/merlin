@@ -7,12 +7,13 @@ from test_compact_dense import ADAPTER, fixture, schedule
 from test_loop_schedule import SOURCE, base, trace
 from test_scf_commands import record
 
-from merlin.compiler.schedule.loop_schedule import LoopTransform
-from merlin.compiler.schedule.loop_schedule import partition_counted_loop
+from merlin.compiler.schedule.loop_schedule import LoopTransform, partition_counted_loop
 from merlin.compiler.schedule.scf_commands import materialize_scf_commands
-from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+from merlin.compiler.schedule.schedule_ir import (
+    dense_schedule_text,
+    make_dense_schedule_plan,
+    parse_dense_schedule_plan,
+)
 from merlin.sched.ir import Kernel, Var, call, loop, select
 from merlin.sched.primitives import NotApplicable
 
@@ -32,8 +33,7 @@ def test_ragged_regions_keep_exact_iteration_order_pointer_predicates_and_config
 
 
 def test_actual_partition_scf_emitter_executes_every_original_index_once():
-    original = Kernel("regions", (), (loop("i", 11,
-        call("consume", offset=Var("i") * 4, last=select("i", 10, 1, 0))),))
+    original = Kernel("regions", (), (loop("i", 11, call("consume", offset=Var("i") * 4, last=select("i", 10, 1, 0))),))
     result = partition_counted_loop(original, ("i",), cuts=(2, 7))
     before, after = (record(materialize_scf_commands(k)) for k in (original, result.kernel))
     assert before == after
@@ -42,8 +42,11 @@ def test_actual_partition_scf_emitter_executes_every_original_index_once():
 
 
 def test_nested_body_and_unrelated_names_keep_exact_original_scope():
-    original = Kernel("nested", (), (loop("i", 13, loop("j", 3,
-        call("consume", row=Var("i"), col=Var("j")))), loop("i_part_0", 1, call("other"))))
+    original = Kernel(
+        "nested",
+        (),
+        (loop("i", 13, loop("j", 3, call("consume", row=Var("i"), col=Var("j")))), loop("i_part_0", 1, call("other"))),
+    )
     result = partition_counted_loop(original, ("i",), cuts=(2, 9))
     assert trace(result.kernel) == trace(original)
     assert "i_part_0" not in result.request.names
@@ -97,10 +100,24 @@ def test_custody_refuses_changed_original_actual_interval_mapping_and_request():
 def test_partition_decision_roundtrips_and_unchanged_dense_verifier_admits_actual_ragged_order():
     p, r, s = fixture(shape=(8, 6, 20))
     r = replace(r, max_m_blocks=1, max_k_blocks=1, max_n_blocks=1)
+
     def plan(requests):
-        return parse_dense_schedule_plan(dense_schedule_text(make_dense_schedule_plan(
-            p, r, s, ADAPTER, source_identity=SOURCE, dtypes=("i8", "i8", "i32"), static_budget=80,
-            block_tiles=(1, 1, 1), loop_transforms=requests)))
+        return parse_dense_schedule_plan(
+            dense_schedule_text(
+                make_dense_schedule_plan(
+                    p,
+                    r,
+                    s,
+                    ADAPTER,
+                    source_identity=SOURCE,
+                    dtypes=("i8", "i8", "i32"),
+                    static_budget=80,
+                    block_tiles=(1, 1, 1),
+                    loop_transforms=requests,
+                )
+            )
+        )
+
     original = schedule(p, r, s, schedule_plan=plan(()), source_identity=SOURCE)
     result = partition_counted_loop(original.kernel, ("outer_m", "outer_n"), cuts=(2, 3))
     actual = schedule(p, r, s, schedule_plan=plan((result.request,)), source_identity=SOURCE)

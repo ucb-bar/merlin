@@ -7,6 +7,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
+from test_ordered_mnk_tiling import _source
 
 from merlin.compile.c_tiling import (
     render_looped_seed_c,
@@ -16,7 +17,6 @@ from merlin.compile.c_tiling import (
 )
 from merlin.semantic_compiler.ordered_mnk_tiling import LoopedMNKTiling, OrderedMNKTilingError
 from merlin.semantic_compiler.streamed_mnk_tiling import plan_streamed_k_reduction, plan_streamed_mnk
-from test_ordered_mnk_tiling import _source
 
 
 def full_plan(m, n, k, geometry=(2, 3, 4)):

@@ -27,11 +27,17 @@ def validate(policy: Mapping[str, Any]) -> dict[str, Any]:
         "float_quality",
         "integer_extensions",
     }
-    if (not isinstance(policy, Mapping) or not fields <= set(policy)
-            or set(policy) - fields - {"attention_context_output"} or policy.get("schema") != SCHEMA):
+    if (
+        not isinstance(policy, Mapping)
+        or not fields <= set(policy)
+        or set(policy) - fields - {"attention_context_output"}
+        or policy.get("schema") != SCHEMA
+    ):
         raise ValueError("numerical recipe policy has an unknown schema or field")
-    if (policy["weight_granularity"] not in ("tensor", "preserve")
-            or policy["float_quality"] not in ("report_only", "preserve")):
+    if policy["weight_granularity"] not in ("tensor", "preserve") or policy["float_quality"] not in (
+        "report_only",
+        "preserve",
+    ):
         raise ValueError("this policy needs explicit weight-scale and float-quality handling")
     planes = policy["dynamic_activation_planes"]
     if planes is not None and (type(planes) is not int or planes != 1):

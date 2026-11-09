@@ -11,8 +11,7 @@ from test_selected_dense_contracts import inputs
 
 from merlin.compiler.lower.connected import compile_connected_region
 from merlin.compiler.partition.connected import plan_connected_region
-from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.program_limits import Continuation
+from merlin.compiler.schedule.program_limits import AddressWindow, Continuation
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.sched.ir import Const, Kernel, evaluate, instances
 
@@ -87,9 +86,7 @@ def fixture(tmp_path, widths=(2, 2, 2)):
 def launch_native(invocation, inputs, output):
     assert all(view.readonly for view in inputs) and not output.readonly
     if invocation.images is None:
-        from merlin.compiler.schedule.blocks import Compute
-        from merlin.compiler.schedule.blocks import Load
-        from merlin.compiler.schedule.blocks import Preload
+        from merlin.compiler.schedule.blocks import Compute, Load, Preload
 
         compiled = invocation.product.compiled
         left = np.frombuffer(inputs[0], dtype="<i2").reshape(compiled.kernel.args[0].shape)

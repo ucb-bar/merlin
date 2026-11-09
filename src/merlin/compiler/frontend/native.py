@@ -73,8 +73,13 @@ def load_selected_request(args, *, target_identity, mode, binding=None, load_req
                 raise ValueError("--linalg-entry cannot override a staged capture signature")
             staged = load_compile_inputs(args.compile_inputs)
             return prepare_tile_request(
-                staged, region_id, binding=binding, target_identity=target_identity, mode=mode,
-                tile_index=tile_index, whole_contraction=whole,
+                staged,
+                region_id,
+                binding=binding,
+                target_identity=target_identity,
+                mode=mode,
+                tile_index=tile_index,
+                whole_contraction=whole,
             )
         if whole:
             raise LinalgBridgeError("--whole-contraction requires --diagnostic-region")
@@ -82,8 +87,11 @@ def load_selected_request(args, *, target_identity, mode, binding=None, load_req
             raise LinalgBridgeError("--diagnostic-tile-index requires --diagnostic-region")
         request, kind, operations = load_request(args, target_identity=target_identity, mode=mode)
         return request, kind, operations, None
-    if (getattr(args, "whole_contraction", False) or getattr(args, "diagnostic_region", None) is not None
-            or getattr(args, "diagnostic_tile_index", None) is not None):
+    if (
+        getattr(args, "whole_contraction", False)
+        or getattr(args, "diagnostic_region", None) is not None
+        or getattr(args, "diagnostic_tile_index", None) is not None
+    ):
         raise LinalgBridgeError("graph precision policy cannot select a contraction or tile")
     if mode != "diagnostic" or binding is None:
         raise LinalgBridgeError("graph precision policy requires diagnostic mode and target support")
@@ -103,8 +111,13 @@ def load_selected_request(args, *, target_identity, mode, binding=None, load_req
             raise LinalgBridgeError("graph precision policy requires --linalg/--linalg-entry or --compile-inputs")
         source, entry = Path(args.linalg).read_bytes().decode("utf-8"), args.linalg_entry
     request, operations, plan = prepare_graph_request(
-        source, entry=entry, policy=policy, binding=binding, target_identity=target_identity,
-        mode=mode, original_source_sha256=original_source_sha256,
+        source,
+        entry=entry,
+        policy=policy,
+        binding=binding,
+        target_identity=target_identity,
+        mode=mode,
+        original_source_sha256=original_source_sha256,
     )
     kind = "source_bound_diagnostic_staged_graph" if staged_graph else "source_bound_diagnostic_graph"
     return request, kind, operations, plan

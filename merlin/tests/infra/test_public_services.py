@@ -49,7 +49,7 @@ def linux_image(tmp_path):
     if compiler is None:
         pytest.skip("native C compiler required for actual Linux execution")
     source, image = tmp_path / "process.c", tmp_path / "process.elf"
-    source.write_text('''#define _GNU_SOURCE
+    source.write_text("""#define _GNU_SOURCE
 #include <sched.h>
 #include <stdio.h>
 #include <string.h>
@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
   for(int i=1;i<argc;++i) puts(argv[i]);
   return 0;
 }
-''')
+""")
     subprocess.run([compiler, "-O0", str(source), "-o", str(image)], check=True, capture_output=True)
     return image
 
@@ -90,8 +90,24 @@ def test_native_linux_arguments_affinity_streams_and_cli_status(linux_image, mon
     assert base64.b64decode(result.metadata["stdout_base64"]) == result.stdout.encode()
     assert result.metadata["verification"] == "not_requested" and not result.metadata["device_execution_verified"]
     monkeypatch.setattr(service, "entry_points", lambda **kwargs: [SimpleNamespace(load=lambda: linux)])
-    code = run_main([str(linux_image), "--runner", linux.name, "--system", "host", "--platform", "linux",
-                     "--isa", "x86_64", "--abi", "sysv", "--harts", "1", "--argument=fail"])
+    code = run_main(
+        [
+            str(linux_image),
+            "--runner",
+            linux.name,
+            "--system",
+            "host",
+            "--platform",
+            "linux",
+            "--isa",
+            "x86_64",
+            "--abi",
+            "sysv",
+            "--harts",
+            "1",
+            "--argument=fail",
+        ]
+    )
     observed = json.loads(capsys.readouterr().out)
     assert code == 1 and observed["status"] == "failed" and observed["metadata"]["exit_code"] == 7
     assert base64.b64decode(observed["metadata"]["stderr_base64"]) == b"\xff"
@@ -102,14 +118,18 @@ def test_native_linux_refuses_header_platform_abi_and_unavailable_cpu(linux_imag
 
     deployment = Deployment("host", "linux", "x86_64", "sysv", 1)
     monkeypatch.setattr(linux, "_execute", lambda *args: pytest.fail("refused inputs must not launch"))
-    for contract in (replace(deployment, platform="baremetal"), replace(deployment, abi="wrong"),
-                     replace(deployment, isa="rv64imac"), replace(deployment, harts=len(os.sched_getaffinity(0)) + 1)):
+    for contract in (
+        replace(deployment, platform="baremetal"),
+        replace(deployment, abi="wrong"),
+        replace(deployment, isa="rv64imac"),
+        replace(deployment, harts=len(os.sched_getaffinity(0)) + 1),
+    ):
         with pytest.raises(ValueError):
             api.run(linux_image, runner=linux, options=RunOptions(deployment=contract))
     original = linux_image.read_bytes()
     for offset, value in ((18, (243).to_bytes(2, "little")), (16, (1).to_bytes(2, "little")), (5, b"\x02")):
         changed = bytearray(original)
-        changed[offset:offset + len(value)] = value
+        changed[offset : offset + len(value)] = value
         linux_image.write_bytes(changed)
         with pytest.raises(ValueError):
             api.run(linux_image, runner=linux, options=RunOptions(deployment=deployment))
@@ -127,9 +147,13 @@ def test_native_linux_timeout_terminates_its_spawned_process_group(linux_image, 
     from merlin.runtime import linux
 
     marker = tmp_path / "child-survived"
-    result = api.run(linux_image, runner=linux,
-                     options=RunOptions(deployment=Deployment("host", "linux", "x86_64", "sysv", 1),
-                                        arguments=("spawn", str(marker)), timeout=0.3))
+    result = api.run(
+        linux_image,
+        runner=linux,
+        options=RunOptions(
+            deployment=Deployment("host", "linux", "x86_64", "sysv", 1), arguments=("spawn", str(marker)), timeout=0.3
+        ),
+    )
     assert result.status == "timed_out" and result.metadata["exit_code"] != 0
     assert "child-started" in result.stdout and result.metadata["timeout_process_group_cleanup"]
     time.sleep(1.1)
@@ -237,6 +261,7 @@ def test_saved_deployment_is_not_runtime_overridable_and_products_stay_distinct(
     result = api.compile("builtin.module {}", backend=BinaryBackend(), output=tmp_path / "out")
     deployment = Deployment("soc", "baremetal", "rv64imac", "lp64", 1)
     product = replace(result, deployment=deployment)
+
     def completed(request):
         (tmp_path / "runtime-output.txt").write_text("fixture output, not an execution input")
         return RunResult("device-fixture", request.artifact.sha256, "completed")
@@ -283,8 +308,11 @@ def test_saved_deployment_is_not_runtime_overridable_and_products_stay_distinct(
                         options.inputs["replacement"] = path
                 return RunResult("device-fixture", request.artifact.sha256, "completed")
 
-            selected = SimpleNamespace(name="device-fixture", validate=lambda request: callback(request, "validate"),
-                                       run=lambda request: callback(request, "run"))
+            selected = SimpleNamespace(
+                name="device-fixture",
+                validate=lambda request: callback(request, "validate"),
+                run=lambda request: callback(request, "run"),
+            )
             with pytest.raises(ValueError, match="original execution|bytes do not match"):
                 api.run(artifact, runner=selected, options=options)
             assert calls == (["validate"] if stage == "validate" else ["validate", "run"]), (stage, defect)
@@ -341,8 +369,10 @@ def test_spec_inspection_uses_real_semantics_without_compilation(tmp_path, capsy
         api.inspect_spec(selected, expanded=1)
 
 
-@pytest.mark.parametrize("arguments", [[], ["a.json", "--spec", "a.yaml"], ["a.json", "--expand"],
-                                      ["a.json", "--backends"], ["--backends", "--expand"]])
+@pytest.mark.parametrize(
+    "arguments",
+    [[], ["a.json", "--spec", "a.yaml"], ["a.json", "--expand"], ["a.json", "--backends"], ["--backends", "--expand"]],
+)
 def test_inspection_refuses_ambiguous_selection_before_input_io(arguments):
     from merlin.service_cli import inspect_main
 
@@ -361,10 +391,14 @@ def test_backend_inspection_uses_installed_metadata_without_importing_provider(t
     (tmp_path / (module + ".py")).write_text('raise AssertionError("provider imported by inspection")\n')
     for name, provider_name, origin in (
         ("fixture_editable", "fixture.shared", {"url": tmp_path.as_uri(), "dir_info": {"editable": True}}),
-        ("fixture_upstream", "fixture.shared", {
-            "url": "https://user:secret@example.test/backend.git?token=secret#private",
-            "vcs_info": {"vcs": "git", "commit_id": "a" * 40},
-        }),
+        (
+            "fixture_upstream",
+            "fixture.shared",
+            {
+                "url": "https://user:secret@example.test/backend.git?token=secret#private",
+                "vcs_info": {"vcs": "git", "commit_id": "a" * 40},
+            },
+        ),
         ("fixture_invalid", "fixture.invalid_origin", None),
     ):
         metadata = tmp_path / (name + "-1.0.dist-info")
@@ -374,8 +408,7 @@ def test_backend_inspection_uses_installed_metadata_without_importing_provider(t
         (metadata / "direct_url.json").write_text(json.dumps(origin) if origin else "broken JSON")
     monkeypatch.syspath_prepend(str(tmp_path))
     report = api.inspect_backends()
-    rows = {row["distribution"]["name"]: row for row in report["providers"]
-            if row["name"].startswith("fixture.")}
+    rows = {row["distribution"]["name"]: row for row in report["providers"] if row["name"].startswith("fixture.")}
     assert rows["fixture_editable"]["origin"]["editable"] is True
     assert rows["fixture_upstream"]["origin"]["url"] == "https://example.test/backend.git"
     assert rows["fixture_upstream"]["origin"]["url_redacted"] is True
@@ -397,7 +430,7 @@ _PACKAGE_INTERFACE = (
     'merlin_iface.abi_version = "0.1"} {\n'
     '  %X = merlin_iface.tensor {name = "X", role = "input"} : tensor<2x2xi8>\n'
     '  %Y = merlin_iface.movement %X {name = "Y", semantic = "mvin_mvout", output_dtype = "i32"} '
-    ': (tensor<2x2xi8>) -> tensor<2x2xi32>\n}\n'
+    ": (tensor<2x2xi8>) -> tensor<2x2xi32>\n}\n"
 )
 
 
@@ -416,7 +449,7 @@ def _process_package(tmp_path, mode="valid"):
     shutil.copytree(schemas.contract_dir() / "schemas", contract / "schemas")
     (root / "buffer.json").write_text(json.dumps(parse_interface_mlir(_PACKAGE_INTERFACE)))
     (root / "mode.json").write_text(json.dumps({"mode": mode, "contract": str(contract)}))
-    (root / "tool.py").write_text('''import json,sys
+    (root / "tool.py").write_text("""import json,sys
 from pathlib import Path
 root=Path(__file__).parent
 mode=json.loads((root/'mode.json').read_text())
@@ -442,18 +475,36 @@ elif entry=='lower_target_to_llvm':
     print('fixture opaque target output, deliberately not LLVM')
 else:
     raise AssertionError(entry)
-''')
-    commands = {entry: {"argv": [sys.executable, "{tool}", entry, "{input_mlir}"]}
-                for entry in ("parse", "lower_interface_to_target", "emit_command_buffer", "lower_target_to_llvm")}
+""")
+    commands = {
+        entry: {"argv": [sys.executable, "{tool}", entry, "{input_mlir}"]}
+        for entry in ("parse", "lower_interface_to_target", "emit_command_buffer", "lower_target_to_llvm")
+    }
     commands["emit_command_buffer"]["argv"].append("{output_json}")
-    (root / "manifest.yaml").write_text(yaml.safe_dump({
-        "artifact_type": "mlir_oot_target_backend", "target": "fixture", "language": "python",
-        "authoring": {"mode": "hand_curated"}, "integrity_exempt": False,
-        "entrypoints": {"tool": "tool.py"}, "commands": commands,
-    }))
-    return root, api.Source(_PACKAGE_INTERFACE, kind="merlin-interface"), api.CompileOptions(parameters={
-        "package.root": str(root), "package.contract": str(contract), "package.timeout": 30,
-    })
+    (root / "manifest.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "artifact_type": "mlir_oot_target_backend",
+                "target": "fixture",
+                "language": "python",
+                "authoring": {"mode": "hand_curated"},
+                "integrity_exempt": False,
+                "entrypoints": {"tool": "tool.py"},
+                "commands": commands,
+            }
+        )
+    )
+    return (
+        root,
+        api.Source(_PACKAGE_INTERFACE, kind="merlin-interface"),
+        api.CompileOptions(
+            parameters={
+                "package.root": str(root),
+                "package.contract": str(contract),
+                "package.timeout": 30,
+            }
+        ),
+    )
 
 
 def test_process_package_transport_retains_actual_invocations_and_opaque_products(tmp_path, monkeypatch):
@@ -473,10 +524,15 @@ def test_process_package_transport_retains_actual_invocations_and_opaque_product
     assert result.deployment is None
     assert result.metadata["numerical_verification"] == "not_run"
     assert result.metadata["execution_observed"] is False
-    records = sorted(result.directory.glob("invocations/*/invocation.json"),
-                     key=lambda path: json.loads(path.read_text())["started_ns"])
+    records = sorted(
+        result.directory.glob("invocations/*/invocation.json"),
+        key=lambda path: json.loads(path.read_text())["started_ns"],
+    )
     assert [json.loads(path.read_text())["stage"] for path in records] == [
-        "parse", "lower_interface_to_target", "emit_command_buffer", "emit_target_artifact",
+        "parse",
+        "lower_interface_to_target",
+        "emit_command_buffer",
+        "emit_target_artifact",
     ]
     command = next(item for item in result.artifacts if item.role == "command-buffer")
     assert json.loads(command.path.read_text())["tensors"]["Y"]["dtype"] == "i32"
@@ -497,8 +553,21 @@ def test_process_package_transport_refuses_changes_and_preserves_original_declin
     assert not (tmp_path / "refused/compilation.json").exists()
 
 
-@pytest.mark.parametrize("defect", ["model", "deployment", "unknown-option", "target", "duplicate", "dtype",
-                                    "noncompiler", "abi2", "overlap", "scoped"])
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "model",
+        "deployment",
+        "unknown-option",
+        "target",
+        "duplicate",
+        "dtype",
+        "noncompiler",
+        "abi2",
+        "overlap",
+        "scoped",
+    ],
+)
 def test_process_package_transport_admits_only_its_selected_contract_before_execution(tmp_path, defect):
     import yaml
 
@@ -528,6 +597,7 @@ def test_process_package_transport_admits_only_its_selected_contract_before_exec
     elif defect == "overlap":
         output = root / "compiled"
     elif defect == "scoped":
+
         def refuse(*args, **kwargs):
             raise RuntimeError("fixture scoped executor refuses")
 

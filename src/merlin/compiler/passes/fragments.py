@@ -35,4 +35,3 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
                          0 if hoist_head else erase, () if hoist_head else mid,
                          () if late_head else late, () if post_head else post_openmp, ())
 """
-

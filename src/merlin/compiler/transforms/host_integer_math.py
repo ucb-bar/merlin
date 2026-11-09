@@ -5,7 +5,7 @@ It contains no model data or approximated values. Source operations with an
 observable floating environment, unknown effects or dynamic domains decline.
 """
 
-SOURCE = r'''
+SOURCE = r"""
 def _memoize_finite_integer_math(ctx, module, max_bits=8, minimum_repetition=8):
     from torch_mlir import ir as ir
     import math
@@ -173,7 +173,7 @@ def _memoize_finite_integer_math(ctx, module, max_bits=8, minimum_repetition=8):
         walk(module.operation)
         module.operation.verify()
     return changed
-'''
+"""
 
 
 def rewrite_native_module(context, module, *, ordinary_nontrapping, exception_flags_unobserved):
@@ -184,4 +184,4 @@ def rewrite_native_module(context, module, *, ordinary_nontrapping, exception_fl
         return 0
     namespace = {}
     exec(compile(SOURCE, "<merlin-finite-integer-math>", "exec"), namespace)
-    return namespace['_memoize_finite_integer_math'](context, module)
+    return namespace["_memoize_finite_integer_math"](context, module)

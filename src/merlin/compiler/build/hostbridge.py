@@ -23,11 +23,21 @@ def implementation_paths() -> tuple[Path, ...]:
     from merlin.compiler.ir.boundary import free_values
     from merlin.semantic_compiler.precision_intake import survey_source_f32_batched_matmuls
 
-    return tuple(dict.fromkeys(Path(getfile(function)).resolve() for function in (
-        diagnostic_whole_graph_host_bridge, diagnostic_host_bridge, _program_graph,
-        parse_mlir_text, outline_dispatches, externalize_dispatches, free_values,
-        survey_source_f32_batched_matmuls,
-    )))
+    return tuple(
+        dict.fromkeys(
+            Path(getfile(function)).resolve()
+            for function in (
+                diagnostic_whole_graph_host_bridge,
+                diagnostic_host_bridge,
+                _program_graph,
+                parse_mlir_text,
+                outline_dispatches,
+                externalize_dispatches,
+                free_values,
+                survey_source_f32_batched_matmuls,
+            )
+        )
+    )
 
 
 def diagnostic_whole_graph_host_bridge(
@@ -51,11 +61,13 @@ def diagnostic_whole_graph_host_bridge(
     call. The target package supplies its C-interface callback and must check
     physical input/output bindings before the resulting object is executable.
     """
-    if (not entry or not device_symbol or entry == device_symbol
-            or not (device_symbol[0].isascii() and
-                    (device_symbol[0].isalpha() or device_symbol[0] == "_"))
-            or any(not char.isascii() or not (char.isalnum() or char == "_")
-                   for char in device_symbol)):
+    if (
+        not entry
+        or not device_symbol
+        or entry == device_symbol
+        or not (device_symbol[0].isascii() and (device_symbol[0].isalpha() or device_symbol[0] == "_"))
+        or any(not char.isascii() or not (char.isalnum() or char == "_") for char in device_symbol)
+    ):
         raise ValueError("whole-graph bridge needs a distinct C-compatible device symbol")
     source_sha256 = hashlib.sha256(program.encode()).hexdigest()
     request_digest = compilation.get("request_digest")
@@ -64,9 +76,7 @@ def diagnostic_whole_graph_host_bridge(
     graph_outputs = selection.get("graph_outputs")
     conversions = precision_plan.get("boundary_conversions")
     output_addresses = execution_plan.get("output_addresses")
-    execution_sha256 = hashlib.sha256(
-        (json.dumps(execution_plan, sort_keys=True) + "\n").encode()
-    ).hexdigest()
+    execution_sha256 = hashlib.sha256((json.dumps(execution_plan, sort_keys=True) + "\n").encode()).hexdigest()
     tracked = compilation.get("stage_artifacts")
     layouts_tracked = isinstance(tracked, dict) and "physical-boundary-layouts.json" in tracked
     if physical_layouts is None:
@@ -74,43 +84,54 @@ def diagnostic_whole_graph_host_bridge(
             raise ValueError("whole-graph bridge needs the tracked physical boundary layouts")
         plan_request_digest = request_digest
     else:
-        if (not layouts_tracked or not isinstance(physical_layouts, dict)
-                or physical_layouts.get("schema") != "merlin.physical_boundary_layouts.v2"
-                or physical_layouts.get("target_identity") != target_identity
-                or not isinstance(physical_layouts.get("request_digest"), str)
-                or not physical_layouts["request_digest"]):
+        if (
+            not layouts_tracked
+            or not isinstance(physical_layouts, dict)
+            or physical_layouts.get("schema") != "merlin.physical_boundary_layouts.v2"
+            or physical_layouts.get("target_identity") != target_identity
+            or not isinstance(physical_layouts.get("request_digest"), str)
+            or not physical_layouts["request_digest"]
+        ):
             raise ValueError("whole-graph physical layouts do not bind an exact precision request")
         plan_request_digest = physical_layouts["request_digest"]
-    if (compilation.get("engine") != "merlin_native"
-            or compilation.get("artifact_kind") != "program"
-            or compilation.get("qualification_scope") != "diagnostic_only"
-            or not isinstance(request_digest, str) or not request_digest
-            or not isinstance(target_identity, str) or not target_identity
-            or compilation.get("execution_plan_sha256") != execution_sha256
-            or not isinstance(compilation.get("binary_sha256"), str)
-            or selection.get("engine") != "merlin_native"
-            or selection.get("request_digest") != request_digest
-            or selection.get("target_identity") != target_identity
-            or not isinstance(compilation.get("native_check_fingerprint"), str)
-            or selection.get("check_fingerprint") != compilation.get("native_check_fingerprint")
-            or precision_plan.get("request_digest") != plan_request_digest
-            or precision_plan.get("source_sha256") != source_sha256
-            or not isinstance(selected_outputs, list) or not selected_outputs
-            or not isinstance(graph_outputs, list)
-            or len(graph_outputs) != len(selected_outputs)
-            or not isinstance(conversions, list)
-            or not isinstance(output_addresses, list)
-            or len(output_addresses) != len(selected_outputs)
-            or any(type(address) is not int or address < 0 for address in output_addresses)
-            or len(set(output_addresses)) != len(output_addresses)
-            or any(not isinstance(row, dict) for row in conversions)
-            or [row.get("source") for row in conversions[-len(selected_outputs):]] != selected_outputs):
+    if (
+        compilation.get("engine") != "merlin_native"
+        or compilation.get("artifact_kind") != "program"
+        or compilation.get("qualification_scope") != "diagnostic_only"
+        or not isinstance(request_digest, str)
+        or not request_digest
+        or not isinstance(target_identity, str)
+        or not target_identity
+        or compilation.get("execution_plan_sha256") != execution_sha256
+        or not isinstance(compilation.get("binary_sha256"), str)
+        or selection.get("engine") != "merlin_native"
+        or selection.get("request_digest") != request_digest
+        or selection.get("target_identity") != target_identity
+        or not isinstance(compilation.get("native_check_fingerprint"), str)
+        or selection.get("check_fingerprint") != compilation.get("native_check_fingerprint")
+        or precision_plan.get("request_digest") != plan_request_digest
+        or precision_plan.get("source_sha256") != source_sha256
+        or not isinstance(selected_outputs, list)
+        or not selected_outputs
+        or not isinstance(graph_outputs, list)
+        or len(graph_outputs) != len(selected_outputs)
+        or not isinstance(conversions, list)
+        or not isinstance(output_addresses, list)
+        or len(output_addresses) != len(selected_outputs)
+        or any(type(address) is not int or address < 0 for address in output_addresses)
+        or len(set(output_addresses)) != len(output_addresses)
+        or any(not isinstance(row, dict) for row in conversions)
+        or [row.get("source") for row in conversions[-len(selected_outputs) :]] != selected_outputs
+    ):
         raise ValueError("whole-graph selection differs from the source or physical ABI")
 
     source = parse_mlir_text(program)
     source.verify()
-    definitions = [operation for operation in source.body.block.ops
-                   if isinstance(operation, func.FuncOp) and operation.sym_name.data == entry]
+    definitions = [
+        operation
+        for operation in source.body.block.ops
+        if isinstance(operation, func.FuncOp) and operation.sym_name.data == entry
+    ]
     if len(definitions) != 1 or not definitions[0].body.blocks:
         raise ValueError("whole-graph source needs one defined entry function")
     signature = definitions[0].function_type
@@ -152,10 +173,15 @@ def diagnostic_whole_graph_host_bridge(
     }, stream.getvalue() + "\n"
 
 
-def diagnostic_host_bridge(program: str, entry: str, regions: list[dict],
-                           named_tiles: list[dict] | None = None, *,
-                           batched_regions: list[dict] | None = None,
-                           batched_tiles: list[dict] | None = None) -> tuple[dict, str]:
+def diagnostic_host_bridge(
+    program: str,
+    entry: str,
+    regions: list[dict],
+    named_tiles: list[dict] | None = None,
+    *,
+    batched_regions: list[dict] | None = None,
+    batched_tiles: list[dict] | None = None,
+) -> tuple[dict, str]:
     """Return typed host IR with materializable native regions externalized.
 
     This only binds source identities and function types. It does not provide
@@ -163,24 +189,35 @@ def diagnostic_host_bridge(program: str, entry: str, regions: list[dict],
     route for the region bodies retained in the module.
     """
     classified = {
-        "emitted", "unsupported_semantics", "compile_error", "resource_limit", "search_timeout",
-        "infeasible_candidate", "tool_unavailable", "unqualified_target", "numerical_mismatch",
+        "emitted",
+        "unsupported_semantics",
+        "compile_error",
+        "resource_limit",
+        "search_timeout",
+        "infeasible_candidate",
+        "tool_unavailable",
+        "unqualified_target",
+        "numerical_mismatch",
         "execution_failure",
     }
     static_states = {"packed_or_runtime", "blocked", "unknown", "not_emitted"}
     batch_rows = batched_regions or []
     all_rows = [*regions, *batch_rows]
     if not all_rows or any(
-        row.get("status") not in classified or row.get("static_inputs_status") not in static_states
+        row.get("status") not in classified
+        or row.get("static_inputs_status") not in static_states
         or (row["status"] == "emitted" and row["static_inputs_status"] == "not_emitted")
         or (row["status"] != "emitted" and row["static_inputs_status"] != "not_emitted")
         for row in regions
     ):
         raise ValueError("host bridge needs classified native region results")
     if any(
-        row.get("status") not in {
-            "unrouted_precision_and_tiling", "isolated_tiles_emitted",
-            "isolated_tile_failure", *classified,
+        row.get("status")
+        not in {
+            "unrouted_precision_and_tiling",
+            "isolated_tiles_emitted",
+            "isolated_tile_failure",
+            *classified,
         }
         or type(row.get("operation_ordinal")) is not int
         for row in batch_rows
@@ -191,36 +228,39 @@ def diagnostic_host_bridge(program: str, entry: str, regions: list[dict],
         raise ValueError("host bridge needs unique source region IDs")
     tile_rows = named_tiles or []
     batch_tile_rows = batched_tiles or []
-    if any(not isinstance(tile, dict) or tile.get("region_id") not in {
-        row["region_id"] for row in regions
-    } for tile in tile_rows) or any(
-        not isinstance(tile, dict) or tile.get("region_id") not in {
-            row["region_id"] for row in batch_rows
-        } for tile in batch_tile_rows
+    if any(
+        not isinstance(tile, dict) or tile.get("region_id") not in {row["region_id"] for row in regions}
+        for tile in tile_rows
+    ) or any(
+        not isinstance(tile, dict) or tile.get("region_id") not in {row["region_id"] for row in batch_rows}
+        for tile in batch_tile_rows
     ):
         raise ValueError("host bridge has tiles outside its source regions")
 
     def selected_route(row: dict, *, batched: bool) -> str:
-        if (not batched and row["status"] == "emitted"
-                and row["static_inputs_status"] == "packed_or_runtime"):
+        if not batched and row["status"] == "emitted" and row["static_inputs_status"] == "packed_or_runtime":
             return "direct_native"
         if (row["status"] if batched else row.get("tiling_status")) != "isolated_tiles_emitted":
             return "retained_host"
         selected_tiles = [
-            tile for tile in (batch_tile_rows if batched else tile_rows)
-            if tile["region_id"] == row["region_id"]
+            tile for tile in (batch_tile_rows if batched else tile_rows) if tile["region_id"] == row["region_id"]
         ]
         count = row.get("tile_count")
-        if (type(count) is not int or count < (1 if batched else 2)
-                or len(selected_tiles) != count
-                or any(type(tile.get("tile_index")) is not int for tile in selected_tiles)
-                or sorted(tile.get("tile_index") for tile in selected_tiles) != list(range(count))
-                or any(tile.get("status") != "emitted"
-                       or tile.get("operation_id") != row.get("operation_id")
-                       or not isinstance(tile.get("request_digest"), str)
-                       or not isinstance(tile.get("binary_sha256"), str)
-                       or not isinstance(tile.get("artifact"), str)
-                       for tile in selected_tiles)):
+        if (
+            type(count) is not int
+            or count < (1 if batched else 2)
+            or len(selected_tiles) != count
+            or any(type(tile.get("tile_index")) is not int for tile in selected_tiles)
+            or sorted(tile.get("tile_index") for tile in selected_tiles) != list(range(count))
+            or any(
+                tile.get("status") != "emitted"
+                or tile.get("operation_id") != row.get("operation_id")
+                or not isinstance(tile.get("request_digest"), str)
+                or not isinstance(tile.get("binary_sha256"), str)
+                or not isinstance(tile.get("artifact"), str)
+                for tile in selected_tiles
+            )
+        ):
             raise ValueError("host bridge has no complete selected source tile grid")
         # Like a direct region, a grid is callable only when every tile's
         # static inputs are packed or supplied at run time.
@@ -229,10 +269,7 @@ def diagnostic_host_bridge(program: str, entry: str, regions: list[dict],
         return "tiled_native"
 
     batched_ids = {row["region_id"] for row in batch_rows}
-    routes = {
-        row["region_id"]: selected_route(row, batched=row["region_id"] in batched_ids)
-        for row in all_rows
-    }
+    routes = {row["region_id"]: selected_route(row, batched=row["region_id"] in batched_ids) for row in all_rows}
 
     source = parse_mlir_text(program)
     source_graph = _program_graph(source, hashlib.sha256(program.encode()).hexdigest())
@@ -243,11 +280,11 @@ def diagnostic_host_bridge(program: str, entry: str, regions: list[dict],
     if len(parsed_ops) != len(source_graph["operations"]):
         raise ValueError("host bridge source graph changed during parsing")
     operation_ids = {
-        id(op): row["operation_id"]
-        for op, row in zip(parsed_ops, source_graph["operations"], strict=True)
+        id(op): row["operation_id"] for op, row in zip(parsed_ops, source_graph["operations"], strict=True)
     }
     functions = [
-        op for op in source.body.block.ops
+        op
+        for op in source.body.block.ops
         if isinstance(op, func.FuncOp) and op.sym_name.data == entry and op.body.blocks
     ]
     if len(functions) != 1 or len(functions[0].body.blocks) != 1:
@@ -263,9 +300,7 @@ def diagnostic_host_bridge(program: str, entry: str, regions: list[dict],
                 raise ValueError(f"source region {region_id} has multiple parsed matmuls")
             source_regions[region_id] = operation["operation_id"]
     surveyed, _ = survey_source_f32_batched_matmuls(program, entry=entry)
-    if {
-        (item.region_id, item.operation_ordinal) for item in surveyed
-    } != {
+    if {(item.region_id, item.operation_ordinal) for item in surveyed} != {
         (row["region_id"], row["operation_ordinal"]) for row in batch_rows
     }:
         raise ValueError("batched host bridge regions differ from the parsed source")
@@ -281,28 +316,23 @@ def diagnostic_host_bridge(program: str, entry: str, regions: list[dict],
 
     outlined = outline_dispatches(source, forward=entry)
     roots = [
-        op for op in top_level
-        if op.name.startswith("linalg.") and op.name not in {
-            "linalg.fill", "linalg.yield", "linalg.index",
+        op
+        for op in top_level
+        if op.name.startswith("linalg.")
+        and op.name
+        not in {
+            "linalg.fill",
+            "linalg.yield",
+            "linalg.index",
         }
     ]
     if len(roots) != len(outlined.dispatches) or any(
-        op.name != dispatch.root_op
-        for op, dispatch in zip(roots, outlined.dispatches, strict=True)
+        op.name != dispatch.root_op for op, dispatch in zip(roots, outlined.dispatches, strict=True)
     ):
         raise ValueError("source roots differ from outlined dispatches")
-    by_operation = {
-        operation_ids[id(op)]: dispatch
-        for op, dispatch in zip(roots, outlined.dispatches, strict=True)
-    }
-    by_region = {
-        rid: by_operation[operation_id]
-        for rid, operation_id in source_regions.items()
-    }
-    if any(
-        dispatch.prov.get("prov.region_id") not in {None, rid}
-        for rid, dispatch in by_region.items()
-    ):
+    by_operation = {operation_ids[id(op)]: dispatch for op, dispatch in zip(roots, outlined.dispatches, strict=True)}
+    by_region = {rid: by_operation[operation_id] for rid, operation_id in source_regions.items()}
+    if any(dispatch.prov.get("prov.region_id") not in {None, rid} for rid, dispatch in by_region.items()):
         raise ValueError("outlined source region identity changed")
     if set(by_region) != set(ids):
         raise ValueError("source regions and outlined dispatches differ")
@@ -314,10 +344,7 @@ def diagnostic_host_bridge(program: str, entry: str, regions: list[dict],
     }
     ordinal_by_id = {operation_ids[id(op)]: ordinal for ordinal, op in enumerate(top_level)}
     all_rows.sort(key=lambda row: ordinal_by_id[row["operation_id"]])
-    selected = [
-        by_region[row["region_id"]].symbol for row in all_rows
-        if routes[row["region_id"]] != "retained_host"
-    ]
+    selected = [by_region[row["region_id"]].symbol for row in all_rows if routes[row["region_id"]] != "retained_host"]
     bridge = externalize_dispatches(outlined, selected)
     callable_symbols = {*selected, entry}
     for operation in bridge.module.body.block.ops:
@@ -331,23 +358,28 @@ def diagnostic_host_bridge(program: str, entry: str, regions: list[dict],
         dispatch = by_region[row["region_id"]]
         signature = definitions[dispatch.symbol].function_type
         selected_tiles = batch_tile_rows if row["region_id"] in batched_ids else tile_rows
-        bindings.append({
-            "region_id": row["region_id"],
-            "operation_id": row.get("operation_id"),
-            "symbol": dispatch.symbol,
-            "native_status": row["status"],
-            "selected_route": routes[row["region_id"]],
-            "tile_request_digests": [
-                tile["request_digest"] for tile in sorted(
-                (tile for tile in selected_tiles if tile["region_id"] == row["region_id"]),
-                    key=lambda tile: tile["tile_index"],
-                )
-            ] if routes[row["region_id"]] == "tiled_native" else [],
-            "static_inputs_status": row["static_inputs_status"],
-            "input_types": [str(item) for item in signature.inputs.data],
-            "result_types": [str(item) for item in signature.outputs.data],
-            "request_digest": row.get("request_digest") if row["status"] == "emitted" else None,
-        })
+        bindings.append(
+            {
+                "region_id": row["region_id"],
+                "operation_id": row.get("operation_id"),
+                "symbol": dispatch.symbol,
+                "native_status": row["status"],
+                "selected_route": routes[row["region_id"]],
+                "tile_request_digests": [
+                    tile["request_digest"]
+                    for tile in sorted(
+                        (tile for tile in selected_tiles if tile["region_id"] == row["region_id"]),
+                        key=lambda tile: tile["tile_index"],
+                    )
+                ]
+                if routes[row["region_id"]] == "tiled_native"
+                else [],
+                "static_inputs_status": row["static_inputs_status"],
+                "input_types": [str(item) for item in signature.inputs.data],
+                "result_types": [str(item) for item in signature.outputs.data],
+                "request_digest": row.get("request_digest") if row["status"] == "emitted" else None,
+            }
+        )
     return {
         "schema": "merlin.diagnostic_model_host_bridge.v1",
         "status": "typed_declarations_only",
@@ -356,10 +388,7 @@ def diagnostic_host_bridge(program: str, entry: str, regions: list[dict],
         "external_symbols": selected,
         "c_interface_symbols": selected,
         "bindings": bindings,
-        "required_native_unmet": [
-            row["region_id"] for row in all_rows
-            if routes[row["region_id"]] == "retained_host"
-        ],
+        "required_native_unmet": [row["region_id"] for row in all_rows if routes[row["region_id"]] == "retained_host"],
         "strict_native_eligible": False,
         "linked": False,
         "executed": False,

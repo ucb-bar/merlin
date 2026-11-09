@@ -35,7 +35,10 @@ class AutomaticProvider(Provider):
         # caller pointers and finish before returning. Numerical checks alone
         # do not establish these separately reviewed implementation premises.
         self.borrowed_effects = BorrowedBufferEffects(
-            "reviewed-neutral-pointwise-model-ABI-lifetime-v1", True, True, True,
+            "reviewed-neutral-pointwise-model-ABI-lifetime-v1",
+            True,
+            True,
+            True,
         )
 
     def propose(self, source, _operation, directory):
@@ -68,7 +71,11 @@ class AutomaticProvider(Provider):
         )
         self.fragments.append(self._wrapper(bridge, *source.shape, image, self.separate))
         return FreshTensorWriterContract(
-            symbol, 2, (2,), "borrowed_" + symbol, 32,
+            symbol,
+            2,
+            (2,),
+            "borrowed_" + symbol,
+            32,
             borrowed_effects=self.borrowed_effects,
         )
 

@@ -106,8 +106,12 @@ def test_two_digits_for_the_softmax_partner_rescue_a_sink(tmp_path):
     if not python or not os.path.exists(python):
         pytest.skip("the model2MLIR torch interpreter is not configured")
     recipes = json.dumps(
-        {"head": _static(), "partner": _static(**{QR.SOFTMAX_PARTNER: 2}),
-         "legacy": _static(**{QR.OPERAND: 2}), "residual": _static(**{QR.RESIDUAL_OPERAND: 2})}
+        {
+            "head": _static(),
+            "partner": _static(**{QR.SOFTMAX_PARTNER: 2}),
+            "legacy": _static(**{QR.OPERAND: 2}),
+            "residual": _static(**{QR.RESIDUAL_OPERAND: 2}),
+        }
     )
     done = subprocess.run([python, "-c", _SCRIPT, str(_DIR), recipes], capture_output=True, text=True, timeout=600)
     assert done.returncode == 0, done.stderr[-4000:]

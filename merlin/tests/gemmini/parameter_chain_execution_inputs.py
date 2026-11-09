@@ -96,11 +96,6 @@ def recheck(selected):
 
 def prepare(selected, destination, monkeypatch):
     """Return a LIVE materialized owner only after genuine source/value/ABI checks."""
-    from merlin_experiments.capture_execution.m2m_origin import git_origin
-    from merlin_experiments.phase0 import capture_execution_attestation as A
-    from merlin_experiments.phase0 import capture_selection as selection_owner
-    from merlin_experiments.phase0 import sealed_native_program as N
-
     from merlin.common import quant_formats as QF
     from merlin.compiler.frontend.materialized import MaterializedModelInputs
     from merlin.targetgen import capsule_runner as CR
@@ -108,6 +103,10 @@ def prepare(selected, destination, monkeypatch):
     from merlin.targetgen import target_registry as TR
     from merlin.targetgen.contract import schemas as CS
     from merlin.targetgen.corpus_spec import CorpusBinding
+    from merlin_experiments.capture_execution.m2m_origin import git_origin
+    from merlin_experiments.phase0 import capture_execution_attestation as A
+    from merlin_experiments.phase0 import capture_selection as selection_owner
+    from merlin_experiments.phase0 import sealed_native_program as N
 
     recheck(selected)
     destination = Path(destination)

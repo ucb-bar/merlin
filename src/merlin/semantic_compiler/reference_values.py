@@ -223,5 +223,3 @@ class TensorValue:
                     raise ValueError("signed-i64 value is outside its admitted domain")
             else:
                 _i32(element)
-
-

@@ -44,8 +44,9 @@ def selected(tmp_path, monkeypatch):
     facts = tmp_path / "facts.json"
     facts.write_text("{}")
     digest = S._pin(facts)[1]
-    monkeypatch.setattr(model_execution_inputs, "selected_firrtl", lambda path, **_kw: dict(
-        path=str(path), sha256=S._pin(path)[1]))
+    monkeypatch.setattr(
+        model_execution_inputs, "selected_firrtl", lambda path, **_kw: dict(path=str(path), sha256=S._pin(path)[1])
+    )
     binding = PassCapabilityBinding(digest, "software", "numerical", "runtime", "library")
     issuer = SyntheticIssuer()
     issuer.calls, issuer.realization = [], None
@@ -54,8 +55,7 @@ def selected(tmp_path, monkeypatch):
     # The extra diagnostic capability is deliberately not a compiler pass.
     passes = CompilerPassSelection(registry, binding, mechanisms=("some_optional_transform",), factory=factory)
     selection = S.select_checked_source_diagnostic(passes, target="fixture", rtl_facts=facts, board_config="config")
-    capsule = dict(kind="model", label="dev", oracle_tier_ceiling="L2",
-                   required_oracle_tiers=["L0", "L1", "L2", "L3"])
+    capsule = dict(kind="model", label="dev", oracle_tier_ceiling="L2", required_oracle_tiers=["L0", "L1", "L2", "L3"])
     return passes, selection, issuer, facts, capsule
 
 
@@ -74,11 +74,17 @@ def test_scope_is_explicit_immutable_and_never_grants_formal_authority(selected)
         selection.verify_for(capsule, target="fixture")
 
 
-@pytest.mark.parametrize("field,value", [
-    ("label", "hidden"), ("kind", "layer"), ("oracle_tier_ceiling", None),
-    ("required_oracle_tiers", ["L0", "L2"]), ("required_oracle_tiers", ["L0", "L1", "L2", {}]),
-    ("required_oracle_tiers", ["L0", "L1", "L2", "L2"]),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("label", "hidden"),
+        ("kind", "layer"),
+        ("oracle_tier_ceiling", None),
+        ("required_oracle_tiers", ["L0", "L2"]),
+        ("required_oracle_tiers", ["L0", "L1", "L2", {}]),
+        ("required_oracle_tiers", ["L0", "L1", "L2", "L2"]),
+    ],
+)
 def test_foreign_hidden_or_waived_role_selection_refuses(selected, field, value):
     passes, selection, _, _, capsule = selected
     capsule[field] = value
@@ -112,8 +118,9 @@ def test_stale_facts_or_swapped_live_callback_refuse(selected, monkeypatch):
 
 def test_missing_exact_capability_or_factory_does_not_fall_back(selected):
     passes, _, _, facts, _ = selected
-    empty = CompilerPassSelection(ReviewedPassCapabilities(()), passes.binding,
-                                 mechanisms=("some_optional_transform",), factory=passes.factory)
+    empty = CompilerPassSelection(
+        ReviewedPassCapabilities(()), passes.binding, mechanisms=("some_optional_transform",), factory=passes.factory
+    )
     with pytest.raises(ValueError, match="no exact reviewed"):
         S.select_checked_source_diagnostic(empty, target="fixture", rtl_facts=facts, board_config="config")
     no_factory = CompilerPassSelection(passes.registry, passes.binding, mechanisms=passes.mechanisms)
@@ -123,13 +130,19 @@ def test_missing_exact_capability_or_factory_does_not_fall_back(selected):
 
 def metadata_selection(selected):
     passes, _, issuer, facts, _ = selected
-    factory = OriginalPassFactory(original_factory, {
-        "metadata_verification_protocol": "merlin.pass_metadata_operation.v1",
-    })
+    factory = OriginalPassFactory(
+        original_factory,
+        {
+            "metadata_verification_protocol": "merlin.pass_metadata_operation.v1",
+        },
+    )
     opted = CompilerPassSelection(passes.registry, passes.binding, mechanisms=passes.mechanisms, factory=factory)
     before = issuer.checks
     selection = S.select_checked_source_diagnostic(
-        opted, target="fixture", rtl_facts=facts, board_config="config",
+        opted,
+        target="fixture",
+        rtl_facts=facts,
+        board_config="config",
     )
     assert issuer.checks == before + 2
     return selection, issuer
@@ -156,8 +169,14 @@ def test_failed_original_final_metadata_check_prevents_selector_consumption(sele
 @pytest.mark.parametrize("native", [None, S.POINTER_PROTOCOL])
 def test_fast_selection_is_explicit_distinct_and_preserves_pending_source_effects(selected, native):
     passes, full, _issuer, facts, capsule = selected
-    fast = S.select_checked_source_diagnostic(passes, target="fixture", rtl_facts=facts, board_config="config",
-        native_execution_protocol=native, verification_protocol=S.NUMERICAL_COUNTS_PROTOCOL)
+    fast = S.select_checked_source_diagnostic(
+        passes,
+        target="fixture",
+        rtl_facts=facts,
+        board_config="config",
+        native_execution_protocol=native,
+        verification_protocol=S.NUMERICAL_COUNTS_PROTOCOL,
+    )
     with scoped_compiler_passes(passes):
         row = fast.verify_for(capsule, target="fixture")
     assert row["schema"] == S.NUMERICAL_COUNTS_SCHEMA
@@ -174,5 +193,6 @@ def test_fast_selection_is_explicit_distinct_and_preserves_pending_source_effect
 def test_fast_selection_rejects_foreign_or_implicit_protocols(selected, protocol):
     passes, _full, _issuer, facts, _capsule = selected
     with pytest.raises(ValueError, match="explicit verification protocol"):
-        S.select_checked_source_diagnostic(passes, target="fixture", rtl_facts=facts, board_config="config",
-            verification_protocol=protocol)
+        S.select_checked_source_diagnostic(
+            passes, target="fixture", rtl_facts=facts, board_config="config", verification_protocol=protocol
+        )

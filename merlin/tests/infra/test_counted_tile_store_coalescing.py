@@ -1,29 +1,43 @@
 """Actual local/output coordinates and original state survive wider readouts."""
+
 from dataclasses import replace
 
 import pytest
 
-from merlin.compiler.schedule.tile_load_coalescing import TileStoreAddressLaw
-from merlin.compiler.schedule.tile_load_coalescing import TileStoreMapping
-from merlin.compiler.schedule.tile_load_coalescing import expand_tile_store_mapping
-from merlin.compiler.schedule.tile_load_coalescing import propose_tile_store_coalescing
+from merlin.compiler.schedule.tile_load_coalescing import (
+    TileStoreAddressLaw,
+    TileStoreMapping,
+    expand_tile_store_mapping,
+    propose_tile_store_coalescing,
+)
 from merlin.sched.ir import Call, Const, Kernel, Loop, Var, concretize, instances
 
 
 def example(tiles=5):
     law = TileStoreAddressLaw(8, 8, 32, 1, 257, 11, "source-rne-scale-1-over-128", "selected-store")
-    store = Call("store", (("byte", Var("row") * 8192 + Var("column") * 8),
-                            ("local", Var("row") * 1024 + Var("column") * 11),
-                            ("rows", Const(3)), ("cols", Const(8)), ("state", Const(0))))
-    kernel = Kernel("readout", (), (Call("producer_complete", ()), Loop("row", 2,
-                    (Loop("column", tiles, (store,)),)), Call("final_complete", ())))
+    store = Call(
+        "store",
+        (
+            ("byte", Var("row") * 8192 + Var("column") * 8),
+            ("local", Var("row") * 1024 + Var("column") * 11),
+            ("rows", Const(3)),
+            ("cols", Const(8)),
+            ("state", Const(0)),
+        ),
+    )
+    kernel = Kernel(
+        "readout",
+        (),
+        (Call("producer_complete", ()), Loop("row", 2, (Loop("column", tiles, (store,)),)), Call("final_complete", ())),
+    )
 
     def project(call):
         if call.instr != "store":
             return None
         original_state = law if call.arg("state") == Const(0) else replace(law, readout_identity="changed")
-        return TileStoreMapping("local", "output", call.arg("byte"), call.arg("local"),
-                                call.arg("rows"), call.arg("cols"), original_state)
+        return TileStoreMapping(
+            "local", "output", call.arg("byte"), call.arg("local"), call.arg("rows"), call.arg("cols"), original_state
+        )
 
     def encode(call, columns):
         return replace(call, args=tuple((k, Const(columns) if k == "cols" else v) for k, v in call.args))
@@ -40,10 +54,14 @@ def actual_cells(kernel, project):
         law = project(call).law
         for row in range(x["rows"]):
             for column in range(x["cols"]):
-                cells.append((x["local"] + column // law.tile_columns * law.local_block_stride + row,
-                              column % law.tile_columns,
-                              x["byte"] + row * law.output_pitch_bytes + column * law.element_bytes,
-                              law.readout_identity))
+                cells.append(
+                    (
+                        x["local"] + column // law.tile_columns * law.local_block_stride + row,
+                        column % law.tile_columns,
+                        x["byte"] + row * law.output_pitch_bytes + column * law.element_bytes,
+                        law.readout_identity,
+                    )
+                )
     return sorted(cells)
 
 
@@ -51,7 +69,11 @@ def actual_cells(kernel, project):
 def test_exact_wide_output_coordinates_all_bands_and_original_completion(tiles):
     source, law, project, encode = example(tiles)
     actual, receipt = propose_tile_store_coalescing(
-        source, project=project, encode=encode, max_tiles=4, coalesce_tail=True,
+        source,
+        project=project,
+        encode=encode,
+        max_tiles=4,
+        coalesce_tail=True,
     )
     assert actual_cells(actual, project) == actual_cells(source, project)
     assert actual.body[0] == source.body[0] and actual.body[-1] == source.body[-1]
@@ -72,8 +94,7 @@ def test_actual_encoded_address_or_original_numerical_state_change_refuses(field
 
     def corrupt(call, columns):
         encoded = good(call, columns)
-        return replace(encoded, args=tuple((key, value + 1 if key == field else value)
-                                           for key, value in encoded.args))
+        return replace(encoded, args=tuple((key, value + 1 if key == field else value) for key, value in encoded.args))
 
     with pytest.raises(ValueError, match="actual target operands"):
         propose_tile_store_coalescing(source, project=project, encode=corrupt, max_tiles=4)
@@ -84,11 +105,12 @@ def test_no_merge_across_dependency_completion_configuration_or_partial_tile():
     row = source.body[1]
     column = row.body[0]
     store = column.body[0]
-    variants = [replace(column, body=(store, Call("configure", ()))),
-                replace(column, body=(store, Call("complete", ()))),
-                replace(column, body=(replace(store, unit="store_unit"),)),
-                replace(column, body=(replace(store, args=tuple(
-                    (k, Const(7) if k == "cols" else v) for k, v in store.args)),))]
+    variants = [
+        replace(column, body=(store, Call("configure", ()))),
+        replace(column, body=(store, Call("complete", ()))),
+        replace(column, body=(replace(store, unit="store_unit"),)),
+        replace(column, body=(replace(store, args=tuple((k, Const(7) if k == "cols" else v) for k, v in store.args)),)),
+    ]
     for changed in variants:
         kernel = replace(source, body=(source.body[0], replace(row, body=(changed,)), source.body[-1]))
         actual, receipt = propose_tile_store_coalescing(kernel, project=project, encode=encode, max_tiles=4)

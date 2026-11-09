@@ -4,12 +4,12 @@ import json
 
 import numpy as np
 import pytest
-from merlin_experiments import model_observation as observation
 
-from merlin.common.digest import sha256_file
 from merlin import model as baremetal_model
+from merlin.common.digest import sha256_file
 from merlin.runtime import modelinputs as model_execution_inputs
 from merlin.runtime import out_bin, whole_model_readback
+from merlin_experiments import model_observation as observation
 
 
 def test_representation_comparison_covers_all_outputs_and_signed_zero(tmp_path):

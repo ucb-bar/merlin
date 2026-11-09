@@ -3,11 +3,11 @@
 from dataclasses import replace
 
 import pytest
+from test_semantic_regions import graph, plan_for
 
 from merlin.compile.application_plan import application_plan, select_application_plan
 from merlin.compile.semantic_regions import outline_semantic_regions
 from merlin.semantic_compiler.target_binding import NativeCompilationError
-from test_semantic_regions import graph, plan_for
 
 
 def alternatives(source, groups, prefix):

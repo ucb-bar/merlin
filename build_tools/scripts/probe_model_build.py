@@ -20,11 +20,11 @@ import numpy as np
 
 from merlin.common import owned_process
 from merlin.common.invocation_record import Invocation
-from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.llvmlower.compilation_recipe import verify_completed_recipe
 from merlin.model_check import full_build as FB
 from merlin.model_check import replay as RP
 from merlin.model_check.full_build_identity import verified_recipe
+from merlin.runtime.modelinputs import strict_tree_sha256
 
 
 def pin(path):

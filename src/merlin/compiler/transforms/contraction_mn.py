@@ -32,13 +32,22 @@ class RowMajorMatrixSlice:
 
     def __post_init__(self) -> None:
         if (
-            not self.tile_input or not self.source_input
-            or any(type(value) is not int for value in (
-                self.source_rows, self.source_columns, self.row_start,
-                self.column_start, self.rows, self.columns,
-            ))
+            not self.tile_input
+            or not self.source_input
+            or any(
+                type(value) is not int
+                for value in (
+                    self.source_rows,
+                    self.source_columns,
+                    self.row_start,
+                    self.column_start,
+                    self.rows,
+                    self.columns,
+                )
+            )
             or min(self.source_rows, self.source_columns, self.rows, self.columns) <= 0
-            or self.row_start < 0 or self.column_start < 0
+            or self.row_start < 0
+            or self.column_start < 0
             or self.row_start + self.rows > self.source_rows
             or self.column_start + self.columns > self.source_columns
         ):
@@ -88,27 +97,31 @@ class OrderedMNTiling:
     def __post_init__(self) -> None:
         try:
             lhs, rhs, _ = _validated_oriented_source(
-                self.source, self.source.nodes[-1].type.numerical_policy,
+                self.source,
+                self.source.nodes[-1].type.numerical_policy,
             )
         except (OrderedKTilingError, IndexError) as exc:
             raise OrderedMNTilingError(str(exc)) from exc
         m_extent, n_extent = lhs.type.shape[0], rhs.type.shape[0]
-        has_tail = bool(m_extent % self.tile_m or n_extent % self.tile_n) if (
-            type(self.tile_m) is int and type(self.tile_n) is int
-            and self.tile_m > 0 and self.tile_n > 0
-        ) else False
+        has_tail = (
+            bool(m_extent % self.tile_m or n_extent % self.tile_n)
+            if (type(self.tile_m) is int and type(self.tile_n) is int and self.tile_m > 0 and self.tile_n > 0)
+            else False
+        )
         if (
-            type(self.tile_m) is not int or type(self.tile_n) is not int
-            or self.tile_m <= 0 or self.tile_n <= 0
+            type(self.tile_m) is not int
+            or type(self.tile_n) is not int
+            or self.tile_m <= 0
+            or self.tile_n <= 0
             or has_tail != (self.tail_pad_element is not None)
-            or (self.tail_pad_element is not None and (
-                type(self.tail_pad_element) is not bytes or not self.tail_pad_element
-            ))
+            or (
+                self.tail_pad_element is not None
+                and (type(self.tail_pad_element) is not bytes or not self.tail_pad_element)
+            )
         ):
             raise OrderedMNTilingError("M/N extents need exact tiles or declared tail padding")
         expected_coordinates = tuple(
-            (m, n) for m in range(0, m_extent, self.tile_m)
-            for n in range(0, n_extent, self.tile_n)
+            (m, n) for m in range(0, m_extent, self.tile_m) for n in range(0, n_extent, self.tile_n)
         )
         if len(self.tiles) != len(expected_coordinates):
             raise OrderedMNTilingError("M/N tiles omit or repeat an output region")
@@ -131,40 +144,61 @@ class OrderedMNTiling:
         return record
 
 
-def _make_tile(source: KernelRequest, tile_m: int, tile_n: int,
-               m_start: int, n_start: int) -> MatrixTile:
+def _make_tile(source: KernelRequest, tile_m: int, tile_n: int, m_start: int, n_start: int) -> MatrixTile:
     lhs, rhs, contraction = source.nodes
     valid_m = min(tile_m, lhs.type.shape[0] - m_start)
     valid_n = min(tile_n, rhs.type.shape[0] - n_start)
     lhs_tile = SemanticNode(
-        lhs.id, "input", (), TensorType((tile_m, lhs.type.shape[1]), lhs.type.dtype,
-                                        lhs.type.numerical_policy), lhs.attrs, "input",
+        lhs.id,
+        "input",
+        (),
+        TensorType((tile_m, lhs.type.shape[1]), lhs.type.dtype, lhs.type.numerical_policy),
+        lhs.attrs,
+        "input",
     )
     rhs_tile = SemanticNode(
-        rhs.id, "input", (), TensorType((tile_n, rhs.type.shape[1]), rhs.type.dtype,
-                                        rhs.type.numerical_policy), rhs.attrs, "input",
+        rhs.id,
+        "input",
+        (),
+        TensorType((tile_n, rhs.type.shape[1]), rhs.type.dtype, rhs.type.numerical_policy),
+        rhs.attrs,
+        "input",
     )
     result_tile = SemanticNode(
-        contraction.id, contraction.op, contraction.inputs,
-        TensorType((tile_m, tile_n), contraction.type.dtype,
-                   contraction.type.numerical_policy),
-        contraction.attrs, contraction.effect, contraction.index_maps,
+        contraction.id,
+        contraction.op,
+        contraction.inputs,
+        TensorType((tile_m, tile_n), contraction.type.dtype, contraction.type.numerical_policy),
+        contraction.attrs,
+        contraction.effect,
+        contraction.index_maps,
     )
     request = KernelRequest(
-        (lhs_tile, rhs_tile, result_tile), source.outputs, source.output_storages,
-        source.input_storages, source.target_identity,
-        lowering_policy=source.lowering_policy, source_identity=source.source_identity,
+        (lhs_tile, rhs_tile, result_tile),
+        source.outputs,
+        source.output_storages,
+        source.input_storages,
+        source.target_identity,
+        lowering_policy=source.lowering_policy,
+        source_identity=source.source_identity,
     )
-    return MatrixTile(m_start, n_start, request, (
-        RowMajorMatrixSlice(lhs.id, lhs.id, *lhs.type.shape,
-                            m_start, 0, valid_m, lhs.type.shape[1]),
-        RowMajorMatrixSlice(rhs.id, rhs.id, *rhs.type.shape,
-                            n_start, 0, valid_n, rhs.type.shape[1]),
-    ))
+    return MatrixTile(
+        m_start,
+        n_start,
+        request,
+        (
+            RowMajorMatrixSlice(lhs.id, lhs.id, *lhs.type.shape, m_start, 0, valid_m, lhs.type.shape[1]),
+            RowMajorMatrixSlice(rhs.id, rhs.id, *rhs.type.shape, n_start, 0, valid_n, rhs.type.shape[1]),
+        ),
+    )
 
 
 def partition_ordered_matmul_mn(
-    source: KernelRequest, *, tile_m: int, tile_n: int, qualified_policy: str,
+    source: KernelRequest,
+    *,
+    tile_m: int,
+    tile_n: int,
+    qualified_policy: str,
     tail_pad_element: bytes | None = None,
 ) -> OrderedMNTiling:
     """Partition independent output cells; pad tail rows only when qualified."""
@@ -183,24 +217,30 @@ def partition_ordered_matmul_mn(
     if not has_tail and tail_pad_element is not None:
         raise OrderedMNTilingError("exact M/N tiles must not declare tail padding")
     return OrderedMNTiling(
-        source, tile_m, tile_n,
-        tuple(_make_tile(source, tile_m, tile_n, m, n)
-              for m in range(0, m_extent, tile_m)
-              for n in range(0, n_extent, tile_n)),
+        source,
+        tile_m,
+        tile_n,
+        tuple(
+            _make_tile(source, tile_m, tile_n, m, n)
+            for m in range(0, m_extent, tile_m)
+            for n in range(0, n_extent, tile_n)
+        ),
         tail_pad_element,
     )
 
 
 def materialize_row_major_mn_inputs(
-    tiling: OrderedMNTiling, source_bytes: Mapping[str, bytes], *, element_bytes: int,
+    tiling: OrderedMNTiling,
+    source_bytes: Mapping[str, bytes],
+    *,
+    element_bytes: int,
 ) -> tuple[dict[str, bytes], ...]:
     """Return each tile's input boundary bytes in output row-major tile order."""
     if type(element_bytes) is not int or element_bytes <= 0:
         raise OrderedMNTilingError("element width must be positive")
     if tiling.tail_pad_element is not None and len(tiling.tail_pad_element) != element_bytes:
         raise OrderedMNTilingError("tail pad element width differs from tensor element")
-    expected = {item.source_input: (item.source_rows, item.source_columns)
-                for item in tiling.tiles[0].input_slices}
+    expected = {item.source_input: (item.source_rows, item.source_columns) for item in tiling.tiles[0].input_slices}
     if set(source_bytes) != set(expected):
         raise OrderedMNTilingError("runtime source inputs differ from M/N tiling")
     for name, (rows, columns) in expected.items():
@@ -215,21 +255,26 @@ def materialize_row_major_mn_inputs(
             source_row_bytes = item.source_columns * element_bytes
             tile_row_bytes = item.columns * element_bytes
             copied = b"".join(
-                payload[row * source_row_bytes + item.column_start * element_bytes:
-                        row * source_row_bytes + item.column_start * element_bytes + tile_row_bytes]
+                payload[
+                    row * source_row_bytes + item.column_start * element_bytes : row * source_row_bytes
+                    + item.column_start * element_bytes
+                    + tile_row_bytes
+                ]
                 for row in range(item.row_start, item.row_start + item.rows)
             )
             padded_rows = tile.request.node(item.tile_input).type.shape[0] - item.rows
             inputs[item.tile_input] = copied + (
-                tiling.tail_pad_element * (padded_rows * item.columns)
-                if padded_rows else b""
+                tiling.tail_pad_element * (padded_rows * item.columns) if padded_rows else b""
             )
         packed.append(inputs)
     return tuple(packed)
 
 
 def assemble_row_major_mn_outputs(
-    tiling: OrderedMNTiling, tile_outputs: Sequence[bytes], *, element_bytes: int,
+    tiling: OrderedMNTiling,
+    tile_outputs: Sequence[bytes],
+    *,
+    element_bytes: int,
 ) -> bytes:
     """Place all output rectangles into one row-major MxN result."""
     if type(element_bytes) is not int or element_bytes <= 0:
@@ -247,7 +292,7 @@ def assemble_row_major_mn_outputs(
             destination = ((tile.m_start + row) * n_extent + tile.n_start) * element_bytes
             source_offset = row * tiling.tile_n * element_bytes
             count = valid_n * element_bytes
-            output[destination:destination + count] = payload[source_offset:source_offset + count]
+            output[destination : destination + count] = payload[source_offset : source_offset + count]
     return bytes(output)
 
 

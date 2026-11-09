@@ -33,8 +33,11 @@ class RegionProduct:
         object.__setattr__(self, "_identity", self._current())
 
     def _current(self):
-        return (self.entry, self.compilation.directory,
-                json.dumps(self.compilation.to_dict(), sort_keys=True, allow_nan=False))
+        return (
+            self.entry,
+            self.compilation.directory,
+            json.dumps(self.compilation.to_dict(), sort_keys=True, allow_nan=False),
+        )
 
     def revalidate(self):
         if self._current() != self._identity:
@@ -70,13 +73,20 @@ def control_entry(options, source_entry, deployment=None):
             raise ValueError("planned image linking requires merlin.emit=c-dispatch")
     if not options.parameters:
         return None
-    if (set(options.parameters) - {"merlin.emit", "merlin.entry"} or
-            options.parameters.get("merlin.emit") != "c-dispatch"):
+    if (
+        set(options.parameters) - {"merlin.emit", "merlin.entry"}
+        or options.parameters.get("merlin.emit") != "c-dispatch"
+    ):
         raise ValueError("planned compiler accepts only merlin.emit=c-dispatch and optional merlin.entry")
     name = options.parameters.get("merlin.entry", source_entry)
     letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    if (type(name) is not str or not name or len(name) > 64 or name[0] not in letters or
-            any(c not in letters + "_0123456789" for c in name)):
+    if (
+        type(name) is not str
+        or not name
+        or len(name) > 64
+        or name[0] not in letters
+        or any(c not in letters + "_0123456789" for c in name)
+    ):
         raise ValueError("C dispatcher entry must be a C identifier beginning with a letter (at most 64 characters)")
     return name
 
@@ -116,8 +126,9 @@ def emit_selected_c(partition, products: tuple[RegionProduct, ...], *, name: str
             raise ValueError("compiled C region lies outside the selected build directory")
         abi = read_c_abi(compiled)
         function = region.source_module.body.block.first_op
-        if (abi.inputs != tuple(TensorPort.from_type(t) for t in function.function_type.inputs) or
-                abi.outputs != tuple(TensorPort.from_type(t) for t in function.function_type.outputs)):
+        if abi.inputs != tuple(TensorPort.from_type(t) for t in function.function_type.inputs) or abi.outputs != tuple(
+            TensorPort.from_type(t) for t in function.function_type.outputs
+        ):
             raise ValueError("compiled C ABI differs from the ordered original tensor signature")
         item = alternatives[region.alternative]
         if abi.resource_kind != selection.topology.resource(item.proposal.resource).kind:
@@ -138,16 +149,19 @@ def emit_selected_c(partition, products: tuple[RegionProduct, ...], *, name: str
             expected_workspace, _ = plan(tuple(function.body.block.ops)[:-1], function.get_return_op().arguments)
             declared = dict(item.alternative.metadata)
             expected_record = json.dumps(abi.workspace.record(), sort_keys=True, separators=(",", ":"))
-            if (expected_workspace != abi.workspace or declared.get("source_workspace") != expected_record
-                    or declared.get("workspace_status") != "source_backed_native_admission_pending"
-                    or abi.workspace.alignment > memory.alignment_bytes):
+            if (
+                expected_workspace != abi.workspace
+                or declared.get("source_workspace") != expected_record
+                or declared.get("workspace_status") != "source_backed_native_admission_pending"
+                or abi.workspace.alignment > memory.alignment_bytes
+            ):
                 raise ValueError("compiled source workspace differs from exact selected original tensor storage")
             names = []
             for (ordinal, result), port in zip(abi.workspace.sources, abi.workspace.ports, strict=True):
                 original = item.alternative.nodes[ordinal]
                 logical = selection.source.program.nodes[original].outputs[result]
                 buffer = selection.source.program.buffers[logical]
-                if (tuple(buffer.shape) != port.shape or buffer.dtype != port.dtype or buffer.kind != "intermediate"):
+                if tuple(buffer.shape) != port.shape or buffer.dtype != port.dtype or buffer.kind != "intermediate":
                     raise ValueError("source workspace is not the same original tensor charged by planning")
                 names.append(logical)
             workspaces[index] = abi.workspace
@@ -155,10 +169,17 @@ def emit_selected_c(partition, products: tuple[RegionProduct, ...], *, name: str
         if isinstance(abi, CRegionABI2):
             if requirement != abi.context:
                 raise ValueError("compiled context differs from the original selected host reservation")
-            declaration = next(a for a in compiled.artifacts
-                               if a.path.relative_to(compiled.directory).as_posix() == abi.context.declaration)
-            identity = (abi.context, compiled.source_sha256, declaration.sha256,
-                        tuple((a.kind, a.role, a.sha256) for a in compiled.artifacts))
+            declaration = next(
+                a
+                for a in compiled.artifacts
+                if a.path.relative_to(compiled.directory).as_posix() == abi.context.declaration
+            )
+            identity = (
+                abi.context,
+                compiled.source_sha256,
+                declaration.sha256,
+                tuple((a.kind, a.role, a.sha256) for a in compiled.artifacts),
+            )
             previous = contexts.get(abi.context.identity)
             if previous is not None and previous[1] != identity:
                 raise ValueError("shared context identity has different compiled initialization or products")
@@ -168,76 +189,122 @@ def emit_selected_c(partition, products: tuple[RegionProduct, ...], *, name: str
             context_index = previous[0]
         elif requirement is not None:
             raise ValueError("selected caller-owned context was not discharged by a stateful C ABI")
-        calls[index] = DispatchCall(abi.symbol, item.alternative.placement, buffer_alignment=abi.buffer_alignment,
-                                    context_index=context_index)
+        calls[index] = DispatchCall(
+            abi.symbol, item.alternative.placement, buffer_alignment=abi.buffer_alignment, context_index=context_index
+        )
         artifacts = {a.path.relative_to(compiled.directory).as_posix(): a for a in compiled.artifacts}
         # Identical stateless implementations may serve multiple source sites.
         # A repeated symbol with different source, ABI or products must not win
         # by link order. Retain one definition only after exact identity checks.
-        identity = (compiled.backend, compiled.source_sha256, abi,
-                    tuple(sorted((key, a.kind, a.role, a.sha256) for key, a in artifacts.items())))
+        identity = (
+            compiled.backend,
+            compiled.source_sha256,
+            abi,
+            tuple(sorted((key, a.kind, a.role, a.sha256) for key, a in artifacts.items())),
+        )
         if abi.symbol in symbols and symbols[abi.symbol] != identity:
             raise ValueError("compiled regions conflict on a C wrapper symbol")
         if abi.symbol not in symbols:
             links.extend((compiled.directory / path).relative_to(directory).as_posix() for path in abi.link_inputs)
             payloads.extend((compiled.directory / path).relative_to(directory).as_posix() for path in abi.payloads)
             symbols[abi.symbol] = identity
-        bindings.append({"alternative": region.alternative, "provider": region.provider,
-                         "resource": item.proposal.resource, "memory_domain": item.proposal.memory_domain,
-                         "node": index, "source_sha256": compiled.source_sha256, "abi": abi.record(),
-                         "compilation": compiled.manifest.relative_to(directory).as_posix()})
+        bindings.append(
+            {
+                "alternative": region.alternative,
+                "provider": region.provider,
+                "resource": item.proposal.resource,
+                "memory_domain": item.proposal.memory_domain,
+                "node": index,
+                "source_sha256": compiled.source_sha256,
+                "abi": abi.record(),
+                "compilation": compiled.manifest.relative_to(directory).as_posix(),
+            }
+        )
     if set(calls) != set(range(len(graph.nodes))):
         raise ValueError("C control cannot omit an emitted source operation")
     external = {key for key, value in graph.buffers.items() if value.kind in {"arg", "const"}} | set(graph.results)
     alignment = memory.alignment_bytes
-    external_bytes = sum(((_buf_bytes(graph.buffers[key].shape, graph.buffers[key].dtype) + alignment - 1)
-                          // alignment) * alignment for key in external)
+    external_bytes = sum(
+        ((_buf_bytes(graph.buffers[key].shape, graph.buffers[key].dtype) + alignment - 1) // alignment) * alignment
+        for key in external
+    )
     reserved_bytes = reservations["domains"].get(memory.id, {}).get("total_bytes", 0)
-    workspace_bytes = max((((layout.bytes + alignment - 1) // alignment) * alignment
-                           for layout in workspaces.values()), default=0)
+    workspace_bytes = max(
+        (((layout.bytes + alignment - 1) // alignment) * alignment for layout in workspaces.values()), default=0
+    )
     available = memory.capacity_bytes - external_bytes - reserved_bytes - workspace_bytes
     if available < 0:
         raise ValueError("external C buffers exceed selected memory capacity")
     requirements = ArenaRequirements(
-        max(1, available + workspace_bytes), tuple(2 * i for i in range(len(graph.nodes))),
-        tuple(2 * i + 1 for i in range(len(graph.nodes))), alignment=alignment,
-        dispatch_digest=dispatch_digest(graph))
-    program = build_program(selection.source.program, capability="compiled_pointer_calls", global_plan=selection.plan,
-                            global_plan_emitter=_PartitionEmitter(partition), memory_requirements=requirements)
+        max(1, available + workspace_bytes),
+        tuple(2 * i for i in range(len(graph.nodes))),
+        tuple(2 * i + 1 for i in range(len(graph.nodes))),
+        alignment=alignment,
+        dispatch_digest=dispatch_digest(graph),
+    )
+    program = build_program(
+        selection.source.program,
+        capability="compiled_pointer_calls",
+        global_plan=selection.plan,
+        global_plan_emitter=_PartitionEmitter(partition),
+        memory_requirements=requirements,
+    )
     if program.memory_plan.arena_bytes > available:
         raise ValueError("C arena and external buffers exceed selected memory capacity")
     if workspaces:
         workspace_offset = (program.memory_plan.arena_bytes + alignment - 1) // alignment * alignment
         if external_bytes + reserved_bytes + workspace_offset + workspace_bytes > memory.capacity_bytes:
             raise ValueError("materialized source workspace and C arena exceed selected memory capacity")
-        calls = {index: replace(call, workspace_offset=workspace_offset, workspace_bytes=workspaces[index].bytes,
-                                workspace_alignment=workspaces[index].alignment) if index in workspaces else call
-                 for index, call in calls.items()}
+        calls = {
+            index: replace(
+                call,
+                workspace_offset=workspace_offset,
+                workspace_bytes=workspaces[index].bytes,
+                workspace_alignment=workspaces[index].alignment,
+            )
+            if index in workspaces
+            else call
+            for index, call in calls.items()
+        }
     read_only = tuple(key for key, value in graph.buffers.items() if value.kind == "arg")
     report, files = emit_program_c(program, name, calls, read_only_inputs=read_only)
-    report.update(bindings=bindings, link_inputs=links, payloads=payloads,
-                  topology_sha256=selection.topology.sha256, memory_domain=memory.id,
-                  external_bytes=external_bytes, total_tensor_bytes=external_bytes + program.memory_plan.arena_bytes,
-                  backend_correctness="not_established", context="caller_owned_table" if contexts else "unused")
+    report.update(
+        bindings=bindings,
+        link_inputs=links,
+        payloads=payloads,
+        topology_sha256=selection.topology.sha256,
+        memory_domain=memory.id,
+        external_bytes=external_bytes,
+        total_tensor_bytes=external_bytes + program.memory_plan.arena_bytes,
+        backend_correctness="not_established",
+        context="caller_owned_table" if contexts else "unused",
+    )
     if contexts:
-        report.update(host_context_reservations=reservations,
-                      context_indices={identity: row[0] for identity, row in contexts.items()},
-                      context_initialization="caller_obligation_not_observed",
-                      payload_loading="checked_embedding_bytes; loader_invocation_not_observed",
-                      completion_visibility="runtime_obligation; no_execution_observed",
-                      error_lifetime="retain_context_workspace_and_device_buffers_until_drained_or_reset",
-                      total_reserved_host_bytes=reserved_bytes)
+        report.update(
+            host_context_reservations=reservations,
+            context_indices={identity: row[0] for identity, row in contexts.items()},
+            context_initialization="caller_obligation_not_observed",
+            payload_loading="checked_embedding_bytes; loader_invocation_not_observed",
+            completion_visibility="runtime_obligation; no_execution_observed",
+            error_lifetime="retain_context_workspace_and_device_buffers_until_drained_or_reset",
+            total_reserved_host_bytes=reserved_bytes,
+        )
         if workspaces:
             report["context_arena_disjointness"] = (
-                "caller_obligation; generated_image_entry_checks_before_initialization")
+                "caller_obligation; generated_image_entry_checks_before_initialization"
+            )
             report["error_lifetime"] = "retain_context_workspace_arena_external_and_device_buffers_until_quiescent"
     if workspaces:
-        report.update(source_workspace={"offset": workspace_offset, "reserved_bytes": workspace_bytes,
-                                        "source_values": {str(index): layout.record()
-                                                          for index, layout in workspaces.items()},
-                                        "original_buffers": workspace_source_buffers,
-                                        "accounting": "original source values counted by source lifetime bound"},
-                      total_tensor_bytes=external_bytes + workspace_offset + workspace_bytes)
+        report.update(
+            source_workspace={
+                "offset": workspace_offset,
+                "reserved_bytes": workspace_bytes,
+                "source_values": {str(index): layout.record() for index, layout in workspaces.items()},
+                "original_buffers": workspace_source_buffers,
+                "accounting": "original source values counted by source lifetime bound",
+            },
+            total_tensor_bytes=external_bytes + workspace_offset + workspace_bytes,
+        )
     partition.revalidate()
     for product in products:
         product.revalidate()

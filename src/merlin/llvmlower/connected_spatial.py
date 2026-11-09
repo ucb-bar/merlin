@@ -76,8 +76,7 @@ def extract_connected_spatial_region(module, rewrite, source_pair, *, symbol="fo
     params = tuple(free_values(operations))
     members = {op for top in operations for op in top.walk()}
     outputs = tuple(
-        value for op in operations for value in op.results
-        if any(use.operation not in members for use in value.uses)
+        value for op in operations for value in op.results if any(use.operation not in members for use in value.uses)
     )
     if outputs != tuple(pool.results):
         raise ValueError("spatial region has an unaccounted original output or no observed final result")
@@ -91,8 +90,7 @@ def extract_connected_spatial_region(module, rewrite, source_pair, *, symbol="fo
     owner = func.FuncOp(symbol, ([v.type for v in params], [v.type for v in outputs]), Region(body))
     owner.attributes["llvm.emit_c_interface"] = UnitAttr()
     declarations = [
-        op.clone() for op in module.body.block.ops
-        if isinstance(op, func.FuncOp) and op.sym_name.data in source_pair
+        op.clone() for op in module.body.block.ops if isinstance(op, func.FuncOp) and op.sym_name.data in source_pair
     ]
     if symbol in source_pair:
         raise ValueError("region entry symbol collides with its original source declaration")
@@ -111,7 +109,12 @@ def extract_connected_spatial_region(module, rewrite, source_pair, *, symbol="fo
         prepack["folded_bias_elements"] = sum(row.get("bias", {}).get("elements", 0) for row in prepack["groups"])
         prepack["device_weights"] = sum("array" in (row.get("weight") or {}) for row in prepack["groups"])
     selected_rewrite = replace(
-        rewrite, **maps, routed=routed, prepack=prepack, skipped=(), blob_weights=None,
+        rewrite,
+        **maps,
+        routed=routed,
+        prepack=prepack,
+        skipped=(),
+        blob_weights=None,
     )
     # Exercise the same normal matcher on the actual extracted SSA. It must
     # retain the complete statements; only the public region ABI is new.
@@ -127,7 +130,10 @@ def extract_connected_spatial_region(module, rewrite, source_pair, *, symbol="fo
         raise ValueError("spatial source region has no original function owner")
     positions = {op: index for index, op in enumerate(current)}
     return ConnectedSpatialRegion(
-        region, selected_rewrite, params, outputs,
+        region,
+        selected_rewrite,
+        params,
+        outputs,
         {
             "schema": "connected_spatial_source_region_v1",
             "source_host_sha256": hashlib.sha256(before.encode()).hexdigest(),
@@ -221,15 +227,19 @@ def public_spatial_source_graph(entry, binding):
             for s, bs in zip(symbols, buffers, strict=True)
         },
     )
-    return module, rewrite, {
-        "schema": "public_spatial_source_graph_v1",
-        "origin": "two explicitly supplied public component programs; not a captured model",
-        "source_entry_sha256": hashlib.sha256(json.dumps(entry, sort_keys=True).encode()).hexdigest(),
-        "component_interface_sha256": [hashlib.sha256(i.encode()).hexdigest() for i in interfaces],
-        "source_pair": symbols,
-        "observed_outputs": [capsule["operation"]["attributes"]["out"]],
-        "target_execution": False,
-    }
+    return (
+        module,
+        rewrite,
+        {
+            "schema": "public_spatial_source_graph_v1",
+            "origin": "two explicitly supplied public component programs; not a captured model",
+            "source_entry_sha256": hashlib.sha256(json.dumps(entry, sort_keys=True).encode()).hexdigest(),
+            "component_interface_sha256": [hashlib.sha256(i.encode()).hexdigest() for i in interfaces],
+            "source_pair": symbols,
+            "observed_outputs": [capsule["operation"]["attributes"]["out"]],
+            "target_execution": False,
+        },
+    )
 
 
 def spatial_pair_interface(entry, binder, *, source_reference):

@@ -21,28 +21,36 @@ def _constant(value):
     if not isinstance(owner, Operation) or not _plain(owner) or owner.successors or len(owner.results) != 1:
         return None
     if (
-        isinstance(owner, arith.ConstantOp) and isinstance(owner.value, builtin.IntegerAttr)
-        and set(owner.properties) == {"value"} and not owner.regions
+        isinstance(owner, arith.ConstantOp)
+        and isinstance(owner.value, builtin.IntegerAttr)
+        and set(owner.properties) == {"value"}
+        and not owner.regions
         and owner.value.type == value.type
     ):
         return owner.value
     if (
-        owner.name == "tensor.splat" and len(owner.operands) == 1
-        and not owner.properties and not owner.regions
+        owner.name == "tensor.splat"
+        and len(owner.operands) == 1
+        and not owner.properties
+        and not owner.regions
         and isinstance(value.type, builtin.TensorType)
         and value.type.element_type == owner.operands[0].type
     ):
         return _constant(owner.operands[0])
     if (
-        owner.name == "linalg.fill" and len(owner.inputs) == len(owner.outputs) == 1
+        owner.name == "linalg.fill"
+        and len(owner.inputs) == len(owner.outputs) == 1
         and set(owner.properties) <= {"operandSegmentSizes"}
-        and len(owner.regions) == 1 and len(owner.body.blocks) == 1
+        and len(owner.regions) == 1
+        and len(owner.body.blocks) == 1
         and len(owner.body.block.args) == 2
     ):
         body = tuple(owner.body.block.ops)
         if (
-            len(body) == 1 and body[0].name == "linalg.yield"
-            and not body[0].properties and _plain(body[0])
+            len(body) == 1
+            and body[0].name == "linalg.yield"
+            and not body[0].properties
+            and _plain(body[0])
             and tuple(body[0].operands) == (owner.body.block.args[0],)
         ):
             return _constant(owner.inputs[0])
@@ -130,8 +138,11 @@ def match_integer_epilogue(producer, readout, *, max_stages=8, max_scalar_operat
                     del cloned.attributes[key]
             block.add_op(cloned)
         if (
-            not body or body[-1].name != "linalg.yield" or len(body[-1].operands) != 1
-            or not _plain(body[-1]) or body[-1].properties
+            not body
+            or body[-1].name != "linalg.yield"
+            or len(body[-1].operands) != 1
+            or not _plain(body[-1])
+            or body[-1].properties
         ):
             return None
         scalar = arguments.get(body[-1].operands[0])
@@ -141,9 +152,18 @@ def match_integer_epilogue(producer, readout, *, max_stages=8, max_scalar_operat
         current = operation.results[0]
         if current.type.element_type == builtin.i8:
             block.add_op(func.ReturnOp(scalar))
-            actual = ir_text(builtin.ModuleOp([func.FuncOp.from_region(
-                "forward", [builtin.i32], [builtin.i8], Region(block),
-            )]))
+            actual = ir_text(
+                builtin.ModuleOp(
+                    [
+                        func.FuncOp.from_region(
+                            "forward",
+                            [builtin.i32],
+                            [builtin.i8],
+                            Region(block),
+                        )
+                    ]
+                )
+            )
             expected = parse_mlir_text(readout.scalar_ir)
             function = next(op for op in expected.body.block.ops if isinstance(op, func.FuncOp))
             function.properties["sym_name"] = builtin.StringAttr("forward")

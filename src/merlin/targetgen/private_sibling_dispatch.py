@@ -11,8 +11,11 @@ def composition_members(composition, *, assigned):
     if isinstance(composition, dict) and composition.get("schema") == "merlin.original_head_source_composition.v1":
         members, physical = [], set()
         for component in composition["components"]:
-            rows = [r for r in assigned if r["symbol"] == component["physical_symbol"]
-                    and r["group"] == component["physical_group"]]
+            rows = [
+                r
+                for r in assigned
+                if r["symbol"] == component["physical_symbol"] and r["group"] == component["physical_group"]
+            ]
             if component.get("schema") == "merlin.original_sibling_source_composition.v1":
                 members.extend(composition_members(component, assigned=rows))
                 if component["physical_group"] in physical:
@@ -20,50 +23,69 @@ def composition_members(composition, *, assigned):
                 physical.add(component["physical_group"])
                 continue
             h = component["matrix_invocations"]
-            if (len(rows) != 1 or rows[0]["group"] != component["physical_group"]
-                    or type(h) is not int or h < 2 or len(component["members"]) != h
-                    or [m["head"] for m in component["members"]] != list(range(h))
-                    or component["physical_group"] in physical):
+            if (
+                len(rows) != 1
+                or rows[0]["group"] != component["physical_group"]
+                or type(h) is not int
+                or h < 2
+                or len(component["members"]) != h
+                or [m["head"] for m in component["members"]] != list(range(h))
+                or component["physical_group"] in physical
+            ):
                 raise ValueError("head dispatch lost original per-slice invocation custody")
             members.extend(component["members"])
             physical.add(component["physical_group"])
         ordinary = composition["ordinary_joined_groups"]
         indices = [r["source_group"] for r in members]
-        if (len(set(indices)) != len(indices) or set(indices).intersection(ordinary.values())
-                or set(physical).intersection(ordinary)
-                or set(physical) | set(ordinary) != {r["group"] for r in assigned}
-                or not set(composition["required_source_groups"]) <= set(indices) | set(ordinary.values())):
+        if (
+            len(set(indices)) != len(indices)
+            or set(indices).intersection(ordinary.values())
+            or set(physical).intersection(ordinary)
+            or set(physical) | set(ordinary) != {r["group"] for r in assigned}
+            or not set(composition["required_source_groups"]) <= set(indices) | set(ordinary.values())
+        ):
             raise ValueError("head dispatch omits or duplicates original source work")
         return members
     if isinstance(composition, dict) and composition.get("schema") == "merlin.original_sibling_source_components.v1":
         members, physical = [], set()
         for component in composition["components"]:
-            rows = [r for r in assigned if r["symbol"] == component["physical_symbol"]
-                    and r["group"] == component["physical_group"]]
+            rows = [
+                r
+                for r in assigned
+                if r["symbol"] == component["physical_symbol"] and r["group"] == component["physical_group"]
+            ]
             members.extend(composition_members(component, assigned=rows))
             if component["physical_group"] in physical:
                 raise ValueError("component dispatch repeats physical work")
             physical.add(component["physical_group"])
         ordinary = composition["ordinary_joined_groups"]
         indices = [r["source_group"] for r in members]
-        if (len(set(indices)) != len(indices) or set(indices).intersection(ordinary.values())
-                or set(physical).intersection(ordinary)
-                or set(physical) | set(ordinary) != {r["group"] for r in assigned}
-                or not set(composition["required_source_groups"]) <= set(indices) | set(ordinary.values())):
+        if (
+            len(set(indices)) != len(indices)
+            or set(indices).intersection(ordinary.values())
+            or set(physical).intersection(ordinary)
+            or set(physical) | set(ordinary) != {r["group"] for r in assigned}
+            or not set(composition["required_source_groups"]) <= set(indices) | set(ordinary.values())
+        ):
             raise ValueError("component dispatch omits or duplicates original source work")
         return members
-    if (not isinstance(composition, dict)
-            or composition.get("schema") != "merlin.original_sibling_source_composition.v1"
-            or composition.get("original_source_denominator_unchanged") is not True
-            or len(assigned) != 1
-            or assigned[0].get("symbol") != composition.get("physical_symbol")
-            or assigned[0].get("group") != composition.get("physical_group")):
+    if (
+        not isinstance(composition, dict)
+        or composition.get("schema") != "merlin.original_sibling_source_composition.v1"
+        or composition.get("original_source_denominator_unchanged") is not True
+        or len(assigned) != 1
+        or assigned[0].get("symbol") != composition.get("physical_symbol")
+        or assigned[0].get("group") != composition.get("physical_group")
+    ):
         raise ValueError("sibling dispatch lacks its independently rederived source composition")
     members = composition.get("members")
-    if (not isinstance(members, list) or len(members) < 2
-            or len({row["source_group"] for row in members}) != len(members)
-            or len({row["source_region_id"] for row in members}) != len(members)
-            or set(composition["required_source_groups"]) - {row["source_group"] for row in members}):
+    if (
+        not isinstance(members, list)
+        or len(members) < 2
+        or len({row["source_group"] for row in members}) != len(members)
+        or len({row["source_region_id"] for row in members}) != len(members)
+        or set(composition["required_source_groups"]) - {row["source_group"] for row in members}
+    ):
         raise ValueError("sibling dispatch omits or duplicates original source members")
     return members
 
@@ -78,9 +100,13 @@ def attributed_commands(commands, members):
         for operation in operations:
             region = operation.attributes.get("prov.region_id")
             nodes = operation.attributes.get("prov.source_node_ids")
-            if (type(region) is not StringAttr or region.data not in expected
-                    or type(nodes) is not ArrayAttr or any(type(node) is not StringAttr for node in nodes)
-                    or tuple(node.data for node in nodes) != expected[region.data]):
+            if (
+                type(region) is not StringAttr
+                or region.data not in expected
+                or type(nodes) is not ArrayAttr
+                or any(type(node) is not StringAttr for node in nodes)
+                or tuple(node.data for node in nodes) != expected[region.data]
+            ):
                 raise ValueError("actual sibling work lacks its complete original member identity")
             by_region[region.data].setdefault(family, set()).add(operation)
     return by_region
@@ -96,8 +122,11 @@ def mandatory_member_commands(function, commands, obligations, members, *, manda
     completed = []
     for obligation in obligations:
         member = by_group.get(obligation["source_group"])
-        if (member is None or member["source_region_id"] != obligation["region_id"]
-                or obligation["semantic_family"] != "contraction"):
+        if (
+            member is None
+            or member["source_region_id"] != obligation["region_id"]
+            or obligation["semantic_family"] != "contraction"
+        ):
             raise ValueError("sibling raw core cannot cover another original supporting source operation")
         # One member is still a separate original obligation. It may not use
         # work attributed to another member, even if only one root is required.
@@ -142,12 +171,16 @@ def borrowed_host_chain(module, function, composition, *, mandatory):
                 continue
             callee = symbol(call)
             if callee == leaf:
-                if (len(call.operands) != arity or call.results
-                        or any(str(v.type) != "!llvm.ptr" for v in call.operands)):
+                if (
+                    len(call.operands) != arity
+                    or call.results
+                    or any(str(v.type) != "!llvm.ptr" for v in call.operands)
+                ):
                     raise ValueError("borrowed host call lost the complete pointer-only multi-output ABI")
                 branches = [[name, leaf]]
-            elif callee in definitions and any(block.ops for region in definitions[callee].regions
-                                               for block in region.blocks):
+            elif callee in definitions and any(
+                block.ops for region in definitions[callee].regions for block in region.blocks
+            ):
                 branches = visit(defined_function(module, callee), (*stack, name))
                 branches = [[name, *path] for path in branches]
             else:
@@ -177,8 +210,12 @@ def borrowed_host_chain(module, function, composition, *, mandatory):
     required = [composition["host_entry_symbol"], composition["borrowed_entry_symbol"]]
     if [name for name in path if name in required] != required:
         raise ValueError("actual host bypasses the original source-owned sibling wrappers")
-    return {"chain": path, "leaf": leaf, "descriptor_arguments": arity,
-            "mandatory_call_roster": {composition["physical_symbol"]: 1}}
+    return {
+        "chain": path,
+        "leaf": leaf,
+        "descriptor_arguments": arity,
+        "mandatory_call_roster": {composition["physical_symbol"]: 1},
+    }
 
 
 def verify_descriptor_bridge(entry, composition, *, built, target, collection=None):
@@ -196,10 +233,12 @@ def verify_descriptor_bridge(entry, composition, *, built, target, collection=No
     from .owned_host_model_execution import _pinned
 
     custody = (entry.get("custody") or {}).get("sibling_source")
-    if (not isinstance(custody, dict)
-            or custody.get("source_ir_sha256") != composition["source_ir_sha256"]
-            or custody.get("interface_sha256") != composition["interface_sha256"]
-            or custody.get("original_epilogues_and_all_live_outputs_preserved") is not True):
+    if (
+        not isinstance(custody, dict)
+        or custody.get("source_ir_sha256") != composition["source_ir_sha256"]
+        or custody.get("interface_sha256") != composition["interface_sha256"]
+        or custody.get("original_epilogues_and_all_live_outputs_preserved") is not True
+    ):
         raise ValueError("sibling codegen custody lost the original owner source and interface")
     BorrowedBufferEffects(**custody["borrowed_effects"])
     bridge = custody.get("descriptor_bridge")
@@ -210,9 +249,17 @@ def verify_descriptor_bridge(entry, composition, *, built, target, collection=No
     # SHA remains authoritative; the native payload reader additionally wants
     # a size, as at dispatch's existing final-ELF boundary.
     sidecar_pin = built["device_sidecar"]
-    sidecar = json.loads(_pinned({"sidecar": {
-        **sidecar_pin, "size_bytes": Path(sidecar_pin["path"]).stat().st_size,
-    }}, "sidecar").read_text())
+    sidecar = json.loads(
+        _pinned(
+            {
+                "sidecar": {
+                    **sidecar_pin,
+                    "size_bytes": Path(sidecar_pin["path"]).stat().st_size,
+                }
+            },
+            "sidecar",
+        ).read_text()
+    )
     symbol = composition["physical_symbol"]
     interface = sidecar["expected_interfaces"][symbol]
     from hashlib import sha256
@@ -224,7 +271,8 @@ def verify_descriptor_bridge(entry, composition, *, built, target, collection=No
         raise ValueError("sibling descriptor bridge lost logical buffer ABI: " + reason)
     call = sidecar["call_buffers"][symbol]
     if collection is not None and collection.get("schema") in {
-        "merlin.original_sibling_source_components.v1", "merlin.original_head_source_composition.v1",
+        "merlin.original_sibling_source_components.v1",
+        "merlin.original_head_source_composition.v1",
     }:
         artifacts = built["device_artifacts"]
         if artifacts.get("target") != target or not isinstance(artifacts.get("kernels"), dict):
@@ -237,12 +285,15 @@ def verify_descriptor_bridge(entry, composition, *, built, target, collection=No
             actual_buffers, reason = logical_buffers(iface.read_text())
             if actual_buffers is None:
                 raise ValueError("component shim lost actual ordinary interface: " + reason)
-            if (name in sidecar["expected_interfaces"]
-                    and iface.read_text() != sidecar["expected_interfaces"][name]["mlir"]):
+            if (
+                name in sidecar["expected_interfaces"]
+                and iface.read_text() != sidecar["expected_interfaces"][name]["mlir"]
+            ):
                 raise ValueError("component actual interface differs from source-bound interface")
             symbols[name] = actual_buffers, sidecar["call_buffers"][name]
-        unit = emit_logical_translation_unit(target, symbols,
-                                             kernel_symbol_for=lambda name: kernels[name]["kernel_symbol"])
+        unit = emit_logical_translation_unit(
+            target, symbols, kernel_symbol_for=lambda name: kernels[name]["kernel_symbol"]
+        )
         expected = unit.text
         for c in collection["components"]:
             if c.get("schema") != "merlin.original_sibling_source_composition.v1":
@@ -250,46 +301,63 @@ def verify_descriptor_bridge(entry, composition, *, built, target, collection=No
             member_call = sidecar["call_buffers"][c["physical_symbol"]]
             outputs = tuple(i for i, r in enumerate(member_call) if r["role"].startswith("out_"))
             expected += "\n" + borrowed_bridge_source(
-                c["physical_symbol"], c["borrowed_entry_symbol"], member_call, outputs)
+                c["physical_symbol"], c["borrowed_entry_symbol"], member_call, outputs
+            )
         correct_symbols = set(symbols) == set(unit.symbols)
     else:
-        unit = emit_logical_translation_unit(target, {symbol: (buffers, call)},
-                                             kernel_symbol_for=lambda _: entry["kernel_symbol"])
+        unit = emit_logical_translation_unit(
+            target, {symbol: (buffers, call)}, kernel_symbol_for=lambda _: entry["kernel_symbol"]
+        )
         output_positions = tuple(i for i, row in enumerate(call) if row["role"].startswith("out_"))
-        expected = unit.text + "\n" + borrowed_bridge_source(
-            symbol, composition["borrowed_entry_symbol"], call, output_positions)
+        expected = (
+            unit.text
+            + "\n"
+            + borrowed_bridge_source(symbol, composition["borrowed_entry_symbol"], call, output_positions)
+        )
         correct_symbols = unit.symbols == (symbol,)
     if not correct_symbols or c_source.read_text() != expected:
         raise ValueError("actual sibling descriptor bridge differs from stock complete ABI transport")
     observed = invocation_record.verify(_pinned(bridge, "compilation"))
+
     def pin(path):
         return {key: _digest(path)[key] for key in ("path", "sha256")}
-    if (observed.get("stage") != "device_shim_compilation"
-            or observed.get("inputs") != [pin(c_source)] or observed.get("outputs") != [pin(obj)]
-            or Path(observed["executable"]["path"]) != toolchain.clang().resolve()
-            or observed["argv"][-4:] != ["-c", str(c_source), "-o", str(obj)]):
+
+    if (
+        observed.get("stage") != "device_shim_compilation"
+        or observed.get("inputs") != [pin(c_source)]
+        or observed.get("outputs") != [pin(obj)]
+        or Path(observed["executable"]["path"]) != toolchain.clang().resolve()
+        or observed["argv"][-4:] != ["-c", str(c_source), "-o", str(obj)]
+    ):
         raise ValueError("sibling descriptor bridge did not use the original observed C compiler boundary")
     recipe = built["compilation_recipe"]
-    compilation = verify_completed_recipe(Path(recipe["path"]), executable=Path(built["elf"]),
-                                          expected_recipe_sha256=recipe["sha256"])
+    compilation = verify_completed_recipe(
+        Path(recipe["path"]), executable=Path(built["elf"]), expected_recipe_sha256=recipe["sha256"]
+    )
     linked = {(row["path"], row["sha256"]) for row in compilation["commands"][-1]["inputs"]}
     if (str(obj), _digest(obj)["sha256"]) not in linked:
         raise ValueError("sibling descriptor bridge object is not an actual final ELF link input")
-    return {"source": _digest(c_source), "object": _digest(obj),
-            "compilation": _digest(_pinned(bridge, "compilation")),
-            "scope": "stock pointer/identity-descriptor transport, observed compiler, actual final link input"}
+    return {
+        "source": _digest(c_source),
+        "object": _digest(obj),
+        "compilation": _digest(_pinned(bridge, "compilation")),
+        "scope": "stock pointer/identity-descriptor transport, observed compiler, actual final link input",
+    }
 
 
 def component_for_symbol(composition, symbol, *, group=None):
     if composition is None:
         return None
-    if composition.get("schema") in {"merlin.original_sibling_source_components.v1",
-                                     "merlin.original_head_source_composition.v1"}:
+    if composition.get("schema") in {
+        "merlin.original_sibling_source_components.v1",
+        "merlin.original_head_source_composition.v1",
+    }:
         components = composition["components"]
     else:
         components = [composition]
-    matches = [c for c in components if c["physical_symbol"] == symbol
-               and (group is None or c["physical_group"] == group)]
+    matches = [
+        c for c in components if c["physical_symbol"] == symbol and (group is None or c["physical_group"] == group)
+    ]
     if len(matches) > 1:
         raise ValueError("shared physical symbol needs an unambiguous original call group")
     return matches[0] if matches else None

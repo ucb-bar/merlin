@@ -184,12 +184,13 @@ def first_fit_buffer_assignment(
         if item.name in placed:
             continue
         bank = storage[item.storage]
-        blocked = [(r.start, r.start + r.extent) for r in reservations
-                   if storage[r.storage].backing == bank.backing]
+        blocked = [(r.start, r.start + r.extent) for r in reservations if storage[r.storage].backing == bank.backing]
         for other in root_items:
             a, b = life[item.name], life[other.name]
-            if other.name in placed and storage[other.storage].backing == bank.backing and (
-                a[2] or b[2] or a[0] <= b[1] and b[0] <= a[1]
+            if (
+                other.name in placed
+                and storage[other.storage].backing == bank.backing
+                and (a[2] or b[2] or a[0] <= b[1] and b[0] <= a[1])
             ):
                 blocked.append((placed[other.name], placed[other.name] + other.extent))
         alignment = lcm(bank.alignment, item.alignment)

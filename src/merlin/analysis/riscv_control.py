@@ -63,7 +63,14 @@ def finite_control_counts(
     """
     recorder = _StreamRecorder(max_recorded) if record_commands else None
     result = _finite_control_counts(
-        rows, custom_opcode, max_steps, max_commands, entry_state, call_summaries, recorder, assume_returning_calls,
+        rows,
+        custom_opcode,
+        max_steps,
+        max_commands,
+        entry_state,
+        call_summaries,
+        recorder,
+        assume_returning_calls,
         {} if symbolic_returns else None,
     )
     if result["status"] == "proved":
@@ -87,6 +94,7 @@ def finite_control_counts(
         )
     return result
 
+
 def _issue_operand(bits):
     """An issue-time register: its exact integer, else its bounded symbolic record."""
     if bits.exact is not None:
@@ -100,8 +108,16 @@ def _issue_operand(bits):
         record.update(_window_record(bits.window))
     return record
 
+
 def _finite_control_counts(
-    rows, custom_opcode, max_steps, max_commands, entry_state, call_summaries, recorder=None, assume_calls=False,
+    rows,
+    custom_opcode,
+    max_steps,
+    max_commands,
+    entry_state,
+    call_summaries,
+    recorder=None,
+    assume_calls=False,
     symbols=None,
 ):
     if not rows:

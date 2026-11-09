@@ -34,49 +34,70 @@ def recognize_bf16_fp8_truncation(op) -> tuple[object, object, str, str, int]:
         raise InvalidLinalgPattern("BF16-to-FP8 truncation needs one input and one result")
     if op.successors or set(op.properties) != {"indexing_maps", "iterator_types", "operandSegmentSizes"}:
         raise InvalidLinalgPattern("BF16-to-FP8 truncation has an unknown property or successor")
-    if any(not key.startswith("prov.") and key not in {
-        "merlin.numeric_semantics", "merlin.input_domain", "merlin.scale_code"
-    } for key in op.attributes):
+    if any(
+        not key.startswith("prov.")
+        and key not in {"merlin.numeric_semantics", "merlin.input_domain", "merlin.scale_code"}
+        for key in op.attributes
+    ):
         raise InvalidLinalgPattern("BF16-to-FP8 truncation has an unknown attribute")
     policy = op.attributes.get("merlin.numeric_semantics")
     domain = op.attributes.get("merlin.input_domain")
     scale = op.attributes.get("merlin.scale_code")
-    if (not isinstance(policy, StringAttr) or not policy.data
-        or not isinstance(domain, StringAttr) or not domain.data
-        or not isinstance(scale, IntegerAttr) or str(scale.type) != "i32"
-        or not 0 <= scale.value.data <= 255):
+    if (
+        not isinstance(policy, StringAttr)
+        or not policy.data
+        or not isinstance(domain, StringAttr)
+        or not domain.data
+        or not isinstance(scale, IntegerAttr)
+        or str(scale.type) != "i32"
+        or not 0 <= scale.value.data <= 255
+    ):
         raise InvalidLinalgPattern("BF16-to-FP8 truncation needs policy, domain, and scale code")
     segments = op.properties["operandSegmentSizes"]
-    if (not isinstance(segments, DenseArrayBase) or str(segments.elt_type) != "i32"
-        or tuple(segments.iter_values()) != (1, 1)):
+    if (
+        not isinstance(segments, DenseArrayBase)
+        or str(segments.elt_type) != "i32"
+        or tuple(segments.iter_values()) != (1, 1)
+    ):
         raise InvalidLinalgPattern("BF16-to-FP8 truncation has inconsistent operand segments")
     source, destination, result = (*op.inputs, *op.outputs, *op.results)
-    if any(not isinstance(value.type, TensorType) or not isinstance(value.type.encoding, NoneAttr)
-           for value in (source, destination, result)):
+    if any(
+        not isinstance(value.type, TensorType) or not isinstance(value.type.encoding, NoneAttr)
+        for value in (source, destination, result)
+    ):
         raise InvalidLinalgPattern("BF16-to-FP8 truncation needs default-encoded tensors")
-    if (not isinstance(source.type.element_type, BFloat16Type)
-        or any(not isinstance(value.type.element_type, Float8E4M3FNType)
-               for value in (destination, result))):
+    if not isinstance(source.type.element_type, BFloat16Type) or any(
+        not isinstance(value.type.element_type, Float8E4M3FNType) for value in (destination, result)
+    ):
         raise InvalidLinalgPattern("BF16-to-FP8 truncation has wrong element types")
     shapes = tuple(tuple(value.type.get_shape()) for value in (source, destination, result))
-    if len(shapes[0]) != 2 or any(shape != shapes[0] for shape in shapes) or (
-        any(type(dimension) is not int or dimension <= 0 for dimension in shapes[0])
+    if (
+        len(shapes[0]) != 2
+        or any(shape != shapes[0] for shape in shapes)
+        or (any(type(dimension) is not int or dimension <= 0 for dimension in shapes[0]))
     ):
         raise InvalidLinalgPattern("BF16-to-FP8 truncation needs one positive static rank-two shape")
     d0, d1 = AffineDimExpr(0), AffineDimExpr(1)
     identity = AffineMap(2, 0, (d0, d1))
-    if (len(op.get_indexing_maps()) != 2 or any(
-        not isinstance(index_map, AffineMapAttr) or index_map.data != identity
-        for index_map in op.get_indexing_maps()
-    ) or not isinstance(op.iterator_types, ArrayAttr) or any(
-        not isinstance(iterator, IteratorTypeAttr) for iterator in op.iterator_types
-    ) or tuple(iterator.data for iterator in op.iterator_types) != (IteratorType.PARALLEL,) * 2):
+    if (
+        len(op.get_indexing_maps()) != 2
+        or any(
+            not isinstance(index_map, AffineMapAttr) or index_map.data != identity
+            for index_map in op.get_indexing_maps()
+        )
+        or not isinstance(op.iterator_types, ArrayAttr)
+        or any(not isinstance(iterator, IteratorTypeAttr) for iterator in op.iterator_types)
+        or tuple(iterator.data for iterator in op.iterator_types) != (IteratorType.PARALLEL,) * 2
+    ):
         raise InvalidLinalgPattern("BF16-to-FP8 truncation needs parallel identity maps")
     if len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
         raise InvalidLinalgPattern("BF16-to-FP8 truncation needs one scalar body")
     block = op.regions[0].block
-    if (len(block.args) != 2 or not isinstance(block.args[0].type, BFloat16Type)
-        or not isinstance(block.args[1].type, Float8E4M3FNType)):
+    if (
+        len(block.args) != 2
+        or not isinstance(block.args[0].type, BFloat16Type)
+        or not isinstance(block.args[1].type, Float8E4M3FNType)
+    ):
         raise InvalidLinalgPattern("BF16-to-FP8 scalar block arguments have wrong types")
     body = tuple(block.ops)
     if scale.value.data == 127:
@@ -91,20 +112,28 @@ def recognize_bf16_fp8_truncation(op) -> tuple[object, object, str, str, int]:
         factor = constant.properties.get("value")
         expected = 2.0 ** (127 - scale.value.data)
         if (
-            constant.attributes or set(constant.properties) != {"value"}
-            or not isinstance(factor, FloatAttr) or not isinstance(factor.type, BFloat16Type)
+            constant.attributes
+            or set(constant.properties) != {"value"}
+            or not isinstance(factor, FloatAttr)
+            or not isinstance(factor.type, BFloat16Type)
             or factor.value.data != expected
-            or multiply.attributes or set(multiply.properties) != {"fastmath"}
+            or multiply.attributes
+            or set(multiply.properties) != {"fastmath"}
             or multiply.fastmath.data
             or tuple(multiply.operands) != (block.args[0], constant.results[0])
             or not isinstance(multiply.results[0].type, BFloat16Type)
         ):
             raise InvalidLinalgPattern("scaled BF16-to-FP8 body has a wrong inverse scale or multiply")
         cast_input = multiply.results[0]
-    if (cast.attributes or cast.properties or tuple(cast.operands) != (cast_input,)
+    if (
+        cast.attributes
+        or cast.properties
+        or tuple(cast.operands) != (cast_input,)
         or not isinstance(cast.results[0].type, Float8E4M3FNType)
-        or yield_op.attributes or yield_op.properties
-        or tuple(yield_op.operands) != tuple(cast.results)):
+        or yield_op.attributes
+        or yield_op.properties
+        or tuple(yield_op.operands) != tuple(cast.results)
+    ):
         raise InvalidLinalgPattern("BF16-to-FP8 body does not yield the input cast")
     try:
         op.verify()

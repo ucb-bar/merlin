@@ -164,15 +164,25 @@ def select_and_allocate(
             reason = f"source f32 matmul {unresolved.id} needs an explicit qualified numerical transform"
         elif unresolved.op == "source_f32_reduce_add_unqualified":
             reason = (
-                f"source f32 reduction {unresolved.id} needs a qualified numerical-order policy "
-                "or compiled host route"
+                f"source f32 reduction {unresolved.id} needs a qualified numerical-order policy or compiled host route"
             )
         else:
             reason = f"source operation {unresolved.id} needs a qualified numerical transform or compiled host route"
-        return finish(SearchResult(
-            "unsupported_semantics", request.digest(), None, None, None,
-            0, 0, 0, None, None, reason,
-        ))
+        return finish(
+            SearchResult(
+                "unsupported_semantics",
+                request.digest(),
+                None,
+                None,
+                None,
+                0,
+                0,
+                0,
+                None,
+                None,
+                reason,
+            )
+        )
 
     deadline = monotonic() + limits.wall_timeout_s
     program = generate_rules(request, descriptors, views)
@@ -258,7 +268,7 @@ def select_and_allocate(
         # Phase 1 chooses the first checked candidate under increasing work
         # bounds; it does not minimize instruction count. Trying every integer
         # between geometric stages repeats expensive incomplete extractions.
-        for budget in ((candidate_limit,) if candidate_limit > extracted_budget else ()):
+        for budget in (candidate_limit,) if candidate_limit > extracted_budget else ():
             iterator = iter(
                 enumerate_candidates(
                     graph,
@@ -360,9 +370,17 @@ def select_and_allocate(
                             return timed_out("native search deadline expired during final selection replay")
                         selected = finish(
                             SearchResult(
-                                "selected", identity, candidate, candidate_graph, result,
-                                candidate_attempts, ordering_attempts, rejected_allocation,
-                                graph, program, pruned_orders=pruned_orders,
+                                "selected",
+                                identity,
+                                candidate,
+                                candidate_graph,
+                                result,
+                                candidate_attempts,
+                                ordering_attempts,
+                                rejected_allocation,
+                                graph,
+                                program,
+                                pruned_orders=pruned_orders,
                                 check_fingerprint=checked.fingerprint,
                             )
                         )
@@ -381,16 +399,28 @@ def select_and_allocate(
                             if monotonic() >= deadline:
                                 return timed_out("native search deadline expired during target materialization")
                             replay = check_selection(
-                                request, descriptors, program, graph, candidate,
-                                candidate_graph, result, banks, views=views, fixed_inputs=fixed_inputs,
-                                reservations=reservations, fixed_outputs=fixed_outputs,
+                                request,
+                                descriptors,
+                                program,
+                                graph,
+                                candidate,
+                                candidate_graph,
+                                result,
+                                banks,
+                                views=views,
+                                fixed_inputs=fixed_inputs,
+                                reservations=reservations,
+                                fixed_outputs=fixed_outputs,
                             )
                             if not replay.valid or replay.fingerprint != checked.fingerprint:
-                                return finish(replace(
-                                    selected, status="modeling_failure",
-                                    reason="selected state changed during target materialization: "
-                                    + (replay.reason or "check fingerprint differs"),
-                                ))
+                                return finish(
+                                    replace(
+                                        selected,
+                                        status="modeling_failure",
+                                        reason="selected state changed during target materialization: "
+                                        + (replay.reason or "check fingerprint differs"),
+                                    )
+                                )
                             if not decision.accepted:
                                 rejected_materialization += 1
                                 materialization_reason = materialization_reason or decision.reason
@@ -400,25 +430,40 @@ def select_and_allocate(
                             if decision.realized_allocation is not None:
                                 realized = decision.realized_allocation
                                 if realized.order != result.order or realized.issue_times != result.issue_times:
-                                    return finish(replace(
-                                        selected, status="modeling_failure",
-                                        reason="target materialization changed the selected instruction "
-                                        "order or schedule",
-                                    ))
+                                    return finish(
+                                        replace(
+                                            selected,
+                                            status="modeling_failure",
+                                            reason="target materialization changed the selected instruction "
+                                            "order or schedule",
+                                        )
+                                    )
                                 realized_check = check_selection(
-                                    request, descriptors, program, graph, candidate,
-                                    candidate_graph, realized, banks, views=views,
-                                    fixed_inputs=fixed_inputs, reservations=reservations,
+                                    request,
+                                    descriptors,
+                                    program,
+                                    graph,
+                                    candidate,
+                                    candidate_graph,
+                                    realized,
+                                    banks,
+                                    views=views,
+                                    fixed_inputs=fixed_inputs,
+                                    reservations=reservations,
                                     fixed_outputs=fixed_outputs,
                                 )
                                 if not realized_check.valid:
-                                    return finish(replace(
-                                        selected, status="modeling_failure",
-                                        reason="target materialization has an invalid physical assignment: "
-                                        + realized_check.reason,
-                                    ))
+                                    return finish(
+                                        replace(
+                                            selected,
+                                            status="modeling_failure",
+                                            reason="target materialization has an invalid physical assignment: "
+                                            + realized_check.reason,
+                                        )
+                                    )
                                 selected = replace(
-                                    selected, allocation=realized,
+                                    selected,
+                                    allocation=realized,
                                     check_fingerprint=realized_check.fingerprint,
                                 )
                         return finish(selected)

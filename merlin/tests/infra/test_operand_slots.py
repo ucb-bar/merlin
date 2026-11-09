@@ -13,17 +13,19 @@ from xdsl.dialects.builtin import ModuleOp, i64
 from xdsl.printer import Printer
 
 from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
-from merlin.compiler.schedule.operand_slots import PipelineOperand
-from merlin.compiler.schedule.operand_slots import allocate_pipeline_operand_slots
-from merlin.compiler.schedule.operand_slots import verify_pipeline_operand_slots
-from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.program_limits import EncodedAccess
-from merlin.compiler.schedule.scf_commands import emit_scf_commands
-from merlin.compiler.schedule.scf_commands import materialize_scf_commands
-from merlin.compiler.schedule.temporary_storage import StorageAdapter
-from merlin.compiler.schedule.temporary_storage import StorageEffects
-from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
-from merlin.compiler.schedule.temporary_storage import TemporaryObject
+from merlin.compiler.schedule.operand_slots import (
+    PipelineOperand,
+    allocate_pipeline_operand_slots,
+    verify_pipeline_operand_slots,
+)
+from merlin.compiler.schedule.program_limits import AddressWindow, EncodedAccess
+from merlin.compiler.schedule.scf_commands import emit_scf_commands, materialize_scf_commands
+from merlin.compiler.schedule.temporary_storage import (
+    StorageAdapter,
+    StorageEffects,
+    StorageOptimizationUnavailable,
+    TemporaryObject,
+)
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, Var, evaluate, select
 from merlin.semantic_compiler.allocation_types import Reservation, StorageBank

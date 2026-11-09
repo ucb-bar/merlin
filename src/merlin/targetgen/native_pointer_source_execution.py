@@ -123,8 +123,10 @@ def execute_candidate_pointer_source(
 
         def unchanged():
             deadline.remaining()
-            if (source_tree(source, **intake_options) != binding["capsule_tree"]
-                    or source_tree(capture, **intake_options) != binding["capture_tree"]):
+            if (
+                source_tree(source, **intake_options) != binding["capsule_tree"]
+                or source_tree(capture, **intake_options) != binding["capture_tree"]
+            ):
                 raise NativeModelExecutionError(
                     "standalone pointer source/reference namespace changed during execution"
                 )
@@ -138,9 +140,9 @@ def execute_candidate_pointer_source(
             ):
                 raise NativeModelExecutionError("standalone pointer source emitted command buffer changed")
 
-        service = original._build_service_for(target, **(
-            {"source_intake_protocol": source_intake_protocol} if source_intake_protocol is not None else {}
-        ))
+        service = original._build_service_for(
+            target, **({"source_intake_protocol": source_intake_protocol} if source_intake_protocol is not None else {})
+        )
         entry = service.recipe.require_kernel_stack_frame().entry_symbol
         require_pointer_entry(
             lowered_mlir_text, entry_symbol=entry, pointer_arity=len(cb["compiler_pointer_abi"]["arguments"])
@@ -229,8 +231,9 @@ def execute_candidate_pointer_source(
         if set(actual) != expected_names:
             raise NativeModelExecutionError("standalone pointer source did not return its complete exact output roster")
         renamed = {row["source_name"]: actual[row["compiled_name"]] for row in binding["returns"]}
-        compare_outputs = (pointer_binding.compare_complete_integer_outputs
-                           if source_intake_protocol is not None else compare)
+        compare_outputs = (
+            pointer_binding.compare_complete_integer_outputs if source_intake_protocol is not None else compare
+        )
         comparison = compare_outputs(
             golden["outputs"], renamed, policy, golden_source=str(golden.get("golden_source") or "independent_capsule")
         )

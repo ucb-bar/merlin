@@ -9,12 +9,15 @@ from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 
-from merlin.sched.ir import Call, Const, Kernel, Loop, Ptr, TensorArg, Var, check_structure
-from merlin.transforms.dense_planning import DenseProblem, DenseResources, dense_blocks
-from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
-
 from merlin.compiler.schedule.blocks import Load, Preload
-from merlin.compiler.schedule.compact_dense import _digest, _edge, _emit_dense_tile_group, _emit_lhs_panel, _Group, _groups
+from merlin.compiler.schedule.compact_dense import (
+    _digest,
+    _edge,
+    _emit_dense_tile_group,
+    _emit_lhs_panel,
+    _Group,
+    _groups,
+)
 from merlin.compiler.schedule.compact_dense_group import _callback, _same_callback
 from merlin.compiler.schedule.compact_dense_group_check import _group_contract_record, _group_output_contracts
 from merlin.compiler.schedule.dense_panel_epochs import EPOCH_FLAGS, DensePanelEpochLaw
@@ -24,6 +27,9 @@ from merlin.compiler.schedule.dense_shared_rhs_check import DenseRHSReuseLaw, sh
 from merlin.compiler.schedule.library_sources import admission_point
 from merlin.compiler.schedule.schedule_ir import dense_schedule_text
 from merlin.compiler.schedule.shared_rhs_schedule_ir import make_shared_rhs_schedule_plan, read_shared_rhs_schedule_plan
+from merlin.sched.ir import Call, Const, Kernel, Loop, Ptr, TensorArg, Var, check_structure
+from merlin.transforms.dense_planning import DenseProblem, DenseResources, dense_blocks
+from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
 
 
 def _emit(problems, blocks, storages, encode_member, name, dtypes, readouts):

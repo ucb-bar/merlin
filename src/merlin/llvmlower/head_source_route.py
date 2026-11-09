@@ -23,11 +23,15 @@ class HeadBatchSourceRoute:
     shared_rhs_row_views: bool = False
 
     def record(self):
-        if (type(self.source_ir_sha256) is not str or len(self.source_ir_sha256) != 64
-                or any(c not in "0123456789abcdef" for c in self.source_ir_sha256)
-                or type(self.effects) is not BorrowedBufferEffects
-                or any(type(v) is not bool for v in
-                       (self.shared_input_siblings, self.whole_batch, self.shared_rhs_row_views))):
+        if (
+            type(self.source_ir_sha256) is not str
+            or len(self.source_ir_sha256) != 64
+            or any(c not in "0123456789abcdef" for c in self.source_ir_sha256)
+            or type(self.effects) is not BorrowedBufferEffects
+            or any(
+                type(v) is not bool for v in (self.shared_input_siblings, self.whole_batch, self.shared_rhs_row_views)
+            )
+        ):
             raise ValueError("head route needs original source identity and typed synchronous effects")
         self.effects.__post_init__()
         record = {"kind": "independent_heads", **asdict(self)}
@@ -55,9 +59,13 @@ def validate_head_member_ranges(family):
     h = family.get("batch_extent", family.get("matrix_invocations"))
     m, k, n = family["geometry_m_k_n"]
     members = family["members"]
-    if (any(type(v) is not int or v <= 0 for v in (h, m, k, n)) or h < 2
-            or type(members) not in (list, tuple) or not members
-            or [v.get("head") for v in members] != list(range(len(members)))):
+    if (
+        any(type(v) is not int or v <= 0 for v in (h, m, k, n))
+        or h < 2
+        or type(members) not in (list, tuple)
+        or not members
+        or [v.get("head") for v in members] != list(range(len(members)))
+    ):
         raise ValueError("head source has no complete original member roster")
     keys = {"projected_head", "row_start", "row_count"}
     ranged = any(keys.intersection(v) for v in members)
@@ -70,9 +78,14 @@ def validate_head_member_ranges(family):
         if not keys <= set(member):
             raise ValueError("head source has incomplete original row ranges")
         head, offset, count = (member[key] for key in ("projected_head", "row_start", "row_count"))
-        if (any(type(v) is not int for v in (head, offset, count)) or head not in rows
-                or offset < 0 or count <= 0 or offset + count > m
-                or member.get("geometry_m_k_n") != [count, k, n]):
+        if (
+            any(type(v) is not int for v in (head, offset, count))
+            or head not in rows
+            or offset < 0
+            or count <= 0
+            or offset + count > m
+            or member.get("geometry_m_k_n") != [count, k, n]
+        ):
             raise ValueError("head source changed original row range or matrix geometry")
         rows[head].append((offset, count))
     for intervals in rows.values():
@@ -126,15 +139,20 @@ def _row_head_source(module, capture):
             key = region.data, tuple(v.data for v in nodes if type(v) is builtin.StringAttr)
             if not key[0] or not key[1] or len(key[1]) != len(nodes) or key in original:
                 raise ValueError("shared RHS head members have ambiguous original source identities")
-            original[key] = {"head": head, "source_region_id": key[0], "source_node_ids": list(key[1]),
-                             "geometry_m_k_n": [group.problem.m, group.problem.k, group.problem.n]}
+            original[key] = {
+                "head": head,
+                "source_region_id": key[0],
+                "source_node_ids": list(key[1]),
+                "geometry_m_k_n": [group.problem.m, group.problem.k, group.problem.n],
+            }
     require_binding = None
     if capture is None:
         prepared, _report = hoist_repeated_pointwise(module)
     else:
         capture = Path(capture)
         prepared, _report, require_binding = _hoist_stored_repeated_pointwise(
-            module, bundle_dir=capture if capture.is_dir() else capture.parent)
+            module, bundle_dir=capture if capture.is_dir() else capture.parent
+        )
     # Construction is proportional to this actual owner, rather than capped by
     # an unrelated tiny component's operation count. Search/member bounds stay
     # fixed and unsupported families remain ordinary unmatched source.
@@ -142,9 +160,16 @@ def _row_head_source(module, capture):
     views = plan_shared_rhs_row_views(prepared, max_operations=operation_budget)
     if views is None:
         raise ValueError("source has no checked repeated RHS row-view family")
-    row_plan = plan_source_dense_row_batching(views.candidate, PipelineContext(), DenseRowBatchingBudgets(
-        max_members=64, max_batches=sum(row[1] for row in views._records), max_candidates=16384,
-        max_constructed_operations=operation_budget))
+    row_plan = plan_source_dense_row_batching(
+        views.candidate,
+        PipelineContext(),
+        DenseRowBatchingBudgets(
+            max_members=64,
+            max_batches=sum(row[1] for row in views._records),
+            max_candidates=16384,
+            max_constructed_operations=operation_budget,
+        ),
+    )
     if row_plan is None:
         raise ValueError("source repeated RHS views have no checked complete row batching")
     row_plan.revalidate()
@@ -163,16 +188,25 @@ def _row_head_source(module, capture):
         members = []
         for view, (offset, count) in sorted(batch["views"].items(), key=lambda item: item[1]):
             region, nodes = view.attributes.get("prov.region_id"), view.attributes.get("prov.source_node_ids")
-            key = (region.data, tuple(v.data for v in nodes)) if (
-                type(region) is builtin.StringAttr and type(nodes) is builtin.ArrayAttr) else None
+            key = (
+                (region.data, tuple(v.data for v in nodes))
+                if (type(region) is builtin.StringAttr and type(nodes) is builtin.ArrayAttr)
+                else None
+            )
             if key not in original or original[key]["geometry_m_k_n"] != [count, *batch["shape"][1:]]:
                 raise ValueError("row-batched head lost its checked original result ancestry")
             members.append({**original[key], "row_start": offset, "row_count": count})
         region = "shared_rhs_rows_" + _sha(json.dumps(members, sort_keys=True))
-        copied[op].attributes.update({"prov.region_id": builtin.StringAttr(region),
-            "prov.family": builtin.StringAttr("contraction"), "prov.op": builtin.StringAttr("matmul"),
-            "prov.source_node_ids": builtin.ArrayAttr(builtin.StringAttr(node)
-                for member in members for node in member["source_node_ids"])})
+        copied[op].attributes.update(
+            {
+                "prov.region_id": builtin.StringAttr(region),
+                "prov.family": builtin.StringAttr("contraction"),
+                "prov.op": builtin.StringAttr("matmul"),
+                "prov.source_node_ids": builtin.ArrayAttr(
+                    builtin.StringAttr(node) for member in members for node in member["source_node_ids"]
+                ),
+            }
+        )
         mapping[region] = members
     annotated.verify()
     states = tuple((value, _state(value)) for value in (module, prepared, annotated))
@@ -208,26 +242,48 @@ def project_heads(module, *, shared_rhs_row_views=False, capture=None):
         for head, root in enumerate(group.members):
             region = root.attributes.get("prov.region_id")
             nodes = root.attributes.get("prov.source_node_ids")
-            if (type(region) is not StringAttr or not region.data or type(nodes) is not ArrayAttr
-                    or not nodes or any(type(node) is not StringAttr for node in nodes)):
+            if (
+                type(region) is not StringAttr
+                or not region.data
+                or type(nodes) is not ArrayAttr
+                or not nodes
+                or any(type(node) is not StringAttr for node in nodes)
+            ):
                 raise ValueError("head members need complete original source provenance")
             if region.data in row_members:
                 original.extend({**member, "projected_head": head} for member in row_members[region.data])
             else:
-                original.append({"head": head, "source_region_id": region.data,
-                                 "source_node_ids": [node.data for node in nodes],
-                                 "geometry_m_k_n": [group.problem.m, group.problem.k, group.problem.n]})
+                original.append(
+                    {
+                        "head": head,
+                        "source_region_id": region.data,
+                        "source_node_ids": [node.data for node in nodes],
+                        "geometry_m_k_n": [group.problem.m, group.problem.k, group.problem.n],
+                    }
+                )
         original.sort(key=lambda member: member["head"])
         if len({r["source_region_id"] for r in original}) != len(original):
             raise ValueError("head members have ambiguous original source identities")
         region = "independent_heads_" + _sha(json.dumps(original, sort_keys=True))
         root = copied[batch]
-        root.attributes.update({"prov.region_id": StringAttr(region), "prov.family": StringAttr("contraction"),
-                                "prov.op": StringAttr("matmul"), "prov.source_node_ids": ArrayAttr(
-                                    StringAttr(node) for row in original for node in row["source_node_ids"])})
-        rows.append({"projected_region_id": region, "members": original,
-                     "batch_extent": group.problem.products,
-                     "geometry_m_k_n": [group.problem.m, group.problem.k, group.problem.n]})
+        root.attributes.update(
+            {
+                "prov.region_id": StringAttr(region),
+                "prov.family": StringAttr("contraction"),
+                "prov.op": StringAttr("matmul"),
+                "prov.source_node_ids": ArrayAttr(
+                    StringAttr(node) for row in original for node in row["source_node_ids"]
+                ),
+            }
+        )
+        rows.append(
+            {
+                "projected_region_id": region,
+                "members": original,
+                "batch_extent": group.problem.products,
+                "geometry_m_k_n": [group.problem.m, group.problem.k, group.problem.n],
+            }
+        )
         validate_head_member_ranges(rows[-1])
     fold_complete_matrix_slice_concats(projected)
     projected.verify()
@@ -256,9 +312,15 @@ def whole_head_entries(rewrite, families, *, enabled):
         row = rows.get(family["projected_region_id"])
         h = family["batch_extent"]
         m, k, n = family["geometry_m_k_n"]
-        if (row is None or row.get("parallel") != [h, m, n] or row.get("reduction") != [k]
-                or row.get("dtypes") != ["i8", "i8", "i32"] or type(h) is not int or h < 2
-                or family["projected_region_id"] in regions):
+        if (
+            row is None
+            or row.get("parallel") != [h, m, n]
+            or row.get("reduction") != [k]
+            or row.get("dtypes") != ["i8", "i8", "i32"]
+            or type(h) is not int
+            or h < 2
+            or family["projected_region_id"] in regions
+        ):
             raise ValueError("whole head interface lost complete original batch geometry")
         symbol = row["symbol"]
         if symbol not in entries:
@@ -324,14 +386,24 @@ def _snapshot(host):
             digests[key] = _sha(_text(module))
         return digests[key]
 
-    return {"source": digest(host.source), "module": digest(host.module),
-            "core": digest(host.core), "interface": _sha(host.interface),
-            "rewrite": host.rewrite.to_sidecar(), "receipt": host.receipt,
-            "projection_source": digest(host.projection.source),
-            "projection": digest(host.projection.module), "members": host.projection.members,
-            "component_host": component_snapshot(
-                host.component_host, source_sha256=digest(host.component_host.source),
-                host_sha256=digest(host.component_host.module)) if host.component_host is not None else None}
+    return {
+        "source": digest(host.source),
+        "module": digest(host.module),
+        "core": digest(host.core),
+        "interface": _sha(host.interface),
+        "rewrite": host.rewrite.to_sidecar(),
+        "receipt": host.receipt,
+        "projection_source": digest(host.projection.source),
+        "projection": digest(host.projection.module),
+        "members": host.projection.members,
+        "component_host": component_snapshot(
+            host.component_host,
+            source_sha256=digest(host.component_host.source),
+            host_sha256=digest(host.component_host.module),
+        )
+        if host.component_host is not None
+        else None,
+    }
 
 
 def component_selection(selected):
@@ -347,17 +419,19 @@ def require_host(host, selected):
     if type(host) is not RoutedHeads or type(selected) is not HeadBatchSourceRoute:
         raise ValueError("head source, member projection, host or device custody changed")
     snapshot = _snapshot(host)
-    if (snapshot["source"] != selected.source_ir_sha256
-            or _sha(json.dumps(snapshot, sort_keys=True, allow_nan=False)) != host.integrity_sha256):
+    if (
+        snapshot["source"] != selected.source_ir_sha256
+        or _sha(json.dumps(snapshot, sort_keys=True, allow_nan=False)) != host.integrity_sha256
+    ):
         raise ValueError("head source, member projection, host or device custody changed")
     host.projection.batching.revalidate()
     if host.component_host is not None:
         from .sibling_component_route import require_components
 
         require_components(host.component_host, component_selection(selected))
-        if (host.component_host.rewrite != host.rewrite or
-                (host.component_host.module is not host.module
-                 and _text(host.component_host.module) != _text(host.module))):
+        if host.component_host.rewrite != host.rewrite or (
+            host.component_host.module is not host.module and _text(host.component_host.module) != _text(host.module)
+        ):
             raise ValueError("head and sibling routes lost their common actual host or rewrite")
     elif selected.shared_input_siblings:
         raise ValueError("joint head route lost its checked sibling components")
@@ -389,12 +463,17 @@ def prepare_host(device, selected, source, directory):
     if selected.shared_input_siblings:
         from .sibling_component_route import build_components
 
-        component_host = build_components(device, component_selection(selected), projection.module,
-                                          original=original, preparation=preparation)
+        component_host = build_components(
+            device, component_selection(selected), projection.module, original=original, preparation=preparation
+        )
         module, rewrite = component_host.module, component_host.rewrite
     else:
         rewrite = rewrite_groups_to_device(
-            module, device.device, select=device.select, capture=device.capture, model=device.model,
+            module,
+            device.device,
+            select=device.select,
+            capture=device.capture,
+            model=device.model,
             require_complete_groups=getattr(device, "require_complete_groups", False),
         )
     by_region = {row.get("source_region_id"): row for row in rewrite.to_sidecar()["routed"]}
@@ -402,19 +481,25 @@ def prepare_host(device, selected, source, directory):
     for family in projection.members:
         row = by_region.get(family["projected_region_id"])
         m, k, n = family["geometry_m_k_n"]
-        if (row is None or row.get("parallel") != [family["batch_extent"], m, n]
-                or row.get("reduction") != [k] or row.get("dtypes") != ["i8", "i8", "i32"]):
+        if (
+            row is None
+            or row.get("parallel") != [family["batch_extent"], m, n]
+            or row.get("reduction") != [k]
+            or row.get("dtypes") != ["i8", "i8", "i32"]
+        ):
             raise ValueError("normal group route did not retain complete independent head geometry")
         symbol = row["symbol"]
         call = rewrite.call_buffers[symbol]
-        if ([r["shape"] for r in call] != [[family["batch_extent"], m, k],
-                                          [family["batch_extent"], k, n],
-                                          [family["batch_extent"], m, n]]
-                or [r["dtype"] for r in call] != ["i8", "i8", "i32"]):
+        if [r["shape"] for r in call] != [
+            [family["batch_extent"], m, k],
+            [family["batch_extent"], k, n],
+            [family["batch_extent"], m, n],
+        ] or [r["dtype"] for r in call] != ["i8", "i8", "i32"]:
             raise ValueError("normal head call lost original complete ranked operands/results")
         matched.append({**family, "physical_symbol": symbol, "physical_group": row["group"]})
     binding = _mesh_tile_binding(
-        device.device, device.operand_dtype, device.accum_dtype, numeric_policy=device.numeric_policy)
+        device.device, device.operand_dtype, device.accum_dtype, numeric_policy=device.numeric_policy
+    )
     rewrite = whole_head_interfaces(rewrite, projection.members, binding=binding, enabled=selected.whole_batch)
     interfaces = {}
     for symbol, entry in rewrite.entries.items():
@@ -423,26 +508,39 @@ def prepare_host(device, selected, source, directory):
         else:
             _capsule, interface = CS.build(entry, binding)
             interfaces[symbol] = {"mlir": interface, "sha256": _sha(interface)}
-    rewrite = replace(rewrite, model_sha256=selected.source_ir_sha256,
-                      package_sha256=_package_sha256(Path(device.package_dir)),
-                      expected_interfaces=interfaces)
+    rewrite = replace(
+        rewrite,
+        model_sha256=selected.source_ir_sha256,
+        package_sha256=_package_sha256(Path(device.package_dir)),
+        expected_interfaces=interfaces,
+    )
     if component_host is not None and selected.whole_batch:
         # The preceding exact head/member/interface checks justify this new
         # aggregate rewrite. Every individual sibling writer/core and its
         # sealed interface stays unchanged and is revalidated below.
         component_host = replace(component_host, rewrite=rewrite, integrity_sha256="")
-    receipt = {"schema": "merlin.original_head_source_projection.v1",
-               "source_ir_sha256": selected.source_ir_sha256, "prepared_source_ir_sha256": _sha(_text(actual)),
-               "projected_source_ir_sha256": _sha(_text(projection.module)), "head_families": matched,
-               "weight_preparation": preparation, "unmatched_source_routed_normally": True,
-               "original_readouts_preserved": True, "matrix_products": sum(len(r["members"]) for r in matched),
-               "batch_abi_calls": len(matched), "accelerator_execution_count_reduced": False,
-               "shared_input_components": len(component_host.components) if component_host is not None else 0,
-               "effect_or_placement_grant": False}
+    receipt = {
+        "schema": "merlin.original_head_source_projection.v1",
+        "source_ir_sha256": selected.source_ir_sha256,
+        "prepared_source_ir_sha256": _sha(_text(actual)),
+        "projected_source_ir_sha256": _sha(_text(projection.module)),
+        "head_families": matched,
+        "weight_preparation": preparation,
+        "unmatched_source_routed_normally": True,
+        "original_readouts_preserved": True,
+        "matrix_products": sum(len(r["members"]) for r in matched),
+        "batch_abi_calls": len(matched),
+        "accelerator_execution_count_reduced": False,
+        "shared_input_components": len(component_host.components) if component_host is not None else 0,
+        "effect_or_placement_grant": False,
+    }
     if selected.whole_batch:
-        receipt.update(whole_batch=True, kernel_invocations=len(matched),
-                       bridge_kind="whole_logical_batch",
-                       mathematical_products_reduced=False)
+        receipt.update(
+            whole_batch=True,
+            kernel_invocations=len(matched),
+            bridge_kind="whole_logical_batch",
+            mathematical_products_reduced=False,
+        )
     interface = next(iter(interfaces.values()))["mlir"]
     host = RoutedHeads(original, module, projection.module, interface, rewrite, projection, receipt, "", component_host)
     snapshot = _snapshot(host)
@@ -450,8 +548,10 @@ def prepare_host(device, selected, source, directory):
         # The fresh aggregate snapshot already contains the exact common
         # graphs and every original component receipt. Reuse those hashes
         # within this invocation, then independently revalidate below.
-        component_host = replace(component_host, integrity_sha256=_sha(json.dumps(
-            snapshot["component_host"], sort_keys=True, allow_nan=False)))
+        component_host = replace(
+            component_host,
+            integrity_sha256=_sha(json.dumps(snapshot["component_host"], sort_keys=True, allow_nan=False)),
+        )
         host = replace(host, component_host=component_host)
     host = replace(host, integrity_sha256=_sha(json.dumps(snapshot, sort_keys=True, allow_nan=False)))
     require_host(host, selected)

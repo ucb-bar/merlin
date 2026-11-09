@@ -6,13 +6,14 @@ import pytest
 from test_scf_carried_events import ExecuteCarried
 from xdsl.dialects import builtin, llvm
 
-from merlin.compiler.schedule.completion_streams import CompletionEffectEnvelope
-from merlin.compiler.schedule.completion_streams import CompletionEffectsAdapter
-from merlin.compiler.schedule.completion_streams import fuse_completion_streams
+from merlin.compiler.schedule.completion_streams import (
+    CompletionEffectEnvelope,
+    CompletionEffectsAdapter,
+    fuse_completion_streams,
+)
 from merlin.compiler.schedule.configuration import ConfigurationEffects
 from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
-from merlin.compiler.schedule.scf_commands import emit_scf_commands
-from merlin.compiler.schedule.scf_commands import materialize_scf_commands
+from merlin.compiler.schedule.scf_commands import emit_scf_commands, materialize_scf_commands
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.sched.ir import Call, Const, Kernel, Loop, Stage, Var
 from merlin.sched.primitives import NotApplicable

@@ -164,9 +164,12 @@ def _require_pt2e_integerization_receipt(
             raise M2MUnavailable("dynamic independent reference program differs from its capture")
         observed = verify_capture_receipt(actual)
         projection = observed.get("capture_integerization")
-        if (observed.get("status") != "verified_materialized"
-                or not isinstance(projection, dict) or projection.get("integerization_receipt") != receipt
-                or not verified_static_integerization(projection, receipt_sha256=observed.get("receipt_sha256"))):
+        if (
+            observed.get("status") != "verified_materialized"
+            or not isinstance(projection, dict)
+            or projection.get("integerization_receipt") != receipt
+            or not verified_static_integerization(projection, receipt_sha256=observed.get("receipt_sha256"))
+        ):
             raise M2MUnavailable("dynamic independent reference lacks complete bound source/output/census proof")
         return
     if not isinstance(receipt, dict) or receipt.get("schema") != "m2m.pt2e-integerize.v1":
@@ -2891,8 +2894,12 @@ def freeze_materialized_loader_profile(selection: dict, destination: Path) -> di
         raise M2MUnavailable("materialized loader profile needs its selected path and digest")
     profile = Path(selected)
     loader = Path(selection.get("loader_path") or "")
-    if (profile.name != "profile.json" or profile.parent != loader.parent
-            or any(path.is_symlink() for path in (profile, *profile.parents)) or not profile.is_file()):
+    if (
+        profile.name != "profile.json"
+        or profile.parent != loader.parent
+        or any(path.is_symlink() for path in (profile, *profile.parents))
+        or not profile.is_file()
+    ):
         raise M2MUnavailable("materialized loader profile must be the exact adjacent ordinary input")
     raw = profile.read_bytes()
     if hashlib.sha256(raw).hexdigest() != digest:
@@ -3244,9 +3251,8 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
 
     native_integer = native_capture.selected(selection)
     public_performance = (
-        (selection.get("schema") == "merlin.materialized_public_capture.v2" or native_integer)
-        and selection.get("workload_role") == "performance_scale"
-    )
+        selection.get("schema") == "merlin.materialized_public_capture.v2" or native_integer
+    ) and selection.get("workload_role") == "performance_scale"
     if (selection.get("workload_role") != "iteration" and not public_performance) or selection.get(
         "coverage_scope"
     ) != "full_capture":
@@ -3311,20 +3317,24 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
     # The existing bundle format records only the first eager tensor as golden.npy.
     # fp16/BF16 values lift losslessly into f32; integer/f64 references do not.
     # Never silently certify a multi-result or integer-result ABI with that file.
-    complete_reference = (not native_integer and len(output_abi) > 1)
+    complete_reference = not native_integer and len(output_abi) > 1
     if complete_reference:
         from merlin.targetgen.application_inventory import verified_static_integerization
         from merlin.targetgen.materialized_reference import complete_float_outputs
 
-        if not verified_static_integerization(observed.get("capture_integerization"),
-                                              receipt_sha256=observed["receipt_sha256"]):
+        if not verified_static_integerization(
+            observed.get("capture_integerization"), receipt_sha256=observed["receipt_sha256"]
+        ):
             raise M2MUnavailable("multiple materialized outputs require the complete independent integer reference")
         try:
             golden_values = complete_float_outputs(meta, read_bound("integer-reference.json"))
         except (ValueError, TypeError, KeyError) as error:
             raise M2MUnavailable(str(error)) from error
-    if not native_integer and not complete_reference and (
-            len(output_abi) != 1 or output_abi[0].get("dtype") not in {"f32", "f16", "bf16"}):
+    if (
+        not native_integer
+        and not complete_reference
+        and (len(output_abi) != 1 or output_abi[0].get("dtype") not in {"f32", "f16", "bf16"})
+    ):
         raise M2MUnavailable(
             "materialized golden.npy needs one losslessly represented floating result; "
             "other ABIs need complete references"
@@ -3408,9 +3418,7 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
     if not isinstance(source_weights, str) or f'prov.weights_file = "{source_weights}"' not in program:
         raise M2MUnavailable("materialized model lacks its exact recorded weights-location attribute")
     meta["materialized_weights_reference"] = source_weights
-    return CapsuleArtifacts(
-        "model", meta.get("dtype", "fp32"), "", program, inputs, golden_values, str(weights), meta
-    )
+    return CapsuleArtifacts("model", meta.get("dtype", "fp32"), "", program, inputs, golden_values, str(weights), meta)
 
 
 def write_model_capsule(
@@ -3563,8 +3571,7 @@ def write_model_capsule(
             if len(payload) != declared["bytes"] or hashlib.sha256(payload).hexdigest() != declared["sha256"]:
                 raise M2MUnavailable(f"materialized external payload changed during capsule copying: {original}")
     loader_profile = (
-        freeze_materialized_loader_profile(art.meta["materialized_capture"], d)
-        if artifact is not None else {}
+        freeze_materialized_loader_profile(art.meta["materialized_capture"], d) if artifact is not None else {}
     )
     loader_dependencies = (
         freeze_model_loader_dependencies(workload, d, art.meta or {}, src.m2m_dir) if artifact is None else []

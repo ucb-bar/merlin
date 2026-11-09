@@ -56,7 +56,11 @@ class StaticF32MathSource:
 
 
 def _recognize_static_f32_unary_math_body(
-    op, *, admitted: frozenset[str], operation_classes: tuple[type, ...], description: str,
+    op,
+    *,
+    admitted: frozenset[str],
+    operation_classes: tuple[type, ...],
+    description: str,
 ) -> StaticF32MathPattern:
     """Require one unflagged pure unary f32 math op and its direct yield.
 
@@ -105,13 +109,13 @@ def _recognize_static_f32_unary_math_body(
     return StaticF32MathPattern(scalar.name, shell.shape, shell.ordered_types)
 
 
-
 def recognize_static_f32_math_body(op) -> StaticF32MathPattern:
     """Recognize the existing explicitly selected unary f32 vocabulary."""
     from xdsl.dialects import math
 
     return _recognize_static_f32_unary_math_body(
-        op, admitted=_UNARY_MATH,
+        op,
+        admitted=_UNARY_MATH,
         operation_classes=(math.SinOp, math.CosOp, math.ExpOp, math.RoundEvenOp),
         description="a registered unary f32 form",
     )
@@ -122,7 +126,8 @@ def recognize_static_f32_exp_rsqrt_body(op) -> StaticF32MathPattern:
     from xdsl.dialects import math
 
     return _recognize_static_f32_unary_math_body(
-        op, admitted=frozenset({"math.exp", "math.rsqrt"}),
+        op,
+        admitted=frozenset({"math.exp", "math.rsqrt"}),
         operation_classes=(math.ExpOp, math.RsqrtOp),
         description="registered unary exp or rsqrt",
     )

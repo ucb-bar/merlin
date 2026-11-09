@@ -88,8 +88,20 @@ def test_export_cli_writes_only_the_requested_snapshot(protocol, tmp_path, monke
     assert SPEC.read_bytes() == original
 
 
-@pytest.mark.parametrize("changed", ["selection_key", "unknown_model", "missing_model", "extra_chain_key",
-                                     "changed_kind", "zero", "boolean", "program_order", "program_steps"])
+@pytest.mark.parametrize(
+    "changed",
+    [
+        "selection_key",
+        "unknown_model",
+        "missing_model",
+        "extra_chain_key",
+        "changed_kind",
+        "zero",
+        "boolean",
+        "program_order",
+        "program_steps",
+    ],
+)
 def test_geometry_selection_is_closed_and_cannot_rewrite_policy_or_programs(protocol, changed):
     from merlin.model_check.models import ModelsFileError, _protocol_models_bytes
 

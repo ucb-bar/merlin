@@ -4,15 +4,17 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.program_limits import BranchRule
-from merlin.compiler.schedule.program_limits import Continuation
-from merlin.compiler.schedule.program_limits import DecodedInstruction
-from merlin.compiler.schedule.program_limits import EncodedAccess
-from merlin.compiler.schedule.program_limits import EncodedBranch
-from merlin.compiler.schedule.program_limits import ProgramDecoder
-from merlin.compiler.schedule.program_limits import ProgramLimits
-from merlin.compiler.schedule.program_limits import finalize_program
+from merlin.compiler.schedule.program_limits import (
+    AddressWindow,
+    BranchRule,
+    Continuation,
+    DecodedInstruction,
+    EncodedAccess,
+    EncodedBranch,
+    ProgramDecoder,
+    ProgramLimits,
+    finalize_program,
+)
 
 
 def decode(data):
@@ -280,18 +282,18 @@ def test_closed_forward_and_backward_edges_keep_instruction_boundaries_together(
 def test_explicit_unconditional_branch_can_skip_an_unreachable_async_launch():
     region = bytes([0x30, 2, 0x31, 0, 1])
     image = region * 2
+
     def unconditional(data):
         return tuple(replace(i, fallthrough=False) if i.branches else i for i in decode(data))
+
     decoder = replace(DECODER, decode=unconditional)
-    result = finalize_program(image, replace(LIMITS, max_bytes=5), decoder,
-                              continuation=CONTINUATION, outputs=())
+    result = finalize_program(image, replace(LIMITS, max_bytes=5), decoder, continuation=CONTINUATION, outputs=())
     assert result.segments == (region, region)
     assert execute(result.segments) == execute((image,))
     assert execute(result.segments)[0] == bytes(16)
     # Without the explicit unconditional fact, both paths remain possible.
     with pytest.raises(ValueError, match="control-flow path ending"):
-        finalize_program(image, replace(LIMITS, max_bytes=5), DECODER,
-                         continuation=CONTINUATION, outputs=())
+        finalize_program(image, replace(LIMITS, max_bytes=5), DECODER, continuation=CONTINUATION, outputs=())
 
 
 @pytest.mark.parametrize("field,value", [("branches", (object(),)), ("windows", (object(),)), ("branches", [])])

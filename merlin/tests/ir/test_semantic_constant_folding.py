@@ -128,7 +128,9 @@ def test_constant_comparisons_preserve_ieee_ordering_and_signed_integer_endpoint
     pairs = tuple(itertools.product(values, repeat=2))
     source = request(dtype + "_add", dtype, dtype, "unused", list(zip(*pairs, strict=True)))
     result = replace(
-        source.nodes[-1], op="mask", type=TensorType(source.nodes[-1].type.shape, "i1", "boolean"),
+        source.nodes[-1],
+        op="mask",
+        type=TensorType(source.nodes[-1].type.shape, "i1", "boolean"),
         attrs=(("operation", operation), ("predicate", predicate)),
     )
     source = replace(source, nodes=(*source.nodes[:-1], result))
@@ -146,10 +148,18 @@ def test_constant_select_keeps_nan_payloads_and_signed_zero_bits(dtype, width):
     infinity = sign - (1 << fraction)
     source = request(dtype + "_add", dtype, dtype, "unused", [[0, sign, infinity + 1], [sign, 0, infinity + 37]])
     condition = SemanticNode("condition", "constant", (), TensorType((3,), "i1", "boolean"), effect="constant")
-    result = replace(source.nodes[-1], op="select", inputs=(condition.id, *source.nodes[-1].inputs), attrs=(),
-                     index_maps=pointwise_identity_maps(1, 3))
-    source = replace(source, nodes=(condition, *source.nodes[:-1], result),
-                     constants=(ConstantBinding(condition.id, "i1-raw", "010001"), *source.constants))
+    result = replace(
+        source.nodes[-1],
+        op="select",
+        inputs=(condition.id, *source.nodes[-1].inputs),
+        attrs=(),
+        index_maps=pointwise_identity_maps(1, 3),
+    )
+    source = replace(
+        source,
+        nodes=(condition, *source.nodes[:-1], result),
+        constants=(ConstantBinding(condition.id, "i1-raw", "010001"), *source.constants),
+    )
     folded, receipt = fold_source_constants(source)
     verify_constant_folding(folded, receipt)
     assert len(receipt["folds"]) == 1
@@ -169,14 +179,20 @@ def test_constant_boolean_operations_and_widening(operation):
     arity = 1 if operation == "arith.extui" else 2
     inputs = inputs[:arity]
     result = SemanticNode(
-        "result", "mask", tuple(n.id for n in inputs),
+        "result",
+        "mask",
+        tuple(n.id for n in inputs),
         TensorType((4,), "i64", "signed-i64") if arity == 1 else boolean,
-        (("operation", operation), ("predicate", None)), index_maps=pointwise_identity_maps(1, arity),
+        (("operation", operation), ("predicate", None)),
+        index_maps=pointwise_identity_maps(1, arity),
     )
     source = KernelRequest(
-        (*inputs, result), ("result",), ("external",), (), "synthetic",
-        constants=tuple(ConstantBinding(n.id, "i1-raw", data)
-                        for n, data in zip(inputs, ("00000101", "00010001"))),
+        (*inputs, result),
+        ("result",),
+        ("external",),
+        (),
+        "synthetic",
+        constants=tuple(ConstantBinding(n.id, "i1-raw", data) for n, data in zip(inputs, ("00000101", "00010001"))),
     )
     folded, receipt = fold_source_constants(source)
     verify_constant_folding(folded, receipt)

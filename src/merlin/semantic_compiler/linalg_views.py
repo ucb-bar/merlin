@@ -1,11 +1,15 @@
 """Translate the views source family, preserving numerical boundaries."""
+
 from __future__ import annotations
 
 from math import prod
-from .linalg_recognition import LinalgBridgeError, _transpose_maps, _type
-from .model import IndexMap, SemanticNode
+
 from xdsl.dialects.builtin import IntegerAttr
+
+from .linalg_recognition import LinalgBridgeError, _transpose_maps, _type
 from .linalg_state import TranslationState
+from .model import IndexMap, SemanticNode
+
 
 def translate(state: TranslationState, op, ordinal):
     nodes = state.nodes
@@ -79,9 +83,7 @@ def translate(state: TranslationState, op, ordinal):
                 len(source.shape) != len(result_type.shape)
                 or (source.dtype, source.numerical_policy) != (result_type.dtype, result_type.numerical_policy)
                 or any(
-                    source.shape[dim] != result_type.shape[dim]
-                    for dim in range(len(result_type.shape))
-                    if dim != axis
+                    source.shape[dim] != result_type.shape[dim] for dim in range(len(result_type.shape)) if dim != axis
                 )
                 for source in source_types
             )
@@ -134,8 +136,7 @@ def translate(state: TranslationState, op, ordinal):
         if (
             len(result_type.shape) != rank
             or sizes != result_type.shape
-            or (source_type.dtype, source_type.numerical_policy)
-            != (result_type.dtype, result_type.numerical_policy)
+            or (source_type.dtype, source_type.numerical_policy) != (result_type.dtype, result_type.numerical_policy)
             or any(len(values) != rank for values in (offsets, sizes, strides))
         ):
             raise LinalgBridgeError("tensor.extract_slice has a rank-reduced or mismatched result")

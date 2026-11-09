@@ -3,16 +3,19 @@
 This supplies binding/sequence code, not target instructions, packing, allocation,
 completion or numerical qualification. Stage implementations remain explicit.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 
 from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
-
 from merlin.runtime.connected import ConnectedProgram
 
-_C_KEYWORDS = frozenset("auto break case char const continue default do double else enum extern float for goto if inline int long register restrict return short signed sizeof static struct switch typedef union unsigned void volatile while".split())
+_C_KEYWORDS = frozenset(
+    "auto break case char const continue default do double else enum extern float for goto if inline int long register restrict return short signed sizeof static struct switch typedef union unsigned void volatile while".split()
+)
+
 
 @dataclass(frozen=True)
 class ConnectedCStage:
@@ -34,14 +37,22 @@ class ConnectedCStage:
     window_binding_identity: str
 
     def validate(self, input_count):
-        if (type(self.source) is not str or not self.source.strip()
-                or type(self.effects) is not BorrowedBufferEffects
-                or type(self.input_alignments) is not tuple
-                or len(self.input_alignments) != input_count
-                or any(type(n) is not int or n <= 0 or n > (1 << 64) - 1 or n & (n - 1)
-                       for n in (*self.input_alignments, self.output_alignment))
-                or type(self.window_binding_identity) is not str or not self.window_binding_identity):
-            raise ValueError("connected stage requires source, explicit alignments, borrowed effects and window binding")
+        if (
+            type(self.source) is not str
+            or not self.source.strip()
+            or type(self.effects) is not BorrowedBufferEffects
+            or type(self.input_alignments) is not tuple
+            or len(self.input_alignments) != input_count
+            or any(
+                type(n) is not int or n <= 0 or n > (1 << 64) - 1 or n & (n - 1)
+                for n in (*self.input_alignments, self.output_alignment)
+            )
+            or type(self.window_binding_identity) is not str
+            or not self.window_binding_identity
+        ):
+            raise ValueError(
+                "connected stage requires source, explicit alignments, borrowed effects and window binding"
+            )
         self.effects.__post_init__()
 
 
@@ -62,18 +73,26 @@ def emit_connected_host_c(program, emit_stage, *, symbol, backing_origins):
     The selected host must provide flat uintptr_t-addressable byte memory.
     No pointers or views may escape a stage; execution is synchronous and unfused.
     """
-    if (type(program) is not ConnectedProgram or not callable(emit_stage)
-            or type(symbol) is not str or not symbol.isascii()
-            or symbol in _C_KEYWORDS
-            or not symbol or not symbol[0].isalpha()
-            or not all(c.isalnum() or c == "_" for c in symbol)):
+    if (
+        type(program) is not ConnectedProgram
+        or not callable(emit_stage)
+        or type(symbol) is not str
+        or not symbol.isascii()
+        or symbol in _C_KEYWORDS
+        or not symbol
+        or not symbol[0].isalpha()
+        or not all(c.isalnum() or c == "_" for c in symbol)
+    ):
         raise ValueError("connected C emission requires a checked program, callback and ordinary C symbol")
     invocations = program.ordered_invocations()
     identity = program.checked_identity
     external = {w.resource: w for w in program.selected_contracts.storage.external}
     names = tuple(sorted({external[w.space].backing for w in program.windows}))
-    if (type(backing_origins) is not dict or set(backing_origins) != set(names)
-            or any(type(n) is not int or n < 0 for n in backing_origins.values())):
+    if (
+        type(backing_origins) is not dict
+        or set(backing_origins) != set(names)
+        or any(type(n) is not int or n < 0 for n in backing_origins.values())
+    ):
         raise ValueError("connected C backing origins must explicitly cover every physical backing")
     origins = dict(backing_origins)
     views = []
@@ -94,9 +113,16 @@ def emit_connected_host_c(program, emit_stage, *, symbol, backing_origins):
         if program.checked_identity != identity:
             raise ValueError("connected program changed during emission")
         implementations.append(stage)
-        records.append({"ordinal": invocation.stage.ordinal, "source_sha256": sha256(stage.source.encode()).hexdigest(),
-                        "effects": asdict(stage.effects), "window_binding_identity": stage.window_binding_identity,
-                        "input_alignments": stage.input_alignments, "output_alignment": stage.output_alignment})
+        records.append(
+            {
+                "ordinal": invocation.stage.ordinal,
+                "source_sha256": sha256(stage.source.encode()).hexdigest(),
+                "effects": asdict(stage.effects),
+                "window_binding_identity": stage.window_binding_identity,
+                "input_alignments": stage.input_alignments,
+                "output_alignment": stage.output_alignment,
+            }
+        )
 
     count = len(names)
     # Status -1/SIZE_MAX is argument refusal; a stage status preserves its ordinal.
@@ -108,23 +134,29 @@ _Static_assert(sizeof(uintptr_t) <= sizeof(uint64_t), "unsupported host pointer 
 typedef struct {{ uint8_t *base; size_t bytes; }} {symbol}_backing;
 typedef struct {{ int status; size_t failed_stage; }} {symbol}_result;
 """
-    lines = [f"{symbol}_result {symbol}(const {symbol}_backing *b, size_t count) {{",
-             f"  {symbol}_result bad = {{-1, SIZE_MAX}};",
-             f"  if (!b || count != {count}) return bad;",
-             "  uintptr_t meta = (uintptr_t)b;",
-             f"  if (meta > UINTPTR_MAX - sizeof(*b) * {count}) return bad;",
-             f"  uint8_t *base[{count}]; size_t bytes[{count}]; uintptr_t start[{count}], end[{count}];",
-             f"  for (size_t i=0; i<{count}; ++i) {{",
-             "    base[i]=b[i].base; bytes[i]=b[i].bytes; start[i]=(uintptr_t)base[i];",
-             "    if (!base[i] || bytes[i] > UINTPTR_MAX - start[i]) return bad;",
-             "    end[i]=start[i]+bytes[i];",
-             f"    if (start[i] < meta + sizeof(*b) * {count} && meta < end[i]) return bad;",
-             "    for (size_t j=0; j<i; ++j)",
-             "      if (start[i] < end[j] && start[j] < end[i]) return bad;",
-             "  }"]
+    lines = [
+        f"{symbol}_result {symbol}(const {symbol}_backing *b, size_t count) {{",
+        f"  {symbol}_result bad = {{-1, SIZE_MAX}};",
+        f"  if (!b || count != {count}) return bad;",
+        "  uintptr_t meta = (uintptr_t)b;",
+        f"  if (meta > UINTPTR_MAX - sizeof(*b) * {count}) return bad;",
+        f"  uint8_t *base[{count}]; size_t bytes[{count}]; uintptr_t start[{count}], end[{count}];",
+        f"  for (size_t i=0; i<{count}; ++i) {{",
+        "    base[i]=b[i].base; bytes[i]=b[i].bytes; start[i]=(uintptr_t)base[i];",
+        "    if (!base[i] || bytes[i] > UINTPTR_MAX - start[i]) return bad;",
+        "    end[i]=start[i]+bytes[i];",
+        f"    if (start[i] < meta + sizeof(*b) * {count} && meta < end[i]) return bad;",
+        "    for (size_t j=0; j<i; ++j)",
+        "      if (start[i] < end[j] && start[j] < end[i]) return bad;",
+        "  }",
+    ]
     for i, (backing, offset, size) in enumerate(views):
-        lines.extend((f"  if (UINT64_C({offset}) > bytes[{backing}] ||",
-                      f"      UINT64_C({size}) > bytes[{backing}] - UINT64_C({offset})) return bad;"))
+        lines.extend(
+            (
+                f"  if (UINT64_C({offset}) > bytes[{backing}] ||",
+                f"      UINT64_C({size}) > bytes[{backing}] - UINT64_C({offset})) return bad;",
+            )
+        )
     # Check every stage's pointer requirements before any stage can write.
     for invocation, implementation in zip(invocations, implementations, strict=True):
         ids = (*invocation.stage.inputs, invocation.stage.output)
@@ -138,21 +170,37 @@ typedef struct {{ int status; size_t failed_stage; }} {symbol}_result;
         pointers = [f"base[{views[i][0]}] + (size_t)UINT64_C({views[i][1]})" for i in invocation.stage.inputs]
         sizes = [f"(size_t)UINT64_C({views[i][2]})" for i in invocation.stage.inputs]
         backing, offset, size = views[invocation.stage.output]
-        lines.extend(("  {", f"    const uint8_t *inputs[{n}] = {{{', '.join(pointers)}}};",
-                      f"    const size_t sizes[{n}] = {{{', '.join(sizes)}}};",
-                      f"    int status = {symbol}_stage_{index}(inputs, sizes, base[{backing}] + (size_t)UINT64_C({offset}), (size_t)UINT64_C({size}));",
-                      f"    if (status) {{ {symbol}_result failed = {{status, {index}}}; return failed; }}", "  }"))
+        lines.extend(
+            (
+                "  {",
+                f"    const uint8_t *inputs[{n}] = {{{', '.join(pointers)}}};",
+                f"    const size_t sizes[{n}] = {{{', '.join(sizes)}}};",
+                f"    int status = {symbol}_stage_{index}(inputs, sizes, base[{backing}] + (size_t)UINT64_C({offset}), (size_t)UINT64_C({size}));",
+                f"    if (status) {{ {symbol}_result failed = {{status, {index}}}; return failed; }}",
+                "  }",
+            )
+        )
     lines.extend((f"  {symbol}_result ok = {{0, SIZE_MAX}}; return ok;", "}"))
     source = "\n".join((head, *(s.source for s in implementations), *lines)) + "\n"
     program.ordered_invocations()
-    return ConnectedCArtifact(source, {
-        "schema": "merlin.connected_host_c.v1", "program_identity": identity,
-        "source_sha256": sha256(source.encode()).hexdigest(), "symbol": symbol,
-        "backings": [{"name": name, "origin": origins[name]} for name in names],
-        "views": [{"value": i, "backing_index": b, "offset": o, "bytes": n,
-                   "byte_order": program.byte_orders[i]} for i, (b, o, n) in enumerate(views)],
-        "live_outputs": list(program.region.outputs), "stages": records,
-        "completion": "caller_asserted_synchronous_borrowed_stage_abi",
-        "allocation": "caller_owned", "packing_or_byte_order_conversion": False,
-        "execution_qualification": "not_established", "physical_savings_claimed": False,
-    })
+    return ConnectedCArtifact(
+        source,
+        {
+            "schema": "merlin.connected_host_c.v1",
+            "program_identity": identity,
+            "source_sha256": sha256(source.encode()).hexdigest(),
+            "symbol": symbol,
+            "backings": [{"name": name, "origin": origins[name]} for name in names],
+            "views": [
+                {"value": i, "backing_index": b, "offset": o, "bytes": n, "byte_order": program.byte_orders[i]}
+                for i, (b, o, n) in enumerate(views)
+            ],
+            "live_outputs": list(program.region.outputs),
+            "stages": records,
+            "completion": "caller_asserted_synchronous_borrowed_stage_abi",
+            "allocation": "caller_owned",
+            "packing_or_byte_order_conversion": False,
+            "execution_qualification": "not_established",
+            "physical_savings_claimed": False,
+        },
+    )

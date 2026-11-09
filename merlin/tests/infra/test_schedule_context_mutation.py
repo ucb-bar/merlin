@@ -5,8 +5,7 @@ from dataclasses import replace
 import pytest
 from test_copy_prefetch import QUALIFICATION, inputs
 
-from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
-from merlin.compiler.schedule.schedule_pipeline import compile_schedule
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets, compile_schedule
 
 
 def _compile(model, *, budgets, banks, external_windows):

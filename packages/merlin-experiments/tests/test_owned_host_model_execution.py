@@ -7,12 +7,16 @@ from merlin.targetgen.owned_host_model_execution import _host_call_proof, _manda
 
 
 def test_proven_host_compute_veto_is_a_candidate_failure_without_native_tier_credit():
+    from merlin.targetgen.owned_host_model_execution import _stopped_before_receipt
     from merlin_experiments.phase1.feedback.qa import _candidate_native_feedback
 
-    from merlin.targetgen.owned_host_model_execution import _stopped_before_receipt
-
-    check = _stopped_before_receipt({"stage": "owned_host_execution", "type": "HostComputeVeto",
-                                     "detail": "scalar host work exceeds the source-derived budget"})
+    check = _stopped_before_receipt(
+        {
+            "stage": "owned_host_execution",
+            "type": "HostComputeVeto",
+            "detail": "scalar host work exceeds the source-derived budget",
+        }
+    )
     assert check["status"] == "fail"
     assert check["failure"]["category"] == "host_compute_in_accelerator_group"
     feedback = _candidate_native_feedback({"model_execution_check": check})
@@ -20,8 +24,9 @@ def test_proven_host_compute_veto_is_a_candidate_failure_without_native_tier_cre
     assert feedback["components"]["emitted_host_compute"] == "violation"
     assert "candidate_host_tensor_compute_violation" in feedback["violations"]
     assert all(status != "pass" for status in feedback.get("tiers", {}).values())
-    unknown = _stopped_before_receipt({"stage": "owned_host_execution", "type": "ValueError",
-                                       "detail": "unknown control-flow proof"})
+    unknown = _stopped_before_receipt(
+        {"stage": "owned_host_execution", "type": "ValueError", "detail": "unknown control-flow proof"}
+    )
     assert unknown["status"] == "incomplete"
     wrong_stage = _stopped_before_receipt({"stage": "prepare_runtime_bundle", "type": "HostComputeVeto"})
     assert wrong_stage["status"] == "incomplete"
@@ -31,12 +36,12 @@ def test_owned_build_audit_binds_logical_input_copy_to_original_source(tmp_path,
     import json
     from types import SimpleNamespace
 
-    from merlin_experiments.phase1.feedback import private_device_audit, private_full_models
     from xdsl.dialects.builtin import ArrayAttr, StringAttr
 
     from merlin.runtime.modelinputs import file_sha256
     from merlin.targetgen import owned_host_model_execution as owned
     from merlin.xdsl_dialects.lowering import compute_groups as groups_api
+    from merlin_experiments.phase1.feedback import private_device_audit, private_full_models
 
     (tmp_path / "model.mlir").write_text("""module {
       func.func @forward(%a: tensor<2x2xi8>, %b: tensor<2x2xi8>, %init: tensor<2x2xi32>)
@@ -49,17 +54,21 @@ def test_owned_build_audit_binds_logical_input_copy_to_original_source(tmp_path,
 
     def groups(module, target):
         root = next(op for op in module.walk() if op.name == "linalg.matmul")
-        root.attributes.update({"prov.region_id": StringAttr("original"),
-                                "prov.source_node_ids": ArrayAttr([StringAttr("node")])})
-        return [SimpleNamespace(index=4, placement=target, root=root, members=[root],
-                                stages=[groups_api.CONTRACTION])]
+        root.attributes.update(
+            {"prov.region_id": StringAttr("original"), "prov.source_node_ids": ArrayAttr([StringAttr("node")])}
+        )
+        return [SimpleNamespace(index=4, placement=target, root=root, members=[root], stages=[groups_api.CONTRACTION])]
 
     monkeypatch.setattr(groups_api, "form_groups", groups)
     monkeypatch.setattr(groups_api, "plan", lambda *a, **k: {})
     monkeypatch.setattr(groups_api, "require_explained", lambda _: None)
-    monkeypatch.setattr(owned, "_source_placement", lambda *a, **k: {
-        "eligible_source_regions": [{"source_group": 4}],
-    })
+    monkeypatch.setattr(
+        owned,
+        "_source_placement",
+        lambda *a, **k: {
+            "eligible_source_regions": [{"source_group": 4}],
+        },
+    )
     monkeypatch.setattr(private_full_models, "_linked_symbols", lambda *a: None)
     audits = []
 
@@ -68,28 +77,58 @@ def test_owned_build_audit_binds_logical_input_copy_to_original_source(tmp_path,
         return [{"status": "synthetic-native-boundary-only"}]
 
     monkeypatch.setattr(private_device_audit, "audit_built_device_host_compute", audit)
-    entry = {"op": "conv2d", "Himg": 1, "Wimg": 2, "ci": 2, "kh": 1, "kw": 1, "N": 2,
-             "stride": [1, 1], "padding": [0, 0, 0, 0]}
+    entry = {
+        "op": "conv2d",
+        "Himg": 1,
+        "Wimg": 2,
+        "ci": 2,
+        "kh": 1,
+        "kw": 1,
+        "N": 2,
+        "stride": [1, 1],
+        "padding": [0, 0, 0, 0],
+    }
     emitted = {
-        "device": "fixture", "granularity": "group", "signatures": {"kernel": []},
-        "routed": [{"symbol": "kernel", "group": 9, "source_region_id": "original", "source_node_ids": ["node"],
-                    "parallel": [2, 2], "reduction": [2], "dtypes": ["i8", "i8", "i32"]}],
-        "entries": {"kernel": entry}, "programs": {"kernel": {"entry": dict(entry)}},
-        "call_buffers": {"kernel": [
-            {"role": "input_0", "shape": [1, 1, 2, 2], "dtype": "i8"},
-            {"role": "weight_0", "shape": [2, 2], "dtype": "i8"},
-            {"role": "out_0", "shape": [2, 2], "dtype": "i32"},
-        ]},
+        "device": "fixture",
+        "granularity": "group",
+        "signatures": {"kernel": []},
+        "routed": [
+            {
+                "symbol": "kernel",
+                "group": 9,
+                "source_region_id": "original",
+                "source_node_ids": ["node"],
+                "parallel": [2, 2],
+                "reduction": [2],
+                "dtypes": ["i8", "i8", "i32"],
+            }
+        ],
+        "entries": {"kernel": entry},
+        "programs": {"kernel": {"entry": dict(entry)}},
+        "call_buffers": {
+            "kernel": [
+                {"role": "input_0", "shape": [1, 1, 2, 2], "dtype": "i8"},
+                {"role": "weight_0", "shape": [2, 2], "dtype": "i8"},
+                {"role": "out_0", "shape": [2, 2], "dtype": "i32"},
+            ]
+        },
     }
     elf, sidecar = tmp_path / "model.elf", tmp_path / "device.json"
     elf.write_bytes(b"synthetic test of orchestration; no native execution")
 
     def run():
         sidecar.write_text(json.dumps(emitted))
-        return owned._audit_owned_host_device_build(tmp_path, {"output": {
-            "elf": str(elf), "elf_sha256": file_sha256(elf),
-            "device_sidecar": {"path": str(sidecar), "sha256": file_sha256(sidecar)},
-        }}, target="fixture")
+        return owned._audit_owned_host_device_build(
+            tmp_path,
+            {
+                "output": {
+                    "elf": str(elf),
+                    "elf_sha256": file_sha256(elf),
+                    "device_sidecar": {"path": str(sidecar), "sha256": file_sha256(sidecar)},
+                }
+            },
+            target="fixture",
+        )
 
     result = run()
     assert result["joined_groups"] == {9: 4}
@@ -440,8 +479,9 @@ def test_empty_global_class_roster_is_explicit_only_for_source_bound_models(tmp_
     monkeypatch.setattr(
         target_experiment,
         "load_target_experiment",
-        lambda path: SimpleNamespace(target="synthetic", capsule_corpus=corpus / "isa",
-                                     descriptor_sha256=sha256_file(descriptor)),
+        lambda path: SimpleNamespace(
+            target="synthetic", capsule_corpus=corpus / "isa", descriptor_sha256=sha256_file(descriptor)
+        ),
     )
     with pytest.raises(NativeModelExecutionError, match="coverage"):
         _frozen_model_policy(capsule, target="synthetic")
@@ -489,13 +529,16 @@ def test_direct_model_slice_reads_exact_declared_instruction_policy(tmp_path, mo
     capsule.mkdir()
     declaration = capsule / "capsule.yaml"
     declaration.write_text(
-        "kind: model_slice\nexpected:\n  instruction_classes: [DECLARED_WORK]\n"
-        "required_oracle_tiers: [L0, L1, L2]\n"
+        "kind: model_slice\nexpected:\n  instruction_classes: [DECLARED_WORK]\nrequired_oracle_tiers: [L0, L1, L2]\n"
     )
     monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(descriptor))
-    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda path: SimpleNamespace(
-        target="synthetic", capsule_corpus=corpus / "isa", descriptor_sha256=sha256_file(descriptor)
-    ))
+    monkeypatch.setattr(
+        target_experiment,
+        "load_target_experiment",
+        lambda path: SimpleNamespace(
+            target="synthetic", capsule_corpus=corpus / "isa", descriptor_sha256=sha256_file(descriptor)
+        ),
+    )
     policy = _frozen_model_policy(capsule, target="synthetic", source_bound_groups=True)
     assert policy["instruction_coverage"] == policy["capsule_declaration"]
     assert policy["instruction_coverage_origin"] == "capsule_declaration.expected"
@@ -550,46 +593,58 @@ def test_protected_engine_selection_uses_scoped_facts_without_changing_ambient(t
 def test_historical_model_flag_cannot_bypass_owned_receipt_audit(monkeypatch):
     from merlin.targetgen import capsule_grade, owned_host_model_execution
 
-    capsule = {'semantic': {'must_accelerate': False}, 'lanes': {'require': ['on_mesh']}}
-    result = {'status': 'pass', 'owned_host_native_execution': {'status': 'claimed_pass'}}
+    capsule = {"semantic": {"must_accelerate": False}, "lanes": {"require": ["on_mesh"]}}
+    result = {"status": "pass", "owned_host_native_execution": {"status": "claimed_pass"}}
     observed = []
 
     def audit(actual, original, **kwargs):
         assert actual is result and original is capsule
-        observed.append(kwargs['target'])
-        return {'status': 'incomplete', 'kind': 'owned_host_model_execution',
-                'violations': ['candidate_required_tiers_unverified']}
+        observed.append(kwargs["target"])
+        return {
+            "status": "incomplete",
+            "kind": "owned_host_model_execution",
+            "violations": ["candidate_required_tiers_unverified"],
+        }
 
-    monkeypatch.setattr(owned_host_model_execution, 'audit_owned_host_model', audit)
-    checked = capsule_grade.enforce_model_execution_check(result, capsule, target='synthetic')
-    assert observed == ['synthetic']
-    assert checked['status'] == 'incomplete'
-    assert checked['model_execution_check']['kind'] == 'owned_host_model_execution'
-    assert capsule['semantic']['must_accelerate'] is False
+    monkeypatch.setattr(owned_host_model_execution, "audit_owned_host_model", audit)
+    checked = capsule_grade.enforce_model_execution_check(result, capsule, target="synthetic")
+    assert observed == ["synthetic"]
+    assert checked["status"] == "incomplete"
+    assert checked["model_execution_check"]["kind"] == "owned_host_model_execution"
+    assert capsule["semantic"]["must_accelerate"] is False
 
 
 def test_declared_eligible_mesh_model_without_actual_receipt_refuses_legacy_numeric_credit(monkeypatch):
     from merlin.targetgen import native_model_execution
     from merlin.targetgen.capsule_grade import enforce_model_execution_check
-    monkeypatch.setattr(native_model_execution, 'independent_frozen_source_eligibility',
-                        lambda *a, **k: {'n_eligible': 1})
-    capsule = {'semantic': {'must_accelerate': False}, 'lanes': {'require': ['on_mesh']}}
-    result = {'status': 'pass', 'kind': 'model', 'numeric': {'status': 'pass'},
-              'mesh_execution': {'matmul_layers_on_mesh': 2}}
-    checked = enforce_model_execution_check(result, capsule, target='synthetic')
-    assert checked['status'] == 'incomplete'
-    assert checked['model_execution_check']['kind'] == 'owned_host_model_execution'
-    assert 'receipt or original frozen capsule is absent' in checked['model_execution_check']['detail']
+
+    monkeypatch.setattr(
+        native_model_execution, "independent_frozen_source_eligibility", lambda *a, **k: {"n_eligible": 1}
+    )
+    capsule = {"semantic": {"must_accelerate": False}, "lanes": {"require": ["on_mesh"]}}
+    result = {
+        "status": "pass",
+        "kind": "model",
+        "numeric": {"status": "pass"},
+        "mesh_execution": {"matmul_layers_on_mesh": 2},
+    }
+    checked = enforce_model_execution_check(result, capsule, target="synthetic")
+    assert checked["status"] == "incomplete"
+    assert checked["model_execution_check"]["kind"] == "owned_host_model_execution"
+    assert "receipt or original frozen capsule is absent" in checked["model_execution_check"]["detail"]
 
 
 def test_ineligible_host_model_without_receipt_keeps_legacy_check(monkeypatch):
     from merlin.targetgen import capsule_grade, native_model_execution, owned_host_model_execution
 
-    monkeypatch.setattr(native_model_execution, 'independent_frozen_source_eligibility',
-                        lambda *a, **k: {'n_eligible': 0})
+    monkeypatch.setattr(
+        native_model_execution, "independent_frozen_source_eligibility", lambda *a, **k: {"n_eligible": 0}
+    )
+
     def unexpected(*args, **kwargs):
-        raise AssertionError('pure host model must not require a device receipt')
-    monkeypatch.setattr(owned_host_model_execution, 'audit_owned_host_model', unexpected)
-    capsule = {'semantic': {'must_accelerate': False}, 'lanes': {'require': ['on_mesh']}}
-    checked = capsule_grade.model_execution_check({}, capsule, target='synthetic')
-    assert checked.get('kind') != 'owned_host_model_execution'
+        raise AssertionError("pure host model must not require a device receipt")
+
+    monkeypatch.setattr(owned_host_model_execution, "audit_owned_host_model", unexpected)
+    capsule = {"semantic": {"must_accelerate": False}, "lanes": {"require": ["on_mesh"]}}
+    checked = capsule_grade.model_execution_check({}, capsule, target="synthetic")
+    assert checked.get("kind") != "owned_host_model_execution"

@@ -24,22 +24,33 @@ class HorizontalConvolutionPanels:
             raise ValueError("horizontal panels require the exact original convolution")
         self.source.__post_init__()
         p = self.source
-        if (p.window.dilation[1] != 1 or p.row_tile != p.primitive
-                or any(type(v) is not int or v <= 0 for v in (self.row_blocks, self.maximum_transfer_columns))
-                or self.horizontal_columns > self.maximum_transfer_columns):
+        if (
+            p.window.dilation[1] != 1
+            or p.row_tile != p.primitive
+            or any(type(v) is not int or v <= 0 for v in (self.row_blocks, self.maximum_transfer_columns))
+            or self.horizontal_columns > self.maximum_transfer_columns
+        ):
             raise ValueError("horizontal panels require contiguous bounded source columns and primitive rows")
         end = 0
         if type(self.column_intervals) is not tuple or not self.column_intervals:
             raise ValueError("horizontal panels require complete original column intervals")
         for item in self.column_intervals:
-            if (type(item) is not tuple or len(item) != 2 or any(type(v) is not int for v in item)
-                    or item[0] != end or not 0 < item[1] <= p.column_tile):
+            if (
+                type(item) is not tuple
+                or len(item) != 2
+                or any(type(v) is not int for v in item)
+                or item[0] != end
+                or not 0 < item[1] <= p.column_tile
+            ):
                 raise ValueError("horizontal panel columns must partition every original output exactly")
             end += item[1]
         if end != p.output_channels:
             raise ValueError("horizontal panel columns do not cover the original output")
-        if (self.operand_rows > p.operand_rows or self.accumulator_rows > p.accumulator_rows
-                or max(prod(self.padded_window.input_shape), self.operand_rows * p.primitive) >= 1 << 63):
+        if (
+            self.operand_rows > p.operand_rows
+            or self.accumulator_rows > p.accumulator_rows
+            or max(prod(self.padded_window.input_shape), self.operand_rows * p.primitive) >= 1 << 63
+        ):
             raise ValueError("horizontal panels exceed their declared private storage")
 
     @property
@@ -87,19 +98,30 @@ class HorizontalConvolutionPanels:
 
     def summary(self):
         self.__post_init__()
-        return dict(schema="merlin.horizontal_convolution_panels.v1", source_sha256=self.source.identity,
-                    row_blocks=self.row_blocks, horizontal_columns=self.horizontal_columns,
-                    reduction_tiles=self.reduction_tiles, lhs_rows=self.lhs_rows, rhs_base=self.rhs_base,
-                    rhs_rows=self.rhs_rows, operand_rows=self.operand_rows,
-                    accumulator_rows=self.accumulator_rows, input_block_stride=self.input_block_stride,
-                    padded_input_elements=prod(self.padded_window.input_shape),
-                    original_reduction_order=["kernel_y", "kernel_x", "input_channel"],
-                    completion="complete RHS; stage group and bias; complete; feed/readout; complete before reuse",
-                    physical_mapping_verified=False, target_execution=False, timing=None)
+        return dict(
+            schema="merlin.horizontal_convolution_panels.v1",
+            source_sha256=self.source.identity,
+            row_blocks=self.row_blocks,
+            horizontal_columns=self.horizontal_columns,
+            reduction_tiles=self.reduction_tiles,
+            lhs_rows=self.lhs_rows,
+            rhs_base=self.rhs_base,
+            rhs_rows=self.rhs_rows,
+            operand_rows=self.operand_rows,
+            accumulator_rows=self.accumulator_rows,
+            input_block_stride=self.input_block_stride,
+            padded_input_elements=prod(self.padded_window.input_shape),
+            original_reduction_order=["kernel_y", "kernel_x", "input_channel"],
+            completion="complete RHS; stage group and bias; complete; feed/readout; complete before reuse",
+            physical_mapping_verified=False,
+            target_execution=False,
+            timing=None,
+        )
 
 
-def plan_horizontal_convolution_panels(source, *, max_row_blocks, maximum_transfer_columns,
-                                      private_rows_owned=False, column_intervals=None):
+def plan_horizontal_convolution_panels(
+    source, *, max_row_blocks, maximum_transfer_columns, private_rows_owned=False, column_intervals=None
+):
     """Select capacity-bounded complete-K panels without changing scalar exits.
 
     The original zero-padded NHWC input must be synchronously materialized by
@@ -116,15 +138,21 @@ def plan_horizontal_convolution_panels(source, *, max_row_blocks, maximum_transf
     if w.dilation[1] != 1 or source.row_tile != d or w.kernel[1] * w.input_shape[-1] > maximum_transfer_columns:
         return None
     if column_intervals is None:
-        column_intervals = tuple((n, min(source.column_tile, source.output_channels - n))
-                                 for n in range(0, source.output_channels, source.column_tile))
+        column_intervals = tuple(
+            (n, min(source.column_tile, source.output_channels - n))
+            for n in range(0, source.output_channels, source.column_tile)
+        )
     if type(column_intervals) is not tuple or not column_intervals:
         raise ValueError("horizontal panels require complete original column intervals")
     chunks = w.kernel[0] * ((w.kernel[1] * w.input_shape[-1] + d - 1) // d)
     nblocks = len(column_intervals)
     pixels = w.input_shape[0] * prod(w.output_spatial)
-    blocks = min(max_row_blocks, (pixels + d - 1) // d,
-                 source.accumulator_rows // (nblocks * d), source.operand_rows // (chunks * d) - nblocks)
+    blocks = min(
+        max_row_blocks,
+        (pixels + d - 1) // d,
+        source.accumulator_rows // (nblocks * d),
+        source.operand_rows // (chunks * d) - nblocks,
+    )
     if blocks <= 0:
         return None
     return HorizontalConvolutionPanels(source, blocks, column_intervals, maximum_transfer_columns)
@@ -144,10 +172,12 @@ def emit_horizontal_convolution_panels(plan, builder, lower, complete):
     plan.__post_init__()
     identity = repr(plan)
     p, w, d = plan.source, plan.padded_window, plan.source.primitive
-    gather = ConvolutionGatherRuns(w.input_shape, (w.input_shape[0], *w.output_spatial),
-                                  w.stride, w.dilation, w.kernel, d)
+    gather = ConvolutionGatherRuns(
+        w.input_shape, (w.input_shape[0], *w.output_spatial), w.stride, w.dilation, w.kernel, d
+    )
     nblocks = len(plan.column_intervals)
     chunks = plan.horizontal_chunks
+
     def op(name, a, b):
         return builder.op(name, a, b)
 
@@ -157,9 +187,16 @@ def emit_horizontal_convolution_panels(plan, builder, lower, complete):
             slot = ky * chunks + chunk
             depth = min(d, plan.horizontal_columns - chunk * d)
             for ni, (column, columns) in enumerate(plan.column_intervals):
-                lower("load_weight", dict(reduction_row=ky * plan.horizontal_columns + chunk * d,
-                    output_column=column, local_row=plan.rhs_base + (ni * plan.reduction_tiles + slot) * d,
-                    rows=depth, columns=columns))
+                lower(
+                    "load_weight",
+                    dict(
+                        reduction_row=ky * plan.horizontal_columns + chunk * d,
+                        output_column=column,
+                        local_row=plan.rhs_base + (ni * plan.reduction_tiles + slot) * d,
+                        rows=depth,
+                        columns=columns,
+                    ),
+                )
     complete("horizontal_rhs_ready", dict(local_row=plan.rhs_base, local_rows=plan.rhs_rows))
 
     def group(first_tile, row_counts):
@@ -167,19 +204,36 @@ def emit_horizontal_convolution_panels(plan, builder, lower, complete):
         for ky in range(w.kernel[0]):
             for mi, rows in enumerate(row_counts):
                 for base, local, count in emit_convolution_gather_runs(gather, builder, origins[mi], rows):
+
                     def stage(base=base, local=local, count=count, mi=mi, ky=ky):
-                        lower("load_horizontal_input", dict(
-                            first_element=op("add", base, ky * w.dilation[0] * w.input_shape[2] * w.input_shape[-1]),
-                            row_stride_elements=gather.source_row_stride,
-                            local_row=op("add", ky * chunks * plan.input_block_stride + mi * d, local),
-                            rows=count, columns=plan.horizontal_columns,
-                            block_stride_rows=plan.input_block_stride))
+                        lower(
+                            "load_horizontal_input",
+                            dict(
+                                first_element=op(
+                                    "add", base, ky * w.dilation[0] * w.input_shape[2] * w.input_shape[-1]
+                                ),
+                                row_stride_elements=gather.source_row_stride,
+                                local_row=op("add", ky * chunks * plan.input_block_stride + mi * d, local),
+                                rows=count,
+                                columns=plan.horizontal_columns,
+                                block_stride_rows=plan.input_block_stride,
+                            ),
+                        )
+
                     builder.branch(builder.cmp("ult", 0, count), stage, lambda: None)
         if p.bias:
             for ni, (column, columns) in enumerate(plan.column_intervals):
                 for mi, rows in enumerate(row_counts):
-                    lower("initialize_bias", dict(output_row=origins[mi], output_column=column,
-                        rows=rows, columns=columns, accumulator_row=(ni * plan.row_blocks + mi) * d))
+                    lower(
+                        "initialize_bias",
+                        dict(
+                            output_row=origins[mi],
+                            output_column=column,
+                            rows=rows,
+                            columns=columns,
+                            accumulator_row=(ni * plan.row_blocks + mi) * d,
+                        ),
+                    )
         complete("horizontal_group_ready", dict(local_row=0, local_rows=plan.lhs_rows))
         for ky in range(w.kernel[0]):
             for chunk in range(chunks):
@@ -187,15 +241,34 @@ def emit_horizontal_convolution_panels(plan, builder, lower, complete):
                 depth = min(d, plan.horizontal_columns - chunk * d)
                 for ni, (column, columns) in enumerate(plan.column_intervals):
                     for mi, rows in enumerate(row_counts):
-                        lower("compute", dict(output_row=origins[mi], output_column=column,
-                            rows=rows, columns=columns, accumulator_row=(ni * plan.row_blocks + mi) * d,
-                            lhs_row=slot * plan.input_block_stride + mi * d,
-                            rhs_row=plan.rhs_base + (ni * plan.reduction_tiles + slot) * d,
-                            depth=depth, first_reduction=(slot == 0), bias=p.bias, fresh_weights=(mi == 0)))
+                        lower(
+                            "compute",
+                            dict(
+                                output_row=origins[mi],
+                                output_column=column,
+                                rows=rows,
+                                columns=columns,
+                                accumulator_row=(ni * plan.row_blocks + mi) * d,
+                                lhs_row=slot * plan.input_block_stride + mi * d,
+                                rhs_row=plan.rhs_base + (ni * plan.reduction_tiles + slot) * d,
+                                depth=depth,
+                                first_reduction=(slot == 0),
+                                bias=p.bias,
+                                fresh_weights=(mi == 0),
+                            ),
+                        )
         for ni, (column, columns) in enumerate(plan.column_intervals):
             for mi, rows in enumerate(row_counts):
-                lower("store", dict(output_row=origins[mi], output_column=column,
-                    rows=rows, columns=columns, accumulator_row=(ni * plan.row_blocks + mi) * d))
+                lower(
+                    "store",
+                    dict(
+                        output_row=origins[mi],
+                        output_column=column,
+                        rows=rows,
+                        columns=columns,
+                        accumulator_row=(ni * plan.row_blocks + mi) * d,
+                    ),
+                )
         complete("horizontal_group_last_use", dict(local_row=0, local_rows=plan.operand_rows))
 
     pixels = w.input_shape[0] * prod(w.output_spatial)

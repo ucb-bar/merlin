@@ -42,6 +42,8 @@ builtin.module {{
     monkeypatch.setattr(offload, "device_dtype_triples", lambda _: ((dtype, dtype, dtype),))
     monkeypatch.setattr(offload, "device_contraction_ranks", lambda _: (2,))
     assert bool(offload.offloadable_contractions(module, "synthetic")) is expected
+
+
 @pytest.mark.parametrize("native", [(), (("i8", "i8", "i32"),)])
 def test_source_catalog_does_not_claim_native_precision(native, monkeypatch):
     module = parse_mlir_text("""builtin.module {

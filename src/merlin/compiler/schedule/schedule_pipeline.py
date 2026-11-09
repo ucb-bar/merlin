@@ -16,11 +16,6 @@ from dataclasses import asdict, dataclass, fields, is_dataclass, replace
 from pathlib import Path
 from types import FunctionType, MethodType
 
-from merlin.sched.ir import Call, Kernel
-from merlin.sched.ir.kernel import check_structure
-from merlin.semantic_compiler.allocation_types import StorageBank
-from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
-
 from merlin.compiler.schedule.configuration import (
     ConfigurationAdapter,
     ConfigurationEffects,
@@ -53,6 +48,10 @@ from merlin.compiler.schedule.temporary_storage import (
     prefetch_private_copies,
     verify_temporary_storage,
 )
+from merlin.sched.ir import Call, Kernel
+from merlin.sched.ir.kernel import check_structure
+from merlin.semantic_compiler.allocation_types import StorageBank
+from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
 
 @dataclass(frozen=True)

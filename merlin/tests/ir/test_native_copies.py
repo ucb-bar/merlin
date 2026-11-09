@@ -25,10 +25,13 @@ class NativeCopy:
         pointer, index = llvm.LLVMPointerType(), builtin.i64
         descriptor = [pointer, pointer, index, index, index, index, index]
         self.block = Block(arg_types=descriptor * 3)
-        self.function = llvm.FuncOp("compute", llvm.LLVMFunctionType(descriptor * 3, llvm.LLVMVoidType()),
-                                    linkage=llvm.LinkageAttr("external"), body=Region(self.block))
-        self.module = builtin.ModuleOp([self.function],
-                                      attributes={"llvm.data_layout": builtin.StringAttr(layout)})
+        self.function = llvm.FuncOp(
+            "compute",
+            llvm.LLVMFunctionType(descriptor * 3, llvm.LLVMVoidType()),
+            linkage=llvm.LinkageAttr("external"),
+            body=Region(self.block),
+        )
+        self.module = builtin.ModuleOp([self.function], attributes={"llvm.data_layout": builtin.StringAttr(layout)})
         self.input, self.output, self.scratch = (self.block.args[i] for i in (1, 8, 15))
 
     def add(self, operation):
@@ -55,9 +58,13 @@ class NativeCopy:
         return self.add(llvm.MulOp(elements, width))
 
     def copy(self, destination, source, length, *, volatile=False, attributes=None):
-        return self.add(builtin.UnregisteredOp.with_name("llvm.intr.memcpy").create(
-            operands=[destination, source, length], properties={"isVolatile": builtin.IntegerAttr(
-                int(volatile), builtin.i1)}, attributes=attributes or {}))
+        return self.add(
+            builtin.UnregisteredOp.with_name("llvm.intr.memcpy").create(
+                operands=[destination, source, length],
+                properties={"isVolatile": builtin.IntegerAttr(int(volatile), builtin.i1)},
+                attributes=attributes or {},
+            )
+        )
 
     def admit(self):
         self.block.add_op(llvm.ReturnOp())
@@ -90,20 +97,31 @@ def test_nonoverlapping_subspans_of_one_output_are_admitted():
     native.copy(native.gep(native.output, 2), native.output, native.integer(8))
     native.copy(native.scratch, native.output, native.integer(16))
     copies = native.admit()["bounded_copies"]
-    assert copies[1] == {"destination": 1, "source": 1, "destination_offset": 8,
-                         "source_offset": 0, "bytes": 8}
+    assert copies[1] == {"destination": 1, "source": 1, "destination_offset": 8, "source_offset": 0, "bytes": 8}
 
 
-@pytest.mark.parametrize("case, message", [
-    ("oversize", "extent"), ("negative-offset", "extent"), ("past-end", "extent"),
-    ("input-write", "read-only input"), ("same-span", "disjoint"), ("overlap", "disjoint"),
-    ("volatile", "nonvolatile"), ("semantic-attribute", "nonvolatile"),
-    ("zero-length", "positive length"), ("negative-length", "positive length"),
-    ("integer-overflow", "positive length"), ("unsigned-overflow", "positive length"),
-    ("pointer-escape", "pointer-to-integer"),
-    ("padded-layout", "allocation"), ("nonintegral-pointer", "nonintegral"),
-    ("sizeof-inbounds", "non-inbounds"), ("sizeof-two-elements", "one-element"),
-])
+@pytest.mark.parametrize(
+    "case, message",
+    [
+        ("oversize", "extent"),
+        ("negative-offset", "extent"),
+        ("past-end", "extent"),
+        ("input-write", "read-only input"),
+        ("same-span", "disjoint"),
+        ("overlap", "disjoint"),
+        ("volatile", "nonvolatile"),
+        ("semantic-attribute", "nonvolatile"),
+        ("zero-length", "positive length"),
+        ("negative-length", "positive length"),
+        ("integer-overflow", "positive length"),
+        ("unsigned-overflow", "positive length"),
+        ("pointer-escape", "pointer-to-integer"),
+        ("padded-layout", "allocation"),
+        ("nonintegral-pointer", "nonintegral"),
+        ("sizeof-inbounds", "non-inbounds"),
+        ("sizeof-two-elements", "one-element"),
+    ],
+)
 def test_unproved_or_effectful_copy_refuses(case, message):
     layout = LAYOUT + ("-f32:64" if case == "padded-layout" else "-ni:0" if case == "nonintegral-pointer" else "")
     native = NativeCopy(layout)
@@ -112,8 +130,7 @@ def test_unproved_or_effectful_copy_refuses(case, message):
         length = native.add(llvm.PtrToIntOp(native.input))
     elif case.startswith("sizeof-"):
         null = native.add(llvm.ZeroOp(result_types=[llvm.LLVMPointerType()]))
-        end = native.gep(null, 2 if case == "sizeof-two-elements" else 1,
-                         inbounds=case == "sizeof-inbounds")
+        end = native.gep(null, 2 if case == "sizeof-two-elements" else 1, inbounds=case == "sizeof-inbounds")
         length = native.add(llvm.PtrToIntOp(end))
     else:
         length = native.length()
@@ -136,8 +153,13 @@ def test_unproved_or_effectful_copy_refuses(case, message):
         source = native.output
         if case == "overlap":
             destination, length = native.gep(destination, 1), native.integer(8)
-    native.copy(destination, source, length, volatile=case == "volatile",
-                attributes={"unknown_policy": builtin.UnitAttr()} if case == "semantic-attribute" else None)
+    native.copy(
+        destination,
+        source,
+        length,
+        volatile=case == "volatile",
+        attributes={"unknown_policy": builtin.UnitAttr()} if case == "semantic-attribute" else None,
+    )
     native.copy(native.scratch, native.input, native.integer(16))
     with pytest.raises(ValueError, match=message):
         native.admit()
@@ -160,8 +182,13 @@ def test_memcpy_does_not_authorize_pointer_escape(escape):
     native.copy(native.output, native.input, native.length())
     native.copy(native.scratch, native.output, native.integer(16))
     if escape == "external-call":
-        native.module.body.block.add_op(llvm.FuncOp("unadmitted", llvm.LLVMFunctionType(
-            [llvm.LLVMPointerType()], llvm.LLVMVoidType()), linkage=llvm.LinkageAttr("external")))
+        native.module.body.block.add_op(
+            llvm.FuncOp(
+                "unadmitted",
+                llvm.LLVMFunctionType([llvm.LLVMPointerType()], llvm.LLVMVoidType()),
+                linkage=llvm.LinkageAttr("external"),
+            )
+        )
         native.add(llvm.CallOp(builtin.SymbolRefAttr("unadmitted"), native.output))
     else:
         native.add(llvm.StoreOp(native.input, native.scratch))

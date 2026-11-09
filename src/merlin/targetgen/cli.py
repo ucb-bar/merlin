@@ -298,8 +298,15 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
         binding = None
         if getattr(args, "support", None) and any(
             getattr(args, name, None) is not None
-            for name in ("diagnostic_graph_policy", "diagnostic_region", "diagnostic_tile_index",
-                         "ordered_k_tile", "ordered_m_tile", "ordered_n_tile", "outer_tile_index")
+            for name in (
+                "diagnostic_graph_policy",
+                "diagnostic_region",
+                "diagnostic_tile_index",
+                "ordered_k_tile",
+                "ordered_m_tile",
+                "ordered_n_tile",
+                "outer_tile_index",
+            )
         ):
             from merlin.semantic_compiler.target_binding import load_native_target_binding
 
@@ -310,7 +317,8 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
             args,
             target_identity=snapshot.profile.target_identity,
             mode=args.mode,
-            binding=binding, load_request=_load_native_request,
+            binding=binding,
+            load_request=_load_native_request,
         )
         request, _ = bind_physical_layouts(args, request, precision)
         ordered = prepare_ordered_request(args, binding, request, precision)
@@ -378,8 +386,13 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
         report = {
             "schema": "merlin.native_selection_result.v1",
             "engine": args.engine,
-            "status": ("unsupported_semantics" if isinstance(error, LinalgBridgeError)
-                       else error.status if isinstance(error, NativeCompilationError) else "compile_error"),
+            "status": (
+                "unsupported_semantics"
+                if isinstance(error, LinalgBridgeError)
+                else error.status
+                if isinstance(error, NativeCompilationError)
+                else "compile_error"
+            ),
             "scope": "selection_only",
             "reason": str(error),
         }
@@ -391,17 +404,35 @@ def _cmd_native_select(args: argparse.Namespace) -> int:
 def _cmd_native_compile(args: argparse.Namespace) -> int:
     """Invoke the actual builder with the historical loader/status patch hooks."""
     if getattr(args, "application", False):
-        if (getattr(args, "diagnostic_graph_policy", None) or getattr(args, "physical_layouts", None)
-                or any(getattr(args, name, None) is not None
-                       for name in ("diagnostic_region", "diagnostic_tile_index", "ordered_k_tile",
-                                    "ordered_m_tile", "ordered_n_tile", "outer_tile_index"))):
-            report = {"schema": "merlin.native_compilation_status.v1", "status": "compile_error",
-                      "engine": args.engine, "support": args.support, "out": str(args.out),
-                      "reason": ("diagnostic graph precision cannot be combined with --application"
-                                 if getattr(args, "diagnostic_graph_policy", None)
-                                 else "physical boundary layouts cannot be combined with --application"
-                                 if getattr(args, "physical_layouts", None)
-                                 else "diagnostic tiles and ordered partitions cannot be combined with --application")}
+        if (
+            getattr(args, "diagnostic_graph_policy", None)
+            or getattr(args, "physical_layouts", None)
+            or any(
+                getattr(args, name, None) is not None
+                for name in (
+                    "diagnostic_region",
+                    "diagnostic_tile_index",
+                    "ordered_k_tile",
+                    "ordered_m_tile",
+                    "ordered_n_tile",
+                    "outer_tile_index",
+                )
+            )
+        ):
+            report = {
+                "schema": "merlin.native_compilation_status.v1",
+                "status": "compile_error",
+                "engine": args.engine,
+                "support": args.support,
+                "out": str(args.out),
+                "reason": (
+                    "diagnostic graph precision cannot be combined with --application"
+                    if getattr(args, "diagnostic_graph_policy", None)
+                    else "physical boundary layouts cannot be combined with --application"
+                    if getattr(args, "physical_layouts", None)
+                    else "diagnostic tiles and ordered partitions cannot be combined with --application"
+                ),
+            }
             if args.status_file and not Path(args.status_file).resolve().is_relative_to(Path(args.out).resolve()):
                 _write_status(Path(args.status_file), report)
             print(json.dumps(report, sort_keys=True))
@@ -411,8 +442,9 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
         return compile_command(args, write_status=_write_status, search_limits=_load_native_search_limits)
     from merlin.compiler.build.native import compile_report
 
-    report = compile_report(args, load_request=_load_native_request,
-                            load_limits=_load_native_search_limits, write_status=_write_status)
+    report = compile_report(
+        args, load_request=_load_native_request, load_limits=_load_native_search_limits, write_status=_write_status
+    )
     print(json.dumps(report, sort_keys=True))
     return 0 if report["status"] == "emitted" else 2
 
@@ -422,19 +454,33 @@ def _cmd_native_bridge_graph(args: argparse.Namespace) -> int:
     from merlin.compiler.build.graphbridge import publish_graph_bridge
 
     status, response = publish_graph_bridge(
-        args.linalg, args.entry, compiled=args.compiled,
-        device_symbol=args.device_symbol, out=args.out,
+        args.linalg,
+        args.entry,
+        compiled=args.compiled,
+        device_symbol=args.device_symbol,
+        out=args.out,
     )
     print(json.dumps(response, sort_keys=True))
     return status
 
 
 def _cmd_native_verify(args: argparse.Namespace) -> int:
-    if (getattr(args, "application", False) and not getattr(args, "diagnostic_graph_policy", None)
-            and not getattr(args, "physical_layouts", None)
-            and not any(getattr(args, name, None) is not None
-                        for name in ("diagnostic_region", "diagnostic_tile_index", "ordered_k_tile",
-                                     "ordered_m_tile", "ordered_n_tile", "outer_tile_index"))):
+    if (
+        getattr(args, "application", False)
+        and not getattr(args, "diagnostic_graph_policy", None)
+        and not getattr(args, "physical_layouts", None)
+        and not any(
+            getattr(args, name, None) is not None
+            for name in (
+                "diagnostic_region",
+                "diagnostic_tile_index",
+                "ordered_k_tile",
+                "ordered_m_tile",
+                "ordered_n_tile",
+                "outer_tile_index",
+            )
+        )
+    ):
         from .native_application_cli import verify_command
 
         return verify_command(args)
@@ -522,13 +568,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     from .native_codegen_cli import add_arguments as add_native_arguments
 
-    add_native_arguments(sub, {
-        '_cmd_native_bridge_graph': _cmd_native_bridge_graph,
-        '_cmd_native_build': _cmd_native_build,
-        '_cmd_native_compile': _cmd_native_compile,
-        '_cmd_native_select': _cmd_native_select,
-        '_cmd_native_verify': _cmd_native_verify,
-    })
+    add_native_arguments(
+        sub,
+        {
+            "_cmd_native_bridge_graph": _cmd_native_bridge_graph,
+            "_cmd_native_build": _cmd_native_build,
+            "_cmd_native_compile": _cmd_native_compile,
+            "_cmd_native_select": _cmd_native_select,
+            "_cmd_native_verify": _cmd_native_verify,
+        },
+    )
 
     return parser
 

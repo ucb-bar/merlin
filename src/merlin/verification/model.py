@@ -8,8 +8,8 @@ from typing import Any
 
 import numpy as np
 
-from merlin.runtime import modelinputs as MI
 from merlin.compiler.build.modeloptions import BaremetalModelError, _sha
+from merlin.runtime import modelinputs as MI
 from merlin.targetgen.application_inventory import verify_capture_receipt
 
 

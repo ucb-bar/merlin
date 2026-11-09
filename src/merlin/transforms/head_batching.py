@@ -18,8 +18,7 @@ from xdsl.dialects.linalg.ops import GenericOp
 from xdsl.ir import Block
 from xdsl.ir.affine import AffineDimExpr, AffineMap
 
-from merlin.compiler.schedule.batched_dense import BatchedDenseProblem
-from merlin.compiler.schedule.batched_dense import BatchMatrixView
+from merlin.compiler.schedule.batched_dense import BatchedDenseProblem, BatchMatrixView
 from merlin.transforms import dense_row_batching_check as views
 from merlin.transforms.certificates import ir_digest
 from merlin.transforms.dense_ir import recognize_signed_integer_matmul, static_zero_integer_matmul_geometry
@@ -48,10 +47,16 @@ def _slice(value):
     offsets = tuple(op.static_offsets.get_values())
     sizes = tuple(op.static_sizes.get_values())
     strides = tuple(op.static_strides.get_values())
-    if (len(shape) != 3 or shape[1:] != matrix or sizes != (1, *matrix)
-            or strides != (1, 1, 1) or len(offsets) != 3
-            or offsets[1:] != (0, 0) or not 0 <= offsets[0] < shape[0]
-            or views.shape(value) not in (sizes, matrix)):
+    if (
+        len(shape) != 3
+        or shape[1:] != matrix
+        or sizes != (1, *matrix)
+        or strides != (1, 1, 1)
+        or len(offsets) != 3
+        or offsets[1:] != (0, 0)
+        or not 0 <= offsets[0] < shape[0]
+        or views.shape(value) not in (sizes, matrix)
+    ):
         raise ValueError("matrix view is not a complete bounded source head")
     return root, offsets[0]
 
@@ -72,26 +77,40 @@ def read_batched_integer_product(op):
     if tuple(a.data for a in op.indexing_maps) != tuple(AffineMap(4, 0, x) for x in expected):
         raise ValueError("batch product changes head or reduction coordinates")
     if tuple(a.data for a in op.iterator_types) != (
-        IteratorType.PARALLEL, IteratorType.PARALLEL, IteratorType.PARALLEL, IteratorType.REDUCTION,
+        IteratorType.PARALLEL,
+        IteratorType.PARALLEL,
+        IteratorType.PARALLEL,
+        IteratorType.REDUCTION,
     ):
         raise ValueError("batch product changes independent/reduction axes")
     if set(op.properties) - {"indexing_maps", "iterator_types", "operandSegmentSizes"}:
         raise ValueError("batch product has unknown executable properties")
     # Only the already checked tensor maps/ranks are normalized on an analysis
     # clone. The original scalar body goes through the existing strict reader.
-    types = tuple(builtin.TensorType(v.type.element_type, s) for v, s in zip(
-        (*op.inputs, op.outputs[0]), ((m, k), (k, n), (m, n)), strict=True,
-    ))
+    types = tuple(
+        builtin.TensorType(v.type.element_type, s)
+        for v, s in zip(
+            (*op.inputs, op.outputs[0]),
+            ((m, k), (k, n), (m, n)),
+            strict=True,
+        )
+    )
     arguments = Block(arg_types=types)
     d0, d1, d2 = (AffineDimExpr(i) for i in range(3))
     normalized = GenericOp.create(
-        operands=arguments.args, result_types=[types[-1]],
-        properties={"operandSegmentSizes": builtin.DenseArrayBase.from_list(builtin.i32, [2, 1]),
-                    "indexing_maps": builtin.ArrayAttr(builtin.AffineMapAttr(AffineMap(3, 0, x))
-                    for x in ((d0, d2), (d2, d1), (d0, d1))),
-                    "iterator_types": builtin.ArrayAttr(IteratorTypeAttr(x) for x in (
-                        IteratorType.PARALLEL, IteratorType.PARALLEL, IteratorType.REDUCTION))},
-        attributes=dict(op.attributes), regions=[op.body.clone()],
+        operands=arguments.args,
+        result_types=[types[-1]],
+        properties={
+            "operandSegmentSizes": builtin.DenseArrayBase.from_list(builtin.i32, [2, 1]),
+            "indexing_maps": builtin.ArrayAttr(
+                builtin.AffineMapAttr(AffineMap(3, 0, x)) for x in ((d0, d2), (d2, d1), (d0, d1))
+            ),
+            "iterator_types": builtin.ArrayAttr(
+                IteratorTypeAttr(x) for x in (IteratorType.PARALLEL, IteratorType.PARALLEL, IteratorType.REDUCTION)
+            ),
+        },
+        attributes=dict(op.attributes),
+        regions=[op.body.clone()],
     )
     try:
         recognize_signed_integer_matmul(normalized)
@@ -138,11 +157,20 @@ def _groups(module, *, max_heads, max_groups, max_candidates):
         first, last = min(map(body.index, members)), max(map(body.index, members))
         if not views.dominating(a, body[first]) or not views.dominating(b, body[first]):
             continue
-        if not views.safe_span(body[first:last+1]):
+        if not views.safe_span(body[first : last + 1]):
             continue
-        result.append(_Group(members, a, b, BatchedDenseProblem(
-            (h,), BatchMatrixView((h, m, k), (0,)), BatchMatrixView((h, k, n), (0,)),
-        )))
+        result.append(
+            _Group(
+                members,
+                a,
+                b,
+                BatchedDenseProblem(
+                    (h,),
+                    BatchMatrixView((h, m, k), (0,)),
+                    BatchMatrixView((h, k, n), (0,)),
+                ),
+            )
+        )
         if len(result) >= max_groups:
             break
     return tuple(result)
@@ -165,26 +193,44 @@ def _emit(candidate, groups, value_map, operation_map):
         dims = tuple(AffineDimExpr(i) for i in range(4))
         batch = GenericOp.create(
             operands=[value_map[group.lhs], value_map[group.rhs], initialized.result],
-            result_types=[result_type], regions=[anchor.body.clone()],
-            properties={"operandSegmentSizes": builtin.DenseArrayBase.from_list(builtin.i32, [2, 1]),
-                    "indexing_maps": builtin.ArrayAttr(builtin.AffineMapAttr(AffineMap(4, 0, x))
-                        for x in ((dims[0], dims[1], dims[3]), (dims[0], dims[3], dims[2]), dims[:3])),
-                        "iterator_types": builtin.ArrayAttr(IteratorTypeAttr(x) for x in (
-                            IteratorType.PARALLEL, IteratorType.PARALLEL,
-                            IteratorType.PARALLEL, IteratorType.REDUCTION))},
+            result_types=[result_type],
+            regions=[anchor.body.clone()],
+            properties={
+                "operandSegmentSizes": builtin.DenseArrayBase.from_list(builtin.i32, [2, 1]),
+                "indexing_maps": builtin.ArrayAttr(
+                    builtin.AffineMapAttr(AffineMap(4, 0, x))
+                    for x in ((dims[0], dims[1], dims[3]), (dims[0], dims[3], dims[2]), dims[:3])
+                ),
+                "iterator_types": builtin.ArrayAttr(
+                    IteratorTypeAttr(x)
+                    for x in (
+                        IteratorType.PARALLEL,
+                        IteratorType.PARALLEL,
+                        IteratorType.PARALLEL,
+                        IteratorType.REDUCTION,
+                    )
+                ),
+            },
         )
         anchor.parent.insert_ops_before((initialized, batch), anchor)
         sliced = []
         for h, (source, op) in enumerate(zip(group.members, mapped, strict=True)):
             view = tensor.ExtractSliceOp.from_static_parameters(
-                batch.results[0], (h, 0, 0), (1, group.problem.m, group.problem.n),
+                batch.results[0],
+                (h, 0, 0),
+                (1, group.problem.m, group.problem.n),
             )
             collapsed = tensor.CollapseShapeOp.create(
-                operands=[view.result], result_types=[op.results[0].type],
-                properties={"reassociation": builtin.ArrayAttr([
-                    builtin.ArrayAttr(builtin.IntegerAttr(i, builtin.i64) for i in (0, 1)),
-                    builtin.ArrayAttr([builtin.IntegerAttr(2, builtin.i64)]),
-                ])},
+                operands=[view.result],
+                result_types=[op.results[0].type],
+                properties={
+                    "reassociation": builtin.ArrayAttr(
+                        [
+                            builtin.ArrayAttr(builtin.IntegerAttr(i, builtin.i64) for i in (0, 1)),
+                            builtin.ArrayAttr([builtin.IntegerAttr(2, builtin.i64)]),
+                        ]
+                    )
+                },
             )
             op.parent.insert_ops_before((view, collapsed), op)
             op.results[0].replace_all_uses_with(collapsed.results[0])
@@ -205,20 +251,26 @@ def _verify(source, candidate, value_map, replacements):
     for group, initialized, batch, sliced in replacements:
         if read_batched_integer_product(batch) != group.problem:
             raise ValueError("actual batch differs from original head geometry")
-        if (batch.inputs[0] is not value_map[group.lhs] or batch.inputs[1] is not value_map[group.rhs]
-                or batch.outputs[0] is not initialized.result):
+        if (
+            batch.inputs[0] is not value_map[group.lhs]
+            or batch.inputs[1] is not value_map[group.rhs]
+            or batch.outputs[0] is not initialized.result
+        ):
             raise ValueError("actual batch changed original roots or initialization")
         from merlin.compiler.ir.contraction_shapes import zero_initialised
 
         if not zero_initialised(batch):
             raise ValueError("actual batch changed the original zero seed")
         for h, (original, (view, collapsed)) in enumerate(zip(group.members, sliced, strict=True)):
-            if (view.source is not batch.results[0] or tuple(view.static_offsets.get_values()) != (h, 0, 0)
-                    or tuple(view.static_sizes.get_values()) != (1, group.problem.m, group.problem.n)
-                    or tuple(view.static_strides.get_values()) != (1, 1, 1)
-                    or tuple(collapsed.operands) != (view.result,)
-                    or tuple(tuple(x.value.data for x in a) for a in collapsed.reassociation) != ((0, 1), (2,))
-                    or collapsed.results[0].type != original.results[0].type):
+            if (
+                view.source is not batch.results[0]
+                or tuple(view.static_offsets.get_values()) != (h, 0, 0)
+                or tuple(view.static_sizes.get_values()) != (1, group.problem.m, group.problem.n)
+                or tuple(view.static_strides.get_values()) != (1, 1, 1)
+                or tuple(collapsed.operands) != (view.result,)
+                or tuple(tuple(x.value.data for x in a) for a in collapsed.reassociation) != ((0, 1), (2,))
+                or collapsed.results[0].type != original.results[0].type
+            ):
                 raise ValueError("actual result view changed original head coverage")
             checked_view, checked_collapse = operations[view], operations[collapsed]
             old = original.clone(value_mapper=dict(original_values))
@@ -250,19 +302,45 @@ class HeadBatchingPlan:
         # objects used by the inverse witness. Replacing a graph with an equal
         # clone must not leave the witness pointing into the detached graph.
         def graph(root):
-            return tuple((id(op), id(op.parent), tuple(map(id, op.operands)), tuple(map(id, op.results)),
-                          tuple((id(region), id(region.parent), tuple(
-                              (id(block), id(block.parent), tuple(map(id, block.args)))
-                              for block in region.blocks)) for region in op.regions))
-                         for op in root.walk())
+            return tuple(
+                (
+                    id(op),
+                    id(op.parent),
+                    tuple(map(id, op.operands)),
+                    tuple(map(id, op.results)),
+                    tuple(
+                        (
+                            id(region),
+                            id(region.parent),
+                            tuple((id(block), id(block.parent), tuple(map(id, block.args))) for block in region.blocks),
+                        )
+                        for region in op.regions
+                    ),
+                )
+                for op in root.walk()
+            )
 
-        return (id(self.source), id(self.candidate), self._source_digest, self._candidate_digest,
-                graph(self.source), graph(self.candidate),
-                tuple((id(source), id(candidate)) for source, candidate in self._value_map),
-                tuple((tuple(map(id, group.members)), id(group.lhs), id(group.rhs),
-                       json.dumps(group.problem.record(), sort_keys=True), id(initialized), id(batch),
-                       tuple((id(view), id(collapsed)) for view, collapsed in sliced))
-                      for group, initialized, batch, sliced in self._replacements))
+        return (
+            id(self.source),
+            id(self.candidate),
+            self._source_digest,
+            self._candidate_digest,
+            graph(self.source),
+            graph(self.candidate),
+            tuple((id(source), id(candidate)) for source, candidate in self._value_map),
+            tuple(
+                (
+                    tuple(map(id, group.members)),
+                    id(group.lhs),
+                    id(group.rhs),
+                    json.dumps(group.problem.record(), sort_keys=True),
+                    id(initialized),
+                    id(batch),
+                    tuple((id(view), id(collapsed)) for view, collapsed in sliced),
+                )
+                for group, initialized, batch, sliced in self._replacements
+            ),
+        )
 
     def _check_digests(self):
         if ir_digest(self.source) != self._source_digest or ir_digest(self.candidate) != self._candidate_digest:
@@ -286,10 +364,14 @@ class HeadBatchingPlan:
 
     def record(self):
         groups = self.revalidate()
-        return {"schema": "merlin.independent_head_batching.v1", "source_sha256": self._source_digest,
-                "candidate_sha256": self._candidate_digest, "batches": groups,
-                "original_products": sum(g["products"] for g in groups),
-                "scope": "exact tensor algebra; independent target/ABI/ownership/cost obligations"}
+        return {
+            "schema": "merlin.independent_head_batching.v1",
+            "source_sha256": self._source_digest,
+            "candidate_sha256": self._candidate_digest,
+            "batches": groups,
+            "original_products": sum(g["products"] for g in groups),
+            "scope": "exact tensor algebra; independent target/ABI/ownership/cost obligations",
+        }
 
 
 def plan_independent_head_batching(module, *, max_heads=256, max_groups=128, max_candidates=16384):
@@ -309,6 +391,7 @@ def plan_independent_head_batching(module, *, max_heads=256, max_groups=128, max
     candidate = module.clone(value_mapper=values)
     operations = dict(zip(module.walk(), candidate.walk(), strict=True))
     replacements = _emit(candidate, groups, values, operations)
-    plan = HeadBatchingPlan(module, candidate, ir_digest(module), ir_digest(candidate),
-                            tuple(values.items()), replacements)
+    plan = HeadBatchingPlan(
+        module, candidate, ir_digest(module), ir_digest(candidate), tuple(values.items()), replacements
+    )
     return plan

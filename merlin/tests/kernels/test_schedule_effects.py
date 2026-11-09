@@ -25,8 +25,13 @@ from merlin.sched.primitives import Cursor, divide_loop, multi_buffer
 OPCODE = 0x5B
 FUNCT = {"ld_a": 1, "ld_b": 2, "stage": 3, "mac": 4, "out": 5}
 CLASS = {1: "LD_A", 2: "LD_B", 3: "STAGE", 4: "MAC", 5: "OUT"}
-ROLES = {"LD_A": ["operand_load"], "LD_B": ["operand_load"], "STAGE": ["weight_load"], "MAC": ["accumulate"],
-         "OUT": ["readout"]}
+ROLES = {
+    "LD_A": ["operand_load"],
+    "LD_B": ["operand_load"],
+    "STAGE": ["weight_load"],
+    "MAC": ["accumulate"],
+    "OUT": ["readout"],
+}
 #: (field, register, bit offset, width); width ``None`` is the whole register as a memory operand.
 LAYOUT = {
     "LD_A": [("src", "rs1", 0, None), ("at", "rs2", 0, 16), ("r", "rs2", 16, 8), ("c", "rs2", 24, 8)],
@@ -39,16 +44,23 @@ LAYOUT["LD_B"] = LAYOUT["OUT"] = LAYOUT["LD_A"]
 def _protocol_fields(klass):
     bundle = {"LD_A": "In", "LD_B": "In", "OUT": "Out", "STAGE": "S", "MAC": "M"}[klass]
     rtl = {"at": "laddr", "w": "laddr", "a": "laddr", "r": "nr", "w_rows": "nr", "a_rows": "nr", "c": "nc"}
-    return [{"as": "operand", "name": n, "operand": slot} if width is None else
-            {"bundle": bundle, "field": rtl[n], "name": n, "operand": slot} for n, slot, _, width in LAYOUT[klass]]
+    return [
+        {"as": "operand", "name": n, "operand": slot}
+        if width is None
+        else {"bundle": bundle, "field": rtl[n], "name": n, "operand": slot}
+        for n, slot, _, width in LAYOUT[klass]
+    ]
 
 
 STRUCTURE = {
     "instruction_roles": ROLES,
-    "operand_protocol": {"address_field": {"bundle": "Out", "field": "laddr"},
-                         "roles": {"classes": {k: {"fields": _protocol_fields(k)} for k in ROLES}}},
-    "load_state_selection": {"transfer_bound": {"rows": {"bundle": "In", "name": "nr"},
-                                                "cols": {"bundle": "In", "name": "nc"}}},
+    "operand_protocol": {
+        "address_field": {"bundle": "Out", "field": "laddr"},
+        "roles": {"classes": {k: {"fields": _protocol_fields(k)} for k in ROLES}},
+    },
+    "load_state_selection": {
+        "transfer_bound": {"rows": {"bundle": "In", "name": "nr"}, "cols": {"bundle": "In", "name": "nc"}}
+    },
     "local_geometry": {"uniform_row_elements": 8},
 }
 
@@ -91,17 +103,46 @@ DECODER = {"semantics": _Observer(), "target": "synthetic", "structure": {"instr
 def tiled_matmul(*, double_buffered=True):
     """C[8,8] = A[8,16] B[16,8] in 4x4 tiles; B tiles staged then read by the staging port."""
     i, j, k = Var("i"), Var("j"), Var("k")
-    body = loop("i", 2, loop("j", 2,
-        loop("k", 4,
-             call("ld_b", src=Ptr("B", add(mul(k, 32), mul(j, 4))), at=0, rows=4, cols=4,
-                  stages=(Stage("spad", 0, 4, writes=True),)),
-             call("ld_a", src=Ptr("A", add(mul(i, 64), mul(k, 4))), at=64, rows=4, cols=4,
-                  stages=(Stage("spad", 64, 4, writes=True),)),
-             call("stage", w=0, rows=4, stages=(Stage("spad", 0, 4),)),
-             call("mac", a=64, rows=4, stages=(Stage("spad", 64, 4),))),
-        call("out", dst=Ptr("C", add(mul(i, 32), mul(j, 4))), at=128, rows=4, cols=4)))
-    kernel = Kernel("mm", (TensorArg("A", (8, 16), "i8", "read"), TensorArg("B", (16, 8), "i8", "read"),
-                           TensorArg("C", (8, 8), "i8", "write")), (body,))
+    body = loop(
+        "i",
+        2,
+        loop(
+            "j",
+            2,
+            loop(
+                "k",
+                4,
+                call(
+                    "ld_b",
+                    src=Ptr("B", add(mul(k, 32), mul(j, 4))),
+                    at=0,
+                    rows=4,
+                    cols=4,
+                    stages=(Stage("spad", 0, 4, writes=True),),
+                ),
+                call(
+                    "ld_a",
+                    src=Ptr("A", add(mul(i, 64), mul(k, 4))),
+                    at=64,
+                    rows=4,
+                    cols=4,
+                    stages=(Stage("spad", 64, 4, writes=True),),
+                ),
+                call("stage", w=0, rows=4, stages=(Stage("spad", 0, 4),)),
+                call("mac", a=64, rows=4, stages=(Stage("spad", 64, 4),)),
+            ),
+            call("out", dst=Ptr("C", add(mul(i, 32), mul(j, 4))), at=128, rows=4, cols=4),
+        ),
+    )
+    kernel = Kernel(
+        "mm",
+        (
+            TensorArg("A", (8, 16), "i8", "read"),
+            TensorArg("B", (16, 8), "i8", "read"),
+            TensorArg("C", (8, 8), "i8", "write"),
+        ),
+        (body,),
+    )
     if not double_buffered:
         return kernel
     kernel = divide_loop(kernel, Cursor(("i", "j", "k")), 2)
@@ -131,8 +172,11 @@ def top_down(kernel, lower_call=None, *, spell=None):
     def entry(ctx):
         return replay_kernel(kernel, lambda instr, ops: lower_call(ctx, instr, ops), ctx, spell=spell)
 
-    document = schedule_command_stream(entry, arguments=[t.name for t in kernel.args],
-                                       specs={t.name: dict(dtype=t.dtype, shape=list(t.shape)) for t in kernel.args})
+    document = schedule_command_stream(
+        entry,
+        arguments=[t.name for t in kernel.args],
+        specs={t.name: dict(dtype=t.dtype, shape=list(t.shape)) for t in kernel.args},
+    )
     return document, schedule_effects(document, decoder=DECODER, structure=STRUCTURE, evidence_id="ours")
 
 
@@ -165,8 +209,10 @@ def emit_binary(kernel, *, mutate=None):
         regs = []
         if c.instr in ("ld_a", "ld_b", "out"):
             ptr = ops["src" if "src" in ops else "dst"]
-            regs = [("ptr", 10 + names.index(ptr.tensor), ptr.offset),
-                    ("int", ops["at"] | ops["rows"] << 16 | ops["cols"] << 24)]
+            regs = [
+                ("ptr", 10 + names.index(ptr.tensor), ptr.offset),
+                ("int", ops["at"] | ops["rows"] << 16 | ops["cols"] << 24),
+            ]
         else:
             regs = [("int", ops["w" if c.instr == "stage" else "a"] | ops["rows"] << 16), ("int", 0)]
         for rd, reg in zip((5, 6), regs, strict=True):
@@ -199,8 +245,10 @@ def test_top_down_facts_equal_the_lift_of_the_emitted_binary():
     assert buffering["a0"]["disjoint_windows"] == 1
     # Host instruction counts are not a schedule fact: top-down they stay unknown, never invented.
     host = [n for n, f in effects["facts"].items() if n not in _STREAM_FACTS and f.get("status") == "unknown"]
-    assert all("host_instructions" in (effects["facts"][n].get("reason") or "") or
-               effects["facts"][n].get("evidence", {}) for n in host)
+    assert all(
+        "host_instructions" in (effects["facts"][n].get("reason") or "") or effects["facts"][n].get("evidence", {})
+        for n in host
+    )
     assert effects["annotations"] is not None and len(effects["annotations"]["multi_buffered_stagings"]) == 2
     assert validate_stream_document(document) is document
 
@@ -228,8 +276,11 @@ def test_a_difference_already_in_the_schedule_is_a_lowering_choice():
     expert = _record(bottom_up(emit_binary(tiled_matmul())), "expert")
     single = tiled_matmul(double_buffered=False)
     _, effects = top_down(single)
-    report = attribute(schedule=_record(effects["facts"], "ours"),
-                       emitted=_record(bottom_up(emit_binary(single)), "emitted"), expert=expert)
+    report = attribute(
+        schedule=_record(effects["facts"], "ours"),
+        emitted=_record(bottom_up(emit_binary(single)), "emitted"),
+        expert=expert,
+    )
     assert report["emission_realized_schedule"]["value"] is True
     rows = [r for r in report["attribution"] if r["effect"] == "operand_buffering"]
     assert rows and {r["attribution"] for r in rows} == {"lowering_design_choice"}
@@ -282,14 +333,16 @@ def _replace_first(body, target, **change):
 
 def test_the_llvm_index_bridge_drives_the_replay_and_folds_constant_selections():
     """A lowering that emits through the ordinary index bridge needs nothing replay-specific."""
-    from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
-    from merlin.compiler.schedule.llvm_program import emit_index_program
+    from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter, emit_index_program
     from merlin.kernels.schedule_effects import ReplayContext
     from merlin.sched.ir import select
 
     k = Var("k")
-    kernel = Kernel("tail", (TensorArg("A", (4, 16), "i8", "read"),), (loop("k", 4, call(
-        "mac", a=add(mul(k, 4), 0), rows=select("k", 3, 2, 4))),))
+    kernel = Kernel(
+        "tail",
+        (TensorArg("A", (4, 16), "i8", "read"),),
+        (loop("k", 4, call("mac", a=add(mul(k, 4), 0), rows=select("k", 3, 2, 4))),),
+    )
     ctx = ReplayContext(["A"])
     lower_call = lowering()
     emit_index_program(kernel, FnBuilderIndexAdapter(ctx.fb), lambda instr, ops: lower_call(ctx, instr, ops))
@@ -302,8 +355,11 @@ def test_order_facts_lead_and_the_shape_sweep_reads_bounds_from_the_facts():
     expert = _record(bottom_up(emit_binary(tiled_matmul())), "expert")
     single = tiled_matmul(double_buffered=False)
     _, effects = top_down(single)
-    report = attribute(schedule=_record(effects["facts"], "ours"),
-                       emitted=_record(bottom_up(emit_binary(single)), "emitted"), expert=expert)
+    report = attribute(
+        schedule=_record(effects["facts"], "ours"),
+        emitted=_record(bottom_up(emit_binary(single)), "emitted"),
+        expert=expert,
+    )
     effects_seen = [r["effect"] for r in report["comparisons"]["schedule_vs_expert"]]
     first_count = next(i for i, e in enumerate(effects_seen) if e not in ORDER_FACTS)
     assert all(e not in ORDER_FACTS for e in effects_seen[first_count:])
@@ -312,14 +368,16 @@ def test_order_facts_lead_and_the_shape_sweep_reads_bounds_from_the_facts():
     def instantiate(double):
         kernel = tiled_matmul(double_buffered=double)
         lower_call = lowering()
-        return (lambda ctx: replay_kernel(kernel, lambda i, ops: lower_call(ctx, i, ops), ctx),
-                [t.name for t in kernel.args], {t.name: dict(dtype=t.dtype) for t in kernel.args})
+        return (
+            lambda ctx: replay_kernel(kernel, lambda i, ops: lower_call(ctx, i, ops), ctx),
+            [t.name for t in kernel.args],
+            {t.name: dict(dtype=t.dtype) for t in kernel.args},
+        )
 
     classes = {name: {"entries": {"status": "derived", "value": depth}} for name, depth in (("move", 2), ("run", 8))}
     facts = {"facts": {"timing_structure": {"command_classes": {"classes": classes}}}}
     routing = {"LD_A": "move", "LD_B": "move", "OUT": "move", "STAGE": "run", "MAC": "run"}
-    sweep = shape_sweep(instantiate, [False, True], decoder=DECODER, structure=STRUCTURE, facts=facts,
-                        routing=routing)
+    sweep = shape_sweep(instantiate, [False, True], decoder=DECODER, structure=STRUCTURE, facts=facts, routing=routing)
     assert [row["status"] for row in sweep["shapes"]] == ["derived", "derived"]
     assert list(sweep["shapes"][0]["facts"])[0] == ORDER_FACTS[0]
     bounds = {r["role"]: r for r in sweep["shapes"][0]["resource_bounds"]}

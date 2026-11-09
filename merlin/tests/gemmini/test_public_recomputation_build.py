@@ -147,17 +147,15 @@ def test_original_public_compiler_binds_missing_cost_after_outlining(tmp_path, m
     document, selected_pin = read_selection(selected)
     if document["trace_contract"] is None:
         pytest.skip("select the original trace runtime; accelerator execution is unestablished")
-    from merlin_experiments.phase1.feedback import private_instruction_coordinator as C
-    from merlin_experiments.phase1.feedback import private_instruction_declaration as D
-
-    from merlin.model import compile_saved_model
-    from merlin.model import read_full_outputs
-    from merlin.runtime.modelinputs import selected_execution_firrtl, strict_tree_sha256
     from merlin.compiler.planning.model import plan_before_build
     from merlin.llvmlower import optional_passes, toolchain
+    from merlin.model import compile_saved_model, read_full_outputs
     from merlin.runtime.backends import spike
     from merlin.runtime.input_observation import revalidate_observation
+    from merlin.runtime.modelinputs import selected_execution_firrtl, strict_tree_sha256
     from merlin.targetgen import target_registry
+    from merlin_experiments.phase1.feedback import private_instruction_coordinator as C
+    from merlin_experiments.phase1.feedback import private_instruction_declaration as D
 
     case = R.original_case()
     quiet_path = Path(document["quiet_contract"]["path"])

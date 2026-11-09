@@ -5,54 +5,101 @@ from dataclasses import replace
 import pytest
 from test_compact_dense import ADAPTER, fixture
 
-from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
-from merlin.compiler.schedule.dense_panel_pipeline import DensePanelOverlapAdmission
-from merlin.compiler.schedule.dense_panel_pipeline import DenseRetainedReductionAdmission
-from merlin.compiler.schedule.dense_panel_pipeline import _serial_projection
-from merlin.compiler.schedule.dense_panel_pipeline import verify_dense_panel_pipeline
-from merlin.compiler.schedule.dense_segmented_pipeline import DenseSegmentedAdmission
-from merlin.compiler.schedule.dense_segmented_pipeline import build_dense_segmented_pipeline
-from merlin.compiler.schedule.dense_segmented_pipeline import schedule_dense_segmented_pipeline
-from merlin.compiler.schedule.dense_segmented_pipeline import verify_dense_segmented_pipeline
-from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+from merlin.compiler.schedule.dense_panel_pipeline import (
+    DRAIN,
+    DensePanelOverlapAdmission,
+    DenseRetainedReductionAdmission,
+    _serial_projection,
+    verify_dense_panel_pipeline,
+)
+from merlin.compiler.schedule.dense_segmented_pipeline import (
+    DenseSegmentedAdmission,
+    build_dense_segmented_pipeline,
+    schedule_dense_segmented_pipeline,
+    verify_dense_segmented_pipeline,
+)
+from merlin.compiler.schedule.schedule_ir import (
+    dense_schedule_text,
+    make_dense_schedule_plan,
+    parse_dense_schedule_plan,
+)
 from merlin.sched.ir import Loop, instances
 from merlin.transforms.dense_planning import dense_blocks
 
 
 def inputs(shape=(5, 14, 13), segment=2):
     p, r, s = fixture(shape=shape)
-    s = replace(s, lhs=replace(s.lhs, capacity=256), rhs=replace(s.rhs, capacity=48),
-                accumulator=replace(s.accumulator, capacity=64))
-    r = replace(r, operand_bytes=256 * s.lhs.unit_bytes + 48 * s.rhs.unit_bytes,
-                accumulator_bytes=64 * s.accumulator.unit_bytes, max_m_blocks=2, max_n_blocks=2,
-                max_k_blocks=segment)
+    s = replace(
+        s,
+        lhs=replace(s.lhs, capacity=256),
+        rhs=replace(s.rhs, capacity=48),
+        accumulator=replace(s.accumulator, capacity=64),
+    )
+    r = replace(
+        r,
+        operand_bytes=256 * s.lhs.unit_bytes + 48 * s.rhs.unit_bytes,
+        accumulator_bytes=64 * s.accumulator.unit_bytes,
+        max_m_blocks=2,
+        max_n_blocks=2,
+        max_k_blocks=segment,
+    )
     b = next(b for b in dense_blocks(p, r) if (b.m, b.k, b.n) == (2, segment, 2))
-    overlap = DensePanelOverlapAdmission(ADAPTER.configuration_identity, ADAPTER.numerical_policy_identity,
-                                        "synthetic-disjoint-epoch-law", 4096, 4096, 2, 2)
-    reduction = DenseRetainedReductionAdmission(ADAPTER.configuration_identity, ADAPTER.numerical_policy_identity,
-                                               "synthetic-ordered-commit-law", 4096, 4096, 2, 2)
+    overlap = DensePanelOverlapAdmission(
+        ADAPTER.configuration_identity,
+        ADAPTER.numerical_policy_identity,
+        "synthetic-disjoint-epoch-law",
+        4096,
+        4096,
+        2,
+        2,
+    )
+    reduction = DenseRetainedReductionAdmission(
+        ADAPTER.configuration_identity,
+        ADAPTER.numerical_policy_identity,
+        "synthetic-ordered-commit-law",
+        4096,
+        4096,
+        2,
+        2,
+    )
     admission = DenseSegmentedAdmission(overlap, reduction, "synthetic-COMBINED-ordered-commit-and-disjoint-overlap")
     return p, r, s, b, admission
 
 
 def chosen(p, r, s, b, a, prefetch=True, issue_order=None):
     plan = make_dense_schedule_plan(
-        p, r, s, ADAPTER, source_identity="b" * 64, dtypes=("i8", "i8", "i32"), static_budget=128,
-        block_tiles=(b.m, b.k, b.n), pipeline_kind="retained_lhs_segmented_k", pipeline_prefetch=prefetch,
-        pipeline_issue_order=issue_order)
+        p,
+        r,
+        s,
+        ADAPTER,
+        source_identity="b" * 64,
+        dtypes=("i8", "i8", "i32"),
+        static_budget=128,
+        block_tiles=(b.m, b.k, b.n),
+        pipeline_kind="retained_lhs_segmented_k",
+        pipeline_prefetch=prefetch,
+        pipeline_issue_order=issue_order,
+    )
     return schedule_dense_segmented_pipeline(
-        p, r, s, ADAPTER, a, name="segmented", dtypes=("i8", "i8", "i32"),
-        schedule_plan=parse_dense_schedule_plan(dense_schedule_text(plan)), source_identity="b" * 64,
-        external_buffers_disjoint=True)
+        p,
+        r,
+        s,
+        ADAPTER,
+        a,
+        name="segmented",
+        dtypes=("i8", "i8", "i32"),
+        schedule_plan=parse_dense_schedule_plan(dense_schedule_text(plan)),
+        source_identity="b" * 64,
+        external_buffers_disjoint=True,
+    )
 
 
 def lookahead_inputs(shape):
     p, r, s, _, admission = inputs(shape, 1)
     s = replace(s, rhs=replace(s.rhs, capacity=256))
-    r = replace(r, operand_bytes=s.lhs.capacity * s.lhs.unit_bytes + s.rhs.capacity * s.rhs.unit_bytes,
-                max_k_blocks=p.tiles[1])
+    r = replace(
+        r, operand_bytes=s.lhs.capacity * s.lhs.unit_bytes + s.rhs.capacity * s.rhs.unit_bytes, max_k_blocks=p.tiles[1]
+    )
     block = next(b for b in dense_blocks(p, r) if (b.m, b.k, b.n) == (2, p.tiles[1], 2))
     return p, r, s, block, admission
 
@@ -75,17 +122,27 @@ def test_full_k_rhs_lookahead_has_actual_mixed_epochs_and_preserves_all_tail_pro
 
 def test_full_k_rhs_lookahead_runs_the_independent_original_integer_executor(monkeypatch):
     import test_compact_dense as existing
+
     from merlin.compiler.schedule.dense_segmented_pipeline import OUTPUT_GROUP_PREFETCH
 
     original_fixture = existing.fixture
 
     def capacity_fixture(**kwargs):
         p, r, s = original_fixture(**kwargs)
-        s = replace(s, lhs=replace(s.lhs, capacity=256), rhs=replace(s.rhs, capacity=256),
-                    accumulator=replace(s.accumulator, capacity=64))
-        r = replace(r, operand_bytes=256 * (s.lhs.unit_bytes + s.rhs.unit_bytes),
-                    accumulator_bytes=64 * s.accumulator.unit_bytes,
-                    max_m_blocks=2, max_n_blocks=2, max_k_blocks=p.tiles[1])
+        s = replace(
+            s,
+            lhs=replace(s.lhs, capacity=256),
+            rhs=replace(s.rhs, capacity=256),
+            accumulator=replace(s.accumulator, capacity=64),
+        )
+        r = replace(
+            r,
+            operand_bytes=256 * (s.lhs.unit_bytes + s.rhs.unit_bytes),
+            accumulator_bytes=64 * s.accumulator.unit_bytes,
+            max_m_blocks=2,
+            max_n_blocks=2,
+            max_k_blocks=p.tiles[1],
+        )
         return p, r, s
 
     def schedule(p, r, s, **kwargs):
@@ -127,8 +184,16 @@ def test_full_k_rhs_lookahead_rejects_missing_frontiers_and_current_slot_overwri
         return tuple(rewritten)
 
     with pytest.raises(ValueError, match="overlapping in-flight"):
-        verify_dense_segmented_pipeline(replace(result.kernel, body=overwrite(result.kernel.body)),
-            p, b, r, s, ADAPTER, admission, static_budget=128)
+        verify_dense_segmented_pipeline(
+            replace(result.kernel, body=overwrite(result.kernel.body)),
+            p,
+            b,
+            r,
+            s,
+            ADAPTER,
+            admission,
+            static_budget=128,
+        )
 
 
 @pytest.mark.parametrize("shape,segment", [((5, 14, 13), 2), ((4, 27, 8), 2), ((4, 6, 8), 2), ((4, 7, 8), 2)])
@@ -139,8 +204,12 @@ def test_actual_segmented_source_tails_and_serial_control_have_identical_data_ca
     from merlin.sched.ir import evaluate
 
     def calls(result):
-        return [(c.instr, tuple((k, evaluate(v, env)) for k, v in c.args))
-                for c, env in instances(result.kernel) if c.instr != DRAIN]
+        return [
+            (c.instr, tuple((k, evaluate(v, env)) for k, v in c.args))
+            for c, env in instances(result.kernel)
+            if c.instr != DRAIN
+        ]
+
     assert calls(actual) == calls(control)
     assert actual.realization["source"]["output_tiles"] == p.tiles[0] * p.tiles[2]
     assert actual.realization["source"]["lhs_loads"] == p.tiles[0] * p.tiles[1]
@@ -160,10 +229,20 @@ def test_actual_scalar_execution_preserves_all_source_products_and_outputs(monke
 
     def capacity_fixture(**kwargs):
         p, r, s = original_fixture(**kwargs)
-        s = replace(s, lhs=replace(s.lhs, capacity=256), rhs=replace(s.rhs, capacity=48),
-                    accumulator=replace(s.accumulator, capacity=64))
-        r = replace(r, operand_bytes=256 * s.lhs.unit_bytes + 48 * s.rhs.unit_bytes,
-                    accumulator_bytes=64 * s.accumulator.unit_bytes, max_m_blocks=2, max_n_blocks=2, max_k_blocks=2)
+        s = replace(
+            s,
+            lhs=replace(s.lhs, capacity=256),
+            rhs=replace(s.rhs, capacity=48),
+            accumulator=replace(s.accumulator, capacity=64),
+        )
+        r = replace(
+            r,
+            operand_bytes=256 * s.lhs.unit_bytes + 48 * s.rhs.unit_bytes,
+            accumulator_bytes=64 * s.accumulator.unit_bytes,
+            max_m_blocks=2,
+            max_n_blocks=2,
+            max_k_blocks=2,
+        )
         return p, r, s
 
     def segmented_schedule(p, r, s, **kwargs):
@@ -189,8 +268,9 @@ def test_unproved_combination_alias_and_same_window_prefetch_refuse():
     with pytest.raises(ValueError, match="resource|alias"):
         build_dense_segmented_pipeline(p, b, r, shared, ADAPTER, name="alias", dtypes=("i8", "i8", "i32"))
     with pytest.raises(ValueError, match="alias"):
-        build_dense_segmented_pipeline(p, b, r, s, ADAPTER, name="same_slots", dtypes=("i8", "i8", "i32"),
-                                       window_offsets=((0, 0), (0, 0)))
+        build_dense_segmented_pipeline(
+            p, b, r, s, ADAPTER, name="same_slots", dtypes=("i8", "i8", "i32"), window_offsets=((0, 0), (0, 0))
+        )
     serial = 0
 
     def walk(body):
@@ -203,10 +283,13 @@ def test_unproved_combination_alias_and_same_window_prefetch_refuse():
                 if stmt.instr == "weight_load":
                     serial += 1
                     if serial == 2:
-                        stmt = replace(stmt, args=tuple((k, v + (-b.k * b.n * p.tile_k) if k == "dst" else v)
-                                                        for k, v in stmt.args))
+                        stmt = replace(
+                            stmt,
+                            args=tuple((k, v + (-b.k * b.n * p.tile_k) if k == "dst" else v) for k, v in stmt.args),
+                        )
                 result.append(stmt)
         return tuple(result)
+
     invalid = replace(kernel, body=walk(kernel.body))
     with pytest.raises(ValueError, match="overlapping in-flight"):
         verify_dense_segmented_pipeline(invalid, p, b, r, s, ADAPTER, a, static_budget=128)
@@ -230,16 +313,23 @@ def test_existing_pure_store_grouping_composes_without_changing_mixed_epochs_or_
 
     p, r, s, b, a = inputs()
     source = chosen(p, r, s, b, a)
-    selected = replace(a, overlap=replace(a.overlap, max_issued_readouts=4,
-                                         readout_configuration="ordered_snapshot_before_store_issue"),
-                       reduction=replace(a.reduction, max_issued_readouts=4,
-                                         readout_configuration="ordered_snapshot_before_store_issue"))
+    selected = replace(
+        a,
+        overlap=replace(a.overlap, max_issued_readouts=4, readout_configuration="ordered_snapshot_before_store_issue"),
+        reduction=replace(
+            a.reduction, max_issued_readouts=4, readout_configuration="ordered_snapshot_before_store_issue"
+        ),
+    )
     actual = batch_dense_segmented_readouts(source, p, b, r, s, ADAPTER, selected)
     from merlin.sched.ir import evaluate
 
     def data(result):
-        return [(c.instr, tuple((k, evaluate(v, env)) for k, v in c.args))
-                for c, env in instances(result.kernel) if c.instr != DRAIN]
+        return [
+            (c.instr, tuple((k, evaluate(v, env)) for k, v in c.args))
+            for c, env in instances(result.kernel)
+            if c.instr != DRAIN
+        ]
+
     assert data(actual) == data(source)
     assert actual.realization["readout_batching"]["removed_dynamic_drains"] > 0
     assert actual.realization["overlapped_compute_pairs"] == source.realization["overlapped_compute_pairs"]
@@ -257,8 +347,11 @@ def test_combined_law_enforces_the_smaller_component_readout_budget():
     p, r, s, b, a = inputs()
     source = chosen(p, r, s, b, a)
     policy = "ordered_snapshot_before_store_issue"
-    unequal = replace(a, overlap=replace(a.overlap, max_issued_readouts=4, readout_configuration=policy),
-                      reduction=replace(a.reduction, max_issued_readouts=1, readout_configuration=policy))
+    unequal = replace(
+        a,
+        overlap=replace(a.overlap, max_issued_readouts=4, readout_configuration=policy),
+        reduction=replace(a.reduction, max_issued_readouts=1, readout_configuration=policy),
+    )
     proposed, _ = _propose(source.kernel, ADAPTER, 4)
     with pytest.raises(ValueError, match="readout exceeds"):
         verify_dense_segmented_pipeline(proposed, p, b, r, s, ADAPTER, unequal, static_budget=128)
@@ -285,14 +378,17 @@ def test_typed_frontier_issue_reorders_real_calls_without_changing_cover_reducti
                 current.append((call.instr, tuple((k, evaluate(v, env)) for k, v in call.args)))
         assert not current
         return groups
+
     before, after = epochs(original), epochs(interleaved)
     assert before != after
     assert Counter(c for group in before for c in group) == Counter(c for group in after for c in group)
     assert len(before) == len(after)
     assert interleaved.admission == original.admission
     assert interleaved.realization["source"]["output_tiles"] == original.realization["source"]["output_tiles"]
-    assert (interleaved.realization["source"]["requested_load_bytes"]
-            == original.realization["source"]["requested_load_bytes"])
+    assert (
+        interleaved.realization["source"]["requested_load_bytes"]
+        == original.realization["source"]["requested_load_bytes"]
+    )
     assert interleaved.realization["frontier_issue"]["regions"]
     for group in after:
         for index, (instruction, _args) in enumerate(group):
@@ -300,9 +396,11 @@ def test_typed_frontier_issue_reorders_real_calls_without_changing_cover_reducti
                 assert group[index + 1][0] == "compute"
     mixed_before = [g for g in before if any(c[0] == "compute" for c in g) and any(c[0] == "weight_load" for c in g)]
     mixed_after = [g for g in after if any(c[0] == "compute" for c in g) and any(c[0] == "weight_load" for c in g)]
-    assert all(next(i for i, c in enumerate(a) if c[0] == "weight_load")
-               < next(i for i, c in enumerate(b) if c[0] == "weight_load")
-               for a, b in zip(mixed_after, mixed_before, strict=True))
+    assert all(
+        next(i for i, c in enumerate(a) if c[0] == "weight_load")
+        < next(i for i, c in enumerate(b) if c[0] == "weight_load")
+        for a, b in zip(mixed_after, mixed_before, strict=True)
+    )
     if p.tiles[1] % b.k:
         assert any(x["compute_only_suffix"] for x in interleaved.realization["frontier_issue"]["regions"])
     interleaved.materialize_scf().verify()
@@ -317,8 +415,10 @@ def test_typed_frontier_issue_reorders_real_calls_without_changing_cover_reducti
     assert len(normalized) == len(after)
     for original_epoch, checking_epoch in zip(after, normalized, strict=True):
         for load_phase in (False, True):
+
             def phase(c):
                 return (c[0] in ("lhs_load", "weight_load")) == load_phase
+
             assert list(filter(phase, original_epoch)) == list(filter(phase, checking_epoch))
 
 
@@ -333,10 +433,20 @@ def test_frontier_issue_scalar_outputs_still_match_original_source(monkeypatch, 
         # from the separate multi-output-block verifier scalability tests.
         kwargs["shape"] = (3, 14, 7)
         p, r, s = original_fixture(**kwargs)
-        s = replace(s, lhs=replace(s.lhs, capacity=256), rhs=replace(s.rhs, capacity=48),
-                    accumulator=replace(s.accumulator, capacity=64))
-        r = replace(r, operand_bytes=256 * s.lhs.unit_bytes + 48 * s.rhs.unit_bytes,
-                    accumulator_bytes=64 * s.accumulator.unit_bytes, max_m_blocks=2, max_n_blocks=2, max_k_blocks=2)
+        s = replace(
+            s,
+            lhs=replace(s.lhs, capacity=256),
+            rhs=replace(s.rhs, capacity=48),
+            accumulator=replace(s.accumulator, capacity=64),
+        )
+        r = replace(
+            r,
+            operand_bytes=256 * s.lhs.unit_bytes + 48 * s.rhs.unit_bytes,
+            accumulator_bytes=64 * s.accumulator.unit_bytes,
+            max_m_blocks=2,
+            max_n_blocks=2,
+            max_k_blocks=2,
+        )
         return p, r, s
 
     def schedule(p, r, s, **kwargs):
@@ -356,8 +466,9 @@ def test_frontier_issue_refuses_missing_epoch_and_bad_next_segment_and_keeps_act
     p, r, s, b, a = inputs()
     with pytest.raises(ValueError, match="explicit prefetched epoch"):
         chosen(p, r, s, b, a, prefetch=False, issue_order="prefetch_rhs_between_columns")
-    control = build_dense_segmented_pipeline(p, b, r, s, ADAPTER, name="serial", dtypes=("i8", "i8", "i32"),
-                                              prefetch=False)
+    control = build_dense_segmented_pipeline(
+        p, b, r, s, ADAPTER, name="serial", dtypes=("i8", "i8", "i32"), prefetch=False
+    )
     with pytest.raises(ValueError, match="at least one actual mixed"):
         interleave_dense_segmented_frontier(control, ADAPTER)
     source = build_dense_segmented_pipeline(p, b, r, s, ADAPTER, name="wrong", dtypes=("i8", "i8", "i32"))
@@ -372,10 +483,13 @@ def test_frontier_issue_refuses_missing_epoch_and_bad_next_segment_and_keeps_act
                 count += 1
                 if count == 2:
                     delta = -b.k if field == "a" else -b.k * b.n * p.tile_k
-                    statement = replace(statement, args=tuple((key, value + delta if key == field else value)
-                                                              for key, value in statement.args))
+                    statement = replace(
+                        statement,
+                        args=tuple((key, value + delta if key == field else value) for key, value in statement.args),
+                    )
             output.append(statement)
         return tuple(output)
+
     count = 0
     wrong = replace(source, body=rewrite(source.body, "a"))
     with pytest.raises(ValueError, match="exact following K segment"):
@@ -416,10 +530,13 @@ def test_phase_fission_never_bypasses_actual_hazards_or_source_dependencies(monk
             elif statement.instr == "weight_load":
                 seen += 1
                 if seen == 2:
-                    statement = replace(statement, args=tuple((k, v + (-b.k * b.n * p.tile_k) if k == "dst" else v)
-                                                              for k, v in statement.args))
+                    statement = replace(
+                        statement,
+                        args=tuple((k, v + (-b.k * b.n * p.tile_k) if k == "dst" else v) for k, v in statement.args),
+                    )
             result.append(statement)
         return tuple(result)
+
     alias = replace(interleaved, body=collide(interleaved.body))
 
     def forbidden(*args):

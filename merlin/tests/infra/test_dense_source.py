@@ -8,8 +8,7 @@ from test_selected_dense_contracts import inputs
 from xdsl.dialects import arith
 from xdsl.dialects.builtin import StringAttr
 
-from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
-from merlin.compiler.schedule.dense_source import schedule_source_dense
+from merlin.compiler.schedule.dense_source import DenseSourceUnavailable, schedule_source_dense
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.transforms.dense_planning import DenseResources
 

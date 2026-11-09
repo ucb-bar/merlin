@@ -75,14 +75,21 @@ def _copy(source: Path, destination: Path, expected: str | None = None) -> dict:
 
 
 def _preparation_identity(product):
-    record = ({"directory": str(product.directory), "compilation": product.to_dict()}
-              if isinstance(product, Compilation) else asdict(product))
+    record = (
+        {"directory": str(product.directory), "compilation": product.to_dict()}
+        if isinstance(product, Compilation)
+        else asdict(product)
+    )
     return json.dumps(record, sort_keys=True, allow_nan=False, default=str)
 
 
 def prepare(
-    compilation: Compilation | Artifact, *, output: str | Path, artifact: str | None = None,
-    arguments: tuple[str, ...] = (), inputs: Mapping[str, Path] | None = None,
+    compilation: Compilation | Artifact,
+    *,
+    output: str | Path,
+    artifact: str | None = None,
+    arguments: tuple[str, ...] = (),
+    inputs: Mapping[str, Path] | None = None,
     deployment: Deployment | None = None,
 ) -> PreparedRun:
     """Package an admitted image for an externally managed FireSim environment.
@@ -125,7 +132,7 @@ def prepare(
             raise ValueError("external preparation changed the original selected input")
         if isinstance(compilation, Compilation):
             current = Compilation.load(source_directory)
-            if (_preparation_identity(current) != original_identity or _digest(current.manifest) != manifest_digest):
+            if _preparation_identity(current) != original_identity or _digest(current.manifest) != manifest_digest:
                 raise ValueError("compiled manifest changed during external preparation")
 
     check_inputs()
@@ -152,34 +159,69 @@ def prepare(
         files.append({"path": name, "kind": "data", "role": "input", **_copy(Path(source), _member(directory, name))})
     if isinstance(compilation, Compilation):
         manifest = compilation.directory / "compilation.json"
-        files.append({"path": "build.json", "kind": "json", "role": "build-record",
-                      **_copy(manifest, directory / "build.json", manifest_digest)})
+        files.append(
+            {
+                "path": "build.json",
+                "kind": "json",
+                "role": "build-record",
+                **_copy(manifest, directory / "build.json", manifest_digest),
+            }
+        )
     else:
         record = directory / "external-image.json"
-        _write(record, {"schema": "merlin.external_image.v1", "sha256": compilation.sha256,
-                        "deployment": asdict(deployment), "compilation_provenance": "not_supplied",
-                        "deployment_authority": "caller", "qualification": "not_established"})
-        files.append({"path": record.name, "kind": "json", "role": "external-image-record",
-                      "sha256": _digest(record), "bytes": record.stat().st_size})
+        _write(
+            record,
+            {
+                "schema": "merlin.external_image.v1",
+                "sha256": compilation.sha256,
+                "deployment": asdict(deployment),
+                "compilation_provenance": "not_supplied",
+                "deployment_authority": "caller",
+                "qualification": "not_established",
+            },
+        )
+        files.append(
+            {
+                "path": record.name,
+                "kind": "json",
+                "role": "external-image-record",
+                "sha256": _digest(record),
+                "bytes": record.stat().st_size,
+            }
+        )
     entry = "payload/" + images[0].path.relative_to(source_directory).as_posix()
     if deployment.platform == "linux":
         script = directory / "invoke.sh"
         script.write_text(
             '#!/bin/sh\nset -eu\ncd -- "$(dirname -- "$0")"\nexec '
-            + " ".join(shlex.quote(value) for value in ("./" + entry, *arguments)) + "\n",
+            + " ".join(shlex.quote(value) for value in ("./" + entry, *arguments))
+            + "\n",
             encoding="utf-8",
         )
         script.chmod(0o755)
         _member(directory, entry).chmod(0o755)
-        files.append({"path": "invoke.sh", "kind": "shell", "role": "guest-invocation",
-                      "sha256": _digest(script), "bytes": script.stat().st_size})
+        files.append(
+            {
+                "path": "invoke.sh",
+                "kind": "shell",
+                "role": "guest-invocation",
+                "sha256": _digest(script),
+                "bytes": script.stat().st_size,
+            }
+        )
     request = {
-        "schema": "merlin.external_request.v1", "id": uuid4().hex,
-        "runner": "firesim", "status": "prepared", "deployment": asdict(deployment),
-        "entry": entry, "invocation": "guest-command" if deployment.platform == "linux" else "boot-image",
-        "arguments": list(arguments), "files": files,
+        "schema": "merlin.external_request.v1",
+        "id": uuid4().hex,
+        "runner": "firesim",
+        "status": "prepared",
+        "deployment": asdict(deployment),
+        "entry": entry,
+        "invocation": "guest-command" if deployment.platform == "linux" else "boot-image",
+        "arguments": list(arguments),
+        "files": files,
         "result_protocol": "merlin.external_result.v1",
-        "execution": "external_operator_required", "qualification": "not_established",
+        "execution": "external_operator_required",
+        "qualification": "not_established",
     }
     # Reopening a self-consistent replacement does not renew the original
     # selection. Compare its receipt as well as the selected input bytes.
@@ -238,14 +280,25 @@ def collect(prepared: PreparedRun | str | Path, *, results: str | Path) -> Exter
     retained = []
     for item in records:
         name = item["path"]
-        retained.append({"path": name, "role": item.get("role", "output"),
-                         **_copy(_member(root, name), _member(destination, name), item["sha256"])})
+        retained.append(
+            {
+                "path": name,
+                "role": item.get("role", "output"),
+                **_copy(_member(root, name), _member(destination, name), item["sha256"]),
+            }
+        )
     _copy(report_path, destination / "result.json", report_digest)
     _open(PreparedRun(directory, request_digest))
-    _write(destination / "observation.json", {
-        "schema": "merlin.external_observation.v1", "status": "collected",
-        "request_sha256": request_digest, "reported_exit_code": report["exit_code"],
-        "artifacts": retained, "execution_authority": "external_operator_report",
-        "qualification": "not_established",
-    })
+    _write(
+        destination / "observation.json",
+        {
+            "schema": "merlin.external_observation.v1",
+            "status": "collected",
+            "request_sha256": request_digest,
+            "reported_exit_code": report["exit_code"],
+            "artifacts": retained,
+            "execution_authority": "external_operator_report",
+            "qualification": "not_established",
+        },
+    )
     return ExternalObservation(destination, request_digest, report["exit_code"], tuple(retained))

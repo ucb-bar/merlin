@@ -18,6 +18,25 @@ from xdsl.dialects import arith, builtin, func
 from xdsl.dialects.linalg.ops import YieldOp
 from xdsl.ir import Block, Region
 
+from merlin.compiler.schedule.configuration import (
+    ConfigurationEffects,
+    verify_configuration_rewrite,
+    verify_configuration_state,
+)
+from merlin.compiler.schedule.fusion import _elementwise
+from merlin.compiler.schedule.fusion_semantics import (
+    ScalarBudgetExceeded,
+    ScalarGraph,
+    UnsupportedElementwise,
+    scalar_graph,
+    term,
+)
+from merlin.compiler.schedule.library_sources import shared_library_sources
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets, ScheduleCompilation, compile_schedule
+from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
+from merlin.compiler.schedule.spill_conformance import _Memory, _Piece
+from merlin.compiler.schedule.temporary_storage import TemporaryObject, _completion, _overlap, _problem, _project
 from merlin.sched.ir import Kernel
 from merlin.transforms.certificates import ir_digest, ir_text
 from merlin.transforms.dense_ir import checked_static_linalg_shell
@@ -28,16 +47,6 @@ from merlin.transforms.pipeline_state import (
     PipelineSession,
     validate_pass_order,
 )
-
-from merlin.compiler.schedule.configuration import ConfigurationEffects, verify_configuration_rewrite, verify_configuration_state
-from merlin.compiler.schedule.fusion import _elementwise
-from merlin.compiler.schedule.fusion_semantics import ScalarBudgetExceeded, ScalarGraph, UnsupportedElementwise, scalar_graph, term
-from merlin.compiler.schedule.library_sources import shared_library_sources
-from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets, ScheduleCompilation, compile_schedule
-from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
-from merlin.compiler.schedule.spill_conformance import _Memory, _Piece
-from merlin.compiler.schedule.temporary_storage import TemporaryObject, _completion, _overlap, _problem, _project
 
 
 @dataclass(frozen=True)

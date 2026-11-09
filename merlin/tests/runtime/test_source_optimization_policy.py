@@ -177,8 +177,8 @@ def test_foreign_actual_recipe_and_output_are_not_the_requested_build(tmp_path):
 def test_highlevel_uses_original_pending_policy_and_real_completed_build(tmp_path, monkeypatch, mutation):
     import runpy
 
-    from merlin.common.paths import merlin_dir
     from merlin import model as BM
+    from merlin.common.paths import merlin_dir
 
     helpers = runpy.run_path(str(merlin_dir() / "tests/infra/test_baremetal_saved_model.py"))
     inputs, out = helpers["_fixture"](tmp_path, monkeypatch)

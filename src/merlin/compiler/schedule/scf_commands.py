@@ -16,10 +16,9 @@ from dataclasses import asdict
 from xdsl.dialects import arith, builtin, func, scf
 from xdsl.ir import Block, Region
 
+from merlin.compiler.schedule.scf_carried_events import CARRIED_EVENTS
 from merlin.sched.ir import Call, Const, Kernel, Loop, Scaled, Select, Stage, Sum, Var, check_structure
 from merlin.sched.ir.integer_domain import check_integer_domain
-
-from merlin.compiler.schedule.scf_carried_events import CARRIED_EVENTS
 
 SCHEMA = "merlin.scf_commands.v1"
 ISSUE_GROUP = "merlin.scf_commands.issue_group.v1"
@@ -87,8 +86,7 @@ def _state_pairs(pairs):
         if type(key) is not str or not key or key in keys:
             raise ValueError("persistent state requires unique named scalar constants")
         keys.add(key)
-        if (type(value) is not Const or type(value.value) is not int
-                or not -(1 << 63) <= value.value < 1 << 63):
+        if type(value) is not Const or type(value.value) is not int or not -(1 << 63) <= value.value < 1 << 63:
             raise ValueError("persistent state admits closed signed-i64 constants only")
         encoded.append([key, {"kind": "const", "value": value.value}])
     return encoded
@@ -123,9 +121,12 @@ def _state_annotations(op, allow_persistent_state):
             if type(pair) is not list or len(pair) != 2:
                 raise ValueError("malformed persistent state declarations")
             key, record = pair
-            if (type(record) is not dict or set(record) != {"kind", "value"}
-                    or record["kind"] != "const"
-                    or type(record["value"]) is not int):
+            if (
+                type(record) is not dict
+                or set(record) != {"kind", "value"}
+                or record["kind"] != "const"
+                or type(record["value"]) is not int
+            ):
                 raise ValueError("malformed persistent state scalar type")
             pairs.append((key, Const(record["value"])))
         pairs = tuple(pairs)
@@ -181,8 +182,9 @@ def _command(op, allow_persistent_state=False):
     ):
         raise ValueError("command SSA indices/events differ from the retained payload")
     sets, assumes = _state_annotations(op, allow_persistent_state)
-    return Call(data["instruction"], (), data["unit"], data["produces"], tuple(data["awaits"]), stages,
-                sets, assumes), names
+    return Call(
+        data["instruction"], (), data["unit"], data["produces"], tuple(data["awaits"]), stages, sets, assumes
+    ), names
 
 
 def materialize_scf_commands(kernel, *, allow_persistent_state=False):
@@ -239,14 +241,21 @@ def materialize_scf_commands(kernel, *, allow_persistent_state=False):
                 # Preserve legacy completed-token capture exactly when no new
                 # lexical carry contract was requested. Opted-in programs use
                 # only explicitly declared block inputs, including captures.
-                local_events = (dict(zip((n for n, _ in statement.iter_args), inner.args[1:], strict=True))
-                                if carried_mode else dict(events))
+                local_events = (
+                    dict(zip((n for n, _ in statement.iter_args), inner.args[1:], strict=True))
+                    if carried_mode
+                    else dict(events)
+                )
                 body(statement.body, {**env, statement.var: inner.args[0]}, inner, local_events)
                 inner.add_op(scf.YieldOp(*(local_events[name] for name in statement.yields)))
                 op = scf.ForOp(lb.result, ub.result, step.result, initial, Region(inner))
                 if initial:
-                    op.attributes[CARRIED_EVENTS] = builtin.StringAttr(json.dumps(
-                        {"inputs": [n for n, _ in statement.iter_args], "results": statement.results}, sort_keys=True))
+                    op.attributes[CARRIED_EVENTS] = builtin.StringAttr(
+                        json.dumps(
+                            {"inputs": [n for n, _ in statement.iter_args], "results": statement.results},
+                            sort_keys=True,
+                        )
+                    )
                 out.add_op(op)
                 for _, name in statement.iter_args:
                     events.pop(name)
@@ -263,10 +272,13 @@ def materialize_scf_commands(kernel, *, allow_persistent_state=False):
                 op = func.CallOp(symbol, operands, types)
                 op.attributes[SCHEMA] = _metadata(statement, allow_persistent_state)
                 if statement.sets or statement.assumes:
-                    op.attributes[PERSISTENT_STATE] = builtin.StringAttr(json.dumps(
-                        {"sets": _state_pairs(statement.sets), "assumes": _state_pairs(statement.assumes)},
-                        sort_keys=True, separators=(",", ":"),
-                    ))
+                    op.attributes[PERSISTENT_STATE] = builtin.StringAttr(
+                        json.dumps(
+                            {"sets": _state_pairs(statement.sets), "assumes": _state_pairs(statement.assumes)},
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
+                    )
                 out.add_op(op)
                 if statement.produces:
                     if statement.produces in events:
@@ -301,6 +313,7 @@ def _entry(module):
 def _bounds(op):
     values = []
     from merlin.compiler.schedule.scf_carried_events import loop_event_names
+
     loop_event_names(op)
     for value in (op.lb, op.ub, op.step):
         owner = value.owner
@@ -346,8 +359,7 @@ def _declared_state_summary(block):
     for op in block.ops:
         if type(op) is func.CallOp:
             metadata, _ = _command(op, True)
-            reads, writes = ({key: value.value for key, value in pairs}
-                             for pairs in (metadata.assumes, metadata.sets))
+            reads, writes = ({key: value.value for key, value in pairs} for pairs in (metadata.assumes, metadata.sets))
             advance(reads, writes)
         elif type(op) is scf.ForOp:
             low, high, step = _bounds(op)
@@ -385,8 +397,10 @@ def verify_scf_commands(module, *, max_operations=65536, allow_persistent_state=
 
     if CARRIED_EVENTS in module.attributes:
         from merlin.compiler.schedule.scf_carried_events import verify_carried_events
-        carried_report = verify_carried_events(module, max_operations=max_operations,
-                                               allow_persistent_state=allow_persistent_state)
+
+        carried_report = verify_carried_events(
+            module, max_operations=max_operations, allow_persistent_state=allow_persistent_state
+        )
     else:
         carried_report = None
 
@@ -424,8 +438,10 @@ def verify_scf_commands(module, *, max_operations=65536, allow_persistent_state=
                 ):
                     raise ValueError("command declaration and actual SSA call disagree")
                 for token_name, event in zip(metadata.awaits, op.arguments[len(names) :], strict=True):
-                    if (type(event.owner) is not func.CallOp
-                            or _command(event.owner, allow_persistent_state)[0].produces != token_name):
+                    if (
+                        type(event.owner) is not func.CallOp
+                        or _command(event.owner, allow_persistent_state)[0].produces != token_name
+                    ):
                         raise ValueError("event SSA edge differs from its original named producer")
                     if event not in known:
                         raise ValueError("unknown or non-dominating completion event")
@@ -479,7 +495,12 @@ def verify_scf_commands(module, *, max_operations=65536, allow_persistent_state=
 
 
 def unroll_small_command_loops(
-    module, *, max_extent=2, max_operations=65536, preserve_issue_groups=False, allow_persistent_state=False,
+    module,
+    *,
+    max_extent=2,
+    max_operations=65536,
+    preserve_issue_groups=False,
+    allow_persistent_state=False,
 ):
     """Apply xDSL's existing SCF unroller to bounded innermost command loops.
 
@@ -534,13 +555,20 @@ def unroll_small_command_loops(
     PatternRewriteWalker(BoundedUnroll()).rewrite_module(actual)
     if CARRIED_EVENTS in actual.attributes:
         from merlin.compiler.schedule.scf_carried_events import rename_ssa_events
+
         rename_ssa_events(actual)
     verify_scf_commands(actual, max_operations=max_operations, allow_persistent_state=allow_persistent_state)
     return actual
 
 
 def emit_scf_commands(
-    module, builder, lower_call, *, await_events=None, enter_issue_group=None, exit_issue_group=None,
+    module,
+    builder,
+    lower_call,
+    *,
+    await_events=None,
+    enter_issue_group=None,
+    exit_issue_group=None,
     allow_persistent_state=False,
 ):
     """Emit the actual transformed SCF program through integer/target callbacks.
@@ -586,18 +614,27 @@ def emit_scf_commands(
                 if grouped:
                     enter_issue_group(op)
                 if op.iter_args:
+
                     def iteration(index, carried):
                         if len(carried) != len(op.iter_args):
                             raise ValueError("actual builder changed completion input arity")
-                        return emit(op.body.block, {**env, op.body.block.args[0]: index,
-                                    **dict(zip(op.body.block.args[1:], carried, strict=True))})
+                        return emit(
+                            op.body.block,
+                            {
+                                **env,
+                                op.body.block.args[0]: index,
+                                **dict(zip(op.body.block.args[1:], carried, strict=True)),
+                            },
+                        )
+
                     result = builder.loop_carried(low, high, step, tuple(env[v] for v in op.iter_args), iteration)
                     if not isinstance(result, (tuple, list)) or len(result) != len(op.results):
                         raise ValueError("actual builder changed completion result arity")
                     env.update(zip(op.results, result, strict=True))
                 else:
-                    builder.loop(low, high, step,
-                                 lambda index: emit(op.body.block, {**env, op.body.block.args[0]: index}))
+                    builder.loop(
+                        low, high, step, lambda index: emit(op.body.block, {**env, op.body.block.args[0]: index})
+                    )
                 if grouped:
                     exit_issue_group(op)
             elif type(op) is func.CallOp:
@@ -623,7 +660,13 @@ def emit_scf_commands(
 
 
 def group_scf_command_loops(
-    module, select_loop, *, max_issues, contract_sha256, max_operations=65536, allow_persistent_state=False,
+    module,
+    select_loop,
+    *,
+    max_issues,
+    contract_sha256,
+    max_operations=65536,
+    allow_persistent_state=False,
 ):
     """Strip-mine selected innermost command loops into bounded issue regions.
 
@@ -657,9 +700,10 @@ def group_scf_command_loops(
             low, high, step = _bounds(op)
             if (high - low + step - 1) // step > 1:
                 selected.add(index)
-    if verify_scf_commands(
-        module, max_operations=max_operations, allow_persistent_state=allow_persistent_state
-    ) != before:
+    if (
+        verify_scf_commands(module, max_operations=max_operations, allow_persistent_state=allow_persistent_state)
+        != before
+    ):
         raise ValueError("loop selection changed the original command-bearing program")
     # A loop body is cloned at most twice (whole groups and a remainder).
     if 3 * sum(1 for _ in module.walk()) + 32 * len(selected) > max_operations:

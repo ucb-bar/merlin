@@ -84,7 +84,6 @@ class RowNormalizationRewrite:
     result: SSAValue
 
 
-
 def implementation_sources():
     """Reviewed current implementation/checker paths, including the old alias."""
     from merlin.transforms import pipeline, pipeline_state, row_normalization_check
@@ -196,7 +195,6 @@ def emit_row_normalization(group):
     return tuple(prefix), loop.results[0]
 
 
-
 def row_state_cost_reason(group):
     """Conservative unknown-cost policy, including existing fusion boundaries."""
     if group.rows <= group.columns + 2:
@@ -240,7 +238,6 @@ def row_state_cost_reason(group):
     return None
 
 
-
 def fuse_row_normalizations(
     module,
     *,
@@ -270,10 +267,7 @@ def fuse_row_normalizations(
     from merlin.transforms import row_normalization_check as checker
 
     current = module.clone()
-    sources = {
-        name: hashlib.sha256(path.read_bytes()).hexdigest()
-        for name, path in implementation_sources()
-    }
+    sources = {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in implementation_sources()}
     context = PipelineContext(
         hardware=hardware_identity,
         numerical_policy=numerical_policy,
@@ -401,7 +395,6 @@ def fuse_row_normalizations(
         "timing": None,
         "formal_coverage": "outside_existing_integer_transform_domains",
     }
-
 
 
 # Preserve issued/public record pickle names across the owner migration.

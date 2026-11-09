@@ -18,10 +18,10 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
-from merlin_experiments.phase1 import full_compiler_workspace as F
 
 from merlin.common.access import module_matches
 from merlin.common.paths import repo_root
+from merlin_experiments.phase1 import full_compiler_workspace as F
 
 #: Public modules that cannot import in the staged tree, and why. Each needs code a reviewed access
 #: policy declares grader/oracle-owned (``MODULE_ACCESS``), not a withheld package an analysis could
@@ -80,8 +80,14 @@ def staged(tmp_path_factory):
 def _run_child(script: str, root: Path, *args: str, cwd: Path, timeout: int = 900, data=None):
     env = {k: v for k, v in os.environ.items() if not k.startswith(("PYTHON", "MERLIN_"))}
     env.update(data or {})
-    return subprocess.run([sys.executable, "-I", "-B", "-c", script, str(root), *args],
-                          capture_output=True, text=True, env=env, cwd=str(cwd), timeout=timeout)
+    return subprocess.run(
+        [sys.executable, "-I", "-B", "-c", script, str(root), *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(cwd),
+        timeout=timeout,
+    )
 
 
 def import_audit(selection) -> list[dict]:
@@ -107,8 +113,11 @@ def test_every_staged_module_imports_without_reaching_withheld_code(staged):
     assert not [m for _p, _d, m in staged.members if m and F.forbidden(m)]
     rows = import_audit(staged)
     assert len(rows) > 100  # the whole public compiler, not a fixture
-    withheld = {r["module"]: r["refused"] for r in rows
-                if any(module_matches(n, p) for n in r["refused"] for p in F.DENIED_PREFIXES)}
+    withheld = {
+        r["module"]: r["refused"]
+        for r in rows
+        if any(module_matches(n, p) for n in r["refused"] for p in F.DENIED_PREFIXES)
+    }
     leaked = {r["module"]: r["outside"] for r in rows if r["outside"]}
     failed = {r["module"]: r["error"] for r in rows if r["error"]}
     assert not withheld, f"public modules reach withheld packages at import time: {withheld}"
@@ -139,15 +148,20 @@ def test_no_public_module_names_a_withheld_package_even_lazily(staged):
                 relative = "." * node.level + (node.module or "")
                 base = resolve_name(relative, package) if node.level else node.module or ""
                 names = [base, *(f"{base}.{a.name}" for a in node.names if a.name != "*")]
-            elif (isinstance(node, ast.Call)
-                  and getattr(node.func, "attr", getattr(node.func, "id", None)) == "import_module"
-                  and node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)):
+            elif (
+                isinstance(node, ast.Call)
+                and getattr(node.func, "attr", getattr(node.func, "id", None)) == "import_module"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
                 names = [node.args[0].value]
             for name in names:
                 if any(module_matches(name, p) for p in F.DENIED_PREFIXES):
                     hits.setdefault(module, set()).add(name)
-    assert set(hits) <= KNOWN_OPERATOR_PATHS.keys(), {m: sorted(v) for m, v in hits.items()
-                                                      if m not in KNOWN_OPERATOR_PATHS}
+    assert set(hits) <= KNOWN_OPERATOR_PATHS.keys(), {
+        m: sorted(v) for m, v in hits.items() if m not in KNOWN_OPERATOR_PATHS
+    }
     for module, names in hits.items():
         assert names <= KNOWN_OPERATOR_PATHS[module], (module, sorted(names))
 
@@ -159,16 +173,23 @@ KNOWN_OPERATOR_PATHS = {
     # The registry loader moved into this canonical owner. Only its unchanged
     # legacy policy path remains operator-only: mining is still physically
     # withheld, and the paired child regression below requires a loud refusal.
-    "merlin.compiler.backend.host": {"merlin.mining.from_strategy",
-                                     "merlin.mining.from_strategy.microkernel_features"},
-    "merlin.compile_cli": {"merlin.mining", "merlin.mining.k1", "merlin.mining.apply",
-                           "merlin.mining.apply.blocking_risks", "merlin.mining.apply.shape_adapted_features",
-                           "merlin.model", "merlin.model.compile_saved_model"},
+    "merlin.compiler.backend.host": {"merlin.mining.from_strategy", "merlin.mining.from_strategy.microkernel_features"},
+    "merlin.compile_cli": {
+        "merlin.mining",
+        "merlin.mining.k1",
+        "merlin.mining.apply",
+        "merlin.mining.apply.blocking_risks",
+        "merlin.mining.apply.shape_adapted_features",
+        "merlin.model",
+        "merlin.model.compile_saved_model",
+    },
     "merlin.compile.owned_host_model": {"merlin.model", "merlin.model.compile_saved_model"},
     "merlin.runtime.source_recomputation_build": {"merlin.model"},
-    "merlin.llvmlower.perop_blocks": {"merlin.mining.from_strategy",
-                                      "merlin.mining.from_strategy._codegen",
-                                      "merlin.mining.from_strategy.policy_source_record"},
+    "merlin.llvmlower.perop_blocks": {
+        "merlin.mining.from_strategy",
+        "merlin.mining.from_strategy._codegen",
+        "merlin.mining.from_strategy.policy_source_record",
+    },
 }
 
 
@@ -273,8 +294,15 @@ def test_staged_tree_reads_extents_and_fuses_past_bare(staged):
     # The staged tree carries code only. Read-only schema DATA (the quantized-format registry) is
     # named explicitly, as a sandbox names it; no withheld module is reachable through it.
     schemas = {"MERLIN_SCHEMAS_DIR": str(repo_root() / "merlin" / "schemas")}
-    proc = _run_child(_FUSION, staged.root, json.dumps(refused_prefixes()), json.dumps(fixtures),
-                      cwd=staged.root.parent, timeout=600, data=schemas)
+    proc = _run_child(
+        _FUSION,
+        staged.root,
+        json.dumps(refused_prefixes()),
+        json.dumps(fixtures),
+        cwd=staged.root.parent,
+        timeout=600,
+        data=schemas,
+    )
     assert proc.returncode == 0, proc.stderr[-4000:]
     result = json.loads(proc.stdout.strip().splitlines()[-1])
     assert result["sources"] == [True]  # every merlin module came from the staged tree
@@ -288,11 +316,19 @@ def test_bounded_rne_public_component_closes_without_target_runtime(tmp_path):
     from merlin.targetgen.compiler_library import freeze_compiler_library
 
     entries = ("merlin.llvmlower.bounded_rne_custody", "merlin.llvmlower.host_transform_dispatch")
-    component = F.prepare(repo_root(), tmp_path / "bounded-rne-public",
-                          review_id="bounded RNE public dependency closure", modules=entries,
-                          include_runtime_support=False)
+    component = F.prepare(
+        repo_root(),
+        tmp_path / "bounded-rne-public",
+        review_id="bounded RNE public dependency closure",
+        modules=entries,
+        include_runtime_support=False,
+    )
     assert not component.diagnostics
     assert not any(m and F.forbidden(m) for _p, _d, m in component.members)
     assert not any(m and m.startswith("merlin.runtime.backends") for _p, _d, m in component.members)
-    freeze_compiler_library(component.root, review_id="bounded RNE exact public import closure",
-                            public_modules=entries, sources=tuple((p, m) for p, _d, m in component.members))
+    freeze_compiler_library(
+        component.root,
+        review_id="bounded RNE exact public import closure",
+        public_modules=entries,
+        sources=tuple((p, m) for p, _d, m in component.members),
+    )

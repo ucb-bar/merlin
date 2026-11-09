@@ -36,9 +36,8 @@ import time
 from pathlib import Path
 
 from merlin.common.paths import artifacts_dir
-from merlin.compiler.schedule import Knobs
+from merlin.compiler.schedule import Knobs, geometry_from_address_space
 from merlin.compiler.schedule import blocks as block_schedule
-from merlin.compiler.schedule import geometry_from_address_space
 from merlin.compiler.schedule.standalone import block_schedule_source
 from merlin.targetgen.address_space import derive_address_space
 

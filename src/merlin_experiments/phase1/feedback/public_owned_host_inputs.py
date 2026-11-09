@@ -3,6 +3,7 @@
 These selections supply build inputs, never execution credit or author grants.
 The original host-leaf/model owners retain their source, ELF and native gates.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,16 +23,23 @@ FROZEN_SCHEMA = "merlin.frozen_public_owned_host_inputs.v1"
 
 def _ordinary(path):
     path = Path(path)
-    if (not path.is_absolute() or ".." in path.parts
-            or any(member.is_symlink() for member in (path, *path.parents)) or not path.is_file()):
+    if (
+        not path.is_absolute()
+        or ".." in path.parts
+        or any(member.is_symlink() for member in (path, *path.parents))
+        or not path.is_file()
+    ):
         raise ValueError("host build input must be an ordinary absolute file")
     return path
 
 
 def _pinned(record):
-    if (type(record) is not dict or set(record) != {"path", "sha256"}
-            or type(record["path"]) is not str
-            or not is_sha256(str(record["sha256"]))):
+    if (
+        type(record) is not dict
+        or set(record) != {"path", "sha256"}
+        or type(record["path"]) is not str
+        or not is_sha256(str(record["sha256"]))
+    ):
         raise ValueError("host build input needs an exact path and SHA256 pin")
     path = _ordinary(record["path"])
     if hashlib.sha256(path.read_bytes()).hexdigest() != record["sha256"]:
@@ -45,8 +53,8 @@ def verify(selection, *, target, descriptor, repo=None):
     No directory search, target-name default, ambient host-selection fallback,
     synthetic model record, arena clamp or author-visible projection is used.
     """
-    from merlin.runtime.modelinputs import selected_firrtl
     from merlin.runtime.boards import load_boards
+    from merlin.runtime.modelinputs import selected_firrtl
     from merlin.targetgen.target_experiment import load_target_experiment
 
     request = _pinned(selection)
@@ -54,9 +62,13 @@ def verify(selection, *, target, descriptor, repo=None):
         raise ValueError("host build input record exceeds its bounded document")
     raw = request.read_bytes()
     record = loads(raw, max_bytes=MAX_RECORD_BYTES)
-    if (type(record) is not dict or not FIELDS <= set(record)
-            or set(record) - FIELDS - {"instruction_declaration"}
-            or record["schema"] != SCHEMA or record["target"] != target):
+    if (
+        type(record) is not dict
+        or not FIELDS <= set(record)
+        or set(record) - FIELDS - {"instruction_declaration"}
+        or record["schema"] != SCHEMA
+        or record["target"] != target
+    ):
         raise ValueError("host build input record has the wrong schema, target or fields")
     selected_descriptor = _pinned(record["descriptor"])
     if selected_descriptor != _ordinary(descriptor):
@@ -69,9 +81,14 @@ def verify(selection, *, target, descriptor, repo=None):
     if type(name) is not str or not name or type(arena) is not int or arena < 1:
         raise ValueError("host build requires an explicit board and positive integer arena")
     board = load_boards(catalog).get(name)
-    if (board is None or board.target != target or not board.rtl_sim_config
-            or board.host_dts_sha256 != record["dts"]["sha256"]
-            or not board.code_reserve or board.dram_bytes <= board.code_reserve):
+    if (
+        board is None
+        or board.target != target
+        or not board.rtl_sim_config
+        or board.host_dts_sha256 != record["dts"]["sha256"]
+        or not board.code_reserve
+        or board.dram_bytes <= board.code_reserve
+    ):
         raise ValueError("host board, target and exact DTS pins do not agree")
     selected_firrtl(facts, target=target, config=board.rtl_sim_config)
     ceiling = (board.dram_bytes - board.code_reserve) // (2 * 1024 * 1024)
@@ -98,8 +115,12 @@ def prepare(selection, *, target, descriptor, output, repo=None):
     """Emit the existing five-/six-field native selection, privately and once."""
     selected = verify(selection, target=target, descriptor=descriptor, repo=repo)
     output = Path(output)
-    if (not output.is_absolute() or ".." in output.parts or output.exists()
-            or any(member.is_symlink() for member in (output, *output.parents))):
+    if (
+        not output.is_absolute()
+        or ".." in output.parts
+        or output.exists()
+        or any(member.is_symlink() for member in (output, *output.parents))
+    ):
         raise ValueError("host build selection needs a fresh ordinary absolute output")
     output.parent.mkdir(parents=True, exist_ok=True)
     raw = (json.dumps(selected, sort_keys=True, indent=2) + "\n").encode()
@@ -126,19 +147,30 @@ def verify_record(record, *, target, descriptor, run_dir):
         if root.exists():
             raise ValueError("run-owned host input selection was removed")
         return None
-    if (type(record) is not dict or set(record) != {"schema", "target", "source", "request", "inputs", "selection"}
-            or record["schema"] != FROZEN_SCHEMA or record["target"] != target):
+    if (
+        type(record) is not dict
+        or set(record) != {"schema", "target", "source", "request", "inputs", "selection"}
+        or record["schema"] != FROZEN_SCHEMA
+        or record["target"] != target
+    ):
         raise ValueError("run-owned host input record is malformed")
     source = _pinned(record["source"])
     request = _pinned(record["request"])
-    if (request != root / "request.json" or source.read_bytes() != request.read_bytes()
-            or record["request"]["sha256"] != record["source"]["sha256"]):
+    if (
+        request != root / "request.json"
+        or source.read_bytes() != request.read_bytes()
+        or record["request"]["sha256"] != record["source"]["sha256"]
+    ):
         raise ValueError("run-owned host input source differs from its private copy")
     original = loads(request.read_bytes(), max_bytes=MAX_RECORD_BYTES)
-    if (type(original) is not dict or not FIELDS <= set(original)
-            or set(original) - FIELDS - {"instruction_declaration"}
-            or original["schema"] != SCHEMA or original["target"] != target
-            or _pinned(original["descriptor"]) != _ordinary(descriptor)):
+    if (
+        type(original) is not dict
+        or not FIELDS <= set(original)
+        or set(original) - FIELDS - {"instruction_declaration"}
+        or original["schema"] != SCHEMA
+        or original["target"] != target
+        or _pinned(original["descriptor"]) != _ordinary(descriptor)
+    ):
         raise ValueError("run-owned host descriptor or source selection changed")
     roles = {"descriptor", "board_catalog", "dts", "rtl_facts"}
     if "instruction_declaration" in original:
@@ -149,9 +181,11 @@ def verify_record(record, *, target, descriptor, run_dir):
     for role in roles:
         selected = _pinned(original[role])
         copied = _pinned(record["inputs"][role])
-        if (copied != root / "files" / (role + ".input")
-                or record["inputs"][role]["sha256"] != original[role]["sha256"]
-                or selected.read_bytes() != copied.read_bytes()):
+        if (
+            copied != root / "files" / (role + ".input")
+            or record["inputs"][role]["sha256"] != original[role]["sha256"]
+            or selected.read_bytes() != copied.read_bytes()
+        ):
             raise ValueError("run-owned host input bytes or placement changed")
         if role != "descriptor":
             native[role] = record["inputs"][role]
@@ -204,8 +238,14 @@ def freeze_for_run(path, sha256, *, target, descriptor, run_dir, repo=None, prio
     selection = root / "selection.json"
     selection.write_text(json.dumps(selected, sort_keys=True, indent=2) + "\n")
     selection.chmod(0o400)
-    record = dict(schema=FROZEN_SCHEMA, target=target, source=source, request=_file_pin(request),
-                  inputs=frozen, selection=_file_pin(selection))
+    record = dict(
+        schema=FROZEN_SCHEMA,
+        target=target,
+        source=source,
+        request=_file_pin(request),
+        inputs=frozen,
+        selection=_file_pin(selection),
+    )
     verify_record(record, target=target, descriptor=descriptor, run_dir=run_dir)
     return record["selection"], record
 
@@ -248,8 +288,13 @@ def main(argv=None):
     parser.add_argument("--repo", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
-    result = prepare({"path": str(args.inputs), "sha256": args.inputs_sha256},
-                     target=args.target, descriptor=args.descriptor, output=args.output, repo=args.repo)
+    result = prepare(
+        {"path": str(args.inputs), "sha256": args.inputs_sha256},
+        target=args.target,
+        descriptor=args.descriptor,
+        output=args.output,
+        repo=args.repo,
+    )
     print(json.dumps(result, sort_keys=True))
     return 0
 

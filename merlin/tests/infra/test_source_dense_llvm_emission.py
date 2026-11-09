@@ -2,24 +2,24 @@
 
 No real target ISA, simulator, performance result or implicit effect qualification.
 """
-from dataclasses import replace
+
 import importlib.util
 import io
-from pathlib import Path
 import shutil
 import subprocess
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
+from test_dense_source import compile_source, source
+from test_selected_dense_contracts import inputs
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, StringAttr, i32, i64
 from xdsl.printer import Printer
 
-from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
 from merlin.common.paths import repo_root
-from merlin.llvmlower.host_builder import FnBuilder, PTR
-
-from test_dense_source import compile_source, source
-from test_selected_dense_contracts import inputs
+from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
+from merlin.llvmlower.host_builder import PTR, FnBuilder
 
 ROOT = repo_root()
 SPEC = importlib.util.spec_from_file_location("dense_llvm_example", ROOT / "examples/compiler/source_dense_llvm.py")
@@ -48,8 +48,14 @@ def tools():
 
 def native_program(function, work, shape):
     directory = tools()
-    declarations = [llvm.FuncOp(name, llvm.LLVMFunctionType([PTR, PTR, PTR] + [i64] * len(args), llvm.LLVMVoidType()),
-                               linkage=llvm.LinkageAttr("external")) for name, args in ARGUMENTS.items()]
+    declarations = [
+        llvm.FuncOp(
+            name,
+            llvm.LLVMFunctionType([PTR, PTR, PTR] + [i64] * len(args), llvm.LLVMVoidType()),
+            linkage=llvm.LinkageAttr("external"),
+        )
+        for name, args in ARGUMENTS.items()
+    ]
     module = ModuleOp([*declarations, function])
     module.verify()
     stream = io.StringIO()
@@ -57,8 +63,12 @@ def native_program(function, work, shape):
     mlir = work / "program.mlir"
     mlir.write_text(stream.getvalue())
     ll = work / "program.ll"
-    subprocess.run([str(directory / "mlir-translate"), "--mlir-to-llvmir", str(mlir), "-o", str(ll)],
-                   check=True, capture_output=True, text=True)
+    subprocess.run(
+        [str(directory / "mlir-translate"), "--mlir-to-llvmir", str(mlir), "-o", str(ll)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     m, k, n = shape
     # Runtime is deliberately independent of schedule projection/instance expansion.
     # It consumes the compiled callback ABI, catches early store/reseed mistakes,
@@ -117,8 +127,12 @@ int main(void) {{
 }}
 """)
     binary = work / "program"
-    subprocess.run([str(directory / "clang"), "-O1", str(ll), str(runtime), "-o", str(binary)],
-                   check=True, capture_output=True, text=True)
+    subprocess.run(
+        [str(directory / "clang"), "-O1", str(ll), str(runtime), "-o", str(binary)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     return subprocess.run([str(binary)], capture_output=True, text=True), stream.getvalue()
 
 
@@ -138,8 +152,13 @@ def test_source_bound_schedule_is_consumed_by_native_llvm_with_all_dimension_tai
             # Structurally valid LLVM can still violate target semantics: erase
             # accumulation continuation. Independent output comparison catches it.
             operands = {**operands, "continue": builder.const(0)}
-        builder.add(llvm.CallOp(instruction, *[pointers[name] for name in ("lhs", "rhs", "output")],
-                               *[operands[name] for name in ARGUMENTS[instruction]]))
+        builder.add(
+            llvm.CallOp(
+                instruction,
+                *[pointers[name] for name in ("lhs", "rhs", "output")],
+                *[operands[name] for name in ARGUMENTS[instruction]],
+            )
+        )
 
     function, receipt = EXAMPLE.emit_dense_function(compiled, lower, symbol="compiled")
     result, text = native_program(function, tmp_path, shape)
@@ -186,7 +205,7 @@ def test_selected_32_bit_index_mode_is_not_silently_widened(tmp_path):
 def test_fn_builder_adapter_checks_index_width_direction_and_signed_loop_step():
     builder = FnBuilder([])
     adapter = FnBuilderIndexAdapter(builder)
-    for bounds in ((2, 0, 1), (0, 2, 0), (0, 2, -1), (-1, 2, 1), (0, 1 << 63, 1), (0, (1 << 63)-1, 2)):
+    for bounds in ((2, 0, 1), (0, 2, 0), (0, 2, -1), (-1, 2, 1), (0, 1 << 63, 1), (0, (1 << 63) - 1, 2)):
         with pytest.raises(ValueError, match="ascending"):
             adapter.loop(*bounds, lambda value: None)
     with pytest.raises(ValueError, match="i64"):

@@ -10,14 +10,18 @@ from merlin.compiler.artifact import Compilation
 
 def request_identity(request):
     original = (
-        (request.source.text, request.source.kind, request.source.origin, request.source.sha256), request.output,
+        (request.source.text, request.source.kind, request.source.origin, request.source.sha256),
+        request.output,
         json.dumps(asdict(request.options), sort_keys=True, allow_nan=False),
     )
     if request.preparation is None:
         return original
     request.preparation.revalidate(request.source)
-    return (*original, id(request.preparation),
-            json.dumps(request.preparation.record(), sort_keys=True, allow_nan=False))
+    return (
+        *original,
+        id(request.preparation),
+        json.dumps(request.preparation.record(), sort_keys=True, allow_nan=False),
+    )
 
 
 def invoke(request, name, provider, *, selected=None):
@@ -53,8 +57,7 @@ def invoke(request, name, provider, *, selected=None):
         raise ValueError("backend changed the original compilation request")
     if not isinstance(result, Compilation):
         raise TypeError(f"backend {name!r} did not return a Compilation")
-    if (result.directory != request.output or result.backend != name or
-            result.source_sha256 != request.source.sha256):
+    if result.directory != request.output or result.backend != name or result.source_sha256 != request.source.sha256:
         raise ValueError("backend compilation identity does not match the selected request")
     if selected is not None:
         selected.admit(request, result)
@@ -66,12 +69,19 @@ def invoke(request, name, provider, *, selected=None):
             value = getattr(selected, key)
             if value is not None and getattr(result.deployment, key) != value:
                 raise ValueError(f"backend changed explicitly selected {key}")
-    result = replace(result, metadata={
-        **result.metadata,
-        "request": {"source_kind": request.source.kind, "source_origin": request.source.origin,
-                    "source_sha256": request.source.sha256, "backend": name,
-                    "options": asdict(selected),
-                    **({"preparation": request.preparation.record()} if request.preparation is not None else {})},
-    })
+    result = replace(
+        result,
+        metadata={
+            **result.metadata,
+            "request": {
+                "source_kind": request.source.kind,
+                "source_origin": request.source.origin,
+                "source_sha256": request.source.sha256,
+                "backend": name,
+                "options": asdict(selected),
+                **({"preparation": request.preparation.record()} if request.preparation is not None else {}),
+            },
+        },
+    )
     result.write()
     return result

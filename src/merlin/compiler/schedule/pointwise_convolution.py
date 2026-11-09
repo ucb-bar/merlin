@@ -5,6 +5,7 @@ assignment, arithmetic/readout permission or completion law. The source owner
 retains original dtypes, reduction order, bias and every output coefficient.
 Strided or padded spatial gathers keep their existing convolution route.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -29,30 +30,30 @@ class PointwiseDenseView:
     allocated or packed. Runtime ownership and external nonalias remain caller
     obligations, as for the original window source.
     """
+
     window: Window2D
     output_channels: int
     _source_identity: str = field(init=False, repr=False)
 
     def __post_init__(self):
         self._validate()
-        object.__setattr__(self, '_source_identity', _identity(self.window, self.output_channels))
+        object.__setattr__(self, "_source_identity", _identity(self.window, self.output_channels))
 
     def _validate(self):
         if type(self.window) is not Window2D:
-            raise ValueError('pointwise view requires the original typed NHWC window')
+            raise ValueError("pointwise view requires the original typed NHWC window")
         self.window.__post_init__()
-        if (self.window.kernel != (1, 1) or self.window.stride != (1, 1)
-                or self.window.padding != (0, 0, 0, 0)):
-            raise ValueError('pointwise dense view requires unpadded unit-stride 1x1 source')
+        if self.window.kernel != (1, 1) or self.window.stride != (1, 1) or self.window.padding != (0, 0, 0, 0):
+            raise ValueError("pointwise dense view requires unpadded unit-stride 1x1 source")
         if type(self.output_channels) is not int or self.output_channels <= 0:
-            raise ValueError('pointwise view requires positive original output channels')
-        if prod(self.window.input_shape[:3])*self.output_channels >= 2**63:
-            raise ValueError('pointwise output exceeds signed 64-bit element indexing')
+            raise ValueError("pointwise view requires positive original output channels")
+        if prod(self.window.input_shape[:3]) * self.output_channels >= 2**63:
+            raise ValueError("pointwise output exceeds signed 64-bit element indexing")
 
     def revalidate(self):
         self._validate()
         if _identity(self.window, self.output_channels) != self._source_identity:
-            raise ValueError('original pointwise source changed; derive a new view')
+            raise ValueError("original pointwise source changed; derive a new view")
 
     @property
     def dimensions(self):
@@ -67,11 +68,16 @@ class PointwiseDenseView:
 
     def record(self):
         self.revalidate()
-        return dict(schema='merlin.pointwise_dense_view.v1', source_identity=self._source_identity,
-                    window=asdict(self.window), dimensions=self.dimensions,
-                    matrix_shapes=self.matrix_shapes, payload_copies=0,
-                    reduction_order='original input-channel order',
-                    qualification='logical indexing only; original arithmetic, readout and target obligations remain')
+        return dict(
+            schema="merlin.pointwise_dense_view.v1",
+            source_identity=self._source_identity,
+            window=asdict(self.window),
+            dimensions=self.dimensions,
+            matrix_shapes=self.matrix_shapes,
+            payload_copies=0,
+            reduction_order="original input-channel order",
+            qualification="logical indexing only; original arithmetic, readout and target obligations remain",
+        )
 
 
 def pointwise_dense_view(window, output_channels, *, output_shape):
@@ -83,16 +89,18 @@ def pointwise_dense_view(window, output_channels, *, output_shape):
     Dilation has no effect when the kernel is 1x1 and needs no special case.
     """
     if type(window) is not Window2D:
-        raise ValueError('pointwise view requires the original typed NHWC window')
+        raise ValueError("pointwise view requires the original typed NHWC window")
     window.__post_init__()
     if type(output_channels) is not int or output_channels <= 0:
-        raise ValueError('pointwise view requires positive original output channels')
+        raise ValueError("pointwise view requires positive original output channels")
     oh, ow = window.output_spatial
     batch = window.input_shape[0]
-    if (type(output_shape) is not tuple or any(type(d) is not int or d <= 0 for d in output_shape)
-            or output_shape not in (
-            (batch*oh*ow, output_channels), (batch, oh, ow, output_channels))):
-        raise ValueError('pointwise result shape differs from the original convolution')
+    if (
+        type(output_shape) is not tuple
+        or any(type(d) is not int or d <= 0 for d in output_shape)
+        or output_shape not in ((batch * oh * ow, output_channels), (batch, oh, ow, output_channels))
+    ):
+        raise ValueError("pointwise result shape differs from the original convolution")
     if window.kernel != (1, 1) or window.stride != (1, 1) or window.padding != (0, 0, 0, 0):
         return None
     return PointwiseDenseView(window, output_channels)

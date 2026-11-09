@@ -230,8 +230,7 @@ def test_the_real_targets_accumulators_are_what_their_facts_say(target, kind):
 
 
 def test_the_schedule_pass_refuses_an_in_datapath_accumulator_by_name():
-    from merlin.compiler.schedule import BlockScheduleError
-    from merlin.compiler.schedule import geometry_from_address_space
+    from merlin.compiler.schedule import BlockScheduleError, geometry_from_address_space
 
     space = AS.derive_address_space("atlas")
     if space.stores_status != AS.DERIVED:

@@ -5,10 +5,12 @@ import subprocess
 from dataclasses import replace
 
 import pytest
+from semantic_application_fixtures import plan_for
 
 from merlin.compile.application_c import emit_application_c
 from merlin.compile.dispatch_c import DispatchCall, emit_program_c
 from merlin.compile.semantic_regions import outline_semantic_regions
+from merlin.compiler.schedule.arena import ArenaRequirements
 from merlin.runtime.program import build_program
 from merlin.semantic_compiler.model import (
     ConstantBinding,
@@ -17,8 +19,6 @@ from merlin.semantic_compiler.model import (
     TensorType,
     pointwise_identity_maps,
 )
-from semantic_application_fixtures import plan_for
-from merlin.compiler.schedule.arena import ArenaRequirements
 from merlin.xdsl_dialects.lowering.global_plan_emission import dispatch_digest
 
 

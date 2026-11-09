@@ -1,8 +1,9 @@
 """Counted emitted calls execute under an independent delayed-completion runtime."""
-from dataclasses import replace
+
 import importlib.util
 import shutil
 import subprocess
+from dataclasses import replace
 
 import pytest
 
@@ -28,8 +29,9 @@ def native(source, tmp_path):
 
 def check(model, *, kernel=None, admission=None, **overrides):
     original, objects, banks, adapter, selected, options, _ = model
-    return check_drained_period(kernel or original, objects, banks, adapter, admission or selected,
-                                **(options | overrides))
+    return check_drained_period(
+        kernel or original, objects, banks, adapter, admission or selected, **(options | overrides)
+    )
 
 
 @pytest.mark.parametrize("iterations", [1, 3, 7])
@@ -52,8 +54,9 @@ def test_actual_effect_hazards_refuse(mutation):
     kernel = model[0]
     body = list(kernel.body[0].body)
     if mutation == "overwrite":
-        body[1] = replace(body[1], args=tuple((name, Const(0) if name == "slot" else value)
-                                           for name, value in body[1].args))
+        body[1] = replace(
+            body[1], args=tuple((name, Const(0) if name == "slot" else value) for name, value in body[1].args)
+        )
     elif mutation == "missing_drain":
         body.pop()
     else:
@@ -83,9 +86,11 @@ def test_callback_mutation_refuses_emission():
     checked = check(model)
     iset = model[-1]
     instruction = iset.instrs["fetch"]
+
     def mutate(args):
         object.__setattr__(model[0], "attrs", (("changed", "true"),))
         return instruction.render_c(args)
+
     changed = replace(iset, instrs=dict(iset.instrs, fetch=replace(instruction, render_c=mutate)))
     with pytest.raises(ValueError, match="changed"):
         checked.emit_c(changed, symbol="generated")
@@ -114,9 +119,12 @@ def test_cross_period_pending_and_nested_loops_are_not_admitted():
 def test_every_iteration_is_checked_not_only_a_good_prefix():
     model = EXAMPLE.fixture(3)
     kernel = model[0]
-    body = tuple(replace(call, args=tuple(
-        (name, value * 2 if name == "host" else value) for name, value in call.args))
-        if call.instr in ("fetch", "publish") else call for call in kernel.body[0].body)
+    body = tuple(
+        replace(call, args=tuple((name, value * 2 if name == "host" else value) for name, value in call.args))
+        if call.instr in ("fetch", "publish")
+        else call
+        for call in kernel.body[0].body
+    )
     changed = replace(kernel, body=(replace(kernel.body[0], body=body),))
     with pytest.raises(ValueError, match="external access lacks"):
         check(model, kernel=changed)

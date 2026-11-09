@@ -44,7 +44,8 @@ def _selected(tmp_path):
     # Independently authored target contract fixture. It is deliberately not
     # loaded from the editable compiler's source_groups_output_path.json.
     path = {
-        "schema": "output_path_v1", "accumulator": {"dtype": "i32"},
+        "schema": "output_path_v1",
+        "accumulator": {"dtype": "i32"},
         "accumulator_stages": [
             {"kind": "preload", "dtype": "i32", "range": [-(1 << 31), (1 << 31) - 1], "rounding": "none"},
             {"kind": "accumulate", "dtype": "i32", "operand_scale": "none"},
@@ -52,29 +53,56 @@ def _selected(tmp_path):
         "readout": [
             {"kind": "activation", "function": "relu", "domain": "accumulator"},
             {"kind": "convert", "to": "f32", "rounding": "half_even"},
-            {"kind": "scale", "dtype": "f32", "rounding": "half_even", "granularity": "per_command",
-             "columns_per_scale": 16},
+            {
+                "kind": "scale",
+                "dtype": "f32",
+                "rounding": "half_even",
+                "granularity": "per_command",
+                "columns_per_scale": 16,
+            },
             {"kind": "requant", "to": "i8", "rounding": "half_even", "clamp": [-128, 127]},
             {"kind": "pool", "reductions": ["max"], "padding": "unknown"},
-        ], "exits": {"accumulator": True, "requant": True},
+        ],
+        "exits": {"accumulator": True, "requant": True},
     }
     contract = tmp_path / "target_contract.yaml"
-    contract.write_text(yaml.safe_dump({
-        "target": "fixture", "output_epilogue": {"output_path": path},
-        "numerical_semantics": {"internal_arithmetic": {"mac_result_bits": 20, "signed_operand_bits": 8}},
-    }))
-    target = TargetInfo("fixture", "reference", tmp_path, contract, tmp_path / "dialect.yaml",
-                        tmp_path / "facts.json", "simulator")
+    contract.write_text(
+        yaml.safe_dump(
+            {
+                "target": "fixture",
+                "output_epilogue": {"output_path": path},
+                "numerical_semantics": {"internal_arithmetic": {"mac_result_bits": 20, "signed_operand_bits": 8}},
+            }
+        )
+    )
+    target = TargetInfo(
+        "fixture", "reference", tmp_path, contract, tmp_path / "dialect.yaml", tmp_path / "facts.json", "simulator"
+    )
     hardware = tmp_path / "hardware.yaml"
-    hardware.write_text(yaml.safe_dump({
-        "schema": "merlin.execution_topology.v1",
-        "resources": [{"id": "cpu0", "kind": "cpu", "features": [], "shared_group": "cpu0"},
-                      {"id": "array0", "kind": "accelerator", "features": [], "shared_group": "array0"}],
-        "memory_domains": [{"id": "ram", "capacity_bytes": 100000, "alignment_bytes": 64}],
-        "access": [{"resource": unit, "domain": "ram", "read": True, "write": True,
-                    "addressability": "shared", "visibility": "coherent", "completion": "synchronous"}
-                   for unit in ("cpu0", "array0")],
-    }))
+    hardware.write_text(
+        yaml.safe_dump(
+            {
+                "schema": "merlin.execution_topology.v1",
+                "resources": [
+                    {"id": "cpu0", "kind": "cpu", "features": [], "shared_group": "cpu0"},
+                    {"id": "array0", "kind": "accelerator", "features": [], "shared_group": "array0"},
+                ],
+                "memory_domains": [{"id": "ram", "capacity_bytes": 100000, "alignment_bytes": 64}],
+                "access": [
+                    {
+                        "resource": unit,
+                        "domain": "ram",
+                        "read": True,
+                        "write": True,
+                        "addressability": "shared",
+                        "visibility": "coherent",
+                        "completion": "synchronous",
+                    }
+                    for unit in ("cpu0", "array0")
+                ],
+            }
+        )
+    )
     return target, select_topology(hardware)
 
 
@@ -88,9 +116,14 @@ def test_bounded_oot_pages_preserve_overlapping_covers_and_pin_continuation(tmp_
     body = "    %zero" + body.split("    func.return", 1)[0]
     second = body.replace("%", "%second_").replace("%second_x", "%x").replace("%second_w", "%w")
     prefix = prefix.replace("-> tensor<2x2xi8> {", "-> (tensor<2x2xi8>, tensor<2x2xi8>) {")
-    source = bind_source(parse_mlir_text(prefix + body + second
-                         + "    func.return %q, %second_q : tensor<2x2xi8>, tensor<2x2xi8>\n  }\n}"),
-                         entry="forward", context=PipelineContext(), graph_mode="ssa")
+    source = bind_source(
+        parse_mlir_text(
+            prefix + body + second + "    func.return %q, %second_q : tensor<2x2xi8>, tensor<2x2xi8>\n  }\n}"
+        ),
+        entry="forward",
+        context=PipelineContext(),
+        graph_mode="ssa",
+    )
     target, topology = _selected(tmp_path)
     before = ir_digest(source.module)
     ordinary = provider.propose(source, resource="array0", memory_domain="ram")
@@ -106,9 +139,18 @@ def test_bounded_oot_pages_preserve_overlapping_covers_and_pin_continuation(tmp_
 
     monkeypatch.setattr(groups, "_contraction_plans", scoped_match)
     budget = ProposalBudget(max_candidates=16, max_match_visits=1, max_proof_sessions=3)
-    options = dict(provider=provider, target=target, topology=topology, resource="array0",
-                   memory_domain="ram", cpu_resource="cpu0", validate_implementation=lambda *_: None,
-                   budget=budget, numerical_policy_sha256="a" * 64, preparation_sha256="b" * 64)
+    options = dict(
+        provider=provider,
+        target=target,
+        topology=topology,
+        resource="array0",
+        memory_domain="ram",
+        cpu_resource="cpu0",
+        validate_implementation=lambda *_: None,
+        budget=budget,
+        numerical_policy_sha256="a" * 64,
+        preparation_sha256="b" * 64,
+    )
     collected, reports, cursor = {}, [], None
     for _ in range(8):
         candidates, report = discover_fusion_candidates(source, **options, cursor=cursor)
@@ -130,17 +172,21 @@ def test_bounded_oot_pages_preserve_overlapping_covers_and_pin_continuation(tmp_
     assert {dict(p.alternative.metadata)["pattern"] for p in ordinary} == {"dense", "dense-requant"}
     assert len(reports) == 4 and reports[0]["status"] == "budget_exhausted"
     assert reports[-1]["status"] == "complete"
-    assert any(row["status"] == "no_match" for report in reports
-               for row in report["discovery"]["provider_reasons"])
+    assert any(row["status"] == "no_match" for report in reports for row in report["discovery"]["provider_reasons"])
     assert reports[0]["discovery"]["work"]["returned_proposals"] == 2
-    assert select_execution(source, tuple(collected.values()) + tuple(
-        item for item in candidates if item.proposal.abi == "inlined"),
-        preferred_providers=(provider.name,)).selected
+    assert select_execution(
+        source,
+        tuple(collected.values()) + tuple(item for item in candidates if item.proposal.abi == "inlined"),
+        preferred_providers=(provider.name,),
+    ).selected
     assert ir_digest(source.module) == before
     json.dumps(reports)
     first_cursor = reports[0]["next_cursor"]
-    for changes in ({"numerical_policy_sha256": "c" * 64}, {"preparation_sha256": "c" * 64},
-                    {"budget": replace(budget, max_region_operations=17)}):
+    for changes in (
+        {"numerical_policy_sha256": "c" * 64},
+        {"preparation_sha256": "c" * 64},
+        {"budget": replace(budget, max_region_operations=17)},
+    ):
         with pytest.raises(ValueError, match="cursor differs"):
             discover_fusion_candidates(source, **{**options, **changes}, cursor=first_cursor)
     with pytest.raises(ValueError, match="cursor differs"):
@@ -155,7 +201,8 @@ def test_bounded_oot_pages_preserve_overlapping_covers_and_pin_continuation(tmp_
     with pytest.raises(ValueError, match="distinct live"):
         original(source.module, roots=(source.operations[0].clone(),))
     limited, truncated = discover_fusion_candidates(
-        source, **{**options, "budget": replace(budget, max_tensor_elements=1)})
+        source, **{**options, "budget": replace(budget, max_tensor_elements=1)}
+    )
     assert all(item.proposal.abi == "inlined" for item in limited)
     assert truncated["status"] == "budget_exhausted"
     assert truncated["discovery"]["work"]["matcher_visits"] == 0
@@ -163,21 +210,21 @@ def test_bounded_oot_pages_preserve_overlapping_covers_and_pin_continuation(tmp_
         with pytest.raises(ValueError, match="insufficient provider page budget"):
             discover_fusion_candidates(source, **{**options, "budget": small})
     single, single_report = discover_fusion_candidates(
-        source, **{**options, "budget": replace(budget, max_region_operations=1,
-                                                 max_tensor_elements=(1 << 63) - 1)})
+        source, **{**options, "budget": replace(budget, max_region_operations=1, max_tensor_elements=(1 << 63) - 1)}
+    )
     assert all(item.proposal.abi == "inlined" for item in single)
     assert single_report["discovery_context"]["budget"]["max_tensor_elements"] == (1 << 63) - 1
     assert single_report["status"] == "budget_exhausted"
     assert all(len(row["operation_ordinals"]) == 1 for row in single_report["discovery"]["candidates"])
-    assert any(row["category"] == "region_operation_budget"
-               for row in single_report["discovery"]["provider_reasons"])
+    assert any(row["category"] == "region_operation_budget" for row in single_report["discovery"]["provider_reasons"])
 
 
 def test_actual_oot_fused_and_bare_offers_survive_to_selection_and_lowering(tmp_path, monkeypatch):
     provider = _provider()
     fixture = repo_root() / "merlin/tests/fixtures/fusion_requant.mlir"
-    source = bind_source(parse_mlir_text(fixture.read_text()), entry="forward",
-                         context=PipelineContext(), graph_mode="ssa")
+    source = bind_source(
+        parse_mlir_text(fixture.read_text()), entry="forward", context=PipelineContext(), graph_mode="ssa"
+    )
     target, topology = _selected(tmp_path)
 
     def independent_compute_check(current, proposal):
@@ -192,13 +239,20 @@ def test_actual_oot_fused_and_bare_offers_survive_to_selection_and_lowering(tmp_
             if id(root) in extents:
                 proof = integer_partial_sum_bound(
                     target.load_contract()["numerical_semantics"],
-                    reduction_extent=extents[id(root)][1], lhs_values=[-128, 127], rhs_values=[-128, 127],
+                    reduction_extent=extents[id(root)][1],
+                    lhs_values=[-128, 127],
+                    rhs_values=[-128, 127],
                 )
                 assert proof["status"] == "proven_safe"
 
     candidates, report = discover_fusion_candidates(
-        source, provider=provider, target=target, topology=topology,
-        resource="array0", memory_domain="ram", cpu_resource="cpu0",
+        source,
+        provider=provider,
+        target=target,
+        topology=topology,
+        resource="array0",
+        memory_domain="ram",
+        cpu_resource="cpu0",
         validate_implementation=independent_compute_check,
     )
     offers = [item for item in candidates if item.proposal.provider == provider.name]
@@ -208,8 +262,11 @@ def test_actual_oot_fused_and_bare_offers_survive_to_selection_and_lowering(tmp_
     selected = select_execution(source, candidates, preferred_providers=(provider.name,))
     assert len(selected.selected) == 1
     assert dict(selected.selected[0].alternative.metadata)["pattern"] == "dense-requant"
-    result = api.compile(ir_text(source.module), backend=PlannedCompiler(
-        selected, {provider.name: RegionBackend(provider, "forward")}), output=tmp_path / "compiled")
+    result = api.compile(
+        ir_text(source.module),
+        backend=PlannedCompiler(selected, {provider.name: RegionBackend(provider, "forward")}),
+        output=tmp_path / "compiled",
+    )
     assert any(artifact.kind == "llvm-dialect" for artifact in result.artifacts)
     assert result.deployment is None
     plan = json.loads((result.directory / "plan.json").read_text())
@@ -227,9 +284,11 @@ def test_actual_oot_fused_and_bare_offers_survive_to_selection_and_lowering(tmp_
     child_result = Compilation.load(result.directory / row["compilation"])
     partition = partition_execution(selected)
     region = partition.regions[0]
-    child = CompileRequest(Source(region.request_source("forward").text,
-                                  origin=row["lowering"]["request"][0][2]),
-                           child_result.directory, CompileOptions())
+    child = CompileRequest(
+        Source(region.request_source("forward").text, origin=row["lowering"]["request"][0][2]),
+        child_result.directory,
+        CompileOptions(),
+    )
     ticket = LoweringTicket.bind(partition, region, "forward", child)
     observation = ticket.record()["source_observations"]
     assert observation["proposal"]["stage"] == "proposal"
@@ -251,8 +310,10 @@ def test_actual_oot_fused_and_bare_offers_survive_to_selection_and_lowering(tmp_
     with pytest.raises(ValueError, match="artifact kinds/roles"):
         ticket.admit(child, incomplete)
     with pytest.raises(ValueError, match="ticket or request changed"):
-        provider.validate_selected(replace(child, source=replace(
-            child.source, text=child.source.text.replace("arith.mulf", "arith.addf"))), ticket)
+        provider.validate_selected(
+            replace(child, source=replace(child.source, text=child.source.text.replace("arith.mulf", "arith.addf"))),
+            ticket,
+        )
     other = replace(child, output=tmp_path / "other-region")
     swapped = LoweringTicket.bind(partition, region, "forward", other)
     with pytest.raises(ValueError, match="ticket or request changed"):
@@ -283,14 +344,21 @@ def test_actual_oot_fused_and_bare_offers_survive_to_selection_and_lowering(tmp_
         patch.setattr(provider, "compile_selected", None)
         refused_output = tmp_path / "missing-selected-protocol"
         with pytest.raises(ValueError, match="explicit validate_selected/compile_selected support"):
-            api.compile(ir_text(source.module), backend=PlannedCompiler(
-                selected, {provider.name: RegionBackend(provider, "forward")}), output=refused_output)
+            api.compile(
+                ir_text(source.module),
+                backend=PlannedCompiler(selected, {provider.name: RegionBackend(provider, "forward")}),
+                output=refused_output,
+            )
         assert not refused_output.exists()
-    raw_candidates = tuple(item for item in candidates if item.proposal.abi == "inlined"
-                           or item.alternative.implementation == "dense")
+    raw_candidates = tuple(
+        item for item in candidates if item.proposal.abi == "inlined" or item.alternative.implementation == "dense"
+    )
     raw = select_execution(source, raw_candidates, preferred_providers=(provider.name,))
-    raw_result = api.compile(ir_text(source.module), backend=PlannedCompiler(
-        raw, {provider.name: RegionBackend(provider, "forward")}), output=tmp_path / "raw-compiled")
+    raw_result = api.compile(
+        ir_text(source.module),
+        backend=PlannedCompiler(raw, {provider.name: RegionBackend(provider, "forward")}),
+        output=tmp_path / "raw-compiled",
+    )
     raw_commands = json.loads(next(a.path for a in raw_result.artifacts if a.role == "region.command-plan").read_text())
     assert raw_commands["tensors"]["Y0"]["dtype"] == "i32"
     assert any(item.proposal.abi == "inlined" for item in raw.selected)
@@ -300,8 +368,8 @@ def test_actual_oot_fused_and_bare_offers_survive_to_selection_and_lowering(tmp_
     # The direct device path cannot assign unrelated memory effects to its
     # device task merely because the returned value is matched successfully.
     effectful = fixture.read_text().replace(
-        "    func.return %q", "    %scratch = memref.alloc() : memref<1xi8>\n"
-        "    memref.dealloc %scratch : memref<1xi8>\n    func.return %q"
+        "    func.return %q",
+        "    %scratch = memref.alloc() : memref<1xi8>\n    memref.dealloc %scratch : memref<1xi8>\n    func.return %q",
     )
     assert program._single_device_region(effectful) is None
     original_contract = target.contract_path.read_text()
@@ -309,21 +377,25 @@ def test_actual_oot_fused_and_bare_offers_survive_to_selection_and_lowering(tmp_
     missing.pop("output_epilogue")
     target.contract_path.write_text(yaml.safe_dump(missing))
     refused, refusal_report = discover_fusion_candidates(
-        source, provider=provider, target=target, topology=topology,
-        resource="array0", memory_domain="ram", cpu_resource="cpu0",
+        source,
+        provider=provider,
+        target=target,
+        topology=topology,
+        resource="array0",
+        memory_domain="ram",
+        cpu_resource="cpu0",
         validate_implementation=independent_compute_check,
     )
-    assert any(row["status"] == "refused" and "no output path" in row["reason"]
-               for row in refusal_report["offers"])
+    assert any(row["status"] == "refused" and "no output path" in row["reason"] for row in refusal_report["offers"])
     assert any(row.get("category") == "missing_selected_output_path" for row in refusal_report["offers"])
-    assert {dict(item.alternative.metadata)["pattern"] for item in refused
-            if item.proposal.provider == provider.name} == {"dense"}
+    assert {
+        dict(item.alternative.metadata)["pattern"] for item in refused if item.proposal.provider == provider.name
+    } == {"dense"}
     # An edited selected hardware contract invalidates admitted offers, even
     # though the compiler still declares its original readout capability.
     target.contract_path.write_text("target: substituted\n")
     with pytest.raises(ValueError, match="contract changed"):
         selected.revalidate()
-
 
 
 def test_public_stage_supplies_actual_policy_and_preparation_to_oot_discovery(tmp_path, monkeypatch):
@@ -335,12 +407,18 @@ def test_public_stage_supplies_actual_policy_and_preparation_to_oot_discovery(tm
     from merlin.compiler.system import Component, SystemCompiler
 
     provider = _provider()
-    source = (repo_root() / "merlin/tests/fixtures/fusion_requant.mlir").read_text().replace(
-        "module {", 'module attributes {prov.weights_file = "origin/weights.safetensors"} {', 1)
+    source = (
+        (repo_root() / "merlin/tests/fixtures/fusion_requant.mlir")
+        .read_text()
+        .replace("module {", 'module attributes {prov.weights_file = "origin/weights.safetensors"} {', 1)
+    )
     capture, stage = tmp_path / "capture", tmp_path / "compiler"
     _write_capture(capture, source=source, dtype="i8", input_shapes=((2, 2), (2, 2)), output_shapes=((2, 2),))
-    policy = {"schema": "fixture.exact-i8.v1", "source_sha256": hashlib.sha256(source.encode()).hexdigest(),
-              "arithmetic": "existing exact signed i8/i32 and ordered readout fixture"}
+    policy = {
+        "schema": "fixture.exact-i8.v1",
+        "source_sha256": hashlib.sha256(source.encode()).hexdigest(),
+        "arithmetic": "existing exact signed i8/i32 and ordered readout fixture",
+    }
     selected = tmp_path / "precision.json"
     selected.write_text(json.dumps(policy))
     stage_compile_inputs(capture, stage, precision_policy=selected)
@@ -348,20 +426,29 @@ def test_public_stage_supplies_actual_policy_and_preparation_to_oot_discovery(tm
     target, topology = _selected(tmp_path)
     contexts = []
     original = provider.propose_page
+
     def observe(current, context, *, cursor=None):
         # Execute the actual companion matcher/proof path, not a synthetic page.
         page = original(current, context, cursor=cursor)
         assert page.proposals
         contexts.append(context)
         raise ValueError("observed actual preparation in OOT discovery; lowering intentionally unattempted")
+
     monkeypatch.setattr(provider, "propose_page", observe)
+
     def admit_preparation(current, binding):
         binding.revalidate(current)
         assert binding.policy() == policy
-    component = Component(RegionBackend(provider, "kernel"), "array0", "ram", lambda *_: None,
-                          target=target, cpu_resource="cpu0")
-    backend = SystemCompiler(topology=topology, components=(component,), preferred_providers=(provider.name,),
-                             validate_preparation=admit_preparation)
+
+    component = Component(
+        RegionBackend(provider, "kernel"), "array0", "ram", lambda *_: None, target=target, cpu_resource="cpu0"
+    )
+    backend = SystemCompiler(
+        topology=topology,
+        components=(component,),
+        preferred_providers=(provider.name,),
+        validate_preparation=admit_preparation,
+    )
     with pytest.raises(ValueError, match="observed actual preparation"):
         api.compile(staged, backend=backend, output=tmp_path / "out")
     assert len(contexts) == 1

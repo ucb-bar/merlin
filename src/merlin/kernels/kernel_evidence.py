@@ -26,11 +26,30 @@ from merlin.analysis.schedule_structure import (
 )
 
 __all__ = [
-    "ArtifactPin", "CountedLoop", "EvidenceFact", "KernelEvidence", "MeasurementBoundary", "RegionComparison",
-    "RegionDifference", "RegionOperation", "RegionTensor", "ScheduleAccess", "ScheduleDependency", "ScheduleModel",
-    "ScheduleStage", "SemanticRegion", "StorageLifetime", "analyze_committed_trace", "analyze_counted_kernel",
-    "analyze_disassembly", "analyze_ir_schedule", "analyze_native_commands", "analyze_normalized_commands",
-    "cca_projection", "compare_regions", "semantic_region_from_ir",
+    "ArtifactPin",
+    "CountedLoop",
+    "EvidenceFact",
+    "KernelEvidence",
+    "MeasurementBoundary",
+    "RegionComparison",
+    "RegionDifference",
+    "RegionOperation",
+    "RegionTensor",
+    "ScheduleAccess",
+    "ScheduleDependency",
+    "ScheduleModel",
+    "ScheduleStage",
+    "SemanticRegion",
+    "StorageLifetime",
+    "analyze_committed_trace",
+    "analyze_counted_kernel",
+    "analyze_disassembly",
+    "analyze_ir_schedule",
+    "analyze_native_commands",
+    "analyze_normalized_commands",
+    "cca_projection",
+    "compare_regions",
+    "semantic_region_from_ir",
 ]
 
 
@@ -58,9 +77,14 @@ class ArtifactPin:
     size_bytes: int | None = None
 
     def __post_init__(self):
-        if (type(self.kind) is not str or not self.kind or type(self.uri) is not str or not self.uri
-                or not _sha256(self.sha256)
-                or (self.size_bytes is not None and (type(self.size_bytes) is not int or self.size_bytes < 0))):
+        if (
+            type(self.kind) is not str
+            or not self.kind
+            or type(self.uri) is not str
+            or not self.uri
+            or not _sha256(self.sha256)
+            or (self.size_bytes is not None and (type(self.size_bytes) is not int or self.size_bytes < 0))
+        ):
             raise ValueError("artifact pins require a kind, location and exact lowercase SHA256")
 
     @classmethod
@@ -80,10 +104,14 @@ class EvidenceFact:
     reason: str = ""
 
     def __post_init__(self):
-        if (type(self.key) is not str or not self.key
-                or self.status not in ("observed", "inferred", "contradicted", "unknown")
-                or type(self.evidence) is not tuple or any(type(item) is not str or not item for item in self.evidence)
-                or (self.status in ("observed", "inferred", "contradicted") and not self.evidence)):
+        if (
+            type(self.key) is not str
+            or not self.key
+            or self.status not in ("observed", "inferred", "contradicted", "unknown")
+            or type(self.evidence) is not tuple
+            or any(type(item) is not str or not item for item in self.evidence)
+            or (self.status in ("observed", "inferred", "contradicted") and not self.evidence)
+        ):
             raise ValueError("known evidence facts require exact evidence pointers and a supported status")
         _identity(self.to_dict())
 
@@ -110,14 +138,28 @@ class KernelEvidence:
     version: int = 1
 
     def __post_init__(self):
-        if (type(self.evidence_id) is not str or not self.evidence_id or self.version != 1
-                or type(self.artifacts) is not tuple or any(type(pin) is not ArtifactPin for pin in self.artifacts)
-                or type(self.facts) is not tuple or any(type(fact) is not EvidenceFact for fact in self.facts)
-                or len({fact.key for fact in self.facts}) != len(self.facts)
-                or self.capture_kind not in ("source", "static_disassembly", "native_issue", "committed_trace",
-                                             "normalized_commands", "compiler_payload", "timing")
-                or self.visibility not in ("public", "operator_only", "reference_guided")
-                or type(self.complete) is not bool):
+        if (
+            type(self.evidence_id) is not str
+            or not self.evidence_id
+            or self.version != 1
+            or type(self.artifacts) is not tuple
+            or any(type(pin) is not ArtifactPin for pin in self.artifacts)
+            or type(self.facts) is not tuple
+            or any(type(fact) is not EvidenceFact for fact in self.facts)
+            or len({fact.key for fact in self.facts}) != len(self.facts)
+            or self.capture_kind
+            not in (
+                "source",
+                "static_disassembly",
+                "native_issue",
+                "committed_trace",
+                "normalized_commands",
+                "compiler_payload",
+                "timing",
+            )
+            or self.visibility not in ("public", "operator_only", "reference_guided")
+            or type(self.complete) is not bool
+        ):
             raise ValueError("kernel evidence requires typed, uniquely indexed selected inputs")
         _identity(self.to_dict())
 
@@ -150,10 +192,14 @@ class RegionTensor:
     alias_group: str | None = None
 
     def __post_init__(self):
-        if (type(self.key) is not str or not self.key or type(self.shape) is not tuple
-                or any((type(dim) is int and dim < 0) or type(dim) not in (int, str) for dim in self.shape)
-                or (self.dtype is not None and (type(self.dtype) is not str or not self.dtype))
-                or (self.layout is not None and not isinstance(self.layout, (str, Mapping)))):
+        if (
+            type(self.key) is not str
+            or not self.key
+            or type(self.shape) is not tuple
+            or any((type(dim) is int and dim < 0) or type(dim) not in (int, str) for dim in self.shape)
+            or (self.dtype is not None and (type(self.dtype) is not str or not self.dtype))
+            or (self.layout is not None and not isinstance(self.layout, (str, Mapping)))
+        ):
             raise ValueError("region tensors require an identifier and explicit shape/type/layout observations")
 
     @classmethod
@@ -179,11 +225,16 @@ class RegionOperation:
     numeric_complete: bool = False
 
     def __post_init__(self):
-        if (any(type(value) is not str or not value for value in (self.key, self.op))
-                or type(self.inputs) is not tuple or type(self.outputs) is not tuple or not self.outputs
-                or any(type(key) is not str or not key for key in (*self.inputs, *self.outputs))
-                or not isinstance(self.attributes, Mapping) or not isinstance(self.numeric, Mapping)
-                or type(self.numeric_complete) is not bool):
+        if (
+            any(type(value) is not str or not value for value in (self.key, self.op))
+            or type(self.inputs) is not tuple
+            or type(self.outputs) is not tuple
+            or not self.outputs
+            or any(type(key) is not str or not key for key in (*self.inputs, *self.outputs))
+            or not isinstance(self.attributes, Mapping)
+            or not isinstance(self.numeric, Mapping)
+            or type(self.numeric_complete) is not bool
+        ):
             raise ValueError("semantic operations require explicit ordered value edges and numerical contracts")
 
     @classmethod
@@ -209,11 +260,17 @@ class MeasurementBoundary:
     runtime_identity: str | None = None
 
     def __post_init__(self):
-        if (self.scope not in ("unknown", "complete_region", "device_only")
-                or any(getattr(self, field) not in ("included", "excluded", "not_applicable", "unknown")
-                       for field in ("packing", "preparation", "conversions", "synchronization", "readout"))
-                or any(value is not None and (type(value) is not str or not value)
-                       for value in (self.input_identity, self.runtime_identity))):
+        if (
+            self.scope not in ("unknown", "complete_region", "device_only")
+            or any(
+                getattr(self, field) not in ("included", "excluded", "not_applicable", "unknown")
+                for field in ("packing", "preparation", "conversions", "synchronization", "readout")
+            )
+            or any(
+                value is not None and (type(value) is not str or not value)
+                for value in (self.input_identity, self.runtime_identity)
+            )
+        ):
             raise ValueError("measurement boundaries require explicit inclusion and input/runtime identities")
 
     @classmethod
@@ -241,23 +298,39 @@ class SemanticRegion:
     version: int = 1
 
     def __post_init__(self):
-        if (type(self.region_id) is not str or not self.region_id or self.version != 1
-                or type(self.complete) is not bool or type(self.boundary) is not MeasurementBoundary
-                or type(self.tensors) is not tuple or any(type(tensor) is not RegionTensor for tensor in self.tensors)
-                or type(self.operations) is not tuple or any(type(op) is not RegionOperation for op in self.operations)
-                or type(self.inputs) is not tuple or type(self.outputs) is not tuple
-                or not isinstance(self.external_uses, Mapping)):
+        if (
+            type(self.region_id) is not str
+            or not self.region_id
+            or self.version != 1
+            or type(self.complete) is not bool
+            or type(self.boundary) is not MeasurementBoundary
+            or type(self.tensors) is not tuple
+            or any(type(tensor) is not RegionTensor for tensor in self.tensors)
+            or type(self.operations) is not tuple
+            or any(type(op) is not RegionOperation for op in self.operations)
+            or type(self.inputs) is not tuple
+            or type(self.outputs) is not tuple
+            or not isinstance(self.external_uses, Mapping)
+        ):
             raise ValueError("semantic regions need typed source graphs and a declared boundary")
         tensors = {tensor.key for tensor in self.tensors}
-        if (len(tensors) != len(self.tensors) or len({op.key for op in self.operations}) != len(self.operations)
-                or len(set(self.inputs)) != len(self.inputs) or len(set(self.outputs)) != len(self.outputs)
-                or not set((*self.inputs, *self.outputs, *self.external_uses)) <= tensors
-                or any(type(count) is not int or count < 1 for count in self.external_uses.values())):
+        if (
+            len(tensors) != len(self.tensors)
+            or len({op.key for op in self.operations}) != len(self.operations)
+            or len(set(self.inputs)) != len(self.inputs)
+            or len(set(self.outputs)) != len(self.outputs)
+            or not set((*self.inputs, *self.outputs, *self.external_uses)) <= tensors
+            or any(type(count) is not int or count < 1 for count in self.external_uses.values())
+        ):
             raise ValueError("semantic region values, live outputs or observers are malformed")
         available = set(self.inputs)
         for operation in self.operations:
-            if (not set(operation.inputs) <= available or not set(operation.outputs) <= tensors
-                    or len(set(operation.outputs)) != len(operation.outputs) or set(operation.outputs) & available):
+            if (
+                not set(operation.inputs) <= available
+                or not set(operation.outputs) <= tensors
+                or len(set(operation.outputs)) != len(operation.outputs)
+                or set(operation.outputs) & available
+            ):
                 raise ValueError("semantic operations must be a topological SSA graph")
             available.update(operation.outputs)
         if not set((*self.outputs, *self.external_uses)) <= available or tensors != available:
@@ -294,15 +367,33 @@ class SemanticRegion:
             tensor = tensors[key]
             if tensor.alias_group is not None:
                 alias_names.setdefault(tensor.alias_group, f"alias:{len(alias_names)}")
-            values.append(dict(key=name, shape=tensor.shape, dtype=tensor.dtype, layout=tensor.layout,
-                               alias_group=alias_names.get(tensor.alias_group)))
-        operations = [dict(op=operation.op, inputs=tuple(names[key] for key in operation.inputs),
-                           outputs=tuple(names[key] for key in operation.outputs),
-                           attributes=dict(operation.attributes), numeric=dict(operation.numeric),
-                           numeric_complete=operation.numeric_complete) for operation in self.operations]
-        return dict(tensors=values, operations=operations, inputs=tuple(names[key] for key in self.inputs),
-                    outputs=tuple(names[key] for key in self.outputs),
-                    external_uses={names[key]: count for key, count in self.external_uses.items()})
+            values.append(
+                dict(
+                    key=name,
+                    shape=tensor.shape,
+                    dtype=tensor.dtype,
+                    layout=tensor.layout,
+                    alias_group=alias_names.get(tensor.alias_group),
+                )
+            )
+        operations = [
+            dict(
+                op=operation.op,
+                inputs=tuple(names[key] for key in operation.inputs),
+                outputs=tuple(names[key] for key in operation.outputs),
+                attributes=dict(operation.attributes),
+                numeric=dict(operation.numeric),
+                numeric_complete=operation.numeric_complete,
+            )
+            for operation in self.operations
+        ]
+        return dict(
+            tensors=values,
+            operations=operations,
+            inputs=tuple(names[key] for key in self.inputs),
+            outputs=tuple(names[key] for key in self.outputs),
+            external_uses={names[key]: count for key, count in self.external_uses.items()},
+        )
 
 
 @dataclass(frozen=True)
@@ -343,8 +434,15 @@ def _differences(a, b, path=""):
     if isinstance(a, (tuple, list)) and isinstance(b, (tuple, list)):
         if len(a) != len(b):
             return [RegionDifference(path, a, b, "mismatch", "different semantic graph or interface cardinality")]
-        return [difference for index, (left, right) in enumerate(zip(a, b))
-                for difference in _differences(left, right, f"{path}[{index}]",)]
+        return [
+            difference
+            for index, (left, right) in enumerate(zip(a, b))
+            for difference in _differences(
+                left,
+                right,
+                f"{path}[{index}]",
+            )
+        ]
     if type(a) is not type(b) or a != b:
         return [RegionDifference(path, a, b, "mismatch", "semantic graph, numerical or boundary mismatch")]
     return []
@@ -374,16 +472,36 @@ def compare_regions(reference: SemanticRegion, candidate: SemanticRegion) -> Reg
             del operation["numeric_complete"]
     differences = _differences(left, right)
     if not reference.complete or not candidate.complete:
-        differences.append(RegionDifference("complete", reference.complete, candidate.complete, "unknown",
-                                            "complete fusion/semantic boundary has not been established"))
+        differences.append(
+            RegionDifference(
+                "complete",
+                reference.complete,
+                candidate.complete,
+                "unknown",
+                "complete fusion/semantic boundary has not been established",
+            )
+        )
     for label, region in (("reference", reference), ("candidate", candidate)):
         for index, operation in enumerate(region.operations):
             if not operation.numeric_complete:
-                differences.append(RegionDifference(f"{label}.operations[{index}].numeric_complete", True, False,
-                                                    "unknown", "numerical boundary is incomplete"))
+                differences.append(
+                    RegionDifference(
+                        f"{label}.operations[{index}].numeric_complete",
+                        True,
+                        False,
+                        "unknown",
+                        "numerical boundary is incomplete",
+                    )
+                )
     boundary_differences = _differences(asdict(reference.boundary), asdict(candidate.boundary), "boundary")
-    return RegionComparison(_status(differences), tuple(differences), _status(boundary_differences),
-                            tuple(boundary_differences), reference.identity, candidate.identity)
+    return RegionComparison(
+        _status(differences),
+        tuple(differences),
+        _status(boundary_differences),
+        tuple(boundary_differences),
+        reference.identity,
+        candidate.identity,
+    )
 
 
 def _attribute_record(attribute):
@@ -398,8 +516,14 @@ def _attribute_record(attribute):
 
 
 def semantic_region_from_ir(
-    module, *, operations=None, numeric_projector=None, layout_projector=None, boundary=None,
-    region_id="frontend", complete=True,
+    module,
+    *,
+    operations=None,
+    numeric_projector=None,
+    layout_projector=None,
+    boundary=None,
+    region_id="frontend",
+    complete=True,
 ) -> SemanticRegion:
     """Extract a source region automatically from actual xDSL SSA.
 
@@ -418,12 +542,16 @@ def semantic_region_from_ir(
         subject = functions[0] if len(functions) == 1 else module
         if len(subject.regions) != 1 or len(subject.regions[0].blocks) != 1:
             raise ValueError("automatic region extraction needs one source block or explicit operations")
-        operations = tuple(op for op in subject.regions[0].block.ops
-                           if not op.has_trait(IsTerminator, value_if_unregistered=False))
+        operations = tuple(
+            op for op in subject.regions[0].block.ops if not op.has_trait(IsTerminator, value_if_unregistered=False)
+        )
     operations = tuple(operations)
-    if (not operations or len(set(operations)) != len(operations)
-            or any(op not in members or not op.results for op in operations)
-            or any(op.parent is not operations[0].parent for op in operations)):
+    if (
+        not operations
+        or len(set(operations)) != len(operations)
+        or any(op not in members or not op.results for op in operations)
+        or any(op.parent is not operations[0].parent for op in operations)
+    ):
         raise ValueError("semantic extraction requires distinct result-producing roots in one current source block")
     positions = {op: index for index, op in enumerate(members)}
     if tuple(positions[op] for op in operations) != tuple(sorted(positions[op] for op in operations)):
@@ -477,24 +605,34 @@ def semantic_region_from_ir(
                     operands = [local.get(value, names.get(value, "unresolved_capture")) for value in child.operands]
                     for result_index, result in enumerate(child.results):
                         local[result] = f"block:{block_index}:op:{index}:result:{result_index}"
-                    children.append(dict(op=child.name, operands=operands,
-                                         types=[str(result.type) for result in child.results],
-                                         attributes={key: _attribute_record(value)
-                                                     for key, value in child.attributes.items()
-                                                     if not key.startswith("prov.")},
-                                         properties={key: _attribute_record(value)
-                                                     for key, value in child.properties.items()},
-                                         regions=[region_record(nested, local) for nested in child.regions]))
+                    children.append(
+                        dict(
+                            op=child.name,
+                            operands=operands,
+                            types=[str(result.type) for result in child.results],
+                            attributes={
+                                key: _attribute_record(value)
+                                for key, value in child.attributes.items()
+                                if not key.startswith("prov.")
+                            },
+                            properties={key: _attribute_record(value) for key, value in child.properties.items()},
+                            regions=[region_record(nested, local) for nested in child.regions],
+                        )
+                    )
                 blocks.append(dict(arguments=[str(arg.type) for arg in block.args], operations=children))
             return blocks
+
         return [region_record(region, names) for region in root.regions]
 
     region_operations = []
     for index, root in enumerate(operations):
         inputs = tuple(value_name(value) for value in root_inputs[root])
         outputs = tuple(value_name(value) for value in root.results)
-        attributes = {key: _attribute_record(value) for key, value in root.attributes.items()
-                      if not key.startswith("prov.") and not key.startswith("numeric.")}
+        attributes = {
+            key: _attribute_record(value)
+            for key, value in root.attributes.items()
+            if not key.startswith("prov.") and not key.startswith("numeric.")
+        }
         attributes.update({f"property:{key}": _attribute_record(value) for key, value in root.properties.items()})
         if root.regions:
             attributes["regions"] = body_tree(root)
@@ -507,11 +645,15 @@ def semantic_region_from_ir(
             numerical = dict(numerical)
             numeric_complete = numerical.pop("complete", all(key in numerical for key in _NUMERICAL_FIELDS))
         else:
-            numerical = {key.removeprefix("numeric."): _attribute_record(value)
-                         for key, value in root.attributes.items() if key.startswith("numeric.")}
+            numerical = {
+                key.removeprefix("numeric."): _attribute_record(value)
+                for key, value in root.attributes.items()
+                if key.startswith("numeric.")
+            }
             numeric_complete = all(key in numerical for key in _NUMERICAL_FIELDS)
-        region_operations.append(RegionOperation(f"op{index}", root.name, inputs, outputs,
-                                                 attributes, numerical, numeric_complete))
+        region_operations.append(
+            RegionOperation(f"op{index}", root.name, inputs, outputs, attributes, numerical, numeric_complete)
+        )
     outputs, external = [], {}
     for root in operations:
         for value in root.results:
@@ -520,9 +662,16 @@ def semantic_region_from_ir(
                 key = value_name(value)
                 outputs.append(key)
                 external[key] = uses
-    return SemanticRegion(region_id, tuple(tensors), tuple(region_operations),
-                          tuple(value_name(value) for value in input_values), tuple(outputs), external,
-                          boundary if boundary is not None else MeasurementBoundary(), complete)
+    return SemanticRegion(
+        region_id,
+        tuple(tensors),
+        tuple(region_operations),
+        tuple(value_name(value) for value in input_values),
+        tuple(outputs),
+        external,
+        boundary if boundary is not None else MeasurementBoundary(),
+        complete,
+    )
 
 
 def analyze_disassembly(text: str, *, table: Mapping, evidence: KernelEvidence, roles_of=None) -> ScheduleModel:
@@ -537,13 +686,25 @@ def analyze_disassembly(text: str, *, table: Mapping, evidence: KernelEvidence, 
     decoded = decode_stream(tokenize_text(text), table, roles_of=roles_of)
     audit = audit_decoded(decoded, table=table)
     unaccounted = {item["index"] for item in audit.unaccounted}
-    records = [dict(index=item.index, identity=item.identity, roles=item.roles,
-                    parameters=dict(fields=item.fields, operands=item.operands, pc=item.addr,
-                                    unaccounted=item.index in unaccounted))
-               for item in decoded if item.from_endpoint or item.index in unaccounted]
+    records = [
+        dict(
+            index=item.index,
+            identity=item.identity,
+            roles=item.roles,
+            parameters=dict(
+                fields=item.fields, operands=item.operands, pc=item.addr, unaccounted=item.index in unaccounted
+            ),
+        )
+        for item in decoded
+        if item.from_endpoint or item.index in unaccounted
+    ]
     missing_decoder = table.get("custom_opcode") is None or not table.get("legal_funct")
-    model = analyze_normalized_commands(records, evidence_id=evidence.evidence_id, source_kind="static_disassembly",
-                                        complete=evidence.complete and not unaccounted and not missing_decoder)
+    model = analyze_normalized_commands(
+        records,
+        evidence_id=evidence.evidence_id,
+        source_kind="static_disassembly",
+        complete=evidence.complete and not unaccounted and not missing_decoder,
+    )
     unknowns = set(model.unknowns)
     if unaccounted:
         unknowns.add("unaccounted_instruction_decode")
@@ -557,14 +718,21 @@ def analyze_disassembly(text: str, *, table: Mapping, evidence: KernelEvidence, 
 
 
 def analyze_native_commands(
-    commands: Iterable[Mapping], *, isa: Mapping, evidence: KernelEvidence,
-    project_command: Callable[[Mapping], Mapping] | None = None, max_commands=100_000,
+    commands: Iterable[Mapping],
+    *,
+    isa: Mapping,
+    evidence: KernelEvidence,
+    project_command: Callable[[Mapping], Mapping] | None = None,
+    max_commands=100_000,
 ) -> ScheduleModel:
     """Decode concrete native issue operands; this capture supplies no target cycles."""
     from merlin.targetgen.rocc.semantics import decode_instruction
 
-    if (evidence.capture_kind != "native_issue" or "capture" not in evidence.kinds()
-            or not {"facts", "isa"} & evidence.kinds()):
+    if (
+        evidence.capture_kind != "native_issue"
+        or "capture" not in evidence.kinds()
+        or not {"facts", "isa"} & evidence.kinds()
+    ):
         raise ValueError("native decoding requires pinned capture and selected ISA inputs")
 
     def decoded():
@@ -578,8 +746,9 @@ def analyze_native_commands(
                 if any(type(value) is not int or value < 0 for value in values):
                     raise ValueError("native commands require actual nonnegative register values")
                 funct, rs1, rs2 = values
-                cls, operands = decode_instruction(funct, dict(raw=rs1, kind="const"),
-                                                    dict(raw=rs2, kind="const"), dict(isa))
+                cls, operands = decode_instruction(
+                    funct, dict(raw=rs1, kind="const"), dict(raw=rs2, kind="const"), dict(isa)
+                )
                 row = dict(command, index=index, **{"class": cls}, decoded=operands)
             normalized = dict(project_command(row) if project_command else {})
             normalized.setdefault("index", index)
@@ -588,13 +757,23 @@ def analyze_native_commands(
             normalized.setdefault("kind", "fence" if command.get("kind") == "fence" else "command")
             yield normalized
 
-    return analyze_normalized_commands(decoded(), evidence_id=evidence.evidence_id, complete=evidence.complete,
-                                       source_kind="native_issue", max_commands=max_commands)
+    return analyze_normalized_commands(
+        decoded(),
+        evidence_id=evidence.evidence_id,
+        complete=evidence.complete,
+        source_kind="native_issue",
+        max_commands=max_commands,
+    )
 
 
 def analyze_committed_trace(
-    view, *, isa: Mapping, evidence: KernelEvidence, project_command: Callable[[Mapping], Mapping] | None = None,
-    max_retired=200_000_000, max_commands=100_000,
+    view,
+    *,
+    isa: Mapping,
+    evidence: KernelEvidence,
+    project_command: Callable[[Mapping], Mapping] | None = None,
+    max_retired=200_000_000,
+    max_commands=100_000,
 ) -> ScheduleModel:
     """Replay an explicitly complete single-hart trace through the existing reader.
 
@@ -603,13 +782,18 @@ def analyze_committed_trace(
     """
     from merlin.perf.streamed_executed_trace import iter_source_commands
 
-    if (evidence.capture_kind != "committed_trace" or not evidence.complete
-            or "capture" not in evidence.kinds() or not {"facts", "isa"} & evidence.kinds()):
+    if (
+        evidence.capture_kind != "committed_trace"
+        or not evidence.complete
+        or "capture" not in evidence.kinds()
+        or not {"facts", "isa"} & evidence.kinds()
+    ):
         raise ValueError("register replay requires pinned complete original capture and selected ISA")
 
     def normalized():
-        for index, row in enumerate(iter_source_commands(view, isa=dict(isa), max_retired=max_retired,
-                                                         max_commands=max_commands)):
+        for index, row in enumerate(
+            iter_source_commands(view, isa=dict(isa), max_retired=max_retired, max_commands=max_commands)
+        ):
             record = dict(project_command(row) if project_command else {})
             record.setdefault("index", index)
             record.setdefault("identity", row["class"])
@@ -617,8 +801,13 @@ def analyze_committed_trace(
             record.setdefault("kind", "fence" if row["class"] == "FENCE" else "command")
             yield record
 
-    return analyze_normalized_commands(normalized(), evidence_id=evidence.evidence_id, complete=True,
-                                       source_kind="committed_trace", max_commands=max_commands)
+    return analyze_normalized_commands(
+        normalized(),
+        evidence_id=evidence.evidence_id,
+        complete=True,
+        source_kind="committed_trace",
+        max_commands=max_commands,
+    )
 
 
 def cca_projection(model: ScheduleModel, *, op: str, source: str = "reference", backend=(), facts=(), scope="kernel"):
@@ -628,16 +817,27 @@ def cca_projection(model: ScheduleModel, *, op: str, source: str = "reference", 
 
     from merlin.kernels.cca import CCA, DispatchFacet
 
-    result = CCA(op=op, backend=list(backend), provenance=dict(level=model.source_kind, source=source,
-                                                           schedule_sha256=model.identity,
-                                                           unknowns=model.unknowns, axis_evidence={}), scope=scope)
+    result = CCA(
+        op=op,
+        backend=list(backend),
+        provenance=dict(
+            level=model.source_kind,
+            source=source,
+            schedule_sha256=model.identity,
+            unknowns=model.unknowns,
+            axis_evidence={},
+        ),
+        scope=scope,
+    )
     axes = result.provenance["axis_evidence"]
     if model.source_kind not in ("schedule_dialect", "static_disassembly"):
         count = model.event_counts.get("command") if model.complete else None
         result.dispatch = DispatchFacet(n_dispatches=count)
-        axes["dispatch.n_dispatches"] = dict(status="observed" if count is not None else "unknown",
-                                             evidence=(f"schedule:{model.identity}#event_counts.command",),
-                                             reason="complete bounded issue/payload count, not elapsed timing")
+        axes["dispatch.n_dispatches"] = dict(
+            status="observed" if count is not None else "unknown",
+            evidence=(f"schedule:{model.identity}#event_counts.command",),
+            reason="complete bounded issue/payload count, not elapsed timing",
+        )
     types = get_type_hints(CCA)
 
     def compatible(value, annotation):
@@ -667,8 +867,7 @@ def cca_projection(model: ScheduleModel, *, op: str, source: str = "reference", 
         facet_name, separator, field_name = fact.key.partition(".")
         candidates = get_args(types.get(facet_name, None)) or (types.get(facet_name),)
         classes = [candidate for candidate in candidates if is_dataclass(candidate)]
-        if (not separator or len(classes) != 1
-                or field_name not in {item.name for item in fields(classes[0])}):
+        if not separator or len(classes) != 1 or field_name not in {item.name for item in fields(classes[0])}:
             raise ValueError(f"evidence axis {fact.key!r} is not an existing CCA facet field")
         axes[fact.key] = dict(status=fact.status, evidence=fact.evidence, reason=fact.reason)
         if fact.status not in ("observed", "inferred") or fact.value is None:
@@ -686,8 +885,9 @@ def cca_projection(model: ScheduleModel, *, op: str, source: str = "reference", 
         candidates = get_args(annotation) or (annotation,)
         is_tuple = any(candidate is tuple or get_origin(candidate) is tuple for candidate in candidates)
         setattr(facet, field_name, tuple(fact.value) if is_tuple and isinstance(fact.value, list) else fact.value)
-    result.provenance["unknown_axes"] = tuple(sorted(key for key, value in axes.items()
-                                                     if value["status"] in ("unknown", "contradicted")))
+    result.provenance["unknown_axes"] = tuple(
+        sorted(key for key, value in axes.items() if value["status"] in ("unknown", "contradicted"))
+    )
     if result.scope_problems():
         raise ValueError("CCA projection facts contradict the selected semantic scope")
     return result

@@ -14,24 +14,24 @@ from xdsl.context import Context
 from xdsl.dialects import arith, builtin, func, linalg, tensor
 from xdsl.parser import Parser
 
-from merlin.compiler.schedule.fusion_semantics import ElementwiseSemantics
-from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
-from merlin.compiler.schedule.multioutput_fusion import MultiOutputBindings
-from merlin.compiler.schedule.multioutput_fusion import MultiOutputCompositionLaw
-from merlin.compiler.schedule.multioutput_fusion import compile_source_multioutput
-from merlin.compiler.schedule.multioutput_fusion import read_source_multioutput
-from merlin.compiler.schedule.multioutput_fusion_check import _arguments
-from merlin.compiler.schedule.multioutput_fusion_check import verify_multioutput_fusion
-from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.program_limits import DecodedInstruction
-from merlin.compiler.schedule.program_limits import EncodedAccess
-from merlin.compiler.schedule.program_limits import ProgramDecoder
-from merlin.compiler.schedule.program_limits import ProgramLimits
-from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
-from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
+from merlin.compiler.schedule.fusion_semantics import ElementwiseSemantics, UnsupportedElementwise
+from merlin.compiler.schedule.multioutput_fusion import (
+    MultiOutputBindings,
+    MultiOutputCompositionLaw,
+    compile_source_multioutput,
+    read_source_multioutput,
+)
+from merlin.compiler.schedule.multioutput_fusion_check import _arguments, verify_multioutput_fusion
+from merlin.compiler.schedule.program_limits import (
+    AddressWindow,
+    DecodedInstruction,
+    EncodedAccess,
+    ProgramDecoder,
+    ProgramLimits,
+)
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets, ScheduleEncoding
 from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
-from merlin.compiler.schedule.temporary_storage import StorageAdapter
-from merlin.compiler.schedule.temporary_storage import TemporaryObject
+from merlin.compiler.schedule.temporary_storage import StorageAdapter, TemporaryObject
 from merlin.sched.ir import Call, Const, Kernel, evaluate
 from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction
 

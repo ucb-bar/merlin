@@ -26,16 +26,16 @@ import tempfile
 from pathlib import Path
 
 from merlin.common import compile_trace
-from merlin.compiler.passes import policy as pass_policy
-from merlin.compiler.passes import parallel as parallel_schedule
-from merlin.compiler.passes.fragments import DEALLOC_CHECK_RUNNER as DEALLOC_CHECK_RUNNER
-from merlin.compiler.passes.contract import PipelineError as PipelineError
 from merlin.compiler.lower.llvm.normalize import normalize_float_literals as _fix_float_literals
 from merlin.compiler.lower.llvm.normalize import normalize_hex_literals as _fix_f0x_literals
 from merlin.compiler.lower.llvm.passes import INDEX_CONVERSION_PASSES, finalization_passes
 from merlin.compiler.lower.llvm.passes import bind_index_width as _bind_index_width
 from merlin.compiler.lower.scalar.pipeline import scalar_passes
 from merlin.compiler.passes import native as native_passes
+from merlin.compiler.passes import parallel as parallel_schedule
+from merlin.compiler.passes import policy as pass_policy
+from merlin.compiler.passes.contract import PipelineError as PipelineError
+from merlin.compiler.passes.fragments import DEALLOC_CHECK_RUNNER as DEALLOC_CHECK_RUNNER
 
 from .dealloc_lifetime import DEALLOC_CHECK_PRELUDE as DEALLOC_CHECK_PRELUDE
 from .llvm_dialect_product import _residual_vector_dialect_ops as _residual_vector_dialect_ops
@@ -100,7 +100,6 @@ def _dealloc_passes(sink: bool | None = None) -> list[str]:
     )
 
 
-
 def _sink_deallocs() -> bool:
     """Whether to sink each dealloc to its last use. Default OFF (``MERLIN_SINK_DEALLOCS=1``).
 
@@ -152,10 +151,10 @@ def _splice(passes: list[str]) -> str:
     if _generalize_before_fuse():
         passes = _reorder_generalize_before_fuse(passes)
     return pass_policy.splice_passes(
-        passes, deallocation=_dealloc_passes() if "__DEALLOC__" in passes else [],
+        passes,
+        deallocation=_dealloc_passes() if "__DEALLOC__" in passes else [],
         generalize_before_fuse=False,
     )
-
 
 
 def _upstream_pipeline(features: "frozenset[str] | None" = None) -> str:
@@ -282,7 +281,6 @@ def _generalize_before_fuse() -> bool:
 def _reorder_generalize_before_fuse(passes: list[str]) -> list[str]:
     """Preserve the legacy entry while sharing the provider ordering check."""
     return pass_policy.reorder_generalize_before_fuse(passes)
-
 
 
 def _par_residue_parallel(features=frozenset()) -> bool:
@@ -565,9 +563,11 @@ _CONTIGUOUS_COPY_MID_SRC = _CONTIGUOUS_COPY_MID_SRC.replace(
     'if len(sys.argv) > 18 and sys.argv[18] == "1":',
     'if len(sys.argv) > 19 and sys.argv[19] == "1":',
 )
+from .adjacent_exp import RUNNER_PRELUDE as _ADJACENT_EXP_PRELUDE
 from .automatic_host_features import RUNNER_PRELUDE as _AUTOMATIC_HOST_FEATURES_PRELUDE
 from .broadcast_math_hoist import RUNNER_PRELUDE as _BROADCAST_MATH_HOIST_PRELUDE
 from .fma_intrinsic import RUNNER_PRELUDE as _FMA_INTRINSIC_PRELUDE
+from .guarded_zero_contraction import RUNNER_PRELUDE as _GUARDED_ZERO_CONTRACTION_PRELUDE
 from .masked_contraction import RUNNER_PRELUDE as _MASKED_CONTRACTION_PRELUDE
 from .masked_contraction import STAGE_RUNNER as _MASKED_CONTRACTION_STAGE_RUNNER
 from .named_broadcast_fold import RUNNER_PRELUDE as _NAMED_BROADCAST_FOLD_PRELUDE
@@ -579,15 +579,13 @@ from .parallel_grain import LATE_STAGE_SRC as _PARALLEL_GRAIN_LATE_SRC
 from .parallel_grain import RUNNER_PRELUDE as _PARALLEL_GRAIN_PRELUDE
 from .parallel_team import RUNNER_PRELUDE as _PARALLEL_TEAM_PRELUDE
 from .parallel_team import STAGE_SRC as _PARALLEL_TEAM_STAGE_SRC
+from .rhs_column_reuse import RUNNER_PRELUDE as _RHS_COLUMN_REUSE_PRELUDE
 from .roundeven_intrinsic import RUNNER_PRELUDE as _ROUND_INTRINSIC_PRELUDE
 from .scalar_contraction import RUNNER_PRELUDE as _SCALAR_CONTRACTION_PRELUDE
-from .guarded_zero_contraction import RUNNER_PRELUDE as _GUARDED_ZERO_CONTRACTION_PRELUDE
-from .adjacent_exp import RUNNER_PRELUDE as _ADJACENT_EXP_PRELUDE
+from .scalar_ordered_reduction import RUNNER_PRELUDE as _SCALAR_ORDERED_REDUCTION_PRELUDE
 from .scalar_pointwise_packet import RUNNER_PRELUDE as _SCALAR_POINTWISE_PACKET_PRELUDE
 from .scalar_pointwise_unroll import RUNNER_PRELUDE as _SCALAR_POINTWISE_UNROLL_PRELUDE
 from .scalar_squared_sum import RUNNER_PRELUDE as _SCALAR_SQUARED_SUM_PRELUDE
-from .scalar_ordered_reduction import RUNNER_PRELUDE as _SCALAR_ORDERED_REDUCTION_PRELUDE
-from .rhs_column_reuse import RUNNER_PRELUDE as _RHS_COLUMN_REUSE_PRELUDE
 from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
@@ -783,8 +781,11 @@ def apply_passes(mlir_text: str, pipeline: str, timeout: int = 600) -> str:
         encoding="utf-8",
     )
     proc = subprocess.run(
-        [str(m2m_python()), str(script), str(src), str(dst), pipeline], capture_output=True, text=True,
-        timeout=timeout, env=child_environment()
+        [str(m2m_python()), str(script), str(src), str(dst), pipeline],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env=child_environment(),
     )
     if proc.returncode != 0 or not dst.is_file():
         raise PipelineError(f"apply_passes failed:\n{proc.stdout}\n{proc.stderr}")
@@ -821,8 +822,13 @@ def dealloc_placement_violations(mlir_text: str, timeout: int = 600, *, borrowed
         "'sunk': n_sunk}))\n",
         encoding="utf-8",
     )
-    proc = subprocess.run([str(m2m_python()), str(script), str(src)], capture_output=True, text=True,
-                          timeout=timeout, env=child_environment())
+    proc = subprocess.run(
+        [str(m2m_python()), str(script), str(src)],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env=child_environment(),
+    )
     if proc.returncode != 0:
         raise PipelineError(f"dealloc placement check failed:\n{proc.stdout}\n{proc.stderr}")
     line = next(ln for ln in proc.stdout.splitlines() if ln.startswith("MERLIN_CHECK "))
@@ -1151,6 +1157,7 @@ def _select_runner(
 
     source = bind_automatic_host_runner(source, features=feats)
     from .adjacent_exp import bind_runner as bind_exact_exp_runner
+
     source = bind_exact_exp_runner(source, features=feats)
     source = _bind_source_observation_runner(source, selected=_SOURCE_OBSERVATION_FEATURE in feats)
     # Every variant runs elementwise fusion under the broadcast control function (fusion_guard).
@@ -1180,9 +1187,6 @@ def _harvest_native(traced: "tuple[Path, bool] | None", produced: Path, failure:
             raise
         stop.note += f"; a later pass failed: {str(failure).strip().splitlines()[0][:200]}"
         raise stop from failure
-
-
-
 
 
 @host_admitted
@@ -1257,8 +1261,7 @@ def lower_to_llvm_ir(
         "loop_ownership_checker": Path(__file__).with_name("dealloc_lifetime.py"),
         "translation_transport": Path(__file__).with_name("llvm_dialect_product.py"),
     }
-    recipe_sources.update({str(path.relative_to(Path(__file__).parents[1])): path
-                           for path in implementation_paths()})
+    recipe_sources.update({str(path.relative_to(Path(__file__).parents[1])): path for path in implementation_paths()})
     from .impr_features import apply_schedule, normalize
 
     # `normalize` REJECTS an unregistered name, and the lowering runs in forked/child processes that
@@ -1865,8 +1868,9 @@ def lower_to_llvm_ir(
         recipe.command(translate_command)
         if audit is not None:
             audit.command(translate_command, sources=(__file__,))
-        tproc = subprocess.run(translate_command, capture_output=True, text=True, timeout=timeout,
-                               env=child_environment())
+        tproc = subprocess.run(
+            translate_command, capture_output=True, text=True, timeout=timeout, env=child_environment()
+        )
         if tproc.returncode != 0 or not out.is_file():
             raise PipelineError(f"mlir-translate (parallel) failed:\n{tproc.stdout}\n{tproc.stderr}")
     result = _fix_float_literals((retention.translation if retention is not None else out).read_text(encoding="utf-8"))

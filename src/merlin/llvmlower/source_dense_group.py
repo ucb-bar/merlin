@@ -304,8 +304,7 @@ class SourceDenseGroupResult:
 def schedule_source_dense_group(module, operations, selection, validate):
     """Require current complete independent source domains before grouping."""
     from merlin.compiler.schedule.compact_dense_group import schedule_compact_dense_group
-    from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
-    from merlin.compiler.schedule.dense_source import read_source_dense
+    from merlin.compiler.schedule.dense_source import DenseSourceUnavailable, read_source_dense
     from merlin.compiler.schedule.library_sources import shared_library_sources
 
     from .source_model import SourceRegion, _region_results, _values
@@ -484,8 +483,7 @@ def schedule_source_dense_group(module, operations, selection, validate):
 def discover_dense_groups(module, selection, validate):
     """Try bounded adjacent groups; unsupported candidates retain singles."""
     from merlin.compiler.schedule.dense_contracts import DenseSchedulingUnavailable
-    from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
-    from merlin.compiler.schedule.dense_source import _problem
+    from merlin.compiler.schedule.dense_source import DenseSourceUnavailable, _problem
 
     from .source_model import SourceRegion
 

@@ -19,17 +19,17 @@ from typing import Any
 from merlin.common import mlir_query as mq
 from merlin.common.digest import is_sha256
 from merlin.common.jsonio import strict_json_equal
-from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
 from merlin.frontends.bucketize_source import (
-    BUCKETIZE_COUNT_OPERATION,
     BF16_BUCKETIZE_COUNT_OPERATION,
-    BucketizeSourcePattern,
+    BUCKETIZE_COUNT_OPERATION,
     STATIC_BUCKETIZE_SOURCE_BODY_SCHEMA,
+    BucketizeSourcePattern,
     bucketize_pattern_fits_index,
     literal_bucketize_boundary_fact,
     screen_bucketize_source,
 )
 from merlin.frontends.linalg_patterns import InvalidLinalgPattern
+from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
 from merlin.targetgen.application_inventory import verify_capture_receipt
 from merlin_experiments.phase1.feedback.private_control_support import _record_matches_selected
 
@@ -128,7 +128,9 @@ def begin(
                 bucketize_pattern_fits_index(pattern, selected_index_observation["index_bits"]),
                 "source loop extent or byte span exceeds selected index width",
             )
-            facts.append({"ordinal": ordinal, **literal_bucketize_boundary_fact(parsed[ordinal], pattern.boundary_count)})
+            facts.append(
+                {"ordinal": ordinal, **literal_bucketize_boundary_fact(parsed[ordinal], pattern.boundary_count)}
+            )
     return {
         "status": PENDING,
         "scope": SCOPE,
@@ -185,8 +187,14 @@ def record(
         isinstance(body, Mapping)
         and set(body)
         == {
-            "schema", "declaration", "operation", "predicate", "patterns", "profile",
-            "capability_spec_sha256", "selected_index_observation",
+            "schema",
+            "declaration",
+            "operation",
+            "predicate",
+            "patterns",
+            "profile",
+            "capability_spec_sha256",
+            "selected_index_observation",
         }
         and body.get("schema") == STATIC_BUCKETIZE_SOURCE_BODY_SCHEMA
         and body.get("operation") in {BUCKETIZE_COUNT_OPERATION, BF16_BUCKETIZE_COUNT_OPERATION}
@@ -222,8 +230,7 @@ def record(
         "reviewed host profile has no selected capability identity",
     )
     _need(
-        (body["profile"], body["capability_spec_sha256"])
-        == (profile["profile"], profile["capability_spec_sha256"]),
+        (body["profile"], body["capability_spec_sha256"]) == (profile["profile"], profile["capability_spec_sha256"]),
         "bucketize source-body proof differs from the selected reviewed profile",
     )
     inner_proof = {key: value for key, value in body.items() if key not in {"profile", "capability_spec_sha256"}}
@@ -249,15 +256,23 @@ def record(
             isinstance(claimed, Mapping)
             and set(claimed)
             == {
-                "operation", "shape", "ordered_types", "boundary_count", "right",
-                "comparison", "count_range", "literal_sha256",
+                "operation",
+                "shape",
+                "ordered_types",
+                "boundary_count",
+                "right",
+                "comparison",
+                "count_range",
+                "literal_sha256",
             }
             and isinstance(pattern, Mapping)
             and isinstance(fact, Mapping)
             and strict_json_equal(
                 claimed,
                 {
-                    "operation": BF16_BUCKETIZE_COUNT_OPERATION if pattern.get("input_dtype", "f32") == "bf16" else BUCKETIZE_COUNT_OPERATION,
+                    "operation": BF16_BUCKETIZE_COUNT_OPERATION
+                    if pattern.get("input_dtype", "f32") == "bf16"
+                    else BUCKETIZE_COUNT_OPERATION,
                     "shape": pattern["input_shape"],
                     "ordered_types": [pattern.get("input_dtype", "f32"), "f32", "i64", "i64"],
                     "boundary_count": pattern["boundary_count"],
@@ -298,6 +313,7 @@ def _capture_matches(
     if any(not item.is_file() or item.is_symlink() for item in (model, trace, receipt)):
         return False
     try:
+
         def pinned() -> bool:
             checked = verify_capture_receipt(model)
             return bool(
@@ -507,7 +523,8 @@ def linked_source_complete(source: Mapping[str, Any], entry: Mapping[str, Any], 
                 not isinstance(item, list)
                 or len(item) != 2
                 or not isinstance(item[1], Mapping)
-                or set(item[1]) != {"input_shape", "boundary_count", "right", "comparison", "count_range", "input_dtype"}
+                or set(item[1])
+                != {"input_shape", "boundary_count", "right", "comparison", "count_range", "input_dtype"}
                 or item[1].get("input_dtype") not in {"f32", "bf16"}
                 or type(item[1]["boundary_count"]) is not int
                 or item[1]["boundary_count"] < 1
@@ -518,21 +535,30 @@ def linked_source_complete(source: Mapping[str, Any], entry: Mapping[str, Any], 
             )
         ):
             return False
-        return type(witness["source_capture_path"]) is str and _capture_matches(
-            witness, source, linked, Path(witness["source_capture_path"])
-        ) and all(
-            isinstance(row, Mapping)
-            and set(row)
-            == {"ordinals", "profile", "capability_spec_sha256", "declaration", "source_body_schema", "source_body_proof_sha256"}
-            and bool(row["ordinals"])
-            and isinstance(row["profile"], str)
-            and bool(row["profile"])
-            and is_sha256(row["capability_spec_sha256"])
-            and isinstance(row["declaration"], str)
-            and bool(row["declaration"])
-            and row["source_body_schema"] == STATIC_BUCKETIZE_SOURCE_BODY_SCHEMA
-            and is_sha256(row["source_body_proof_sha256"])
-            for row in admissions
+        return (
+            type(witness["source_capture_path"]) is str
+            and _capture_matches(witness, source, linked, Path(witness["source_capture_path"]))
+            and all(
+                isinstance(row, Mapping)
+                and set(row)
+                == {
+                    "ordinals",
+                    "profile",
+                    "capability_spec_sha256",
+                    "declaration",
+                    "source_body_schema",
+                    "source_body_proof_sha256",
+                }
+                and bool(row["ordinals"])
+                and isinstance(row["profile"], str)
+                and bool(row["profile"])
+                and is_sha256(row["capability_spec_sha256"])
+                and isinstance(row["declaration"], str)
+                and bool(row["declaration"])
+                and row["source_body_schema"] == STATIC_BUCKETIZE_SOURCE_BODY_SCHEMA
+                and is_sha256(row["source_body_proof_sha256"])
+                for row in admissions
+            )
         )
     except (KeyError, TypeError, ValueError, OverflowError):
         return False

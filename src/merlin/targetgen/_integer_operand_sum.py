@@ -55,8 +55,11 @@ def _disjoint_static_attention(recipe: Mapping[str, Any]) -> bool:
         # Reuse the existing attention policy validator, including allowed plane
         # selectors/counts, rather than inventing a second numerical contract.
         QR.with_dynamic_contractions(
-            recipe, families=block["families"], scales=block["scales"],
-            planes=block.get("planes"), smooth=block.get("smooth") == QR.SOFTMAX_AXIS,
+            recipe,
+            families=block["families"],
+            scales=block["scales"],
+            planes=block.get("planes"),
+            smooth=block.get("smooth") == QR.SOFTMAX_AXIS,
         )
         QR.site_agreement_of(recipe)
     except (TypeError, ValueError):
@@ -125,9 +128,16 @@ class SharedGridSums:
         # graph inputs, ignore stored constants, and propagate all other dataflow
         # edges. An unrecognized contraction is conservatively traversed instead.
         contractions = {
-            "aten.linear.default", "aten.mm.default", "aten.bmm.default", "aten.matmul.default",
-            "aten.addmm.default", "aten.convolution.default", "aten._convolution.default",
-            "aten.conv1d.default", "aten.conv2d.default", "aten.conv3d.default",
+            "aten.linear.default",
+            "aten.mm.default",
+            "aten.bmm.default",
+            "aten.matmul.default",
+            "aten.addmm.default",
+            "aten.convolution.default",
+            "aten._convolution.default",
+            "aten.conv1d.default",
+            "aten.conv2d.default",
+            "aten.conv3d.default",
         }
         frontiers: dict[Any, frozenset[Any]] = {}
 
@@ -332,8 +342,12 @@ class SharedGridSums:
     def census(self) -> dict[str, Any]:
         return {
             "schema": FLOAT_BOUNDARY_SCHEMA if self.allow_float_boundary else SCHEMA,
-            "annotated": len(self.sites), "rewritten": len(self.rewritten),
-            **({"output_boundary": "dequantize", "target_execution_qualified": False}
-               if self.allow_float_boundary else {}),
+            "annotated": len(self.sites),
+            "rewritten": len(self.rewritten),
+            **(
+                {"output_boundary": "dequantize", "target_execution_qualified": False}
+                if self.allow_float_boundary
+                else {}
+            ),
             **({"selection": self.residual_selection} if self.residual_selection else {}),
         }

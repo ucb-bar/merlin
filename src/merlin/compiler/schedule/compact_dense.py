@@ -15,11 +15,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from merlin.transforms.pipeline_state import AnalysisStamp
 
+from merlin.compiler.schedule.blocks import Compute, InitializeAccumulator, Load, Preload, Store
 from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, TensorArg, Var, select
 from merlin.sched.ir.kernel import DTYPE_BYTES, check_structure
 from merlin.transforms.dense_planning import DenseBlock, DenseChoice, DenseProblem, DenseResources, choose_dense_block
-
-from merlin.compiler.schedule.blocks import Compute, InitializeAccumulator, Load, Preload, Store
 
 DenseOperation = Load | Preload | Compute | Store | InitializeAccumulator
 
@@ -38,10 +37,16 @@ class DenseBiasSource:
     arithmetic: str = "signed-modular-accumulator-add"
 
     def validate(self, problem, dtypes):
-        if (type(self.columns) is not int or self.columns != problem.n
-                or self.dtype != dtypes[2] or self.dtype not in ("i8", "i16", "i32", "i64")
-                or self.arithmetic != "signed-modular-accumulator-add"):
-            raise ValueError("bias source requires exact contiguous columns and signed accumulator-width modular addition")
+        if (
+            type(self.columns) is not int
+            or self.columns != problem.n
+            or self.dtype != dtypes[2]
+            or self.dtype not in ("i8", "i16", "i32", "i64")
+            or self.arithmetic != "signed-modular-accumulator-add"
+        ):
+            raise ValueError(
+                "bias source requires exact contiguous columns and signed accumulator-width modular addition"
+            )
 
 
 @dataclass(frozen=True)
@@ -197,7 +202,8 @@ class CompactDenseResult:
         if (
             stamp is None
             or self.kernel.digest() != stamp.source_sha256
-            or _digest(_dense_library_sources(self.uses_schedule_ir, self.schedule_library_version)) != stamp.context.library
+            or _digest(_dense_library_sources(self.uses_schedule_ir, self.schedule_library_version))
+            != stamp.context.library
             or type(self.index_bits) is not int
             or self.index_bits != self.checked_index_bits
             or stamp.context.execution is None
@@ -239,13 +245,18 @@ class CompactDenseResult:
             raise ValueError("LLVM dense emission requires a target instruction callback")
         bridge = FnBuilderIndexAdapter(builder)
         result = emit_index_program(
-            self.kernel, bridge,
+            self.kernel,
+            bridge,
             lambda instruction, arguments: lower_call(
-                instruction, {key: bridge.value(value) for key, value in arguments.items()}),
+                instruction, {key: bridge.value(value) for key, value in arguments.items()}
+            ),
         )
         self.revalidate()
-        return {**result, "scope": "checked compact schedule consumed by LLVM target callbacks",
-                "machine_emission": "requires_independent_target_qualification"}
+        return {
+            **result,
+            "scope": "checked compact schedule consumed by LLVM target callbacks",
+            "machine_emission": "requires_independent_target_qualification",
+        }
 
 
 @dataclass(frozen=True)
@@ -316,12 +327,21 @@ def _emit_dense_tile_group(
     kt = problem.tiles[1]
     statements = []
     if bias_source is not None:
+
         def initialize(i, j):
-            return (call(InitializeAccumulator(
-                (mg.base+i, ng.base+j), (ng.base+j)*problem.tile_n,
-                _edge(mg,i,problem.m,problem.tile_m), _edge(ng,j,problem.n,problem.tile_n),
-                storage.accumulator.base+(i*block.n+j)*problem.tile_m)),)
-        statements.extend(nest((mg.blocks,ng.blocks),initialize))
+            return (
+                call(
+                    InitializeAccumulator(
+                        (mg.base + i, ng.base + j),
+                        (ng.base + j) * problem.tile_n,
+                        _edge(mg, i, problem.m, problem.tile_m),
+                        _edge(ng, j, problem.n, problem.tile_n),
+                        storage.accumulator.base + (i * block.n + j) * problem.tile_m,
+                    )
+                ),
+            )
+
+        statements.extend(nest((mg.blocks, ng.blocks), initialize))
     for kg in _groups(kt, block.k, variable("panel")):
 
         def rhs(reduction, j):
@@ -416,7 +436,7 @@ def emit_compact_dense(
     if bias_source is not None:
         if type(bias_source) is not DenseBiasSource:
             raise ValueError("typed dense bias source required")
-        bias_source.validate(problem,dtypes)
+        bias_source.validate(problem, dtypes)
     if any(type(value) is not int or value <= 0 for value in (block.m, block.k, block.n)):
         raise ValueError("compact dense block dimensions must be positive integers")
     if not adapter.synchronous_completion or not adapter.exact_accumulator_continuation:
@@ -454,7 +474,16 @@ def emit_compact_dense(
 
     def tile_group(mg, ng):
         return _emit_dense_tile_group(
-            problem, block, storage, call, variable, nest, mg, ng, output_readout=output_readout, bias_source=bias_source
+            problem,
+            block,
+            storage,
+            call,
+            variable,
+            nest,
+            mg,
+            ng,
+            output_readout=output_readout,
+            bias_source=bias_source,
         )
 
     groups = {"m": _groups(mt, block.m, "outer_m"), "n": _groups(nt, block.n, "outer_n")}
@@ -531,6 +560,9 @@ def schedule_compact_dense(
     if type(max_repairs) is not int or max_repairs not in (0, 1):
         raise ValueError("compact dense supports a bounded zero or one repair")
 
+    from merlin.compiler.schedule.compact_verification import DenseVerificationUnavailable, verify_compact_dense
+    from merlin.compiler.schedule.dense_contracts import DenseIntegerReadout, DenseTiledIntegerReadout
+    from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts, _parse
     from merlin.transforms.pipeline_state import (
         AnalysisStamp,
         PassSpec,
@@ -538,10 +570,6 @@ def schedule_compact_dense(
         PipelineSession,
         validate_pass_order,
     )
-
-    from merlin.compiler.schedule.compact_verification import DenseVerificationUnavailable, verify_compact_dense
-    from merlin.compiler.schedule.dense_contracts import DenseIntegerReadout, DenseTiledIntegerReadout
-    from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts, _parse
 
     if output_readout is not None:
         if (
@@ -582,9 +610,16 @@ def schedule_compact_dense(
         from merlin.compiler.schedule.schedule_ir import read_dense_schedule_plan
 
         decision = read_dense_schedule_plan(
-            schedule_plan, problem, resources, storage, adapter,
-            source_identity=source_identity, dtypes=dtypes, static_budget=static_budget,
-            output_readout=output_readout, bias_source=bias_source,
+            schedule_plan,
+            problem,
+            resources,
+            storage,
+            adapter,
+            source_identity=source_identity,
+            dtypes=dtypes,
+            static_budget=static_budget,
+            output_readout=output_readout,
+            bias_source=bias_source,
         )
         if decision.pipeline_prefetch is not None:
             raise ValueError("panel overlap requires schedule_dense_panel_pipeline and original execution admission")
@@ -611,9 +646,11 @@ def schedule_compact_dense(
             "identity": checked_readout,
             "output_dtype": output_readout.output_dtype,
             "qualification_identity": readout_qualification_identity,
-            "scope": ("declared source-column-indexed integer output; independent implementation qualification required"
-                      if type(output_readout) is DenseTiledIntegerReadout
-                      else "declared exact unary integer output; independent implementation qualification required"),
+            "scope": (
+                "declared source-column-indexed integer output; independent implementation qualification required"
+                if type(output_readout) is DenseTiledIntegerReadout
+                else "declared exact unary integer output; independent implementation qualification required"
+            ),
         }
     context = PipelineContext(
         hardware=adapter.configuration_identity,

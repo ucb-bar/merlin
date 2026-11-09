@@ -134,9 +134,7 @@ def externalize_dispatches(outlined: OutlineResult, symbols: Iterable[str]) -> E
 
     module = outlined.module.clone()
     module.verify()
-    functions = {
-        op.sym_name.data: op for op in module.body.block.ops if isinstance(op, func.FuncOp)
-    }
+    functions = {op.sym_name.data: op for op in module.body.block.ops if isinstance(op, func.FuncOp)}
     for symbol in selected:
         original = functions.get(symbol)
         if original is None or not original.body.blocks or original.parent is not module.body.block:
@@ -240,12 +238,12 @@ def _producer_closure(root):
     for operand in root.operands:
         if _is_block_arg(operand):
             continue
-        if (_cloneable(operand.owner) or (
+        if _cloneable(operand.owner) or (
             root.name in {"linalg.matmul", "linalg.generic"}
             and hasattr(root, "outputs")
             and operand in root.outputs
             and operand.owner.name == "tensor.splat"
-        )):
+        ):
             visit(operand.owner)
     ops.append(root)
     return ops

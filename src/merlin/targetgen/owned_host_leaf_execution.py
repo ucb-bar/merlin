@@ -56,9 +56,13 @@ def declared_host_only(capsule):
     lanes = capsule.get("lanes", {})
     if not all(isinstance(value, dict) for value in (semantic, screen, expected, lanes)):
         return False
-    if (semantic.get("eligible") is not False or semantic.get("must_accelerate") is not False
-            or expected.get("instruction_classes") != []
-            or screen.get("status") != "admitted" or screen.get("constraints_status") != "matched"):
+    if (
+        semantic.get("eligible") is not False
+        or semantic.get("must_accelerate") is not False
+        or expected.get("instruction_classes") != []
+        or screen.get("status") != "admitted"
+        or screen.get("constraints_status") != "matched"
+    ):
         return False
     required = lanes.get("require", [])
     if type(required) is not list or ACCELERATOR_LANE in required:
@@ -70,10 +74,16 @@ def declared_host_only(capsule):
     if type(decisions) is not list or screen.get("placements") != ({"host": len(decisions)} if decisions else {}):
         return False
     for row in decisions:
-        if (type(row) is not dict or row.get("placement") != "host" or row.get("status") != "admitted"
-                or row.get("classification") != "host_required"
-                or type(row.get("count")) is not int or row["count"] <= 0
-                or type(row.get("mlir_operation")) is not str or not row["mlir_operation"]):
+        if (
+            type(row) is not dict
+            or row.get("placement") != "host"
+            or row.get("status") != "admitted"
+            or row.get("classification") != "host_required"
+            or type(row.get("count")) is not int
+            or row["count"] <= 0
+            or type(row.get("mlir_operation")) is not str
+            or not row["mlir_operation"]
+        ):
             return False
     return selected_host_leaf(capsule)
 
@@ -181,6 +191,7 @@ def _materialize_typed_source(declaration, source, certificate, *, output):
     """Shared exact ABI writer; callers independently validate their ownership route."""
     from merlin.common.mlir_query import forward_signature
     from merlin.targetgen.golden_store import load_golden
+
     from .capsule_runner import _content_identity, _numpy_dtype, _write_deterministic_npz
 
     root = source.parent

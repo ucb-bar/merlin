@@ -20,10 +20,10 @@ import time
 from pathlib import Path
 
 import pytest
-from merlin_experiments.phase1.brokers import selfcheck_tuning as broker_tuning
-from merlin_experiments.phase1.context import InvocationContext
 
 from merlin.compiler.selection import knobs as K
+from merlin_experiments.phase1.brokers import selfcheck_tuning as broker_tuning
+from merlin_experiments.phase1.context import InvocationContext
 
 BACKEND = """\
 import json, sys
@@ -55,8 +55,13 @@ def _submission(tmp_path: Path) -> Path:
     for package in (library.parent, library):
         (package / "__init__.py").write_text("")
     shutil.copy2(K.__file__, library / "tuning_knobs.py")  # stdlib only: runs from the staged copy alone
-    K.declare(root, {"overlap": K.Knob(("off", "on"), default="off", mechanism="readout_overlap"),
-                     "block": K.Knob((1, 2, 4), default=2, note="rows per step")})
+    K.declare(
+        root,
+        {
+            "overlap": K.Knob(("off", "on"), default="off", mechanism="readout_overlap"),
+            "block": K.Knob((1, 2, 4), default=2, note="rows per step"),
+        },
+    )
     return root
 
 
@@ -72,8 +77,9 @@ def test_declare_writes_a_declaration_the_broker_accepts_and_defaults_the_settin
     assert declared["settings_file"] == K.DEFAULT_SETTINGS
     assert declared["knobs"]["overlap"]["mechanism"] == "readout_overlap"
     assert json.loads((root / K.DEFAULT_SETTINGS).read_text()) == {"block": 2, "overlap": "off"}
-    assert K.alternatives(root) == [{k: v for k, v in alt.items() if k != "note"}
-                                    for alt in broker_tuning.alternatives(root)]
+    assert K.alternatives(root) == [
+        {k: v for k, v in alt.items() if k != "note"} for alt in broker_tuning.alternatives(root)
+    ]
     assert [(a["knob"], a["value"]) for a in K.alternatives(root)] == [("overlap", "on"), ("block", 1), ("block", 4)]
     report = K.check(root)
     assert report["valid"] and report["current"] == {"overlap": "off", "block": 2}
@@ -83,8 +89,11 @@ def test_declare_keeps_existing_valid_settings_and_other_keys(tmp_path):
     root = tmp_path / "tree"
     root.mkdir()
     (root / "knobs.json").write_text(json.dumps({"overlap": "on", "block": 3, "unrelated": [1]}))
-    K.declare(root, {"overlap": K.Knob(("off", "on"), default="off"), "block": K.Knob((1, 2), default=1)},
-              settings_file="knobs.json")
+    K.declare(
+        root,
+        {"overlap": K.Knob(("off", "on"), default="off"), "block": K.Knob((1, 2), default=1)},
+        settings_file="knobs.json",
+    )
     assert json.loads((root / "knobs.json").read_text()) == {"overlap": "on", "block": 1, "unrelated": [1]}
 
 
@@ -122,22 +131,25 @@ def test_typed_comparison_matches_the_broker(tmp_path):
     assert [a["value"] for a in K.alternatives(root)] == [a["value"] for a in broker_tuning.alternatives(root)]
 
 
-@pytest.mark.parametrize("document", [
-    {"schema": "other", "settings_file": "s.json", "knobs": {"a": {"values": [1]}}},
-    {"schema": K.SCHEMA, "settings_file": "../s.json", "knobs": {"a": {"values": [1]}}},
-    {"schema": K.SCHEMA, "settings_file": ".hidden/s.json", "knobs": {"a": {"values": [1]}}},
-    {"schema": K.SCHEMA, "settings_file": "/abs/s.json", "knobs": {"a": {"values": [1]}}},
-    {"schema": K.SCHEMA, "settings_file": "s.yaml", "knobs": {"a": {"values": [1]}}},
-    {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {}},
-    {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {f"k{i}": {"values": [1]} for i in range(17)}},
-    {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {"a": {"values": list(range(9))}}},
-    {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {"a": {"values": [[1]]}}},
-    {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {"a": {"values": ["x" * 65]}}},
-    {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {"a" * 65: {"values": [1]}}},
-    {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {"a": [1]}},
-    {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {"a": {"values": [1], "mechanism": 3}}},
-    {"schema": K.SCHEMA, "settings_file": "dir/s.json", "knobs": {"a": {"values": [None, 1.5, "x", True]}}},
-])
+@pytest.mark.parametrize(
+    "document",
+    [
+        {"schema": "other", "settings_file": "s.json", "knobs": {"a": {"values": [1]}}},
+        {"schema": K.SCHEMA, "settings_file": "../s.json", "knobs": {"a": {"values": [1]}}},
+        {"schema": K.SCHEMA, "settings_file": ".hidden/s.json", "knobs": {"a": {"values": [1]}}},
+        {"schema": K.SCHEMA, "settings_file": "/abs/s.json", "knobs": {"a": {"values": [1]}}},
+        {"schema": K.SCHEMA, "settings_file": "s.yaml", "knobs": {"a": {"values": [1]}}},
+        {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {}},
+        {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {f"k{i}": {"values": [1]} for i in range(17)}},
+        {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {"a": {"values": list(range(9))}}},
+        {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {"a": {"values": [[1]]}}},
+        {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {"a": {"values": ["x" * 65]}}},
+        {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {"a" * 65: {"values": [1]}}},
+        {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {"a": [1]}},
+        {"schema": K.SCHEMA, "settings_file": "s.json", "knobs": {"a": {"values": [1], "mechanism": 3}}},
+        {"schema": K.SCHEMA, "settings_file": "dir/s.json", "knobs": {"a": {"values": [None, 1.5, "x", True]}}},
+    ],
+)
 def test_declarations_are_accepted_and_refused_exactly_as_the_broker_does(tmp_path, document):
     root = tmp_path / "tree"
     root.mkdir()
@@ -186,8 +198,9 @@ def test_a_broker_override_reaches_the_compiler_in_the_private_copy_only(tmp_pat
     root = _submission(tmp_path)
     snapshot = tmp_path / "snapshot" / "submission"
     shutil.copytree(root, snapshot)
-    request = broker_tuning.apply_request(snapshot, {"tuning_overrides": {"overlap": "on", "block": 4}},
-                                          digest=lambda path: "f" * 64)
+    request = broker_tuning.apply_request(
+        snapshot, {"tuning_overrides": {"overlap": "on", "block": 4}}, digest=lambda path: "f" * 64
+    )
     assert request[broker_tuning.APPLIED_KEY]["overrides"] == {"overlap": "on", "block": 4}
     assert _run_backend(snapshot) == {"overlap": "on", "block": 4}
     assert _run_backend(root) == {"overlap": "off", "block": 2}
@@ -213,8 +226,9 @@ pathlib.Path(a.out).write_text(json.dumps({"all_pass": True, "per_capsule": [{"c
 
 
 def _context(root: Path) -> InvocationContext:
-    return InvocationContext(root, root / "target.yaml", root, "fixture", root / "runs", root / "reports",
-                             root / "bundles", ())
+    return InvocationContext(
+        root, root / "target.yaml", root, "fixture", root / "runs", root / "reports", root / "bundles", ()
+    )
 
 
 @contextlib.contextmanager
@@ -230,8 +244,11 @@ def _broker(tmp_path: Path, ws: Path, monkeypatch):
     monkeypatch.setattr(broker, "worker_command", lambda *a, **k: [sys.executable, str(fake)])
     monkeypatch.setattr(broker, "_freeze_passed_source", lambda *a, **k: None)
     monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **k: (None, None, None))
-    thread = threading.Thread(target=broker.main, args=(["--ws", str(ws), "--poll", "0.01"],),
-                              kwargs={"context": _context(tmp_path), "capsules_root": tmp_path})
+    thread = threading.Thread(
+        target=broker.main,
+        args=(["--ws", str(ws), "--poll", "0.01"],),
+        kwargs={"context": _context(tmp_path), "capsules_root": tmp_path},
+    )
     thread.start()
     try:
         yield broker
@@ -256,10 +273,15 @@ def test_an_idle_tuning_request_compiles_the_overridden_value_end_to_end(tmp_pat
     (ws / ".qa_channel").mkdir()
     with _broker(tmp_path, ws, monkeypatch) as broker:
         official = broker._submission_digest(root)
-        rid = idle_performance.submit(ws / ".qa_channel", ["c1"], official, origin=idle_tuning.ORIGIN,
-                                      prefix=idle_tuning.REQUEST_PREFIX, timeout=30,
-                                      extra={"suite": "core", "sim": None,
-                                             broker_tuning.REQUEST_KEY: {"overlap": "on"}})
+        rid = idle_performance.submit(
+            ws / ".qa_channel",
+            ["c1"],
+            official,
+            origin=idle_tuning.ORIGIN,
+            prefix=idle_tuning.REQUEST_PREFIX,
+            timeout=30,
+            extra={"suite": "core", "sim": None, broker_tuning.REQUEST_KEY: {"overlap": "on"}},
+        )
         doc = _wait(ws / ".qa_channel", rid)
     assert doc.get("compiled_with") == {"overlap": "on", "block": 2}, doc.get("compiled_with")
     assert doc["variant"]["kind"] == "knob_overrides" and doc["official"] is False

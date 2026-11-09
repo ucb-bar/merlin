@@ -33,18 +33,25 @@ class RecordingBackend:
         path.write_bytes(request.source.sha256.encode())
         if self.mutate:
             self.mutate()
-        return Compilation(request.output, self.name, request.source.sha256,
-                           (Artifact.from_file(path, kind="device-binary", role="executable"),))
+        return Compilation(
+            request.output,
+            self.name,
+            request.source.sha256,
+            (Artifact.from_file(path, kind="device-binary", role="executable"),),
+        )
 
 
 def compiler(tmp_path, *, reject=False, mutate=None):
     source, _, cpu, device = roster(tmp_path)
     selected = select_execution(source, (*cpu, *device), preferred_providers=("vector", "array"))
     events = []
-    backend = PlannedCompiler(selected, {
-        "vector": RegionBackend(RecordingBackend("vector", events, mutate=mutate), "kernel"),
-        "array": RegionBackend(RecordingBackend("array", events, reject=reject), "kernel"),
-    })
+    backend = PlannedCompiler(
+        selected,
+        {
+            "vector": RegionBackend(RecordingBackend("vector", events, mutate=mutate), "kernel"),
+            "array": RegionBackend(RecordingBackend("array", events, reject=reject), "kernel"),
+        },
+    )
     return source, backend, events
 
 
@@ -60,8 +67,12 @@ def test_all_providers_compile_exact_regions_with_binary_products_and_no_image_c
     report = json.loads((result.directory / "plan.json").read_text())
     assert len(report["regions"]) == 2 and report["stage"] == "compiled_regions"
     owners = {row["module"] for row in report["source_observation"]["files"]}
-    assert {"merlin.compiler.ir.region", "merlin.compiler.ir.semantics",
-            "merlin.compiler.partition.regions", "merlin.verification.partition"} <= owners
+    assert {
+        "merlin.compiler.ir.region",
+        "merlin.compiler.ir.semantics",
+        "merlin.compiler.partition.regions",
+        "merlin.verification.partition",
+    } <= owners
     assert report["regions"][0]["source_ordinals"] != report["regions"][1]["source_ordinals"]
     assert "region_abi_adaptation" in report["remaining"]
     binaries[0].path.write_bytes(b"changed")
@@ -79,8 +90,10 @@ def test_preflight_refusal_source_mismatch_and_late_mutation_never_publish_succe
     other = tmp_path / "other"
     other.mkdir()
     source, backend, events = compiler(other)
+
     def change_options():
         backend.backends["array"].options.parameters["fixture.changed"] = 1
+
     backend.backends["vector"].backend.mutate = change_options
     with pytest.raises(ValueError, match="options changed"):
         api.compile(ir_text(source.module), backend=backend, output=other / "out")
@@ -97,7 +110,6 @@ def test_cpu_only_plan_retains_inlinable_source_without_fake_provider(tmp_path):
     assert report["regions"] == [] and report["execution_verified"] is False
 
 
-
 def test_system_discovery_binds_the_actual_request_once_and_selects_an_explicit_cover(tmp_path):
     from merlin.compiler.backend.sourceproposal import SourceProposal, proposal_boundary, source_numerical_identity
     from merlin.compiler.system import Component, SystemCompiler
@@ -105,29 +117,50 @@ def test_system_discovery_binds_the_actual_request_once_and_selects_an_explicit_
 
     original, topology, _, _ = roster(tmp_path)
     events, visits = [], []
+
     def offers(source, *, resource, memory_domain):
         source.revalidate()
         visits.append(source.stamp.source_sha256)
         nodes = tuple(range(len(source.operations)))
         inputs, outputs = proposal_boundary(source, nodes)
-        alternative = RegionAlternative("all", nodes, "fixture.transport", resource,
-                                        CycleInterval.unknown("unmeasured fixture"), inputs, outputs)
-        return (SourceProposal(alternative, "vector", resource, memory_domain, "logical_tensor_v1",
-                               source.stamp.source_sha256, source.operation_ordinals,
-                               source_numerical_identity(source, nodes)),)
+        alternative = RegionAlternative(
+            "all", nodes, "fixture.transport", resource, CycleInterval.unknown("unmeasured fixture"), inputs, outputs
+        )
+        return (
+            SourceProposal(
+                alternative,
+                "vector",
+                resource,
+                memory_domain,
+                "logical_tensor_v1",
+                source.stamp.source_sha256,
+                source.operation_ordinals,
+                source_numerical_identity(source, nodes),
+            ),
+        )
+
     def check(source, proposal):
         assert proposal.alternative.nodes == tuple(range(len(source.operations)))
         source.module.verify()
-    component = Component(RegionBackend(RecordingBackend("vector", events), "kernel"), "cpu0", "dram", check,
-                          proposals=offers)
+
+    component = Component(
+        RegionBackend(RecordingBackend("vector", events), "kernel"), "cpu0", "dram", check, proposals=offers
+    )
+
     def source_check(module, entry, options):
         from merlin.compiler.ir.semantics import source_semantic_attributes
 
         assert options == {"contract": "original-fixture-source"}
         module.verify()
         return source_semantic_attributes(module, entry)
-    backend = SystemCompiler(topology=topology, components=(component,), preferred_providers=("vector",),
-                             validate_source=source_check, source_options={"contract": "original-fixture-source"})
+
+    backend = SystemCompiler(
+        topology=topology,
+        components=(component,),
+        preferred_providers=("vector",),
+        validate_source=source_check,
+        source_options={"contract": "original-fixture-source"},
+    )
     result = api.compile(ir_text(original.module), backend=backend, output=tmp_path / "system")
     report = json.loads((result.directory / "system.json").read_text())
     assert result.backend == "merlin.system" and result.deployment is None
@@ -155,16 +188,20 @@ def test_discovery_observes_shared_owners_before_provider_callback(tmp_path, mon
     monkeypatch.setattr(region, "__file__", str(copied))
     source, topology, _, _ = roster(tmp_path)
     events = []
+
     def offers(bound, **kwargs):
         if mutation == "source-bytes":
             copied.write_bytes(copied.read_bytes() + b"\n# provider changed shared owner\n")
         else:
             monkeypatch.setattr(region, "preview_region", lambda *args, **kwargs: None)
         return ()
+
     def check(*args):
         pytest.fail("changed shared owner must refuse before implementation admission")
-    component = Component(RegionBackend(RecordingBackend("vector", events), "kernel"), "cpu0", "dram", check,
-                          proposals=offers)
+
+    component = Component(
+        RegionBackend(RecordingBackend("vector", events), "kernel"), "cpu0", "dram", check, proposals=offers
+    )
     compiler = SystemCompiler(topology=topology, components=(component,), preferred_providers=("vector",))
     with pytest.raises(ValueError, match="shared source-region implementation"):
         api.compile(ir_text(source.module), backend=compiler, output=tmp_path / "out")
@@ -180,32 +217,47 @@ def test_system_discovery_cannot_mutate_source_or_original_component_options(tmp
 
     source, topology, _, _ = roster(tmp_path)
     events = []
+
     def check(bound, proposal):
         bound.module.verify()
+
     for mode in ("source", "options"):
         options = api.CompileOptions()
+
         def altered(bound, *, resource, memory_domain):
             nodes = tuple(range(len(bound.operations)))
             inputs, outputs = proposal_boundary(bound, nodes)
-            variant = RegionAlternative("all", nodes, "fixture.transport", resource,
-                                        CycleInterval.unknown("unmeasured"), inputs, outputs)
-            claim = SourceProposal(variant, "vector", resource, memory_domain, "logical_tensor_v1",
-                                   bound.stamp.source_sha256, bound.operation_ordinals,
-                                   source_numerical_identity(bound, nodes))
+            variant = RegionAlternative(
+                "all", nodes, "fixture.transport", resource, CycleInterval.unknown("unmeasured"), inputs, outputs
+            )
+            claim = SourceProposal(
+                variant,
+                "vector",
+                resource,
+                memory_domain,
+                "logical_tensor_v1",
+                bound.stamp.source_sha256,
+                bound.operation_ordinals,
+                source_numerical_identity(bound, nodes),
+            )
             if mode == "source":
                 bound.operations[0].attributes["prov.changed"] = StringAttr("changed")
             else:
                 options.parameters["fixture.changed"] = True
             return (claim,)
-        component = Component(RegionBackend(RecordingBackend("vector", events), "kernel", options),
-                              "cpu0", "dram", check, proposals=altered)
+
+        component = Component(
+            RegionBackend(RecordingBackend("vector", events), "kernel", options),
+            "cpu0",
+            "dram",
+            check,
+            proposals=altered,
+        )
         backend = SystemCompiler(topology=topology, components=(component,), preferred_providers=("vector",))
         with pytest.raises(ValueError, match="changed|stale"):
             api.compile(ir_text(source.module), backend=backend, output=tmp_path / mode)
         assert not (tmp_path / mode).exists()
     assert not events
-
-
 
 
 def test_destination_initialization_replays_scalar_bits_and_rejects_changed_fill():
@@ -217,13 +269,15 @@ def test_destination_initialization_replays_scalar_bits_and_rejects_changed_fill
 
     # The scalar's exact LLVM hex spelling is retained; no float conversion occurs.
     for literal in ("0x80000000", "0x7FC00001", "0x00000001"):
-        module = parse_mlir_text("""module {func.func @f(%a:tensor<2x2xf32>) -> tensor<2x2xf32> {
+        module = parse_mlir_text(
+            """module {func.func @f(%a:tensor<2x2xf32>) -> tensor<2x2xf32> {
  %v=arith.constant VALUE:f32
  %seed=tensor.splat %v : tensor<2x2xf32>
  %r=linalg.matmul ins(%a,%a:tensor<2x2xf32>,tensor<2x2xf32>)
  outs(%seed:tensor<2x2xf32>) -> tensor<2x2xf32>
  func.return %r:tensor<2x2xf32>
-}}""".replace("VALUE", literal))
+}}""".replace("VALUE", literal)
+        )
         selected, records = normalize_destinations(module)
         assert len(records) == 1
         assert not any(type(op) is tensor.SplatOp for op in selected.walk())
@@ -263,7 +317,6 @@ def test_destination_initialization_replays_scalar_bits_and_rejects_changed_fill
     assert not records and module.is_structurally_equivalent(unchanged)
 
 
-
 def _prepared_system(tmp_path, policy, *, admission=True, alter=None, legacy_hook=False):
     from test_source_proposal_admission import topology
 
@@ -272,41 +325,76 @@ def _prepared_system(tmp_path, policy, *, admission=True, alter=None, legacy_hoo
     from merlin.xdsl_dialects.lowering.global_plan import CycleInterval, RegionAlternative
 
     observed = []
+
     class IRBackend:
         name = "fixture.ir"
+
         def validate(self, request):
             from merlin.frontends.linalg_mlir import parse_mlir_text
+
             parse_mlir_text(request.source.text).verify()
+
         def compile(self, request):
             request.output.mkdir()
             path = request.output / "region.mlir"
             path.write_text(request.source.text)
-            return Compilation(request.output, self.name, request.source.sha256,
-                               (Artifact.from_file(path, kind="mlir", role="intermediate"),))
+            return Compilation(
+                request.output,
+                self.name,
+                request.source.sha256,
+                (Artifact.from_file(path, kind="mlir", role="intermediate"),),
+            )
+
     def proposals(source, *, resource, memory_domain, preparation=None):
         assert preparation is not None and preparation.policy() == policy
         observed.append(preparation.record())
         nodes = tuple(range(len(source.operations)))
         inputs, outputs = proposal_boundary(source, nodes)
-        alternative = RegionAlternative("prepared", nodes, "fixture.identity-ir", resource,
-                                        CycleInterval.unknown("IR transport, no native cost"), inputs, outputs)
+        alternative = RegionAlternative(
+            "prepared",
+            nodes,
+            "fixture.identity-ir",
+            resource,
+            CycleInterval.unknown("IR transport, no native cost"),
+            inputs,
+            outputs,
+        )
         if alter:
             alter()
-        return (SourceProposal(alternative, "fixture.ir", resource, memory_domain, "logical_tensor_v1",
-                               source.stamp.source_sha256, source.operation_ordinals,
-                               source_numerical_identity(source, nodes)),)
+        return (
+            SourceProposal(
+                alternative,
+                "fixture.ir",
+                resource,
+                memory_domain,
+                "logical_tensor_v1",
+                source.stamp.source_sha256,
+                source.operation_ordinals,
+                source_numerical_identity(source, nodes),
+            ),
+        )
+
     def old_proposals(source, *, resource, memory_domain):
         raise AssertionError("unsupported preparation must refuse before invoking an old hook")
+
     def validate(source, binding):
         from merlin.frontends.linalg_mlir import parse_mlir_text
+
         binding.revalidate(source)
         assert binding.policy() == policy  # Original selected policy, not a provider's acceptance threshold.
         parse_mlir_text(source.text).verify()
+
     def check(source, proposal):
         source.module.verify()
         assert proposal.numerical_sha256 == source_numerical_identity(source, proposal.alternative.nodes)
-    component = Component(RegionBackend(IRBackend(), "kernel"), "cpu0", "dram", check,
-                          proposals=old_proposals if legacy_hook else proposals)
+
+    component = Component(
+        RegionBackend(IRBackend(), "kernel"),
+        "cpu0",
+        "dram",
+        check,
+        proposals=old_proposals if legacy_hook else proposals,
+    )
     import yaml
 
     from merlin.system.topology import select_topology
@@ -315,8 +403,12 @@ def _prepared_system(tmp_path, policy, *, admission=True, alter=None, legacy_hoo
     document = yaml.safe_load(hardware.path.read_bytes())
     document["memory_domains"][0]["capacity_bytes"] = 65536  # Explicit fixture resource, not a compiler default.
     hardware.path.write_text(yaml.safe_dump(document))
-    selected = SystemCompiler(topology=select_topology(hardware.path), components=(component,),
-                              preferred_providers=("fixture.ir",), validate_preparation=validate if admission else None)
+    selected = SystemCompiler(
+        topology=select_topology(hardware.path),
+        components=(component,),
+        preferred_providers=("fixture.ir",),
+        validate_preparation=validate if admission else None,
+    )
     return selected, observed
 
 
@@ -329,40 +421,52 @@ def staged_public_input(tmp_path):
     from merlin.compiler.frontend.inputs import stage_compile_inputs
 
     capture, stage = tmp_path / "capture", tmp_path / "compiler"
-    source = SOURCE.replace("    func.return %a : tensor<2xf32>",
-                            "    %one = arith.constant dense<1.0> : tensor<2xf32>\n"
-                            "    %r = arith.addf %a, %one : tensor<2xf32>\n"
-                            "    func.return %r : tensor<2xf32>")
+    source = SOURCE.replace(
+        "    func.return %a : tensor<2xf32>",
+        "    %one = arith.constant dense<1.0> : tensor<2xf32>\n"
+        "    %r = arith.addf %a, %one : tensor<2xf32>\n"
+        "    func.return %r : tensor<2xf32>",
+    )
     _write_capture(capture, source=source)
-    policy = {"schema": "fixture.precision.v1", "source_sha256": hashlib.sha256(source.encode()).hexdigest(),
-              "transformation": "identity"}
+    policy = {
+        "schema": "fixture.precision.v1",
+        "source_sha256": hashlib.sha256(source.encode()).hexdigest(),
+        "transformation": "identity",
+    }
     path = tmp_path / "policy.json"
     path.write_text(json.dumps(policy))
     stage_compile_inputs(capture, stage, precision_policy=path)
     return api.StagedProgram(stage), policy
 
 
-def test_public_staged_preparation_reaches_component_discovery_and_excludes_evaluator(tmp_path, staged_public_input,
-                                                                                    monkeypatch, capsys):
+def test_public_staged_preparation_reaches_component_discovery_and_excludes_evaluator(
+    tmp_path, staged_public_input, monkeypatch, capsys
+):
     import hashlib
     from pathlib import Path
 
     staged, policy = staged_public_input
     backend, observed = _prepared_system(tmp_path, policy)
     original = Path.read_bytes
+
     def compiler_only(path):
         if path.name in {"inputs.npz", "golden.npy", "inputs.json", "golden.json", "extra.npz"}:
             raise AssertionError("evaluator input entered ordinary compilation")
         return original(path)
+
     monkeypatch.setattr(Path, "read_bytes", compiler_only)
     result = api.compile(staged, backend=backend, output=tmp_path / "compiled")
     record = json.loads((result.directory / "system.json").read_text())
     expected = observed[0]
     assert len(observed) == 1 and record["preparation"] == expected
-    assert expected["numerical_policy_sha256"] == hashlib.sha256(
-        (staged.directory / "precision-policy.json").read_bytes()).hexdigest()
-    assert expected["preparation_sha256"] == hashlib.sha256(
-        (staged.directory / "compile-inputs.json").read_bytes()).hexdigest()
+    assert (
+        expected["numerical_policy_sha256"]
+        == hashlib.sha256((staged.directory / "precision-policy.json").read_bytes()).hexdigest()
+    )
+    assert (
+        expected["preparation_sha256"]
+        == hashlib.sha256((staged.directory / "compile-inputs.json").read_bytes()).hexdigest()
+    )
     assert expected["bound_source_sha256"] == result.source_sha256
     assert expected["captured_source_sha256"] == policy["source_sha256"]
     assert record["numerical_verification"] == "not_established" and result.deployment is None
@@ -374,23 +478,45 @@ def test_public_staged_preparation_reaches_component_discovery_and_excludes_eval
     from merlin.service_cli import compile_main
 
     monkeypatch.setattr(service, "entry_points", lambda **kwargs: [SimpleNamespace(load=lambda: backend)])
-    assert compile_main([str(staged.directory), "--input-kind=compiler-stage", "--backend", backend.name,
-                         "--output", str(tmp_path / "compiled-cli")]) == 0
+    assert (
+        compile_main(
+            [
+                str(staged.directory),
+                "--input-kind=compiler-stage",
+                "--backend",
+                backend.name,
+                "--output",
+                str(tmp_path / "compiled-cli"),
+            ]
+        )
+        == 0
+    )
     cli = json.loads(capsys.readouterr().out)
     assert cli["metadata"]["request"]["preparation"] == expected
     assert cli["source_sha256"] == result.source_sha256 and observed[-1] == expected
-    assert not any(path.name in {"inputs.npz", "golden.npy", "extra.npz"}
-                   for path in (tmp_path / "compiled-cli").rglob("*"))
+    assert not any(
+        path.name in {"inputs.npz", "golden.npy", "extra.npz"} for path in (tmp_path / "compiled-cli").rglob("*")
+    )
 
 
-@pytest.mark.parametrize("changed", [
-    "policy", "source", "directory", "policy_during_proposal", "no_admission", "old_hook",
-])
+@pytest.mark.parametrize(
+    "changed",
+    [
+        "policy",
+        "source",
+        "directory",
+        "policy_during_proposal",
+        "no_admission",
+        "old_hook",
+    ],
+)
 def test_public_prepared_source_or_policy_substitution_and_unsupported_routes_refuse(
-        tmp_path, staged_public_input, changed):
+    tmp_path, staged_public_input, changed
+):
     import hashlib
 
     staged, policy = staged_public_input
+
     def mutate(name):
         path = staged.directory / name
         if name == "precision-policy.json":
@@ -403,8 +529,12 @@ def test_public_prepared_source_or_policy_substitution_and_unsupported_routes_re
         manifest = json.loads(manifest_path.read_bytes())
         manifest["members"][name] = hashlib.sha256(path.read_bytes()).hexdigest()
         manifest_path.write_text(json.dumps(manifest))
+
     backend, observed = _prepared_system(
-        tmp_path, policy, admission=changed != "no_admission", legacy_hook=changed == "old_hook",
+        tmp_path,
+        policy,
+        admission=changed != "no_admission",
+        legacy_hook=changed == "old_hook",
         alter=(lambda: mutate("precision-policy.json")) if changed == "policy_during_proposal" else None,
     )
     if changed in {"policy", "source"}:
@@ -450,22 +580,51 @@ def get_model_and_inputs():
 def get_calibration_inputs(model,inputs): return [inputs,inputs]
 """)
     tensor = dict(dtype="int8", granularity="tensor", symmetric=True, block=None, mode="static")
-    recipe = dict(schema=Q.SCHEMA, target="fixture", unit="matrix", status="derived", families=["contraction"],
-                  weight={**tensor, "quant_min": -127, "quant_max": 127},
-                  activation={**tensor, "quant_min": -128, "quant_max": 127}, bias_domain="accumulator",
-                  software_numerical_engine="integer_reference", framework_capture_policy={"calibration_count": 2})
+    recipe = dict(
+        schema=Q.SCHEMA,
+        target="fixture",
+        unit="matrix",
+        status="derived",
+        families=["contraction"],
+        weight={**tensor, "quant_min": -127, "quant_max": 127},
+        activation={**tensor, "quant_min": -128, "quant_max": 127},
+        bias_domain="accumulator",
+        software_numerical_engine="integer_reference",
+        framework_capture_policy={"calibration_count": 2},
+    )
     recipe["recipe_sha256"] = Q.digest(recipe)
     recipe = Q.with_dynamic_contractions(recipe, static_families=[])
     recipe_path = tmp_path / "recipe.json"
     recipe_path.write_text(json.dumps(recipe))
     capture = tmp_path / "capture"
-    process = subprocess.run([python, "-B", str(Path(worker.__file__)), "--m2m-dir", m2m, "--loader", str(loader),
-                              "--dtype", "int8", "--recipe", str(recipe_path), "--materialize-bundle",
-                              "--out", str(capture)], capture_output=True, text=True, timeout=120)
+    process = subprocess.run(
+        [
+            python,
+            "-B",
+            str(Path(worker.__file__)),
+            "--m2m-dir",
+            m2m,
+            "--loader",
+            str(loader),
+            "--dtype",
+            "int8",
+            "--recipe",
+            str(recipe_path),
+            "--materialize-bundle",
+            "--out",
+            str(capture),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
     assert process.returncode == 0, process.stderr[-7000:]
     source = (capture / "model.mlir").read_bytes()
-    policy = {"schema": "fixture.recipe-preparation.v1", "source_sha256": hashlib.sha256(source).hexdigest(),
-              "recipe": recipe}
+    policy = {
+        "schema": "fixture.recipe-preparation.v1",
+        "source_sha256": hashlib.sha256(source).hexdigest(),
+        "recipe": recipe,
+    }
     policy_path = tmp_path / "policy.json"
     policy_path.write_text(json.dumps(policy))
     stage = tmp_path / "compiler"
@@ -489,7 +648,6 @@ def get_calibration_inputs(model,inputs): return [inputs,inputs]
     assert result.metadata["execution_verified"] is False  # IR/reference agreement is not device execution.
 
 
-
 def test_public_staged_input_keeps_buffer_state_refusal(tmp_path):
     import hashlib
 
@@ -506,12 +664,19 @@ def test_public_staged_input_keeps_buffer_state_refusal(tmp_path):
     receipt_path = capture / "capture_receipt.json"
     receipt = json.loads(receipt_path.read_bytes())
     receipt["artifacts"][manifest_path.name] = {
-        "sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(), "bytes": manifest_path.stat().st_size,
+        "sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+        "bytes": manifest_path.stat().st_size,
     }
     receipt_path.write_text(json.dumps(receipt))
     selected = tmp_path / "policy.json"
-    selected.write_text(json.dumps({"schema": "fixture.state.v1",
-                                   "source_sha256": hashlib.sha256((capture / "model.mlir").read_bytes()).hexdigest()}))
+    selected.write_text(
+        json.dumps(
+            {
+                "schema": "fixture.state.v1",
+                "source_sha256": hashlib.sha256((capture / "model.mlir").read_bytes()).hexdigest(),
+            }
+        )
+    )
     stage_compile_inputs(capture, stage, precision_policy=selected)
     events = []
     with pytest.raises(ValueError, match="buffer binding requires"):

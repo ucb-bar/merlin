@@ -166,10 +166,13 @@ def scalar_graph(source: bytes, max_operations: int, max_ir_bytes: int) -> Scala
             # A shift is total only when its actual SSA amount is a constant
             # within the operand width; dynamic/oversized shifts can be poison.
             owner = op.operands[1].owner
-            admitted = (admitted and type(owner) is arith.ConstantOp
-                        and eligible_scalar_operation(owner)
-                        and isinstance(owner.value, builtin.IntegerAttr)
-                        and 0 <= owner.value.value.data < bits(op.operands[0].type))
+            admitted = (
+                admitted
+                and type(owner) is arith.ConstantOp
+                and eligible_scalar_operation(owner)
+                and isinstance(owner.value, builtin.IntegerAttr)
+                and 0 <= owner.value.value.data < bits(op.operands[0].type)
+            )
         if not admitted:
             raise UnsupportedElementwise(f"unmodeled or non-total scalar operation {op.name}")
         for value in (*op.operands, *op.results):

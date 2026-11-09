@@ -11,8 +11,9 @@ from pathlib import Path
 from merlin.common import proc as _proc
 
 
-def run(cmd, *, environment, timeout_limit_s, error, dependencies=(),
-        timeout_s=None, inputs=(), outputs=(), stage="object"):
+def run(
+    cmd, *, environment, timeout_limit_s, error, dependencies=(), timeout_s=None, inputs=(), outputs=(), stage="object"
+):
     if timeout_s is not None and (
         isinstance(timeout_s, bool)
         or not isinstance(timeout_s, (int, float))
@@ -86,4 +87,3 @@ def run(cmd, *, environment, timeout_limit_s, error, dependencies=(),
         )
         record.complete(result)
         return result
-

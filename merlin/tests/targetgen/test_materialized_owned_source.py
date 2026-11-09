@@ -12,14 +12,15 @@ from merlin.targetgen.contract.materialize import materialize_public_capsules
 def fixture(tmp_path):
     root = tmp_path / "policy" / "case"
     root.mkdir(parents=True)
-    documents = {"source": ("original-source.json", b'{"source":"original"}'),
-                 "plan": ("original-plan.json", b'{"plan":"original"}')}
+    documents = {
+        "source": ("original-source.json", b'{"source":"original"}'),
+        "plan": ("original-plan.json", b'{"plan":"original"}'),
+    }
     selected = {"schema": "merlin.owned_spatial_source.v1"}
     for key, (name, raw) in documents.items():
         (root / name).write_bytes(raw)
         selected[key] = {"file": name, "sha256": hashlib.sha256(raw).hexdigest()}
-    cap = {"name": "case", "label": "public", "required_oracle_tiers": ["L2", "L3"],
-           "owned_host_source": selected}
+    cap = {"name": "case", "label": "public", "required_oracle_tiers": ["L2", "L3"], "owned_host_source": selected}
     (root / "capsule.yaml").write_text(yaml.safe_dump(cap))
     (root / "capsule.interface.mlir").write_text("original interface")
     (root / "undeclared.json").write_text("not a selected compiler input")

@@ -299,10 +299,11 @@ def _builder_paths(snapshot, release):
     # it. Older five-owner releases can already contain split_isa's module.
     model_source = ast.parse((snapshot / "src/merlin/model.py").read_bytes())
     isa_helpers = [
-        name for node in model_source.body
-        if isinstance(node, ast.ImportFrom) and node.level == 0
-        and node.module == "merlin.compiler.backend.isa"
-        for name in node.names if name.name == "implementation_functions"
+        name
+        for node in model_source.body
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module == "merlin.compiler.backend.isa"
+        for name in node.names
+        if name.name == "implementation_functions"
     ]
     if isa_helpers:
         if len(isa_helpers) != 1 or isa_helpers[0].asname != "_host_isa_functions":
@@ -322,8 +323,9 @@ def _executing_release(snapshot, seal, release):
     if active_source_identity() != seal or repo_root() != snapshot:
         raise ValueError("completed-build publication requires its actual guarded frozen producer")
     builders = _builder_paths(snapshot, release)
-    actual = tuple(module_source_path(".".join(path.relative_to(snapshot / "src").with_suffix("").parts))
-                   for path in builders)
+    actual = tuple(
+        module_source_path(".".join(path.relative_to(snapshot / "src").with_suffix("").parts)) for path in builders
+    )
     if actual != builders:
         raise ValueError("executed saved-model stages differ from the selected producer release")
     paths = (module_source_path(__name__), *actual)
@@ -372,10 +374,10 @@ def _route(device):
 
 def _material(kwargs, context, selection, producer, owner):
     from merlin.common.paths import contract_dir, schemas_dir
-    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.llvmlower import toolchain
     from merlin.model_check.full_build import BuildSettings
     from merlin.model_check.full_build_identity import build_material
+    from merlin.runtime.modelinputs import strict_tree_sha256
 
     allowed = {
         "capture",

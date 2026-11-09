@@ -6,10 +6,12 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compiler.schedule.compact_loaded_sum import LoadedSumContract
-from merlin.compiler.schedule.compact_loaded_sum import LoadedSumEffect
-from merlin.compiler.schedule.compact_loaded_sum import LoadedSumLayout
-from merlin.compiler.schedule.compact_loaded_sum import verify_compact_loaded_sum
+from merlin.compiler.schedule.compact_loaded_sum import (
+    LoadedSumContract,
+    LoadedSumEffect,
+    LoadedSumLayout,
+    verify_compact_loaded_sum,
+)
 from merlin.sched.ir import Call, Const, Kernel, Loop, TensorArg, Var, evaluate, instances, select
 
 

@@ -10,16 +10,16 @@ from dataclasses import asdict
 from hashlib import sha256
 
 import pytest
-from merlin_experiments.phase1.feedback import private_linalg_support as support
-from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 
 from merlin.common import mlir_query as mq
-from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.frontends.capture_normalization import normalize_capture_mlir
 from merlin.frontends.linalg_composite_math import recognize_static_composite_math_body
+from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.targetgen.host_capabilities import admit_host_operation
 from merlin.targetgen.host_linkage_contract import SCHEMA as LINKAGE_SCHEMA
 from merlin.targetgen.host_linkage_contract import SUPPLIER
+from merlin_experiments.phase1.feedback import private_linalg_support as support
+from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 
 
 def _scoped_composite(tmp_path):

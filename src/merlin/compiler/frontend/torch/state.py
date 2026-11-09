@@ -34,8 +34,13 @@ def _file(root, name):
 
 
 def _tensor(tensor, torch):
-    if (type(tensor) not in (torch.Tensor, torch.nn.Parameter) or tensor.layout != torch.strided
-            or tensor.device.type != "cpu" or tensor.is_conj() or tensor.is_neg()):
+    if (
+        type(tensor) not in (torch.Tensor, torch.nn.Parameter)
+        or tensor.layout != torch.strided
+        or tensor.device.type != "cpu"
+        or tensor.is_conj()
+        or tensor.is_neg()
+    ):
         raise ExportStateUnavailable("buffer observation requires plain CPU strided tensor storage")
     storage = tensor.untyped_storage()
     version = tensor._version
@@ -43,9 +48,13 @@ def _tensor(tensor, torch):
     if tensor._version != version:
         raise ExportStateUnavailable("state tensor changed while observing its payload")
     return {
-        "shape": list(tensor.shape), "dtype": str(tensor.dtype).removeprefix("torch."),
-        "strides": list(tensor.stride()), "storage_offset": tensor.storage_offset(),
-        "storage_bytes": storage.nbytes(), "payload_bytes": len(raw), "payload_sha256": _sha(raw),
+        "shape": list(tensor.shape),
+        "dtype": str(tensor.dtype).removeprefix("torch."),
+        "strides": list(tensor.stride()),
+        "storage_offset": tensor.storage_offset(),
+        "storage_bytes": storage.nbytes(),
+        "payload_bytes": len(raw),
+        "payload_sha256": _sha(raw),
         "version": version,
     }, storage._cdata
 
@@ -56,8 +65,9 @@ def _outputs(exported):
         kind = getattr(spec.kind, "name", None)
         if kind != "USER_OUTPUT":
             raise ExportStateUnavailable(f"prepared export has non-user output effect: {kind}")
-        rows.append({"ordinal": ordinal, "kind": kind, "argument": getattr(spec.arg, "name", None),
-                     "target": spec.target})
+        rows.append(
+            {"ordinal": ordinal, "kind": kind, "argument": getattr(spec.arg, "name", None), "target": spec.target}
+        )
     if not rows:
         raise ExportStateUnavailable("prepared export has no complete output roster")
     return rows
@@ -101,9 +111,13 @@ def observe_export_state(conversion, inputs, *, directory):
     trace = getattr(conversion, "capture_trace", None)
     if not isinstance(exported, torch.export.ExportedProgram) or not isinstance(trace, dict):
         raise ExportStateUnavailable("conversion has no actual prepared export and complete trace")
-    if (getattr(conversion, "ok", None) is not True or trace.get("status") != "complete"
-            or trace.get("blockers") or exported.range_constraints
-            or getattr(conversion, "path_taken", None) != "fx_importer"):
+    if (
+        getattr(conversion, "ok", None) is not True
+        or trace.get("status") != "complete"
+        or trace.get("blockers")
+        or exported.range_constraints
+        or getattr(conversion, "path_taken", None) != "fx_importer"
+    ):
         raise ExportStateUnavailable("prepared state requires a complete static FX-import conversion")
     original_ir = conversion.mlir_text.encode("utf-8")
     if trace.get("mlir", {}).get("sha256") != _sha(original_ir):
@@ -137,8 +151,12 @@ def observe_export_state(conversion, inputs, *, directory):
         elif kind in (InputKind.PARAMETER, InputKind.BUFFER):
             tensor = state.get(target)
             role = "buffer" if kind == InputKind.BUFFER else "param"
-            if (item.get("kind") != role or item.get("stub") or item.get("error")
-                    or (item.get("weight") != target and item != {"kind": role, "name": argument})):
+            if (
+                item.get("kind") != role
+                or item.get("stub")
+                or item.get("error")
+                or (item.get("weight") != target and item != {"kind": role, "name": argument})
+            ):
                 raise ExportStateUnavailable("prepared stored argument differs from its original role/target")
         elif kind == InputKind.CONSTANT_TENSOR:
             tensor = constants.get(target)
@@ -151,8 +169,17 @@ def observe_export_state(conversion, inputs, *, directory):
         tensor_record, owner = _tensor(tensor, torch)
         tensors.append(tensor)
         group = groups.setdefault(owner, len(groups))
-        rows.append({"ordinal": ordinal, "kind": kind.name, "target": target, "argument": argument,
-                     "storage_key": item.get("weight", argument), "storage_group": group, **tensor_record})
+        rows.append(
+            {
+                "ordinal": ordinal,
+                "kind": kind.name,
+                "target": target,
+                "argument": argument,
+                "storage_key": item.get("weight", argument),
+                "storage_group": group,
+                **tensor_record,
+            }
+        )
     if next(runtime, None) is not None:
         raise ExportStateUnavailable("runtime tensors exceed the exact prepared signature")
     for row in rows:
@@ -166,23 +193,40 @@ def observe_export_state(conversion, inputs, *, directory):
     # copy, retaining the actual live spelling as separately recorded evidence.
     placeholders = [node for node in exported.graph.nodes if node.op == "placeholder"]
     originals = [node for node in prepared.get("nodes", ()) if node.get("op") == "placeholder"]
-    if (len(placeholders) != len(rows) or len(originals) != len(rows)
-            or len({node.name for node in placeholders}) != len(rows)
-            or len({row["argument"] for row in rows}) != len(rows)):
+    if (
+        len(placeholders) != len(rows)
+        or len(originals) != len(rows)
+        or len({node.name for node in placeholders}) != len(rows)
+        or len({row["argument"] for row in rows}) != len(rows)
+    ):
         raise ExportStateUnavailable("prepared graph and signature have different placeholder rosters")
     placeholder_names = []
     for node, row, original in zip(placeholders, rows, originals, strict=True):
-        if (str(node.target) != row["argument"] or original.get("target") != row["argument"]
-                or original.get("input_kind") != row["kind"] or original.get("input_target") != row["target"]):
+        if (
+            str(node.target) != row["argument"]
+            or original.get("target") != row["argument"]
+            or original.get("input_kind") != row["kind"]
+            or original.get("input_target") != row["target"]
+        ):
             raise ExportStateUnavailable("prepared placeholder target differs from the signature argument")
-        placeholder_names.append({"ordinal": row["ordinal"], "name": node.name, "target": str(node.target),
-                                  "argument": row["argument"], "prepared_name": original["target"]})
+        placeholder_names.append(
+            {
+                "ordinal": row["ordinal"],
+                "name": node.name,
+                "target": str(node.target),
+                "argument": row["argument"],
+                "prepared_name": original["target"],
+            }
+        )
     graph = copy.deepcopy(exported.graph_module, {id(tensor): tensor for tensor in tensors})
     for node, row in zip((node for node in graph.graph.nodes if node.op == "placeholder"), rows, strict=True):
         node.name = row["argument"]
-    view = SimpleNamespace(graph_module=graph, graph_signature=exported.graph_signature,
-                           range_constraints=exported.range_constraints,
-                           _m2m_trace_eliminations=getattr(exported, "_m2m_trace_eliminations", ()))
+    view = SimpleNamespace(
+        graph_module=graph,
+        graph_signature=exported.graph_signature,
+        range_constraints=exported.range_constraints,
+        _m2m_trace_eliminations=getattr(exported, "_m2m_trace_eliminations", ()),
+    )
     if snapshot_exported_program(view, stage="prepared")["sha256"] != prepared["sha256"]:
         raise ExportStateUnavailable("returned prepared export differs from the imported prepared graph")
     # Independently corroborate externally stored buffer bytes. Extra-archive
@@ -204,13 +248,21 @@ def observe_export_state(conversion, inputs, *, directory):
             if row["kind"] != "BUFFER" or "weight" not in item:
                 continue
             entry = header.get(item["weight"])
-            if (not isinstance(entry, dict) or entry.get("shape") != row["shape"]
-                    or item.get("shape") != row["shape"] or item.get("dtype") != row["dtype"]):
+            if (
+                not isinstance(entry, dict)
+                or entry.get("shape") != row["shape"]
+                or item.get("shape") != row["shape"]
+                or item.get("dtype") != row["dtype"]
+            ):
                 raise ExportStateUnavailable("stored buffer shape/dtype differs from the actual export")
             offsets = entry.get("data_offsets")
-            if (not isinstance(offsets, list) or len(offsets) != 2
-                    or any(type(i) is not int for i in offsets) or not 0 <= offsets[0] <= offsets[1]
-                    or offsets[1] - offsets[0] != row["payload_bytes"]):
+            if (
+                not isinstance(offsets, list)
+                or len(offsets) != 2
+                or any(type(i) is not int for i in offsets)
+                or not 0 <= offsets[0] <= offsets[1]
+                or offsets[1] - offsets[0] != row["payload_bytes"]
+            ):
                 raise ExportStateUnavailable("stored buffer has no exact observed payload extent")
             stream.seek(8 + size + offsets[0])
             if _sha(stream.read(row["payload_bytes"])) != row["payload_sha256"]:
@@ -221,11 +273,18 @@ def observe_export_state(conversion, inputs, *, directory):
             raise ExportStateUnavailable("prepared source state changed during observation")
     if _file(root, "weights.safetensors.manifest.json") != manifest_bytes:
         raise ExportStateUnavailable("externalized argument manifest changed during observation")
-    return {"schema": SCHEMA, "status": "observed", "source_sha256": _sha(original_ir),
-            "prepared_graph_sha256": prepared["sha256"], "manifest_sha256": _sha(manifest_bytes),
-            "inputs": rows, "outputs": outputs, "operator_effects": effects,
-            "placeholder_names": placeholder_names,
-            "observer_source_sha256": _sha(Path(__file__).read_bytes()),
-            "snapshot_source_sha256": _sha(Path(snapshot_exported_program.__code__.co_filename).read_bytes()),
-            "scope": "prepared export/state observation only; original-caller freeze consent and independent "
-                     "compiler/reference admission are required"}
+    return {
+        "schema": SCHEMA,
+        "status": "observed",
+        "source_sha256": _sha(original_ir),
+        "prepared_graph_sha256": prepared["sha256"],
+        "manifest_sha256": _sha(manifest_bytes),
+        "inputs": rows,
+        "outputs": outputs,
+        "operator_effects": effects,
+        "placeholder_names": placeholder_names,
+        "observer_source_sha256": _sha(Path(__file__).read_bytes()),
+        "snapshot_source_sha256": _sha(Path(snapshot_exported_program.__code__.co_filename).read_bytes()),
+        "scope": "prepared export/state observation only; original-caller freeze consent and independent "
+        "compiler/reference admission are required",
+    }

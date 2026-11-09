@@ -293,7 +293,11 @@ def supported_scope(operation):
         return False
     for op, attributes, properties in (
         (function, {"llvm.emit_c_interface"}, {"sym_name", "function_type", "sym_visibility"}),
-        (module, {"llvm.data_layout", "llvm.target_triple", "prov.weights_file", "prov.level", "prov.quantization"}, set()),
+        (
+            module,
+            {"llvm.data_layout", "llvm.target_triple", "prov.weights_file", "prov.level", "prov.quantization"},
+            set(),
+        ),
     ):
         trace = {key: value for key, value in op.attributes.items() if key not in attributes}
         if any(

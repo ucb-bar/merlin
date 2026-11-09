@@ -50,8 +50,11 @@ def _binding(
 ):
     from merlin.compiler.schedule.compact_dense import _digest
 
-    if (type(source_identity) is not str or len(source_identity) != 64
-            or any(c not in "0123456789abcdef" for c in source_identity)):
+    if (
+        type(source_identity) is not str
+        or len(source_identity) != 64
+        or any(c not in "0123456789abcdef" for c in source_identity)
+    ):
         raise ValueError("dense schedule needs the original source SHA256 identity")
     context = (
         asdict(problem),
@@ -100,8 +103,9 @@ def _block(problem, resources, storage, tiles):
         raise ValueError("dense schedule block exceeds original supported domain")
     m, k, n = tiles
     bounded = replace(resources, max_m_blocks=m, max_k_blocks=k, max_n_blocks=n)
-    blocks = dense_blocks(problem, bounded, k_limit=lambda m, n: storage.k_limit(problem, resources, m, n),
-                          n_choices=(n,))
+    blocks = dense_blocks(
+        problem, bounded, k_limit=lambda m, n: storage.k_limit(problem, resources, m, n), n_choices=(n,)
+    )
     for block in blocks:
         if (block.m, block.k, block.n) == tiles and storage.admits(problem, block, resources):
             return block
@@ -200,15 +204,27 @@ def make_dense_schedule_plan(
     if pipeline_prefetch is not None:
         if type(pipeline_prefetch) is not bool:
             raise ValueError("panel pipeline needs an explicit Boolean issue policy")
-        from merlin.compiler.schedule.dense_panel_pipeline import build_dense_panel_pipeline, complete_dense_retained_reduction
+        from merlin.compiler.schedule.dense_panel_pipeline import (
+            build_dense_panel_pipeline,
+            complete_dense_retained_reduction,
+        )
 
         if segmented:
             from merlin.compiler.schedule.dense_segmented_pipeline import build_dense_segmented_pipeline
 
             kernel = build_dense_segmented_pipeline(
-                problem, block, resources, chosen_storage, adapter,
-                name=name, dtypes=dtypes, prefetch=pipeline_prefetch, outer_order=outer_order,
-                output_readout=output_readout, bias_source=bias_source, window_offsets=pipeline_window_offsets,
+                problem,
+                block,
+                resources,
+                chosen_storage,
+                adapter,
+                name=name,
+                dtypes=dtypes,
+                prefetch=pipeline_prefetch,
+                outer_order=outer_order,
+                output_readout=output_readout,
+                bias_source=bias_source,
+                window_offsets=pipeline_window_offsets,
                 issue_order="compute_then_prefetch" if pipeline_issue_order is None else pipeline_issue_order,
             )
         else:
@@ -363,7 +379,9 @@ def read_dense_schedule_plan(
             )
         )
         if pipeline_kind == "retained_lhs_segmented_k":
-            from merlin.compiler.schedule.dense_segmented_pipeline import SEGMENTED_ISSUE_ORDERS as supported_issue_orders
+            from merlin.compiler.schedule.dense_segmented_pipeline import (
+                SEGMENTED_ISSUE_ORDERS as supported_issue_orders,
+            )
         else:
             from merlin.compiler.schedule.dense_panel_pipeline import ISSUE_ORDERS as supported_issue_orders
 

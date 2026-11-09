@@ -29,8 +29,13 @@ def main():
         if actual != expected:
             raise ValueError("selected Linux image changed before exec")
         os.lseek(image, 0, os.SEEK_SET)
-        if (type(cpus) is not list or not cpus or len(cpus) > 1024 or
-                any(type(cpu) is not int or cpu < 0 for cpu in cpus) or len(set(cpus)) != len(cpus)):
+        if (
+            type(cpus) is not list
+            or not cpus
+            or len(cpus) > 1024
+            or any(type(cpu) is not int or cpu < 0 for cpu in cpus)
+            or len(set(cpus)) != len(cpus)
+        ):
             raise ValueError("Linux affinity needs a bounded distinct CPU roster")
         if not set(cpus) <= os.sched_getaffinity(0):
             raise ValueError("selected Linux CPUs are no longer available")
@@ -38,9 +43,17 @@ def main():
         affinity = sorted(os.sched_getaffinity(0))
         if affinity != cpus:
             raise ValueError("kernel did not apply the selected Linux affinity")
-        observe({"stage": "exec_requested", "pid": os.getpid(), "affinity": affinity,
-                 "image_sha256": actual, "device": info.st_dev, "inode": info.st_ino,
-                 "bytes": info.st_size})
+        observe(
+            {
+                "stage": "exec_requested",
+                "pid": os.getpid(),
+                "affinity": affinity,
+                "image_sha256": actual,
+                "device": info.st_dev,
+                "inode": info.st_ino,
+                "bytes": info.st_size,
+            }
+        )
         os.execve(image, [executable, *sys.argv[6:]], os.environ)
     except Exception as error:
         observe({"stage": "exec_failed", "error": f"{type(error).__name__}: {error}"})

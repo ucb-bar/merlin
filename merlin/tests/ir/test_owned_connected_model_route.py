@@ -13,7 +13,7 @@ from merlin.xdsl_dialects._common import text
 
 
 def original_logical_effects(source, built):
-    raise AssertionError('routing must not invoke the independent effects factory')
+    raise AssertionError("routing must not invoke the independent effects factory")
 
 
 def test_owned_logical_descriptor_selection_preserves_actual_storage_and_view_flags(tmp_path, monkeypatch):
@@ -22,30 +22,49 @@ def test_owned_logical_descriptor_selection_preserves_actual_storage_and_view_fl
     from merlin.llvmlower.device_build import DeviceRouting
     from merlin.runtime.device_descriptor_results import DeviceDescriptorResults
 
-    host,candidate,capture=(tmp_path/name for name in ('host','candidate','capture'))
-    for path in (host,candidate,capture):path.mkdir()
-    (host/'original.txt').write_text('original host provider')
-    (capture/'model.mlir').write_text('module {}')
-    original=DeviceRouting('neutral',candidate,'i8','i32',granularity='group')
-    monkeypatch.setattr(route_before_build,'plan_before_build',
-        lambda *a,**kw:{'device_routing':original,'offload':{'groups':2}})
-    service=OwnedHostModelCompiler.select(host_package=host,target='neutral',
-        board_catalog=tmp_path/'board.yaml',board='board',dts=tmp_path/'board.dts')
+    host, candidate, capture = (tmp_path / name for name in ("host", "candidate", "capture"))
+    for path in (host, candidate, capture):
+        path.mkdir()
+    (host / "original.txt").write_text("original host provider")
+    (capture / "model.mlir").write_text("module {}")
+    original = DeviceRouting("neutral", candidate, "i8", "i32", granularity="group")
+    monkeypatch.setattr(
+        route_before_build, "plan_before_build", lambda *a, **kw: {"device_routing": original, "offload": {"groups": 2}}
+    )
+    service = OwnedHostModelCompiler.select(
+        host_package=host,
+        target="neutral",
+        board_catalog=tmp_path / "board.yaml",
+        board="board",
+        dts=tmp_path / "board.dts",
+    )
+
     def build(**kwargs):
-        selected=kwargs['device']
+        selected = kwargs["device"]
         assert selected.descriptor_results is True
         assert selected.descriptor_effects is original_logical_effects
         assert selected.intermediate_storage is None
-        assert kwargs['prepack_weights'] is True and kwargs['dense_input_views'] is True
-        assert kwargs['share_exact_tensor_preparations'] is True
+        assert kwargs["prepack_weights"] is True and kwargs["dense_input_views"] is True
+        assert kwargs["share_exact_tensor_preparations"] is True
         assert DeviceDescriptorResults(selected).selected is True
-        return {'status':'selected actual logical route'}
-    monkeypatch.setattr(baremetal_model,'compile_saved_model',build)
-    result=service.compile(capture=capture,candidate_package=candidate,datapath='int8',
-        linked_elf_admission=object(),output=tmp_path/'build',arena_mb=1,
-        require_all_accelerator_groups=True,prepack_weights=True,dense_input_views=True,
-        share_exact_tensor_preparations=True,descriptor_results=True,descriptor_effects=original_logical_effects)
-    assert result['status']=='selected actual logical route'
+        return {"status": "selected actual logical route"}
+
+    monkeypatch.setattr(baremetal_model, "compile_saved_model", build)
+    result = service.compile(
+        capture=capture,
+        candidate_package=candidate,
+        datapath="int8",
+        linked_elf_admission=object(),
+        output=tmp_path / "build",
+        arena_mb=1,
+        require_all_accelerator_groups=True,
+        prepack_weights=True,
+        dense_input_views=True,
+        share_exact_tensor_preparations=True,
+        descriptor_results=True,
+        descriptor_effects=original_logical_effects,
+    )
+    assert result["status"] == "selected actual logical route"
     assert original.descriptor_results is False and original.descriptor_effects is None
 
 
@@ -65,8 +84,11 @@ def test_owned_model_selected_route_reaches_actual_original_host_preparation(tmp
     original_text = text(module, generic=True)
     (capture / "model.mlir").write_text(original_text)
     service = OwnedHostModelCompiler.select(
-        host_package=host, target=selected_device.device,
-        board_catalog=tmp_path / "boards.yaml", board="board", dts=tmp_path / "board.dts",
+        host_package=host,
+        target=selected_device.device,
+        board_catalog=tmp_path / "boards.yaml",
+        board="board",
+        dts=tmp_path / "board.dts",
     )
     admission = object()
 
@@ -95,7 +117,11 @@ def test_owned_model_selected_route_reaches_actual_original_host_preparation(tmp
         rewrite.write_sidecar(work)
         frozen = device_preparation.freeze_device_offload_selection(actual)
         path = device_preparation.prepare_device_route(
-            actual, prepared, work, early_complete_groups=True, selection=frozen,
+            actual,
+            prepared,
+            work,
+            early_complete_groups=True,
+            selection=frozen,
         )
         device_preparation.require_device_offload_selection(actual, frozen)
         owner = frozen.spatial_host
@@ -113,9 +139,14 @@ def test_owned_model_selected_route_reaches_actual_original_host_preparation(tmp
 
     monkeypatch.setattr(baremetal_model, "compile_saved_model", build)
     assert service.compile(
-        capture=capture, candidate_package=candidate, datapath="int8",
-        linked_elf_admission=admission, output=tmp_path / "build", arena_mb=1,
-        require_all_accelerator_groups=True, connected_spatial=selected,
+        capture=capture,
+        candidate_package=candidate,
+        datapath="int8",
+        linked_elf_admission=admission,
+        output=tmp_path / "build",
+        arena_mb=1,
+        require_all_accelerator_groups=True,
+        connected_spatial=selected,
     ) == {"status": "original_host_prepared", "source_components": 2}
 
 
@@ -131,8 +162,11 @@ def test_owned_model_does_not_accept_opaque_or_replace_distinct_selection(tmp_pa
     (host / "fixed.txt").write_text("original selected host")
     (capture / "model.mlir").write_text(text(module, generic=True))
     service = OwnedHostModelCompiler.select(
-        host_package=host, target=device.device,
-        board_catalog=tmp_path / "boards", board="board", dts=tmp_path / "dts",
+        host_package=host,
+        target=device.device,
+        board_catalog=tmp_path / "boards",
+        board="board",
+        dts=tmp_path / "dts",
     )
     selected = object() if damage == "opaque_route" else replace(device.connected_spatial)
     monkeypatch.setattr(
@@ -141,6 +175,11 @@ def test_owned_model_does_not_accept_opaque_or_replace_distinct_selection(tmp_pa
     monkeypatch.setattr(baremetal_model, "compile_saved_model", lambda **kw: pytest.fail("invalid route reached build"))
     with pytest.raises((TypeError, ValueError), match="typed spatial route|distinct connected"):
         service.compile(
-            capture=capture, candidate_package=candidate, datapath="int8", linked_elf_admission=object(),
-            output=tmp_path / "out", arena_mb=1, connected_spatial=selected,
+            capture=capture,
+            candidate_package=candidate,
+            datapath="int8",
+            linked_elf_admission=object(),
+            output=tmp_path / "out",
+            arena_mb=1,
+            connected_spatial=selected,
         )

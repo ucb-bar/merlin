@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from math import prod
 
+from . import linalg_arithmetic, linalg_contractions, linalg_preparation, linalg_returns, linalg_scalar, linalg_views
 from .linalg_recognition import (
     LinalgBridgeError,
     _embedding_lookup_operands,
@@ -44,12 +45,9 @@ from .linalg_recognition import (
     _transpose_maps,
     _type,
 )
+from .linalg_state import LinalgTranslation, TranslationState
 from .model import ConstantBinding, IndexMap, KernelRequest, SemanticNode, TensorType, pointwise_identity_maps
 from .reference_values import TensorValue
-from .linalg_state import LinalgTranslation, TranslationState
-from . import linalg_scalar, linalg_preparation, linalg_views, linalg_arithmetic, linalg_contractions, linalg_returns
-
-
 
 
 def translate_linalg_text(
@@ -86,8 +84,8 @@ def translate_linalg_text(
     )
     from merlin.frontends.linalg_patterns import (
         InvalidLinalgPattern,
-            recognize_signed_i8_i32_matmul,
-            recognize_static_projected_pointwise,
+        recognize_signed_i8_i32_matmul,
+        recognize_static_projected_pointwise,
     )
     from merlin.frontends.linalg_scalar_support import (
         StaticIotaResourceLimit,
@@ -229,7 +227,14 @@ def translate_linalg_text(
         indexed_prelude=indexed_prelude,
         indexed_updates=indexed_updates,
     )
-    handlers = (linalg_scalar.translate, linalg_preparation.translate, linalg_views.translate, linalg_arithmetic.translate, linalg_contractions.translate, linalg_returns.translate)
+    handlers = (
+        linalg_scalar.translate,
+        linalg_preparation.translate,
+        linalg_views.translate,
+        linalg_arithmetic.translate,
+        linalg_contractions.translate,
+        linalg_returns.translate,
+    )
     for ordinal, op in enumerate(operations):
         source_operations.append(op.name)
         for handler in handlers:

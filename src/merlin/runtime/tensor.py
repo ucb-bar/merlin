@@ -221,8 +221,7 @@ class Tensor:
             Tensor((rows,), self.data[index::width], self.dtype).requant_acc_scale(scale).data
             for index, scale in enumerate(scales)
         ]
-        return Tensor(self.shape, [columns[column][row] for row in range(rows) for column in range(width)],
-                      self.dtype)
+        return Tensor(self.shape, [columns[column][row] for row in range(rows) for column in range(width)], self.dtype)
 
     def residual_add_scaled(self, other: "Tensor", lhs_scale: float, rhs_scale: float) -> "Tensor":
         """``roundeven(self * lhs_scale + other * rhs_scale)``, elementwise, in float32.

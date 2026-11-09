@@ -22,7 +22,7 @@ def add_arguments(sub, handlers):
     native_build.add_argument("--cargo-target-dir", required=True)
     native_build.add_argument("--source-revision", required=True)
     native_build.add_argument("--out", required=True, help="fresh snapshot directory")
-    native_build.set_defaults(func=handlers['_cmd_native_build'])
+    native_build.set_defaults(func=handlers["_cmd_native_build"])
 
     from merlin.semantic_compiler.constant_math_backend import build_command
 
@@ -57,7 +57,7 @@ def add_arguments(sub, handlers):
         help="diagnostic-only native mechanism removal; repeat for multiple ablations",
     )
     native_select.add_argument("--out", required=True, help="selection result JSON")
-    native_select.set_defaults(func=handlers['_cmd_native_select'])
+    native_select.set_defaults(func=handlers["_cmd_native_select"])
 
     native_compile = sub.add_parser("native-compile", help="compile one typed native region with selected OOT support")
     native_compile.add_argument("--engine", choices=("merlin_native",), required=True)
@@ -71,24 +71,26 @@ def add_arguments(sub, handlers):
     native_compile.add_argument("--diagnostic-graph-policy", help="explicit precision policy for a parsed Linalg graph")
     preparation_arguments(native_compile)
     native_compile.add_argument(
-        "--physical-layouts", help="explicit source/request-bound physical boundary layout JSON")
+        "--physical-layouts", help="explicit source/request-bound physical boundary layout JSON"
+    )
     native_compile.add_argument("--abi", required=True, help="fixed_inputs/fixed_outputs JSON")
     native_compile.add_argument("--search-limits", help="complete versioned native search-limit JSON")
     native_compile.add_argument("--target-source", required=True, help="selected target source checkout")
     native_compile.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
     native_compile.add_argument("--out", required=True, help="fresh compilation output directory")
     native_compile.add_argument("--status-file", help="invocation-owned machine-readable status JSON")
-    native_compile.set_defaults(func=handlers['_cmd_native_compile'])
+    native_compile.set_defaults(func=handlers["_cmd_native_compile"])
 
     graph_bridge = sub.add_parser(
-        "native-bridge-graph", help="outline one exact native whole graph as a typed external host call",
+        "native-bridge-graph",
+        help="outline one exact native whole graph as a typed external host call",
     )
     graph_bridge.add_argument("--linalg", required=True, help="exact source Linalg module")
     graph_bridge.add_argument("--entry", required=True, help="source function to externalize")
     graph_bridge.add_argument("--compiled", required=True, help="native whole-graph compilation directory")
     graph_bridge.add_argument("--device-symbol", required=True, help="C-compatible target callback symbol")
     graph_bridge.add_argument("--out", required=True, help="fresh typed host bridge output directory")
-    graph_bridge.set_defaults(func=handlers['_cmd_native_bridge_graph'])
+    graph_bridge.set_defaults(func=handlers["_cmd_native_bridge_graph"])
 
     from .native_application_cli import add_arguments as application_arguments
 
@@ -106,10 +108,10 @@ def add_arguments(sub, handlers):
     native_verify.add_argument("--diagnostic-graph-policy", help="same explicit source-bound graph precision policy")
     preparation_arguments(native_verify)
     native_verify.add_argument(
-        "--physical-layouts", help="same explicit source/request-bound physical boundary layout JSON")
+        "--physical-layouts", help="same explicit source/request-bound physical boundary layout JSON"
+    )
     native_verify.add_argument("--target-source", help="selected target source for application replay")
     native_verify.add_argument("--artifact", required=True)
     native_verify.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
     native_verify.add_argument("--out", required=True, help="external verification status JSON")
-    native_verify.set_defaults(func=handlers['_cmd_native_verify'])
-
+    native_verify.set_defaults(func=handlers["_cmd_native_verify"])

@@ -148,16 +148,22 @@ def allocation_prepare(world, monkeypatch):
     # must do the same before prepare's real clean-source check.
     (w.repo / ".git/info/exclude").write_text("out/\n")
     w.launch.document["origin"] = {"initial_submission": "empty", "seed_submission": None, "resume": False}
-    w.launch.document["launcher"].update(environment_file=str(w.prep / "environment.sh"),
-                                         plan=str(w.prep / "plan.json"))
+    w.launch.document["launcher"].update(
+        environment_file=str(w.prep / "environment.sh"), plan=str(w.prep / "plan.json")
+    )
     manifest = w.bundle / "MANIFEST.json"
     contents = json.loads(manifest.read_text())
     contents["schema"] = "merlin.model_check.bundle.v1"
     manifest.write_text(json.dumps(contents))
-    w.launch.document["runtime_pins"].update({
-        "private_bundle_manifest": {"path": str(manifest), "sha256": sha256_file(manifest)},
-        "private_bundle_sums": {"path": str(w.bundle / "SHA256SUMS"), "sha256": sha256_file(w.bundle / "SHA256SUMS")},
-    })
+    w.launch.document["runtime_pins"].update(
+        {
+            "private_bundle_manifest": {"path": str(manifest), "sha256": sha256_file(manifest)},
+            "private_bundle_sums": {
+                "path": str(w.bundle / "SHA256SUMS"),
+                "sha256": sha256_file(w.bundle / "SHA256SUMS"),
+            },
+        }
+    )
     monkeypatch.setattr(launcher.L, "render", lambda *a, **kw: None)
     monkeypatch.setattr(launcher.L, "launch_plan", lambda *a, **kw: {})
     monkeypatch.setattr(launcher.L, "verify", lambda *a, **kw: SimpleNamespace(drifts=[]))
@@ -166,13 +172,22 @@ def allocation_prepare(world, monkeypatch):
         launcher.S, "verify", lambda *a, **kw: {"status": "pass", "manifest_sha256": sha256_file(manifest)}
     )
     monkeypatch.setattr(launcher.os, "sched_getaffinity", lambda _: set(range(18)))
-    monkeypatch.setattr(launcher, "source_preparation", lambda *_: {
-        "source_preflight_passed": True, "candidate_qualified": False,
-    })
+    monkeypatch.setattr(
+        launcher,
+        "source_preparation",
+        lambda *_: {
+            "source_preflight_passed": True,
+            "candidate_qualified": False,
+        },
+    )
     readiness_calls = []
-    monkeypatch.setattr(launcher, "operator_module", lambda _: SimpleNamespace(
-        validate_readiness=lambda launch: readiness_calls.append(launch),
-    ))
+    monkeypatch.setattr(
+        launcher,
+        "operator_module",
+        lambda _: SimpleNamespace(
+            validate_readiness=lambda launch: readiness_calls.append(launch),
+        ),
+    )
     return launcher, w, readiness_calls
 
 
@@ -198,8 +213,10 @@ def test_capsule_prepare_keeps_metadata_but_defers_model_payload_and_source_work
     w.launch.variables["REFERENCE_CPUS"] = ""
     w.launch.document["cpu"]["compute_pool"]["cpus"] = list(range(16))
     w.launch.document["cpu"]["author"]["cpus"] = [16, 17]
+
     def forbidden(*args, **kwargs):
         raise AssertionError("whole-model prerequisite entered capsule preparation")
+
     monkeypatch.setattr(launcher.S, "verify", forbidden)
     monkeypatch.setattr(launcher, "source_preparation", forbidden)
     value = launcher.prepare(w.launch, w.prep)
@@ -227,7 +244,6 @@ def test_prepare_refuses_overlap_or_missing_assigned_cpu(allocation_prepare, mon
     with pytest.raises(ValueError, match="overlap|complete selected CPU allocation is unavailable"):
         launcher.prepare(w.launch, w.prep)
     assert not readiness_calls
-
 
 
 def test_prepare_accepts_a_smaller_disjoint_available_compute_pool(allocation_prepare):
@@ -507,7 +523,10 @@ pathlib.Path(p['finished']).write_text(str(time.monotonic()))
                 work
                 / w.F.package_identity(package)["model_check_tree_sha256"][:16]
                 / name
-                / 'runs' / 'original' / 'visible' / 'v00'
+                / "runs"
+                / "original"
+                / "visible"
+                / "v00"
             ).mkdir(parents=True)
         value = complete_report(w, name, w.F.package_identity(package))
         worker = (
@@ -673,8 +692,10 @@ def all_output_plan(w, *, incomplete=False):
         "'submission':package,'steps_compared':EXPECTED[name],'steps_expected':EXPECTED[name],"
         "'outputs_compared':EXPECTED[name]*2-int(INCOMPLETE),'n_declared_outputs':EXPECTED[name]*2}\n"
     )
+
     def pin(path):
         return {"path": str(path), "sha256": sha256_file(path)}
+
     references = {}
     bundle_keys = ("bundle_manifest_sha256", "bundle_sums_sha256", "models_config_sha256")
     for name in names:
@@ -760,8 +781,10 @@ def test_all_output_audit_is_once_only_and_changed_completed_report_loses_credit
     write(job, {"work": str(work), "submission": package})
     (work / package["model_check_tree_sha256"][:16] / "one/runs/original/visible/v00").mkdir(parents=True)
     child = {"report": report, "pin": job, "input_id": "visible/v00"}
+
     def call():
         return operator.audit(context, name="one", child=child, package=package, models_path=selected["models"].path)
+
     assert call()["status"] == "pass"
     assert call()["status"] == "pass"
     assert (w.prep / "offline-calls.jsonl").read_text().splitlines() == ["one"]
@@ -783,8 +806,10 @@ def test_all_output_finalization_reopens_retained_artifacts_without_regrading(wo
     for name in selected["names"]:
         path = w.prep / f"{name}-all-outputs.json"
         write(path, {"status": "pass", "artifacts": [{"path": str(original), "sha256": sha256_file(original)}]})
-        children[name] = {"report": w.prep / f"{name}.json", "all_outputs": {
-            "status": "pass", "path": str(path), "sha256": sha256_file(path)}}
+        children[name] = {
+            "report": w.prep / f"{name}.json",
+            "all_outputs": {"status": "pass", "path": str(path), "sha256": sha256_file(path)},
+        }
     assert operator.finalize(context, children)["status"] == "pass"
     original.write_bytes(b"changed output bytes")
     assert operator.finalize(context, children)["status"] == "error"
@@ -814,11 +839,11 @@ def infrastructure(world, monkeypatch):
 
     from merlin.common import invocation_record as IR
     from merlin.common import owned_process as OP
-    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.llvmlower.compilation_recipe import CompilationRecipe
     from merlin.model_check import full_build as FB
     from merlin.model_check import replay as RP
     from merlin.runtime.backends import spike_model
+    from merlin.runtime.modelinputs import strict_tree_sha256
 
     w = world
 
@@ -837,31 +862,48 @@ def infrastructure(world, monkeypatch):
         selection = capture_root / "selection.json"
         write(selection, {"fixture": "independently selected capture"})
         attestation = capture_root / "attestation.json"
-        write(attestation, {"selection": pin(selection), "capture": {
-            "capture_path": str(capture), "capture_tree_sha256": "attested tree identity",
-            "model_sha256": sha256_file(capture / "model.mlir"),
-        }})
-        rows.append({"id": name, "capture": str(capture), "capture_selection": str(selection),
-                     "capture_selection_sha256": sha256_file(selection),
-                     "capture_execution_attestation": str(attestation),
-                     "capture_execution_attestation_sha256": sha256_file(attestation)})
+        write(
+            attestation,
+            {
+                "selection": pin(selection),
+                "capture": {
+                    "capture_path": str(capture),
+                    "capture_tree_sha256": "attested tree identity",
+                    "model_sha256": sha256_file(capture / "model.mlir"),
+                },
+            },
+        )
+        rows.append(
+            {
+                "id": name,
+                "capture": str(capture),
+                "capture_selection": str(selection),
+                "capture_selection_sha256": sha256_file(selection),
+                "capture_execution_attestation": str(attestation),
+                "capture_execution_attestation_sha256": sha256_file(attestation),
+            }
+        )
         roots[name] = str(capture_root)
         write(w.bundle / name / "programs/body/catalog.json", {"stage": str(capture)})
         model = w.F.selection(w.launch)["models"].model(name)
-        np.savez(w.bundle / name / "visible/v00/int8.npz",
-                 **{f"out{i}": np.array([i], np.float32) for i in range(model.programs[0].steps)})
+        np.savez(
+            w.bundle / name / "visible/v00/int8.npz",
+            **{f"out{i}": np.array([i], np.float32) for i in range(model.programs[0].steps)},
+        )
     write(w.prep / "private-models.yaml", {"models": rows})
     manifest = read_manifest = json.loads((w.bundle / "MANIFEST.json").read_text())
     manifest["selected_capture_roots"] = roots
     sums = w.bundle / "SHA256SUMS"
-    members = sorted(path for path in w.bundle.rglob("*")
-                     if path.is_file() and path.name not in {"MANIFEST.json", "SHA256SUMS"})
+    members = sorted(
+        path for path in w.bundle.rglob("*") if path.is_file() and path.name not in {"MANIFEST.json", "SHA256SUMS"}
+    )
     sums.write_text("".join(f"{sha256_file(path)}  {path.relative_to(w.bundle)}\n" for path in members))
     read_manifest["seal"] = {"sums": "SHA256SUMS", "sums_sha256": sha256_file(sums)}
     write(w.bundle / "MANIFEST.json", manifest)
     compiler = w.prep / "compiler.py"
-    compiler.write_text("import pathlib,sys\n"
-                        "pathlib.Path(sys.argv[-1]).write_bytes(pathlib.Path(sys.argv[1]).read_bytes())\n")
+    compiler.write_text(
+        "import pathlib,sys\npathlib.Path(sys.argv[-1]).write_bytes(pathlib.Path(sys.argv[1]).read_bytes())\n"
+    )
     stage = w.prep / "stage"
     stage.mkdir()
     (stage / "model.mlir").write_text("module {}\n")
@@ -870,9 +912,12 @@ def infrastructure(world, monkeypatch):
         folder.mkdir()
         elf = folder / "model.elf"
         recipe = CompilationRecipe(folder, producer=Path(producer_module.__file__))
-        recipe.run([sys.executable, compiler, input_path, "-o", elf],
-                   runner=lambda argv: subprocess.run(argv, capture_output=True, check=True),
-                   inputs=[compiler, input_path], output=elf)
+        recipe.run(
+            [sys.executable, compiler, input_path, "-o", elf],
+            runner=lambda argv: subprocess.run(argv, capture_output=True, check=True),
+            inputs=[compiler, input_path],
+            output=elf,
+        )
         recipe.completed(elf)
         return elf, recipe.path
 
@@ -880,8 +925,16 @@ def infrastructure(world, monkeypatch):
     original_input.write_bytes(b"original image fixture\n")
     original, recipe = compile_image(w.prep / "original", original_input, spike_model)
     build_path = w.prep / "build.json"
-    write(build_path, {"status": "linked", "elf": str(original), "elf_sha256": sha256_file(original),
-                       "build_hash": "fixture", "compilation_recipe": pin(recipe)})
+    write(
+        build_path,
+        {
+            "status": "linked",
+            "elf": str(original),
+            "elf_sha256": sha256_file(original),
+            "build_hash": "fixture",
+            "compilation_recipe": pin(recipe),
+        },
+    )
     engine = w.prep / "engine.py"
     engine.write_text("""import io,numpy as np,sys
 x=np.load(sys.argv[1],allow_pickle=False)['x'];out=io.BytesIO()
@@ -901,18 +954,39 @@ np.savez(out,out0=(x+1).astype('int32'),out1=(x/2).astype('float32'));sys.stdout
         np.savez(inputs, x=x)
         np.savez(expected, out0=x + 1, out1=(x / 2).astype(np.float32))
         elf, recipe = compile_image(w.prep / f"step-{step}", inputs, FB)
-        invocation = IR.Invocation(w.prep, stage="phase1.infrastructure.target",
-                                   argv=[sys.executable, str(engine), str(elf)],
-                                   inputs=[elf, inputs], dependencies=[engine])
+        invocation = IR.Invocation(
+            w.prep,
+            stage="phase1.infrastructure.target",
+            argv=[sys.executable, str(engine), str(elf)],
+            inputs=[elf, inputs],
+            dependencies=[engine],
+        )
         result = subprocess.run(invocation.document["argv"], capture_output=True, check=True)
         invocation.complete(result)
-        runs.append({"inputs": pin(inputs), "expected": pin(expected), "elf": pin(elf),
-                     "compilation_recipe": pin(recipe), "execution": pin(invocation.path)})
+        runs.append(
+            {
+                "inputs": pin(inputs),
+                "expected": pin(expected),
+                "elf": pin(elf),
+                "compilation_recipe": pin(recipe),
+                "execution": pin(invocation.path),
+            }
+        )
     target = w.prep / "target-witness.json"
-    write(target, {"schema": "merlin.phase1.infrastructure_target_witness.v1", "producer": pin(producer),
-                   "source_revision": w.launch.variables["SOURCE_REVISION"], "target": "fixture",
-                   "stage": {"path": str(stage), "sha256": strict_tree_sha256(stage)["sha256"]},
-                   "build_record": pin(build_path), "dram_base": 0, "dram_bytes": 1024, "runs": runs})
+    write(
+        target,
+        {
+            "schema": "merlin.phase1.infrastructure_target_witness.v1",
+            "producer": pin(producer),
+            "source_revision": w.launch.variables["SOURCE_REVISION"],
+            "target": "fixture",
+            "stage": {"path": str(stage), "sha256": strict_tree_sha256(stage)["sha256"]},
+            "build_record": pin(build_path),
+            "dram_base": 0,
+            "dram_bytes": 1024,
+            "runs": runs,
+        },
+    )
     child = w.prep / "child.py"
     child.write_text("""import json,os,pathlib,subprocess,sys,time
 def report():
@@ -921,8 +995,9 @@ report()
 if len(sys.argv)==1: subprocess.Popen([sys.executable,__file__,'nested'],start_new_session=True)
 time.sleep(30)
 """)
-    invocation = IR.Invocation(w.prep, stage="phase1.infrastructure.timeout", argv=[sys.executable, str(child)],
-                               inputs=[child])
+    invocation = IR.Invocation(
+        w.prep, stage="phase1.infrastructure.timeout", argv=[sys.executable, str(child)], inputs=[child]
+    )
     with pytest.raises(subprocess.TimeoutExpired) as caught:
         OP.run(invocation.document["argv"], timeout=0.5)
     stdout = invocation.directory / "stdout.bin"
@@ -930,10 +1005,18 @@ time.sleep(30)
     invocation.document["stdout"] = pin(stdout)
     invocation.failed(caught.value)
     cleanup = w.prep / "cleanup-witness.json"
-    write(cleanup, {"schema": "merlin.phase1.infrastructure_cleanup_witness.v1", "producer": pin(producer),
-                    "source_revision": w.launch.variables["SOURCE_REVISION"], "invocation": pin(invocation.path),
-                    "stdout": pin(stdout), "children": [json.loads(line) for line in stdout.read_text().splitlines()],
-                    "owned_process_cleanup": caught.value.owned_process_cleanup})
+    write(
+        cleanup,
+        {
+            "schema": "merlin.phase1.infrastructure_cleanup_witness.v1",
+            "producer": pin(producer),
+            "source_revision": w.launch.variables["SOURCE_REVISION"],
+            "invocation": pin(invocation.path),
+            "stdout": pin(stdout),
+            "children": [json.loads(line) for line in stdout.read_text().splitlines()],
+            "owned_process_cleanup": caught.value.owned_process_cleanup,
+        },
+    )
     retained = w.F.package_identity(w.author)
     diagnostics = {}
     for name in w.F.selection(w.launch)["names"]:
@@ -941,8 +1024,12 @@ time.sleep(30)
         report.update(status="fail", failures=[{"kind": "gate", "gate": "quantized_reference"}])
         path, pin_path = w.prep / f"historic-{name}.json", w.prep / f"historic-{name}-pin.json"
         if name == "one":
-            report = {"schema": "merlin.readiness.partial.v1", "reason": "interrupted_by_signal_15",
-                      "complete": False, "model_check_report_so_far": report}
+            report = {
+                "schema": "merlin.readiness.partial.v1",
+                "reason": "interrupted_by_signal_15",
+                "complete": False,
+                "model_check_report_so_far": report,
+            }
         write(path, report)
         write(pin_path, {"submission": retained, "selected_identity": {"source_revision": "historical identity"}})
         diagnostics[name] = {"report": path, "pin": pin_path}
@@ -959,14 +1046,33 @@ def test_infrastructure_v2_admits_fresh_author_without_qualifying_failed_retaine
         report = json.loads(Path(records["report"]["path"]).read_text())
         report = report.get("model_check_report_so_far", report)
         assert report["status"] == "fail"
-        assert not t.w.F.report_complete(report, t.w.F.selection(t.w.launch)["models"].model(name),
-                                         t.w.policy, t.receipt["retained_submission"])
+        assert not t.w.F.report_complete(
+            report, t.w.F.selection(t.w.launch)["models"].model(name), t.w.policy, t.receipt["retained_submission"]
+        )
 
 
-@pytest.mark.parametrize("damage", ["source", "collector", "console", "expected", "recipe", "input",
-                                    "boolean_only", "capture", "catalog", "reference", "cleanup",
-                                    "comparison", "repeated_input", "execution_scope", "alive_child",
-                                    "attested_graph", "historical_attribution"])
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "source",
+        "collector",
+        "console",
+        "expected",
+        "recipe",
+        "input",
+        "boolean_only",
+        "capture",
+        "catalog",
+        "reference",
+        "cleanup",
+        "comparison",
+        "repeated_input",
+        "execution_scope",
+        "alive_child",
+        "attested_graph",
+        "historical_attribution",
+    ],
+)
 def test_infrastructure_v2_rejects_unbound_or_incomplete_actual_evidence(infrastructure, damage):
     t = infrastructure
     target = json.loads(t.target.read_text())
@@ -978,14 +1084,16 @@ def test_infrastructure_v2_rejects_unbound_or_incomplete_actual_evidence(infrast
         target = {"schema": target["schema"], "status": "pass"}
     elif damage in {"console", "expected", "recipe", "input"}:
         run = target["runs"][0]
-        selected = run[{"expected": "expected", "recipe": "compilation_recipe", "input": "inputs"}
-                       .get(damage, "execution")]
+        selected = run[
+            {"expected": "expected", "recipe": "compilation_recipe", "input": "inputs"}.get(damage, "execution")
+        ]
         if damage == "console":
             selected = json.loads(Path(selected["path"]).read_text())["stdout"]
         Path(selected["path"]).write_bytes(b"changed actual evidence")
     elif damage in {"capture", "catalog"}:
-        path = (t.w.prep / "private-models.yaml" if damage == "capture"
-                else t.w.bundle / "one/programs/body/catalog.json")
+        path = (
+            t.w.prep / "private-models.yaml" if damage == "capture" else t.w.bundle / "one/programs/body/catalog.json"
+        )
         if damage == "capture":
             doc = yaml.safe_load(path.read_text())
             doc["models"][0]["capture"] = str(t.w.prep / "older-128-token-capture")
@@ -1024,9 +1132,11 @@ def test_infrastructure_v2_rejects_unbound_or_incomplete_actual_evidence(infrast
     else:
         cleanup = json.loads(t.cleanup.read_text())
         if damage == "alive_child":
-            cleanup["children"][0] = {"pid": os.getpid(), "start_ticks": int(
-                Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split()[19]),
-                "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip()}
+            cleanup["children"][0] = {
+                "pid": os.getpid(),
+                "start_ticks": int(Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split()[19]),
+                "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
+            }
             stdout = Path(cleanup["stdout"]["path"])
             stdout.write_text("\n".join(json.dumps(item) for item in cleanup["children"]) + "\n")
             cleanup["stdout"] = t.pin(stdout)

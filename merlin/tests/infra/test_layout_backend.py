@@ -20,12 +20,18 @@ def program(operation, source="2x3xf32", result="6xf32"):
     }}"""
 
 
-@pytest.mark.parametrize("source", [
-    program("tensor.collapse_shape %x [[0, 1]] : tensor<2x3xf32> into tensor<6xf32>"),
-    program("tensor.expand_shape %x [[0, 1]] output_shape [2, 3] : tensor<6xf32> into tensor<2x3xf32>",
-            "6xf32", "2x3xf32"),
-    program("tensor.cast %x : tensor<6xf32> to tensor<6xf32>", "6xf32", "6xf32"),
-])
+@pytest.mark.parametrize(
+    "source",
+    [
+        program("tensor.collapse_shape %x [[0, 1]] : tensor<2x3xf32> into tensor<6xf32>"),
+        program(
+            "tensor.expand_shape %x [[0, 1]] output_shape [2, 3] : tensor<6xf32> into tensor<2x3xf32>",
+            "6xf32",
+            "2x3xf32",
+        ),
+        program("tensor.cast %x : tensor<6xf32> to tensor<6xf32>", "6xf32", "6xf32"),
+    ],
+)
 def test_public_layout_compilation_preserves_raw_float_storage(tmp_path, source):
     cc = shutil.which("gcc")
     if cc is None:
@@ -33,9 +39,23 @@ def test_public_layout_compilation_preserves_raw_float_storage(tmp_path, source)
     result = api.compile(source, backend=layout, output=tmp_path / "compiled")
     abi = CRegionABI.from_compilation(result)
     library = tmp_path / "layout.so"
-    subprocess.run([cc, "-std=c11", "-Wall", "-Wextra", "-Werror", "-shared", "-fPIC",
-                    *(str(result.directory / name) for name in abi.link_inputs),
-                    "-o", str(library)], check=True, capture_output=True, text=True)
+    subprocess.run(
+        [
+            cc,
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-shared",
+            "-fPIC",
+            *(str(result.directory / name) for name in abi.link_inputs),
+            "-o",
+            str(library),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     invoke = getattr(ctypes.CDLL(str(library)), abi.symbol)
     pointers = ctypes.POINTER(ctypes.c_void_p)
     invoke.argtypes = [ctypes.c_void_p, pointers, pointers]
@@ -55,13 +75,18 @@ def test_public_layout_compilation_preserves_raw_float_storage(tmp_path, source)
     assert {a.kind for a in result.artifacts} == {"c-source", "c-header", "json"}
 
 
-@pytest.mark.parametrize("source,options", [
-    (program("arith.addf %x, %x : tensor<2x3xf32>", result="2x3xf32"), None),
-    (program("tensor.cast %x : tensor<?xf32> to tensor<?xf32>", "?xf32", "?xf32"), None),
-    (program("tensor.cast %x : tensor<6xi1> to tensor<6xi1>", "6xi1", "6xi1"), None),
-    (program("tensor.cast %x : tensor<6xf32> to tensor<6xf32>", "6xf32", "6xf32"),
-     api.CompileOptions(platform="zephyr")),
-])
+@pytest.mark.parametrize(
+    "source,options",
+    [
+        (program("arith.addf %x, %x : tensor<2x3xf32>", result="2x3xf32"), None),
+        (program("tensor.cast %x : tensor<?xf32> to tensor<?xf32>", "?xf32", "?xf32"), None),
+        (program("tensor.cast %x : tensor<6xi1> to tensor<6xi1>", "6xi1", "6xi1"), None),
+        (
+            program("tensor.cast %x : tensor<6xf32> to tensor<6xf32>", "6xf32", "6xf32"),
+            api.CompileOptions(platform="zephyr"),
+        ),
+    ],
+)
 def test_layout_rejects_arithmetic_dynamic_storage_and_image_options(tmp_path, source, options):
     output = tmp_path / "rejected"
     with pytest.raises(ValueError):

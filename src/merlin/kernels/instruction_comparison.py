@@ -86,13 +86,22 @@ class OperandSummary:
                 if len(self.fields) == self.max_fields:
                     self.omitted_fields += 1
                     continue
-                self.fields[identity] = dict(sequence=hashlib.sha256(), population=_Population(self.budget),
-                                             sites=0, unresolved=0, profiles=Counter())
+                self.fields[identity] = dict(
+                    sequence=hashlib.sha256(),
+                    population=_Population(self.budget),
+                    sites=0,
+                    unresolved=0,
+                    profiles=Counter(),
+                )
             summary = self.fields[identity]
             summary["sites"] += 1
             token = json.dumps(field, sort_keys=True, separators=(",", ":"), allow_nan=False)
-            summary["sequence"].update(json.dumps([self.class_sites[instruction], field], sort_keys=True,
-                                                separators=(",", ":"), allow_nan=False).encode() + b"\n")
+            summary["sequence"].update(
+                json.dumps(
+                    [self.class_sites[instruction], field], sort_keys=True, separators=(",", ":"), allow_nan=False
+                ).encode()
+                + b"\n"
+            )
             summary["population"].observe(token)
             key = instruction + "." + name
             if _has_unknown(field):
@@ -117,13 +126,19 @@ class OperandSummary:
             operand_multiset_sha256=population["population_sha256"],
             operand_population_status=population["population_status"],
             field_fingerprints=[
-                dict(instruction=instruction, field=name, sites=summary["sites"],
-                     missing_sites=self.class_sites[instruction] - summary["sites"],
-                     unresolved_sites=summary["unresolved"],
-                     sequence_sha256=summary["sequence"].hexdigest(), **summary["population"].report())
+                dict(
+                    instruction=instruction,
+                    field=name,
+                    sites=summary["sites"],
+                    missing_sites=self.class_sites[instruction] - summary["sites"],
+                    unresolved_sites=summary["unresolved"],
+                    sequence_sha256=summary["sequence"].hexdigest(),
+                    **summary["population"].report(),
+                )
                 for (instruction, name), summary in sorted(self.fields.items())
             ],
-            field_fingerprint_status="complete" if not (self.omitted_fields or self.omitted_class_sites)
+            field_fingerprint_status="complete"
+            if not (self.omitted_fields or self.omitted_class_sites)
             else "unknown_field_budget_exhausted",
             omitted_field_sites=self.omitted_fields,
             omitted_instruction_class_sites=self.omitted_class_sites,
@@ -133,7 +148,8 @@ class OperandSummary:
                     dict(value=json.loads(value), sites=count)
                     for value, count in sorted(summary["profiles"].items())[:4]
                 ]
-                for (instruction, name), summary in sorted(self.fields.items()) if summary["profiles"]
+                for (instruction, name), summary in sorted(self.fields.items())
+                if summary["profiles"]
             },
             omitted_profile_sites=dict(self.omitted),
             unresolved_fields=dict(self.unresolved),
@@ -166,8 +182,11 @@ def compare_operand_summaries(left, right):
             if a_field is None or b_field is None:
                 reasons.append("field_missing_or_unobserved")
             else:
-                for field, reason in (("sites", "site_count_changed"), ("missing_sites", "missingness_changed"),
-                                      ("unresolved_sites", "unresolved_sites_changed")):
+                for field, reason in (
+                    ("sites", "site_count_changed"),
+                    ("missing_sites", "missingness_changed"),
+                    ("unresolved_sites", "unresolved_sites_changed"),
+                ):
                     if a_field[field] != b_field[field]:
                         reasons.append(reason)
                 if a_field["value_set_sha256"] and b_field["value_set_sha256"]:
@@ -180,15 +199,23 @@ def compare_operand_summaries(left, right):
                     reasons.append("recovered_sequence_changed_population_unknown")
             if reasons:
                 label = instruction + "." + name
-                differences.append(dict(field=label, instruction=instruction, operand_field=name,
-                                        reference=a.get(label), candidate=b.get(label),
-                                        reference_fingerprint=a_field, candidate_fingerprint=b_field,
-                                        scope="listed_instruction_sites", completeness="complete_field_sequences",
-                                        reasons=reasons))
+                differences.append(
+                    dict(
+                        field=label,
+                        instruction=instruction,
+                        operand_field=name,
+                        reference=a.get(label),
+                        candidate=b.get(label),
+                        reference_fingerprint=a_field,
+                        candidate_fingerprint=b_field,
+                        scope="listed_instruction_sites",
+                        completeness="complete_field_sequences",
+                        reasons=reasons,
+                    )
+                )
         # Counts can change on every field at once. Keep recovered value
         # changes visible before filling the bounded reply with those counts.
-        differences.sort(key=lambda row: ("recovered_values_changed" not in row["reasons"],
-                                           row["field"]))
+        differences.sort(key=lambda row: ("recovered_values_changed" not in row["reasons"], row["field"]))
 
     def same(key):
         return left[key] == right[key] if same_schema and left.get(key) and right.get(key) else None
@@ -206,9 +233,11 @@ def compare_operand_summaries(left, right):
         else "different_or_unresolved_operand_population",
         operand_field_differences=differences[:8],
         omitted_field_differences=max(0, len(differences) - 8),
-        field_localization_status="unknown_fingerprint_schema_mismatch" if not same_schema else
-        "complete_observed_field_roster" if all(side.get("field_fingerprint_status") == "complete"
-                                                for side in (left, right)) else "bounded_or_unavailable",
+        field_localization_status="unknown_fingerprint_schema_mismatch"
+        if not same_schema
+        else "complete_observed_field_roster"
+        if all(side.get("field_fingerprint_status") == "complete" for side in (left, right))
+        else "bounded_or_unavailable",
         semantic_alignment="unknown",
         execution_multiplicity="unknown",
     )

@@ -4,7 +4,6 @@ Observations retain their exact supported domain and explicit unknowns.
 No accelerator semantics, execution multiplicity or hardware law is inferred.
 """
 
-
 from dataclasses import replace
 
 from .riscv_decode import (
@@ -136,6 +135,7 @@ def _reenters_without(cfg, start, body, header):
         work.extend(t for t in cfg.succ.get(node, ()) if t in body and t != header)
     return False
 
+
 def _register_name(r):
     return f"x{r}"
 
@@ -169,6 +169,7 @@ def _natural_loops(cfg, observations, outgoing):
         _loop_facts(cfg, loop, loops, observations, outgoing)
     loops.sort(key=lambda loop: loop["header"])
     return loops
+
 
 def _variable_name(var):
     return _register_name(var[1]) if var[0] == "x" else f"frame[{var[1][0]}]:{var[1][1]}"

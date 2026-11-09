@@ -69,8 +69,8 @@ def select_memory_engine(
     rechecking the facts/FIRRTL and engine bytes. It is required before launch,
     after execution, and after decoding; no facts cache may be regenerated here.
     """
-    from merlin.runtime.modelinputs import native_engine, selected_execution_firrtl
     from merlin.runtime.backends import base as backends
+    from merlin.runtime.modelinputs import native_engine, selected_execution_firrtl
     from merlin.targetgen.oracle_policy import selected_l3_engine_report
 
     facts_path = Path(facts_path)

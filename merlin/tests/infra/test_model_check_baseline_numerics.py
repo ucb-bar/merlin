@@ -1,4 +1,5 @@
 """Small supplied arrays exercise strict offline comparisons, never model execution."""
+
 import hashlib
 import json
 
@@ -19,47 +20,111 @@ def pin(path, root):
 
 @pytest.fixture
 def case(tmp_path):
-    outputs = [{"dtype": "f32", "shape": [1, 2]}, {"dtype": "i64", "shape": [1]},
-               {"dtype": "i1", "shape": [1]}]
-    judged = {"kind": "logits", "outputs": [{"program": "model", "output": 0}], "topk": [1],
-              "admission": [{"metric": "cosine", "aggregate": "mean", "min": .98}]}
-    config = write(tmp_path / "models.json", {"schema": "merlin.model_check.models.v1", "target": "fixture",
-        "numerics": {"version": "merlin.model_check.numerics.v1", "report_only": True,
-            "functional": {"atol": 2e-6, "rtol": 1e-5, "equal_nan": False, "finite_required": True,
-                           "integer_boolean": "exact", "outputs": "all_declared_every_step"}},
-        "models": {"example": {"workload": "example", "chain": {"kind": "single"},
-            "programs": [{"name": "model", "inputs": []}], "judged": judged}}})
-    protocol = write(tmp_path / "protocol.json", {"schema": "merlin.fixture.experiment_protocol.v1",
-        "authority": {"numerical_contract": config.name, "evaluation_input_manifest": "evaluation.json"},
-        "profiles": {"quality_v1": {"observations_per_model_per_split": 8}},
-        "models": {"example": {"chain": {"kind": "single"}, "selected_chain_steps": 1,
-            "declared_arrays_per_chain": 3, "stages": {"model": {"steps": 1, "outputs": outputs}}}}})
+    outputs = [{"dtype": "f32", "shape": [1, 2]}, {"dtype": "i64", "shape": [1]}, {"dtype": "i1", "shape": [1]}]
+    judged = {
+        "kind": "logits",
+        "outputs": [{"program": "model", "output": 0}],
+        "topk": [1],
+        "admission": [{"metric": "cosine", "aggregate": "mean", "min": 0.98}],
+    }
+    config = write(
+        tmp_path / "models.json",
+        {
+            "schema": "merlin.model_check.models.v1",
+            "target": "fixture",
+            "numerics": {
+                "version": "merlin.model_check.numerics.v1",
+                "report_only": True,
+                "functional": {
+                    "atol": 2e-6,
+                    "rtol": 1e-5,
+                    "equal_nan": False,
+                    "finite_required": True,
+                    "integer_boolean": "exact",
+                    "outputs": "all_declared_every_step",
+                },
+            },
+            "models": {
+                "example": {
+                    "workload": "example",
+                    "chain": {"kind": "single"},
+                    "programs": [{"name": "model", "inputs": []}],
+                    "judged": judged,
+                }
+            },
+        },
+    )
+    protocol = write(
+        tmp_path / "protocol.json",
+        {
+            "schema": "merlin.fixture.experiment_protocol.v1",
+            "authority": {"numerical_contract": config.name, "evaluation_input_manifest": "evaluation.json"},
+            "profiles": {"quality_v1": {"observations_per_model_per_split": 8}},
+            "models": {
+                "example": {
+                    "chain": {"kind": "single"},
+                    "selected_chain_steps": 1,
+                    "declared_arrays_per_chain": 3,
+                    "stages": {"model": {"steps": 1, "outputs": outputs}},
+                }
+            },
+        },
+    )
     reference = tmp_path / "reference.npz"
-    np.savez(reference, out0=np.array([[1., 2.]], np.float32), out1=np.array([2**62], np.int64),
-             out2=np.array([True]))
+    np.savez(
+        reference, out0=np.array([[1.0, 2.0]], np.float32), out1=np.array([2**62], np.int64), out2=np.array([True])
+    )
     actual = tmp_path / "actual.npz"
     actual.write_bytes(reference.read_bytes())
     fp = tmp_path / "fp.npz"
-    np.savez(fp, out0=np.array([[1., 2.]], np.float32))
+    np.savez(fp, out0=np.array([[1.0, 2.0]], np.float32))
     inputs = tmp_path / "inputs.npz"
     np.savez(inputs, tokens=np.array([[0, 1, 0, 1]], np.int64))
     definition = B.yaml.safe_load(protocol.read_bytes())
     definition["models"]["example"]["external_evaluation_input"] = {
-        "selection": "visible/v00", "sha256": pin(inputs, tmp_path)["sha256"],
-        "derived_member": "visible/v00/inputs.npz"}
+        "selection": "visible/v00",
+        "sha256": pin(inputs, tmp_path)["sha256"],
+        "derived_member": "visible/v00/inputs.npz",
+    }
     write(protocol, definition)
-    evaluation = write(tmp_path / "evaluation.json", {"models": {"example": {"derived": {
-        f"{split}/{prefix}{i:02}/inputs.npz": pin(inputs, tmp_path)["sha256"]
-        for split, prefix in (("visible", "v"), ("sealed", "s")) for i in range(8)}}}})
+    evaluation = write(
+        tmp_path / "evaluation.json",
+        {
+            "models": {
+                "example": {
+                    "derived": {
+                        f"{split}/{prefix}{i:02}/inputs.npz": pin(inputs, tmp_path)["sha256"]
+                        for split, prefix in (("visible", "v"), ("sealed", "s"))
+                        for i in range(8)
+                    }
+                }
+            }
+        },
+    )
     ref_manifest = write(tmp_path / "reference-manifest.json", {"identity_only": True})
-    row = {"id": "v00", "split": "visible", "draw": 0, "input": pin(inputs, tmp_path),
-           "steps": [{"program": "model", "step": 0, "actual": pin(actual, tmp_path),
-                      "reference": pin(reference, tmp_path)}], "quality": {"fp32": pin(fp, tmp_path)}}
-    manifest = write(tmp_path / "manifest.json", {"schema": B.SCHEMA, "protocol": pin(protocol, tmp_path),
-        "numerical_policy": pin(config, tmp_path),
-        "evaluation_inputs": pin(evaluation, tmp_path),
-        "model": "example", "profile": "functional_v1", "reference_manifest": pin(ref_manifest, tmp_path),
-        "cases": [row]})
+    row = {
+        "id": "v00",
+        "split": "visible",
+        "draw": 0,
+        "input": pin(inputs, tmp_path),
+        "steps": [
+            {"program": "model", "step": 0, "actual": pin(actual, tmp_path), "reference": pin(reference, tmp_path)}
+        ],
+        "quality": {"fp32": pin(fp, tmp_path)},
+    }
+    manifest = write(
+        tmp_path / "manifest.json",
+        {
+            "schema": B.SCHEMA,
+            "protocol": pin(protocol, tmp_path),
+            "numerical_policy": pin(config, tmp_path),
+            "evaluation_inputs": pin(evaluation, tmp_path),
+            "model": "example",
+            "profile": "functional_v1",
+            "reference_manifest": pin(ref_manifest, tmp_path),
+            "cases": [row],
+        },
+    )
     return tmp_path, manifest
 
 
@@ -86,15 +151,20 @@ def test_complete_functional_arrays_and_explicit_noncertification(case):
 
 @pytest.mark.parametrize("value,passed", [(1.000005, True), (1.01, False)])
 def test_selected_float_policy_is_used(case, value, passed):
-    change_actual(case, out0=np.array([[value, 2.]], np.float32))
+    change_actual(case, out0=np.array([[value, 2.0]], np.float32))
     assert B.compare(case[1])["functional_passed"] is passed
 
 
-@pytest.mark.parametrize("change", [
-    {"out1": np.array([2**62 + 1], np.int64)}, {"out2": np.array([False])},
-    {"out0": np.array([[1., np.nan]], np.float32)}, {"out0": np.array([1., 2.], np.float32)},
-    {"out0": np.array([[1., 2.]], np.float64)},
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"out1": np.array([2**62 + 1], np.int64)},
+        {"out2": np.array([False])},
+        {"out0": np.array([[1.0, np.nan]], np.float32)},
+        {"out0": np.array([1.0, 2.0], np.float32)},
+        {"out0": np.array([[1.0, 2.0]], np.float64)},
+    ],
+)
 def test_integer_bool_nonfinite_shape_and_dtype_are_not_relaxed(case, change):
     change_actual(case, **change)
     result = B.compare(case[1])
@@ -130,8 +200,11 @@ def test_quality_needs_exact_both_split_cohort_and_available_fp(case):
     write(manifest, spec)
     assert B.compare(manifest)["numerical_status"] == "incomplete"
     original = spec["cases"][0]
-    spec["cases"] = [{**original, "id": f"{prefix}{i:02}", "split": split}
-                     for split, prefix in (("visible", "v"), ("sealed", "s")) for i in range(8)]
+    spec["cases"] = [
+        {**original, "id": f"{prefix}{i:02}", "split": split}
+        for split, prefix in (("visible", "v"), ("sealed", "s"))
+        for i in range(8)
+    ]
     write(manifest, spec)
     assert B.compare(manifest)["quality_admission"]["status"] == "pass"
     spec["cases"][-1] = {**spec["cases"][-1], "quality": {}}
@@ -143,7 +216,7 @@ def test_shape_misaligned_quality_cannot_broadcast(case):
     root, manifest = case
     spec = B.yaml.safe_load(manifest.read_bytes())
     fp = root / "wrong-fp.npz"
-    np.savez(fp, out0=np.array([1., 2.], np.float32))
+    np.savez(fp, out0=np.array([1.0, 2.0], np.float32))
     spec["cases"][0]["quality"] = {"fp32": pin(fp, root)}
     write(manifest, spec)
     result = B.compare(manifest)
@@ -170,29 +243,45 @@ def variant(case, kind):
         chain = {"kind": "causal", "prefill_tokens": 2, "decode_steps": 2}
         stages = {"prefill": {"steps": 1}, "decode": {"steps": 2}}
         shape = [1, 3]
-        judged = {"kind": "next_token_distribution", "outputs": [
-            {"program": "prefill", "output": 0}, {"program": "decode", "output": 0}],
-            "admission": [{"metric": "kl_mean", "aggregate": "mean", "max": .075}],
-            "reporting": {"perplexity": {"targets": "teacher_forced_continuation", "score_tokens": "decode_steps",
-                "exclude_final_decode_logit": True, "padding": "none", "threshold": "report_only"}}}
+        judged = {
+            "kind": "next_token_distribution",
+            "outputs": [{"program": "prefill", "output": 0}, {"program": "decode", "output": 0}],
+            "admission": [{"metric": "kl_mean", "aggregate": "mean", "max": 0.075}],
+            "reporting": {
+                "perplexity": {
+                    "targets": "teacher_forced_continuation",
+                    "score_tokens": "decode_steps",
+                    "exclude_final_decode_logit": True,
+                    "padding": "none",
+                    "threshold": "report_only",
+                }
+            },
+        }
         value = np.zeros(shape, np.float32)
     else:
         chain = {"kind": "flow", "steps": 2}
         stages = {"prefix": {"steps": 1}, "flow": {"steps": 2}, "action": {"steps": 1}}
         shape = [1, 2, 3]
-        judged = {"kind": "per_channel", "outputs": [{"program": "action", "output": 0}],
+        judged = {
+            "kind": "per_channel",
+            "outputs": [{"program": "action", "output": 0}],
             "channels": {"first": 0, "last": 1},
             "reference": {"baseline": "native", "seeds": {"input": "noise", "count": 4}},
-            "admission": [{"metric": "rel_rmse_worst", "aggregate": "mean", "max_ratio_to_baseline": 2.},
-                          {"metric": "rel_rmse_worst", "aggregate": "p90", "max_ratio_to_baseline": 2.}]}
+            "admission": [
+                {"metric": "rel_rmse_worst", "aggregate": "mean", "max_ratio_to_baseline": 2.0},
+                {"metric": "rel_rmse_worst", "aggregate": "p90", "max_ratio_to_baseline": 2.0},
+            ],
+        }
         value = np.full(shape, 1.1, np.float32)
-    model.update(chain=chain, judged=judged, programs=[{"name": p, "steps": s["steps"], "inputs": []}
-                                                    for p, s in stages.items()])
+    model.update(
+        chain=chain, judged=judged, programs=[{"name": p, "steps": s["steps"], "inputs": []} for p, s in stages.items()]
+    )
     for stage in stages.values():
         stage["outputs"] = [{"dtype": "f32", "shape": shape}]
     count = sum(s["steps"] for s in stages.values())
-    protocol["models"]["example"].update(chain=chain, stages=stages, selected_chain_steps=count,
-                                          declared_arrays_per_chain=count)
+    protocol["models"]["example"].update(
+        chain=chain, stages=stages, selected_chain_steps=count, declared_arrays_per_chain=count
+    )
     write(model_path, config)
     write(protocol_path, protocol)
     spec["protocol"] = pin(protocol_path, root)
@@ -206,11 +295,10 @@ def variant(case, kind):
                 array[0, 0] = 1000  # excluded last logit would radically alter PPL if scored
             path = root / f"{p}-{step}.npz"
             np.savez(path, out0=array)
-            row["steps"].append({"program": p, "step": step, "actual": pin(path, root),
-                                  "reference": pin(path, root)})
+            row["steps"].append({"program": p, "step": step, "actual": pin(path, root), "reference": pin(path, root)})
     fp = root / "fp.npz"
     if kind == "tiny":
-        np.savez(fp, out0=np.concatenate([value, value, np.array([[1000., 0, 0]], np.float32)]))
+        np.savez(fp, out0=np.concatenate([value, value, np.array([[1000.0, 0, 0]], np.float32)]))
     else:
         np.savez(fp, out0=np.ones(shape, np.float32))
     native = root / "native.npz"
@@ -225,7 +313,7 @@ def test_true_teacher_forced_ppl_excludes_final_distribution_and_aggregates_toke
     result = B.compare(case[1])
     score = result["cases"][0]["perplexity"]["actual"]
     assert score["scored_tokens"] == 2
-    assert score["ppl"] == pytest.approx(3.)
+    assert score["ppl"] == pytest.approx(3.0)
     assert score["target_positions"] == [2, 3]
     assert score["final_decode_logit_scored"] is False
     assert result["perplexity"]["actual"]["scored_tokens"] == 2
@@ -264,15 +352,20 @@ def test_smol_all_draws_and_native_baseline_are_mandatory_for_quality_admission(
     spec = variant(case, "smol")
     original = spec["cases"][0]
     spec["profile"] = "quality_v1"
-    spec["cases"] = [{**original, "id": f"{prefix}{i:02}", "split": split, "draw": d}
-                     for split, prefix in (("visible", "v"), ("sealed", "s")) for i in range(8) for d in range(4)]
+    spec["cases"] = [
+        {**original, "id": f"{prefix}{i:02}", "split": split, "draw": d}
+        for split, prefix in (("visible", "v"), ("sealed", "s"))
+        for i in range(8)
+        for d in range(4)
+    ]
     write(case[1], spec)
     assert B.compare(case[1])["quality_admission"]["status"] == "pass"
     spec["cases"].pop()
     write(case[1], spec)
     assert B.compare(case[1])["quality_admission"]["status"] == "unavailable"
-    spec["cases"].append({**original, "id": "s07", "split": "sealed", "draw": 3,
-                          "quality": {"fp32": original["quality"]["fp32"]}})
+    spec["cases"].append(
+        {**original, "id": "s07", "split": "sealed", "draw": 3, "quality": {"fp32": original["quality"]["fp32"]}}
+    )
     write(case[1], spec)
     assert B.compare(case[1])["quality_admission"]["status"] == "unavailable"
 
@@ -328,7 +421,8 @@ def test_explicit_protocol_geometry_requires_exact_new_configuration_before_arra
     policy_path, protocol_path = root / "models.json", root / "protocol.json"
     protocol = B.yaml.safe_load(protocol_path.read_bytes())
     protocol["authority"]["models_configuration"] = {
-        "schema": B.MD.PROTOCOL_GEOMETRY_SCHEMA, "chain_source": "protocol.models",
+        "schema": B.MD.PROTOCOL_GEOMETRY_SCHEMA,
+        "chain_source": "protocol.models",
     }
     protocol["models"]["example"]["chain"]["prefill_tokens"] = 1
     write(protocol_path, protocol)

@@ -101,18 +101,25 @@ def layout_bufferization_dialect():
 
         def verify_(self):
             source, result = self.tensor.type, self.memref.type
-            if (isinstance(source, builtin.TensorType) != isinstance(result, builtin.MemRefType)
-                    or source.element_type != result.element_type):
+            if (
+                isinstance(source, builtin.TensorType) != isinstance(result, builtin.MemRefType)
+                or source.element_type != result.element_type
+            ):
                 raise VerifyException("to_buffer requires matching tensor/buffer rank and element type")
             if isinstance(source, builtin.TensorType) and source.get_shape() != result.get_shape():
                 raise VerifyException("to_buffer requires identical tensor/buffer shapes")
-            if (isinstance(result, builtin.MemRefType) and isinstance(result.layout, builtin.StridedLayoutAttr)
-                    and len(result.layout.strides) != len(result.get_shape())):
+            if (
+                isinstance(result, builtin.MemRefType)
+                and isinstance(result.layout, builtin.StridedLayoutAttr)
+                and len(result.layout.strides) != len(result.get_shape())
+            ):
                 raise VerifyException("to_buffer strided layout must retain every ranked dimension")
 
-    return Dialect("bufferization", [LayoutToBufferOp if op is bufferization.ToBufferOp else op
-                                     for op in bufferization.Bufferization.operations],
-                   list(bufferization.Bufferization.attributes))
+    return Dialect(
+        "bufferization",
+        [LayoutToBufferOp if op is bufferization.ToBufferOp else op for op in bufferization.Bufferization.operations],
+        list(bufferization.Bufferization.attributes),
+    )
 
 
 def make_context():
@@ -132,7 +139,7 @@ def make_context():
     # BEFORE any parse, exactly as `xdsl_dialects._common.make_context` does. Without this the two
     # context builders disagree: a capsule spelling `f8E4M3FN` -- or an ordinary `arith.truncf %x :
     # f32 to f8E4M3FN` requantize -- loads through one reader and fails `type expected` in the other.
-    from ..xdsl_dialects.fp8 import register_fp8_float_constraints, register_fp8_types, register_fp8_linalg_named_ops
+    from ..xdsl_dialects.fp8 import register_fp8_float_constraints, register_fp8_linalg_named_ops, register_fp8_types
 
     register_fp8_types()
     register_fp8_float_constraints()

@@ -783,8 +783,10 @@ def _kernel_objects(rows: list[dict[str, Any]], *, target: str, out: Path, jobs:
         with contextlib.suppress(Exception):  # noqa: BLE001 -- pruning is an optimization, never a build dependency
             prune_object_cache(cache_root)
     # WHAT THE DEDUPE BOUGHT: a repeated model block emits byte-identical artifacts, compiled once each.
-    return {"unique_signatures": len({row["compiled_signature"] for row in answered if "compiled_signature" in row}),
-            "total_groups": len(answered)}
+    return {
+        "unique_signatures": len({row["compiled_signature"] for row in answered if "compiled_signature" in row}),
+        "total_groups": len(answered),
+    }
 
 
 # ------------------------------------------------------------------------------------ corpus binding

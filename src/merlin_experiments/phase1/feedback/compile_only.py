@@ -804,8 +804,11 @@ def _observe(
                 workspace=common_service.workspace,
                 public_root=Path(public_artifact_root).absolute() / f"case-{index:03d}",
                 private_root=registry_root(common_service.bundle_manifest),
-                generated=root / "generated", build_root=root / "build", compiler=candidate,
-                entry_symbol=entry_symbol, compiler_snapshot_sha256=original_compiler_sha,
+                generated=root / "generated",
+                build_root=root / "build",
+                compiler=candidate,
+                entry_symbol=entry_symbol,
+                compiler_snapshot_sha256=original_compiler_sha,
             )
     result = {
         "schema": SCHEMA,

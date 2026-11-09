@@ -28,8 +28,8 @@ import copy
 import struct
 from typing import Any
 
-from merlin.common.facts_view import interface as _facts_interface
 from merlin.analysis.rocc_commands import fields_of
+from merlin.common.facts_view import interface as _facts_interface
 
 #: Width of the R-type ``funct7`` field that carries a RoCC instruction's identity. This is the RISC-V
 #: RoCC transport itself (``.insn r opcode, funct3, funct7, rd, rs1, rs2``), not a property of any
@@ -249,8 +249,14 @@ def _compile_field(cls: str, spec: dict, layouts: dict, flags: dict[str, int]) -
     if not isinstance(name, str) or not name:
         raise OperandRolesError(f"{cls}: a field entry has no name")
     if "all" in spec:
-        return [{"name": name, "as": "all_equals", "predicates": copy.deepcopy(spec["all"]),
-                 **({"set": spec["set"], "clear": spec["clear"]} if "set" in spec else {})}]
+        return [
+            {
+                "name": name,
+                "as": "all_equals",
+                "predicates": copy.deepcopy(spec["all"]),
+                **({"set": spec["set"], "clear": spec["clear"]} if "set" in spec else {}),
+            }
+        ]
     if "const" in spec:
         return [{"name": name, "as": "const", "value": spec["const"]}]
     if "from" in spec:
@@ -362,13 +368,24 @@ def _known_bits(operand, *, word_bits=None):
     known = operand.get("known_bits")
     if known is None:
         return None
-    if (operand.get("kind") != "unknown" or operand.get("raw") is not None
-            or type(known) is not dict or set(known) != {"mask", "value", "width"}):
+    if (
+        operand.get("kind") != "unknown"
+        or operand.get("raw") is not None
+        or type(known) is not dict
+        or set(known) != {"mask", "value", "width"}
+    ):
         raise ValueError("partial register observation requires explicit unknown-word bit identities")
     width, mask, value = known["width"], known["mask"], known["value"]
-    if (type(width) is not int or not 0 < width <= 256 or (word_bits is not None and width != word_bits)
-            or type(mask) is not int or type(value) is not int or not 0 <= mask < (1 << width)
-            or not 0 <= value < (1 << width) or value & ~mask):
+    if (
+        type(width) is not int
+        or not 0 < width <= 256
+        or (word_bits is not None and width != word_bits)
+        or type(mask) is not int
+        or type(value) is not int
+        or not 0 <= mask < (1 << width)
+        or not 0 <= value < (1 << width)
+        or value & ~mask
+    ):
         raise ValueError("partial register observation exceeds its proved width or mask")
     return width, mask, value
 
@@ -409,8 +426,10 @@ def _decode_fields(program: dict, rs1: dict, rs2: dict) -> dict:
             dec[name] = dict(ops[step["operand"]])
             continue
         if kind == "all_equals":
-            values = [None if dec.get(predicate["from"]) is None else
-                      dec[predicate["from"]] == predicate["equals"] for predicate in step["predicates"]]
+            values = [
+                None if dec.get(predicate["from"]) is None else dec[predicate["from"]] == predicate["equals"]
+                for predicate in step["predicates"]
+            ]
             value = False if False in values else None if None in values else True
             if value is not None and "set" in step:
                 value = step["set"] if value else step["clear"]
@@ -420,8 +439,9 @@ def _decode_fields(program: dict, rs1: dict, rs2: dict) -> dict:
         elif kind == "raw":
             value = raws[step["operand"]]
         else:
-            bits = _extract_operand(ops[step["operand"]], step,
-                                    flag_mask=step.get("mask") if kind in ("flag", "flag_choice") else None)
+            bits = _extract_operand(
+                ops[step["operand"]], step, flag_mask=step.get("mask") if kind in ("flag", "flag_choice") else None
+            )
             if bits is None:
                 value = None
             elif kind == "int":
@@ -601,8 +621,11 @@ class BoundSemantics:
             from .normalized_operands import BoundOperandObserver
 
             self.operand_observer = BoundOperandObserver(
-                target=target, protocol=contract["rocc_operand_protocol"], facts=facts,
-                raw_isa=self._isa, word_bits=self._width,
+                target=target,
+                protocol=contract["rocc_operand_protocol"],
+                facts=facts,
+                raw_isa=self._isa,
+                word_bits=self._width,
             )
         self.legal_codes = frozenset(codes)
         self.complete_decode = table.get("scope") == "complete_rocc_funct7" and table.get("complete_isa") is True
@@ -637,7 +660,8 @@ class BoundSemantics:
                 raise ValueError("operand observation exceeds the selected register width")
             for name, (offset, width) in fields.get(slot, {}).items():
                 decoded[f"{slot}.{name}"] = (
-                    (raw >> offset) & ((1 << width) - 1) if raw is not None
+                    (raw >> offset) & ((1 << width) - 1)
+                    if raw is not None
                     else _extract_operand(operand, {"offset": offset, "width": width})
                 )
         return label, decoded

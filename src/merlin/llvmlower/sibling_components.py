@@ -56,14 +56,20 @@ def prepare_sibling_components(module, *, effects, max_members=8, max_components
     # source identity refer to the same normalized source, rather than dozens
     # of whole-graph snapshots of successive intermediate rewrites.
     normalized_sha256 = sha256(text(current, generic=True).encode()).hexdigest()
-    source_positions = {op: i for owner in current.body.block.ops if isinstance(owner, func.FuncOp)
-                        for block in owner.body.blocks for i, op in enumerate(block.ops)}
+    source_positions = {
+        op: i
+        for owner in current.body.block.ops
+        if isinstance(owner, func.FuncOp)
+        for block in owner.body.blocks
+        for i, op in enumerate(block.ops)
+    }
     # Roots keep their SSA identities on this one normalized private clone.
     # Retain the shared shape analysis while disjoint components are replaced;
     # no new contraction becomes eligible from an earlier component rewrite.
     readout_extents = None
     if output_path is not None:
         from merlin.compiler.ir.contraction_shapes import contraction_extents
+
         readout_extents = contraction_extents(current)
     components, attempts = [], []
     while len(components) < max_components:
@@ -91,10 +97,13 @@ def prepare_sibling_components(module, *, effects, max_members=8, max_components
                 try:
                     plan = _plan_sibling_contractions(current, selected, symbol=symbol)
                     if output_path is not None:
-                        from .sibling_readouts import extend_sibling_readouts
                         from merlin.xdsl_dialects.lowering.output_fusion import Values
-                        plan = extend_sibling_readouts(plan, path=output_path, values=values or Values(),
-                                                       extents=readout_extents)
+
+                        from .sibling_readouts import extend_sibling_readouts
+
+                        plan = extend_sibling_readouts(
+                            plan, path=output_path, values=values or Values(), extents=readout_extents
+                        )
                 except ValueError as error:
                     attempts.append({"selected": False, "reason": str(error)})
                     continue
@@ -102,28 +111,36 @@ def prepare_sibling_components(module, *, effects, max_members=8, max_components
                 # plan. Any writer/graph failure aborts this entire clone.
                 _apply_sibling_contractions(plan)
                 writer = _prepare_sibling_writer(current, symbol=symbol, effects=effects)
-                components.append(SiblingComponent(plan.core, writer, {
-                    "schema": "merlin.original_sibling_source_host.v2",
-                    "view_cse": [],
-                    "readouts": plan.receipt.get("readouts", []),
-                    "outline": {
-                        "schema": "merlin.source_sibling_contraction_batch.v1",
-                        "source_ir_sha256": normalized_sha256,
-                        "source_root_ordinals": [source_positions[op] for op in selected],
-                        "source_geometries": plan.receipt["source_geometries"],
-                        "source_hoisted_preparation_ordinals": sorted(source_positions[op] for op in plan.hoisted),
-                        "core_ir_sha256": sha256(text(plan.core, generic=True).encode()).hexdigest(),
-                        "source_operation_coordinate_system": "normalized_batch_source",
-                        "same_lhs_ssa": True,
-                        "original_epilogues_and_observers_preserved": True,
-                        "original_full_source_unchanged": True,
-                        "target_implementation_or_effect_admission": False,
-                        "target_execution": False,
-                    },
-                    "source_unchanged": True,
-                    "original_epilogues_and_all_live_outputs_preserved": True,
-                    "physical_effects_and_target_execution_established": False,
-                }))
+                components.append(
+                    SiblingComponent(
+                        plan.core,
+                        writer,
+                        {
+                            "schema": "merlin.original_sibling_source_host.v2",
+                            "view_cse": [],
+                            "readouts": plan.receipt.get("readouts", []),
+                            "outline": {
+                                "schema": "merlin.source_sibling_contraction_batch.v1",
+                                "source_ir_sha256": normalized_sha256,
+                                "source_root_ordinals": [source_positions[op] for op in selected],
+                                "source_geometries": plan.receipt["source_geometries"],
+                                "source_hoisted_preparation_ordinals": sorted(
+                                    source_positions[op] for op in plan.hoisted
+                                ),
+                                "core_ir_sha256": sha256(text(plan.core, generic=True).encode()).hexdigest(),
+                                "source_operation_coordinate_system": "normalized_batch_source",
+                                "same_lhs_ssa": True,
+                                "original_epilogues_and_observers_preserved": True,
+                                "original_full_source_unchanged": True,
+                                "target_implementation_or_effect_admission": False,
+                                "target_execution": False,
+                            },
+                            "source_unchanged": True,
+                            "original_epilogues_and_all_live_outputs_preserved": True,
+                            "physical_effects_and_target_execution_established": False,
+                        },
+                    )
+                )
                 success = True
                 break
             if success:

@@ -6,27 +6,20 @@ from itertools import product
 import numpy as np
 import pytest
 
-from merlin.compiler.schedule.batched_dense import BatchedDenseProblem
-from merlin.compiler.schedule.batched_dense import BatchMatrixView
-from merlin.compiler.schedule.batched_dense import counted_batched_dense_products
-from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
-from merlin.compiler.schedule.llvm_program import emit_index_program
+from merlin.compiler.schedule.batched_dense import BatchedDenseProblem, BatchMatrixView, counted_batched_dense_products
+from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter, emit_index_program
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.sched.ir import check_structure, concretize, instances
 from merlin.sched.ir.parse import parse_kernel
 
 CASES = (
-    BatchedDenseProblem((5,), BatchMatrixView((5, 3, 7), (0,)),
-                        BatchMatrixView((5, 7, 19), (0,))),
+    BatchedDenseProblem((5,), BatchMatrixView((5, 3, 7), (0,)), BatchMatrixView((5, 7, 19), (0,))),
     # Independent planes share the other operand and retain every combination.
-    BatchedDenseProblem((2, 3, 5), BatchMatrixView((2, 5, 3, 7), (0, 2)),
-                        BatchMatrixView((3, 5, 7, 4), (1, 2))),
+    BatchedDenseProblem((2, 3, 5), BatchMatrixView((2, 5, 3, 7), (0, 2)), BatchMatrixView((3, 5, 7, 4), (1, 2))),
     # Physical batch dimensions need not have logical order. RHS is broadcast.
-    BatchedDenseProblem((2, 3), BatchMatrixView((3, 2, 7, 1), (1, 0), True),
-                        BatchMatrixView((5, 7), (), True)),
+    BatchedDenseProblem((2, 3), BatchMatrixView((3, 2, 7, 1), (1, 0), True), BatchMatrixView((5, 7), (), True)),
     # Neither read physically has either batch axis; outputs remain distinct.
-    BatchedDenseProblem((3, 2), BatchMatrixView((19, 13), ()),
-                        BatchMatrixView((13, 7), ())),
+    BatchedDenseProblem((3, 2), BatchMatrixView((19, 13), ()), BatchMatrixView((13, 7), ())),
 )
 
 
@@ -47,8 +40,12 @@ def reference_offsets(problem):
             physical = (*tuple(at[axis] for axis in view.batch_axes), 0, 0)
             projected.append(int(np.ravel_multi_index(physical, view.shape)))
         logical = int(np.ravel_multi_index(at, problem.batch_shape))
-        yield {"product": logical, "lhs_offset": projected[0],
-               "rhs_offset": projected[1], "output_offset": logical * problem.m * problem.n}
+        yield {
+            "product": logical,
+            "lhs_offset": projected[0],
+            "rhs_offset": projected[1],
+            "output_offset": logical * problem.m * problem.n,
+        }
 
 
 @pytest.mark.parametrize("problem", CASES)
@@ -72,12 +69,12 @@ def test_emitted_element_offsets_cover_every_original_product_and_output(problem
         for array, view, key in ((a, problem.lhs, "lhs_offset"), (b, problem.rhs, "rhs_offset")):
             offset = values[key]
             size = np.prod(view.shape[-2:])
-            matrix = array.reshape(-1)[offset:offset + size].reshape(view.shape[-2:])
+            matrix = array.reshape(-1)[offset : offset + size].reshape(view.shape[-2:])
             operands.append(matrix.T if view.transposed else matrix)
         offset = values["output_offset"]
         size = problem.m * problem.n
-        output[offset:offset + size] = (operands[0].astype(np.int64) @ operands[1].astype(np.int64)).reshape(-1)
-        written[offset:offset + size] += 1
+        output[offset : offset + size] = (operands[0].astype(np.int64) @ operands[1].astype(np.int64)).reshape(-1)
+        written[offset : offset + size] += 1
 
     receipt = emit_index_program(kernel, ExecutingBuilder(), lower)
     assert emitted == original
@@ -87,7 +84,8 @@ def test_emitted_element_offsets_cover_every_original_product_and_output(problem
         aa = a[tuple(at[axis] for axis in problem.lhs.batch_axes)]
         bb = b[tuple(at[axis] for axis in problem.rhs.batch_axes)]
         expected[at] = (aa.T if problem.lhs.transposed else aa).astype(np.int64) @ (
-            bb.T if problem.rhs.transposed else bb).astype(np.int64)
+            bb.T if problem.rhs.transposed else bb
+        ).astype(np.int64)
     np.testing.assert_array_equal(output[:-6].reshape(problem.output_shape), expected)
     np.testing.assert_array_equal(written[:-6], 1)
     np.testing.assert_array_equal(output[-6:], -777)
@@ -105,14 +103,20 @@ def test_actual_llvm_consumer_keeps_batch_axes_counted(problem):
 
     def lower(instruction, values):
         assert instruction == "matrix"
-        builder.add(llvm.CallOp("original_product", *(bridge.value(values[key]) for key in
-            ("product", "lhs_offset", "rhs_offset", "output_offset"))))
+        builder.add(
+            llvm.CallOp(
+                "original_product",
+                *(bridge.value(values[key]) for key in ("product", "lhs_offset", "rhs_offset", "output_offset")),
+            )
+        )
 
     emitted = emit_index_program(kernel, bridge, lower)
-    module = ModuleOp([
-        llvm.FuncOp("original_product", llvm.LLVMFunctionType([i64] * 4, llvm.LLVMVoidType())),
-        llvm.FuncOp("batch", llvm.LLVMFunctionType([], llvm.LLVMVoidType()), body=builder.finish()),
-    ])
+    module = ModuleOp(
+        [
+            llvm.FuncOp("original_product", llvm.LLVMFunctionType([i64] * 4, llvm.LLVMVoidType())),
+            llvm.FuncOp("batch", llvm.LLVMFunctionType([], llvm.LLVMVoidType()), body=builder.finish()),
+        ]
+    )
     module.verify()
     assert emitted["kernel_sha256"] == kernel.digest()
     assert sum(isinstance(op, llvm.CallOp) for op in module.walk()) == 1

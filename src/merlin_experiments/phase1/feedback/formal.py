@@ -515,10 +515,9 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
 
     from .snapshot_execution import selected as external_snapshot_selected
     from .snapshot_inputs import SnapshotInputs
+
     owner_type = SnapshotInputs if external_snapshot_selected() else CommonTransformService
-    owner = owner_type(
-        workspace=early.workspace.absolute(), bundle_manifest=manifest, repo=original_context.repo
-    )
+    owner = owner_type(workspace=early.workspace.absolute(), bundle_manifest=manifest, repo=original_context.repo)
     from merlin.targetgen.target_experiment import load_target_experiment
     from merlin_experiments.phase1.feedback.compiler_profile_runtime import original_compiler_execution
 

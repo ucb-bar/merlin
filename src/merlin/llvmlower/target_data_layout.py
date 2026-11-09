@@ -70,8 +70,16 @@ def selected_index_bits(observed: object) -> int | None:
     compiler/LLVM probe output for an implicit default; neither supplies source,
     numerical or linked-build permission.
     """
-    fields = {"schema", "compiler_requested", "compiler_resolved", "compiler_sha256",
-              "cross_flags", "data_layout", "index_bits", "scope"}
+    fields = {
+        "schema",
+        "compiler_requested",
+        "compiler_resolved",
+        "compiler_sha256",
+        "cross_flags",
+        "data_layout",
+        "index_bits",
+        "scope",
+    }
     if not isinstance(observed, Mapping):
         return None
     version = observed.get("schema")
@@ -81,10 +89,13 @@ def selected_index_bits(observed: object) -> int | None:
         return None
     if set(observed) != fields or (
         type(observed.get("index_bits")) is not int
-        or not all(type(observed.get(key)) is str and bool(observed[key])
-                   for key in ("compiler_requested", "compiler_resolved", "data_layout", "scope"))
+        or not all(
+            type(observed.get(key)) is str and bool(observed[key])
+            for key in ("compiler_requested", "compiler_resolved", "data_layout", "scope")
+        )
         or not is_sha256(observed.get("compiler_sha256"))
-        or type(observed.get("cross_flags")) is not list or not observed["cross_flags"]
+        or type(observed.get("cross_flags")) is not list
+        or not observed["cross_flags"]
         or any(type(flag) is not str or not flag for flag in observed["cross_flags"])
     ):
         return None
@@ -94,8 +105,12 @@ def selected_index_bits(observed: object) -> int | None:
         else:
             if _has_default_pointer(observed["data_layout"]):
                 return None
-            bits = _implicit_bits(observed["data_layout"], observed["pointer_observation"],
-                                  observed["compiler_resolved"], observed["cross_flags"])
+            bits = _implicit_bits(
+                observed["data_layout"],
+                observed["pointer_observation"],
+                observed["compiler_resolved"],
+                observed["cross_flags"],
+            )
         return bits if bits == observed["index_bits"] else None
     except (ValueError, TypeError):
         return None
@@ -139,12 +154,29 @@ def _representation_bits(ir, layout):
     if parse(ir) != layout or len(rows) != 1 or rows[0][:3] != ["@", "merlin_pointer_representation_bits", "="]:
         raise ValueError("compiler did not report one pointer representation under its selected layout")
     row = rows[0][3:]
-    prefixes = {"dso_local", "dso_preemptable", "local_unnamed_addr", "unnamed_addr", "hidden", "protected",
-                "internal", "private", "weak", "weak_odr", "linkonce", "linkonce_odr"}
+    prefixes = {
+        "dso_local",
+        "dso_preemptable",
+        "local_unnamed_addr",
+        "unnamed_addr",
+        "hidden",
+        "protected",
+        "internal",
+        "private",
+        "weak",
+        "weak_odr",
+        "linkonce",
+        "linkonce_odr",
+    }
     while row and row[0] in prefixes:
         row = row[1:]
-    if (len(row) < 3 or row[0] != "constant" or not row[1].startswith("i") or
-            not row[1][1:].isdecimal() or not row[2].isdecimal()):
+    if (
+        len(row) < 3
+        or row[0] != "constant"
+        or not row[1].startswith("i")
+        or not row[1][1:].isdecimal()
+        or not row[2].isdecimal()
+    ):
         raise ValueError("compiler pointer representation is not one constant integer definition")
     bits, suffix = int(row[2]), row[3:]
     while suffix:
@@ -166,19 +198,20 @@ def _gep_source(layout, bits):
     # No inbounds/nuw/nsw promise: the offset is allowed to wrap. LLVM truncates
     # it to the GEP index width. The high representation bit survives exactly
     # when that width equals the pointer representation (LangRef Data Layout).
-    return (f'target datalayout = "{layout}"\n'
-            f'define i{bits + 1} @merlin_pointer_index() {{\n'
-            f'  %p = getelementptr i8, ptr null, i{bits + 1} {1 << (bits - 1)}\n'
-            f'  %n = ptrtoint ptr %p to i{bits + 1}\n'
-            f'  ret i{bits + 1} %n\n}}\n')
+    return (
+        f'target datalayout = "{layout}"\n'
+        f"define i{bits + 1} @merlin_pointer_index() {{\n"
+        f"  %p = getelementptr i8, ptr null, i{bits + 1} {1 << (bits - 1)}\n"
+        f"  %n = ptrtoint ptr %p to i{bits + 1}\n"
+        f"  ret i{bits + 1} %n\n}}\n"
+    )
 
 
 def _check_gep(ir, layout, bits):
     if parse(ir) != layout:
         raise ValueError("implicit pointer LLVM probe changed its selected layout")
     rows = _llvm_rows(ir)
-    starts = [index for index, row in enumerate(rows)
-              if row[0] == "define" and "merlin_pointer_index" in row]
+    starts = [index for index, row in enumerate(rows) if row[0] == "define" and "merlin_pointer_index" in row]
     if len(starts) != 1:
         raise ValueError("implicit pointer LLVM probe has no unique function definition")
     start = starts[0]
@@ -203,8 +236,9 @@ def _check_gep(ir, layout, bits):
     if body and len(body[0]) == 2 and body[0][-1] == ":":
         body = body[1:]
     if body != [["ret", f"i{bits + 1}", str(1 << (bits - 1))]]:
-        raise ValueError("compiler pointer and LLVM GEP index widths differ or remain unobserved; "
-                         "memref ABI is unverified")
+        raise ValueError(
+            "compiler pointer and LLVM GEP index widths differ or remain unobserved; memref ABI is unverified"
+        )
     return bits
 
 
@@ -213,17 +247,32 @@ def _probe_argv(clang, flags, language):
 
 
 def _implicit_bits(layout, evidence, compiler, flags):
-    fields = {"schema", "representation_source", "representation_ir", "representation_ir_sha256",
-              "gep_source", "gep_source_sha256", "gep_ir", "gep_ir_sha256", "representation_argv", "gep_argv",
-              "observer_source", "observer_sha256"}
+    fields = {
+        "schema",
+        "representation_source",
+        "representation_ir",
+        "representation_ir_sha256",
+        "gep_source",
+        "gep_source_sha256",
+        "gep_ir",
+        "gep_ir_sha256",
+        "representation_argv",
+        "gep_argv",
+        "observer_source",
+        "observer_sha256",
+    }
     strings = fields - {"representation_argv", "gep_argv"}
-    if (type(evidence) is not dict or set(evidence) != fields or
-            evidence.get("schema") != "merlin.implicit-pointer-observation.v1" or
-            any(type(evidence[key]) is not str for key in strings) or
-            evidence["representation_source"] != _POINTER_SOURCE or
-            not evidence["observer_source"] or not is_sha256(evidence["observer_sha256"]) or
-            evidence["representation_argv"] != _probe_argv(compiler, flags, "c") or
-            evidence["gep_argv"] != _probe_argv(compiler, flags, "ir")):
+    if (
+        type(evidence) is not dict
+        or set(evidence) != fields
+        or evidence.get("schema") != "merlin.implicit-pointer-observation.v1"
+        or any(type(evidence[key]) is not str for key in strings)
+        or evidence["representation_source"] != _POINTER_SOURCE
+        or not evidence["observer_source"]
+        or not is_sha256(evidence["observer_sha256"])
+        or evidence["representation_argv"] != _probe_argv(compiler, flags, "c")
+        or evidence["gep_argv"] != _probe_argv(compiler, flags, "ir")
+    ):
         raise ValueError("implicit pointer width requires complete original compiler/LLVM probe records")
     for name in ("representation_ir", "gep_source", "gep_ir"):
         if not is_sha256(evidence[name + "_sha256"]) or _hash(evidence[name]) != evidence[name + "_sha256"]:
@@ -235,8 +284,9 @@ def _implicit_bits(layout, evidence, compiler, flags):
 
 
 def _probe(clang, flags, source, language):
-    done = subprocess.run(_probe_argv(clang, flags, language),
-                          input=source, capture_output=True, text=True, timeout=120)
+    done = subprocess.run(
+        _probe_argv(clang, flags, language), input=source, capture_output=True, text=True, timeout=120
+    )
     if done.returncode:
         raise RuntimeError(f"{clang} failed selected {language} pointer observation: {done.stderr[-500:]}")
     return done.stdout
@@ -249,12 +299,20 @@ def _observe_implicit(clang, flags, layout, observer_source, observer_sha256):
     result = _probe(clang, flags, source, "ir")
     if sha256_file(observer_source) != observer_sha256:
         raise ValueError("selected implicit-pointer observer source changed during observation")
-    evidence = {"schema": "merlin.implicit-pointer-observation.v1", "representation_source": _POINTER_SOURCE,
-                "representation_ir": representation, "representation_ir_sha256": _hash(representation),
-                "gep_source": source, "gep_source_sha256": _hash(source),
-                "gep_ir": result, "gep_ir_sha256": _hash(result),
-                "representation_argv": _probe_argv(clang, flags, "c"), "gep_argv": _probe_argv(clang, flags, "ir"),
-                "observer_source": str(observer_source), "observer_sha256": observer_sha256}
+    evidence = {
+        "schema": "merlin.implicit-pointer-observation.v1",
+        "representation_source": _POINTER_SOURCE,
+        "representation_ir": representation,
+        "representation_ir_sha256": _hash(representation),
+        "gep_source": source,
+        "gep_source_sha256": _hash(source),
+        "gep_ir": result,
+        "gep_ir_sha256": _hash(result),
+        "representation_argv": _probe_argv(clang, flags, "c"),
+        "gep_argv": _probe_argv(clang, flags, "ir"),
+        "observer_source": str(observer_source),
+        "observer_sha256": observer_sha256,
+    }
     return _implicit_bits(layout, evidence, str(clang), flags), evidence
 
 

@@ -65,7 +65,8 @@ def test_actual_finish_hook_accepts_only_the_exact_archived_test(monkeypatch, tm
 
 
 @pytest.mark.parametrize(
-    "name", ["merlin.codegen", "merlin.tests.targetgen.test_other", "merlin_experiments.phase0.driver", "merlin_dse.engine"]
+    "name",
+    ["merlin.codegen", "merlin.tests.targetgen.test_other", "merlin_experiments.phase0.driver", "merlin_dse.engine"],
 )
 def test_pinned_test_file_cannot_disguise_an_external_production_or_other_test(monkeypatch, tmp_path, probe, name):
     path, _, _ = roster(monkeypatch, tmp_path)
@@ -173,7 +174,9 @@ def test_actual_pytest_archive_import_preserves_the_installed_parent(monkeypatch
     monkeypatch.setenv("MERLIN_TEST_ARCHIVED_SOURCES", str(receipt))
     monkeypatch.setattr(probe, "sys", sys)
     saved = {
-        name: module for name, module in sys.modules.items() if name.split(".")[0] in {"merlin", "merlin_experiments", "merlin_dse"}
+        name: module
+        for name, module in sys.modules.items()
+        if name.split(".")[0] in {"merlin", "merlin_experiments", "merlin_dse"}
     }
     for name in saved:
         del sys.modules[name]

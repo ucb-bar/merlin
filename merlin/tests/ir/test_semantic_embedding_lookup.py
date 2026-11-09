@@ -30,7 +30,10 @@ SOURCE = """module {
 
 def _request(source: str = SOURCE, *, constants: dict[int, bytes] | None = None):
     return translate_linalg_text(
-        source, entry="forward", target_identity="synthetic", argument_constants=constants,
+        source,
+        entry="forward",
+        target_identity="synthetic",
+        argument_constants=constants,
     )
 
 
@@ -41,17 +44,32 @@ def test_runtime_embedding_preserves_exact_bits_and_round_trips():
     assert lookup.op == "embedding_lookup"
     assert lookup.inputs == ("arg1", "arg0")
     assert dict(lookup.attrs) == {
-        "index_domain": "nonnegative-below-table-rows", "minimum_index_bits": 3,
+        "index_domain": "nonnegative-below-table-rows",
+        "minimum_index_bits": 3,
     }
     assert KernelRequest.from_record(request.record()).digest() == request.digest()
-    table = TensorValue(request.node("arg0").type, (
-        0x80000000, 0x7FC00001, 0x3F800000, 0x00000000, 0xBF800000, 0x7F800000,
-    ))
+    table = TensorValue(
+        request.node("arg0").type,
+        (
+            0x80000000,
+            0x7FC00001,
+            0x3F800000,
+            0x00000000,
+            0xBF800000,
+            0x7F800000,
+        ),
+    )
     ids = TensorValue(request.node("arg1").type, (2, 0, 2, 1))
-    output, = evaluate_graph(request, {"arg0": table, "arg1": ids})
+    (output,) = evaluate_graph(request, {"arg0": table, "arg1": ids})
     assert output.elements == (
-        0xBF800000, 0x7F800000, 0x80000000, 0x7FC00001,
-        0xBF800000, 0x7F800000, 0x3F800000, 0x00000000,
+        0xBF800000,
+        0x7F800000,
+        0x80000000,
+        0x7FC00001,
+        0xBF800000,
+        0x7F800000,
+        0x3F800000,
+        0x00000000,
     )
 
 
@@ -81,12 +99,16 @@ def test_declared_i64_constant_is_checked_against_its_exact_bytes():
     with pytest.raises(ValueError, match="signed i64 constant"):
         request.constants[0].validate_type(TensorType((2, 2), "i64", "raw-bit-pattern"))
     table = TensorValue(request.node("arg0").type, (10, 11, 20, 21, 30, 31))
-    output, = evaluate_graph(request, {"arg0": table}, constants=translated.constants)
+    (output,) = evaluate_graph(request, {"arg0": table}, constants=translated.constants)
     assert output.elements == (30, 31, 10, 11, 30, 31, 20, 21)
     with pytest.raises(ValueError, match="reference constant differs"):
-        evaluate_graph(request, {"arg0": table}, constants={
-            "arg1": TensorValue(request.node("arg1").type, (1, 0, 2, 1)),
-        })
+        evaluate_graph(
+            request,
+            {"arg0": table},
+            constants={
+                "arg1": TensorValue(request.node("arg1").type, (1, 0, 2, 1)),
+            },
+        )
 
 
 @pytest.mark.parametrize("index", [-1, 3])
@@ -146,7 +168,8 @@ def test_embedding_source_mutations_refuse(old: str, new: str):
 
 def test_multiple_consumers_of_indices_are_preserved():
     source = SOURCE.replace(
-        "-> tensor<2x2x2xf32> {", "-> (tensor<2x2x2xf32>, tensor<2x2xi64>) {",
+        "-> tensor<2x2x2xf32> {",
+        "-> (tensor<2x2x2xf32>, tensor<2x2xi64>) {",
     ).replace(
         "return %result : tensor<2x2x2xf32>",
         "return %result, %ids : tensor<2x2x2xf32>, tensor<2x2xi64>",

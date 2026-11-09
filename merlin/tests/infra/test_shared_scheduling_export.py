@@ -12,8 +12,7 @@ from pathlib import Path
 import pytest
 
 from merlin.common.paths import repo_root
-from merlin.compiler.schedule.export import PUBLIC_MODULES
-from merlin.compiler.schedule.export import export_shared_scheduling
+from merlin.compiler.schedule.export import PUBLIC_MODULES, export_shared_scheduling
 from merlin.compiler.schedule.library_sources import LIBRARY_MODULES
 from merlin.targetgen.compiler_library import CompilerLibraryError, freeze_compiler_library
 from merlin.targetgen.package_runtime import _py_imports_merlin
@@ -70,16 +69,19 @@ def test_export_is_deterministic_exact_and_import_closed(tmp_path):
         assert _py_imports_merlin("import " + module, compiler_library=contract) is not None
 
 
-@pytest.mark.parametrize("name,selected_version", [
-    ("merlin.compile.scheduling.compact_loaded_sum", 8),
-    ("merlin.compile.scheduling.spatial_producer", 10),
-    ("merlin.compile.scheduling.spatial_readout", 10),
-    ("merlin.llvmlower.spatial_scratch_abi", 11),
-    ("merlin.llvmlower.borrowed_effects", 11),
-    ("merlin.compile.scheduling.configuration_contexts", 15),
-    ("merlin.compile.scheduling.configuration_loop_cleanup", 15),
-    ("merlin.compile.scheduling.dense_panel_readout", 15),
-])
+@pytest.mark.parametrize(
+    "name,selected_version",
+    [
+        ("merlin.compile.scheduling.compact_loaded_sum", 8),
+        ("merlin.compile.scheduling.spatial_producer", 10),
+        ("merlin.compile.scheduling.spatial_readout", 10),
+        ("merlin.llvmlower.spatial_scratch_abi", 11),
+        ("merlin.llvmlower.borrowed_effects", 11),
+        ("merlin.compile.scheduling.configuration_contexts", 15),
+        ("merlin.compile.scheduling.configuration_loop_cleanup", 15),
+        ("merlin.compile.scheduling.dense_panel_readout", 15),
+    ],
+)
 def test_compact_loaded_sum_is_available_only_in_prospective_reviewed_inventory(tmp_path, name, selected_version):
     from merlin.compiler.schedule.export import public_modules
     from merlin.compiler.schedule.library_sources import library_modules

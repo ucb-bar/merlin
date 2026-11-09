@@ -10,8 +10,7 @@ import json
 from pathlib import Path
 
 
-def prepare_graph_request(source, *, entry, policy, binding, target_identity, mode,
-                          original_source_sha256=None):
+def prepare_graph_request(source, *, entry, policy, binding, target_identity, mode, original_source_sha256=None):
     """Preserve the original selected graph hook and its diagnostic boundary."""
     from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
     from merlin.semantic_compiler.model import KernelRequest
@@ -29,10 +28,14 @@ def prepare_graph_request(source, *, entry, policy, binding, target_identity, mo
         plan = prepare(source, entry=entry, policy=policy, original_source_sha256=original_source_sha256)
     request = getattr(plan, "request", None)
     operations = getattr(plan, "source_operations", None)
-    if (not isinstance(request, KernelRequest) or request.target_identity != target_identity
-            or request.lowering_policy != "diagnostic" or not isinstance(operations, tuple)
-            or not all(isinstance(operation, str) for operation in operations)
-            or not callable(getattr(plan, "record", None))):
+    if (
+        not isinstance(request, KernelRequest)
+        or request.target_identity != target_identity
+        or request.lowering_policy != "diagnostic"
+        or not isinstance(operations, tuple)
+        or not all(isinstance(operation, str) for operation in operations)
+        or not callable(getattr(plan, "record", None))
+    ):
         raise LinalgBridgeError("target graph precision lowering returned an invalid request")
     return request, operations, plan
 
@@ -42,8 +45,9 @@ def precision_plan_bytes(plan) -> bytes:
     return (json.dumps(plan.record(), sort_keys=True, indent=2) + "\n").encode()
 
 
-def prepare_tile_request(staged, region_id, *, binding, target_identity, mode,
-                         tile_index=None, whole_contraction=False):
+def prepare_tile_request(
+    staged, region_id, *, binding, target_identity, mode, tile_index=None, whole_contraction=False
+):
     """Admit one explicitly selected source/policy-bound diagnostic tile.
 
     Target arithmetic and geometry are offered by the OOT hook. Its returned
@@ -72,9 +76,12 @@ def prepare_tile_request(staged, region_id, *, binding, target_identity, mode,
         raise LinalgBridgeError("source-bound precision tile must stay diagnostic")
     if plan.whole_contraction:
         raise LinalgBridgeError("target precision lowering changed the requested contraction scope")
-    if (plan.region_id != region_id or plan.original_source_sha256 != staged.original_source_sha256
-            or plan.staged_program_sha256 != staged.program_sha256
-            or plan.precision_policy_sha256 != staged.precision_policy_sha256):
+    if (
+        plan.region_id != region_id
+        or plan.original_source_sha256 != staged.original_source_sha256
+        or plan.staged_program_sha256 != staged.program_sha256
+        or plan.precision_policy_sha256 != staged.precision_policy_sha256
+    ):
         raise LinalgBridgeError("target precision tile differs from selected staged source or policy")
     source_op = "linalg.generic" if plan.batch_index is not None else "linalg.matmul"
     return plan.request, "source_bound_diagnostic_tile", (source_op,), plan

@@ -12,11 +12,17 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
+from merlin.compiler.schedule.fusion_semantics import ScalarBudgetExceeded, UnsupportedElementwise, scalar_graph, term
+from merlin.compiler.schedule.temporary_storage import (
+    StorageAdapter,
+    StorageEffects,
+    TemporaryObject,
+    _overlap,
+    _problem,
+    _project,
+)
 from merlin.sched.ir import Call, Kernel
 from merlin.verification.epilogue_applicability import ReadoutCapability, selectors_applying
-
-from merlin.compiler.schedule.fusion_semantics import ScalarBudgetExceeded, UnsupportedElementwise, scalar_graph, term
-from merlin.compiler.schedule.temporary_storage import StorageAdapter, StorageEffects, TemporaryObject, _overlap, _problem, _project
 
 
 @dataclass(frozen=True)

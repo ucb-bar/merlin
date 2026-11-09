@@ -29,7 +29,8 @@ from typing import Any
 
 import numpy as np
 
-from .dispatch_arguments import _ModelInput as _ModelInput, plan_forward_args
+from .dispatch_arguments import _ModelInput as _ModelInput
+from .dispatch_arguments import plan_forward_args
 from .dispatch_numeric import boundary_scale as boundary_scale
 from .dispatch_numeric import float_boundary_operands as float_boundary_operands
 from .dispatch_placement import DispatchPlacements, DispatchRuntimeError
@@ -1274,8 +1275,9 @@ def _normalize_model_module(
     collapse_overrank_matmul(module)
     _propagate_quant_inner(module)
     if int8_compute:
-        from ..llvmlower.quant_passes import apply_quant, compute_passes
         from merlin.compiler.quantization.scope import captured_quantized_contraction
+
+        from ..llvmlower.quant_passes import apply_quant, compute_passes
 
         # Match the compiled captured-scope path: a BF16 dequantized operand
         # needs an F32 accumulator before the INT8 contraction selector runs.

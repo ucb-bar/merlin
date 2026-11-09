@@ -37,10 +37,7 @@ def main(argv: list[str] | None = None) -> int:
         entry = importlib.import_module(module)
     except ModuleNotFoundError as exc:
         if requirement and exc.name in {"aet", "jsonschema"}:
-            parser.error(
-                f"'{selected}' requires the optional '{exc.name}' dependency; "
-                f"install '{requirement}'"
-            )
+            parser.error(f"'{selected}' requires the optional '{exc.name}' dependency; install '{requirement}'")
         raise
     handler = getattr(entry, f"{selected}_main") if module == "merlin.service_cli" else entry.main
     return handler(argv[1:]) or 0

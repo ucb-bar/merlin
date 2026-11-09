@@ -1,4 +1,5 @@
 """Target-neutral accuracy admission, global quant domains, and agent edit guidance."""
+
 from __future__ import annotations
 
 import hashlib
@@ -59,9 +60,7 @@ def _contract(*, channels: int = 2) -> QuantizedEpilogueContract:
         channel_count=channels,
         activation_scale=_parameter("per_tensor", None, "f32", "activation_scale"),
         weight_scale=_parameter("per_axis", 1, "f32", "weight_scale"),
-        output_scale_reciprocal=_parameter(
-            "per_tensor", None, "f32", "output_scale_reciprocal"
-        ),
+        output_scale_reciprocal=_parameter("per_tensor", None, "f32", "output_scale_reciprocal"),
         input_zero_point=_parameter("per_tensor", None, "i32", "input_zero_point"),
         weight_zero_point=_parameter("per_axis", 1, "i32", "weight_zero_point"),
         output_zero_point=_parameter("per_tensor", None, "i32", "output_zero_point"),
@@ -109,9 +108,7 @@ def _capability() -> QuantizedEpilogueCapability:
         output_zero_points=(0,),
         roundings=("round_to_nearest_even",),
         saturations=((-128, 127),),
-        ordered_stage_templates=((
-            "scale_f32", "round_to_nearest_even", "clamp", "relu"
-        ),),
+        ordered_stage_templates=(("scale_f32", "round_to_nearest_even", "clamp", "relu"),),
         activations=("relu",),
     )
 
@@ -129,9 +126,7 @@ def test_numerical_record_move_preserves_receipt_identity() -> None:
     assert _contract().to_dict()["semantic_contract_sha256"] == (
         "e24d6c17791e4281aa11bc605f53243c60d57fac00b0f7b4eed31e0eb1f6f98a"
     )
-    assert _candidate().sha256 == (
-        "561d2ec81d095b943947f8763a915d1c95f47c6f881e9912338ef9bacf6ed1ad"
-    )
+    assert _candidate().sha256 == ("561d2ec81d095b943947f8763a915d1c95f47c6f881e9912338ef9bacf6ed1ad")
     assert _capability().to_dict()["capability_sha256"] == (
         "e3a13edf341dfd5da5cb806b770f3865d13a9178fa6333fdd7b6014a3516f567"
     )
@@ -158,9 +153,7 @@ for prefix in ('merlin.perf', 'merlin.evaluation', 'torch', 'torchao', 'numpy'):
     )
 
 
-def _policy_document(
-    *, site_ids: tuple[str, ...] = ("ep0",), expected_delta: int = 0, opt_in: bool = True
-) -> dict:
+def _policy_document(*, site_ids: tuple[str, ...] = ("ep0",), expected_delta: int = 0, opt_in: bool = True) -> dict:
     accumulators = [-300, -3, -2, -1, 0, 1, 2, 3, 300]
     channels = [index % 2 for index in range(len(accumulators))]
     outputs = evaluate_candidate(_candidate(), accumulators, channels)
@@ -179,28 +172,33 @@ def _policy_document(
             "max_mismatch_fraction": 0.2,
             "max_saturation_mismatch_fraction": 0.0,
         },
-        "corpora": [{
-            "id": "holdout",
-            "role": "holdout",
-            "dataset_sha256": DATASET_SHA,
-            "sampling_policy_sha256": SAMPLING_SHA,
-            "selection_corpus_sha256": SELECTION_SHA,
-            "independent_reference_sha256": REFERENCE_SHA,
-        }],
-        "sites": [{
-            "site_id": site_id,
-            "normalized_source_sha256": SOURCE_SHA,
-            "source_operation_index": index,
-            "semantic_contract_sha256": _contract().to_dict()["semantic_contract_sha256"],
-            "corpus_id": "holdout",
-            "candidate": _candidate().to_dict(),
-            "samples": {
-                "accumulators": accumulators,
-                "channel_indices": channels,
-                "reference_outputs": outputs,
-                "reference_output_sha256": _output_sha(outputs),
-            },
-        } for index, site_id in enumerate(site_ids)],
+        "corpora": [
+            {
+                "id": "holdout",
+                "role": "holdout",
+                "dataset_sha256": DATASET_SHA,
+                "sampling_policy_sha256": SAMPLING_SHA,
+                "selection_corpus_sha256": SELECTION_SHA,
+                "independent_reference_sha256": REFERENCE_SHA,
+            }
+        ],
+        "sites": [
+            {
+                "site_id": site_id,
+                "normalized_source_sha256": SOURCE_SHA,
+                "source_operation_index": index,
+                "semantic_contract_sha256": _contract().to_dict()["semantic_contract_sha256"],
+                "corpus_id": "holdout",
+                "candidate": _candidate().to_dict(),
+                "samples": {
+                    "accumulators": accumulators,
+                    "channel_indices": channels,
+                    "reference_outputs": outputs,
+                    "reference_output_sha256": _output_sha(outputs),
+                },
+            }
+            for index, site_id in enumerate(site_ids)
+        ],
     }
 
 
@@ -208,9 +206,7 @@ def _policy(**kwargs) -> AccuracyPolicy:
     return AccuracyPolicy.from_mapping(_policy_document(**kwargs))
 
 
-def _exact(site_id: str, source_operation_index: int) -> tuple[
-    QuantizedEpilogueCandidate, ExactEpilogueProof
-]:
+def _exact(site_id: str, source_operation_index: int) -> tuple[QuantizedEpilogueCandidate, ExactEpilogueProof]:
     candidate = _candidate()
     return candidate, ExactEpilogueProof(
         status="verified",
@@ -226,7 +222,10 @@ def _exact(site_id: str, source_operation_index: int) -> tuple[
 def test_contract_carries_all_quantization_semantics_and_stable_identity() -> None:
     receipt = _contract().to_dict()
     assert receipt["scales"]["weight"] == {
-        "granularity": "per_axis", "axis": 1, "dtype": "f32", "binding": "weight_scale"
+        "granularity": "per_axis",
+        "axis": 1,
+        "dtype": "f32",
+        "binding": "weight_scale",
     }
     assert receipt["bias_domain"] == "real"
     assert receipt["rounding"] == "round_to_nearest_even"
@@ -264,9 +263,7 @@ def test_missing_policy_falls_back_to_exact_only_and_reports_all_gates() -> None
         capability=_capability(),
     )
     assert not refused.selected
-    assert set(refused.receipt["reason_codes"]) == {
-        "exact_candidate_not_provided", "accuracy_policy_not_provided"
-    }
+    assert set(refused.receipt["reason_codes"]) == {"exact_candidate_not_provided", "accuracy_policy_not_provided"}
 
     candidate, proof = _exact("ep0", 0)
     exact = admit_epilogue(
@@ -336,16 +333,36 @@ def _residual_problem(*, capacity: int | None = 1024, capabilities: bool = True)
             QuantizationDomain("d2", 0.5, 0, -128, 127, DOMAIN_SHA),
         ),
         sites=(
+            ResidualDomainSite(0, "r0", (10,), (11,), 64, "d0", None, 512, None, required, 800),
             ResidualDomainSite(
-                0, "r0", (10,), (11,), 64, "d0", None, 512, None, required, 800
+                1,
+                "r1",
+                (20,),
+                (21,),
+                64,
+                "d1",
+                0,
+                256,
+                128,
+                required,
+                512,
+                saturation_scope="heldout_no_saturation",
+                saturation_corpus_id="holdout",
             ),
             ResidualDomainSite(
-                1, "r1", (20,), (21,), 64, "d1", 0, 256, 128, required, 512,
-                saturation_scope="heldout_no_saturation", saturation_corpus_id="holdout",
-            ),
-            ResidualDomainSite(
-                2, "r2", (30,), (31,), 64, "d2", 1, 4096, 4096, required, 512,
-                saturation_scope="heldout_no_saturation", saturation_corpus_id="holdout",
+                2,
+                "r2",
+                (30,),
+                (31,),
+                64,
+                "d2",
+                1,
+                4096,
+                4096,
+                required,
+                512,
+                saturation_scope="heldout_no_saturation",
+                saturation_corpus_id="holdout",
             ),
         ),
         available_capabilities=frozenset(required if capabilities else ()),
@@ -357,9 +374,7 @@ def _single_residual_problem() -> ResidualDomainProblem:
     required = ("wide_domain_add", "single_final_clamp", "resident_forwarding")
     return ResidualDomainProblem(
         domains=(QuantizationDomain("d0", 0.25, 0, -128, 127, DOMAIN_SHA),),
-        sites=(ResidualDomainSite(
-            0, "r0", (10,), (11,), 64, "d0", None, 512, None, required, 512
-        ),),
+        sites=(ResidualDomainSite(0, "r0", (10,), (11,), 64, "d0", None, 512, None, required, 512),),
         available_capabilities=frozenset(required),
         resident_capacity_bytes=1024,
     )
@@ -367,9 +382,7 @@ def _single_residual_problem() -> ResidualDomainProblem:
 
 def test_global_residual_solver_spends_one_budget_on_the_larger_downstream_edge() -> None:
     # Disable the independent resident-alignment lever so this isolates the cross-layer carry DP.
-    report = plan_residual_domains(
-        _residual_problem(capabilities=False), _policy(site_ids=())
-    )
+    report = plan_residual_domains(_residual_problem(capabilities=False), _policy(site_ids=()))
     by_id = {row["site_id"]: row for row in report["sites"]}
     assert not by_id["r1"]["carry_from_predecessor"]["selected"]
     assert by_id["r2"]["carry_from_predecessor"]["selected"]
@@ -383,15 +396,11 @@ def test_residual_capability_capacity_and_policy_are_independent_hard_gates() ->
     assert exact_default["selection"]["selected_residual_alignments"] == 0
     assert "accuracy_policy_not_provided" in exact_default["refusal_histogram"]
 
-    missing_capability = plan_residual_domains(
-        _residual_problem(capabilities=False), _policy(site_ids=())
-    )
+    missing_capability = plan_residual_domains(_residual_problem(capabilities=False), _policy(site_ids=()))
     assert missing_capability["selection"]["selected_residual_alignments"] == 0
     assert "missing_target_capability" in missing_capability["refusal_histogram"]
 
-    over_capacity = plan_residual_domains(
-        _residual_problem(capacity=100), _policy(site_ids=())
-    )
+    over_capacity = plan_residual_domains(_residual_problem(capacity=100), _policy(site_ids=()))
     assert over_capacity["selection"]["selected_residual_alignments"] == 0
     assert "resident_capacity_exceeded" in over_capacity["refusal_histogram"]
 
@@ -408,20 +417,33 @@ def test_complete_program_plan_forms_regions_and_enumerates_every_host_refusal()
         residuals=_single_residual_problem(),
         nodes=(
             QuantizedProgramNode(
-                0, (0,), (100,), "enc_a", True, epilogue_site_id="ep0",
+                0,
+                (0,),
+                (100,),
+                "enc_a",
+                True,
+                epilogue_site_id="ep0",
                 resident_working_set_bytes=128,
             ),
             QuantizedProgramNode(
-                1, (1,), (101,), "enc_a", True, epilogue_site_id="ep1",
+                1,
+                (1,),
+                (101,),
+                "enc_a",
+                True,
+                epilogue_site_id="ep1",
                 resident_working_set_bytes=128,
             ),
             QuantizedProgramNode(
-                2, (10,), (11,), "enc_b", True, residual_site_index=0,
+                2,
+                (10,),
+                (11,),
+                "enc_b",
+                True,
+                residual_site_index=0,
                 resident_working_set_bytes=512,
             ),
-            QuantizedProgramNode(
-                3, (40,), (41,), None, False, base_refusal_reasons=("host_only_op",)
-            ),
+            QuantizedProgramNode(3, (40,), (41,), None, False, base_refusal_reasons=("host_only_op",)),
         ),
         edges=(
             QuantizedProgramEdge(0, 1, "enc_a", "enc_a", "v0", 64, 1),
@@ -456,11 +478,21 @@ def test_approximate_epilogue_needs_composed_bound_before_joining_residual_regio
             residuals=_single_residual_problem(),
             nodes=(
                 QuantizedProgramNode(
-                    0, (0,), (100,), "enc", True, epilogue_site_id="ep0",
+                    0,
+                    (0,),
+                    (100,),
+                    "enc",
+                    True,
+                    epilogue_site_id="ep0",
                     resident_working_set_bytes=128,
                 ),
                 QuantizedProgramNode(
-                    1, (10,), (11,), "enc", True, residual_site_index=0,
+                    1,
+                    (10,),
+                    (11,),
+                    "enc",
+                    True,
+                    residual_site_index=0,
                     resident_working_set_bytes=512,
                 ),
             ),
@@ -468,24 +500,28 @@ def test_approximate_epilogue_needs_composed_bound_before_joining_residual_regio
             resident_capacity_bytes=1024,
         )
 
-    missing = plan_quantized_regions(
-        problem(QuantizedProgramEdge(0, 1, "enc", "enc", "v", 64, 1)), _policy()
-    )
+    missing = plan_quantized_regions(problem(QuantizedProgramEdge(0, 1, "enc", "enc", "v", 64, 1)), _policy())
     assert missing["nodes"][0]["selected_for_accelerator_region"] is False
     assert "downstream_error_composition_unproven" in missing["nodes"][0]["refusal_reasons"]
     assert missing["accelerator_region_formation"]["remaining_host_operation_ids"] == [100]
 
     bounded = plan_quantized_regions(
-        problem(QuantizedProgramEdge(
-            0, 1, "enc", "enc", "v", 64, 1,
-            consumer_error_bound_lsb=0,
-            error_bound_provenance_sha256=EVIDENCE_SHA,
-        )),
+        problem(
+            QuantizedProgramEdge(
+                0,
+                1,
+                "enc",
+                "enc",
+                "v",
+                64,
+                1,
+                consumer_error_bound_lsb=0,
+                error_bound_provenance_sha256=EVIDENCE_SHA,
+            )
+        ),
         _policy(),
     )
-    assert [region["node_indices"] for region in bounded[
-        "accelerator_region_formation"
-    ]["regions"]] == [[0, 1]]
+    assert [region["node_indices"] for region in bounded["accelerator_region_formation"]["regions"]] == [[0, 1]]
     assert bounded["residual_domain_plan"]["sites"][0]["bounded_output_code_delta"] == 1
 
 
@@ -493,8 +529,7 @@ def _compiler_package(root: Path) -> Path:
     package = root / "compiler"
     (package / "lowering").mkdir(parents=True)
     (package / "lowering" / "planner.py").write_text(
-        "def choose_domains():\n    return None\n\n"
-        "def emit_epilogue():\n    return None\n",
+        "def choose_domains():\n    return None\n\ndef emit_epilogue():\n    return None\n",
         encoding="utf-8",
     )
     (package / "manifest.yaml").write_text(
@@ -534,27 +569,33 @@ def test_agent_guidance_returns_only_host_verified_contract_bound_surfaces(tmp_p
             normalized_source_sha256=SOURCE_SHA,
             epilogues=(EpilogueSite("ep0", 0, _contract(), _capability(), exact, proof),),
             residuals=None,
-            nodes=(QuantizedProgramNode(
-                0, (0,), (1,), "enc", True, epilogue_site_id="ep0",
-                resident_working_set_bytes=64,
-            ),),
+            nodes=(
+                QuantizedProgramNode(
+                    0,
+                    (0,),
+                    (1,),
+                    "enc",
+                    True,
+                    epilogue_site_id="ep0",
+                    resident_working_set_bytes=64,
+                ),
+            ),
             edges=(),
             resident_capacity_bytes=128,
         )
     )
     inventory = inspect_compiler_package(_compiler_package(tmp_path))
     guidance = guidance_for_quantized_region_plan(plan, inventory)
-    requirement = next(
-        row for row in guidance["requirements"] if row["role"] == "target_epilogue_emitter"
-    )
+    requirement = next(row for row in guidance["requirements"] if row["role"] == "target_epilogue_emitter")
     assert requirement["status"] == "authorized"
     assert requirement["authorized_edit_surfaces"][0]["path"] == "lowering/planner.py"
     assert guidance["edit_contract_sha256"] == guidance["compiler_edit_contract"]["sha256"]
     assert guidance["candidate_manifest_grants_authority"] is False
     assert guidance["protected_inputs"][0]["editable_by_candidate"] is False
 
-    injected = {**plan, "agent_edit_requirements": [{
-        "role": "candidate_invented_path", "status": "required", "reason_codes": ["x"]
-    }]}
+    injected = {
+        **plan,
+        "agent_edit_requirements": [{"role": "candidate_invented_path", "status": "required", "reason_codes": ["x"]}],
+    }
     with pytest.raises(ValueError, match="unknown or repeated"):
         guidance_for_quantized_region_plan(injected, inventory)

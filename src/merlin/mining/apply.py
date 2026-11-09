@@ -83,8 +83,8 @@ def shape_adapted_features(pkg: HostPackage, model_dir: str | Path, *, harts: in
     if provider is not None:
         return list(provider.shape_adapted_features(pkg, model_dir, harts=harts))
 
-    from merlin.compiler.ir.contraction_shapes import contraction_shapes
     from merlin.compiler.backend.host import resolve_features
+    from merlin.compiler.ir.contraction_shapes import contraction_shapes
 
     shapes = contraction_shapes(Path(model_dir) / "model.mlir")
     if not shapes:

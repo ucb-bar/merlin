@@ -1,5 +1,7 @@
 """Transitional exact module identity; canonical owner: merlin.compiler.passes.hostexport."""
+
 import sys
+
 from merlin.compiler.passes import hostexport as _owner
 
 if __name__ == "__main__":

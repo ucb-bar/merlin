@@ -4,22 +4,21 @@ Loop entry facts are usable inside every iteration only if the complete source
 body preserves them. Nothing is dynamically unrolled, and retained calls keep
 all original operands, completion metadata and loop scopes.
 """
+
 from __future__ import annotations
 
 from dataclasses import replace
 
-from merlin.sched.ir import Call, Loop
 from merlin.compiler.schedule.configuration import ConfigurationResult, _advance
 from merlin.compiler.schedule.configuration_loops import _effects, _preserves, _same_call
+from merlin.sched.ir import Call, Loop
 
 
 def _invariants(body, live, effects):
     return {key: value for key, value in live.items() if _preserves(body, {key: value}, effects)}
 
 
-def verify_counted_configuration_rewrite(
-    original, actual, adapter, *, max_calls=4096, max_fields=256, max_depth=64
-):
+def verify_counted_configuration_rewrite(original, actual, adapter, *, max_calls=4096, max_fields=256, max_depth=64):
     """Reconstruct each omission and loop invariant from actual source effects."""
     before = _effects(original, adapter, max_calls, max_fields, max_depth)
     after = _effects(actual, adapter, max_calls, max_fields, max_depth)
@@ -66,15 +65,18 @@ def verify_counted_configuration_rewrite(
         return right
 
     compare(original.body, actual.body, {}, 1)
-    return {"schema": "merlin.counted_configuration_rewrite.v1", "removed_static_calls": removed,
-            "removed_dynamic_calls": saved, "source_sha256": original.digest(),
-            "kernel_sha256": actual.digest(), "adapter": adapter.record(),
-            "scope": "source-preserved loop invariants and exact retained effects; no target timing qualification"}
+    return {
+        "schema": "merlin.counted_configuration_rewrite.v1",
+        "removed_static_calls": removed,
+        "removed_dynamic_calls": saved,
+        "source_sha256": original.digest(),
+        "kernel_sha256": actual.digest(),
+        "adapter": adapter.record(),
+        "scope": "source-preserved loop invariants and exact retained effects; no target timing qualification",
+    }
 
 
-def eliminate_counted_configuration(
-    kernel, adapter, *, enabled=True, max_calls=4096, max_fields=256, max_depth=64
-):
+def eliminate_counted_configuration(kernel, adapter, *, enabled=True, max_calls=4096, max_fields=256, max_depth=64):
     """Keep loops intact; refuse unproven cross-iteration assumptions."""
     if type(enabled) is not bool:
         raise ValueError("counted configuration cleanup requires an explicit Boolean")
@@ -92,8 +94,11 @@ def eliminate_counted_configuration(
                     live = final
                 continue
             effect = effects[id(statement)]
-            redundant = (effect is not None and effect.pure_write
-                         and all(key in live and live[key] == value for key, value in effect.writes))
+            redundant = (
+                effect is not None
+                and effect.pure_write
+                and all(key in live and live[key] == value for key, value in effect.writes)
+            )
             if not enabled or not redundant:
                 out.append(statement)
             _advance(live, effect)

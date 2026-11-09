@@ -49,8 +49,13 @@ def freeze(program, *, example_inputs: tuple | None, workspace: Path):
             raise ValueError("a module, FX graph or function requires example_inputs=(...)")
         if any(not isinstance(value, torch.Tensor) for value in example_inputs):
             raise ValueError("the capture adapter requires flat positional tensor inputs")
-        kind = ("torch.fx.GraphModule" if isinstance(program, torch.fx.GraphModule) else
-                "torch.nn.Module" if isinstance(program, torch.nn.Module) else "python.callable")
+        kind = (
+            "torch.fx.GraphModule"
+            if isinstance(program, torch.fx.GraphModule)
+            else "torch.nn.Module"
+            if isinstance(program, torch.nn.Module)
+            else "python.callable"
+        )
         try:
             snapshot, inputs = copy.deepcopy((program, example_inputs))
         except Exception as error:
@@ -89,9 +94,7 @@ def freeze(program, *, example_inputs: tuple | None, workspace: Path):
             "archive_sha256": digest(archive),
             "scope": "original_export; no_precision_change_or_compilation_claim",
         }
-        (original / "program.json").write_text(
-            json.dumps(record, indent=2, allow_nan=False) + "\n", encoding="utf-8"
-        )
+        (original / "program.json").write_text(json.dumps(record, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     except Exception:
         temporary.unlink(missing_ok=True)
         raise

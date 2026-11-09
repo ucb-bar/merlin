@@ -54,13 +54,15 @@ def _map_call(call, transform):
         if type(item) is Ptr:
             return replace(item, offset=transform(item.offset))
         return item
+
     return replace(call, args=tuple((key, value(item)) for key, item in call.args))
 
 
 def _interpolate_calls(first, second, index):
     """Construct a candidate; the independent decoder checks every symbolic band."""
-    if (replace(first, args=()) != replace(second, args=())
-            or tuple(k for k, _ in first.args) != tuple(k for k, _ in second.args)):
+    if replace(first, args=()) != replace(second, args=()) or tuple(k for k, _ in first.args) != tuple(
+        k for k, _ in second.args
+    ):
         raise ValueError("counted band codec changes non-address fields")
 
     def value(a, b):
@@ -75,14 +77,14 @@ def _interpolate_calls(first, second, index):
             return replace(a, offset=value(a.offset, b.offset))
         raise ValueError("counted band codec is not an affine constant stride")
 
-    return replace(first, args=tuple((key, value(a, b))
-                                     for (key, a), (_, b) in zip(first.args, second.args, strict=True)))
+    return replace(
+        first, args=tuple((key, value(a, b)) for (key, a), (_, b) in zip(first.args, second.args, strict=True))
+    )
 
 
 def _same_band_call(a, b):
     """Complete call equality modulo exact additive expression normalization."""
-    if (replace(a, args=()) != replace(b, args=())
-            or tuple(k for k, _ in a.args) != tuple(k for k, _ in b.args)):
+    if replace(a, args=()) != replace(b, args=()) or tuple(k for k, _ in a.args) != tuple(k for k, _ in b.args):
         return False
 
     def same(x, y):
@@ -107,9 +109,13 @@ def _canonical_load_runs(kernel, project):
     changes = []
 
     def load_loop(statement):
-        return (type(statement) is Loop and len(statement.body) == 1
-                and type(statement.body[0]) is Call and _plain(statement.body[0])
-                and project(statement.body[0]) is not None)
+        return (
+            type(statement) is Loop
+            and len(statement.body) == 1
+            and type(statement.body[0]) is Call
+            and _plain(statement.body[0])
+            and project(statement.body[0]) is not None
+        )
 
     def collapse(outer, inner):
         def expression(value):
@@ -117,10 +123,11 @@ def _canonical_load_runs(kernel, project):
             a, b = terms.pop(Var(outer.var), 0), terms.pop(Var(inner.var), 0)
             if a != b * inner.extent or any({outer.var, inner.var} & free_vars(atom) for atom in terms):
                 raise ValueError("operand distinguishes mixed-radix coordinates")
-            return add(Const(constant), *(atom * coefficient for atom, coefficient in terms.items()),
-                       Var(outer.var) * b)
-        return replace(outer, extent=outer.extent * inner.extent,
-                       body=(_map_call(inner.body[0], expression),))
+            return add(
+                Const(constant), *(atom * coefficient for atom, coefficient in terms.items()), Var(outer.var) * b
+            )
+
+        return replace(outer, extent=outer.extent * inner.extent, body=(_map_call(inner.body[0], expression),))
 
     def shifted(call, variable, name, offset):
         return _map_call(call, lambda value: _substitute(value, variable, Var(name) + offset))
@@ -136,8 +143,14 @@ def _canonical_load_runs(kernel, project):
                     except ValueError:
                         pass
                     else:
-                        changes.append(dict(kind="mixed_radix_load_run", outer=statement.var,
-                                            inner=statement.body[0].var, extent=collapsed.extent))
+                        changes.append(
+                            dict(
+                                kind="mixed_radix_load_run",
+                                outer=statement.var,
+                                inner=statement.body[0].var,
+                                extent=collapsed.extent,
+                            )
+                        )
                         statement = collapsed
             if result and load_loop(result[-1]) and load_loop(statement):
                 previous = result[-1]
@@ -148,8 +161,13 @@ def _canonical_load_runs(kernel, project):
                 except ValueError:
                     matches = False
                 if matches:
-                    changes.append(dict(kind="contiguous_split_load_run", variable=previous.var,
-                                        extents=[previous.extent, statement.extent]))
+                    changes.append(
+                        dict(
+                            kind="contiguous_split_load_run",
+                            variable=previous.var,
+                            extents=[previous.extent, statement.extent],
+                        )
+                    )
                     result[-1] = replace(previous, extent=previous.extent + statement.extent)
                     continue
             result.append(statement)
@@ -166,9 +184,15 @@ def expand_panel_tile_loads(kernel, *, project, encode_band, max_static_nodes=40
     retained original request nor the first band alone establishes this join.
     Unknown non-load calls remain present for the ordinary panel verifier.
     """
-    if (type(kernel) is not Kernel or check_structure(kernel)
-            or not callable(project) or not callable(encode_band)
-            or type(max_static_nodes) is not int or max_static_nodes <= 0 or type(counted_bands) is not bool):
+    if (
+        type(kernel) is not Kernel
+        or check_structure(kernel)
+        or not callable(project)
+        or not callable(encode_band)
+        or type(max_static_nodes) is not int
+        or max_static_nodes <= 0
+        or type(counted_bands) is not bool
+    ):
         raise ValueError("panel bands require actual counted commands, codecs and a finite bound")
     check_integer_domain(kernel, 64)
     nodes, accesses = 0, []
@@ -180,13 +204,17 @@ def expand_panel_tile_loads(kernel, *, project, encode_band, max_static_nodes=40
             if type(statement) is Loop:
                 variables.add(statement.var)
                 names(statement.body)
+
     names(kernel.body)
 
     def bounded_choice(expression, limit):
         if type(expression) is Const:
             return 0 < expression.value <= limit
-        return (type(expression) is Select and bounded_choice(expression.then, limit)
-                and bounded_choice(expression.other, limit))
+        return (
+            type(expression) is Select
+            and bounded_choice(expression.then, limit)
+            and bounded_choice(expression.other, limit)
+        )
 
     def walk(body, scopes=()):
         nonlocal nodes, physical, logical
@@ -202,9 +230,13 @@ def expand_panel_tile_loads(kernel, *, project, encode_band, max_static_nodes=40
             if mapping is None:
                 result.append(statement)
                 continue
-            if (type(statement) is not Call or not _plain(statement)
-                    or type(mapping) is not TileLoadMapping or type(mapping.law) is not TileLoadAddressLaw
-                    or not bounded_choice(mapping.rows, min(mapping.law.max_rows, mapping.law.local_block_stride))):
+            if (
+                type(statement) is not Call
+                or not _plain(statement)
+                or type(mapping) is not TileLoadMapping
+                or type(mapping.law) is not TileLoadAddressLaw
+                or not bounded_choice(mapping.rows, min(mapping.law.max_rows, mapping.law.local_block_stride))
+            ):
                 raise ValueError("panel load needs a plain exact address-only mapping with bounded rows")
             if type(mapping.columns) is Const:
                 count = (mapping.columns.value + mapping.law.tile_columns - 1) // mapping.law.tile_columns
@@ -214,8 +246,10 @@ def expand_panel_tile_loads(kernel, *, project, encode_band, max_static_nodes=40
             elif bounded_choice(mapping.columns, mapping.law.tile_columns):
                 # Every possible tail fits the original one-band primitive.
                 # Wider dynamic widths are refused, never truncated to band0.
-                bands = tuple(replace(b, columns=mapping.columns) for b in expand_tile_load_mapping(
-                    replace(mapping, columns=Const(mapping.law.tile_columns))))
+                bands = tuple(
+                    replace(b, columns=mapping.columns)
+                    for b in expand_tile_load_mapping(replace(mapping, columns=Const(mapping.law.tile_columns)))
+                )
             else:
                 raise ValueError("actual wide panel width must be constant; only one-band tails may select width")
             nodes += len(bands) - 1
@@ -237,15 +271,20 @@ def expand_panel_tile_loads(kernel, *, project, encode_band, max_static_nodes=40
                     variables.add(variable)
                     try:
                         candidate = _interpolate_calls(checked_bands[0], checked_bands[1], Var(variable))
-                        expected = replace(mapping,
-                            source_byte=mapping.source_byte + Var(variable) * (
-                                mapping.law.tile_columns * mapping.law.element_bytes),
+                        expected = replace(
+                            mapping,
+                            source_byte=mapping.source_byte
+                            + Var(variable) * (mapping.law.tile_columns * mapping.law.element_bytes),
                             local_row=mapping.local_row + Var(variable) * mapping.law.local_block_stride,
-                            columns=Const(mapping.law.tile_columns))
+                            columns=Const(mapping.law.tile_columns),
+                        )
                         exact = _same_mapping(project(candidate), expected) and all(
-                            _same_band_call(_map_call(candidate, lambda value: _substitute(
-                                value, variable, Const(index))), checked_bands[index])
-                            for index in range(whole))
+                            _same_band_call(
+                                _map_call(candidate, lambda value: _substitute(value, variable, Const(index))),
+                                checked_bands[index],
+                            )
+                            for index in range(whole)
+                        )
                     except ValueError:
                         exact = False
                     if exact:
@@ -259,13 +298,20 @@ def expand_panel_tile_loads(kernel, *, project, encode_band, max_static_nodes=40
                     result.extend(checked_bands)
             else:
                 result.extend(checked_bands)
-            def record(value):
-                return dict(source=value.source, destination=value.destination, law=asdict(value.law),
-                            **{key: str(getattr(value, key)) for key in
-                               ("source_byte", "local_row", "rows", "columns")})
 
-            accesses.append(dict(call=str(statement), mapping=record(mapping), bands=[record(b) for b in bands],
-                                 representation=mode))
+            def record(value):
+                return dict(
+                    source=value.source,
+                    destination=value.destination,
+                    law=asdict(value.law),
+                    **{key: str(getattr(value, key)) for key in ("source_byte", "local_row", "rows", "columns")},
+                )
+
+            accesses.append(
+                dict(
+                    call=str(statement), mapping=record(mapping), bands=[record(b) for b in bands], representation=mode
+                )
+            )
         return tuple(result)
 
     expanded = replace(kernel, body=walk(kernel.body))
@@ -328,8 +374,19 @@ class PanelTileLoadResult:
     fallback_route="caller-selected original route; the unchanged input checked result keeps its tile-width loads",
 )
 def admit_panel_tile_loads(
-    original, proposal, problem, block, resources, storage, adapter, *,
-    project, encode_band, static_budget=128, timeout_ms=5000, max_static_nodes=4096,
+    original,
+    proposal,
+    problem,
+    block,
+    resources,
+    storage,
+    adapter,
+    *,
+    project,
+    encode_band,
+    static_budget=128,
+    timeout_ms=5000,
+    max_static_nodes=4096,
     external_sources=None,
 ):
     """Check the actual final wide command's complete effects before emission.
@@ -349,19 +406,44 @@ def admit_panel_tile_loads(
 
     if type(original) is not DensePanelPipelineResult:
         raise ValueError("wide panel admission requires the original checked panel result")
-    verifier = (verify_dense_retained_reduction if type(original.admission) is DenseRetainedReductionAdmission
-                else verify_dense_panel_pipeline)
+    verifier = (
+        verify_dense_retained_reduction
+        if type(original.admission) is DenseRetainedReductionAdmission
+        else verify_dense_panel_pipeline
+    )
     return _admit_dense_tile_loads(
-        original, proposal, problem, block, resources, storage, adapter,
-        verifier=verifier, project=project, encode_band=encode_band,
-        static_budget=static_budget, timeout_ms=timeout_ms, max_static_nodes=max_static_nodes,
+        original,
+        proposal,
+        problem,
+        block,
+        resources,
+        storage,
+        adapter,
+        verifier=verifier,
+        project=project,
+        encode_band=encode_band,
+        static_budget=static_budget,
+        timeout_ms=timeout_ms,
+        max_static_nodes=max_static_nodes,
         external_sources=external_sources,
     )
 
 
 def _admit_dense_tile_loads(
-    original, proposal, problem, block, resources, storage, adapter, *,
-    verifier, project, encode_band, static_budget, timeout_ms, max_static_nodes,
+    original,
+    proposal,
+    problem,
+    block,
+    resources,
+    storage,
+    adapter,
+    *,
+    verifier,
+    project,
+    encode_band,
+    static_budget,
+    timeout_ms,
+    max_static_nodes,
     external_sources=None,
 ):
     """Shared exact address projection; each typed owner selects its verifier.
@@ -371,13 +453,27 @@ def _admit_dense_tile_loads(
     """
     original.revalidate()
     expanded, projection = expand_dense_panel_tile_loads(
-        proposal, problem, storage, adapter, project=project, encode_band=encode_band,
-        max_static_nodes=max_static_nodes, external_sources=external_sources,
+        proposal,
+        problem,
+        storage,
+        adapter,
+        project=project,
+        encode_band=encode_band,
+        max_static_nodes=max_static_nodes,
+        external_sources=external_sources,
     )
     report = verifier(
-        expanded, problem, block, resources, storage, adapter, original.admission,
-        static_budget=static_budget, timeout_ms=timeout_ms,
-        output_readout=original.output_readout, bias_source=original.bias_source,
+        expanded,
+        problem,
+        block,
+        resources,
+        storage,
+        adapter,
+        original.admission,
+        static_budget=static_budget,
+        timeout_ms=timeout_ms,
+        output_readout=original.output_readout,
+        bias_source=original.bias_source,
     )
     original.revalidate()
     report["tile_load_projection"] = projection
@@ -392,9 +488,14 @@ def _admit_dense_tile_loads(
         qualification="retained original boundary premise; no new target readout qualification",
     )
     result = PanelTileLoadResult(
-        proposal, original, report, proposal.digest(), _digest(projection),
+        proposal,
+        original,
+        report,
+        proposal.digest(),
+        _digest(projection),
         _checked_dense_tile_project(problem, storage, adapter, project, external_sources=external_sources),
-        encode_band, max_static_nodes
+        encode_band,
+        max_static_nodes,
     )
     result.revalidate()
     return result
@@ -415,8 +516,12 @@ def _checked_dense_tile_project(problem, storage, adapter, project, *, external_
         left = role == "lhs"
         expected_shape = (problem.m, problem.k) if left else (problem.k, problem.n)
         width = problem.lhs_bytes if left else problem.rhs_bytes
-        if (type(source) is not AffineMatrixSource or source.shape != expected_shape
-                or source.element_bytes != width or source.column_stride_bytes != width):
+        if (
+            type(source) is not AffineMatrixSource
+            or source.shape != expected_shape
+            or source.element_bytes != width
+            or source.column_stride_bytes != width
+        ):
             raise ValueError("dense external view must preserve original shape, width and adjacent columns")
         source.__post_init__()
 
@@ -438,14 +543,25 @@ def _checked_dense_tile_project(problem, storage, adapter, project, *, external_
         source_pitch = pitch * width if source is None else source.row_stride_bytes
         tile = problem.tile_k if left else problem.tile_n
         view = storage.lhs if left else storage.rhs
-        if (mapping.law.element_bytes != width or mapping.law.source_pitch_bytes != source_pitch
-                or mapping.law.tile_columns != tile or operation.step != Const(1)):
+        if (
+            mapping.law.element_bytes != width
+            or mapping.law.source_pitch_bytes != source_pitch
+            or mapping.law.tile_columns != tile
+            or operation.step != Const(1)
+        ):
             raise ValueError("wide mapping differs from original contiguous dense source layout")
         expected = TileLoadMapping(
-            operation.role if source is None else source.backing, view.backing,
-            ((operation.dram_row * pitch + operation.dram_col) * width if source is None else
-             source.first_byte + operation.dram_row * source.row_stride_bytes + operation.dram_col * width),
-            operation.row, operation.rows, operation.cols, mapping.law,
+            operation.role if source is None else source.backing,
+            view.backing,
+            (
+                (operation.dram_row * pitch + operation.dram_col) * width
+                if source is None
+                else source.first_byte + operation.dram_row * source.row_stride_bytes + operation.dram_col * width
+            ),
+            operation.row,
+            operation.rows,
+            operation.cols,
+            mapping.law,
         )
         if not _same_mapping(mapping, expected):
             raise ValueError("actual wide mapping differs from original decoded source/local operands")
@@ -455,7 +571,14 @@ def _checked_dense_tile_project(problem, storage, adapter, project, *, external_
 
 
 def expand_dense_panel_tile_loads(
-    kernel, problem, storage, adapter, *, project, encode_band, max_static_nodes=4096,
+    kernel,
+    problem,
+    storage,
+    adapter,
+    *,
+    project,
+    encode_band,
+    max_static_nodes=4096,
     external_sources=None,
 ):
     """Expand every final wide band after checking its original dense layout.
@@ -468,7 +591,8 @@ def expand_dense_panel_tile_loads(
     No target capability or numerical/completion obligation is supplied here.
     """
     return expand_panel_tile_loads(
-        kernel, project=_checked_dense_tile_project(problem, storage, adapter, project,
-                                                   external_sources=external_sources),
-        encode_band=encode_band, max_static_nodes=max_static_nodes,
+        kernel,
+        project=_checked_dense_tile_project(problem, storage, adapter, project, external_sources=external_sources),
+        encode_band=encode_band,
+        max_static_nodes=max_static_nodes,
     )

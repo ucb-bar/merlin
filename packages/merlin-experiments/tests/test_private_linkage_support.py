@@ -9,19 +9,19 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from merlin_experiments.phase1.feedback import private_compilation_inputs as compilation
-from merlin_experiments.phase1.feedback import private_linalg_support as linalg
-from merlin_experiments.phase1.feedback import private_linkage_support as linkage
 
 from merlin.common import mlir_query as mq
 from merlin.common.digest import sha256_file
-from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.llvmlower import toolchain
 from merlin.llvmlower.compilation_recipe import FILENAME
 from merlin.mining.registry import load_rvv_package
 from merlin.runtime.backends import spike, spike_model
+from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.targetgen.host_capabilities import admit_host_operation, validate_host_capabilities
 from merlin.targetgen.host_linkage_contract import SCHEMA, SUPPLIER, validate_linkage_contract
+from merlin_experiments.phase1.feedback import private_compilation_inputs as compilation
+from merlin_experiments.phase1.feedback import private_linalg_support as linalg
+from merlin_experiments.phase1.feedback import private_linkage_support as linkage
 
 _SOURCE = """module {
   func.func @forward(%arg0: tensor<3xf32>) -> tensor<3xf32> {

@@ -1,15 +1,20 @@
 """Translate the scalar source family, preserving numerical boundaries."""
+
 from __future__ import annotations
 
 from math import prod
-from .linalg_recognition import LinalgBridgeError, _static_index_copy_map, _type
-from .model import ConstantBinding, SemanticNode, pointwise_identity_maps
-from .reference import TensorValue
+
 from xdsl.dialects.linalg.attrs import IteratorType
+
 from merlin.frontends.linalg_composite_math import recognize_static_composite_math_body
 from merlin.frontends.linalg_patterns import InvalidLinalgPattern
 from merlin.frontends.linalg_scalar_support import StaticIotaResourceLimit, recognize_f32_nonzero, recognize_static_iota
+
+from .linalg_recognition import LinalgBridgeError, _static_index_copy_map, _type
 from .linalg_state import TranslationState
+from .model import ConstantBinding, SemanticNode, pointwise_identity_maps
+from .reference import TensorValue
+
 
 def translate(state: TranslationState, op, ordinal):
     nodes = state.nodes
@@ -34,9 +39,7 @@ def translate(state: TranslationState, op, ordinal):
         # These are pure projections of the same mathematical reduction.
         # A physical multi-result instruction uses the existing descriptor
         # bundle mechanism; separate realizations must count their work.
-        for result_index, (value, operation) in enumerate(
-            zip(op.results, ("i64_min_value", "i64_first_min_index"))
-        ):
+        for result_index, (value, operation) in enumerate(zip(op.results, ("i64_min_value", "i64_first_min_index"))):
             node = SemanticNode(
                 f"op{ordinal}r{result_index}",
                 operation,
@@ -72,9 +75,7 @@ def translate(state: TranslationState, op, ordinal):
             if env.get(value) is None or env.get(destination, "undefined") is not None:
                 raise LinalgBridgeError("indexed copy needs a defined source and an empty destination")
             maps = _static_index_copy_map(op, _type(value.type), _type(op.results[0].type))
-            node = SemanticNode(
-                f"op{ordinal}r0", "gather", (env[value],), _type(op.results[0].type), index_maps=maps
-            )
+            node = SemanticNode(f"op{ordinal}r0", "gather", (env[value],), _type(op.results[0].type), index_maps=maps)
             nodes.append(node)
             env[op.results[0]] = node.id
             return True
@@ -189,9 +190,7 @@ def translate(state: TranslationState, op, ordinal):
         if any(value is None for value in source_ids):
             raise LinalgBridgeError("mask reads an uninitialized input")
         node_id = f"op{ordinal}r0"
-        nodes.append(
-            SemanticNode(node_id, "mask", source_ids, _type(op.results[0].type), attrs=attrs, index_maps=maps)
-        )
+        nodes.append(SemanticNode(node_id, "mask", source_ids, _type(op.results[0].type), attrs=attrs, index_maps=maps))
         env[op.results[0]] = node_id
         return True
 

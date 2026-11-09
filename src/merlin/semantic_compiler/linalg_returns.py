@@ -1,11 +1,15 @@
 """Translate the returns source family, preserving numerical boundaries."""
+
 from __future__ import annotations
 
 from hashlib import sha256
-from .linalg_recognition import LinalgBridgeError, _f32_reduce_maps, _recognize_f32_reduce, _type
-from .model import KernelRequest, SemanticNode
+
 from merlin.frontends.linalg_patterns import InvalidLinalgPattern
+
+from .linalg_recognition import LinalgBridgeError, _f32_reduce_maps, _recognize_f32_reduce, _type
 from .linalg_state import LinalgTranslation, TranslationState
+from .model import KernelRequest, SemanticNode
+
 
 def translate(state: TranslationState, op, ordinal):
     nodes = state.nodes

@@ -5,11 +5,12 @@ from dataclasses import replace
 import pytest
 from test_compact_dense import ADAPTER, fixture, schedule
 
-from merlin.compiler.schedule.loop_schedule import LoopTransform
-from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
-from merlin.compiler.schedule.schedule_ir import dense_schedule_text
-from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+from merlin.compiler.schedule.loop_schedule import LoopTransform, propose_loop_transforms
+from merlin.compiler.schedule.schedule_ir import (
+    dense_schedule_text,
+    make_dense_schedule_plan,
+    parse_dense_schedule_plan,
+)
 from merlin.sched.ir import Kernel, Ptr, TensorArg, call, evaluate, instances, loop, select
 from merlin.sched.ir.expr import Expr, Var
 from merlin.sched.primitives import NotApplicable

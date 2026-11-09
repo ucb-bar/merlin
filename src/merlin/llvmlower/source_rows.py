@@ -16,8 +16,7 @@ from typing import TYPE_CHECKING
 from .borrowed_buffer_calls import BorrowedBufferEffects, validate_effects
 
 if TYPE_CHECKING:
-    from merlin.compiler.schedule.row_softmax import RowSoftmaxAdapter
-    from merlin.compiler.schedule.row_softmax import RowSoftmaxSourceCompilation
+    from merlin.compiler.schedule.row_softmax import RowSoftmaxAdapter, RowSoftmaxSourceCompilation
     from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
     from merlin.runtime.host_provider import HostProviderBuild, HostProviderContext
 
@@ -68,15 +67,24 @@ class SourceRowLowering:
             or alignment & (alignment - 1)
             or not callable(self.prepare)
             or not callable(self.build)
-            or any(type(value) is not bool for value in (
-                self.assume_finite_inputs, self.private_ownership, self.disjoint_arguments,
-            ))
-            or any(type(value) is not int or value <= 0 for value in (
-                self.max_source_elements, self.max_islands, self.timeout_ms,
-            ))
-            or self.chunk_elements is not None and (
-                type(self.chunk_elements) is not int or self.chunk_elements <= 0
+            or any(
+                type(value) is not bool
+                for value in (
+                    self.assume_finite_inputs,
+                    self.private_ownership,
+                    self.disjoint_arguments,
+                )
             )
+            or any(
+                type(value) is not int or value <= 0
+                for value in (
+                    self.max_source_elements,
+                    self.max_islands,
+                    self.timeout_ms,
+                )
+            )
+            or self.chunk_elements is not None
+            and (type(self.chunk_elements) is not int or self.chunk_elements <= 0)
         ):
             raise ValueError("source row lowering requires typed capabilities, explicit premises and bounded controls")
         self.selected_contracts.revalidate()
@@ -92,9 +100,7 @@ class SourceRowBinding:
 
 def discover_rows(module, selection, validate):
     """Compile supported canonical regions on the immutable original module."""
-    from merlin.compiler.schedule.row_softmax import RowSoftmaxUnavailable
-    from merlin.compiler.schedule.row_softmax import compile_source_rows
-    from merlin.compiler.schedule.row_softmax import read_source_rows
+    from merlin.compiler.schedule.row_softmax import RowSoftmaxUnavailable, compile_source_rows, read_source_rows
     from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
 
     from .source_model import SourceRegion
@@ -107,7 +113,8 @@ def discover_rows(module, selection, validate):
             continue
         try:
             source = read_source_rows(
-                operation, numerical_policy=selection.numerical_policy,
+                operation,
+                numerical_policy=selection.numerical_policy,
                 assume_finite_inputs=selection.assume_finite_inputs,
                 max_source_elements=selection.max_source_elements,
             )
@@ -118,11 +125,16 @@ def discover_rows(module, selection, validate):
         validate()
         try:
             compiled = compile_source_rows(
-                module, operation, selected_contracts=selection.selected_contracts,
-                adapter=selection.adapter, numerical_policy=selection.numerical_policy,
+                module,
+                operation,
+                selected_contracts=selection.selected_contracts,
+                adapter=selection.adapter,
+                numerical_policy=selection.numerical_policy,
                 assume_finite_inputs=selection.assume_finite_inputs,
-                private_ownership=selection.private_ownership, disjoint_arguments=selection.disjoint_arguments,
-                chunk_elements=selection.chunk_elements, timeout_ms=selection.timeout_ms,
+                private_ownership=selection.private_ownership,
+                disjoint_arguments=selection.disjoint_arguments,
+                chunk_elements=selection.chunk_elements,
+                timeout_ms=selection.timeout_ms,
                 max_source_elements=selection.max_source_elements,
             )
         except (RowSoftmaxUnavailable, StorageOptimizationUnavailable) as error:

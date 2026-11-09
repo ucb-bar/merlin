@@ -16,8 +16,7 @@ from typing import TYPE_CHECKING
 from .borrowed_buffer_calls import BorrowedBufferEffects, validate_effects
 
 if TYPE_CHECKING:
-    from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
-    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+    from merlin.compiler.schedule.compact_dense import DenseLoopAdapter, DenseLoopStorage
     from merlin.compiler.schedule.dense_source import DenseSourceResult
     from merlin.compiler.schedule.program_limits import AddressWindow
     from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
@@ -78,9 +77,7 @@ class SourceDenseLowering:
     lhs_grouping: SourceDenseGrouping | None = None
 
     def __post_init__(self):
-        from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
-        from merlin.compiler.schedule.compact_dense import DenseLoopStorage
-        from merlin.compiler.schedule.compact_dense import DenseMemoryView
+        from merlin.compiler.schedule.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
         from merlin.compiler.schedule.program_limits import AddressWindow
         from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
         from merlin.transforms.dense_planning import DenseResources
@@ -363,10 +360,12 @@ class SourceDenseBinding:
 def discover_dense(module, selection, validate):
     """Derive contractions and schedules from current IR; never ask a backend to select regions."""
     from merlin.compiler.schedule.dense_contracts import DenseSchedulingUnavailable
-    from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
-    from merlin.compiler.schedule.dense_source import _problem
-    from merlin.compiler.schedule.dense_source import read_source_dense_readout
-    from merlin.compiler.schedule.dense_source import schedule_source_dense
+    from merlin.compiler.schedule.dense_source import (
+        DenseSourceUnavailable,
+        _problem,
+        read_source_dense_readout,
+        schedule_source_dense,
+    )
 
     from .source_model import SourceRegion
 

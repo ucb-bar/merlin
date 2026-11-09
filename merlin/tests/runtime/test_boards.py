@@ -5,6 +5,7 @@ label at 0x80000000. Those are chipyard facts, not RISC-V facts, and every one o
 the board and SILENTLY here — no console output looks exactly like a hang, and a region larger than
 physical DRAM dies before main(). So the descriptor is the contract, and these tests pin it.
 """
+
 from __future__ import annotations
 
 import os
@@ -12,10 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from merlin.runtime import boards
 from merlin.compiler.build.zephyr import memory
 from merlin.compiler.build.zephyr.config import project_config, vector_max_len_bits
 from merlin.compiler.build.zephyr.tree import TreeConfiguration
+from merlin.runtime import boards
 from merlin.runtime.backends import zephyr_model as zm
 from merlin.runtime.sdk_facts import UartConsoleFacts
 
@@ -49,15 +50,28 @@ def uart_facts():
     return UartConsoleFacts(
         uart_base=0x10020000,
         reg={"TXDATA": 0, "RXDATA": 4, "TXCTRL": 8, "RXCTRL": 12, "IE": 16, "IP": 20, "DIV": 24},
-        tx_full_bit=31, txen_bit=0, rxen_bit=0, nstop_bit=1,
-        sys_clk_hz=50_000_000, mtime_hz=50_000,
+        tx_full_bit=31,
+        txen_bit=0,
+        rxen_bit=0,
+        nstop_bit=1,
+        sys_clk_hz=50_000_000,
+        mtime_hz=50_000,
         pll_base=0x140000,
-        pll={"POWERGOOD_VNN": 0x5C, "PLLEN": 0x60, "LDO_ENABLE": 0x64, "RATIO": 0x6C,
-             "FRACTION": 0x70, "MDIV_RATIO": 0x74, "ZDIV0_RATIO": 0x78, "ZDIV1_RATIO": 0x80,
-             "PLLFWEN_B": 0x100},
+        pll={
+            "POWERGOOD_VNN": 0x5C,
+            "PLLEN": 0x60,
+            "LDO_ENABLE": 0x64,
+            "RATIO": 0x6C,
+            "FRACTION": 0x70,
+            "MDIV_RATIO": 0x74,
+            "ZDIV0_RATIO": 0x78,
+            "ZDIV1_RATIO": 0x80,
+            "PLLFWEN_B": 0x100,
+        },
         clksel_base=0x130000,
         clksel={"UNCORE": 0, "TILE0": 4, "TILE1": 8, "CLKTAP": 12},
-        clksel_slow=0, clksel_pll=1,
+        clksel_slow=0,
+        clksel_pll=1,
     )
 
 
@@ -96,9 +110,14 @@ def test_catalog_selection_is_explicit(monkeypatch):
 
 def test_matrix_affinity_checks_actual_worker_ids_and_declared_route():
     board = _fixture_board(
-        "mixed", harts=4, vector_harts=3, vector_hart_ids=(0, 2, 3),
-        matrix_hart_ids=(0, 3), matrix_support_target="unit_provider",
-        matrix_unit="matrix", matrix_config="selected_config",
+        "mixed",
+        harts=4,
+        vector_harts=3,
+        vector_hart_ids=(0, 2, 3),
+        matrix_hart_ids=(0, 3),
+        matrix_support_target="unit_provider",
+        matrix_unit="matrix",
+        matrix_config="selected_config",
     )
     board.check_matrix_route("unit_provider", "matrix", "selected_config")
     board.check_matrix_image(1)
@@ -113,17 +132,24 @@ def test_matrix_affinity_checks_actual_worker_ids_and_declared_route():
         _fixture_board("undeclared").check_matrix_route(None, None, None)
 
 
-@pytest.mark.parametrize("extra", [
-    "matrix_hart_ids: [0, 0]", "matrix_hart_ids: [2]", "matrix_hart_ids: []",
-    "matrix_unit: matrix", "matrix_unit: ''",
-])
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "matrix_hart_ids: [0, 0]",
+        "matrix_hart_ids: [2]",
+        "matrix_hart_ids: []",
+        "matrix_unit: matrix",
+        "matrix_unit: ''",
+    ],
+)
 def test_matrix_catalog_refuses_incomplete_or_invalid_resources(tmp_path, extra):
     path = tmp_path / "boards.yaml"
     path.write_text(
         "schema_version: 1\nboards:\n  selected:\n    dram_bytes: 256 MiB\n"
         "    dram_base: 0x80000000\n    harts: 2\n    vector_harts: 1\n"
         "    console: htif\n    flow: baremetal\n    code_reserve: 1 MiB\n"
-        f"    {extra}\n", encoding="utf-8",
+        f"    {extra}\n",
+        encoding="utf-8",
     )
     with pytest.raises(boards.BoardRegistryError, match="matrix"):
         boards.load_boards(path)
@@ -182,9 +208,13 @@ def test_zephyr_build_requires_board_before_creating_output(tmp_path):
 def test_external_memory_layout_uses_the_selected_board_not_a_fixed_address():
     gib = 1 << 30
     brd = _fixture_board(
-        "shifted", dram_base=0x90000000, dram_bytes=8 * gib,
-        zephyr_default_ram_bytes=256 << 20, zephyr_link_limit_bytes=1900 << 20,
-        zephyr_external_ram_bytes=gib, zephyr_external_tail_reserve_bytes=256 << 20,
+        "shifted",
+        dram_base=0x90000000,
+        dram_bytes=8 * gib,
+        zephyr_default_ram_bytes=256 << 20,
+        zephyr_link_limit_bytes=1900 << 20,
+        zephyr_external_ram_bytes=gib,
+        zephyr_external_tail_reserve_bytes=256 << 20,
     )
     layout = memory.memory_plan(brd, 2 * gib + 1, 3 * gib)
     assert layout.external
@@ -196,8 +226,10 @@ def test_external_memory_layout_uses_the_selected_board_not_a_fixed_address():
 
 def test_large_model_without_board_layout_fails_before_linking():
     brd = _fixture_board(
-        "no_external", dram_bytes=8 << 30,
-        zephyr_default_ram_bytes=256 << 20, zephyr_link_limit_bytes=1900 << 20,
+        "no_external",
+        dram_bytes=8 << 30,
+        zephyr_default_ram_bytes=256 << 20,
+        zephyr_link_limit_bytes=1900 << 20,
     )
     with pytest.raises(zm.ZephyrModelError, match="declares no external-weights layout"):
         memory.memory_plan(brd, 2 << 30, 3 << 30)
@@ -208,9 +240,12 @@ def test_large_model_without_board_layout_fails_before_linking():
 def test_external_weights_cannot_overlap_reserved_dram_tail():
     gib = 1 << 30
     brd = _fixture_board(
-        "small_external", dram_bytes=4 * gib,
-        zephyr_default_ram_bytes=256 << 20, zephyr_link_limit_bytes=1900 << 20,
-        zephyr_external_ram_bytes=gib, zephyr_external_tail_reserve_bytes=256 << 20,
+        "small_external",
+        dram_bytes=4 * gib,
+        zephyr_default_ram_bytes=256 << 20,
+        zephyr_link_limit_bytes=1900 << 20,
+        zephyr_external_ram_bytes=gib,
+        zephyr_external_tail_reserve_bytes=256 << 20,
     )
     with pytest.raises(zm.ZephyrModelError, match="does not fit"):
         memory.memory_plan(brd, 3 * gib, 4 * gib)
@@ -311,6 +346,7 @@ def test_a_stale_vector_ext_flag_is_refused_rather_than_built(zephyr_tree):
     produce the image again.
     """
     import dataclasses
+
     import pytest
 
     b = dataclasses.replace(boards.board("chipyard_kodiak"), zephyr_vector_ext=False)
@@ -381,8 +417,7 @@ def test_a_uart_board_turns_htif_off_and_states_both_clock_terms(uart_facts):
     assert "CONFIG_UART_SIFIVE=y" in conf and "CONFIG_UART_SIFIVE_PORT_0=y" in conf
     assert "CONFIG_UART_CONSOLE=y" in conf
     assert f"CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC={uart_facts.mtime_hz}" in conf
-    assert (f"CONFIG_RTC_CLOCK_DIVIDER_VALUE="
-            f"{uart_facts.sys_clk_hz // uart_facts.mtime_hz}") in conf
+    assert (f"CONFIG_RTC_CLOCK_DIVIDER_VALUE={uart_facts.sys_clk_hz // uart_facts.mtime_hz}") in conf
 
 
 def test_a_core_clock_that_is_not_a_multiple_of_the_mtime_rate_is_refused(uart_facts):
@@ -418,9 +453,8 @@ def test_the_overlay_uses_the_board_label_and_base():
 def test_build_hash_is_emitted_and_parseable():
     """A console log mailed back from someone else's board is otherwise unattributable."""
     src = zm._main_c(0, n_harts=1, build_hash="abc123def456")
-    assert 'METRIC build_hash' in src and '"abc123def456"' in src
-    parsed = zm._parse_console(
-        "METRIC build_hash abc123def456\nMETRIC cycles 7\nOUT 1 1065353216\nDONE", 0)
+    assert "METRIC build_hash" in src and '"abc123def456"' in src
+    parsed = zm._parse_console("METRIC build_hash abc123def456\nMETRIC cycles 7\nOUT 1 1065353216\nDONE", 0)
     assert parsed["metrics"]["build_hash"] == "abc123def456"
     assert parsed["metrics"]["cycles"] == 7
 
@@ -453,8 +487,7 @@ def test_the_baremetal_layout_is_packed_inside_the_boards_dram():
     from merlin.runtime.backends import spike_model
 
     brd = boards.board("gemmelos_bearly25")
-    lay = spike_model._layout(64 * 1024 * 1024, 8 * 1024 * 1024,
-                              dram_base=brd.dram_base, dram_bytes=brd.dram_bytes)
+    lay = spike_model._layout(64 * 1024 * 1024, 8 * 1024 * 1024, dram_base=brd.dram_base, dram_bytes=brd.dram_bytes)
     end = brd.dram_base + brd.dram_bytes
     assert brd.dram_base < lay["weights_base"] < lay["arena_base"] < end
     assert lay["mem_bytes"] == brd.dram_bytes
@@ -470,8 +503,7 @@ def test_an_image_too_big_for_the_board_fails_closed():
     from merlin.runtime.backends import spike_model
 
     with pytest.raises(RuntimeError, match="does not fit"):
-        spike_model._layout(900 * 1024 * 1024, 200 * 1024 * 1024,
-                            dram_base=0x80000000, dram_bytes=256 * 1024 * 1024)
+        spike_model._layout(900 * 1024 * 1024, 200 * 1024 * 1024, dram_base=0x80000000, dram_bytes=256 * 1024 * 1024)
 
 
 def test_the_baremetal_build_applies_the_same_preparation_as_the_zephyr_one():
@@ -516,16 +548,17 @@ def test_the_hart_count_reaches_the_split_and_not_the_block():
 
     src = inspect.getsource(zm.prepare_for_lowering)
     assert "harts" in inspect.signature(zm.prepare_for_lowering).parameters
-    assert "parallel_chunk_table(_par_shapes, table, harts)" in src, (
-        "the hart count must reach the split derivation")
+    assert "parallel_chunk_table(_par_shapes, table, harts)" in src, "the hart count must reach the split derivation"
     assert any(
         isinstance(node, ast.comprehension) and ast.unparse(node.iter) == "_cshapes(prepared)"
         for node in ast.walk(ast.parse(src))
     )
     assert "_par_shapes.extend(_pb.conv_shapes(prepared))" in src, (
-        "both matmul-like contractions and direct convolutions must reach the split derivation")
+        "both matmul-like contractions and direct convolutions must reach the split derivation"
+    )
     assert "harts" not in inspect.signature(pb.block_table).parameters, (
-        "the block must not be a function of the hart count")
+        "the block must not be a function of the hart count"
+    )
     # ...and build_app must pass the image's hart count down, not the default.
     assert "harts=n_harts" in inspect.getsource(zm.build_app)
     # ...and the split it derived must reach the lowering, or the tags match no arm and every
@@ -586,8 +619,9 @@ def test_the_generated_worker_enables_vector_state_before_running_the_model():
         # 0x600 = mstatus.VS bits[10:9], 0x6000 = mstatus.FS bits[14:13].
         assert "0x00000600UL | 0x00006000UL" in src
         # Ordering is the whole point: after the banner is fine, before the model is mandatory.
-        assert src.index("csrw mstatus") < src.index("merlin_run_multi("), \
+        assert src.index("csrw mstatus") < src.index("merlin_run_multi("), (
             f"n_harts={n_harts}: vector state enabled after the model already ran"
+        )
 
 
 def test_kodiak_records_the_vector_width_its_owner_confirmed():
@@ -610,7 +644,7 @@ def test_scalar_multicore_is_supported_so_a_non_vector_hart_is_reachable():
     assert "requires backend='rvv'" not in src, "scalar multicore must not be refused"
     # The two backends reach multicore by different routes; both must be wired.
     assert 'parallel=(backend != "rvv" and n_harts > 1)' in src
-    assert 'parallel_harts=(n_harts if n_harts > 1' in src
+    assert "parallel_harts=(n_harts if n_harts > 1" in src
 
 
 def test_an_rvv_image_is_refused_past_the_vector_harts():
@@ -644,15 +678,14 @@ def test_the_hart_list_reaches_the_openmp_shim():
     """Pinning is where a wrong hart set becomes a deadlock, so the shim must WALK the list rather
     than count -- and shrink the pool rather than put two workers on one hart, which would serialize
     silently and report a speed-up that never happened."""
-    from merlin.common.paths import merlin_dir
-
     import inspect
+
+    from merlin.common.paths import merlin_dir
 
     src = (merlin_dir() / "runtime/c/libomp_zephyr.c").read_text()
     assert "MERLIN_OMP_HART_IDS" in src
     assert "omp_nthreads = i;" in src, "the shim must shrink the pool, not double-pin"
-    assert "MERLIN_OMP_HART_IDS" in inspect.getsource(zm._cmakelists), \
-        "the build must actually emit the list"
+    assert "MERLIN_OMP_HART_IDS" in inspect.getsource(zm._cmakelists), "the build must actually emit the list"
 
 
 def test_vector_capable_harts_are_discovered_at_runtime_not_assumed():
@@ -736,7 +769,10 @@ def test_a_second_configuration_of_a_board_keeps_the_port_and_states_its_own_fac
     assert two.vlen == 512, "under-declaring this overruns Zephyr's per-thread vector save area"
     # The port's own bring-up facts are shared, because they belong to the port and the link.
     assert (two.console, two.fpu_sharing, two.zephyr_vector_ext) == (
-        chip.console, chip.fpu_sharing, chip.zephyr_vector_ext)
+        chip.console,
+        chip.fpu_sharing,
+        chip.zephyr_vector_ext,
+    )
     assert (two.loader, two.loader_baud) == (chip.loader, chip.loader_baud)
     # No image may declare a CPU this design does not have.
     assert zm.image_cpus(two, 1) == 2
@@ -749,30 +785,53 @@ def test_the_board_table_is_the_registry_file_not_code(tmp_path):
     assert path.is_file()
     assert boards.load_boards(path) == boards.BOARDS
     reg = tmp_path / "boards.yaml"
-    reg.write_text("schema_version: 1\nboards:\n  a_new_tapeout:\n    dram_bytes: 1 GiB\n    harts: 3\n"
-                   "    dram_base: 0x80000000\n    console: uart\n    flow: zephyr\n"
-                   "    loader: pyuartsi\n    loader_baud: 57600\n    ram_label: ram0\n"
-                   "    zephyr_default_ram_bytes: 256 MiB\n    zephyr_link_limit_bytes: 1900 MiB\n"
-                   "    uart_label: uart0\n    fpu_sharing: false\n    zephyr_vector_ext: true\n"
-                   "    vlen: 256\n    vector_hart_ids: [0, 2]\n", encoding="utf-8")
+    reg.write_text(
+        "schema_version: 1\nboards:\n  a_new_tapeout:\n    dram_bytes: 1 GiB\n    harts: 3\n"
+        "    dram_base: 0x80000000\n    console: uart\n    flow: zephyr\n"
+        "    loader: pyuartsi\n    loader_baud: 57600\n    ram_label: ram0\n"
+        "    zephyr_default_ram_bytes: 256 MiB\n    zephyr_link_limit_bytes: 1900 MiB\n"
+        "    uart_label: uart0\n    fpu_sharing: false\n    zephyr_vector_ext: true\n"
+        "    vlen: 256\n    vector_hart_ids: [0, 2]\n",
+        encoding="utf-8",
+    )
     b = boards.load_boards(reg)["a_new_tapeout"]
     assert b.dram_bytes == 1 << 30 and b.harts == 3
     assert b.vector_hart_ids == (0, 2) and b.hart_ids_for("rvv") == (0, 2)
     assert b.console == boards.CONSOLE_UART
 
 
-@pytest.mark.parametrize("missing_fact", [
-    "dram_base", "console", "flow", "loader", "loader_baud",
-    "ram_label", "uart_label", "fpu_sharing", "zephyr_vector_ext",
-    "zephyr_default_ram_bytes", "zephyr_link_limit_bytes",
-])
+@pytest.mark.parametrize(
+    "missing_fact",
+    [
+        "dram_base",
+        "console",
+        "flow",
+        "loader",
+        "loader_baud",
+        "ram_label",
+        "uart_label",
+        "fpu_sharing",
+        "zephyr_vector_ext",
+        "zephyr_default_ram_bytes",
+        "zephyr_link_limit_bytes",
+    ],
+)
 def test_catalog_rejects_missing_critical_facts(tmp_path, missing_fact):
     facts = {
-        "dram_bytes": "1 GiB", "dram_base": 0x80000000, "harts": 2,
-        "console": "uart", "flow": "zephyr", "loader": "pyuartsi",
-        "loader_baud": 57600, "ram_label": "ram0", "uart_label": "uart0",
-        "zephyr_default_ram_bytes": "256 MiB", "zephyr_link_limit_bytes": "1900 MiB",
-        "fpu_sharing": False, "zephyr_vector_ext": True, "vector_harts": 2,
+        "dram_bytes": "1 GiB",
+        "dram_base": 0x80000000,
+        "harts": 2,
+        "console": "uart",
+        "flow": "zephyr",
+        "loader": "pyuartsi",
+        "loader_baud": 57600,
+        "ram_label": "ram0",
+        "uart_label": "uart0",
+        "zephyr_default_ram_bytes": "256 MiB",
+        "zephyr_link_limit_bytes": "1900 MiB",
+        "fpu_sharing": False,
+        "zephyr_vector_ext": True,
+        "vector_harts": 2,
     }
     facts.pop(missing_fact)
     import yaml
@@ -787,8 +846,12 @@ def test_baremetal_catalog_requires_declared_code_reserve(tmp_path):
     import yaml
 
     facts = {
-        "dram_bytes": "1 GiB", "dram_base": 0x80000000, "harts": 1,
-        "console": "htif", "flow": "baremetal", "loader": "uart_tsi",
+        "dram_bytes": "1 GiB",
+        "dram_base": 0x80000000,
+        "harts": 1,
+        "console": "htif",
+        "flow": "baremetal",
+        "loader": "uart_tsi",
         "loader_baud": 921600,
     }
     reg = tmp_path / "boards.yaml"
@@ -797,13 +860,16 @@ def test_baremetal_catalog_requires_declared_code_reserve(tmp_path):
         boards.load_boards(reg)
 
 
-@pytest.mark.parametrize("entry, needle", [
-    ("dram_bytes: 1 GiB\n    harts: 2\n    dram_mb: 5\n", "unknown field"),
-    ("dram_bytes: 1 GiB\n    harts: 2\n    console: jtag\n", "not one of"),
-    ("dram_bytes: 1 GiB\n", "missing required"),
-    ("dram_bytes: 1 GB\n    harts: 2\n", "byte size"),
-    ("dram_bytes: 1 GiB\n    harts: two\n", "not an integer"),
-])
+@pytest.mark.parametrize(
+    "entry, needle",
+    [
+        ("dram_bytes: 1 GiB\n    harts: 2\n    dram_mb: 5\n", "unknown field"),
+        ("dram_bytes: 1 GiB\n    harts: 2\n    console: jtag\n", "not one of"),
+        ("dram_bytes: 1 GiB\n", "missing required"),
+        ("dram_bytes: 1 GB\n    harts: 2\n", "byte size"),
+        ("dram_bytes: 1 GiB\n    harts: two\n", "not an integer"),
+    ],
+)
 def test_a_malformed_board_entry_is_refused_rather_than_defaulted(tmp_path, entry, needle):
     """A board fact that silently fell back is the wrong-DRAM / wrong-hart-count image that hangs on the
     chip with nothing printed, so the registry refuses what it cannot read instead of guessing."""

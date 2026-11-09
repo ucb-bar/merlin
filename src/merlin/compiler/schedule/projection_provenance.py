@@ -25,15 +25,13 @@ def projection_provenance_attributes(attributes):
         raise ValueError("projection provenance needs exactly original region and node identities")
 
     def identity(value):
-        if (type(value) is not str or not 0 < len(value) <= 4096
-                or any(ord(c) < 32 or c in '\"\\,[]{}' for c in value)):
+        if type(value) is not str or not 0 < len(value) <= 4096 or any(ord(c) < 32 or c in '"\\,[]{}' for c in value):
             raise ValueError("projection source identity cannot round-trip through the selected interface")
         return value
 
     region = identity(attributes["prov.region_id"])
     nodes = attributes["prov.source_node_ids"]
-    if (type(nodes) is not list or not 1 <= len(nodes) <= 256
-            or any(type(node) is not str for node in nodes)):
+    if type(nodes) is not list or not 1 <= len(nodes) <= 256 or any(type(node) is not str for node in nodes):
         raise ValueError("projection provenance requires a bounded original node list")
     nodes = [identity(node) for node in nodes]
     if len(set(nodes)) != len(nodes):
@@ -63,12 +61,20 @@ def shared_projection_provenance(module, group):
     for root in roots:
         region = root.attributes.get("prov.region_id")
         nodes = root.attributes.get("prov.source_node_ids")
-        if (type(region) is not StringAttr or type(nodes) is not ArrayAttr
-                or any(type(node) is not StringAttr for node in nodes)):
+        if (
+            type(region) is not StringAttr
+            or type(nodes) is not ArrayAttr
+            or any(type(node) is not StringAttr for node in nodes)
+        ):
             raise ValueError("every projection member needs its original typed region and nodes")
-        members.append(projection_provenance_attributes({
-            "prov.region_id": region.data, "prov.source_node_ids": [node.data for node in nodes],
-        }))
+        members.append(
+            projection_provenance_attributes(
+                {
+                    "prov.region_id": region.data,
+                    "prov.source_node_ids": [node.data for node in nodes],
+                }
+            )
+        )
     if len({member["prov.region_id"] for member in members}) != len(members):
         raise ValueError("projection members have ambiguous duplicate original regions")
     return tuple(members)
@@ -80,18 +86,29 @@ def projection_compute_member(boundaries, column_bounds, width_bounds):
     Bounds come from the consumed counted/SCF indices, not receipt assertions.
     Unknown, negative, crossing or ambiguous intervals cannot be attributed.
     """
-    if (type(boundaries) is not tuple or len(boundaries) < 3 or boundaries[0] != 0
-            or any(type(v) is not int for v in boundaries)
-            or any(a >= b for a, b in zip(boundaries, boundaries[1:]))):
+    if (
+        type(boundaries) is not tuple
+        or len(boundaries) < 3
+        or boundaries[0] != 0
+        or any(type(v) is not int for v in boundaries)
+        or any(a >= b for a, b in zip(boundaries, boundaries[1:]))
+    ):
         raise ValueError("compute attribution needs the complete original column partition")
     for bounds in (column_bounds, width_bounds):
-        if (type(bounds) is not tuple or len(bounds) != 2
-                or any(type(v) is not int for v in bounds) or bounds[0] > bounds[1]):
+        if (
+            type(bounds) is not tuple
+            or len(bounds) != 2
+            or any(type(v) is not int for v in bounds)
+            or bounds[0] > bounds[1]
+        ):
             raise ValueError("compute attribution needs proved counted index bounds")
     if column_bounds[0] < 0 or width_bounds[0] <= 0:
         raise ValueError("compute attribution has a negative or empty interval")
-    members = [i for i, (start, stop) in enumerate(zip(boundaries, boundaries[1:]))
-               if start <= column_bounds[0] and column_bounds[1] + width_bounds[1] <= stop]
+    members = [
+        i
+        for i, (start, stop) in enumerate(zip(boundaries, boundaries[1:]))
+        if start <= column_bounds[0] and column_bounds[1] + width_bounds[1] <= stop
+    ]
     if len(members) != 1:
         raise ValueError("actual compute interval crosses original projection members")
     return members[0]
@@ -102,5 +119,7 @@ def projection_ir_attributes(attributes):
     attributes = projection_provenance_attributes(attributes)
     if not attributes:
         return {}
-    return {"prov.region_id": StringAttr(attributes["prov.region_id"]),
-            "prov.source_node_ids": ArrayAttr(StringAttr(node) for node in attributes["prov.source_node_ids"])}
+    return {
+        "prov.region_id": StringAttr(attributes["prov.region_id"]),
+        "prov.source_node_ids": ArrayAttr(StringAttr(node) for node in attributes["prov.source_node_ids"]),
+    }

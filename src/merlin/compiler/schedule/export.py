@@ -287,11 +287,16 @@ def namespace_replacements(version=26):
         return {
             **{canonical_module(name): text for name, text in _NAMESPACES_V24.items()},
             "merlin": '"""Selected shared compiler SDK; public APIs are explicit leaf modules."""\n',
-            **{name: '"""Selected shared preprocessing leaves; no driver or backend discovery."""\n'
-               for name in (
-                   "merlin.compiler.frontend", "merlin.compiler.quantization", "merlin.compiler.transforms",
-                   "merlin.compiler.lower", "merlin.compiler.lower.scalar",
-               )},
+            **{
+                name: '"""Selected shared preprocessing leaves; no driver or backend discovery."""\n'
+                for name in (
+                    "merlin.compiler.frontend",
+                    "merlin.compiler.quantization",
+                    "merlin.compiler.transforms",
+                    "merlin.compiler.lower",
+                    "merlin.compiler.lower.scalar",
+                )
+            },
         }
     return dict(
         {
@@ -374,7 +379,11 @@ def _license_root(source_root):
 
 
 def export_shared_scheduling(
-    directory: Path, *, license_directory: Path | None = None, version=26, source_binding: bool = False,
+    directory: Path,
+    *,
+    license_directory: Path | None = None,
+    version=26,
+    source_binding: bool = False,
     frozen_release: Path | None = None,
 ) -> dict:
     """Write one declared source set, without granting candidate import access.
@@ -398,9 +407,7 @@ def export_shared_scheduling(
     if type(source_binding) is not bool:
         raise ValueError("shared source-binding export requires an explicit Boolean")
     if source_binding and version not in (8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26):
-        raise ValueError(
-            "new source-binding exports require explicit inventory version 8 or 10 through 26"
-        )
+        raise ValueError("new source-binding exports require explicit inventory version 8 or 10 through 26")
     if source_binding:
         modules = (*modules, *(canonical_module(name) for name in SOURCE_BINDING_MODULES))
     directory = Path(directory).absolute()
@@ -460,7 +467,8 @@ def export_shared_scheduling(
         }[version],
         "public_modules": list(
             (*public_modules(version), *(canonical_module(name) for name in SOURCE_BINDING_MODULES))
-            if source_binding else public_modules(version)
+            if source_binding
+            else public_modules(version)
         ),
         "members": members,
         "replaced_namespace_source_sha256": namespace_changes,
@@ -516,8 +524,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--include-block-schedule", action="store_true")
-    parser.add_argument("--library-version", type=int,
-                        choices=(6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26), default=26)
+    parser.add_argument(
+        "--library-version",
+        type=int,
+        choices=(6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26),
+        default=26,
+    )
     parser.add_argument("--frozen-release", type=Path, help="exact reviewed legacy SDK directory to copy")
     parser.add_argument(
         "--shared-library", action="store_true", help="export all shared scheduling families for host review"

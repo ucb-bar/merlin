@@ -6,10 +6,12 @@ import json
 
 import pytest
 
-from merlin.compiler.schedule.export import SOURCE_BINDING_MODULES
-from merlin.compiler.schedule.export import SOURCE_BINDING_PROTOCOL
-from merlin.compiler.schedule.export import export_shared_scheduling
-from merlin.compiler.schedule.export import public_modules
+from merlin.compiler.schedule.export import (
+    SOURCE_BINDING_MODULES,
+    SOURCE_BINDING_PROTOCOL,
+    export_shared_scheduling,
+    public_modules,
+)
 from merlin.compiler.schedule.library_sources import library_modules
 from merlin.targetgen import tool_profile_shared as S
 

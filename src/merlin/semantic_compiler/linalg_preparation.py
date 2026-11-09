@@ -1,11 +1,22 @@
 """Translate the preparation source family, preserving numerical boundaries."""
+
 from __future__ import annotations
 
-from .linalg_recognition import LinalgBridgeError, _i64_to_f32_bits, _scalar_f32_bits, _scalar_i64, _scalar_integer, _type
-from .model import ConstantBinding, SemanticNode
 from xdsl.dialects.builtin import IntegerAttr
+
 from merlin.frontends.linalg_ordered_fp8 import is_positive_bf16_zero
+
+from .linalg_recognition import (
+    LinalgBridgeError,
+    _i64_to_f32_bits,
+    _scalar_f32_bits,
+    _scalar_i64,
+    _scalar_integer,
+    _type,
+)
 from .linalg_state import TranslationState
+from .model import ConstantBinding, SemanticNode
+
 
 def translate(state: TranslationState, op, ordinal):
     nodes = state.nodes

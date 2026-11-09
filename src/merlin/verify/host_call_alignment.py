@@ -1,4 +1,5 @@
 """Compatibility import for the canonical independent verifier."""
+
 import sys
 
 from merlin.verification import host_call_alignment as _implementation

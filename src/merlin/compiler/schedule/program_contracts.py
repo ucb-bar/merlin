@@ -12,10 +12,6 @@ import json
 from dataclasses import asdict, dataclass
 from math import lcm
 
-from merlin.sched.ir import Call, Const
-from merlin.targetgen.isa_dialect_gen import decode_instruction
-from merlin.targetgen.isa_spec import resolve_fact_integer
-
 from merlin.compiler.schedule.program_limits import (
     AddressWindow,
     BranchRule,
@@ -27,6 +23,9 @@ from merlin.compiler.schedule.program_limits import (
     ProgramLimits,
 )
 from merlin.compiler.schedule.storage_contracts import _space, binding_value
+from merlin.sched.ir import Call, Const
+from merlin.targetgen.isa_dialect_gen import decode_instruction
+from merlin.targetgen.isa_spec import resolve_fact_integer
 
 
 def _fields(value, keys, label):
@@ -36,8 +35,12 @@ def _fields(value, keys, label):
 
 
 def _names(value, label):
-    if (type(value) is not list or len(value) > 4096 or any(type(v) is not str or not v for v in value)
-            or len(set(value)) != len(value)):
+    if (
+        type(value) is not list
+        or len(value) > 4096
+        or any(type(v) is not str or not v for v in value)
+        or len(set(value)) != len(value)
+    ):
         raise ValueError(f"final program {label}: requires bounded distinct names")
     return value
 
@@ -48,20 +51,25 @@ class SelectedProgramContract:
 
     @property
     def physical_spaces(self):
-        return tuple((name, window["backing"]) for name, window in
-                     json.loads(self.declarations_json)["windows"].items())
+        return tuple(
+            (name, window["backing"]) for name, window in json.loads(self.declarations_json)["windows"].items()
+        )
 
     def published(self):
-        return tuple(EncodedAccess(name, w["start"], w["size"]) for name, w in
-                     json.loads(self.declarations_json)["windows"].items() if w["visibility"] != "private")
+        return tuple(
+            EncodedAccess(name, w["start"], w["size"])
+            for name, w in json.loads(self.declarations_json)["windows"].items()
+            if w["visibility"] != "private"
+        )
 
     def calls(self, selected, image):
         width = selected.isa.word_bits // 8
         if selected.isa.word_bits % 8 or type(image) is not bytes or not image or len(image) % width:
             raise ValueError("selected final program needs complete byte-aligned ISA words")
         for index in range(len(image) // width):
-            name, values = decode_instruction(selected.isa, int.from_bytes(
-                image[index * width:(index + 1) * width], selected.instruction_byteorder))
+            name, values = decode_instruction(
+                selected.isa, int.from_bytes(image[index * width : (index + 1) * width], selected.instruction_byteorder)
+            )
             yield index * width, name, values
 
     def bind(self, selected, limits, decoder, continuation, qualification_identity):
@@ -78,14 +86,20 @@ class SelectedProgramContract:
         if alignment is None:
             raise ValueError("selected final instruction alignment is unknown")
         windows = tuple(AddressWindow(name, w["start"], w["size"]) for name, w in row["windows"].items())
-        rules = tuple(BranchRule(name, r["minimum"], r["maximum"], r["scale"], r["origin"])
-                      for name, r in row["branches"].items() if r["origin"] != "unknown")
+        rules = tuple(
+            BranchRule(name, r["minimum"], r["maximum"], r["scale"], r["origin"])
+            for name, r in row["branches"].items()
+            if r["origin"] != "unknown"
+        )
         count = row["limits"]["max_instructions"]
         if limits is not None:
             maximum = min(limits.max_bytes, maximum) if maximum is not None else limits.max_bytes
             alignment = lcm(alignment, limits.instruction_alignment)
-            count = min(c for c in (count, limits.max_instructions) if c is not None) if (
-                count is not None or limits.max_instructions is not None) else None
+            count = (
+                min(c for c in (count, limits.max_instructions) if c is not None)
+                if (count is not None or limits.max_instructions is not None)
+                else None
+            )
             declared = {w.space: w for w in windows}
             narrowed = []
             for window in limits.windows:
@@ -97,8 +111,13 @@ class SelectedProgramContract:
             declared_rules = {r.name: r for r in rules}
             for rule in limits.branches:
                 bound = declared_rules.get(rule.name)
-                if (bound is None or rule.origin != bound.origin or rule.scale != bound.scale
-                        or rule.minimum < bound.minimum or rule.maximum > bound.maximum):
+                if (
+                    bound is None
+                    or rule.origin != bound.origin
+                    or rule.scale != bound.scale
+                    or rule.minimum < bound.minimum
+                    or rule.maximum > bound.maximum
+                ):
                     raise ValueError("final program branch control disagrees with selected ISA reach/origin")
                 declared_rules[rule.name] = rule
             rules = tuple(declared_rules.values())
@@ -128,14 +147,17 @@ class SelectedProgramContract:
             configuration = tuple(launch["preserved_configuration"])
             segments = launch["max_segments"]
             if continuation is not None:
-                if (set(continuation.preserved_spaces) - set(spaces)
-                        or set(continuation.preserved_configuration) - set(configuration)):
+                if set(continuation.preserved_spaces) - set(spaces) or set(continuation.preserved_configuration) - set(
+                    configuration
+                ):
                     raise ValueError("runtime continuation cannot expand selected memory/configuration persistence")
                 # Preservation is physical: aliases of one backing cannot have
                 # contradictory survival semantics at a launch boundary.
                 retained = {row["windows"][name]["backing"] for name in continuation.preserved_spaces}
-                if any((name in continuation.preserved_spaces) != (w["backing"] in retained)
-                       for name, w in row["windows"].items()):
+                if any(
+                    (name in continuation.preserved_spaces) != (w["backing"] in retained)
+                    for name, w in row["windows"].items()
+                ):
                     raise ValueError("runtime continuation must preserve all views of a physical backing")
                 spaces, configuration = continuation.preserved_spaces, continuation.preserved_configuration
                 segments = min(segments, continuation.max_segments)
@@ -146,10 +168,12 @@ class SelectedProgramContract:
         storage = json.loads(selected.storage.declarations_json) if selected.storage is not None else {}
         width = selected.isa.word_bits // 8
         decoder_state = decoder.configuration_identity, decoder.qualification_identity, id(decoder.decode)
+
         def fresh_decoder():
             if decoder_state != (decoder.configuration_identity, decoder.qualification_identity, id(decoder.decode)):
                 raise ValueError("final program decoder changed during checking; replan")
             selected.revalidate()
+
         def decode(image):
             fresh_decoder()
             actual = decoder.decode(image)
@@ -160,25 +184,52 @@ class SelectedProgramContract:
                 if instruction is None or instruction["control_flow"] == "unknown":
                     raise ValueError("actual final instruction has unknown selected control/effect semantics")
                 effect = storage.get(name)
-                accesses = (() if effect is None else tuple(
-                    EncodedAccess(_space(a["space"], values), binding_value(a["start"], values),
-                                  binding_value(a["size"], values), a["writes"]) for a in effect["accesses"]))
-                branches = tuple(EncodedBranch(key, values[rule["displacement"]]) for key, rule in
-                                 row["branches"].items() if rule["instruction"] == name)
-                expected.append(DecodedInstruction(offset, width, accesses, branches,
-                                                    instruction["completion"], instruction["relocatable"],
-                                                    instruction["control_flow"] != "relative"))
+                accesses = (
+                    ()
+                    if effect is None
+                    else tuple(
+                        EncodedAccess(
+                            _space(a["space"], values),
+                            binding_value(a["start"], values),
+                            binding_value(a["size"], values),
+                            a["writes"],
+                        )
+                        for a in effect["accesses"]
+                    )
+                )
+                branches = tuple(
+                    EncodedBranch(key, values[rule["displacement"]])
+                    for key, rule in row["branches"].items()
+                    if rule["instruction"] == name
+                )
+                expected.append(
+                    DecodedInstruction(
+                        offset,
+                        width,
+                        accesses,
+                        branches,
+                        instruction["completion"],
+                        instruction["relocatable"],
+                        instruction["control_flow"] != "relative",
+                    )
+                )
             if type(actual) is not tuple or actual != tuple(expected):
                 raise ValueError("provider final decoding disagrees with actual selected ISA effects/branches")
             return actual
+
         record = {
             "schema": "merlin.selected_final_program_binding.v1",
             "hardware_byte_capacity": "unknown" if row["limits"]["max_bytes"] is None else "checked",
             "hardware_instruction_capacity": "unknown" if row["limits"]["max_instructions"] is None else "checked",
-            "continuation_unavailable": unavailable, "effective_limits": asdict(effective),
+            "continuation_unavailable": unavailable,
+            "effective_limits": asdict(effective),
         }
-        return effective, ProgramDecoder(decode, decoder.configuration_identity,
-                                         decoder.qualification_identity), continuation, record
+        return (
+            effective,
+            ProgramDecoder(decode, decoder.configuration_identity, decoder.qualification_identity),
+            continuation,
+            record,
+        )
 
     def verify_configuration(self, selected, image, continuation, qualification_identity):
         """Reconstruct state fields from actual words before allowing launches."""
@@ -203,8 +254,10 @@ def resolve_program_contract(declaration, facts, isa, storage):
     if row["schema"] != "merlin.final_program_contract.v1" or isa.word_bits % 8:
         raise ValueError("selected final program requires its versioned byte-aligned ISA contract")
     limits = _fields(row["limits"], ("max_bytes", "max_instructions", "instruction_alignment"), "limits")
-    limits = {key: None if value is None else resolve_fact_integer(value, facts, label="program " + key, minimum=1)
-              for key, value in limits.items()}
+    limits = {
+        key: None if value is None else resolve_fact_integer(value, facts, label="program " + key, minimum=1)
+        for key, value in limits.items()
+    }
     if type(row["windows"]) is not dict or len(row["windows"]) > 256:
         raise ValueError("final program windows must be a bounded memory mapping")
     resources = {r.name: r for r in isa.resources}
@@ -219,12 +272,19 @@ def resolve_program_contract(declaration, facts, isa, storage):
         size = resolve_fact_integer(item["size"], facts, label="program window size", minimum=1)
         if resource.capacity is not None and start + size > resource.capacity:
             raise ValueError("final program window exceeds selected RTL resource capacity")
-        if (type(item["backing"]) is not str or not item["backing"]
-                or item["visibility"] not in ("private", "external", "unknown")):
+        if (
+            type(item["backing"]) is not str
+            or not item["backing"]
+            or item["visibility"] not in ("private", "external", "unknown")
+        ):
             raise ValueError("final program requires explicit canonical backing and visibility")
         prior = storage_windows.get(name)
-        if prior is not None and (item["backing"] != prior.backing or (item["visibility"] == "private") != (
-            prior.ownership == "invocation_private") or start < prior.start or start + size > prior.start + prior.size):
+        if prior is not None and (
+            item["backing"] != prior.backing
+            or (item["visibility"] == "private") != (prior.ownership == "invocation_private")
+            or start < prior.start
+            or start + size > prior.start + prior.size
+        ):
             raise ValueError("final program windows contradict selected storage aliases or ownership")
         windows[name] = {**item, "start": start, "size": size}
     for window in windows.values():
@@ -243,9 +303,12 @@ def resolve_program_contract(declaration, facts, isa, storage):
         if argument is None or argument.type.kind != "integer" or field is None:
             raise ValueError("final branch displacement must name an encoded integer argument")
         bits = min(argument.type.bits, field.width)
-        branches[name] = {**item, "minimum": -(1 << (bits - 1)) if argument.type.signed else 0,
-                          "maximum": (1 << (bits - int(argument.type.signed))) - 1,
-                          "scale": resolve_fact_integer(item["scale"], facts, label="branch byte scale", minimum=1)}
+        branches[name] = {
+            **item,
+            "minimum": -(1 << (bits - 1)) if argument.type.signed else 0,
+            "maximum": (1 << (bits - int(argument.type.signed))) - 1,
+            "scale": resolve_fact_integer(item["scale"], facts, label="branch byte scale", minimum=1),
+        }
     if len({r["instruction"] for r in branches.values()}) != len(branches):
         raise ValueError("select one explicit relative branch rule per instruction")
     if type(row["instructions"]) is not dict or len(row["instructions"]) > 4096:
@@ -254,9 +317,11 @@ def resolve_program_contract(declaration, facts, isa, storage):
     for name, item in row["instructions"].items():
         instruction = isa.instruction(name)
         _fields(item, ("completion", "relocatable", "control_flow"), "instruction")
-        if (item["completion"] not in ("synchronous", "asynchronous", "drain", "unknown")
-                or type(item["relocatable"]) is not bool
-                or item["control_flow"] not in ("fallthrough", "conditional_relative", "relative", "unknown")):
+        if (
+            item["completion"] not in ("synchronous", "asynchronous", "drain", "unknown")
+            or type(item["relocatable"]) is not bool
+            or item["control_flow"] not in ("fallthrough", "conditional_relative", "relative", "unknown")
+        ):
             raise ValueError("final program execution and control effects must be explicit")
         if (item["control_flow"] in ("relative", "conditional_relative")) != any(
             b["instruction"] == name for b in branches.values()
@@ -269,18 +334,33 @@ def resolve_program_contract(declaration, facts, isa, storage):
         if memory and name not in effects:
             raise ValueError("final program memory effects require selected storage projections and windows")
         if name in effects and item["completion"] != "unknown":
-            permitted = {"drain": ("wait", "synchronous"), "asynchronous": ("asynchronous",),
-                         "synchronous": ("synchronous",)}[item["completion"]]
+            permitted = {
+                "drain": ("wait", "synchronous"),
+                "asynchronous": ("asynchronous",),
+                "synchronous": ("synchronous",),
+            }[item["completion"]]
             if effects[name]["completion"] not in permitted:
                 raise ValueError("final program completion contradicts selected storage software effects")
     if any(rule["instruction"] not in row["instructions"] for rule in branches.values()):
         raise ValueError("final branch has no declared program instruction semantics")
     launch = row["continuation"]
     if launch is not None:
-        _fields(launch, ("sequential_completion", "starts_at_zero", "max_segments", "preserved_backings",
-                        "preserved_configuration"), "continuation")
-        if (any(type(launch[k]) is not bool for k in ("sequential_completion", "starts_at_zero"))
-                or type(launch["max_segments"]) is not int or launch["max_segments"] <= 0):
+        _fields(
+            launch,
+            (
+                "sequential_completion",
+                "starts_at_zero",
+                "max_segments",
+                "preserved_backings",
+                "preserved_configuration",
+            ),
+            "continuation",
+        )
+        if (
+            any(type(launch[k]) is not bool for k in ("sequential_completion", "starts_at_zero"))
+            or type(launch["max_segments"]) is not int
+            or launch["max_segments"] <= 0
+        ):
             raise ValueError("final program continuation requires explicit launch semantics and a finite budget")
         if set(_names(launch["preserved_backings"], "preserved backings")) - {w["backing"] for w in windows.values()}:
             raise ValueError("final continuation names an undeclared physical backing")
@@ -299,6 +379,11 @@ def resolve_program_contract(declaration, facts, isa, storage):
                     raise ValueError("persistent configuration index exceeds selected RTL capacity")
                 configuration.append(resource + ":" + str(index))
         launch = {**launch, "preserved_configuration": sorted(set(configuration))}
-    return SelectedProgramContract(json.dumps({**row, "limits": limits, "windows": windows,
-                                               "branches": branches, "continuation": launch},
-                                              sort_keys=True, separators=(",", ":"), allow_nan=False))
+    return SelectedProgramContract(
+        json.dumps(
+            {**row, "limits": limits, "windows": windows, "branches": branches, "continuation": launch},
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    )

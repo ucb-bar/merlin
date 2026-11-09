@@ -6,17 +6,16 @@ from dataclasses import replace
 import pytest
 from test_private_copy_elimination import ADAPTER, SPACES, command, fixture, project
 
-from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.program_limits import Continuation
-from merlin.compiler.schedule.program_limits import DecodedInstruction
-from merlin.compiler.schedule.program_limits import ProgramDecoder
-from merlin.compiler.schedule.program_limits import ProgramLimits
-from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
-from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
-from merlin.compiler.schedule.schedule_pipeline import compile_schedule
+from merlin.compiler.schedule.program_limits import (
+    AddressWindow,
+    Continuation,
+    DecodedInstruction,
+    ProgramDecoder,
+    ProgramLimits,
+)
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets, ScheduleEncoding, compile_schedule
 from merlin.compiler.schedule.spill_conformance import SpillClass
-from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
-from merlin.compiler.schedule.temporary_storage import TemporaryObject
+from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable, TemporaryObject
 from merlin.sched.ir import Call, Loop, TensorArg, evaluate
 from merlin.transforms.pipeline_state import (
     AnalysisStamp,

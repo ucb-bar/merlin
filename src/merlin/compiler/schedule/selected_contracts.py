@@ -14,10 +14,6 @@ from pathlib import Path
 
 import yaml
 
-from merlin.sched.ir import Call, evaluate
-from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction
-from merlin.targetgen.isa_spec import ResolvedISA, resolve_isa
-
 from merlin.compiler.schedule.configuration import ConfigurationAdapter, ConfigurationEffects
 from merlin.compiler.schedule.dense_contracts import DenseSchedulingContract, resolve_dense_contract
 from merlin.compiler.schedule.fusion_contracts import SelectedFusionContract, resolve_fusion_contract
@@ -25,6 +21,9 @@ from merlin.compiler.schedule.program_contracts import SelectedProgramContract, 
 from merlin.compiler.schedule.row_contracts import SelectedRowContract, resolve_row_contract
 from merlin.compiler.schedule.spill_contracts import SelectedSpillContract, resolve_spill_contract
 from merlin.compiler.schedule.storage_contracts import TemporaryStorageContract, resolve_storage_contract
+from merlin.sched.ir import Call, evaluate
+from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction
+from merlin.targetgen.isa_spec import ResolvedISA, resolve_isa
 
 SCHEMA = "merlin.schedule_effects.v1"
 SCHEDULING_FIELDS = frozenset({"schema", "numerical_policy", "instruction_byteorder", "configuration"})
@@ -76,8 +75,10 @@ class SelectedSchedulingContracts:
 
     def __post_init__(self):
         if (
-            type(self.facts_bytes) is not bytes or type(self.software_bytes) is not bytes
-            or not isinstance(self.facts_path, Path) or not isinstance(self.software_path, Path)
+            type(self.facts_bytes) is not bytes
+            or type(self.software_bytes) is not bytes
+            or not isinstance(self.facts_path, Path)
+            or not isinstance(self.software_path, Path)
         ):
             raise ValueError("selected scheduling inputs require immutable bytes and explicit paths")
         if len(self.facts_bytes) > 64 << 20 or len(self.software_bytes) > 1 << 20:
@@ -182,7 +183,7 @@ class SelectedSchedulingContracts:
             raise ValueError("selected ISA requires one complete byte-aligned word per decoded call")
         for i, call in enumerate(calls):
             name, actual = decode_instruction(
-                self.isa, int.from_bytes(data[i * width:(i + 1) * width], self.instruction_byteorder)
+                self.isa, int.from_bytes(data[i * width : (i + 1) * width], self.instruction_byteorder)
             )
             projected = {key: evaluate(value, {}) for key, value in call.args}
             if name != call.instr or actual != projected or len(call.args) != len(projected):
@@ -204,8 +205,10 @@ def read_scheduling_contracts(facts_path, software_path, *, target):
 def _parse(facts_bytes, software_bytes, target):
     facts, software = json.loads(facts_bytes), yaml.safe_load(software_bytes)
     if (
-        type(software) is not dict or software.get("schema") != "merlin.software_spec.v1"
-        or software.get("target") != target or software.get("status") != "reviewed"
+        type(software) is not dict
+        or software.get("schema") != "merlin.software_spec.v1"
+        or software.get("target") != target
+        or software.get("status") != "reviewed"
     ):
         raise ValueError("scheduling requires an explicitly selected reviewed software/ISA specification")
     return _resolve_declarations(facts, software, target, _hash(facts_bytes))
@@ -216,12 +219,16 @@ def _resolve_declarations(facts, software, target, facts_sha256):
     isa = resolve_isa(software.get("isa"), facts, target=target, facts_sha256=facts_sha256)
     extension = software.get("scheduling")
     required = SCHEDULING_FIELDS
-    if (type(extension) is not dict or not required <= set(extension)
-            or set(extension) - required - {"dense", "storage", "fusion", "spills", "row_reduction", "program"}):
+    if (
+        type(extension) is not dict
+        or not required <= set(extension)
+        or set(extension) - required - {"dense", "storage", "fusion", "spills", "row_reduction", "program"}
+    ):
         raise ValueError("scheduling: expected versioned effects with optional declared scheduling families")
     if (
         extension["schema"] != SCHEMA
-        or type(extension["numerical_policy"]) is not str or not extension["numerical_policy"]
+        or type(extension["numerical_policy"]) is not str
+        or not extension["numerical_policy"]
     ):
         raise ValueError("scheduling requires its versioned effects and selected numerical policy")
     if extension["instruction_byteorder"] not in ("little", "big"):
@@ -244,8 +251,10 @@ def _resolve_declarations(facts, software, target, facts_sha256):
             if "constant" in item and type(item["constant"]) is int:
                 return
             if (
-                "argument" in item and type(item["argument"]) is str
-                and item["argument"] in encoded and args[item["argument"]].type.kind == "integer"
+                "argument" in item
+                and type(item["argument"]) is str
+                and item["argument"] in encoded
+                and args[item["argument"]].type.kind == "integer"
             ):
                 return
             raise ValueError("configuration binding must name an encoded typed integer argument")
@@ -269,21 +278,30 @@ def _resolve_declarations(facts, software, target, facts_sha256):
             if set(effects[kind]) & state != {item["resource"] for item in actual}:
                 raise ValueError("configuration fields disagree with declared ISA state effects")
         if row["pure_write"] and (
-            not row["ordered"] or not row["writes"] or row["reads"] or row["clobbers"]
+            not row["ordered"]
+            or not row["writes"]
+            or row["reads"]
+            or row["clobbers"]
             or (set(effects["reads"]) | set(effects["writes"])) - state
         ):
             raise ValueError("pure configuration write contradicts declared state or memory effects")
-    storage = (resolve_storage_contract(extension["storage"], facts, isa, configuration=rows)
-               if "storage" in extension else None)
+    storage = (
+        resolve_storage_contract(extension["storage"], facts, isa, configuration=rows)
+        if "storage" in extension
+        else None
+    )
     return (
-        isa, json.dumps(rows, sort_keys=True, separators=(",", ":"), allow_nan=False),
-        extension["numerical_policy"], extension["instruction_byteorder"],
+        isa,
+        json.dumps(rows, sort_keys=True, separators=(",", ":"), allow_nan=False),
+        extension["numerical_policy"],
+        extension["instruction_byteorder"],
         resolve_dense_contract(extension["dense"], facts, isa) if "dense" in extension else None,
         storage,
         resolve_fusion_contract(extension["fusion"], facts, isa, storage) if "fusion" in extension else None,
         resolve_spill_contract(extension["spills"], facts, isa, storage) if "spills" in extension else None,
         resolve_row_contract(extension["row_reduction"], facts, isa, storage, extension["numerical_policy"])
-        if "row_reduction" in extension else None,
+        if "row_reduction" in extension
+        else None,
         resolve_program_contract(extension["program"], facts, isa, storage) if "program" in extension else None,
     )
 
@@ -296,10 +314,14 @@ def scheduling_spec_draft(software, *, target, isa=None, dense_schema=None):
     Nulls are questions for the author, not conservative executable defaults.
     """
     from copy import deepcopy
+
     from merlin.compiler.schedule.dense_contracts import dense_contract_draft
 
-    if (type(software) is not dict or software.get("schema") != "merlin.software_spec.v1"
-            or software.get("target") != target):
+    if (
+        type(software) is not dict
+        or software.get("schema") != "merlin.software_spec.v1"
+        or software.get("target") != target
+    ):
         raise ValueError("draft requires the explicit target's software specification")
     result = deepcopy(software)
     result["status"] = "draft"
@@ -330,12 +352,19 @@ def inspect_scheduling_draft(facts_bytes, software_bytes, *, target, require_den
     """
     from merlin.compiler.schedule.dense_contracts import DENSE_SEMANTICS
 
-    if (type(facts_bytes) is not bytes or type(software_bytes) is not bytes
-            or len(facts_bytes) > 64 << 20 or len(software_bytes) > 1 << 20):
+    if (
+        type(facts_bytes) is not bytes
+        or type(software_bytes) is not bytes
+        or len(facts_bytes) > 64 << 20
+        or len(software_bytes) > 1 << 20
+    ):
         raise ValueError("draft inspection requires bounded explicit input bytes")
     facts, software = json.loads(facts_bytes), yaml.safe_load(software_bytes)
-    if (type(software) is not dict or software.get("schema") != "merlin.software_spec.v1"
-            or software.get("target") != target):
+    if (
+        type(software) is not dict
+        or software.get("schema") != "merlin.software_spec.v1"
+        or software.get("target") != target
+    ):
         raise ValueError("draft inspection requires the explicit target's software specification")
     issues = []
     unknown = []
@@ -362,13 +391,18 @@ def inspect_scheduling_draft(facts_bytes, software_bytes, *, target, require_den
     try:
         isa = resolve_isa(software.get("isa"), facts, target=target, facts_sha256=_hash(facts_bytes))
         isa_report = {
-            "status": "resolved_declaration", "identity": isa.identity(),
-            "resources": [{"name": item.name, "kind": item.kind, "unit": item.unit,
-                           "capacity": item.capacity} for item in isa.resources],
-            "unknown_effects": [item.name for item in isa.instructions
-                                if json.loads(item.effects_json) == {"status": "unknown"}],
-            "unknown_semantics": [item.name for item in isa.instructions
-                                  if json.loads(item.semantics_json) == {"status": "unknown"}],
+            "status": "resolved_declaration",
+            "identity": isa.identity(),
+            "resources": [
+                {"name": item.name, "kind": item.kind, "unit": item.unit, "capacity": item.capacity}
+                for item in isa.resources
+            ],
+            "unknown_effects": [
+                item.name for item in isa.instructions if json.loads(item.effects_json) == {"status": "unknown"}
+            ],
+            "unknown_semantics": [
+                item.name for item in isa.instructions if json.loads(item.semantics_json) == {"status": "unknown"}
+            ],
         }
     except (ValueError, KeyError, TypeError) as error:
         isa_report["reason"] = str(error)
@@ -378,21 +412,34 @@ def inspect_scheduling_draft(facts_bytes, software_bytes, *, target, require_den
     except (ValueError, KeyError, TypeError) as error:
         issues.append({"path": ["declaration_resolver"], "reason": str(error)})
     semantics = dense.get("semantics") if type(dense) is dict else None
-    mismatches = [{"field": key, "declared": semantics.get(key) if type(semantics) is dict else None, "family_requires": value}
-                  for key, value in DENSE_SEMANTICS.items()
-                  if type(semantics) is not dict or semantics.get(key) != value]
+    mismatches = [
+        {"field": key, "declared": semantics.get(key) if type(semantics) is dict else None, "family_requires": value}
+        for key, value in DENSE_SEMANTICS.items()
+        if type(semantics) is not dict or semantics.get(key) != value
+    ]
     if require_dense and dense is not None and mismatches:
-        issues.append({"path": ["scheduling", "dense", "semantics"],
-                       "reason": "declared semantics do not match the synchronous dense family"})
+        issues.append(
+            {
+                "path": ["scheduling", "dense", "semantics"],
+                "reason": "declared semantics do not match the synchronous dense family",
+            }
+        )
     return {
         "schema": "merlin.scheduling_construction.v1",
         "status": "declaration_resolved" if resolved is not None and not issues else "incomplete",
-        "target": target, "software_status": software.get("status"),
-        "facts_sha256": _hash(facts_bytes), "software_sha256": _hash(software_bytes),
-        "issues": issues, "unknown_fields": unknown, "isa": isa_report,
-        "dense": {"declared": dense is not None, "resolved": resolved is not None and resolved[4] is not None,
-                  "family_semantic_mismatches": mismatches if dense is not None else [],
-                  "family_requirements_are_target_facts": False},
+        "target": target,
+        "software_status": software.get("status"),
+        "facts_sha256": _hash(facts_bytes),
+        "software_sha256": _hash(software_bytes),
+        "issues": issues,
+        "unknown_fields": unknown,
+        "isa": isa_report,
+        "dense": {
+            "declared": dense is not None,
+            "resolved": resolved is not None and resolved[4] is not None,
+            "family_semantic_mismatches": mismatches if dense is not None else [],
+            "family_requirements_are_target_facts": False,
+        },
         "qualification": "not_established",
         "scope": "declaration consistency only; no target execution, schedule, adapter or numerical qualification",
     }

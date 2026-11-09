@@ -68,24 +68,36 @@ def _prepare(request):
             raise ValueError("static tensor.cast must preserve the exact input type")
         typ = TensorType(input_port.shape, input_port.dtype, "bit-preserving")
         kernel = KernelRequest(
-            nodes=(SemanticNode("input", "input", (), typ, effect="input"),
-                   SemanticNode("output", "identity", ("input",), typ)),
-            outputs=("output",), output_storages=("external",),
-            input_storages=(("input", "external"),), target_identity=name,
+            nodes=(
+                SemanticNode("input", "input", (), typ, effect="input"),
+                SemanticNode("output", "identity", ("input",), typ),
+            ),
+            outputs=("output",),
+            output_storages=("external",),
+            input_storages=(("input", "external"),),
+            target_identity=name,
             source_identity=request.source.sha256,
         )
     else:
         # The existing semantic bridge checks complete static reassociation,
         # shape products, element identity, properties and initialized input.
         kernel = translate_linalg_text(
-            request.source.text, entry=function.sym_name.data, target_identity=name,
+            request.source.text,
+            entry=function.sym_name.data,
+            target_identity=name,
         ).request
     # 192 digest bits retain deterministic identity within the C packager's
     # 64-character identifier limit. The full source hash remains in records.
     symbol = "merlin_layout_" + request.source.sha256[:48]
     description, files = emit_layout_c(kernel, symbol)
-    abi = CRegionABI(symbol, (input_port,), (output_port,), 1,
-                     tuple(path for path in files if path.endswith(".c")), resource_kind="cpu")
+    abi = CRegionABI(
+        symbol,
+        (input_port,),
+        (output_port,),
+        1,
+        tuple(path for path in files if path.endswith(".c")),
+        resource_kind="cpu",
+    )
     return kernel, description, files, abi
 
 
@@ -103,16 +115,33 @@ def compile(request) -> Compilation:
     for relative, text in files.items():
         path = request.output / relative
         path.write_text(text, encoding="utf-8")
-        artifacts.append(Artifact.from_file(path, kind="c-source" if path.suffix == ".c" else "c-header",
-                                            role="region"))
+        artifacts.append(
+            Artifact.from_file(path, kind="c-source" if path.suffix == ".c" else "c-header", role="region")
+        )
     record = request.output / "layout.json"
-    record.write_text(json.dumps({
-        "schema": "merlin.layout.v1", "source_sha256": request.source.sha256,
-        "semantic_sha256": kernel.digest(), "implementation": description,
-        "scope": "single-static-byte-preserving-layout", "execution_observed": False,
-    }, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+    record.write_text(
+        json.dumps(
+            {
+                "schema": "merlin.layout.v1",
+                "source_sha256": request.source.sha256,
+                "semantic_sha256": kernel.digest(),
+                "implementation": description,
+                "scope": "single-static-byte-preserving-layout",
+                "execution_observed": False,
+            },
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     artifacts.append(Artifact.from_file(record, kind="json", role="provider-record"))
-    result = Compilation(request.output, name, request.source.sha256, tuple(artifacts),
-                         metadata={"c_call": abi.record(), "execution_observed": False})
+    result = Compilation(
+        request.output,
+        name,
+        request.source.sha256,
+        tuple(artifacts),
+        metadata={"c_call": abi.record(), "execution_observed": False},
+    )
     CRegionABI.from_compilation(result)
     return result

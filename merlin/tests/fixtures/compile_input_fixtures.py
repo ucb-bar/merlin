@@ -1,4 +1,5 @@
 """Source-bound capture fixtures shared by intake and runtime conformance."""
+
 import hashlib
 import json
 import struct
@@ -117,5 +118,3 @@ def _write_weighted_capture(
         (path / name).write_bytes(raw)
         receipt["artifacts"][name] = {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
     receipt_path.write_text(json.dumps(receipt))
-
-

@@ -13,9 +13,6 @@ import json
 from copy import deepcopy
 from dataclasses import asdict, dataclass, replace
 
-from merlin.sched.ir import Call, Kernel
-from merlin.targetgen.isa_spec import resolve_fact_integer
-
 from merlin.compiler.schedule import temporary_storage as _storage
 from merlin.compiler.schedule.temporary_storage import (
     StorageAdapter,
@@ -25,6 +22,8 @@ from merlin.compiler.schedule.temporary_storage import (
     _problem,
     verify_temporary_storage,
 )
+from merlin.sched.ir import Call, Kernel
+from merlin.targetgen.isa_spec import resolve_fact_integer
 
 
 @dataclass(frozen=True)

@@ -3,10 +3,12 @@
 import pytest
 from xdsl.dialects.builtin import ArrayAttr, StringAttr
 
-from merlin.compiler.schedule.projection_provenance import projection_compute_member
-from merlin.compiler.schedule.projection_provenance import projection_ir_attributes
-from merlin.compiler.schedule.projection_provenance import projection_provenance_attributes
-from merlin.compiler.schedule.projection_provenance import shared_projection_provenance
+from merlin.compiler.schedule.projection_provenance import (
+    projection_compute_member,
+    projection_ir_attributes,
+    projection_provenance_attributes,
+    shared_projection_provenance,
+)
 from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups
 from merlin.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
 
@@ -16,7 +18,7 @@ def source():
 
     body = []
     for index in range(2):
-        body.append(f'''%z{index}=arith.constant 0:i32
+        body.append(f"""%z{index}=arith.constant 0:i32
           %s{index}="tensor.splat"(%z{index}):(i32)->tensor<2x2xi32>
           %r{index}=linalg.generic {{indexing_maps=[affine_map<(m,n,k)->(m,k)>,
           affine_map<(m,n,k)->(k,n)>,affine_map<(m,n,k)->(m,n)>],
@@ -28,10 +30,13 @@ def source():
             %p=arith.muli %xx,%yy:i32
             %s=arith.addi %v,%p:i32
             linalg.yield %s:i32
-          }}->tensor<2x2xi32>''')
-    return parse_mlir_text('''module {func.func @source(%a:tensor<2x2xi8>,
-      %w0:tensor<2x2xi8>,%w1:tensor<2x2xi8>)->(tensor<2x2xi32>,tensor<2x2xi32>){'''
-      + '\n'.join(body) + '\nreturn %r0,%r1:tensor<2x2xi32>,tensor<2x2xi32>}}')
+          }}->tensor<2x2xi32>""")
+    return parse_mlir_text(
+        """module {func.func @source(%a:tensor<2x2xi8>,
+      %w0:tensor<2x2xi8>,%w1:tensor<2x2xi8>)->(tensor<2x2xi32>,tensor<2x2xi32>){"""
+        + "\n".join(body)
+        + "\nreturn %r0,%r1:tensor<2x2xi32>,tensor<2x2xi32>}}"
+    )
 
 
 def annotated():
@@ -39,9 +44,14 @@ def annotated():
     group = find_shared_input_groups(module)[0]
     ops = tuple(module.body.block.first_op.body.block.ops)
     for index, ordinal in enumerate(group.contraction_ordinals):
-        ops[ordinal].attributes.update(projection_ir_attributes({
-            "prov.region_id": f"original.region.{index}", "prov.source_node_ids": [f"original.node.{index}"],
-        }))
+        ops[ordinal].attributes.update(
+            projection_ir_attributes(
+                {
+                    "prov.region_id": f"original.region.{index}",
+                    "prov.source_node_ids": [f"original.node.{index}"],
+                }
+            )
+        )
     return module, find_shared_input_groups(module)[0]
 
 
@@ -93,13 +103,16 @@ def test_incomplete_ambiguous_and_changed_source_refuse(damage):
             shared_projection_provenance(module, find_shared_input_groups(module)[0])
 
 
-@pytest.mark.parametrize("attrs", [
-    {"prov.region_id": "x"},
-    {"prov.region_id": "x", "prov.source_node_ids": []},
-    {"prov.region_id": "x", "prov.source_node_ids": ["x", "x"]},
-    {"prov.region_id": 'x,"forged"', "prov.source_node_ids": ["x"]},
-    {"prov.region_id": "x", "prov.source_node_ids": ["x"], "merlin.source_op_index": 0},
-])
+@pytest.mark.parametrize(
+    "attrs",
+    [
+        {"prov.region_id": "x"},
+        {"prov.region_id": "x", "prov.source_node_ids": []},
+        {"prov.region_id": "x", "prov.source_node_ids": ["x", "x"]},
+        {"prov.region_id": 'x,"forged"', "prov.source_node_ids": ["x"]},
+        {"prov.region_id": "x", "prov.source_node_ids": ["x"], "merlin.source_op_index": 0},
+    ],
+)
 def test_no_partial_or_injected_identity(attrs):
     with pytest.raises(ValueError):
         projection_provenance_attributes(attrs)
@@ -108,7 +121,12 @@ def test_no_partial_or_injected_identity(attrs):
 def test_actual_compute_bounds_are_complete_single_member_intervals():
     assert projection_compute_member((0, 32, 80), (0, 16), (16, 16)) == 0
     assert projection_compute_member((0, 32, 80), (32, 64), (16, 16)) == 1
-    for col, width in [(None, (16, 16)), ((16, 32), (16, 16)), ((-1, 0), (16, 16)),
-                       ((64, 79), (16, 16)), ((32, 32), (0, 16))]:
+    for col, width in [
+        (None, (16, 16)),
+        ((16, 32), (16, 16)),
+        ((-1, 0), (16, 16)),
+        ((64, 79), (16, 16)),
+        ((32, 32), (0, 16)),
+    ]:
         with pytest.raises(ValueError):
             projection_compute_member((0, 32, 80), col, width)

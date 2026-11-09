@@ -20,6 +20,7 @@ _QUANT_KINDS = {
     "quant_ext.quantize_per_tensor": "per_tensor",
 }
 
+
 def lower_quant_ext(module, *, on_rewrite: Callable[[Any, tuple[Any, ...], Any], None] | None = None) -> int:
     """Rewrite supported quant_ext quantize/dequantize ops; returns the count.
 
@@ -226,8 +227,21 @@ def lower_quant_ext(module, *, on_rewrite: Callable[[Any, tuple[Any, ...], Any],
             body.add_op(value_cast)
         if scale_cast is not None:
             body.add_op(scale_cast)
-        body.add_ops([scaled, rounded, zpf, shifted, low, high, ordered, cast_zero, safe,
-                      converted, linalg_ops.YieldOp(converted.result)])
+        body.add_ops(
+            [
+                scaled,
+                rounded,
+                zpf,
+                shifted,
+                low,
+                high,
+                ordered,
+                cast_zero,
+                safe,
+                converted,
+                linalg_ops.YieldOp(converted.result),
+            ]
+        )
         generic = linalg_ops.GenericOp(
             inputs=(value, inv_generic.results[0], zp),
             outputs=(empty.tensor,),

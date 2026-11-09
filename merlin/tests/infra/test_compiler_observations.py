@@ -1,15 +1,16 @@
 """Source opportunities stay separate from actual native emitted images."""
+
 import hashlib
 import json
 
 import pytest
+from test_multioutput_fusion import model, source_program
 from xdsl.dialects import func
 
 from merlin.compiler import observations as C
 from merlin.compiler.schedule.multioutput_fusion import compile_source_multioutput
 from merlin.llvmlower.tensor_preparation_identity import TensorPreparationRequest
 from merlin.xdsl_dialects.lowering.outline import outline_dispatches
-from test_multioutput_fusion import model, source_program
 
 
 def test_actual_source_fanout_and_packing_are_analysis_only():
@@ -67,8 +68,12 @@ def test_real_emission_uses_issued_guard_and_actual_image_bytes(tmp_path):
 def test_receipt_is_exact_pinned_and_cannot_overwrite(tmp_path):
     module, _ = source_program()
     path = tmp_path / "receipt.json"
-    kwargs = dict(compiler_sha256="a" * 64, capsule_sha256="b" * 64, scope_sha256="c" * 64,
-                  sections={"connected_fusion": C.connected_fusion(module)})
+    kwargs = dict(
+        compiler_sha256="a" * 64,
+        capsule_sha256="b" * 64,
+        scope_sha256="c" * 64,
+        sections={"connected_fusion": C.connected_fusion(module)},
+    )
     records = C.write_receipt(path, **kwargs)
     assert records["connected_fusion"]["artifact"]["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
     assert json.loads(path.read_text())["promotion_authority"] is False
@@ -82,6 +87,7 @@ def test_receipt_is_exact_pinned_and_cannot_overwrite(tmp_path):
 
 def test_actual_llvm_binding_is_not_runtime_peak():
     import runpy
+
     from merlin.common.paths import repo_root
 
     source = runpy.run_path(str(repo_root() / "merlin/tests/runtime/test_arena_bind.py"))["SEQUENTIAL"]
@@ -94,12 +100,17 @@ def test_actual_llvm_binding_is_not_runtime_peak():
 
 def test_native_prepare_installation_retains_static_emission_scope():
     import runpy
+
     from merlin.common.paths import repo_root
 
     fixture = runpy.run_path(str(repo_root() / "merlin/tests/ir/test_prepared_operand_schedule.py"))["fixture"]
     module, plan, _, writers = fixture()
     native, observed = C.install_prepared_observed(
-        module, plan, writers, prepare_symbol="prepare", borrowed_symbol="prepared_borrow",
+        module,
+        plan,
+        writers,
+        prepare_symbol="prepare",
+        borrowed_symbol="prepared_borrow",
         validate_physical=lambda *args: None,
     )
     assert native["epochs"] == observed["emitted"]["pack_calls"] == 1

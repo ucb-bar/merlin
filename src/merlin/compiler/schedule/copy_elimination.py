@@ -10,9 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from math import lcm
 
-from merlin.sched.ir import Kernel
-
 from merlin.compiler.schedule.temporary_storage import TemporaryObject, _problem, _project
+from merlin.sched.ir import Kernel
 
 
 @dataclass(frozen=True)

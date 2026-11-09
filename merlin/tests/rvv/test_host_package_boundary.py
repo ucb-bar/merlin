@@ -33,7 +33,8 @@ def test_explicit_codegen_policy_is_retained_and_target_name_is_not_a_provider(t
     policy = Policy()
     knobs = {"compiler_features": ["existing"], "microkernel": {"MR": 3, "NR": 8, "KC": 16}}
     assert resolve_features(knobs, {"target": "composite_cpu"}, shapes=("shape",), codegen_provider=policy) == [
-        "existing", "provider_point"
+        "existing",
+        "provider_point",
     ]
     assert calls == [(knobs["microkernel"], ("shape",))]
     package = _package(tmp_path, schedule_file="schedule.mlir", **knobs)

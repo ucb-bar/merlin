@@ -117,8 +117,9 @@ class PinnedELF:
         """
         from merlin.analysis.host_isa import select_decoder_isa
 
-        self.decoder_isa = select_decoder_isa(elf_attribute=self.arch_attribute, declared=declared,
-                                              e_flags=self.e_flags, elf_xlen=64)
+        self.decoder_isa = select_decoder_isa(
+            elf_attribute=self.arch_attribute, declared=declared, e_flags=self.e_flags, elf_xlen=64
+        )
         return self.decoder_isa
 
     def __len__(self):
@@ -195,8 +196,13 @@ class PinnedELF:
 
         tool = objdump_bin()
         tool_info = os.stat(tool) if os.path.isabs(tool) else None
-        key = (self.pin["sha256"], tool, identity(tool_info) if tool_info else None, section,
-               tuple(self.decoder_isa["options"]))
+        key = (
+            self.pin["sha256"],
+            tool,
+            identity(tool_info) if tool_info else None,
+            section,
+            tuple(self.decoder_isa["options"]),
+        )
         cached = _DISASSEMBLIES.get(key)
         if cached is not None:
             self.check()
@@ -220,15 +226,13 @@ class PinnedELF:
         # --disassemble-symbols stops at local relocation labels in LLVM.
         # Select the ELF-owned section and byte interval instead. Zero padding
         # is retained so that the entire STT_FUNC extent can be checked.
-        command = [objdump_bin(), "-d", "-r", "--disassemble-zeroes", "-M", "no-aliases",
-                   *self.decoder_isa["options"]]
+        command = [objdump_bin(), "-d", "-r", "--disassemble-zeroes", "-M", "no-aliases", *self.decoder_isa["options"]]
         sections = [s[0] for s in self.sections] if section is None else [section]
         if not set(sections) <= {s[0] for s in self.sections}:
             raise ValueError("analysis_elf_section_unavailable")
         command.extend("--section=" + name for name in sections)
         if address_range is not None:
-            command.extend(("--start-address=" + str(address_range[0]),
-                            "--stop-address=" + str(address_range[1])))
+            command.extend(("--start-address=" + str(address_range[0]), "--stop-address=" + str(address_range[1])))
 
         def bounded_output():
             resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_TEXT_BYTES, MAX_TEXT_BYTES))
@@ -273,8 +277,14 @@ class PinnedELF:
         code = self.read_at(section[1] + start - section[3], end - start)
         coverage = function_listing_coverage(rows, extent, code)
         self.check()
-        return dict(schema="merlin.elf_function_disassembly.v1", artifact=dict(self.pin),
-                    extent=extent, coverage=coverage, decoder_isa=dict(self.decoder_isa), text=text)
+        return dict(
+            schema="merlin.elf_function_disassembly.v1",
+            artifact=dict(self.pin),
+            extent=extent,
+            coverage=coverage,
+            decoder_isa=dict(self.decoder_isa),
+            text=text,
+        )
 
 
 def function_listing_coverage(rows, extent, code):
@@ -284,19 +294,23 @@ def function_listing_coverage(rows, extent, code):
         raise ValueError("analysis_function_listing_incomplete")
     cursor = 0
     for row in rows:
-        if (row.section_name != extent["section"] or row.addr != start + cursor
-                or len(row.hexcode) not in (4, 8)):
+        if row.section_name != extent["section"] or row.addr != start + cursor or len(row.hexcode) not in (4, 8):
             raise ValueError("analysis_function_listing_incomplete")
         try:
             encoded = int(row.hexcode, 16).to_bytes(len(row.hexcode) // 2, "little")
         except (ValueError, OverflowError) as error:
             raise ValueError("analysis_function_listing_encoding_invalid") from error
-        if code[cursor:cursor + len(encoded)] != encoded:
+        if code[cursor : cursor + len(encoded)] != encoded:
             raise ValueError("analysis_function_listing_bytes_differ")
         cursor += len(encoded)
     if cursor != size:
         raise ValueError("analysis_function_listing_incomplete")
-    return dict(status="complete_exact_function_bytes", start=start, end=start + size,
-                covered_bytes=cursor, instructions=len(rows),
-                original_code_sha256=hashlib.sha256(code).hexdigest(),
-                scope="static original ELF function extent, not dynamic execution or timing")
+    return dict(
+        status="complete_exact_function_bytes",
+        start=start,
+        end=start + size,
+        covered_bytes=cursor,
+        instructions=len(rows),
+        original_code_sha256=hashlib.sha256(code).hexdigest(),
+        scope="static original ELF function extent, not dynamic execution or timing",
+    )

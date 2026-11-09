@@ -38,10 +38,12 @@ class ScheduleAccess:
     operand: str | None = None
 
     def __post_init__(self):
-        if (any(type(value) is not str or not value for value in (self.space, self.buffer, self.unit))
-                or self.mode not in ("read", "write", "read_write")
-                or (self.offset is not None and type(self.offset) not in (int, str))
-                or (self.extent is not None and (type(self.extent) is not int or self.extent < 1))):
+        if (
+            any(type(value) is not str or not value for value in (self.space, self.buffer, self.unit))
+            or self.mode not in ("read", "write", "read_write")
+            or (self.offset is not None and type(self.offset) not in (int, str))
+            or (self.extent is not None and (type(self.extent) is not int or self.extent < 1))
+        ):
             raise ValueError("schedule accesses need explicit backing, units and bounded extents")
 
     @classmethod
@@ -179,16 +181,25 @@ def _stage(record: Mapping, position: int) -> ScheduleStage:
     roles, produces, waits = record.get("roles", ()), record.get("produces", ()), record.get("waits_for", ())
     if isinstance(produces, str):
         produces = (produces,)
-    if any(isinstance(values, (str, bytes)) or not isinstance(values, (list, tuple))
-           or any(type(value) is not str or not value for value in values) for values in (roles, produces, waits)):
+    if any(
+        isinstance(values, (str, bytes))
+        or not isinstance(values, (list, tuple))
+        or any(type(value) is not str or not value for value in values)
+        for values in (roles, produces, waits)
+    ):
         raise ValueError("command roles and event references must be explicit sequences")
     for name in ("configuration", "parameters"):
         if not isinstance(record.get(name, {}), Mapping):
             raise ValueError("configuration and parameters must be mappings")
     result = ScheduleStage(
-        key=f"issue:{index}", index=index, identity=identity, roles=tuple(roles),
+        key=f"issue:{index}",
+        index=index,
+        identity=identity,
+        roles=tuple(roles),
         accesses=tuple(ScheduleAccess.from_record(item) for item in record.get("accesses", ())),
-        configuration=dict(record.get("configuration", {})), produces=tuple(produces), waits_for=tuple(waits),
+        configuration=dict(record.get("configuration", {})),
+        produces=tuple(produces),
+        waits_for=tuple(waits),
         parameters=dict(record.get("parameters", {})),
         kind=kind,
     )
@@ -197,11 +208,20 @@ def _stage(record: Mapping, position: int) -> ScheduleStage:
 
 
 def _signature(stage):
-    return _identity(dict(identity=stage.identity, kind=stage.kind, roles=stage.roles,
-                          configuration=stage.configuration,
-                          produces=stage.produces, waits_for=stage.waits_for, parameters=stage.parameters,
-                          accesses=[{key: value for key, value in access.to_dict().items() if key != "offset"}
-                                    for access in stage.accesses]))
+    return _identity(
+        dict(
+            identity=stage.identity,
+            kind=stage.kind,
+            roles=stage.roles,
+            configuration=stage.configuration,
+            produces=stage.produces,
+            waits_for=stage.waits_for,
+            parameters=stage.parameters,
+            accesses=[
+                {key: value for key, value in access.to_dict().items() if key != "offset"} for access in stage.accesses
+            ],
+        )
+    )
 
 
 def _compact(stages, *, max_period, max_steps):
@@ -216,13 +236,14 @@ def _compact(stages, *, max_period, max_steps):
             if steps > max_steps:
                 truncated = True
                 break
-            if signatures[start:start + period] != signatures[start + period:start + 2 * period]:
+            if signatures[start : start + period] != signatures[start + period : start + 2 * period]:
                 continue
             strides = {}
             valid = True
             for offset in range(period):
-                for access_index, (a, b) in enumerate(zip(stages[start + offset].accesses,
-                                                         stages[start + period + offset].accesses)):
+                for access_index, (a, b) in enumerate(
+                    zip(stages[start + offset].accesses, stages[start + period + offset].accesses)
+                ):
                     if type(a.offset) is int and type(b.offset) is int:
                         strides[f"{offset}:{access_index}"] = b.offset - a.offset
                     elif a.offset != b.offset:
@@ -236,14 +257,16 @@ def _compact(stages, *, max_period, max_steps):
                     truncated = True
                     break
                 at = start + repeats * period
-                if signatures[start:start + period] != signatures[at:at + period]:
+                if signatures[start : start + period] != signatures[at : at + period]:
                     break
                 if any(
                     b.offset != a.offset + repeats * strides[f"{offset}:{access_index}"]
-                    if type(a.offset) is int and type(b.offset) is int else a.offset != b.offset
+                    if type(a.offset) is int and type(b.offset) is int
+                    else a.offset != b.offset
                     for offset in range(period)
-                    for access_index, (a, b) in enumerate(zip(stages[start + offset].accesses,
-                                                             stages[at + offset].accesses))
+                    for access_index, (a, b) in enumerate(
+                        zip(stages[start + offset].accesses, stages[at + offset].accesses)
+                    )
                 ):
                     break
                 repeats += 1
@@ -255,10 +278,13 @@ def _compact(stages, *, max_period, max_steps):
             start += 1
         else:
             _, period, repeats, strides = best
-            body = stages[start:start + period]
+            body = stages[start : start + period]
             retained.extend(body)
-            loops.append(CountedLoop(f"recurrence:{start}", stages[start].index, repeats,
-                                     tuple(stage.key for stage in body), strides))
+            loops.append(
+                CountedLoop(
+                    f"recurrence:{start}", stages[start].index, repeats, tuple(stage.key for stage in body), strides
+                )
+            )
             start += period * repeats
         if truncated:
             retained.extend(stages[start:])
@@ -274,8 +300,9 @@ def _effects(stages):
             dependencies.append(ScheduleDependency(stages[position - 1].key, stage.key, "issue_order", "observed"))
         for event in stage.waits_for:
             if event in events:
-                dependencies.append(ScheduleDependency(events[event], stage.key, "event_wait", "observed", event,
-                                                       "declared_completion"))
+                dependencies.append(
+                    ScheduleDependency(events[event], stage.key, "event_wait", "observed", event, "declared_completion")
+                )
             else:
                 unknowns.add(f"event_without_producer:{event}")
         for event in stage.produces:
@@ -285,8 +312,16 @@ def _effects(stages):
         for key, value in stage.configuration.items():
             if key in config:
                 first, old = config[key]
-                scopes.append(dict(key=key, value=old, first_issue=first, last_issue=stage.index - 1,
-                                   status="observed", completion="unknown"))
+                scopes.append(
+                    dict(
+                        key=key,
+                        value=old,
+                        first_issue=first,
+                        last_issue=stage.index - 1,
+                        status="observed",
+                        completion="unknown",
+                    )
+                )
             config[key] = stage.index, value
         for access in stage.accesses:
             key = access.space, access.buffer, access.unit
@@ -295,9 +330,12 @@ def _effects(stages):
             retained = []
             for previous, producer in frontier:
                 previous_bounds = type(previous.offset) is int and type(previous.extent) is int
-                overlap = (max(previous.offset, access.offset) < min(previous.offset + previous.extent,
-                                                                     access.offset + access.extent)
-                           if bounds and previous_bounds else None)
+                overlap = (
+                    max(previous.offset, access.offset)
+                    < min(previous.offset + previous.extent, access.offset + access.extent)
+                    if bounds and previous_bounds
+                    else None
+                )
                 if overlap is None:
                     unknowns.add("storage_alias_or_extent_unresolved")
                 if overlap is not False and producer != stage.key:
@@ -312,13 +350,16 @@ def _effects(stages):
                     if previous.mode in ("read", "read_write") and writes:
                         kinds.append("storage_WAR")
                     for kind in kinds:
-                        dependencies.append(ScheduleDependency(producer, stage.key, kind, "inferred",
-                                                               ":".join(key)))
+                        dependencies.append(ScheduleDependency(producer, stage.key, kind, "inferred", ":".join(key)))
                 # A covering write supersedes this issue witness; partial writes
                 # retain the old envelope conservatively.
-                covered = (bounds and previous_bounds and access.mode in ("write", "read_write")
-                           and access.offset <= previous.offset
-                           and access.offset + access.extent >= previous.offset + previous.extent)
+                covered = (
+                    bounds
+                    and previous_bounds
+                    and access.mode in ("write", "read_write")
+                    and access.offset <= previous.offset
+                    and access.offset + access.extent >= previous.offset + previous.extent
+                )
                 if not covered:
                     retained.append((previous, producer))
             retained.append((access, stage.key))
@@ -327,10 +368,14 @@ def _effects(stages):
                 retained = retained[-256:]
             frontiers[key] = retained
             if key not in lifetimes:
-                lifetimes[key] = dict(first_issue=stage.index, last_issue=stage.index,
-                                      offset_min=access.offset if bounds else None,
-                                      offset_end=access.offset + access.extent if bounds else None,
-                                      reads=0, writes=0)
+                lifetimes[key] = dict(
+                    first_issue=stage.index,
+                    last_issue=stage.index,
+                    offset_min=access.offset if bounds else None,
+                    offset_end=access.offset + access.extent if bounds else None,
+                    reads=0,
+                    writes=0,
+                )
             row = lifetimes[key]
             row["last_issue"] = stage.index
             if bounds and row["offset_min"] is not None:
@@ -341,15 +386,34 @@ def _effects(stages):
             row["reads"] += access.mode in ("read", "read_write")
             row["writes"] += access.mode in ("write", "read_write")
     if stages:
-        scopes.extend(dict(key=key, value=value, first_issue=first, last_issue=stages[-1].index,
-                           status="observed", completion="unknown") for key, (first, value) in config.items())
-    return (tuple(StorageLifetime(*key, **value) for key, value in sorted(lifetimes.items())),
-            tuple(scopes), tuple(dependencies), tuple(sorted(unknowns)))
+        scopes.extend(
+            dict(
+                key=key,
+                value=value,
+                first_issue=first,
+                last_issue=stages[-1].index,
+                status="observed",
+                completion="unknown",
+            )
+            for key, (first, value) in config.items()
+        )
+    return (
+        tuple(StorageLifetime(*key, **value) for key, value in sorted(lifetimes.items())),
+        tuple(scopes),
+        tuple(dependencies),
+        tuple(sorted(unknowns)),
+    )
 
 
 def analyze_normalized_commands(
-    commands: Iterable[Mapping], *, evidence_id=None, complete=False, source_kind="normalized_commands",
-    max_commands=100_000, max_period=64, max_compaction_steps=1_000_000,
+    commands: Iterable[Mapping],
+    *,
+    evidence_id=None,
+    complete=False,
+    source_kind="normalized_commands",
+    max_commands=100_000,
+    max_period=64,
+    max_compaction_steps=1_000_000,
 ) -> ScheduleModel:
     """Inspect a bounded normalized stream; unknown effects stay unknown.
 
@@ -382,12 +446,21 @@ def analyze_normalized_commands(
         unknowns.add("command_limit_reached")
     if loops:
         unknowns.add("observed_recurrence_is_not_generalized_loop_proof")
-    return ScheduleModel(source_kind=source_kind, stages=compact, loops=loops, dependencies=dependencies,
-                         storage=storage, configuration_scopes=scopes,
-                         role_counts=dict(Counter(role for stage in stages for role in stage.roles)),
-                         command_count=len(stages), complete=bool(complete and not truncated), truncated=truncated,
-                         unknowns=tuple(sorted(unknowns)), evidence_id=evidence_id,
-                         event_counts=dict(Counter(stage.kind for stage in stages)))
+    return ScheduleModel(
+        source_kind=source_kind,
+        stages=compact,
+        loops=loops,
+        dependencies=dependencies,
+        storage=storage,
+        configuration_scopes=scopes,
+        role_counts=dict(Counter(role for stage in stages for role in stage.roles)),
+        command_count=len(stages),
+        complete=bool(complete and not truncated),
+        truncated=truncated,
+        unknowns=tuple(sorted(unknowns)),
+        evidence_id=evidence_id,
+        event_counts=dict(Counter(stage.kind for stage in stages)),
+    )
 
 
 def analyze_ir_schedule(module, *, evidence_id=None) -> ScheduleModel:
@@ -400,16 +473,30 @@ def analyze_ir_schedule(module, *, evidence_id=None) -> ScheduleModel:
     for operation in module.walk():
         if operation.name.partition(".")[0] != "schedule":
             continue
+
         def text(value):
             stream = StringIO()
             Printer(stream=stream, print_generic_format=True).print_attribute(value)
             return stream.getvalue()
+
         properties = {key: text(value) for key, value in operation.properties.items()}
         attributes = {key: text(value) for key, value in operation.attributes.items()}
-        decisions.append(dict(operation=operation.name, properties=properties, attributes=attributes,
-                              status="observed", realized=False))
-    return ScheduleModel("schedule_dialect", decisions=tuple(decisions), complete=True, evidence_id=evidence_id,
-                         unknowns=("decision_realization_requires_executable_consumer",))
+        decisions.append(
+            dict(
+                operation=operation.name,
+                properties=properties,
+                attributes=attributes,
+                status="observed",
+                realized=False,
+            )
+        )
+    return ScheduleModel(
+        "schedule_dialect",
+        decisions=tuple(decisions),
+        complete=True,
+        evidence_id=evidence_id,
+        unknowns=("decision_realization_requires_executable_consumer",),
+    )
 
 
 def analyze_counted_kernel(kernel, *, effect_projector: Callable | None = None, evidence_id=None) -> ScheduleModel:
@@ -434,21 +521,54 @@ def analyze_counted_kernel(kernel, *, effect_projector: Callable | None = None, 
             keys.append(key)
             if type(node) is Loop:
                 children = visit(node.body, (*path, str(index)), multiplier * node.extent)
-                loops.append(CountedLoop(key, 0, node.extent, tuple(children), status="observed", variable=node.var,
-                                         iter_args=node.iter_args, yields=node.yields, results=node.results))
+                loops.append(
+                    CountedLoop(
+                        key,
+                        0,
+                        node.extent,
+                        tuple(children),
+                        status="observed",
+                        variable=node.var,
+                        iter_args=node.iter_args,
+                        yields=node.yields,
+                        results=node.results,
+                    )
+                )
             elif type(node) is Call:
                 projected = dict(effect_projector(node) if effect_projector else {})
-                projected.update(index=len(stages), identity=node.instr,
-                                 produces=() if node.produces is None else (node.produces,), waits_for=node.awaits,
-                                 configuration=dict(node.sets))
+                projected.update(
+                    index=len(stages),
+                    identity=node.instr,
+                    produces=() if node.produces is None else (node.produces,),
+                    waits_for=node.awaits,
+                    configuration=dict(node.sets),
+                )
                 if "accesses" not in projected:
-                    projected["accesses"] = [dict(space=stage.memory, buffer=stage.memory,
-                                                  offset=stage.row, extent=stage.rows * stage.depth,
-                                                  mode="write" if stage.writes else "read", unit="row")
-                                                 for stage in node.stages]
+                    projected["accesses"] = [
+                        dict(
+                            space=stage.memory,
+                            buffer=stage.memory,
+                            offset=stage.row,
+                            extent=stage.rows * stage.depth,
+                            mode="write" if stage.writes else "read",
+                            unit="row",
+                        )
+                        for stage in node.stages
+                    ]
                 stage = _stage(projected, len(stages))
-                stages.append(ScheduleStage(key, stage.index, stage.identity, stage.roles, stage.accesses,
-                                             stage.configuration, stage.produces, stage.waits_for, stage.parameters))
+                stages.append(
+                    ScheduleStage(
+                        key,
+                        stage.index,
+                        stage.identity,
+                        stage.roles,
+                        stage.accesses,
+                        stage.configuration,
+                        stage.produces,
+                        stage.waits_for,
+                        stage.parameters,
+                    )
+                )
                 count += multiplier
                 for role in stage.roles:
                     role_counts[role] += multiplier
@@ -458,10 +578,26 @@ def analyze_counted_kernel(kernel, *, effect_projector: Callable | None = None, 
 
     visit(kernel.body, ("payload",), 1)
     storage, scopes, dependencies, unknowns = _effects(stages)
-    return ScheduleModel("counted_payload_ir", stages=tuple(stages), loops=tuple(loops), dependencies=dependencies,
-                         storage=storage, configuration_scopes=scopes, command_count=count, complete=True,
-                         role_counts=dict(role_counts), event_counts={"command": count},
-                         evidence_id=evidence_id, unknowns=tuple(sorted({*unknowns,
-                             "payload_effects_are_declarations_not_executed_trace",
-                             "storage_lifetimes_are_static_payload_not_dynamic_domain",
-                             "hardware_completion_and_timing_not_established"})))
+    return ScheduleModel(
+        "counted_payload_ir",
+        stages=tuple(stages),
+        loops=tuple(loops),
+        dependencies=dependencies,
+        storage=storage,
+        configuration_scopes=scopes,
+        command_count=count,
+        complete=True,
+        role_counts=dict(role_counts),
+        event_counts={"command": count},
+        evidence_id=evidence_id,
+        unknowns=tuple(
+            sorted(
+                {
+                    *unknowns,
+                    "payload_effects_are_declarations_not_executed_trace",
+                    "storage_lifetimes_are_static_payload_not_dynamic_domain",
+                    "hardware_completion_and_timing_not_established",
+                }
+            )
+        ),
+    )

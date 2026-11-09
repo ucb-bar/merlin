@@ -12,15 +12,14 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from merlin.sched.ir import Call, Const, Loop, Ptr, Scaled, Sum, TensorArg, Var
-from merlin.sched.ir.kernel import DTYPE_BYTES, check_structure
-
 from merlin.compiler.schedule.row_softmax import (
     PHASE_ROLES,
     RowSoftmaxStep,
     _admit,
     verify_row_softmax_storage,
 )
+from merlin.sched.ir import Call, Const, Loop, Ptr, Scaled, Sum, TensorArg, Var
+from merlin.sched.ir.kernel import DTYPE_BYTES, check_structure
 
 
 def _affine(expression):

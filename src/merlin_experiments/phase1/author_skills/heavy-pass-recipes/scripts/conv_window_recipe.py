@@ -62,8 +62,7 @@ def plan(caps, geometry, *, halo=False):
     """The counted source. ``halo``: the same layer over an input whose zero border was materialized
     once (padding becomes part of the source tensor), so every tap's row run is in bounds."""
     from merlin.compiler.schedule.convolution_exploration import ConvolutionExplorationSource
-    from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
-    from merlin.compiler.schedule.window_transfer import Window2D
+    from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan, Window2D
 
     b, h, w, c, cout = geometry["shape"]
     top, left, bottom, right = geometry["pad"]
@@ -199,9 +198,11 @@ def halo_image(image, geometry):
 
 
 def explore(source, caps, image, weights, expected) -> list[dict]:
-    from merlin.compiler.schedule.convolution_exploration import convolution_pass_space
-    from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
-    from merlin.compiler.schedule.convolution_exploration import explore_convolution_schedules
+    from merlin.compiler.schedule.convolution_exploration import (
+        convolution_pass_space,
+        emit_convolution_schedule,
+        explore_convolution_schedules,
+    )
     from merlin.transforms.pass_exploration import EmittedProgram
     from merlin.transforms.pipeline_state import PipelineContext
 
@@ -274,9 +275,11 @@ def explore(source, caps, image, weights, expected) -> list[dict]:
 def rolling_rows(source, caps) -> dict:
     """Input rows staged into a cache by rolling_window: whole contiguous rows, padding rows zeroed once."""
     from merlin.compiler.schedule.program_limits import AddressWindow
-    from merlin.compiler.schedule.rolling_window import emit_rolling_window
-    from merlin.compiler.schedule.rolling_window import materialize_rolling_window
-    from merlin.compiler.schedule.rolling_window import propose_rolling_window
+    from merlin.compiler.schedule.rolling_window import (
+        emit_rolling_window,
+        materialize_rolling_window,
+        propose_rolling_window,
+    )
 
     S = _support()
     window = source.plan.window

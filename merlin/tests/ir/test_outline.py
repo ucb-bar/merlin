@@ -458,9 +458,7 @@ def test_externalize_exact_dispatch_keeps_driver_and_other_kernel():
     first, second = (dispatch.symbol for dispatch in outlined.dispatches)
     selected = externalize_dispatches(outlined, [first])
 
-    functions = {
-        op.sym_name.data: op for op in selected.module.body.block.ops if isinstance(op, func.FuncOp)
-    }
+    functions = {op.sym_name.data: op for op in selected.module.body.block.ops if isinstance(op, func.FuncOp)}
     assert selected.symbols == (first,)
     assert not functions[first].body.blocks
     assert functions[second].body.blocks

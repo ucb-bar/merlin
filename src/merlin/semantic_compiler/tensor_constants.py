@@ -19,8 +19,13 @@ def fold_tensor(node, operands, payloads):
     if (source.type.dtype, source.type.numerical_policy) != (node.type.dtype, node.type.numerical_policy):
         raise ValueError("constant tensor movement cannot change dtype or numerical policy")
     if node.op in {"identity", "reshape"}:
-        if (node.attrs or node.index_maps or prod(source.type.shape) != prod(node.type.shape)
-                or node.op == "identity" and source.type != node.type):
+        if (
+            node.attrs
+            or node.index_maps
+            or prod(source.type.shape) != prod(node.type.shape)
+            or node.op == "identity"
+            and source.type != node.type
+        ):
             raise ValueError("constant identity or reshape has different attributes, maps or shape")
         return data
     if node.op == "ordered_f32_scan_f64":
@@ -46,7 +51,7 @@ def fold_tensor(node, operands, payloads):
         flat = 0
         for index, extent in zip(indices, source.type.shape, strict=True):
             flat = flat * extent + index
-        result.extend(data[flat * width:(flat + 1) * width])
+        result.extend(data[flat * width : (flat + 1) * width])
     return bytes(result)
 
 
@@ -56,18 +61,26 @@ def _scan(node, data):
 
     attributes = dict(node.attrs)
     stride, extent = attributes.get("stride"), attributes.get("extent")
-    if (len(node.type.shape) != 1 or node.type != TensorType(node.type.shape, "f32", "raw-bit-pattern")
-            or node.index_maps or set(attributes) != {"stride", "extent", "numeric_semantics"}
-            or attributes["numeric_semantics"] != "ordered-f32-prefix-f64-rne-v1"
-            or type(stride) is not int or type(extent) is not int or stride <= 0 or extent <= 0
-            or node.type.shape[0] >= 1 << 63 or node.type.shape[0] % (stride * extent)
-            or len(data) != node.type.shape[0] * 4):
+    if (
+        len(node.type.shape) != 1
+        or node.type != TensorType(node.type.shape, "f32", "raw-bit-pattern")
+        or node.index_maps
+        or set(attributes) != {"stride", "extent", "numeric_semantics"}
+        or attributes["numeric_semantics"] != "ordered-f32-prefix-f64-rne-v1"
+        or type(stride) is not int
+        or type(extent) is not int
+        or stride <= 0
+        or extent <= 0
+        or node.type.shape[0] >= 1 << 63
+        or node.type.shape[0] % (stride * extent)
+        or len(data) != node.type.shape[0] * 4
+    ):
         raise ValueError("constant scan has a different numerical policy, layout or lane geometry")
     accumulators, output = {}, bytearray()
     for position in range(node.type.shape[0]):
         lane = position % stride
         first = (position // stride) % extent == 0
-        bits = int.from_bytes(data[position * 4:(position + 1) * 4], "little")
+        bits = int.from_bytes(data[position * 4 : (position + 1) * 4], "little")
         wide = _cast_bits(bits, "f32", "f64")
         summed = _binary(0 if first else accumulators[lane], wide, "f64", "add")
         accumulators[lane] = summed

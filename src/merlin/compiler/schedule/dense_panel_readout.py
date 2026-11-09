@@ -8,8 +8,6 @@ hardware capability, cycle score or physical qualification.
 
 from dataclasses import asdict, replace
 
-from merlin.sched.ir import Call, Loop
-
 from merlin.compiler.schedule.blocks import InitializeAccumulator, Store
 from merlin.compiler.schedule.compact_dense import _digest
 from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout, TiledIntegerStore
@@ -21,10 +19,12 @@ from merlin.compiler.schedule.dense_panel_pipeline import (
     verify_dense_panel_pipeline,
     verify_dense_retained_reduction,
 )
+from merlin.sched.ir import Call, Loop
 
 
-def batch_dense_panel_readouts(result, problem, block, resources, storage, adapter, admission,
-                               *, static_budget=128, timeout_ms=5000):
+def batch_dense_panel_readouts(
+    result, problem, block, resources, storage, adapter, admission, *, static_budget=128, timeout_ms=5000
+):
     """Return a checked schedule with fewer pure-readout completion boundaries.
 
     Complete loops stay counted. A group contains at most the selected issued
@@ -38,30 +38,57 @@ def batch_dense_panel_readouts(result, problem, block, resources, storage, adapt
 
     if type(result) is PanelTileLoadResult:
         return _batch_wide_panel_readouts(
-            result, problem, block, resources, storage, adapter, admission,
-            static_budget=static_budget, timeout_ms=timeout_ms,
+            result,
+            problem,
+            block,
+            resources,
+            storage,
+            adapter,
+            admission,
+            static_budget=static_budget,
+            timeout_ms=timeout_ms,
         )
-    if (type(result) is not DensePanelPipelineResult
-            or type(admission) not in (DensePanelOverlapAdmission, DenseRetainedReductionAdmission)
-            or type(admission) is not type(result.admission)):
+    if (
+        type(result) is not DensePanelPipelineResult
+        or type(admission) not in (DensePanelOverlapAdmission, DenseRetainedReductionAdmission)
+        or type(admission) is not type(result.admission)
+    ):
         raise ValueError("readout batching requires an original checked panel result and selected admission")
     result.revalidate()
     admission.__post_init__()
-    if replace(admission,
-               max_issued_readouts=result.admission.max_issued_readouts,
-               pending_readouts=result.admission.pending_readouts,
-               readout_configuration=result.admission.readout_configuration) != result.admission:
+    if (
+        replace(
+            admission,
+            max_issued_readouts=result.admission.max_issued_readouts,
+            pending_readouts=result.admission.pending_readouts,
+            readout_configuration=result.admission.readout_configuration,
+        )
+        != result.admission
+    ):
         raise ValueError("readout batching cannot change original operand/compute execution premises")
-    if (type(result.output_readout) is DenseTiledIntegerReadout
-            and len(set(result.output_readout.column_scale_bits)) != 1):
+    if (
+        type(result.output_readout) is DenseTiledIntegerReadout
+        and len(set(result.output_readout.column_scale_bits)) != 1
+    ):
         raise ValueError("varying per-tile readout configuration needs an independent snapshot mapping")
     kernel, groups = _propose(result.kernel, adapter, admission.max_issued_readouts)
-    verifier = (verify_dense_retained_reduction if type(admission) is DenseRetainedReductionAdmission
-                else verify_dense_panel_pipeline)
+    verifier = (
+        verify_dense_retained_reduction
+        if type(admission) is DenseRetainedReductionAdmission
+        else verify_dense_panel_pipeline
+    )
     report = verifier(
-        kernel, problem, block, resources, storage, adapter, admission,
-        static_budget=static_budget, timeout_ms=timeout_ms,
-        output_readout=result.output_readout, bias_source=result.bias_source,
+        kernel,
+        problem,
+        block,
+        resources,
+        storage,
+        adapter,
+        admission,
+        static_budget=static_budget,
+        timeout_ms=timeout_ms,
+        output_readout=result.output_readout,
+        bias_source=result.bias_source,
     )
     report["input_schedule"] = result.realization
     report["schedule_ir"] = result.realization["schedule_ir"]
@@ -74,15 +101,22 @@ def batch_dense_panel_readouts(result, problem, block, resources, storage, adapt
     }
     if type(result.output_readout) is DenseTiledIntegerReadout:
         report["readout_batching"]["uniform_original_scale_bits"] = result.output_readout.column_scale_bits[0]
-    rewritten = replace(result, kernel=kernel, realization=report, admission=admission,
-                        checked_kernel_sha256=kernel.digest(), checked_admission_sha256=_digest(asdict(admission)))
+    rewritten = replace(
+        result,
+        kernel=kernel,
+        realization=report,
+        admission=admission,
+        checked_kernel_sha256=kernel.digest(),
+        checked_admission_sha256=_digest(asdict(admission)),
+    )
     result.revalidate()
     rewritten.revalidate()
     return rewritten
 
 
-def _batch_wide_panel_readouts(result, problem, block, resources, storage, adapter, admission,
-                              *, static_budget, timeout_ms):
+def _batch_wide_panel_readouts(
+    result, problem, block, resources, storage, adapter, admission, *, static_budget, timeout_ms
+):
     """Compose on physical wide commands; check every decoded primitive band.
 
     The original wide result already proves its complete checking expansion.
@@ -95,20 +129,33 @@ def _batch_wide_panel_readouts(result, problem, block, resources, storage, adapt
 
     result.revalidate()
     expanded, _ = expand_panel_tile_loads(
-        result.kernel, project=result.project, encode_band=result.encode_band,
+        result.kernel,
+        project=result.project,
+        encode_band=result.encode_band,
         max_static_nodes=result.max_static_nodes,
     )
     logical = replace(
-        result.original, kernel=expanded, realization=result.realization,
+        result.original,
+        kernel=expanded,
+        realization=result.realization,
         checked_kernel_sha256=expanded.digest(),
     )
     grouped = batch_dense_panel_readouts(
-        logical, problem, block, resources, storage, adapter, admission,
-        static_budget=static_budget, timeout_ms=timeout_ms,
+        logical,
+        problem,
+        block,
+        resources,
+        storage,
+        adapter,
+        admission,
+        static_budget=static_budget,
+        timeout_ms=timeout_ms,
     )
     proposal, _ = _propose(result.kernel, adapter, admission.max_issued_readouts)
     final_expansion, projection = expand_panel_tile_loads(
-        proposal, project=result.project, encode_band=result.encode_band,
+        proposal,
+        project=result.project,
+        encode_band=result.encode_band,
         max_static_nodes=result.max_static_nodes,
     )
     if final_expansion != grouped.kernel:
@@ -125,8 +172,12 @@ def _batch_wide_panel_readouts(result, problem, block, resources, storage, adapt
     report["kernel_sha256"] = proposal.digest()
     report["checking_expansion_sha256"] = final_expansion.digest()
     rewritten = replace(
-        result, kernel=proposal, original=grouped, realization=report,
-        checked_kernel_sha256=proposal.digest(), checked_projection_sha256=_digest(projection),
+        result,
+        kernel=proposal,
+        original=grouped,
+        realization=report,
+        checked_kernel_sha256=proposal.digest(),
+        checked_projection_sha256=_digest(projection),
     )
     result.revalidate()
     rewritten.revalidate()
@@ -183,6 +234,7 @@ def _propose(original, adapter, max_readouts, *, operations=(Store, TiledInteger
         return tuple(output)
 
     kernel = replace(original, body=rewrite(original.body))
+
     # Removing only explicit completion wrappers must leave the complete
     # symbolic data-call tree unchanged, including every numerical operand.
     def data(body):
@@ -205,8 +257,9 @@ def _propose(original, adapter, max_readouts, *, operations=(Store, TiledInteger
     return kernel, groups
 
 
-def batch_dense_panel_initializers(result, problem, block, resources, storage, adapter, admission,
-                                   *, static_budget=128, timeout_ms=5000):
+def batch_dense_panel_initializers(
+    result, problem, block, resources, storage, adapter, admission, *, static_budget=128, timeout_ms=5000
+):
     """Batch pure bias loads into proven pairwise-disjoint private ACC rows.
 
     The selected retained admission must explicitly cover ordered load-state
@@ -215,32 +268,63 @@ def batch_dense_panel_initializers(result, problem, block, resources, storage, a
     in order. The final actual epoch checker proves all simultaneous ACC write
     intervals disjoint and retains a real full drain before any consumer.
     """
-    if (type(result) is not DensePanelPipelineResult
-            or type(result.admission) is not DenseRetainedReductionAdmission
-            or type(admission) is not DenseRetainedReductionAdmission):
+    if (
+        type(result) is not DensePanelPipelineResult
+        or type(result.admission) is not DenseRetainedReductionAdmission
+        or type(admission) is not DenseRetainedReductionAdmission
+    ):
         raise ValueError("initializer batching requires the original checked retained result and admission")
     result.revalidate()
     admission.__post_init__()
-    if replace(admission,
+    if (
+        replace(
+            admission,
             max_issued_initializations=result.admission.max_issued_initializations,
-            initialization_configuration=result.admission.initialization_configuration) != result.admission:
+            initialization_configuration=result.admission.initialization_configuration,
+        )
+        != result.admission
+    ):
         raise ValueError("initializer batching cannot change original operand/compute/readout premises")
-    kernel, groups = _propose(result.kernel, adapter, admission.max_issued_initializations,
-                              operations=(InitializeAccumulator,), prefix="batched_initializer_epoch")
-    report = verify_dense_retained_reduction(kernel, problem, block, resources, storage, adapter, admission,
-        static_budget=static_budget, timeout_ms=timeout_ms,
-        output_readout=result.output_readout, bias_source=result.bias_source)
+    kernel, groups = _propose(
+        result.kernel,
+        adapter,
+        admission.max_issued_initializations,
+        operations=(InitializeAccumulator,),
+        prefix="batched_initializer_epoch",
+    )
+    report = verify_dense_retained_reduction(
+        kernel,
+        problem,
+        block,
+        resources,
+        storage,
+        adapter,
+        admission,
+        static_budget=static_budget,
+        timeout_ms=timeout_ms,
+        output_readout=result.output_readout,
+        bias_source=result.bias_source,
+    )
     report["input_schedule"] = result.realization
     report["schedule_ir"] = result.realization["schedule_ir"]
     report["initializer_batching"] = {
-        "source_kernel_sha256": result.kernel.digest(), "actual_kernel_sha256": kernel.digest(),
-        "groups": [{"initializations_per_epoch": g["readouts_per_epoch"], "dynamic_epochs": g["dynamic_epochs"]}
-                   for g in groups],
-        "removed_dynamic_drains": result.realization["dynamic_epoch_drains"]-report["dynamic_epoch_drains"],
+        "source_kernel_sha256": result.kernel.digest(),
+        "actual_kernel_sha256": kernel.digest(),
+        "groups": [
+            {"initializations_per_epoch": g["readouts_per_epoch"], "dynamic_epochs": g["dynamic_epochs"]}
+            for g in groups
+        ],
+        "removed_dynamic_drains": result.realization["dynamic_epoch_drains"] - report["dynamic_epoch_drains"],
         "target_execution": "not_established",
     }
-    rewritten = replace(result, kernel=kernel, realization=report, admission=admission,
-                        checked_kernel_sha256=kernel.digest(), checked_admission_sha256=_digest(asdict(admission)))
+    rewritten = replace(
+        result,
+        kernel=kernel,
+        realization=report,
+        admission=admission,
+        checked_kernel_sha256=kernel.digest(),
+        checked_admission_sha256=_digest(asdict(admission)),
+    )
     result.revalidate()
     rewritten.revalidate()
     return rewritten

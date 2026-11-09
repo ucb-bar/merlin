@@ -9,17 +9,18 @@ import sys
 from pathlib import Path
 
 import pytest
+from compile_input_fixtures import SOURCE, _write_capture, _write_weighted_capture
 
 from merlin.compiler.frontend.inputs import load_compile_inputs, stage_compile_inputs
 from merlin.frontends.linalg_mlir import parse_mlir_text
 
-from compile_input_fixtures import SOURCE, _write_capture, _write_weighted_capture
-
 
 def test_legacy_staging_modules_preserve_record_and_patch_identity():
     for previous, current in (
-        ("compile_inputs", "inputs"), ("compile_signature", "signature"),
-        ("compile_archives", "archives"), ("capture_arguments", "constants"),
+        ("compile_inputs", "inputs"),
+        ("compile_signature", "signature"),
+        ("compile_archives", "archives"),
+        ("capture_arguments", "constants"),
     ):
         legacy = importlib.import_module("merlin.frontends." + previous)
         canonical = importlib.import_module("merlin.compiler.frontend." + current)

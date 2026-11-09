@@ -64,7 +64,6 @@ def prepare_ordered_k(args: argparse.Namespace, binding, source_request):
     return prepared.request, (json.dumps(record, sort_keys=True, indent=2) + "\n").encode()
 
 
-
 def prepare_ordered_mn(args: argparse.Namespace, binding, source_request):
     """Select one checked outer output tile from the selected target's geometry."""
     from merlin.compiler.transforms.contraction_mn import OrderedMNTiling
@@ -101,4 +100,3 @@ def prepare_ordered_mn(args: argparse.Namespace, binding, source_request):
         "selected_request_digest": selected.digest(),
     }
     return selected, (json.dumps(record, sort_keys=True, indent=2) + "\n").encode()
-

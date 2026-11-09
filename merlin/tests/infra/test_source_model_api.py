@@ -20,8 +20,7 @@ from test_dense_source_provider import DenseProvider
 from test_selected_dense_contracts import inputs as dense_inputs
 
 from merlin.common.digest import sha256_file
-from merlin.model import BaremetalModelError
-from merlin.model import compile_saved_model
+from merlin.model import BaremetalModelError, compile_saved_model
 from merlin.model_check import full_build as FB
 from merlin.runtime.backends import spike, spike_model
 from merlin.targetgen.elf_lanes import read_program_section

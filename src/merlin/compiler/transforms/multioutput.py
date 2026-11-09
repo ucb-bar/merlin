@@ -13,24 +13,24 @@ from pathlib import Path
 from weakref import WeakKeyDictionary, ref
 
 from merlin.common.digest import sha256_file
-from merlin.compiler.schedule.compact_dense_group import _callback
-from merlin.compiler.schedule.compact_dense_group import _same_callback
-from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
-from merlin.compiler.schedule.fusion_semantics import term
+from merlin.compiler.schedule.compact_dense_group import _callback, _same_callback
+from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise, term
 from merlin.compiler.schedule.library_sources import shared_library_sources
-from merlin.compiler.schedule.multioutput_fusion_check import MultiOutputBindings
-from merlin.compiler.schedule.multioutput_fusion_check import MultiOutputCompositionLaw
-from merlin.compiler.schedule.multioutput_fusion_check import _arguments
-from merlin.compiler.schedule.multioutput_fusion_check import verify_multioutput_fusion
-from merlin.compiler.schedule.pointwise_source import PointwiseSource
-from merlin.compiler.schedule.pointwise_source import read_pointwise_source
-from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
-from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
-from merlin.compiler.schedule.schedule_pipeline import _rewrite_snapshot
-from merlin.compiler.schedule.schedule_pipeline import compile_schedule
+from merlin.compiler.schedule.multioutput_fusion_check import (
+    MultiOutputBindings,
+    MultiOutputCompositionLaw,
+    _arguments,
+    verify_multioutput_fusion,
+)
+from merlin.compiler.schedule.pointwise_source import PointwiseSource, read_pointwise_source
+from merlin.compiler.schedule.schedule_pipeline import (
+    ScheduleBudgets,
+    ScheduleEncoding,
+    _rewrite_snapshot,
+    compile_schedule,
+)
 from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
-from merlin.compiler.schedule.temporary_storage import StorageAdapter
-from merlin.compiler.schedule.temporary_storage import TemporaryObject
+from merlin.compiler.schedule.temporary_storage import StorageAdapter, TemporaryObject
 from merlin.sched.ir import Kernel
 from merlin.transforms.certificates import ir_digest
 from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
@@ -130,8 +130,7 @@ def implementation_paths() -> tuple[Path, ...]:
     import importlib
 
     from merlin.common import dense_float_ir
-    from merlin.compiler.schedule import compact_dense_group
-    from merlin.compiler.schedule import multioutput_fusion_check
+    from merlin.compiler.schedule import compact_dense_group, multioutput_fusion_check
     from merlin.compiler.schedule.library_sources import library_modules
     from merlin.transforms import certificates
 

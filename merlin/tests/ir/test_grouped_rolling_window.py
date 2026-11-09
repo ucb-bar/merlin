@@ -7,22 +7,29 @@ import pytest
 from xdsl.dialects import arith, builtin, scf
 
 from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.rolling_window import emit_grouped_rolling_window
-from merlin.compiler.schedule.rolling_window import emit_rolling_window_lookup
-from merlin.compiler.schedule.rolling_window import materialize_grouped_rolling_window
-from merlin.compiler.schedule.rolling_window import propose_rolling_window
-from merlin.compiler.schedule.rolling_window import read_grouped_rolling_window
-from merlin.compiler.schedule.rolling_window import rolling_window_text
-from merlin.compiler.schedule.rolling_window import verify_grouped_rolling_window
-from merlin.compiler.schedule.rolling_window import verify_rolling_window
+from merlin.compiler.schedule.rolling_window import (
+    emit_grouped_rolling_window,
+    emit_rolling_window_lookup,
+    materialize_grouped_rolling_window,
+    propose_rolling_window,
+    read_grouped_rolling_window,
+    rolling_window_text,
+    verify_grouped_rolling_window,
+    verify_rolling_window,
+)
 from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.xdsl_dialects.rolling_window import AwaitOp, CompleteOp, ConsumeGroupOp, StageRowOp
 
 
 class Integers:
     def op(self, name, a, b, dtype="i64"):
-        return {"add": operator.add, "sub": operator.sub, "mul": operator.mul,
-                "urem": operator.mod, "and": operator.and_}[name](a, b)
+        return {
+            "add": operator.add,
+            "sub": operator.sub,
+            "mul": operator.mul,
+            "urem": operator.mod,
+            "and": operator.and_,
+        }[name](a, b)
 
     def cmp(self, name, a, b):
         assert name == "ult"
@@ -35,18 +42,25 @@ class Integers:
 
 def plan_for(window, rows, **options):
     slots = (window.kernel[0] - 1) * window.dilation[0] + 1 + (rows - 1) * window.stride[0]
-    return propose_rolling_window(window, AddressWindow("private", 16, 8192),
-        source_identity="a" * 64, slots=slots, alignment=8, **options)
+    return propose_rolling_window(
+        window, AddressWindow("private", 16, 8192), source_identity="a" * 64, slots=slots, alignment=8, **options
+    )
 
 
-@pytest.mark.parametrize("window,rows,options", [
-    (Window2D((2, 13, 8, 3), (3, 3), padding=(1, 1, 1, 1)), 4, {}),
-    (Window2D((2, 17, 9, 2), (3, 2), stride=(2, 1), dilation=(2, 2), padding=(2, 1, 1, 2)),
-        3, {"output_x_first": 1, "output_x_count": 4, "output_y_first": 1, "output_y_count": 7}),
-    (Window2D((1, 5, 6, 2), (3, 3)), 4, {}),
-    (Window2D((1, 9, 5, 1), (3, 3), stride=(3, 1)), 2, {}),
-    (Window2D((1, 5, 6, 2), (3, 3)), 1, {}),
-])
+@pytest.mark.parametrize(
+    "window,rows,options",
+    [
+        (Window2D((2, 13, 8, 3), (3, 3), padding=(1, 1, 1, 1)), 4, {}),
+        (
+            Window2D((2, 17, 9, 2), (3, 2), stride=(2, 1), dilation=(2, 2), padding=(2, 1, 1, 2)),
+            3,
+            {"output_x_first": 1, "output_x_count": 4, "output_y_first": 1, "output_y_count": 7},
+        ),
+        (Window2D((1, 5, 6, 2), (3, 3)), 4, {}),
+        (Window2D((1, 9, 5, 1), (3, 3), stride=(3, 1)), 2, {}),
+        (Window2D((1, 5, 6, 2), (3, 3)), 1, {}),
+    ],
+)
 def test_group_union_stages_original_rows_once_and_keeps_all_taps_until_complete(window, rows, options):
     plan = plan_for(window, rows, **options)
     module = materialize_grouped_rolling_window(plan, output_rows=rows)
@@ -68,12 +82,12 @@ def test_group_union_stages_original_rows_once_and_keeps_all_taps_until_complete
             address, count, offset = fields["cache_byte"], fields["row_bytes"], fields["source_byte"]
             assert all(address != previous[0] for previous in pending)
             # Issue is deliberately asynchronous: only await publishes bytes.
-            pending.append((address, source[offset:offset + count] if fields["valid"] else bytes(count)))
+            pending.append((address, source[offset : offset + count] if fields["valid"] else bytes(count)))
             stages += 1
         elif kind == "await_transport":
             assert state == ("transport", fields["transfer"])
             for address, data in pending:
-                cache[address:address + len(data)] = data
+                cache[address : address + len(data)] = data
             pending.clear()
             state = ("resident", object())
             return state[1]
@@ -92,7 +106,8 @@ def test_group_union_stages_original_rows_once_and_keeps_all_taps_until_complete
                                 lookup = emit_rolling_window_lookup(plan, integers, y, x, ky, kx, channel)
                                 expected = (
                                     source[((image * height + iy) * width + ix) * channels + channel]
-                                    if 0 <= iy < height and 0 <= ix < width else 0
+                                    if 0 <= iy < height and 0 <= ix < width
+                                    else 0
                                 )
                                 assert (cache[lookup["cache_byte"]] if lookup["predicate"] else 0) == expected
             state = ("consumer", object())
@@ -105,17 +120,24 @@ def test_group_union_stages_original_rows_once_and_keeps_all_taps_until_complete
 
     receipt = emit_grouped_rolling_window(module, plan, integers, lower, output_rows=rows)
     assert state is None and not pending
-    assert seen == [(b, y) for b in range(batch)
-                    for y in range(plan.output_y_first, plan.output_y_first + plan.output_y_count)]
+    assert seen == [
+        (b, y) for b in range(batch) for y in range(plan.output_y_first, plan.output_y_first + plan.output_y_count)
+    ]
     assert groups == receipt["consumer_groups"] == batch * ((plan.output_y_count + rows - 1) // rows)
-    assert stages == receipt["dynamic_stage_rows"] == batch * (plan.span_rows + (plan.output_y_count - 1) * window.stride[0])
+    assert (
+        stages
+        == receipt["dynamic_stage_rows"]
+        == batch * (plan.span_rows + (plan.output_y_count - 1) * window.stride[0])
+    )
     assert cache[:16] == bytes([255] * 16) and cache[-16:] == bytes([255] * 16)
     assert receipt["target_qualification"] is False
     with pytest.raises(ValueError, match="identity changed"):
         verify_rolling_window(module, plan)
 
 
-@pytest.mark.parametrize("mutation", ["source", "destination", "padding", "rows", "group_origin", "frontier", "await", "completion"])
+@pytest.mark.parametrize(
+    "mutation", ["source", "destination", "padding", "rows", "group_origin", "frontier", "await", "completion"]
+)
 def test_group_checker_refuses_mutated_actual_source_union_consumer_and_boundaries(mutation):
     plan = plan_for(Window2D((2, 13, 8, 3), (3, 3), padding=(1, 1, 1, 1)), 4)
     module = materialize_grouped_rolling_window(plan, output_rows=4)
@@ -125,16 +147,23 @@ def test_group_checker_refuses_mutated_actual_source_union_consumer_and_boundari
     elif mutation == "destination":
         stages[-1].operands[4] = stages[-1].source_byte
     elif mutation == "padding":
-        stages[0].valid.owner.properties["predicate"] = arith.CmpiOp(stages[0].input_row, stages[0].input_row, "eq").predicate
+        stages[0].valid.owner.properties["predicate"] = arith.CmpiOp(
+            stages[0].input_row, stages[0].input_row, "eq"
+        ).predicate
     elif mutation == "rows":
-        next(op for op in module.walk() if type(op) is ConsumeGroupOp).properties["output_rows"] = builtin.IntegerAttr(3, 64)
+        next(op for op in module.walk() if type(op) is ConsumeGroupOp).properties["output_rows"] = builtin.IntegerAttr(
+            3, 64
+        )
     elif mutation == "group_origin":
         consumer = next(op for op in module.walk() if type(op) is ConsumeGroupOp)
         consumer.operands[2] = consumer.image
     elif mutation == "frontier":
         # An actual inner stage loop must cover every newly required row.
-        loop = next(op for op in module.walk() if type(op) is scf.ForOp
-                    and any(type(child) is StageRowOp for child in op.body.block.ops))
+        loop = next(
+            op
+            for op in module.walk()
+            if type(op) is scf.ForOp and any(type(child) is StageRowOp for child in op.body.block.ops)
+        )
         loop.ub.owner.properties["value"] = builtin.IntegerAttr(5, 64)
     else:
         cls = AwaitOp if mutation == "await" else CompleteOp
@@ -154,9 +183,12 @@ def test_group_checker_refuses_mutated_actual_source_union_consumer_and_boundari
 def test_group_horizon_capacity_bounds_and_compact_counted_proof():
     def case(height):
         return plan_for(Window2D((2, height, 8, 3), (3, 3), padding=(1, 1, 1, 1)), 4)
+
     small, large = case(13), case(70001)
-    receipts = [verify_grouped_rolling_window(materialize_grouped_rolling_window(plan, output_rows=4),
-                plan, output_rows=4) for plan in (small, large)]
+    receipts = [
+        verify_grouped_rolling_window(materialize_grouped_rolling_window(plan, output_rows=4), plan, output_rows=4)
+        for plan in (small, large)
+    ]
     assert receipts[0]["actual_counted_ir_operations"] == receipts[1]["actual_counted_ir_operations"]
     assert receipts[0]["symbolic_queries"] == receipts[1]["symbolic_queries"]
     with pytest.raises(ValueError, match="ring slots"):
@@ -167,5 +199,6 @@ def test_group_horizon_capacity_bounds_and_compact_counted_proof():
         with pytest.raises(ValueError, match="bound"):
             materialize_grouped_rolling_window(small, output_rows=bound)
     with pytest.raises(ValueError, match="binding handle"):
-        emit_grouped_rolling_window(materialize_grouped_rolling_window(small, output_rows=4),
-                                   small, Integers(), lambda *_: None, output_rows=4)
+        emit_grouped_rolling_window(
+            materialize_grouped_rolling_window(small, output_rows=4), small, Integers(), lambda *_: None, output_rows=4
+        )

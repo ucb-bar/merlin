@@ -157,8 +157,12 @@ def _bind_inputs(
         pitch = tile_edge(target)
     packed = plan(command_buffer, row_pitch_elements=pitch, weight_manifest=manifest, argument_indices=argument_indices)
     inputs, source_report = bind_entry_storage(
-        capture_bundle, packed, manifest, storage=input_storage,
-        error_type=NativeModelExecutionError, decode=_logical_values,
+        capture_bundle,
+        packed,
+        manifest,
+        storage=input_storage,
+        error_type=NativeModelExecutionError,
+        decode=_logical_values,
     )
     # An ABI readwrite pointer is not necessarily a captured entry operand. A
     # source-produced intermediate is read by later tasks, but its initial
@@ -192,8 +196,9 @@ def _bind_inputs(
     }
 
 
-def _build_service_for(target: str, *, source_owned_mutables: tuple[str, ...] | None = None,
-                       source_intake_protocol=None):
+def _build_service_for(
+    target: str, *, source_owned_mutables: tuple[str, ...] | None = None, source_intake_protocol=None
+):
     """Pin the host-selected target renderer and bypass the model importer for finished LLVM."""
     from merlin.runtime.backends import base as backends
     from merlin.targetgen.contract.build_service import BuildOnlyService, file_digest
@@ -454,12 +459,13 @@ def audit_candidate_source_placement(
             # including entry/return values, against exact source type/shape;
             # candidate-volunteered source_values alone cannot establish that.
             # Lowered task tags are structural, not arithmetic equivalence.
+            from merlin.targetgen.contract.harness_abi import lowered_plan_abi
             from merlin.targetgen.oot_starterkit.plan import validate_mixed_program_plan
 
-            from merlin.targetgen.contract.harness_abi import lowered_plan_abi
-
             source_plan_validation = validate_mixed_program_plan(
-                source, cb, _read_pinned_payload(emission, "lowered_mlir").decode("utf-8"),
+                source,
+                cb,
+                _read_pinned_payload(emission, "lowered_mlir").decode("utf-8"),
                 lowered_abi=lowered_plan_abi(yaml.safe_load(selected_contract.read_text()), target=target),
             )
             if not source_plan_validation.get("ok"):
@@ -650,9 +656,13 @@ def audit_candidate_static_tiers(
     from .native_instruction_audit import audit_native_instruction_tier
 
     tiers["L1"] = audit_native_instruction_tier(
-        native, target=target, module=module, policy=policy,
-        allow_empty_instructions=(policy.get("public_zero_device_demand") is True
-                                  and placement.get("eligible_source_op_indices") == []),
+        native,
+        target=target,
+        module=module,
+        policy=policy,
+        allow_empty_instructions=(
+            policy.get("public_zero_device_demand") is True and placement.get("eligible_source_op_indices") == []
+        ),
     )
     return tiers
 
@@ -701,7 +711,10 @@ def audit_candidate_tiers(
     from .native_numerical_audit import audit_native_numerical_tier
 
     tiers["L2"] = audit_native_numerical_tier(
-        emission, native, target=target, readback_policy=readback_policy,
+        emission,
+        native,
+        target=target,
+        readback_policy=readback_policy,
         **({"source_intake_protocol": source_intake_protocol} if source_intake_protocol is not None else {}),
     )
     from .native_model_policy import audit_rtl_tier
@@ -819,7 +832,8 @@ def execute_candidate_model(
             if not numerical_only:
                 raise NativeModelExecutionError("prospective source intake requires explicit Spike/L2 numerical scope")
             record["source_intake"] = source_intake.preflight_large_intake(
-                command_buffer, source, capture, intake_protocol=source_intake_protocol)
+                command_buffer, source, capture, intake_protocol=source_intake_protocol
+            )
             input_storage = "streamed"
         if (simulator == "spike" and not numerical_only) or (oracle_tier_ceiling is not None and not numerical_only):
             raise NativeModelExecutionError("Spike model execution requires its explicit L2 numerical ceiling")
@@ -930,9 +944,11 @@ def execute_candidate_model(
         )
 
         scratch = tuple(binding["source_entry_binding"]["source_owned_mutables"])
-        service = _build_service_for(target, source_owned_mutables=scratch or None, **(
-            {"source_intake_protocol": source_intake_protocol} if source_intake_protocol is not None else {}
-        ))
+        service = _build_service_for(
+            target,
+            source_owned_mutables=scratch or None,
+            **({"source_intake_protocol": source_intake_protocol} if source_intake_protocol is not None else {}),
+        )
         if service.recipe.require_kernel_stack_frame().entry_symbol != entry_symbol:
             raise NativeModelExecutionError("selected entry symbol changed during candidate source binding")
         host_report = _host_compute_report(cb, lowered_mlir_text, entry_symbol=entry_symbol)
@@ -1002,9 +1018,9 @@ def execute_candidate_model(
             return record
         if rtl_facts is None or not board_config:
             raise NativeModelExecutionError("native RTL execution requires selected facts and board config")
-        from merlin.runtime.modelinputs import native_engine, selected_firrtl
         from merlin.runtime.backends import base as backends
         from merlin.runtime.commandbuffer import declared_output_dtypes
+        from merlin.runtime.modelinputs import native_engine, selected_firrtl
         from merlin.targetgen.capsule_golden import compare
         from merlin.targetgen.oracle_policy import selected_l3_engine_report
 
@@ -1095,8 +1111,9 @@ def execute_candidate_model(
 
                 require_full_value_roster(cb, functional_console, functional_observed, policy=readback_policy)
             functional_observed = backends.decode_float_readback(functional_observed, declared_output_dtypes(cb))
-            compare_outputs = (source_intake.compare_complete_integer_outputs
-                               if source_intake_protocol is not None else compare)
+            compare_outputs = (
+                source_intake.compare_complete_integer_outputs if source_intake_protocol is not None else compare
+            )
             functional_numeric = compare_outputs(
                 golden["outputs"],
                 checked_source_output_values(cb, record, golden, functional_observed),
@@ -1194,11 +1211,14 @@ def execute_candidate_model(
 
             require_full_value_roster(cb, console, observed, policy=readback_policy)
         observed = backends.decode_float_readback(observed, declared_output_dtypes(cb))
-        compare_outputs = (source_intake.compare_complete_integer_outputs
-                               if source_intake_protocol is not None else compare)
+        compare_outputs = (
+            source_intake.compare_complete_integer_outputs if source_intake_protocol is not None else compare
+        )
         comparison = compare_outputs(
-            golden["outputs"], checked_source_output_values(cb, record, golden, observed), policy,
-            golden_source=str(golden.get("golden_source") or "independent_capsule")
+            golden["outputs"],
+            checked_source_output_values(cb, record, golden, observed),
+            policy,
+            golden_source=str(golden.get("golden_source") or "independent_capsule"),
         )
         record.update(
             console=_digest(console_path),

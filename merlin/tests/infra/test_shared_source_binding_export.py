@@ -13,12 +13,13 @@ import pytest
 
 from merlin.common.paths import repo_root
 from merlin.compiler.schedule.direct_source import bind_direct_source_contraction
-from merlin.compiler.schedule.export import PUBLIC_MODULES
-from merlin.compiler.schedule.export import SOURCE_BINDING_MODULES
-from merlin.compiler.schedule.export import export_shared_scheduling
-from merlin.compiler.schedule.export import public_modules
-from merlin.compiler.schedule.library_sources import LIBRARY_MODULES
-from merlin.compiler.schedule.library_sources import library_modules
+from merlin.compiler.schedule.export import (
+    PUBLIC_MODULES,
+    SOURCE_BINDING_MODULES,
+    export_shared_scheduling,
+    public_modules,
+)
+from merlin.compiler.schedule.library_sources import LIBRARY_MODULES, library_modules
 from merlin.compiler.schedule.source_tokens import llvm_tokens
 from merlin.targetgen.compiler_library import CompilerLibraryError, CompilerLibrarySelection, freeze_compiler_library
 from merlin.targetgen.package_runtime import CertFailure, integrity_scan
@@ -143,14 +144,25 @@ def test_archived_configuration_source_release_keeps_its_original_grants(tmp_pat
     document["schema"] = "merlin.shared_scheduling_library.v2"
     document.pop("inventory_version")
     rows = {row["module"]: row for row in document["members"] if row["module"] is not None}
-    document["members"] = [
-        rows[name] for name in (*shared._V6_CONFIGURATION_MODULES, *SOURCE_BINDING_MODULES)
-    ] + [row for row in document["members"] if row["module"] is None]
+    document["members"] = [rows[name] for name in (*shared._V6_CONFIGURATION_MODULES, *SOURCE_BINDING_MODULES)] + [
+        row for row in document["members"] if row["module"] is None
+    ]
     document["public_modules"] = [*shared._V6_CONFIGURATION_PUBLIC, *SOURCE_BINDING_MODULES]
-    later = {"merlin.compile.scheduling." + name for name in (
-        "zero_initializer_groups", "shared_input_verification", "shared_input_schedule",
-        "shared_input_groups", "panel_transfers", "copy_pipeline", "configuration_loops",
-        "command_compaction", "llvm_program", "window_transfer")}
+    later = {
+        "merlin.compile.scheduling." + name
+        for name in (
+            "zero_initializer_groups",
+            "shared_input_verification",
+            "shared_input_schedule",
+            "shared_input_groups",
+            "panel_transfers",
+            "copy_pipeline",
+            "configuration_loops",
+            "command_compaction",
+            "llvm_program",
+            "window_transfer",
+        )
+    }
     document["members"] = [row for row in document["members"] if row["module"] not in later]
     document["public_modules"] = [name for name in document["public_modules"] if name not in later]
     if change == "public_addition":
@@ -339,10 +351,9 @@ def test_proposal_matches_original_private_reader_on_closed_source_boundaries(tm
 
 
 def test_v8_profile_and_additional_selection_transport_stay_explicit(tmp_path):
-    from merlin_experiments.phase2.compiler_library_state import restore_selection
-
     from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V8, attach_common_substrate, verify_tool_profile
     from merlin.targetgen.tool_profile_shared import prepare_shared_source_release
+    from merlin_experiments.phase2.compiler_library_state import restore_selection
 
     root = tmp_path / "release"
     document = prepare_shared_source_release(
@@ -406,9 +417,8 @@ def frozen_public_profile(tmp_path, monkeypatch, request):
 
 
 def test_shared_profile_mounts_every_selected_public_source(frozen_public_profile):
-    from merlin_experiments.phase1.feedback.compiler_profile_runtime import _public_python_roots
-
     from merlin.targetgen.sandbox import bwrap as BW
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import _public_python_roots
 
     root, bundle, materialize, selected = frozen_public_profile
     owner = materialize(bundle, "workspace")

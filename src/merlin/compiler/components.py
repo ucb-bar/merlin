@@ -3,6 +3,7 @@
 Compiler claims pass through original-caller source/target admission. A selected
 component supplies no application accuracy policy or independent hardware truth.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -19,8 +20,13 @@ def _source_members():
     from merlin.compiler.backend import sourceproposal
     from merlin.compiler.ir import region
 
-    return ((sys.modules[__name__], "_source_members"), (sys.modules[__name__], "_admit_cpu"),
-            (Component, "discover"), *sourceproposal._source_members(), *region._source_members())
+    return (
+        (sys.modules[__name__], "_source_members"),
+        (sys.modules[__name__], "_admit_cpu"),
+        (Component, "discover"),
+        *sourceproposal._source_members(),
+        *region._source_members(),
+    )
 
 
 @dataclass(frozen=True)
@@ -36,8 +42,9 @@ class Component:
     required_resource_kind: str | None = None
 
     def __post_init__(self):
-        if type(self.binding) is not RegionBackend or any(type(s) is not str or not s for s in (
-                self.resource, self.memory_domain)):
+        if type(self.binding) is not RegionBackend or any(
+            type(s) is not str or not s for s in (self.resource, self.memory_domain)
+        ):
             raise ValueError("system components need a typed backend binding and explicit resource/memory")
         _validator_identity(self.validate_implementation)
         if self.proposals is not None:
@@ -51,8 +58,10 @@ class Component:
         from merlin.compiler.sourceguard import observe
 
         sources = observe("discovery", _source_members)
-        if (self.required_resource_kind is not None and
-                topology.resource(self.resource).kind != self.required_resource_kind):
+        if (
+            self.required_resource_kind is not None
+            and topology.resource(self.resource).kind != self.required_resource_kind
+        ):
             raise ValueError("component implementation kind differs from the selected execution resource")
         if preparation is not None:
             preparation.revalidate_ir(source)
@@ -60,11 +69,20 @@ class Component:
             from merlin.compiler.planning.fusion import discover_fusion_candidates
 
             candidates, report = discover_fusion_candidates(
-                source, provider=provider, target=self.target, topology=topology, resource=self.resource,
-                memory_domain=self.memory_domain, cpu_resource=self.cpu_resource,
-                validate_implementation=self.validate_implementation, budget=budget,
-                **({key: preparation.record()[key] for key in
-                    ("numerical_policy_sha256", "preparation_sha256")} if preparation is not None else {}),
+                source,
+                provider=provider,
+                target=self.target,
+                topology=topology,
+                resource=self.resource,
+                memory_domain=self.memory_domain,
+                cpu_resource=self.cpu_resource,
+                validate_implementation=self.validate_implementation,
+                budget=budget,
+                **(
+                    {key: preparation.record()[key] for key in ("numerical_policy_sha256", "preparation_sha256")}
+                    if preparation is not None
+                    else {}
+                ),
             )
             sources.revalidate()
             report = {**report, "source_observation": sources.record()}
@@ -74,6 +92,7 @@ class Component:
             raise ValueError(f"selected component {name!r} has no admitted source proposal hook")
         hook_binding = _validator_identity(hook)
         validator = _validator_identity(self.validate_implementation)
+
         def custody():
             sources.revalidate()
             if preparation is not None:
@@ -83,9 +102,11 @@ class Component:
             current = self.proposals or getattr(provider, "propose", None)
             if any(a is not b for a, b in zip(_validator_identity(current), hook_binding, strict=True)):
                 raise ValueError("component source proposal hook changed during discovery/admission")
-            if any(a is not b for a, b in zip(
-                    _validator_identity(self.validate_implementation), validator, strict=True)):
+            if any(
+                a is not b for a, b in zip(_validator_identity(self.validate_implementation), validator, strict=True)
+            ):
                 raise ValueError("original implementation admission changed")
+
         kwargs = {"resource": self.resource, "memory_domain": self.memory_domain}
         if self.complements:
             kwargs.update(cuts=cuts, budget=budget)
@@ -103,14 +124,20 @@ class Component:
         if type(offered) is not tuple or len(offered) > budget.max_candidates:
             raise ValueError("component proposals must be a bounded immutable tuple")
         accepted, reasons = [], []
+
         def check(bound, proposal):
             custody()
             if self.validate_implementation(bound, proposal) is not None:
                 raise ValueError("implementation admission must return None or raise its refusal")
             custody()
+
         for proposal in offered:
-            if (type(proposal) is not SourceProposal or proposal.provider != name or
-                    proposal.resource != self.resource or proposal.memory_domain != self.memory_domain):
+            if (
+                type(proposal) is not SourceProposal
+                or proposal.provider != name
+                or proposal.resource != self.resource
+                or proposal.memory_domain != self.memory_domain
+            ):
                 raise ValueError("component proposal changed its selected provider/resource/memory identity")
             try:
                 accepted.append(admit_proposal(source, proposal, topology, validate_implementation=check))
@@ -119,10 +146,14 @@ class Component:
             else:
                 reasons.append({"alternative": proposal.alternative.id, "status": "admitted"})
             custody()
-        return tuple(accepted), {"provider": name, "offers": reasons, "qualification": "not_established",
-                                  "source_observation": sources.record(),
-                                  "source_sha256": source.stamp.source_sha256,
-                                  "scope": "bounded declared source proposals; actual lowering obligations remain"}
+        return tuple(accepted), {
+            "provider": name,
+            "offers": reasons,
+            "qualification": "not_established",
+            "source_observation": sources.record(),
+            "source_sha256": source.stamp.source_sha256,
+            "scope": "bounded declared source proposals; actual lowering obligations remain",
+        }
 
 
 def _admit_cpu(source, proposal):
@@ -159,11 +190,15 @@ def _admit_cpu(source, proposal):
             raise ValueError("CPU source workspace needs an exact positive original ceiling")
         workspace, _ = plan(operations, outputs)
         expected = workspace.record() if workspace is not None else None
-        if (metadata.get("source_workspace") != json.dumps(expected, sort_keys=True, separators=(",", ":"))
-                or workspace is not None and workspace.bytes > int(limit)):
+        if (
+            metadata.get("source_workspace") != json.dumps(expected, sort_keys=True, separators=(",", ":"))
+            or workspace is not None
+            and workspace.bytes > int(limit)
+        ):
             raise ValueError("CPU source workspace differs from original source values or exceeds caller ceiling")
-    elif (metadata.get("tensor_workspace_limit") != "0" or
-          metadata.get("workspace_status") != "conditional_not_observed"):
+    elif (
+        metadata.get("tensor_workspace_limit") != "0" or metadata.get("workspace_status") != "conditional_not_observed"
+    ):
         raise ValueError("CPU proposal omitted its unresolved native workspace/ABI obligation")
     if not outputs:
         raise ValueError("callable CPU region requires live tensor outcomes")
@@ -171,11 +206,19 @@ def _admit_cpu(source, proposal):
         TensorPort.from_type(value.type)
     for root in operations:
         for operation in root.walk():
-            if (isinstance(operation, builtin.UnregisteredOp) or
-                    operation.name.partition(".")[0] not in {"arith", "math", "tensor", "linalg", "scf", "cf"}):
+            if isinstance(operation, builtin.UnregisteredOp) or operation.name.partition(".")[0] not in {
+                "arith",
+                "math",
+                "tensor",
+                "linalg",
+                "scf",
+                "cf",
+            }:
                 raise ValueError("CPU source applicability has unknown effects or operation semantics")
-            if any(isinstance(v.type, (builtin.MemRefType, builtin.UnrankedMemRefType, builtin.VectorType))
-                   for v in (*operation.operands, *operation.results)):
+            if any(
+                isinstance(v.type, (builtin.MemRefType, builtin.UnrankedMemRefType, builtin.VectorType))
+                for v in (*operation.operands, *operation.results)
+            ):
                 raise ValueError("CPU source applicability requires immutable tensor/scalar values")
             flags = operation.properties.get("fastmath")
             if flags is not None and flags.data:
@@ -200,5 +243,12 @@ def scalar_cpu(*, resource, memory_domain, options: CompileOptions, entry="kerne
     if type(ceiling) is not int or ceiling < 0:
         raise ValueError("scalar.workspace-bytes must be a nonnegative original caller ceiling")
     proposals = scalaroffers.WorkspaceProposals(ceiling).propose if ceiling else scalaroffers.propose
-    return Component(RegionBackend(scalar, entry, replace(options, parameters=parameters)), resource, memory_domain,
-                     _admit_cpu, proposals=proposals, complements=True, required_resource_kind="cpu")
+    return Component(
+        RegionBackend(scalar, entry, replace(options, parameters=parameters)),
+        resource,
+        memory_domain,
+        _admit_cpu,
+        proposals=proposals,
+        complements=True,
+        required_resource_kind="cpu",
+    )

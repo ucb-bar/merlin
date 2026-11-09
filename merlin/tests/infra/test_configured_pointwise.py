@@ -284,9 +284,7 @@ def test_emitter_cannot_change_settings_after_source_admission(tmp_path, fusion,
 
     options["encoding"] = replace(codec, encode=corrupt)
     with pytest.raises(ValueError, match="actual emitted .*effects differ"):
-        compile_source_pointwise(
-            module, operation, budgets=ScheduleBudgets(max_fusions=8 if fusion else 0), **options
-        )
+        compile_source_pointwise(module, operation, budgets=ScheduleBudgets(max_fusions=8 if fusion else 0), **options)
     assert emitted, "the mutation must reach the real encoder"
     assert str(module) == before
 

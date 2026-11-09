@@ -30,8 +30,9 @@ class RunOptions:
             raise ValueError("timeout must be positive and finite")
         if self.mode not in {"execute", "prepare"}:
             raise ValueError("runtime mode must be execute or prepare")
-        if (type(self.arguments) is not tuple or
-                any(type(value) is not str or "\x00" in value for value in self.arguments)):
+        if type(self.arguments) is not tuple or any(
+            type(value) is not str or "\x00" in value for value in self.arguments
+        ):
             raise ValueError("runtime arguments must be a tuple of strings without NUL")
 
 
@@ -61,8 +62,9 @@ def _execution_identity(request, options):
 
     # Serialize copies rather than retaining aliases to caller-owned mappings
     # or the frozen dataclasses' mutable reachable objects.
-    return json.dumps({"request": asdict(request), "options": asdict(options)},
-                      sort_keys=True, allow_nan=False, default=path)
+    return json.dumps(
+        {"request": asdict(request), "options": asdict(options)}, sort_keys=True, allow_nan=False, default=path
+    )
 
 
 def run_artifact(product, *, runner, options: RunOptions | None = None):

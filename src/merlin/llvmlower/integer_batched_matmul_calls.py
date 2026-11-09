@@ -74,8 +74,14 @@ class PreparedBatchedMatmulCalls:
 
 
 def prepare_integer_batched_matmul_calls(
-    source, *, select, borrowed_effects, entry="forward", symbol_prefix="integer_batch",
-    allocation_alignment=64, refold_heads=False,
+    source,
+    *,
+    select,
+    borrowed_effects,
+    entry="forward",
+    symbol_prefix="integer_batch",
+    allocation_alignment=64,
+    refold_heads=False,
 ):
     """Outline actual zero-seeded signed batches; unsupported source stays intact.
 
@@ -83,9 +89,14 @@ def prepare_integer_batched_matmul_calls(
     transform first. Selection sees only typed current geometry. No target,
     numerical relaxation, implicit primitive or performance winner is supplied.
     """
-    if (not callable(select) or type(borrowed_effects) is not BorrowedBufferEffects
-            or type(refold_heads) is not bool or type(allocation_alignment) is not int
-            or not 0 < allocation_alignment < 1 << 63 or allocation_alignment & (allocation_alignment-1)):
+    if (
+        not callable(select)
+        or type(borrowed_effects) is not BorrowedBufferEffects
+        or type(refold_heads) is not bool
+        or type(allocation_alignment) is not int
+        or not 0 < allocation_alignment < 1 << 63
+        or allocation_alignment & (allocation_alignment - 1)
+    ):
         raise ValueError("explicit selection, borrowed effects and bounded alignment required")
     borrowed_effects.__post_init__()
     _symbol(symbol_prefix)
@@ -113,7 +124,7 @@ def prepare_integer_batched_matmul_calls(
         index = len(plans)
         while True:
             symbol = f"{symbol_prefix}_{index}"
-            names = symbol, symbol+"_borrowed", symbol+"_kernel"
+            names = symbol, symbol + "_borrowed", symbol + "_kernel"
             if not reserved.intersection(names):
                 break
             index += 1
@@ -132,22 +143,46 @@ def prepare_integer_batched_matmul_calls(
         call = func.CallOp(binding.symbol, [lhs, rhs, empty.tensor], [typ])
         call.attributes.update(op.attributes)
         Rewriter.replace_op(op, [empty, call], call.results)
-        attrs = [builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr("read"),
-                  "bufferization.buffer_layout": builtin.StridedLayoutAttr([None]*len(v.type.get_shape()), None)})
-                 for v in (lhs, rhs)]
+        attrs = [
+            builtin.DictionaryAttr(
+                {
+                    "bufferization.access": builtin.StringAttr("read"),
+                    "bufferization.buffer_layout": builtin.StridedLayoutAttr([None] * len(v.type.get_shape()), None),
+                }
+            )
+            for v in (lhs, rhs)
+        ]
         attrs.append(builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr("write")}))
-        declaration = func.FuncOp(binding.symbol, ([lhs.type, rhs.type, typ], [typ]), Region(),
-                                  visibility="private", arg_attrs=builtin.ArrayAttr(attrs))
+        declaration = func.FuncOp(
+            binding.symbol,
+            ([lhs.type, rhs.type, typ], [typ]),
+            Region(),
+            visibility="private",
+            arg_attrs=builtin.ArrayAttr(attrs),
+        )
         declaration.attributes["llvm.emit_c_interface"] = builtin.UnitAttr()
         module.body.block.add_op(declaration)
-        writers.append(FreshTensorWriterContract(binding.symbol, 2, (2,), binding.borrowed_symbol,
-                                                  allocation_alignment, borrowed_effects=borrowed_effects))
+        writers.append(
+            FreshTensorWriterContract(
+                binding.symbol,
+                2,
+                (2,),
+                binding.borrowed_symbol,
+                allocation_alignment,
+                borrowed_effects=borrowed_effects,
+            )
+        )
     if not plans:
         return PreparedBatchedMatmulCalls(source, hashlib.sha256(source.encode()).hexdigest(), (), ())
     rewrite_fresh_tensor_writers(module, writers)
     module.verify()
-    return PreparedBatchedMatmulCalls(ir_text(module), hashlib.sha256(source.encode()).hexdigest(),
-                                     tuple(call for _, call in plans), tuple(writers), batching)
+    return PreparedBatchedMatmulCalls(
+        ir_text(module),
+        hashlib.sha256(source.encode()).hexdigest(),
+        tuple(call for _, call in plans),
+        tuple(writers),
+        batching,
+    )
 
 
 @dataclass(frozen=True)
@@ -159,8 +194,17 @@ class ComposedBatchedMatmulProgram:
 
 
 def lower_integer_batched_matmul_program(
-    source, workdir, *, select, emit_matrix_kernel, logical_abi, data_layout,
-    entry="forward", allocation_alignment=64, refold_heads=False, host_features=None,
+    source,
+    workdir,
+    *,
+    select,
+    emit_matrix_kernel,
+    logical_abi,
+    data_layout,
+    entry="forward",
+    allocation_alignment=64,
+    refold_heads=False,
+    host_features=None,
 ):
     """Execute the existing ordinary host pipeline around explicit batch calls.
 
@@ -176,8 +220,12 @@ def lower_integer_batched_matmul_program(
         raise ValueError("explicit selected logical ABI and matrix implementation required")
     logical_abi.__post_init__()
     prepared = prepare_integer_batched_matmul_calls(
-        source, select=select, borrowed_effects=logical_abi.qualified_effects, entry=entry,
-        allocation_alignment=allocation_alignment, refold_heads=refold_heads,
+        source,
+        select=select,
+        borrowed_effects=logical_abi.qualified_effects,
+        entry=entry,
+        allocation_alignment=allocation_alignment,
+        refold_heads=refold_heads,
     )
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
@@ -193,16 +241,27 @@ def lower_integer_batched_matmul_program(
             if hashlib.sha256(location.read_bytes()).hexdigest() != digest:
                 raise ValueError("matrix implementation changed during batch emission")
             pins.append((location, digest))
-        kernel, bridge = workdir/f"kernel{index}.ll", workdir/f"bridge{index}.c"
+        kernel, bridge = workdir / f"kernel{index}.ll", workdir / f"bridge{index}.c"
         kernel.write_text(llvm)
-        bridge.write_text(emit_borrowed_batch_translation_unit(
-            logical_abi, call.problem, symbol="_mlir_ciface_"+call.borrowed_symbol,
-            kernel=call.kernel_symbol,
-        ).text)
+        bridge.write_text(
+            emit_borrowed_batch_translation_unit(
+                logical_abi,
+                call.problem,
+                symbol="_mlir_ciface_" + call.borrowed_symbol,
+                kernel=call.kernel_symbol,
+            ).text
+        )
         kernels.append(kernel)
         bridges.append(bridge)
     borrowed = prepared.borrowed_calls(path, pins=tuple(dict.fromkeys(pins))) if prepared.calls else None
-    host = lower_model(prepared.source, workdir/"host", targets=(), index_bits=64, data_layout=data_layout,
-                       borrowed_buffer_calls=borrowed, hoist_static_allocs=False,
-                       features=composition_features(host_features, has_writers=bool(prepared.calls)))
+    host = lower_model(
+        prepared.source,
+        workdir / "host",
+        targets=(),
+        index_bits=64,
+        data_layout=data_layout,
+        borrowed_buffer_calls=borrowed,
+        hoist_static_allocs=False,
+        features=composition_features(host_features, has_writers=bool(prepared.calls)),
+    )
     return ComposedBatchedMatmulProgram(prepared, host, tuple(kernels), tuple(bridges))

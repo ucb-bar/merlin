@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+
 from merlin_experiments.phase1.feedback import public_owned_host_selection as selection
 
 

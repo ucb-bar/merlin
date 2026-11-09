@@ -10,8 +10,8 @@ will actually run.
 
 from __future__ import annotations
 
-from merlin.runtime.backends import zephyr_model as zm
 from merlin.compiler.build.zephyr import memory
+from merlin.runtime.backends import zephyr_model as zm
 
 _PORT_RAM_DEFAULT = 256 * 1024 * 1024
 

@@ -69,8 +69,7 @@ def value_alignment(value, active=frozenset()):
         typ = value.type
         op = value.owner
         if not isinstance(typ, IntegerType):
-            if (isinstance(op, Operation) and op.name in {"llvm.inttoptr", "llvm.bitcast"}
-                    and len(op.operands) == 1):
+            if isinstance(op, Operation) and op.name in {"llvm.inttoptr", "llvm.bitcast"} and len(op.operands) == 1:
                 return visit(op.operands[0], active)
             return 1
         bits = typ.width.data
@@ -86,8 +85,12 @@ def value_alignment(value, active=frozenset()):
             return min(visit(operands[0], active), 1 << bits)
         if name == "llvm.sub" and len(operands) == 2:
             remainder = operands[1].owner
-            if (isinstance(remainder, Operation) and remainder.name == "llvm.urem"
-                    and len(remainder.operands) == 2 and remainder.operands[0] is operands[0]):
+            if (
+                isinstance(remainder, Operation)
+                and remainder.name == "llvm.urem"
+                and len(remainder.operands) == 2
+                and remainder.operands[0] is operands[0]
+            ):
                 divisor = read_constant(remainder.operands[1])
                 if type(divisor) is int and 0 < divisor <= 1 << bits and not divisor & (divisor - 1):
                     # x - (x urem 2**k) clears exactly those low bits, including

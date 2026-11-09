@@ -7,8 +7,6 @@ from struct import pack, unpack
 from .model import IndexMap, TensorType, pointwise_identity_maps
 
 
-
-
 class LinalgBridgeError(ValueError):
     pass
 
@@ -106,4 +104,3 @@ def _scalar_f32_bits(op) -> int:
         return unpack("<I", pack("<f", value))[0]
     except OverflowError as exc:
         raise LinalgBridgeError("f32 fill scalar is outside its storage range") from exc
-

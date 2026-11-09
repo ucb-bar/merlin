@@ -17,7 +17,7 @@ def source(m=17, k=16, n=32, *, zero=0, returned_init=False, shared_constant=Fal
     returns = f"({result}, {result})" if extra_name else result
     values = f"%r, {extra_name} : {result}, {result}" if extra_name else f"%r : {result}"
     separation = "%separation = arith.constant 19 : i32" if gap else ""
-    return parse_mlir_text(f'''module {{
+    return parse_mlir_text(f"""module {{
       func.func @forward(%a: tensor<{m}x{k}xi8>, %b: tensor<{k}x{n}xi8>) -> {returns} {{
         %zero = arith.constant {zero} : i32
         %init = "tensor.splat"(%zero) : (i32) -> {result}
@@ -37,7 +37,7 @@ def source(m=17, k=16, n=32, *, zero=0, returned_init=False, shared_constant=Fal
         {extra}
         return {values}
       }}
-    }}''')
+    }}""")
 
 
 @pytest.mark.parametrize("shape", [(2, 3, 5), (17, 16, 32), (1, 257, 17), (31, 17, 33)])

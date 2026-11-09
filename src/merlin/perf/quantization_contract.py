@@ -8,6 +8,7 @@ is one carrying a source/candidate-bound exact proof.
 This module interprets a small semantic epilogue vocabulary for held-out checking.  It contains no
 target identities, model identities, tensor shapes, instruction encodings, or target constants.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -60,11 +61,7 @@ def _sequence_sha256(values: Sequence[int]) -> str:
 
 
 def _is_sha256(value: object) -> bool:
-    return (
-        isinstance(value, str)
-        and len(value) == 64
-        and all(character in _HEX for character in value.lower())
-    )
+    return isinstance(value, str) and len(value) == 64 and all(character in _HEX for character in value.lower())
 
 
 def _rows(value: object) -> Sequence[Any]:
@@ -84,8 +81,11 @@ class AccuracyBudget:
     max_saturation_mismatch_fraction: float
 
     def __post_init__(self) -> None:
-        if (self.min_samples < 1 or self.max_abs_error_lsb < 0
-                or self.max_accumulated_error_lsb < self.max_abs_error_lsb):
+        if (
+            self.min_samples < 1
+            or self.max_abs_error_lsb < 0
+            or self.max_accumulated_error_lsb < self.max_abs_error_lsb
+        ):
             raise ValueError(
                 "accuracy budget requires positive samples and an accumulated bound no smaller "
                 "than its nonnegative per-site bound"
@@ -104,16 +104,12 @@ class AccuracyBudget:
     def from_mapping(cls, value: Mapping[str, Any]) -> AccuracyBudget:
         return cls(
             min_samples=int(value.get("min_samples", 0)),
-            min_channel_coverage_fraction=float(
-                value.get("min_channel_coverage_fraction", -1)
-            ),
+            min_channel_coverage_fraction=float(value.get("min_channel_coverage_fraction", -1)),
             max_abs_error_lsb=int(value.get("max_abs_error_lsb", -1)),
             max_accumulated_error_lsb=int(value.get("max_accumulated_error_lsb", -1)),
             max_mean_abs_error_lsb=float(value.get("max_mean_abs_error_lsb", -1)),
             max_mismatch_fraction=float(value.get("max_mismatch_fraction", -1)),
-            max_saturation_mismatch_fraction=float(
-                value.get("max_saturation_mismatch_fraction", -1)
-            ),
+            max_saturation_mismatch_fraction=float(value.get("max_saturation_mismatch_fraction", -1)),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -195,9 +191,7 @@ class AccuracySiteEvidence:
             raise ValueError("accuracy evidence requires site and corpus ids")
         if self.source_operation_index < 0:
             raise ValueError("source operation index must be nonnegative")
-        if not _is_sha256(self.normalized_source_sha256) or not _is_sha256(
-            self.semantic_contract_sha256
-        ):
+        if not _is_sha256(self.normalized_source_sha256) or not _is_sha256(self.semantic_contract_sha256):
             raise ValueError("accuracy evidence requires source and semantic SHA-256 identities")
         if not _is_sha256(self.reference_output_sha256):
             raise ValueError("accuracy evidence requires a reference-output SHA-256")
@@ -254,18 +248,12 @@ class AccuracyPolicy:
             raise ValueError("accuracy policy mode must be heldout_calibration_bounded")
         if not isinstance(value.get("opt_in"), bool):
             raise ValueError("accuracy policy opt_in must be an explicit boolean")
-        budget = AccuracyBudget.from_mapping(
-            value.get("budget") if isinstance(value.get("budget"), Mapping) else {}
-        )
+        budget = AccuracyBudget.from_mapping(value.get("budget") if isinstance(value.get("budget"), Mapping) else {})
         corpora = tuple(
-            AccuracyCorpus.from_mapping(row)
-            for row in _rows(value.get("corpora"))
-            if isinstance(row, Mapping)
+            AccuracyCorpus.from_mapping(row) for row in _rows(value.get("corpora")) if isinstance(row, Mapping)
         )
         sites = tuple(
-            AccuracySiteEvidence.from_mapping(row)
-            for row in _rows(value.get("sites"))
-            if isinstance(row, Mapping)
+            AccuracySiteEvidence.from_mapping(row) for row in _rows(value.get("sites")) if isinstance(row, Mapping)
         )
         raw_corpora = _rows(value.get("corpora"))
         raw_sites = _rows(value.get("sites"))
@@ -329,22 +317,26 @@ class AccuracyPolicyParseResult:
 def parse_accuracy_policy(value: Mapping[str, Any] | None) -> AccuracyPolicyParseResult:
     """Parse without turning missing/malformed deployment data into an exception-only outcome."""
     if value is None:
-        return AccuracyPolicyParseResult(None, {
-            "status": "refused", "reason_codes": ["accuracy_policy_not_provided"]
-        })
+        return AccuracyPolicyParseResult(None, {"status": "refused", "reason_codes": ["accuracy_policy_not_provided"]})
     try:
         policy = AccuracyPolicy.from_mapping(value)
     except (TypeError, ValueError, OverflowError) as exc:
-        return AccuracyPolicyParseResult(None, {
-            "status": "refused",
-            "reason_codes": ["accuracy_policy_invalid"],
-            "detail": str(exc),
-        })
-    return AccuracyPolicyParseResult(policy, {
-        "status": "available",
-        "policy_sha256": policy.policy_sha256,
-        "opt_in": policy.opt_in,
-    })
+        return AccuracyPolicyParseResult(
+            None,
+            {
+                "status": "refused",
+                "reason_codes": ["accuracy_policy_invalid"],
+                "detail": str(exc),
+            },
+        )
+    return AccuracyPolicyParseResult(
+        policy,
+        {
+            "status": "available",
+            "policy_sha256": policy.policy_sha256,
+            "opt_in": policy.opt_in,
+        },
+    )
 
 
 @dataclass(frozen=True)
@@ -428,8 +420,10 @@ def evaluate_candidate(
         channel = int(channel)
         if not -(1 << 31) <= accumulator < (1 << 31) or channel < 0:
             raise ValueError("calibration sample exceeds i32 or has a negative channel")
-        bias = 0 if not candidate.bias else int(
-            _parameter(candidate.bias, "per_tensor" if len(candidate.bias) == 1 else "per_axis", channel)
+        bias = (
+            0
+            if not candidate.bias
+            else int(_parameter(candidate.bias, "per_tensor" if len(candidate.bias) == 1 else "per_axis", channel))
         )
         scale = float(_parameter(candidate.scales, candidate.scale_granularity, channel))
         current: int | float = accumulator
@@ -455,9 +449,15 @@ def evaluate_candidate(
 def _refusal(reason_codes: Sequence[str], **details: Any) -> EpilogueAdmission:
     reasons = tuple(dict.fromkeys(str(reason) for reason in reason_codes if reason))
     primary = reasons[0] if reasons else "unspecified_refusal"
-    return EpilogueAdmission(False, False, primary, None, None, "none", {
-        "status": "refused", "reason": primary, "reason_codes": list(reasons), **details
-    })
+    return EpilogueAdmission(
+        False,
+        False,
+        primary,
+        None,
+        None,
+        "none",
+        {"status": "refused", "reason": primary, "reason_codes": list(reasons), **details},
+    )
 
 
 def _accuracy_admission(
@@ -472,14 +472,10 @@ def _accuracy_admission(
     if policy is None:
         return _refusal(("accuracy_policy_not_provided",))
     if not policy.opt_in:
-        return _refusal(
-            ("accuracy_policy_not_opted_in",), policy_sha256=policy.policy_sha256
-        )
+        return _refusal(("accuracy_policy_not_opted_in",), policy_sha256=policy.policy_sha256)
     evidence = policy.site(site_id)
     if evidence is None:
-        return _refusal(
-            ("accuracy_policy_site_missing",), policy_sha256=policy.policy_sha256
-        )
+        return _refusal(("accuracy_policy_site_missing",), policy_sha256=policy.policy_sha256)
     contract = source_contract.to_dict()
     semantic_sha = contract["semantic_contract_sha256"]
     binding_reasons: list[str] = []
@@ -532,8 +528,7 @@ def _accuracy_admission(
     mismatch_count = sum(error != 0 for error in errors)
     candidate_low, candidate_high = candidate.saturation
     saturation_mismatch_count = sum(
-        (actual_value in (candidate_low, candidate_high))
-        != (reference_value in (low, high))
+        (actual_value in (candidate_low, candidate_high)) != (reference_value in (low, high))
         for actual_value, reference_value in zip(actual, evidence.reference_outputs, strict=True)
     )
     metrics = {
@@ -580,14 +575,10 @@ def _accuracy_admission(
         "budget": budget.to_dict(),
         "metrics": metrics,
         "failed_budget_dimensions": failures,
-        "claim_boundary": (
-            "heldout local output-code evidence; not all-input equivalence or end-to-end accuracy"
-        ),
+        "claim_boundary": ("heldout local output-code evidence; not all-input equivalence or end-to-end accuracy"),
     }
     if failures:
-        return EpilogueAdmission(
-            False, False, receipt["reason"], None, None, "empirical_heldout_only", receipt
-        )
+        return EpilogueAdmission(False, False, receipt["reason"], None, None, "empirical_heldout_only", receipt)
     return EpilogueAdmission(
         True,
         False,
@@ -611,9 +602,7 @@ def admit_epilogue(
     exact_proof: ExactEpilogueProof | None = None,
 ) -> EpilogueAdmission:
     """Prefer bound exact proof, then try explicit held-out authorization, else fail closed."""
-    if not site_id.strip() or source_operation_index < 0 or not _is_sha256(
-        normalized_source_sha256
-    ):
+    if not site_id.strip() or source_operation_index < 0 or not _is_sha256(normalized_source_sha256):
         raise ValueError("epilogue site requires a stable id, source index, and source SHA-256")
     exact_reasons: list[str] = []
     contract_receipt = source_contract.to_dict()
@@ -625,12 +614,14 @@ def admit_epilogue(
         if exact_proof is None:
             exact_reasons.append("exact_proof_not_provided")
         else:
-            exact_reasons.extend(exact_proof.refusal_reasons(
-                normalized_source_sha256=normalized_source_sha256,
-                source_operation_index=source_operation_index,
-                semantic_contract_sha256=semantic_sha,
-                candidate_sha256=exact_candidate.sha256,
-            ))
+            exact_reasons.extend(
+                exact_proof.refusal_reasons(
+                    normalized_source_sha256=normalized_source_sha256,
+                    source_operation_index=source_operation_index,
+                    semantic_contract_sha256=semantic_sha,
+                    candidate_sha256=exact_candidate.sha256,
+                )
+            )
     if not exact_reasons and exact_candidate is not None and exact_proof is not None:
         receipt = {
             "status": "selected",
@@ -645,9 +636,7 @@ def admit_epilogue(
             "exact_proof": exact_proof.to_dict(),
             "accuracy_policy_consulted": False,
         }
-        return EpilogueAdmission(
-            True, True, receipt["reason"], exact_candidate, 0, receipt["proof_scope"], receipt
-        )
+        return EpilogueAdmission(True, True, receipt["reason"], exact_candidate, 0, receipt["proof_scope"], receipt)
 
     accuracy = _accuracy_admission(
         policy,
@@ -667,9 +656,7 @@ def admit_epilogue(
         all_reasons = list(dict.fromkeys([*exact_reasons, *receipt.get("reason_codes", ())]))
         receipt["reason_codes"] = all_reasons
         receipt["reason"] = all_reasons[0]
-        return EpilogueAdmission(
-            False, False, receipt["reason"], None, None, accuracy.proof_scope, receipt
-        )
+        return EpilogueAdmission(False, False, receipt["reason"], None, None, accuracy.proof_scope, receipt)
     return EpilogueAdmission(
         accuracy.selected,
         accuracy.exact,

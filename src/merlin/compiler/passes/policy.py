@@ -16,8 +16,11 @@ GENERALIZE_NAMED = "func.func(linalg-generalize-named-ops)"
 
 
 def deallocation_passes(
-    *, sink: bool | None = None, split: bool | None = None,
-    slice_outputs: bool | None = None, disabled: bool | None = None,
+    *,
+    sink: bool | None = None,
+    split: bool | None = None,
+    slice_outputs: bool | None = None,
+    disabled: bool | None = None,
 ) -> list[str]:
     """Resolve explicit policy values or the retained per-build defaults."""
     if disabled is None:
@@ -32,8 +35,11 @@ def deallocation_passes(
         from merlin.llvmlower.optional_passes import switched
 
         sink = switched("sink-deallocs", bool(os.environ.get("MERLIN_SINK_DEALLOCS")))
-    passes = ["ownership-based-buffer-deallocation", "buffer-deallocation-simplification",
-              "bufferization-lower-deallocations"]
+    passes = [
+        "ownership-based-buffer-deallocation",
+        "buffer-deallocation-simplification",
+        "bufferization-lower-deallocations",
+    ]
     if split:
         passes.insert(1, SPLIT_FRESH_DEALLOCS_MARKER)
     if sink or split or slice_outputs:
@@ -61,7 +67,9 @@ def reorder_generalize_before_fuse(passes: list[str]) -> list[str]:
 
 
 def splice_passes(
-    passes: list[str], *, deallocation: list[str] | None = None,
+    passes: list[str],
+    *,
+    deallocation: list[str] | None = None,
     generalize_before_fuse: bool | None = None,
     allow_loop_allocs: bool = True,
 ) -> str:
@@ -81,8 +89,9 @@ def splice_passes(
         out = [
             p[:-1] + " allow-return-allocs-from-loops}"
             if p.startswith("one-shot-bufferize{") and p.endswith("}") and "allow-return-allocs-from-loops" not in p
-            else p for p in out
+            else p
+            for p in out
         ]
-    if dealloc is not None and any("buffer-hoisting" in p or "buffer-loop-hoisting" in p for p in out[dealloc + 1:]):
+    if dealloc is not None and any("buffer-hoisting" in p or "buffer-loop-hoisting" in p for p in out[dealloc + 1 :]):
         raise ValueError("allocation hoisting invalidates ownership: schedule it before buffer deallocation")
     return ",".join(out)

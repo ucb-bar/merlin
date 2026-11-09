@@ -13,9 +13,7 @@ from test_selected_program_contracts import (
     native,  # noqa: F401
 )
 
-from merlin.compiler.schedule.program_limits import BranchRule
-from merlin.compiler.schedule.program_limits import Continuation
-from merlin.compiler.schedule.program_limits import finalize_program
+from merlin.compiler.schedule.program_limits import BranchRule, Continuation, finalize_program
 from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 from merlin.sched.ir import Kernel
 
@@ -34,8 +32,11 @@ def test_actual_relative_branches_stay_closed_and_execute_complete_outputs(tmp_p
         expected[destination] = 92 if direction == "forward" else 95
         increment = command("increment", destination, destination, 1, 3, 3)
         branch = command("branch", 1 if direction == "forward" else -2, counter, 0)
-        calls += ([branch, command("copy", 0, destination, 1, 2, 3), increment]
-                  if direction == "forward" else [increment, branch])
+        calls += (
+            [branch, command("copy", 0, destination, 1, 2, 3), increment]
+            if direction == "forward"
+            else [increment, branch]
+        )
     result = finalize(model, calls)
     assert len(result.segments) == 3 and result.report["instruction_count"] == count * 3
     assert result.report["branch_count"] == 3
@@ -43,8 +44,9 @@ def test_actual_relative_branches_stay_closed_and_execute_complete_outputs(tmp_p
     observed = []
     for segments in ((b"".join(result.segments),), result.segments):
         current = bytearray(output)
-        counts, _mode = native(segments, bytearray(data), current,
-                               width=8 if word_format.endswith("Q") else 4, big=word_format[0] == ">")
+        counts, _mode = native(
+            segments, bytearray(data), current, width=8 if word_format.endswith("Q") else 4, big=word_format[0] == ">"
+        )
         assert current == expected
         observed.append(counts)
     assert observed[0] == observed[1]
@@ -53,16 +55,22 @@ def test_actual_relative_branches_stay_closed_and_execute_complete_outputs(tmp_p
 
 def test_alias_projection_enables_legal_cuts_and_false_alias_claim_fails_execution(tmp_path, native):  # noqa: F811
     model = inputs(tmp_path, count=2)
-    calls = [command("copy", 0, 16, 1, 2, 0), command("increment", 2, 2, 1, 3, 3),
-             command("copy", 1, 16, 1, 2, 0), command("copy", 16, 1, 1, 1, 3)]
+    calls = [
+        command("copy", 0, 16, 1, 2, 0),
+        command("increment", 2, 2, 1, 3, 3),
+        command("copy", 1, 16, 1, 2, 0),
+        command("copy", 16, 1, 1, 1, 3),
+    ]
     result = finalize(model, calls)
     assert len(result.segments) == 2
     selected, _kernel, _objects, _adapter, codec, _controls, _word, _length = model
     policy, decoder, continuation, _binding = selected.program.bind(
-        selected, None, codec.program_decoder, None, QUALIFICATION)
+        selected, None, codec.program_decoder, None, QUALIFICATION
+    )
     with pytest.raises(ValueError, match="no completion-safe"):
-        finalize_program(b"".join(result.segments), policy, decoder, continuation=continuation,
-                         outputs=selected.program.published())
+        finalize_program(
+            b"".join(result.segments), policy, decoder, continuation=continuation, outputs=selected.program.published()
+        )
     data = bytearray(range(2 * model[7] + 8))
     data[:2] = bytes([7, 9])
     expected = bytearray([91] * len(data))
@@ -77,10 +85,13 @@ def test_alias_projection_enables_legal_cuts_and_false_alias_claim_fails_executi
 def test_live_alias_and_partial_overwrite_cannot_cross_a_volatile_launch(tmp_path):
     model = inputs(tmp_path, count=2)
     for calls in (
-        [command("copy", 0, 16, 2, 2, 0), command("increment", 2, 2, 1, 3, 3),
-         command("copy", 16, 0, 2, 1, 3)],
-        [command("copy", 0, 16, 2, 2, 0), command("increment", 2, 2, 1, 3, 3),
-         command("copy", 1, 16, 1, 2, 0), command("copy", 16, 0, 2, 1, 3)],
+        [command("copy", 0, 16, 2, 2, 0), command("increment", 2, 2, 1, 3, 3), command("copy", 16, 0, 2, 1, 3)],
+        [
+            command("copy", 0, 16, 2, 2, 0),
+            command("increment", 2, 2, 1, 3, 3),
+            command("copy", 1, 16, 1, 2, 0),
+            command("copy", 16, 0, 2, 1, 3),
+        ],
     ):
         with pytest.raises(ValueError, match="no completion-safe"):
             finalize(model, calls)
@@ -102,23 +113,36 @@ def test_selected_asynchronous_copy_requires_actual_global_drain_before_launch(t
     narrower = replace(model[5], max_bytes=model[6].size, max_instructions=1)
     image = b"".join(result.segments)
     with pytest.raises(ValueError, match="completion-safe"):
-        finalize_program(image, narrower, model[4].program_decoder, selected_contracts=model[0],
-                         continuation_qualification_identity=QUALIFICATION)
+        finalize_program(
+            image,
+            narrower,
+            model[4].program_decoder,
+            selected_contracts=model[0],
+            continuation_qualification_identity=QUALIFICATION,
+        )
 
 
 @pytest.mark.parametrize("repeat", [1, 2])
 def test_a_branch_that_can_skip_a_drain_does_not_establish_completion(tmp_path, repeat):
     model = inputs(tmp_path, branch=True, count=4)
-    region = [command("async_copy", 1, 1, 1, 2, 3), command("branch", 1, 0, 0),
-              command("wait", 0, 0, 1), command("increment", 2, 2, 1, 3, 3)]
+    region = [
+        command("async_copy", 1, 1, 1, 2, 3),
+        command("branch", 1, 0, 0),
+        command("wait", 0, 0, 1),
+        command("increment", 2, 2, 1, 3, 3),
+    ]
     with pytest.raises(ValueError, match="control-flow path ending before explicit device completion"):
         finalize(model, region * repeat)
 
 
 def test_complete_branch_paths_can_drain_and_segment_without_expanding_iterations(tmp_path, native):  # noqa: F811
     model = inputs(tmp_path, branch=True, count=4)
-    region = [command("async_copy", 1, 1, 1, 2, 3), command("branch", 0, 2, 0),
-              command("wait", 0, 0, 1), command("increment", 0, 0, 1, 3, 3)]
+    region = [
+        command("async_copy", 1, 1, 1, 2, 3),
+        command("branch", 0, 2, 0),
+        command("wait", 0, 0, 1),
+        command("increment", 0, 0, 1, 3, 3),
+    ]
     result = finalize(model, region * 2)
     assert len(result.segments) == 2
     observed = []
@@ -135,9 +159,9 @@ def test_complete_branch_paths_can_drain_and_segment_without_expanding_iteration
 def test_configuration_persistence_is_checked_from_actual_words_and_runtime(tmp_path, native):  # noqa: F811
     def preserve(facts, software, program):
         program["continuation"]["preserved_configuration"] = {"mode": [{"fact": ["facts", "state_index"]}]}
+
     model = inputs(tmp_path, count=2, configuration=True, mutate=preserve)
-    calls = [command("set_mode", 0, 0, 7), command("increment", 0, 0, 1, 3, 3),
-             command("increment", 1, 1, 1, 3, 3)]
+    calls = [command("set_mode", 0, 0, 7), command("increment", 0, 0, 1, 3, 3), command("increment", 1, 1, 1, 3, 3)]
     result = finalize(model, calls)
     assert len(result.segments) == 2
     data = bytearray(range(2 * model[7] + 8))
@@ -158,6 +182,7 @@ def test_unknown_execution_state_needs_a_separate_continuation_contract(tmp_path
     def mutate(facts, software, program):
         software["isa"]["resources"].append(dict(name="engine", kind="execution", unit="slots"))
         software["isa"]["instructions"][1]["effects"]["reads"].append("engine")
+
     model = inputs(tmp_path, count=2, mutate=mutate)
     with pytest.raises(ValueError, match="nonmemory execution resources"):
         finalize(model, [command("increment", 0, 0, 1, 3, 3)] * 3)
@@ -170,13 +195,15 @@ def test_missing_launch_capability_preserves_a_fitting_route_or_diagnoses_growth
             program["continuation"]["sequential_completion" if fault == "completion" else "starts_at_zero"] = False
         elif fault == "launch_budget":
             program["continuation"]["max_segments"] = 1
+
     model = inputs(tmp_path, mutate=mutate)
     with pytest.raises(ValueError, match="budget|continuation"):
         compile_case(model, qualification=None if fault == "qualification" else QUALIFICATION)
     directory = tmp_path / "fits"
     directory.mkdir()
-    result = compile_case(inputs(directory, count=64, mutate=mutate),
-                          qualification=None if fault == "qualification" else QUALIFICATION)
+    result = compile_case(
+        inputs(directory, count=64, mutate=mutate), qualification=None if fault == "qualification" else QUALIFICATION
+    )
     assert len(result.program.segments) == 1
 
 
@@ -200,16 +227,17 @@ def test_caller_cannot_omit_published_windows_or_expand_persistence(tmp_path):
     continuation = Continuation(QUALIFICATION, ("input", "output", "bytes", "typed_view"), True, True, 16)
     with pytest.raises(ValueError, match="expand selected"):
         finalize(model, [command("increment", 0, 0, 1, 3, 3)] * 3, continuation=continuation)
+
     def observe(facts, software, program):
         for name in ("bytes", "typed_view"):
             software["scheduling"]["storage"]["banks"][name]["ownership"] = "unknown"
             program["windows"][name]["visibility"] = "unknown"
+
     directory = tmp_path / "observable"
     directory.mkdir()
     opaque = inputs(directory, count=2, mutate=observe)
     with pytest.raises(ValueError, match="no completion-safe"):
-        finalize(opaque, [command("copy", 0, 16, 1, 2, 0)] +
-                 [command("increment", 0, 0, 1, 3, 3)] * 3, outputs=())
+        finalize(opaque, [command("copy", 0, 16, 1, 2, 0)] + [command("increment", 0, 0, 1, 3, 3)] * 3, outputs=())
 
 
 @pytest.mark.parametrize("mutation", ["missing_branch", "wrong_address", "segment_effect", "changed_inputs"])
@@ -219,6 +247,7 @@ def test_provider_projection_cannot_substitute_for_actual_final_words(tmp_path, 
     calls = [command("branch", 0, 0, 0), command("increment", 1, 1, 1, 3, 3)] * 2
     image = codec.encode(Kernel("final", (), tuple(calls)))
     original = codec.program_decoder.decode
+
     def decode(data):
         values = original(data)
         if mutation == "missing_branch":
@@ -228,10 +257,12 @@ def test_provider_projection_cannot_substitute_for_actual_final_words(tmp_path, 
         if mutation == "changed_inputs":
             selected.software_path.write_bytes(selected.software_bytes + b"\n")
         return values
+
     decoder = replace(codec.program_decoder, decode=decode)
     with pytest.raises(ValueError, match="actual selected ISA|changed; reselect"):
-        finalize_program(image, None, decoder, selected_contracts=selected,
-                         continuation_qualification_identity=QUALIFICATION)
+        finalize_program(
+            image, None, decoder, selected_contracts=selected, continuation_qualification_identity=QUALIFICATION
+        )
 
 
 def test_actual_final_count_is_after_ordinary_copy_rewriting(tmp_path, native):  # noqa: F811
@@ -254,6 +285,7 @@ def test_actual_final_count_is_after_ordinary_copy_rewriting(tmp_path, native): 
 def test_unknown_hardware_limits_are_explicit_and_budgets_are_not_hardware_evidence(tmp_path, field):
     def mutate(facts, software, program):
         program["limits"][field] = None
+
     model = inputs(tmp_path, mutate=mutate)
     if field == "instruction_alignment":
         with pytest.raises(ValueError, match="alignment is unknown"):
@@ -270,8 +302,21 @@ def test_unknown_hardware_limits_are_explicit_and_budgets_are_not_hardware_evide
         assert result.program.report["instruction_count"] == 18
 
 
-@pytest.mark.parametrize("fault", ["size", "origin", "alignment", "alias", "private_bound", "visibility", "effect",
-                                  "control", "persistence", "state_index"])
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "size",
+        "origin",
+        "alignment",
+        "alias",
+        "private_bound",
+        "visibility",
+        "effect",
+        "control",
+        "persistence",
+        "state_index",
+    ],
+)
 def test_invalid_selected_program_contracts_reject_before_decoding(tmp_path, fault):
     def mutate(facts, software, program):
         if fault == "size":
@@ -296,6 +341,7 @@ def test_invalid_selected_program_contracts_reject_before_decoding(tmp_path, fau
         else:
             facts["state_index"] = 2
             program["continuation"]["preserved_configuration"] = {"mode": [{"fact": ["facts", "state_index"]}]}
+
     with pytest.raises(ValueError):
         inputs(tmp_path, branch=True, configuration=True, mutate=mutate)
 
@@ -303,6 +349,7 @@ def test_invalid_selected_program_contracts_reject_before_decoding(tmp_path, fau
 def test_runtime_alias_preservation_cannot_be_contradictory(tmp_path):
     def mutate(facts, software, program):
         program["continuation"]["preserved_backings"].append("first")
+
     model = inputs(tmp_path, mutate=mutate)
     broken = Continuation(QUALIFICATION, ("input", "output", "bytes"), True, True, 16)
     with pytest.raises(ValueError, match="all views"):
@@ -315,14 +362,18 @@ def test_branch_reach_targets_and_unknown_origin_come_from_actual_selected_words
         finalize(model, [command("branch", 1, 0, 0)])
     selected, _kernel, _objects, _adapter, codec, _limits, _word, _length = model
     limits, _decoder, _continuation, _binding = selected.program.bind(
-        selected, None, codec.program_decoder, None, QUALIFICATION)
+        selected, None, codec.program_decoder, None, QUALIFICATION
+    )
     limits = replace(limits, branches=(replace(limits.branches[0], minimum=0, maximum=0),))
-    image = codec.encode(Kernel("reach", (), tuple([command("branch", 1, 0, 0)] +
-                                                  [command("increment", 0, 0, 1, 3, 3)] * 2)))
+    image = codec.encode(
+        Kernel("reach", (), tuple([command("branch", 1, 0, 0)] + [command("increment", 0, 0, 1, 3, 3)] * 2))
+    )
     with pytest.raises(ValueError, match="declared reach"):
         finalize_program(image, limits, codec.program_decoder, selected_contracts=selected)
+
     def unknown(facts, software, program):
         program["branches"]["relative"]["origin"] = "unknown"
+
     directory = tmp_path / "unknown"
     directory.mkdir()
     opaque = inputs(directory, branch=True, mutate=unknown)
@@ -333,6 +384,7 @@ def test_branch_reach_targets_and_unknown_origin_come_from_actual_selected_words
 def test_unknown_operations_do_not_acquire_effects_from_the_provider(tmp_path):
     def mutate(facts, software, program):
         program["instructions"].pop("increment")
+
     model = inputs(tmp_path, mutate=mutate)
     with pytest.raises(ValueError, match="unknown selected control/effect"):
         compile_case(model)
@@ -346,18 +398,23 @@ def test_final_word_addresses_are_checked_against_current_windows(tmp_path):
 
 def test_changed_resolver_inside_final_decode_is_stale(tmp_path, monkeypatch):
     from merlin.compiler.schedule import selected_contracts
+
     model = inputs(tmp_path)
     selected, _kernel, _objects, _adapter, codec, _limits, _word, _length = model
     original = selected_contracts._resolver_sources
     changed = False
+
     def sources():
         return (*original(), ("mutation", "changed")) if changed else original()
+
     monkeypatch.setattr(selected_contracts, "_resolver_sources", sources)
+
     def decode(data):
         nonlocal changed
         result = codec.program_decoder.decode(data)
         changed = True
         return result
+
     image = codec.encode(Kernel("stale", (), (command("increment", 0, 0, 1, 3, 3),)))
     with pytest.raises(ValueError, match="resolver changed"):
         finalize_program(image, None, replace(codec.program_decoder, decode=decode), selected_contracts=selected)
@@ -369,7 +426,9 @@ def test_current_final_controls_cannot_change_inside_decoder_callbacks(tmp_path,
     selected, _kernel, _objects, _adapter, codec, limits, _word, _length = model
     continuation = Continuation(QUALIFICATION, ("input", "output"), True, True, 16)
     from merlin.compiler.schedule.program_limits import EncodedAccess
+
     outputs = (EncodedAccess("output", 0, 1),)
+
     def decode(data):
         result = codec.program_decoder.decode(data)
         if field == "limits":
@@ -381,26 +440,33 @@ def test_current_final_controls_cannot_change_inside_decoder_callbacks(tmp_path,
         else:
             object.__setattr__(outputs[0], "size", 2)
         return result
+
     decoder = replace(codec.program_decoder, decode=decode)
     image = codec.encode(Kernel("changed", (), (command("increment", 0, 0, 1, 3, 3),)))
     with pytest.raises(ValueError, match="changed during checking"):
-        finalize_program(image, limits, decoder, continuation=continuation, outputs=outputs,
-                         selected_contracts=selected)
+        finalize_program(
+            image, limits, decoder, continuation=continuation, outputs=outputs, selected_contracts=selected
+        )
 
 
 def test_final_checker_implementation_cannot_change_during_decode(tmp_path, monkeypatch):
     from merlin.compiler.schedule import program_limits
+
     model = inputs(tmp_path)
     original = program_limits._library_sources
     changed = False
+
     def sources():
         return {**original(), "mutation": "changed"} if changed else original()
+
     monkeypatch.setattr(program_limits, "_library_sources", sources)
+
     def decode(data):
         nonlocal changed
         result = model[4].program_decoder.decode(data)
         changed = True
         return result
+
     image = model[4].encode(Kernel("changed", (), (command("increment", 0, 0, 1, 3, 3),)))
     with pytest.raises(ValueError, match="checker changed"):
         finalize_program(image, model[5], replace(model[4].program_decoder, decode=decode))

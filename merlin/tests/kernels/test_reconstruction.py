@@ -1,4 +1,5 @@
 """Library reconstruction must change actual checked schedules and replay them."""
+
 import hashlib
 import json
 from dataclasses import replace
@@ -6,13 +7,8 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from merlin.compiler.schedule.blocks import Compute
-from merlin.compiler.schedule.blocks import Load
-from merlin.compiler.schedule.blocks import Preload
-from merlin.compiler.schedule.blocks import Store
-from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
-from merlin.compiler.schedule.compact_dense import DenseLoopStorage
-from merlin.compiler.schedule.compact_dense import DenseMemoryView
+from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
+from merlin.compiler.schedule.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
 from merlin.compiler.schedule.loop_schedule import LoopTransform
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.kernels.reconstruction import (
@@ -52,11 +48,18 @@ def encode(op):
 def project(call):
     a = dict(call.args)
     if call.instr in ("lhs_load", "weight_load"):
-        return Load(call.instr.removesuffix("_load"), (a["a"], a["b"]),
-                    a["src_row"], a["src_col"], a["rows"], a["cols"], a["dst"], a["step"])
+        return Load(
+            call.instr.removesuffix("_load"),
+            (a["a"], a["b"]),
+            a["src_row"],
+            a["src_col"],
+            a["rows"],
+            a["cols"],
+            a["dst"],
+            a["step"],
+        )
     if call.instr == "preload":
-        return Preload(a["weight"], (a["k"], a["n"]), a["acc"], a["continue"],
-                       a["rows"], a["cols"], a["depth"])
+        return Preload(a["weight"], (a["k"], a["n"]), a["acc"], a["continue"], a["rows"], a["cols"], a["depth"])
     if call.instr == "compute":
         return Compute(a["lhs"], (a["m"], a["k"]), a["rows"], a["depth"], True)
     if call.instr == "store":
@@ -66,7 +69,7 @@ def project(call):
 
 def source(shape):
     m, k, n = shape
-    return parse_mlir_text(f'''module {{
+    return parse_mlir_text(f"""module {{
       func.func @dense(%a: tensor<{m}x{k}xi8>, %b: tensor<{k}x{n}xi8>) -> tensor<{m}x{n}xi32> {{
         %zero = arith.constant 0 : i32
         %empty = tensor.empty() : tensor<{m}x{n}xi32>
@@ -84,19 +87,29 @@ def source(shape):
         }} -> tensor<{m}x{n}xi32>
         func.return %result : tensor<{m}x{n}xi32>
       }}
-    }}''')
+    }}""")
 
 
 def adapter(shape=(4, 6, 8), **kwargs):
     p = DenseProblem(*shape, 2, 3, 4, 1, 1, 4)
     r = DenseResources(512, 512, 2, 2, 2, partial_output_tiles=True, partial_output_blocks=True)
-    s = DenseLoopStorage(DenseMemoryView("left", "left_store", 3, 0, 32),
-                         DenseMemoryView("right", "right_store", 4, 0, 32),
-                         DenseMemoryView("sum", "sum_store", 16, 0, 32))
+    s = DenseLoopStorage(
+        DenseMemoryView("left", "left_store", 3, 0, 32),
+        DenseMemoryView("right", "right_store", 4, 0, 32),
+        DenseMemoryView("sum", "sum_store", 16, 0, 32),
+    )
     target = DenseLoopAdapter(encode, project, "neutral-test-config", "ordered-modular-test", True, True, 64)
-    return make_dense_reconstruction_adapter(source(shape), problem=p, resources=r, storage=s,
-        target_adapter=target, block_tiles=kwargs.pop("block_tiles", ((1, 1, 1), (2, 2, 2))),
-        external_buffers_disjoint=True, verification_timeout_ms=20000, **kwargs)
+    return make_dense_reconstruction_adapter(
+        source(shape),
+        problem=p,
+        resources=r,
+        storage=s,
+        target_adapter=target,
+        block_tiles=kwargs.pop("block_tiles", ((1, 1, 1), (2, 2, 2))),
+        external_buffers_disjoint=True,
+        verification_timeout_ms=20000,
+        **kwargs,
+    )
 
 
 def execute(kernel, shape):
@@ -114,7 +127,8 @@ def execute(kernel, shape):
             for i in range(operation.rows):
                 for j in range(operation.cols):
                     memories[operation.role][operation.row + i, j] = int(
-                        src[operation.dram_row + i, operation.dram_col + j])
+                        src[operation.dram_row + i, operation.dram_col + j]
+                    )
         elif isinstance(operation, Preload):
             preload = operation
         elif isinstance(operation, Compute):
@@ -123,14 +137,17 @@ def execute(kernel, shape):
                     slot = (preload.accumulator_row + i, j)
                     value = memories["acc"][slot] if preload.accumulate else 0
                     for depth in range(operation.cols):
-                        value += (memories["lhs"][operation.input_row + i, depth]
-                                  * memories["weight"][preload.weight_row + depth, j])
+                        value += (
+                            memories["lhs"][operation.input_row + i, depth]
+                            * memories["weight"][preload.weight_row + depth, j]
+                        )
                     memories["acc"][slot] = value
         else:
             for i in range(operation.rows):
                 for j in range(operation.cols):
                     output[operation.dram_row + i, operation.dram_col + j] = memories["acc"][
-                        operation.accumulator_row + i, j]
+                        operation.accumulator_row + i, j
+                    ]
     np.testing.assert_array_equal(output, lhs @ rhs)
 
 
@@ -157,6 +174,7 @@ def test_dialect_plans_reconstruct_actual_reuse_and_exact_tailed_arithmetic(shap
 
 def test_composed_real_loop_transforms_survive_dialect_and_scf_consumer():
     from merlin.compiler.schedule.scf_commands import materialize_scf_commands
+
     selected = adapter((8, 6, 8), loop_transform_sets=((), (LoopTransform("unroll", ("outer_m",), factor=2),)))
     result = reconstruct(selected, ("schedule.loop_transformed",), max_candidates=8)
     successful = [p for p in result.paths if p.satisfied]
@@ -177,9 +195,11 @@ def test_exact_path_replays_and_detects_actual_emission_drift():
     repeated = replay(selected, actual.paths[0].summary()["replay"])
     assert repeated.paths[0].candidate.emission.data == path.candidate.emission.data
     ordinary = selected.emission
+
     def changed(result):
         emitted = ordinary(result)
         return replace(emitted, data=emitted.data + b"\n")
+
     with pytest.raises(ValueError, match="program_sha256"):
         replay(replace(selected, emission=changed), record)
 
@@ -200,6 +220,7 @@ def test_additional_live_source_computation_is_a_machine_actionable_refusal():
     selected = adapter()
     from xdsl.dialects import arith
     from xdsl.dialects.builtin import i32
+
     function = selected.source.body.block.first_op
     function.body.block.insert_op_before(arith.ConstantOp.from_int_and_width(17, i32), function.body.block.last_op)
     result = reconstruct(selected, ("schedule.consumed",), max_candidates=1)
@@ -211,8 +232,10 @@ def test_additional_live_source_computation_is_a_machine_actionable_refusal():
 def test_binding_unknown_source_semantics_and_witnessless_claims_refuse():
     selected = adapter()
     from xdsl.dialects import arith
+
     operation = next(op for op in selected.source.walk() if type(op) is arith.ConstantOp)
     from xdsl.dialects.builtin import IntegerAttr, i32
+
     operation.properties["value"] = IntegerAttr(1, i32)
     result = reconstruct(selected, ("schedule.consumed",), max_candidates=1)
     assert result.paths[0].candidate.emission is None
@@ -223,20 +246,29 @@ def test_binding_unknown_source_semantics_and_witnessless_claims_refuse():
 def test_wrong_schedule_emission_identity_propagates_as_infrastructure_error():
     selected = adapter()
     ordinary = selected.emission
+
     def bad_emission(result):
         emitted = ordinary(result)
         return EmittedProgram(emitted.data, emitted.format, "0" * 64)
+
     with pytest.raises(ValueError, match="actual checked schedule"):
         reconstruct(replace(selected, emission=bad_emission), max_candidates=1)
 
 
 def test_existing_cca_axes_drive_library_goals_and_compare_actual_output():
     from merlin.kernels.cca import CCA, ComputeFacet, DispatchFacet, MemoryFacet
-    reference = CCA(op="matmul", backend=[],
+
+    reference = CCA(
+        op="matmul",
+        backend=[],
         compute=ComputeFacet(register_block=(4, 8), accumulator_resident=True),
         memory=MemoryFacet(onchip_resident="both", panel_reuse=True),
-        provenance={"axis_evidence": {"memory.onchip_resident": {
-            "status": "observed", "evidence": ("pinned-reference-command-stream",)}}})
+        provenance={
+            "axis_evidence": {
+                "memory.onchip_resident": {"status": "observed", "evidence": ("pinned-reference-command-stream",)}
+            }
+        },
+    )
     plan = goals_from_cca(reference)
     assert {"reuse.lhs", "reuse.rhs", "compute.register_block", "compute.accumulator_resident"} <= set(plan["goals"])
     assert any(row["status"] == "observed" for row in plan["relations"])
@@ -259,18 +291,25 @@ def test_existing_cca_axes_drive_library_goals_and_compare_actual_output():
 
 def test_unknown_cca_evidence_and_requested_metadata_never_establish_mechanisms():
     from merlin.kernels.cca import CCA, MemoryFacet
-    reference = CCA(op="matmul", backend=[], memory=MemoryFacet(onchip_resident="both"),
-                    provenance={"axis_evidence": {"memory.onchip_resident": {"status": "unknown"}}})
+
+    reference = CCA(
+        op="matmul",
+        backend=[],
+        memory=MemoryFacet(onchip_resident="both"),
+        provenance={"axis_evidence": {"memory.onchip_resident": {"status": "unknown"}}},
+    )
     assert goals_from_cca(reference)["goals"] == ()
     # A callback can edit diagnostics, but observation reruns the actual source
     # and lifetime checker rather than trusting that mutable report dictionary.
     selected = adapter()
     ordinary = selected.emission
+
     def corrupt_report(result):
         emitted = ordinary(result)
         result.artifact.realization["lhs_loads"] = 0
         result.artifact.realization["rhs_loads"] = 0
         return emitted
+
     result = reconstruct(replace(selected, emission=corrupt_report), ("reuse.lhs",), max_candidates=1)
     assert not result.paths[0].satisfied
     assert result.paths[0].observation.cca.memory.onchip_resident == "none"
@@ -281,19 +320,30 @@ def test_library_split_and_reorder_composition_roundtrips_and_emits_same_arithme
     from merlin.compiler.schedule.loop_schedule import tile_loop_nest_transforms
     from merlin.compiler.schedule.scf_commands import materialize_scf_commands
     from merlin.transforms.dense_planning import dense_blocks
+
     p = DenseProblem(8, 6, 16, 2, 3, 4, 1, 1, 4)
     r = DenseResources(512, 512, 1, 1, 1, partial_output_tiles=True, partial_output_blocks=True)
-    storage = DenseLoopStorage(DenseMemoryView("left", "left_store", 3, 0, 32),
-                               DenseMemoryView("right", "right_store", 4, 0, 32),
-                               DenseMemoryView("sum", "sum_store", 16, 0, 32))
+    storage = DenseLoopStorage(
+        DenseMemoryView("left", "left_store", 3, 0, 32),
+        DenseMemoryView("right", "right_store", 4, 0, 32),
+        DenseMemoryView("sum", "sum_store", 16, 0, 32),
+    )
     target = DenseLoopAdapter(encode, project, "neutral-test-config", "ordered-modular-test", True, True, 64)
-    raw = emit_compact_dense(p, dense_blocks(p, r)[0], storage, target,
-                             name="reconstructed", dtypes=("i8", "i8", "i32"))
+    raw = emit_compact_dense(
+        p, dense_blocks(p, r)[0], storage, target, name="reconstructed", dtypes=("i8", "i8", "i32")
+    )
     requests = tile_loop_nest_transforms(raw, ("outer_m",), factors=(2, 2), outer_order=(1, 0))
     assert {request.action for request in requests} == {"split", "reorder"}
-    selected = make_dense_reconstruction_adapter(source((8, 6, 16)), problem=p, resources=r,
-        storage=storage, target_adapter=target, external_buffers_disjoint=True,
-        loop_transform_sets=((), requests), verification_timeout_ms=20000)
+    selected = make_dense_reconstruction_adapter(
+        source((8, 6, 16)),
+        problem=p,
+        resources=r,
+        storage=storage,
+        target_adapter=target,
+        external_buffers_disjoint=True,
+        loop_transform_sets=((), requests),
+        verification_timeout_ms=20000,
+    )
     result = reconstruct(selected, ("schedule.loop_transformed",))
     successful = [path for path in result.paths if path.satisfied]
     assert successful
@@ -306,6 +356,7 @@ def test_library_split_and_reorder_composition_roundtrips_and_emits_same_arithme
 
 def test_operand_byte_accounting_is_recovered_from_actual_tailed_instructions():
     from merlin.compiler.schedule.blocks import Load
+
     selected = adapter((5, 7, 9))
     result = reconstruct(selected)
     for path in result.paths:
@@ -325,18 +376,27 @@ def test_operand_byte_accounting_is_recovered_from_actual_tailed_instructions():
 
 
 def test_full_operand_retention_uses_checked_library_motion_and_actual_bytes():
-    from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
-    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
-    from merlin.compiler.schedule.compact_dense import DenseMemoryView
+    from merlin.compiler.schedule.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
+
     problem = DenseProblem(4, 6, 32, 2, 3, 4, 1, 1, 4)
     resources = DenseResources(512, 512, 2, 2, 2, partial_output_tiles=True, partial_output_blocks=True)
-    storage = DenseLoopStorage(DenseMemoryView("left", "left_store", 3, 0, 32),
-                               DenseMemoryView("right", "right_store", 4, 0, 32),
-                               DenseMemoryView("sum", "sum_store", 16, 0, 32))
+    storage = DenseLoopStorage(
+        DenseMemoryView("left", "left_store", 3, 0, 32),
+        DenseMemoryView("right", "right_store", 4, 0, 32),
+        DenseMemoryView("sum", "sum_store", 16, 0, 32),
+    )
     target = DenseLoopAdapter(encode, project, "neutral-test-config", "ordered-modular-test", True, True, 64)
-    selected = make_dense_reconstruction_adapter(source((4, 6, 32)), problem=problem, resources=resources,
-        storage=storage, target_adapter=target, external_buffers_disjoint=True,
-        block_tiles=((2, 2, 1),), retained_operands=("none", "lhs"), verification_timeout_ms=20000)
+    selected = make_dense_reconstruction_adapter(
+        source((4, 6, 32)),
+        problem=problem,
+        resources=resources,
+        storage=storage,
+        target_adapter=target,
+        external_buffers_disjoint=True,
+        block_tiles=((2, 2, 1),),
+        retained_operands=("none", "lhs"),
+        verification_timeout_ms=20000,
+    )
     result = reconstruct(selected, ("memory.lhs_retained_full_reduction",))
     matched = [path for path in result.paths if path.satisfied]
     assert matched

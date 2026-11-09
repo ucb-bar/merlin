@@ -24,8 +24,13 @@ def audit(wheels: list[Path]) -> list[str]:
                     continue
                 if ".dist-info/" not in name:
                     files[name].append(distribution)
-                if name.startswith(("merlin/_data/contract/capsules/", "merlin/contract/capsules/",
-                                    "merlin_experiments/_data/contract/capsules/")):
+                if name.startswith(
+                    (
+                        "merlin/_data/contract/capsules/",
+                        "merlin/contract/capsules/",
+                        "merlin_experiments/_data/contract/capsules/",
+                    )
+                ):
                     errors.append(f"historical capsule corpus shipped in {distribution}: {name}")
                 if name.endswith(".dist-info/entry_points.txt"):
                     parser = configparser.ConfigParser()

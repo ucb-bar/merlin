@@ -264,8 +264,10 @@ def _source_owner_fixture(tmp_path, monkeypatch):
         "borrowed_effects": asdict(effects),
     }
     (tmp_path / "source-plan.json").write_text(json.dumps(plan))
+
     def pin(n):
         return {"file": n, "sha256": hashlib.sha256((tmp_path / n).read_bytes()).hexdigest()}
+
     cap = {
         "name": "source_test",
         "kind": "model_slice",

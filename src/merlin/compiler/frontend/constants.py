@@ -20,13 +20,18 @@ CONSTANT_FILE = "capture-constants.safetensors"
 def needs_materialization(manifest: dict, receipt: dict) -> bool:
     lifted = receipt.get("lifted_constants", {})
     names = (receipt.get("materialized_abi") or {}).get("lifted_constants", [])
-    if (not isinstance(lifted, dict) or not isinstance(names, list)
-            or any(not isinstance(name, str) or not name.startswith("c_lifted_tensor_") for name in lifted)
-            or names != sorted(lifted)):
+    if (
+        not isinstance(lifted, dict)
+        or not isinstance(names, list)
+        or any(not isinstance(name, str) or not name.startswith("c_lifted_tensor_") for name in lifted)
+        or names != sorted(lifted)
+    ):
         raise ValueError("capture has unbound lifted constants or an invalid constant declaration")
-    return bool(lifted) or any(isinstance(row, dict) and (
-        row.get("kind") == "constant" or row.get("kind") == "buffer" and set(row) == {"kind", "name"}
-    ) for row in manifest.values())
+    return bool(lifted) or any(
+        isinstance(row, dict)
+        and (row.get("kind") == "constant" or row.get("kind") == "buffer" and set(row) == {"kind", "name"})
+        for row in manifest.values()
+    )
 
 
 def _array(archive: zipfile.ZipFile, key: str, shape: list[int]) -> np.ndarray:
@@ -77,7 +82,11 @@ def _encode(array: np.ndarray, actual: dict, dtypes: dict) -> tuple[str, str, by
 
 
 def materialize_arguments(
-    manifest: dict, argument_types: list[dict], receipt: dict, extra: bytes, dtypes: dict,
+    manifest: dict,
+    argument_types: list[dict],
+    receipt: dict,
+    extra: bytes,
+    dtypes: dict,
 ) -> tuple[dict, bytes, dict]:
     """Produce a consumer manifest and one small safetensors archive.
 
@@ -130,19 +139,36 @@ def materialize_arguments(
             original_sha = hashlib.sha256(array.tobytes(order="C")).hexdigest()
             if role == "constant":
                 declaration = lifted[name]
-                if (not isinstance(declaration, dict) or set(declaration) != {"shape", "dtype", "sha256"}
-                        or declaration["shape"] != list(array.shape) or declaration["dtype"] != str(array.dtype)
-                        or declaration["sha256"] != original_sha):
+                if (
+                    not isinstance(declaration, dict)
+                    or set(declaration) != {"shape", "dtype", "sha256"}
+                    or declaration["shape"] != list(array.shape)
+                    or declaration["dtype"] != str(array.dtype)
+                    or declaration["sha256"] != original_sha
+                ):
                     raise ValueError("lifted constant differs from its capture receipt")
             dtype, encoding, data, codec = _encode(array, actual, dtypes)
             tensor = (encoding, actual["shape"], data)
             if name in tensors and tensors[name] != tensor:
                 raise ValueError("shared capture tensor has conflicting types or payloads")
             tensors[name] = tensor
-            result[str(index)] = {"kind": role, "weight": name, "dtype": dtype,
-                                  "shape": actual["shape"], "file": CONSTANT_FILE}
-            entries.append({"argument_index": index, "key": key, "role": role, "codec": codec,
-                            "source_tensor_sha256": original_sha, "tensor_sha256": hashlib.sha256(data).hexdigest()})
+            result[str(index)] = {
+                "kind": role,
+                "weight": name,
+                "dtype": dtype,
+                "shape": actual["shape"],
+                "file": CONSTANT_FILE,
+            }
+            entries.append(
+                {
+                    "argument_index": index,
+                    "key": key,
+                    "role": role,
+                    "codec": codec,
+                    "source_tensor_sha256": original_sha,
+                    "tensor_sha256": hashlib.sha256(data).hexdigest(),
+                }
+            )
     if used != set(lifted) or not tensors:
         raise ValueError("capture has unbound lifted constants or no declared extra tensors")
     header, payloads, offset = {}, [], 0
@@ -153,5 +179,12 @@ def materialize_arguments(
     encoded = json.dumps(header, sort_keys=True, separators=(",", ":")).encode()
     encoded += b" " * (-len(encoded) % 8)
     raw = struct.pack("<Q", len(encoded)) + encoded + b"".join(payloads)
-    return result, raw, {"schema": "merlin.capture_argument_materialization.v1",
-                         "extra_npz_sha256": hashlib.sha256(extra).hexdigest(), "entries": entries}
+    return (
+        result,
+        raw,
+        {
+            "schema": "merlin.capture_argument_materialization.v1",
+            "extra_npz_sha256": hashlib.sha256(extra).hexdigest(),
+            "entries": entries,
+        },
+    )

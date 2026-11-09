@@ -34,12 +34,27 @@ def _source_members():
     from merlin.compiler.ir import region
 
     owner = sys.modules[__name__]
-    return (*((owner, name) for name in
-              ("_source_members", "partition_execution", "preview_region", "verify_partition", "_region_record",
-               "_emission_record", "ir_digest", "live_values", "verify_global_plan_emission",
-               "build_dispatch_program")),
-            (PartitionedExecution, "revalidate"), (PartitionedExecution, "source_observation"),
-            (PartitionRegion, "request_source"), *region._source_members())
+    return (
+        *(
+            (owner, name)
+            for name in (
+                "_source_members",
+                "partition_execution",
+                "preview_region",
+                "verify_partition",
+                "_region_record",
+                "_emission_record",
+                "ir_digest",
+                "live_values",
+                "verify_global_plan_emission",
+                "build_dispatch_program",
+            )
+        ),
+        (PartitionedExecution, "revalidate"),
+        (PartitionedExecution, "source_observation"),
+        (PartitionRegion, "request_source"),
+        *region._source_members(),
+    )
 
 
 @dataclass(frozen=True)
@@ -68,8 +83,10 @@ class PartitionRegion:
 
 
 def _region_record(regions):
-    return tuple((r.alternative, r.provider, r.symbol, r.inputs, r.outputs, r.source_ordinals,
-                  ir_digest(r.source_module)) for r in regions)
+    return tuple(
+        (r.alternative, r.provider, r.symbol, r.inputs, r.outputs, r.source_ordinals, ir_digest(r.source_module))
+        for r in regions
+    )
 
 
 def _emission_record(emission):
@@ -90,8 +107,12 @@ class PartitionedExecution:
     _sources: object
 
     def revalidate(self):
-        if any(a is not b for a, b in zip(
-                (self.selection, self.module, self.regions, self.emission, self._sources), self._owners, strict=True)):
+        if any(
+            a is not b
+            for a, b in zip(
+                (self.selection, self.module, self.regions, self.emission, self._sources), self._owners, strict=True
+            )
+        ):
             raise ValueError("partition ownership changed after materialization")
         self._sources.revalidate()
         self.selection.revalidate()
@@ -100,8 +121,12 @@ class PartitionedExecution:
             raise ValueError("partitioned source changed after materialization")
         if _emission_record(self.emission) != self._emission_record:
             raise ValueError("partition emission changed after materialization")
-        receipt = verify_partition(self.selection.source.module, self.module,
-                                   entry=self.selection.source.entry, symbols=tuple(r.symbol for r in self.regions))
+        receipt = verify_partition(
+            self.selection.source.module,
+            self.module,
+            entry=self.selection.source.entry,
+            symbols=tuple(r.symbol for r in self.regions),
+        )
         if receipt != self.verification:
             raise ValueError("partition verification changed")
         problems = verify_global_plan_emission(self.selection.source.program, self.selection.plan, self.emission)
@@ -114,8 +139,9 @@ class PartitionedExecution:
 
 
 def _values(source):
-    entry = next(op for op in source.module.body.block.ops
-                 if type(op) is func.FuncOp and op.sym_name.data == source.entry)
+    entry = next(
+        op for op in source.module.body.block.ops if type(op) is func.FuncOp and op.sym_name.data == source.entry
+    )
     result = {}
     for name, buffer in source.program.buffers.items():
         if buffer.kind == "arg":
@@ -169,16 +195,21 @@ def partition_execution(selection: SelectedExecution) -> PartitionedExecution:
         if symbol in symbols:
             raise ValueError("partition symbol conflicts with an original function")
         symbols.add(symbol)
-        preview = preview_region(source.module, source.entry, operations, symbol=symbol,
-                                 inputs=inputs, outputs=outputs)
+        preview = preview_region(source.module, source.entry, operations, symbol=symbol, inputs=inputs, outputs=outputs)
         sources.revalidate()
         preview.source_observation.revalidate()
         if preview.source_ordinals != item.proposal.operation_ordinals:
             raise ValueError("selected region differs from the actual original source operation ordinals")
         definition = preview.module.body.block.first_op.clone()
-        region = PartitionRegion(item.alternative.id, item.proposal.provider, symbol,
-                                 builtin.ModuleOp([definition.clone()]), wanted_in, wanted_out,
-                                 item.proposal.operation_ordinals)
+        region = PartitionRegion(
+            item.alternative.id,
+            item.proposal.provider,
+            symbol,
+            builtin.ModuleOp([definition.clone()]),
+            wanted_in,
+            wanted_out,
+            item.proposal.operation_ordinals,
+        )
         region.source_module.verify()
         descriptions.append((item, operations, inputs, outputs, definition, region))
     selection.revalidate()
@@ -196,15 +227,18 @@ def partition_execution(selection: SelectedExecution) -> PartitionedExecution:
             operation.parent.erase_op(operation)
         module.body.block.add_op(definition)
         owned_operations[item.alternative.id] = (call,)
-        dispatches.append(DispatchInfo(len(dispatches), region.symbol, "selected-region", len(inputs),
-                                       [str(v.type) for v in outputs]))
+        dispatches.append(
+            DispatchInfo(len(dispatches), region.symbol, "selected-region", len(inputs), [str(v.type) for v in outputs])
+        )
     for item in selection.selected:
         if item.proposal.abi == "inlined":
             owned_operations[item.alternative.id] = tuple(
-                operation_map[source.operations[n]] for n in item.alternative.nodes)
+                operation_map[source.operations[n]] for n in item.alternative.nodes
+            )
     module.verify()
-    verification = verify_partition(source.module, module, entry=source.entry,
-                                    symbols=tuple(row[-1].symbol for row in descriptions))
+    verification = verify_partition(
+        source.module, module, entry=source.entry, symbols=tuple(row[-1].symbol for row in descriptions)
+    )
     sources.revalidate()
     # This graph is the actual partitioned source graph, before backend lowering.
     emitted = build_dispatch_program(OutlineResult(module, dispatches), entry=source.entry)
@@ -216,21 +250,44 @@ def partition_execution(selection: SelectedExecution) -> PartitionedExecution:
             emitted_values[driver.body.block.args[buffer.arg_index]] = name
     for operation, node in zip(tuple(driver.body.block.ops)[:-1], emitted.nodes, strict=True):
         emitted_values.update(zip(operation.results, node.outputs, strict=True))
-    names = {name: emitted_values[value_map[value]] for value, name in logical.items()
-             if value_map[value] in emitted_values}
-    components = tuple(EmittedComponent(
-        item.alternative.id, tuple(positions[op] for op in owned_operations[item.alternative.id]),
-        tuple((rep.buffer, names[rep.buffer]) for rep in item.alternative.inputs),
-        tuple((rep.buffer, names[rep.buffer]) for rep in item.alternative.outputs),
-    ) for item in selection.selected)
-    boundaries = tuple(BoundaryMapping("input", name, names[name]) for name, buffer in source.program.buffers.items()
-                       if buffer.kind == "arg") + tuple(
-                           BoundaryMapping("output", name, names[name]) for name in source.program.results)
-    emission = GlobalPlanEmission(emitted, selection.plan.digest, dispatch_digest(source.program), components, (),
-                                  boundaries, ("source-preserving region partition; no backend execution claim",))
+    names = {
+        name: emitted_values[value_map[value]] for value, name in logical.items() if value_map[value] in emitted_values
+    }
+    components = tuple(
+        EmittedComponent(
+            item.alternative.id,
+            tuple(positions[op] for op in owned_operations[item.alternative.id]),
+            tuple((rep.buffer, names[rep.buffer]) for rep in item.alternative.inputs),
+            tuple((rep.buffer, names[rep.buffer]) for rep in item.alternative.outputs),
+        )
+        for item in selection.selected
+    )
+    boundaries = tuple(
+        BoundaryMapping("input", name, names[name])
+        for name, buffer in source.program.buffers.items()
+        if buffer.kind == "arg"
+    ) + tuple(BoundaryMapping("output", name, names[name]) for name in source.program.results)
+    emission = GlobalPlanEmission(
+        emitted,
+        selection.plan.digest,
+        dispatch_digest(source.program),
+        components,
+        (),
+        boundaries,
+        ("source-preserving region partition; no backend execution claim",),
+    )
     regions = tuple(row[-1] for row in descriptions)
-    result = PartitionedExecution(selection, module, regions, emission, verification, ir_digest(module),
-                                  _region_record(regions), _emission_record(emission),
-                                  (selection, module, regions, emission, sources), sources)
+    result = PartitionedExecution(
+        selection,
+        module,
+        regions,
+        emission,
+        verification,
+        ir_digest(module),
+        _region_record(regions),
+        _emission_record(emission),
+        (selection, module, regions, emission, sources),
+        sources,
+    )
     result.revalidate()
     return result

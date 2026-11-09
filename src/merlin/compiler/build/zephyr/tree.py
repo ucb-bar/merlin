@@ -24,8 +24,10 @@ class TreeConfiguration:
         roots = (self.base / "arch", self.base / "kernel", self.base / "subsys" / "debug")
         return tuple(
             tuple(path.read_text(errors="replace").splitlines())
-            for root in roots if root.is_dir()
-            for path in root.rglob("Kconfig*") if path.is_file()
+            for root in roots
+            if root.is_dir()
+            for path in root.rglob("Kconfig*")
+            if path.is_file()
         )
 
     @cached_property

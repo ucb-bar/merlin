@@ -154,8 +154,7 @@ def test_full_k_readout_recipe_refuses_when_original_panel_does_not_fit():
 
 @pytest.mark.parametrize("shape", [(7, 4, 19), (19, 7, 11), (13, 13, 7)])
 def test_readout_recipe_pipelines_only_advancing_inputs_with_invariant_weights(shape):
-    report = load_script(SKILL, "dense_readout_recipe").recipe(
-        shape=shape, family="retained", input_pipeline=True)
+    report = load_script(SKILL, "dense_readout_recipe").recipe(shape=shape, family="retained", input_pipeline=True)
     assert report["retained_operand"] == "weight"
     rows = report["variants"]
     assert rows["input_pipeline"]["input_pipeline"]
@@ -376,8 +375,10 @@ def test_the_acceptance_check_refuses_outputs_that_do_not_show_the_mechanism():
     conv["routes"]["border_rows"]["candidates"][0]["input_transfers"] = 100
     assert "per-pixel gather" in H._conv(conv)
     assert "declined" not in (H._long_k({"retained_full_k": "applies"}) or "declined")
-    dense = {"epoch_law": "admitted", "cases": [{"routes": {"drained": {}, "epochs": {}},
-                                                "comparison": {"drains_before": 42, "drains_after": 3}}]}
+    dense = {
+        "epoch_law": "admitted",
+        "cases": [{"routes": {"drained": {}, "epochs": {}}, "comparison": {"drains_before": 42, "drains_after": 3}}],
+    }
     assert H._dense_epochs(dense) is None
     dense["cases"][0]["comparison"]["drains_after"] = 42
     assert "removed no drain" in H._dense_epochs(dense)

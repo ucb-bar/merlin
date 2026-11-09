@@ -19,11 +19,15 @@ from merlin.semantic_compiler.reference import TensorValue, evaluate_graph
 def chain():
     tensor = TensorType((2,), "i32", "exact-i32")
     return KernelRequest(
-        (SemanticNode("x", "input", (), tensor, effect="input"),) + tuple(
+        (SemanticNode("x", "input", (), tensor, effect="input"),)
+        + tuple(
             SemanticNode(name, "add", (previous, "x"), tensor)
             for name, previous in zip(("a", "b", "c", "d"), ("x", "a", "b", "c"), strict=True)
         ),
-        ("d",), ("external",), (("x", "external"),), "synthetic-staging",
+        ("d",),
+        ("external",),
+        (("x", "external"),),
+        "synthetic-staging",
     )
 
 
@@ -32,7 +36,10 @@ def test_completed_regions_reuse_storage_without_changing_values(max_nodes, capa
     source = chain()
     regions = partition_semantic_dag(source, max_nodes=max_nodes)
     buffers = semantic_staging_buffers(
-        source, regions, storage="external", extents=dict.fromkeys((n.id for n in source.nodes), 1),
+        source,
+        regions,
+        storage="external",
+        extents=dict.fromkeys((n.id for n in source.nodes), 1),
         fixed={"x": 0, "d": 1},
     )
     result = allocate_buffers(buffers, (StorageBank("external", "memory", capacity, "tensor"),))
@@ -45,9 +52,7 @@ def test_completed_regions_reuse_storage_without_changing_values(max_nodes, capa
         memory = {addresses["x"]: value}
         for region in regions:
             inputs = {key: memory[addresses[key]] for key, _ in region.input_storages}
-            assert not {addresses[key] for key in region.outputs}.intersection(
-                addresses[key] for key in inputs
-            )
+            assert not {addresses[key] for key in region.outputs}.intersection(addresses[key] for key in inputs)
             for key, output in zip(region.outputs, evaluate_graph(region, inputs), strict=True):
                 memory[addresses[key]] = output
         assert memory[addresses["d"]] == evaluate_graph(source, {"x": value})[0]
@@ -74,7 +79,11 @@ def test_staging_preserves_multiple_outputs_and_shared_producers():
     source = replace(source, outputs=("d", "a", "d"), output_storages=("external",) * 3)
     regions = partition_semantic_dag(source, max_nodes=2)
     buffers = semantic_staging_buffers(
-        source, regions, storage="external", extents=dict.fromkeys((n.id for n in source.nodes), 1), fixed={},
+        source,
+        regions,
+        storage="external",
+        extents=dict.fromkeys((n.id for n in source.nodes), 1),
+        fixed={},
     )
     last = len(regions) + 1
     assert next(item for item in buffers if item.name == "a").last_event == last
@@ -111,7 +120,10 @@ def test_first_fit_proposal_is_checked_against_original_buffers_and_solver():
     source = chain()
     regions = partition_semantic_dag(source, max_nodes=1)
     buffers = semantic_staging_buffers(
-        source, regions, storage="external", extents=dict.fromkeys((n.id for n in source.nodes), 1),
+        source,
+        regions,
+        storage="external",
+        extents=dict.fromkeys((n.id for n in source.nodes), 1),
         fixed={"x": 0, "d": 1},
     )
     banks = (StorageBank("external", "memory", 3, "tensor"),)
@@ -139,7 +151,8 @@ def test_first_fit_preserves_view_lifetimes_alignment_and_reservations():
     check_buffer_allocation(buffers, banks, proposal, reservations=reservations)
     result = allocate_buffers(
         tuple(replace(item, fixed_start=proposal[item.name]) for item in buffers),
-        banks, reservations=reservations,
+        banks,
+        reservations=reservations,
     )
     assert result.status == "sat", result.reason
     check_buffer_allocation(buffers, banks, dict(result.addresses), reservations=reservations)

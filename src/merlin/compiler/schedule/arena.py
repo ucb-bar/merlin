@@ -3,14 +3,21 @@
 Default dispatch planning retains its existing owner and behavior. This explicit
 path consumes resource/completion requirements; it does not infer concurrency.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from merlin.xdsl_dialects.lowering.dispatch_program import DispatchProgram
+
 from merlin.xdsl_dialects.lowering.arena_plan import (
-    ARENA_ALIGN, ArenaPlanError, MemoryPlan, _buf_bytes,
-    _assert_reads_are_complete, pack_disjoint,
+    ARENA_ALIGN,
+    ArenaPlanError,
+    MemoryPlan,
+    _assert_reads_are_complete,
+    _buf_bytes,
+    pack_disjoint,
 )
+from merlin.xdsl_dialects.lowering.dispatch_program import DispatchProgram
+
 
 @dataclass(frozen=True)
 class ArenaRequirements:
@@ -38,7 +45,6 @@ def _bounded_arena_inputs(prog: DispatchProgram, requirements: ArenaRequirements
     """Recover storage and lifetime obligations from the current graph."""
     from merlin.semantic_compiler.allocate import Reservation, StorageBank
     from merlin.semantic_compiler.buffer_allocation import Buffer
-
     from merlin.xdsl_dialects.lowering.dispatch_program import verify_program
     from merlin.xdsl_dialects.lowering.global_plan_emission import dispatch_digest
 

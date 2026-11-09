@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from merlin_experiments.phase2.common_transforms import supports_check
 
 from merlin.common.access import author_inaccessible
 from merlin.common.paths import repo_root
@@ -28,6 +27,7 @@ from merlin.targetgen.tool_profile_shared import (
     sdk_support_sources,
     staged_module,
 )
+from merlin_experiments.phase2.common_transforms import supports_check
 
 TOOLS = TR.ARM_TOOLS["merlin_rtlchecks"]
 
