@@ -14,6 +14,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from merlin.common.tree_hash import hash_tree
+from merlin.targetgen import capsule_common as capsule_capsule_common
 
 from . import joint_control
 from .joint_final_model_l3 import MISSING as MODEL_L3_MISSING
@@ -184,7 +185,6 @@ def _apply_program_result(group, result, compiler_sha256):
 def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
     from merlin.common.digest import sha256_file
     from merlin.targetgen import capsule_grade as CG
-    from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen.target_experiment import load_target_experiment
 
     from .brokers.model_check import PROGRAMS, execute_visible
@@ -210,7 +210,7 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
     core = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
     # Do not call the smoke selector or development_roots: these intentionally
     # omit the final-only capstones. The native sealed public view contains all.
-    core_caps = CR.discover_capsules(core, labels={"public", "dev"}, contract=contract)
+    core_caps = capsule_capsule_common.discover_capsules(core, labels={"public", "dev"}, contract=contract)
     final_only = set(state["policy"].get("final_only_capsules", ()))
     if not final_only <= {cap["name"] for cap in core_caps}:
         raise ValueError("sealed final core view is missing required final-only capsules")
@@ -219,7 +219,7 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
         raise ValueError("joint final coverage has no required scalability selection")
     scale_root, scale_record = selected
     scale_cases = scale_root / "cases"
-    scale_caps = CR.discover_capsules(scale_cases, labels={"public", "dev"}, contract=contract)
+    scale_caps = capsule_capsule_common.discover_capsules(scale_cases, labels={"public", "dev"}, contract=contract)
     if {cap["name"] for cap in scale_caps} != set(scale_record["cases"]):
         raise ValueError("native scalability roster differs from the sealed selection")
     if {cap["name"] for cap in core_caps} & {cap["name"] for cap in scale_caps}:

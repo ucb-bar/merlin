@@ -15,13 +15,13 @@ from xdsl.parser import Parser
 from xdsl.utils.exceptions import ParseError, VerifyException
 
 from merlin.common.jsonio import canonical_json
+from merlin.compiler.lower.native.transport import verify_llvm_dialect_product
 from merlin.targetgen.contract.linalg_iface import _dtype, make_linalg_context
 from merlin.targetgen.contract.mlir_source_admission import admit_mlir_source
 from merlin.targetgen.contract.tensor_types import type_identity
 from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
 
 from .descriptor_contract import DescriptorLimits, OriginalDescriptorSource
-from .llvm_dialect_product import verify_llvm_dialect_product
 
 _ISSUED = weakref.WeakKeyDictionary()
 

@@ -26,6 +26,10 @@ import yaml
 from merlin.common import cpu_pool, invocation_record
 from merlin.common.bundle_snapshot import verified_snapshot_scope
 from merlin.common.digest import sha256_file
+from merlin.evaluation.capsule import identity as capsule_identity
+from merlin.evaluation.capsule import model as capsule_model
+from merlin.evaluation.capsule import model_candidates as capsule_model_candidates
+from merlin.evaluation.capsule import processes as capsule_processes
 from merlin.experiments.phase1.brokers.common_transforms import CommonTransformService
 from merlin.experiments.phase1.feedback import compiler_profile_runtime as R
 from merlin.experiments.phase2 import campaign as C
@@ -218,9 +222,9 @@ def _closure(*, library=False, passes=False, checked_source=False, parent_delega
         C.__name__,
         resources.__name__,
         resources.kernel.__name__,
-        "merlin.targetgen.capsule_runner",
-        "merlin.targetgen.capsule_candidate_context",
-        "merlin.targetgen.capsule_source_identity",
+        "merlin.evaluation.capsule.runner",
+        "merlin.evaluation.capsule.model_context",
+        "merlin.evaluation.capsule.source",
         "merlin.experiments.phase1.feedback.operator_child",
         "merlin.experiments.phase1.feedback.scale_probe_child",
         "merlin.experiments.phase1.feedback.scale_probe_batch",
@@ -262,6 +266,13 @@ def _closure(*, library=False, passes=False, checked_source=False, parent_delega
             "merlin.experiments.phase1.feedback.compiler_pass_parent_proof",
         )
     rows = [_pin(module_source_path(name)) for name in names]
+    from merlin.common.source_membership import python_members
+
+    members = python_members(module_source_path("merlin.evaluation.capsule").parent, label="capsule evaluation")
+    for path in members.values():
+        row = _pin(path)
+        if row not in rows:
+            rows.append(row)
     if source_optimizations:
         from merlin.targetgen.compiler_source_optimizations import implementation_sources
 
@@ -1006,8 +1017,8 @@ def verified_parent_pass_delegation(proof):
 
 def _model_child_command(native_argv, *, environment):
     """Carry exact selected sources/environment without delaying the death guard."""
+    from merlin.evaluation.capsule.model_runtime import _CHILD_GUARD
     from merlin.experiments import frozen_python as FP
-    from merlin.targetgen.capsule_runner import _CHILD_GUARD
 
     native = list(native_argv)
     command = FP.inherited_python_command(native)
@@ -1061,7 +1072,7 @@ def run_model_grade(argv):
     """The original runner CLI child entry, inside the restored host scope."""
     import argparse
 
-    from merlin.targetgen import capsule_runner as runner
+    from merlin.evaluation.capsule import runner as runner
 
     sub = argparse.ArgumentParser(add_help=False)
     sub.add_argument("--model-grade", required=True)
@@ -1069,7 +1080,7 @@ def run_model_grade(argv):
     sub.add_argument("--original-profile-fd", type=int)
     sub.add_argument("--snapshot-external-fd", type=int)
     sa, _ = sub.parse_known_args(argv)
-    runner._die_with_parent()
+    capsule_processes._die_with_parent()
     spec_bytes = Path(sa.model_grade).read_bytes()
     spec = json.loads(spec_bytes)
     from contextlib import nullcontext
@@ -1091,7 +1102,7 @@ def run_model_grade(argv):
         raise StageGateError("external child transport requires explicit external execution mode")
     with scope as child_receipt:
         if spec.get("candidate_context") is not None:
-            res = runner._grade_candidate_model_capsule_inline(
+            res = capsule_model_candidates._grade_candidate_model_capsule_inline(
                 spec["capsule"],
                 target=spec["target"],
                 timeout=int(spec["timeout"]),
@@ -1099,12 +1110,12 @@ def run_model_grade(argv):
                 context=spec["candidate_context"],
             )
         else:
-            res = runner._grade_model_capsule_inline(
+            res = capsule_model._grade_model_capsule_inline(
                 spec["capsule"],
                 target=spec.get("target"),
                 timeout=int(spec["timeout"]),
                 package_dir=spec.get("package_dir"),
-                numeric_policy=spec.get("numeric_policy", runner._MODEL_NUMERIC_UNSET),
+                numeric_policy=spec.get("numeric_policy", capsule_identity._MODEL_NUMERIC_UNSET),
                 numeric_policy_identity=spec.get("numeric_policy_identity"),
             )
         if child_receipt is not None:

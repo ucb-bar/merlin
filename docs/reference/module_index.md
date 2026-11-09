@@ -41,15 +41,19 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.compiler.lower` | Reusable lowering below compiler orchestration and backend selection. |
 | `merlin.compiler.lower.c` | Source C argument binding for admitted staged tensor constants. |
 | `merlin.compiler.lower.llvm` | Shared LLVM finalization for scalar, vector, and control implementations. |
+| `merlin.compiler.lower.native` | Native upstream pass execution, runners and LLVM translation transport. |
 | `merlin.compiler.lower.scalar` | Reusable scalar computation lowering, independent of target providers. |
 | `merlin.compiler.partition` | Materialize selected source regions while preserving their exact SSA boundaries. |
 | `merlin.compiler.passes` | Invocation mechanisms for the selected native and xDSL environments. |
 | `merlin.compiler.planning` | Program placement policies and their declared candidate and cost inputs. |
 | `merlin.compiler.quantization` | Framework-independent numerical contracts and preparation capabilities. |
+| `merlin.compiler.quantization.contraction` | Source-bound contraction precision contracts, conversion, and preparation. |
 | `merlin.compiler.quantization.torchao` | TorchAO framework adapters; numerical intent and target truth remain separate. |
 | `merlin.compiler.schedule` | Shared scheduling algorithms over explicit semantics and derived resource geometry. |
 | `merlin.compiler.selection` | Local implementation selection and reusable feature constraints. |
 | `merlin.compiler.transforms` | Shared compiler transformations with explicit semantic and source contracts. |
+| `merlin.evaluation` | Independent compiler evaluation and evidence admission. |
+| `merlin.evaluation.capsule` | Independent capsule evaluation, references, execution and evidence. |
 | `merlin.experiments` | Experiment definitions over Merlin's existing phase engines. |
 | `merlin.experiments.capture_execution` | Fresh, isolated capture execution and replay verification. |
 | `merlin.experiments.corpus` | Cross-phase corpus preparation, evaluated admission and operator-reviewed releases. |

@@ -61,7 +61,7 @@ def mint(recipe_path: Path) -> Path:
         },
         "inputs": {
             "recipe_sha256": hashlib.sha256(raw).hexdigest(),
-            "lowering": "merlin.llvmlower.pipeline:_upstream_pipeline",
+            "lowering": "merlin.compiler.lower.native.policy:_upstream_pipeline",
         },
         "outputs": {"knobs": "knobs.yaml"},
     }

@@ -18,6 +18,7 @@ from pathlib import Path
 
 import yaml
 
+from merlin.evaluation.capsule import availability as capsule_availability
 from merlin.targetgen import tool_registry as _TR
 from merlin.targetgen.generalization_prompt import append_general_compiler_contract
 from merlin.targetgen.target_experiment import load_capability_manifest, load_target_experiment
@@ -735,15 +736,14 @@ def _build_task(
     # Tier wording is TARGET-AGNOSTIC: name the target's own oracle tiers from the manifest, not one
     # target's spike/verilator literals (a self-hosted ISA's loop tier is the arc program-oracle, its
     # checkpoint the cycle-accurate RTL cosim/Verilator). `_loop`/`_ckpt` are the tier keys the runner resolves.
-    from merlin.targetgen import capsule_runner as CR
 
     _loop = min(
-        CR.qa_loop_adapters(
+        capsule_availability.qa_loop_adapters(
             _te().target, _te().sim_via, declared_tiers=LG.declared_loop_tiers(A.policy_roots(context, policy_root))
         )
         or {"L3": 1}
     )
-    _ckpt = max(CR.qa_checkpoint_adapters(_te().target, _te().sim_via) or {"L3": 1})
+    _ckpt = max(capsule_availability.qa_checkpoint_adapters(_te().target, _te().sim_via) or {"L3": 1})
     pilot += task_runtime_scope_block(_te(), sandbox, context=context, scope=task_scope)
     pilot += task_tool_inventory_block(config)
     pilot = append_general_compiler_contract(pilot)

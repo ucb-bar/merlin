@@ -10,7 +10,7 @@ from pathlib import Path
 
 from merlin.perf.candidate_diagnostics import observe_candidate_artifacts
 from merlin.perf.candidate_source import MAX_TEXT, digest, public_projection
-from merlin.targetgen import capsule_runner as CR
+from merlin.targetgen import capsule_common as capsule_capsule_common
 from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
 
 _ROLES = {
@@ -401,7 +401,7 @@ def emit_public_diagnostics(submission, *, target, capsules_root, contract, caps
     started = time.monotonic()
     deadline = started + timeout
     candidate_pin = _submission_digest(Path(submission))
-    public = CR.discover_capsules(str(capsules_root), labels={"public", "dev"}, contract=contract)
+    public = capsule_capsule_common.discover_capsules(str(capsules_root), labels={"public", "dev"}, contract=contract)
     wanted = {name.strip() for name in capsules.split(",") if name.strip()}
     if wanted != {"all"}:
         known = {str(row.get("name") or Path(row["__dir__"]).name) for row in public}

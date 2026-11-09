@@ -334,8 +334,8 @@ _GRADING_MODULES = (
     "merlin.experiments.corpus.admission",
     "merlin.targetgen.conformance",
     "merlin.targetgen.contract.materialize",
-    "merlin.targetgen.capsule_runner",
-    "merlin.targetgen.capsule_source_identity",
+    "merlin.evaluation.capsule.runner",
+    "merlin.evaluation.capsule.source",
     "merlin.targetgen.capsule_grade",
     "merlin.targetgen.capsule_golden",
     "merlin.targetgen.capsule_inputs",
@@ -381,6 +381,16 @@ def grading_path(target: str | None = None) -> tuple[Path, ...] | None:
         if not p.is_file():
             return None
         files.append(p)
+    try:
+        from merlin.common.source_membership import python_members
+
+        package = module_source_path("merlin.evaluation.capsule").parent
+        members = python_members(package, label="capsule evaluation")
+        if not members:
+            return None
+        files.extend(members.values())
+    except (ImportError, ValueError, OSError):
+        return None
     if target:
         try:
             from merlin.common.source_membership import python_members

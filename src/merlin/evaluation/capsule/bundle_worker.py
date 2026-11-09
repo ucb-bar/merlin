@@ -56,8 +56,12 @@ def _verify_loader_profile(loader: Path, record) -> None:
     if not isinstance(record, dict) or set(record) != {"path", "sha256"}:
         raise RuntimeError("selected loader profile binding is malformed")
     profile = Path(record["path"])
-    if (profile != adjacent or any(path.is_symlink() for path in (profile, *profile.parents))
-            or not profile.is_file() or hashlib.sha256(profile.read_bytes()).hexdigest() != record["sha256"]):
+    if (
+        profile != adjacent
+        or any(path.is_symlink() for path in (profile, *profile.parents))
+        or not profile.is_file()
+        or hashlib.sha256(profile.read_bytes()).hexdigest() != record["sha256"]
+    ):
         raise RuntimeError("selected loader profile is missing, indirect or changed")
 
 

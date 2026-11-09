@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from . import trace_check as TCK
-from .elf_lanes import ACCELERATOR_LANE as _ACCELERATOR_LANE
-from .elf_lanes import EXECUTED_LANE_EVIDENCE, WHOLE_PROGRAM_COMPLETION_EVIDENCE
+from merlin.targetgen import trace_check as TCK
+from merlin.targetgen.elf_lanes import ACCELERATOR_LANE as _ACCELERATOR_LANE
+from merlin.targetgen.elf_lanes import EXECUTED_LANE_EVIDENCE, WHOLE_PROGRAM_COMPLETION_EVIDENCE
 
 
 def whole_program_completion_lane_report(
@@ -258,8 +258,8 @@ def lane_report(
 
 def dispatch_boundary_report(mesh_execution: dict | None) -> dict:
     """Classify the *executed* host/accelerator sequence from the runtime ledger."""
-    from . import boundary as _bd
-    from .elf_lanes import native_host_execution
+    from merlin.targetgen import boundary as _bd
+    from merlin.targetgen.elf_lanes import native_host_execution
 
     ledger = (mesh_execution or {}).get("dispatch_ledger")
     if not isinstance(ledger, list):
@@ -312,8 +312,7 @@ def oracle_source_scope(capsule, command_buffer, lowered_mlir, *, target=None):
     lowered_abi = None
     if target is not None:
         from merlin.targetgen.contract.harness_abi import lowered_plan_abi
-
-        from .target_experiment import load_capability_manifest
+        from merlin.targetgen.target_experiment import load_capability_manifest
 
         contract = load_capability_manifest(target).contract
         lowered_abi = lowered_plan_abi(contract, target=target)

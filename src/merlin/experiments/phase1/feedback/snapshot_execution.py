@@ -138,7 +138,7 @@ class SnapshotExecutor:
                 self._integrity = True
 
     def prepare_result_source(self, results):
-        from merlin.targetgen.capsule_source_identity import SharedCompilerSource
+        from merlin.evaluation.capsule.source import SharedCompilerSource
 
         if active_snapshot() is not self:
             raise ValueError("retained source requires its original live evaluator")

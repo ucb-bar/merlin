@@ -25,6 +25,7 @@ from merlin.common.digest import sha256_file, sha256_text
 from merlin.common.ir_audit import IrAudit, audit_mode
 from merlin.common.jsonio import write_pretty_json
 from merlin.compiler.frontend.preprocess import PREPROCESS_STAGES, preprocess_text
+from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
 
 from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
 from .codegen import build_host_shared, compile_ll
@@ -39,7 +40,6 @@ from .guarded_zero_contraction import ensure_registered as _register_guarded_zer
 from .im2col_pack import ensure_registered as _register_im2col_panel_pack
 from .masked_contraction import MaskEffectContract
 from .named_broadcast_fold import ensure_registered as _register_named_broadcast_fold
-from .pipeline import lower_to_llvm_ir
 from .prov_cse import ensure_registered as _register_cse_through_provenance
 from .source_expression_interval import IntervalEffectContract
 from .source_scalar_carrier_binding import host_admitted
@@ -708,7 +708,7 @@ def lower_model(
             )
         stats["ciface_boundary_inline"] = ciface_inline_report
         if before_ciface_inline != ll_text and not static_arena:
-            from .lowering_recipe import bind_ciface_annotation
+            from merlin.compiler.lower.native.recipe import bind_ciface_annotation
 
             bind_ciface_annotation(work / "lowering_recipe.json", before_ciface_inline, ll_text, ciface_inline_report)
         if descriptor_preparation is not None:

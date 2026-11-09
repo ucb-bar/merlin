@@ -167,7 +167,7 @@ def _selected_l3_engine(target: str) -> str | None:
     selected_target = _resolved_target(target)
     try:
         from merlin.targetgen import tier_affordability as TA
-        from merlin.targetgen.capsule_runner import chipyard_l3_selection
+        from merlin.targetgen.oracle_policy import chipyard_l3_selection
 
         engine = (chipyard_l3_selection(selected_target) or {}).get("engine")
     except Exception:  # noqa: BLE001 -- unselectable is "no choice", never a guess

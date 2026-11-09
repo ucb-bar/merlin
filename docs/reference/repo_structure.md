@@ -38,6 +38,7 @@ src/merlin/
     invocation.py        call a provider and admit its returned products
     frontend/            capture/import and source-state binding
     quantization/        numerical contracts, preparation and legalization
+      contraction/       source-bound contraction precision and operand preparation
     ir/                  shared graph, effect and boundary records
     backend/             provider contracts, offers, composition and call ABI
     planning/            choose compatible regions and implementations
@@ -48,12 +49,14 @@ src/merlin/
     lower/
       scalar/            scalar computation lowering
       llvm/              shared terminal LLVM conversion and ABI admission
+      native/            native pass driver, runner scripts, invocation and receipts
       c/                 portable control, dispatch and handoff emission
     build/               compile/link products and selected platform images
       zephyr/            configuration from selected SoC/board/tree capabilities
   runtime/               execute artifacts or prepare/collect external execution
   verification/          independent references, proofs and artifact checks
   target/spec/           reviewed numerical, instruction and effect declarations
+  evaluation/capsule/    independent operation/model assessment and oracle execution
   experiments/
     definition.py        experiment definition validation and command selection
     phase0/              coverage derivation and conformance inputs
@@ -89,6 +92,30 @@ contain active implementation and research interfaces. Some older modules under
 `compile/`, `verify/` and other packages are exact compatibility identities.
 Check the module's owner declaration rather than assuming an entire directory is
 obsolete or another editable copy. The task table below gives current entry points.
+
+Three large lifecycle owners now expose their stages directly:
+
+- `evaluation/capsule/operation.py` coordinates emission, independent references,
+  trace checks and the required oracle ladder. `model.py` prepares model execution;
+  `model_assessment.py` assesses returned numerical and execution evidence.
+  `ladder.py` owns tier order and certificate reuse; `oracle_call.py` owns supervised
+  adapter execution. `runner.py` retains the lifecycle API and CLI.
+- `experiments/phase1/authoring.py` reads as admission, rounds, certification and
+  completion. The corresponding `authoring_session.py`, `authoring_rounds.py`,
+  `authoring_certification.py` and `authoring_completion.py` own those algorithms.
+- `compiler/lower/native/pipeline.py` coordinates the existing native pipeline.
+  `policy.py` and `vector.py` compose passes, `stages.py` and `runners.py` construct
+  child scripts, `arguments.py` constructs their ordered commands, `reports.py`
+  admits returned observations, and `recipe.py` records actual source identities.
+
+Contraction numerical preparation is in `compiler/quantization/contraction/`:
+`contract.py` and `values.py` define the records/conversions; `intake.py` recognizes
+source regions; `transform.py`, `scalar.py` and `batched.py` realize the selected
+preparation. Target-specific dialect lowering and encoders remain in OOT providers.
+Independent assessment does not become compiler-owned by sharing the same wheel.
+Grading fingerprints include the actual evaluation package; native lowering receipts
+include its actual driver owners. Frozen SDK inventories and archived runs retain
+their original identities.
 
 The readability policy is in [CONTRIBUTING.md](../../CONTRIBUTING.md): one coherent
 concept per owner, decomposition review near 400 handwritten lines, ordinarily
@@ -164,8 +191,8 @@ target-specific. Shared scheduling representations and checks remain in core.
 Within Phase 1, `tools/` holds public standalone clients, `providers/` runs agent
 transports, `brokers/` serves host-side tool requests, and `feedback/` owns trusted
 grading, repair feedback and final freeze.
-Frozen model-capsule bundle construction lives in `targetgen/capsule_bundle.py`,
-with the existing `_capsule_bundle_worker.py` retaining its process boundary.
+Frozen model-capsule bundle construction lives in `evaluation/capsule/bundle.py`,
+with the existing `bundle_worker.py` retaining its process boundary.
 Private completed-build admission lives in
 `merlin.experiments/phase1/feedback/private_model_completion.py`. These grader
 owners preserve asset, input/output, loader and receipt checks; they do not

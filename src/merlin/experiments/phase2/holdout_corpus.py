@@ -207,7 +207,7 @@ def _source_paths(
     expected_owners = {
         "merlin.experiments.phase0.generation": context.experiments_package_root / "phase0/generation.py",
         "merlin.targetgen.corpus_spec": context.core_package_root / "targetgen/corpus_spec.py",
-        "merlin.targetgen.capsule_runner": context.experiments_namespace_root / "targetgen/capsule_runner.py",
+        "merlin.evaluation.capsule.runner": context.core_package_root / "evaluation/capsule/runner.py",
     }
     for module_name, expected in expected_owners.items():
         if module_source_path(module_name).resolve() != expected:

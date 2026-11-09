@@ -143,7 +143,7 @@ def _command(spec, result, transport):
 
 def lower(executor, pkg, interface, generated, *, timeout, artifact_name):
     """A live parent issues one fresh child and reopens its completion before return."""
-    from merlin.targetgen.capsule_runner import _kill_tree
+    from merlin.evaluation.capsule.processes import _kill_tree
 
     if (
         type(executor) is not R._Executor
@@ -232,7 +232,7 @@ def lower(executor, pkg, interface, generated, *, timeout, artifact_name):
 
 
 def main(argv=None):
-    from merlin.targetgen.capsule_runner import _die_with_parent
+    from merlin.evaluation.capsule.processes import _die_with_parent
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--spec", type=Path, required=True)

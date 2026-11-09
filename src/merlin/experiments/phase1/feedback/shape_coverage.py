@@ -200,7 +200,7 @@ def _process_probe_runner(cand, run_dir, *, context, contract, timeout, addition
     import time
 
     from merlin.common import cpu_pool
-    from merlin.targetgen.capsule_runner import _kill_tree
+    from merlin.evaluation.capsule.processes import _kill_tree
 
     def run(plan):
         probes = [[name, list(shape)] for name, shape in plan["probes"]]
@@ -296,7 +296,7 @@ def _process_probe_runner(cand, run_dir, *, context, contract, timeout, addition
 
 
 def _child_command(spec: Path, out: Path) -> list[str]:
-    from merlin.targetgen.capsule_runner import _CHILD_GUARD
+    from merlin.evaluation.capsule.model_runtime import _CHILD_GUARD
 
     return [
         sys.executable,

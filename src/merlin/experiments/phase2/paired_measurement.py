@@ -21,7 +21,9 @@ from typing import Any, Protocol
 
 from merlin.benchharness import hash_tree
 from merlin.common.artifacts import cache_dir
-from merlin.targetgen import capsule_runner as CR
+from merlin.evaluation.capsule import adapters as capsule_adapters
+from merlin.evaluation.capsule import runner as CR
+from merlin.targetgen import capsule_common as capsule_capsule_common
 from merlin.targetgen.contract import compile as OOT  # noqa: F401 -- the oracle tests patch here
 
 from . import campaign as PC
@@ -753,11 +755,11 @@ def _run_el4_compiler_engines(
     result: dict[str, Any] = {"approach": "arm4", "ok_build": True, "per_sim": {}}
     package_before, inputs_before = (str(hash_tree(package)["sha256"]), str(hash_tree(kernel_dir)["sha256"]))
     contract = str(contract_root)
-    capsule = dict(CR.load_capsule(kernel_dir, contract=contract))
+    capsule = dict(capsule_capsule_common.load_capsule(kernel_dir, contract=contract))
     capsule["required_oracle_tiers"] = ["L0", "L1", "L2", "L3"]
     evidence: dict[str, Any] = {}
     adapters = {
-        "L2": CR.simulator_adapter("spike", target),
+        "L2": capsule_adapters.simulator_adapter("spike", target),
         "L3": _gsim_l3_adapter(
             target, evidence, certificate, reuse_scope=reuse_scope, reuse_measurement=reuse_measurement
         ),
@@ -787,7 +789,7 @@ def _run_el4_compiler_engines(
         )
         if public_selection is not None and grade.get("status") == "pass":
             evidence["gsim"] = PUBLIC.project(
-                capsule, grade, target=target, readback_policy=CR._adapter_readback_policy(adapters)
+                capsule, grade, target=target, readback_policy=capsule_adapters._adapter_readback_policy(adapters)
             )
             # This projection follows the original mandatory grade and uses its
             # raw same-ELF complete-call delta. It is never a second execution.

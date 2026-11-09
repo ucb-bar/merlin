@@ -28,8 +28,13 @@ from merlin.common.bundle_snapshot import (
     shared_entry_verification,
     verified_snapshot_scope,
 )
+from merlin.evaluation.capsule import adapters as capsule_adapters
+from merlin.evaluation.capsule import availability as capsule_availability
+from merlin.evaluation.capsule import model_runtime as capsule_model_runtime
+from merlin.evaluation.capsule import processes as capsule_processes
 from merlin.experiments.phase2.contracts import StageGateError
 from merlin.targetgen import package_runtime as P
+from merlin.targetgen import runner_config as capsule_runner_config
 from merlin.targetgen import tier_policy
 from merlin.targetgen.contract.readback_policy import ReadbackPolicy
 
@@ -60,9 +65,9 @@ def register_adapter(adapter, *, engine, target, selection, readback_policy):
 
 
 def adapter_selection(adapters, *, target):
-    from merlin.targetgen import capsule_runner as runner
+    from merlin.evaluation.capsule import runner as runner
 
-    chosen = runner._resolve_oracle_adapters(target) if adapters is None else adapters
+    chosen = capsule_availability._resolve_oracle_adapters(target) if adapters is None else adapters
     document = {}
     with _LOCK:
         for tier, adapter in chosen.items():
@@ -235,7 +240,7 @@ def completed_tier_costs(result):
 
 
 def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, adapters, timeout, workers, no_oracle):
-    from merlin.targetgen import capsule_runner as runner
+    from merlin.evaluation.capsule import runner as runner
 
     selection = adapter_selection(adapters, target=target)
     if capsule.get("kind") == "model":
@@ -260,7 +265,7 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
         command = [
             sys.executable,
             "-c",
-            runner._CHILD_PREAMBLE,
+            capsule_model_runtime._CHILD_PREAMBLE,
             "--operator-grade",
             str(spec),
             "--operator-grade-out",
@@ -279,7 +284,7 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
         try:
             deferred = _communicate_or_defer(process, timeout_s=max(1, timeout) * (len(selection) + 6))
             if deferred:
-                runner._kill_tree(process.pid)
+                capsule_processes._kill_tree(process.pid)
                 process.wait(timeout=10)
                 row = {
                     "capsule": capsule["name"],
@@ -289,13 +294,13 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
                     "background_deferred": deferred,
                     "failure": {"plane": "gate", "category": "BACKGROUND_DEFERRED", "detail": deferred},
                 }
-                cfg = runner._config_for_target(target, suite, dtype)
+                cfg = capsule_runner_config._config_for_target(target, suite, dtype)
                 result_path = Path(runs_root) / "runs" / cfg.suite / capsule["name"] / "capsule_result.json"
                 result_path.parent.mkdir(parents=True, exist_ok=True)
                 _publish(result_path, row)
                 return row
         except BaseException:
-            runner._kill_tree(process.pid)
+            capsule_processes._kill_tree(process.pid)
             process.wait(timeout=10)
             raise
         if process.returncode != 0 or not output.is_file():
@@ -310,7 +315,7 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
             tier_policy.record_cost(target, tier, value)
         tier_policy.note_spend(target, row.pop("operator_child_spend_s", None))
         row["operator_grade_process"] = {"pid": process.pid, "workers": workers, "mode": "fresh_sealed_child"}
-        cfg = runner._config_for_target(target, suite, dtype)
+        cfg = capsule_runner_config._config_for_target(target, suite, dtype)
         result_path = Path(runs_root) / "runs" / cfg.suite / capsule["name"] / "capsule_result.json"
         manifest = yaml.safe_load((result_path.parent / ".operator_child_manifest.yaml").read_bytes())
         manifest["metadata"]["original_compiler_child"] = row["original_compiler_child"]
@@ -320,7 +325,7 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
 
 
 def main(argv):
-    from merlin.targetgen import capsule_runner as runner
+    from merlin.evaluation.capsule import runner as runner
     from merlin.targetgen.owned_host_leaf_execution import selected_host_leaf
 
     parser = argparse.ArgumentParser()
@@ -328,7 +333,7 @@ def main(argv):
     parser.add_argument("--operator-grade-out", type=Path, required=True)
     parser.add_argument("--original-profile-fd", type=int, required=True)
     args = parser.parse_args(argv)
-    runner._die_with_parent()
+    capsule_processes._die_with_parent()
     raw = args.operator_grade.read_bytes()
     job = json.loads(raw)
     with _restored_child(args.original_profile_fd, spec_path=args.operator_grade, spec_bytes=raw) as receipt:
@@ -336,7 +341,7 @@ def main(argv):
         if job.get("grade_kind") != "operator" or capsule.get("kind") == "model" or selected_host_leaf(capsule):
             raise StageGateError("operator child requires the original accelerator capsule route")
         adapters = {
-            tier: runner.simulator_adapter(
+            tier: capsule_adapters.simulator_adapter(
                 record["engine"],
                 target,
                 selection=record["selection"],

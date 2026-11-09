@@ -26,3 +26,6 @@ _STATUS_LINES = (
     "are listed by capsule and failure plane.",
     "Baseline pilot is not comparable because it violates the compiler/runtime/integrity boundary.",
 )
+
+
+READY_MARKER = "READY_FOR_BARRIER"

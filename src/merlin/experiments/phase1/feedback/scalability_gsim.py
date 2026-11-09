@@ -20,6 +20,8 @@ import json
 import time
 from pathlib import Path
 
+from merlin.evaluation.capsule import eligibility as capsule_eligibility
+
 SCHEMA = "merlin.phase1.scalability_gsim_measurement.v1"
 
 
@@ -62,7 +64,6 @@ def measure(submission, *, root, record, context, output, timeout, contract=None
     """Grade ``names`` (frozen scalability cases) with the gSIM adapter set; return the public rows."""
     from merlin.experiments.corpus.preparation import copy_input
     from merlin.targetgen import capsule_grade as CG
-    from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen.capsule_common import load_capsule
 
     from ...corpus import public_scalability as S
@@ -91,7 +92,7 @@ def measure(submission, *, root, record, context, output, timeout, contract=None
 
     def completed(result):
         name = result.get("capsule")
-        generated = output / "runs" / "runs" / CR.suite_for(context.target) / str(name) / "generated"
+        generated = output / "runs" / "runs" / capsule_eligibility.suite_for(context.target) / str(name) / "generated"
         attach_performance(
             result,
             generated,
@@ -119,7 +120,7 @@ def measure(submission, *, root, record, context, output, timeout, contract=None
             max_workers=max_workers,
             on_capsule_complete=completed,
         )
-    suite = output / "runs" / "runs" / CR.suite_for(context.target)
+    suite = output / "runs" / "runs" / capsule_eligibility.suite_for(context.target)
     return [
         _row(name, results[name], suite / name / "capsule_result.json", sim_tier=sim_tier)
         for name in names

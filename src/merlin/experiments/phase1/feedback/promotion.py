@@ -36,6 +36,8 @@ import time
 from functools import wraps
 from pathlib import Path
 
+from merlin.evaluation.capsule import adapters as capsule_adapters
+from merlin.evaluation.capsule import availability as capsule_availability
 from merlin.experiments.phase1.context import InvocationContext
 from merlin.experiments.phase1.feedback import (
     pending_retirement,
@@ -107,14 +109,13 @@ def resolve_tiers(ws, *, context: InvocationContext, capsules_root: Path | None 
     if roster():
         return "L2", "L3", roster()
     try:
-        from merlin.targetgen import capsule_runner as _CR
         from merlin.targetgen.contract.materialize import declared_oracle_tiers
         from merlin.targetgen.target_experiment import load_target_experiment
 
         te = load_target_experiment(context.descriptor)
         decl = declared_oracle_tiers(*((capsules_root,) if capsules_root is not None else te.graded_roots()))
-        loop = _CR.qa_loop_adapters(te.target, te.sim_via, declared_tiers=decl)
-        full = _CR.oracle_adapters(te.target, te.sim_via)
+        loop = capsule_availability.qa_loop_adapters(te.target, te.sim_via, declared_tiers=decl)
+        full = capsule_adapters.oracle_adapters(te.target, te.sim_via)
         deeper = sorted(set(full) - set(loop))
         if not (loop and deeper):
             return None, None, None
@@ -152,7 +153,7 @@ def execution_digest(capsule_result: str | Path) -> str | None:
 
     import yaml
 
-    from merlin.targetgen.capsule_runner import run_executables
+    from merlin.evaluation.capsule.certificates import run_executables
     from merlin.targetgen.tier_cache import execution_identity
 
     cr = Path(capsule_result)
@@ -1093,7 +1094,7 @@ def cert_instrument(cert_tier: str, *, context: InvocationContext) -> str | None
     instrument can never be carried (``tier_cache._from_ledger``), which is the fail-closed direction.
     """
     try:
-        from merlin.targetgen.capsule_runner import rtl_tiers_of
+        from merlin.evaluation.capsule.model_tiers import rtl_tiers_of
         from merlin.targetgen.target_experiment import load_target_experiment
         from merlin.targetgen.tier_cache import instrument_digest
 
@@ -1141,7 +1142,6 @@ def promote(
     import json as _j
 
     from merlin.targetgen.oracle_schedule import (
-        WHOLE_SUBMISSION,
         CapsuleState,
         Verdict,
         schedule,

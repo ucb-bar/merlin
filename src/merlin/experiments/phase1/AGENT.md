@@ -117,7 +117,12 @@ It is a grader identity; context itself is not. Preserve original observation or
 failure behavior and archived identities. Native initialization and admission adapters
 remain; these modules alone do not establish a standalone installed phase-1 engine.
 
-`authoring.py` owns the actual round/checkpoint/resume and completion continuation.
+`authoring.py` sequences the admitted author lifecycle. `authoring_session.py` owns
+the original invocation bindings and shared checkpoint/resume progress;
+`authoring_rounds.py` owns author turns, background feedback, quota recovery and
+stopping budgets. `authoring_certification.py` owns the cert checkpoint and repair
+turns; `authoring_completion.py` owns report finalization, official grading and
+completion telemetry. These are direct callers, not independent policy engines.
 `AuthoringRuntime` supplies the authored bundle identity, timing path and captured legacy
 public-root override. Ordinary rounds and L3 repair share the same state and authority;
 do not replace them with disconnected callback records. Public-root derivation stays lazy,

@@ -17,6 +17,8 @@ import os
 import secrets
 from pathlib import Path
 
+from merlin.evaluation.capsule import availability as capsule_availability
+
 SCHEMA = "merlin.background_foreground_admission.v1"
 
 
@@ -73,8 +75,6 @@ def active_full_selfcheck(
     """Publish only an actual ordinary full-ladder worker launched by this broker."""
     path, record = None, None
     try:
-        from merlin.targetgen import capsule_runner as CR
-
         from ..brokers.selfcheck import FORWARDED_PROBES
         from .selfcheck import _adapters, _target_sim_via
 
@@ -97,7 +97,7 @@ def active_full_selfcheck(
                 adapters = {tier: value for tier, value in adapters.items() if tier in selected}
             elif selected:
                 adapters = {}
-            full = set(CR.qa_checkpoint_adapters(target, via))
+            full = set(capsule_availability.qa_checkpoint_adapters(target, via))
             if full and set(adapters) == full:
                 worker, broker = _identity(process.pid), _identity(os.getpid())
                 # Only the original one-request handler selects this extra hop;

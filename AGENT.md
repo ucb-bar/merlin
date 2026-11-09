@@ -8,6 +8,8 @@ historical Phase 0/1/2 names remain in the module layout and separate workflows.
 
 - `src/merlin/`: canonical Python source. Keep shared compiler, scheduling, capture,
   target/toolchain and verification primitives independent of research orchestration.
+- `src/merlin/evaluation/`: independent execution assessment and grading. Source
+  relocation preserves withheld access roles and binds actual implementation bytes.
 - `src/merlin/experiments/` and `src/merlin/analysis/dse/`: experiment orchestration
   and design-space analysis in the same namespace; optional dependencies stay lazy
   and compiler/research access boundaries remain explicit.

@@ -81,7 +81,7 @@ def native_pipelines(features: frozenset[str] | None = None) -> dict[str, list[s
     are reached as ``mlir:<pass>`` stages all the same."""
     from pathlib import PurePath
 
-    from merlin.llvmlower import pipeline as P
+    from merlin.compiler.lower.native import pipeline as P
     from merlin.llvmlower.impr_features import normalize
     from merlin.llvmlower.optional_passes import selected_features
 
@@ -124,7 +124,7 @@ def stage_rows(features: frozenset[str] | None = None) -> list[dict[str, Any]]:
                         {
                             "stage": T.MLIR_PREFIX + name,
                             "pipeline": f"llvm ({variant} passes)",
-                            "entry": "merlin.llvmlower.pipeline",
+                            "entry": "merlin.compiler.lower.native.pipeline",
                             "summary": "a native pass; its IR is the printer's dump after (or before) it",
                         }
                     )

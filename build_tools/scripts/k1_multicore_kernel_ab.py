@@ -44,9 +44,9 @@ sys.path.insert(0, str(ROOT / "merlin" / "python"))
 
 from merlin.common.artifacts import new_product  # noqa: E402
 from merlin.common.paths import build_dir, repo_root  # noqa: E402
+from merlin.compiler.lower.native.vector import build_rvv_pipeline  # noqa: E402
 from merlin.llvmlower import perop_blocks as pb  # noqa: E402
 from merlin.llvmlower import toolchain  # noqa: E402
-from merlin.llvmlower.pipeline import build_rvv_pipeline  # noqa: E402
 from merlin.mining import k1  # noqa: E402
 from merlin.mining.registry import load_rvv_package  # noqa: E402
 from merlin.runtime.backends import zephyr_model as zm  # noqa: E402

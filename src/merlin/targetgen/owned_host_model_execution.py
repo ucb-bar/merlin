@@ -192,9 +192,9 @@ def execute_owned_host_model(
     reachable_oracle_tiers=None,
     descriptor_effects=None,
 ):
+    from merlin.evaluation.capsule.model_inputs import _resolve_model_host_lane
     from merlin.experiments.phase1.feedback import private_instruction_coordinator as coordinator
     from merlin.experiments.phase1.feedback import private_instruction_declaration as declaration
-    from merlin.targetgen.capsule_runner import _resolve_model_host_lane
 
     if not isinstance(selection_record, dict):
         raise ValueError("public model needs coordinator-selected owned host build inputs")
@@ -1218,11 +1218,12 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None, des
 
     import yaml
 
+    from merlin.evaluation.capsule.bundle import _model_runtime_bundle
+    from merlin.evaluation.capsule.model_inputs import _resolve_model_host_lane
     from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.targetgen.contract.readback_policy import selected
     from merlin.targetgen.oracle_policy import selected_l3_engine_report
 
-    from .capsule_runner import _model_runtime_bundle, _resolve_model_host_lane
     from .native_model_execution import _frozen_model_policy
 
     try:

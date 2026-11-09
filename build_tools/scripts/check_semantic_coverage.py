@@ -197,7 +197,7 @@ def audit(target: str) -> list[dict]:
     # Uses the runner's OWN withholding rule, imported rather than reimplemented, so the gate and the
     # grader can never drift on what "cannot execute" means.
     try:
-        from merlin.targetgen.capsule_runner import _split_ineligible
+        from merlin.evaluation.capsule.eligibility import _split_ineligible
         from merlin.targetgen.target_experiment import load_target_experiment
 
         desc = declaration.descriptor

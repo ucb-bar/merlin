@@ -53,6 +53,9 @@ import threading
 import time
 from pathlib import Path
 
+from merlin.evaluation.capsule import eligibility as capsule_eligibility
+from merlin.targetgen import capsule_common as capsule_capsule_common
+
 SCHEMA = "merlin.selfcheck_changed_selection.v1"
 UNCHANGED_CERTIFIED = "unchanged-certified"
 UNCHANGED_FAILING = "unchanged-failing"
@@ -387,7 +390,6 @@ def _answer(a, out: dict) -> int:
 def select_changed(a, *, sub, context, capsules_root, contract, adapters, combined, target, barrier_tier):
     """The ``changed`` capsules of this request; the probe's answer when nothing needs simulating."""
     from merlin.targetgen import capsule_grade as CG
-    from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen import simulation_certificate as SC
     from merlin.targetgen.owned_host_leaf_execution import selected_host_leaf
 
@@ -416,7 +418,8 @@ def select_changed(a, *, sub, context, capsules_root, contract, adapters, combin
         return refuse(why)
     contract_root = contract if contract is not None else context.repo / "src/merlin/resources/contracts"
     capsules = {
-        cap["name"]: cap for cap in CR.discover_capsules(capsules_root, labels=set(LABELS), contract=contract_root)
+        cap["name"]: cap
+        for cap in capsule_capsule_common.discover_capsules(capsules_root, labels=set(LABELS), contract=contract_root)
     }
     try:
         bound = _ordinary_capsule_limit(len(capsules))  # `auto` covers the public corpus; a number is exact
@@ -432,7 +435,7 @@ def select_changed(a, *, sub, context, capsules_root, contract, adapters, combin
         for name in names:  # A corpus root is its set of capsules: a subset is a root of its own.
             shutil.copytree(capsules[name]["__dir__"], probe_root / name)
     runs = work / "runs"
-    results = runs / "runs" / CR.suite_for(target)
+    results = runs / "runs" / capsule_eligibility.suite_for(target)
 
     def judge(name):
         try:

@@ -2,8 +2,7 @@
 
 K1 is the fast real-hardware cycle target that pairs with spike (spike = correctness +
 instruction evidence; K1 = cycle truth). It is Linux-hosted (no HTIF/bare-metal), so it needs a
-Linux userspace runtime cross-compiled with the SpacemiT toolchain, scp'd to the board, run, and
-parsed for the same OUT/METRIC/DONE markers via zephyr_model._parse_console.
+A cross-compiled Linux runtime reports the same OUT/METRIC/DONE markers via zephyr_model._parse_console.
 
 This module is intentionally fail-closed: when the toolchain or the board is unavailable,
 :func:`available` returns False and the runner records the K1 rung as ``not_run`` (NEVER a false
@@ -13,7 +12,7 @@ build — the LLVM IR ``model.ll`` (``llvmlower.lower``) and the data-driven C r
 
   * spike/Zephyr — bare-metal: ``-mcmodel=medany -ffreestanding -nostdlib``, HTIF console, mcycle.
   * K1 — glibc Linux userspace: ``-march=rv64gcv -mabi=lp64d -O2`` (NO medany/freestanding),
-    a ``main()`` that prints OUT/METRIC/DONE to stdout, cycles via the ``rdcycle`` CSR.
+    a ``main()`` prints OUT/METRIC/DONE, with cycles from the ``rdcycle`` CSR.
 """
 
 from __future__ import annotations
@@ -152,7 +151,7 @@ K1_STACK_BYTES = 2 * 1024 * 1024 * 1024
 
 # Cross-built static OpenMP runtime (riscv64, rv64gcv) — provides the __kmpc_* symbols the
 # multicore (parallel) lowering emits. Built once into build_tools/k1_openmp (see the
-# OpenMP path in llvmlower.pipeline._parallel_pipeline). Linking it fans the model's parallel
+# OpenMP path in compiler.lower.native.policy). Linking it fans the model's parallel
 # loops across the board's 8 cores (set OMP_NUM_THREADS at run time). Optional: only the
 # `parallel=True` build path references it.
 K1_OPENMP_DIR = _REPO / "build_tools" / "k1_openmp"
@@ -1287,7 +1286,7 @@ def build_k1_binary(
 
     # hoist_static_allocs=False: keep big intermediate buffers on the HEAP (board RAM) instead of
     # promoting them to stack alloca — large models otherwise overflow even a multi-GB stack.
-    from ..llvmlower.pipeline import PipelineError
+    from merlin.compiler.lower.native.pipeline import PipelineError
 
     # impr-fork compiler features (PASS/HEURISTIC/PATTERN). Without threading these the K1 build
     # silently used the BASELINE codegen for any feature-bearing fork — invalidating its
@@ -1601,9 +1600,10 @@ def build_k1_session_binary(
     if cc is None:
         raise K1Error("SpacemiT toolchain not found (set MERLIN_K1_TOOLCHAIN)")
     root = _toolchain_root()
+    from merlin.compiler.lower.native.pipeline import PipelineError
+
     from ..llvmlower import session_bundle, toolchain
     from ..llvmlower.lower import lower_model_file
-    from ..llvmlower.pipeline import PipelineError
     from ..runtime.backends import zephyr_model as zm
 
     generated = work / "session_gen"

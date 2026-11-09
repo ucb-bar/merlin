@@ -31,9 +31,10 @@ import json
 from pathlib import Path
 
 from merlin.common.artifacts import cache_dir  # noqa: E402 — purgeable work trees
+from merlin.evaluation.capsule import adapters as capsule_adapters
+from merlin.evaluation.capsule import availability as capsule_availability
 from merlin.experiments.phase1.context import InvocationContext, add_context_arguments, readback_kwargs, resolve_context
 from merlin.targetgen import capsule_grade as CG  # noqa: E402
-from merlin.targetgen import capsule_runner as CR  # noqa: E402
 from merlin.targetgen import tier_integrity as _TI  # noqa: E402
 
 from . import certification_gates
@@ -935,9 +936,9 @@ def run(
         {}
         if no_oracle
         else (
-            CR.qa_loop_adapters(_target, _sim_via, declared_tiers={"L2"}, **readback_kwargs(context))
+            capsule_availability.qa_loop_adapters(_target, _sim_via, declared_tiers={"L2"}, **readback_kwargs(context))
             if joint_control.selected()
-            else CR.qa_checkpoint_adapters(_target, _sim_via, **readback_kwargs(context))
+            else capsule_availability.qa_checkpoint_adapters(_target, _sim_via, **readback_kwargs(context))
         )
     )
     if joint_control.selected() and set(_loop_adapters) - {"L0", "L1", "L2"}:
@@ -946,7 +947,7 @@ def run(
     # the defect. An endpoint that reaches nothing at all is an honestly ABSENT oracle: leave the adapter
     # set empty and let each capsule report its missing tier as unavailable, exactly as before.
     if not no_oracle and not _loop_adapters:
-        _reach = sorted(CR.oracle_adapters(_target, _sim_via))
+        _reach = sorted(capsule_adapters.oracle_adapters(_target, _sim_via))
         if _reach:
             raise SystemExit(
                 f"capsule corpus {capsules_root} declares required oracle tiers {sorted(_decl)} but "

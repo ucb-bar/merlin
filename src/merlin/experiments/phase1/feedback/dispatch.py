@@ -146,7 +146,7 @@ def cert_sim(cert_tier: str, *, context: InvocationContext) -> str | None:
         # a round with nothing to promote. Resolve the sentinel through the SAME availability policy the
         # contract comment names, so the fidelity is declared once and the engine chosen once.
         if sim == _ELABORATED_RTL:
-            from merlin.targetgen.capsule_runner import chipyard_l3_selection
+            from merlin.targetgen.oracle_policy import chipyard_l3_selection
 
             sim = str((chipyard_l3_selection(te.target) or {}).get("engine") or "").strip() or None
     except Exception:  # noqa: BLE001 -- unresolvable map: no promotion, and the caller says so

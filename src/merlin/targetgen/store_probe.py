@@ -32,6 +32,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from merlin.evaluation.capsule import adapters as capsule_adapters
+
 
 @dataclass
 class ProbePoint:
@@ -177,9 +179,9 @@ def probe(
 
     out = DeclineBracket(target=target, dtype=dtype)
     try:
+        from merlin.evaluation.capsule import runner as CR
         from merlin.experiments.phase0 import profiles, writer
         from merlin.experiments.phase0.declarations import for_target
-        from merlin.targetgen import capsule_runner as CR  # noqa: PLC0415
         from merlin.targetgen import corpus_spec
         from merlin.targetgen.target_experiment import load_target_experiment
     except Exception as exc:  # noqa: BLE001 — cannot ask: undecided, with the reason
@@ -198,7 +200,7 @@ def probe(
             raise ValueError("selected derivation declaration/descriptor does not match the requested target")
         profile = profiles.load_profile(selected.profile, include_holdouts=False, **selected.profile_inputs())
         binding = corpus_spec.derive_binding(te, profile.get("datapath", {}))
-        adapters = CR.oracle_adapters(target, te.sim_via) or {}
+        adapters = capsule_adapters.oracle_adapters(target, te.sim_via) or {}
     except Exception as exc:  # noqa: BLE001
         out.unavailable = f"{type(exc).__name__}: {exc}"
         return out

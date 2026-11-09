@@ -75,7 +75,8 @@ def execute_native_model(**kwargs):
 
 
 def grade_from_context(runner, capsule, *, target, timeout, package_dir, context, pkg):
-    from . import capsule_runner as original
+    from merlin.evaluation.capsule import runner as original
+
     from .checked_source_model_diagnostic import selection_from_context
 
     if runner is not original:

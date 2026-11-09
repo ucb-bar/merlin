@@ -5,9 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from merlin.evaluation.capsule import eligibility as capsule_eligibility
 from merlin.experiments.phase1.feedback import joint_performance as P
 from merlin.experiments.phase1.feedback import rolling_scalability as R
-from merlin.targetgen import capsule_common, capsule_runner
+from merlin.targetgen import capsule_common
 
 
 @pytest.fixture
@@ -15,7 +16,7 @@ def rolling_scene(tmp_path, monkeypatch):
     clock = [100.0]
     monkeypatch.setattr("time.monotonic", lambda: clock[0])
     monkeypatch.setattr(P, "deadline", lambda timeout: clock[0] + min(timeout, 10))
-    monkeypatch.setattr(capsule_runner, "suite_for", lambda target: "suite")
+    monkeypatch.setattr(capsule_eligibility, "suite_for", lambda target: "suite")
     monkeypatch.setattr(capsule_common, "load_capsule", lambda p: {"name": p.name})
     cases = {name: tmp_path / "frozen" / name for name in ("small", "large", "tail")}
     selection = SimpleNamespace(cases=cases, context=SimpleNamespace(target="test"), verify=lambda: None)

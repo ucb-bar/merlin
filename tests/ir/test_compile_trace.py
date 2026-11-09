@@ -49,8 +49,8 @@ def test_stop_after_writes_that_stages_ir_and_nothing_after_it(tmp_path, stage, 
 
 @native
 def test_dump_ir_after_all_indexes_every_stage_in_route_order(tmp_path):
+    from merlin.compiler.lower.native import pipeline as P
     from merlin.llvmlower import lower as L
-    from merlin.llvmlower import pipeline as P
 
     trace = tmp_path / "trace"
     with T.session(T.Request(directory=str(trace), dump_after=(T.ALL,))):

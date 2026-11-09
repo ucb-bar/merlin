@@ -4,7 +4,7 @@ A run may declare instruction roles its candidate programs must not use (``prohi
 a statement in the closed vocabulary of :mod:`merlin.compile.analysis.instruction_roles`). Which
 instructions carry such a role is the target's derived instruction facts, never a list written here
 (:mod:`merlin.perf.isa_prohibition`). This module holds the capsule grader's side of that rule, kept out
-of :mod:`.capsule_runner` so the runner only calls it.
+of :mod:`.operation` so the runner only calls it.
 """
 
 from __future__ import annotations
@@ -42,9 +42,8 @@ def prohibited_instruction_report(capsule: dict, generated, *, target: str) -> d
     roles = graded_prohibited_roles(capsule)
     if not roles:
         return None
+    from merlin.evaluation.capsule.certificates import run_executables
     from merlin.perf.isa_prohibition import SCHEMA, scan_elf
-
-    from .capsule_runner import run_executables
 
     elfs = []
     for path in run_executables(generated):
@@ -145,11 +144,10 @@ def enforce_executed_stream(capsule: dict, trace: dict, *, target: str, tiers: d
     roles = executed_stream_roles(capsule)
     if not roles:
         return None
+    from merlin.evaluation.capsule.tier import TierResult
     from merlin.perf.isa_prohibition import stream_reason, stream_report
     from merlin.targetgen.capsule_common import _cat
     from merlin.targetgen.package_runtime import CertFailure
-
-    from .capsule_tier_result import TierResult
 
     report = stream_report(trace, target=target, roles=roles)
     if report["clean"] is not False:

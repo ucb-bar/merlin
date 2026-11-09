@@ -31,8 +31,8 @@ from pathlib import Path
 
 import numpy as np
 
+from merlin.compiler.passes.contract import PipelineError
 from merlin.llvmlower.lower import lower_model_file
-from merlin.llvmlower.pipeline import PipelineError
 from merlin.mining import k1
 from merlin.mining.registry import load_rvv_package
 from merlin.runtime.backends import zephyr_model as zm

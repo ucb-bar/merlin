@@ -202,7 +202,7 @@ def _llvm_steps() -> list[TransformStep]:
     """The LLVM-plane mechanical-descent passes from ``pipeline.build_rvv_pipeline`` as TransformSteps.
     Calls build_rvv_pipeline with a placeholder schedule path (it only embeds the path in a
     transform-interpreter pass string) and splits the comma-joined pass list, respecting {options}."""
-    from ..llvmlower import pipeline as P
+    from merlin.compiler.lower.native import pipeline as P
 
     raw = P.build_rvv_pipeline("<schedule.mlir>")
     steps = []
@@ -223,7 +223,7 @@ def pipeline_steps(target: str = "rvv") -> list[TransformStep]:
     the pipeline/schedule strings; does not run the compiler. ``target`` currently instantiates RVV."""
     if target != "rvv":
         raise ValueError(f"pipeline_steps: only 'rvv' instantiated today, got {target!r}")
-    from ..llvmlower import pipeline as P
+    from merlin.compiler.lower.native import pipeline as P
 
     return _catalog_steps() + _transform_schedule_steps(P.RVV_TRANSFORM_SCHEDULE) + _llvm_steps()
 

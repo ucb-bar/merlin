@@ -10,12 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common.digest import sha256_file as _sha_file
+from merlin.evaluation.capsule import eligibility as capsule_eligibility
 from merlin.experiments.phase2 import functional_inputs as FI
 from merlin.experiments.phase2 import gsim_gate as GATE
 from merlin.experiments.phase2 import gsim_workload as WORKLOAD
 from merlin.experiments.phase2.broker_evidence import _is_sha256 as _is_sha
 from merlin.experiments.phase2.contracts import PerformanceExperimentError as ExperimentError
-from merlin.targetgen import capsule_runner as CAPSULES
 from merlin.targetgen.capsule_common import discover_capsules
 
 
@@ -104,7 +104,7 @@ def functional_grade_cohort(target: object, *, contract_root: Path) -> Functiona
     if len(hidden_names) != len(set(hidden_names)):
         raise ExperimentError("functional hidden roots contain duplicate capsule names")
     hidden_ops = [cap for cap in hidden_source if cap.get("kind") != "model"]
-    _eligible, hidden_ineligible = CAPSULES._split_ineligible(hidden_ops, target.target)
+    _eligible, hidden_ineligible = capsule_eligibility._split_ineligible(hidden_ops, target.target)
     hidden_excluded = {str(row.get("capsule")) for row in hidden_ineligible}
     hidden_selected = [cap for cap in hidden_source if str(cap.get("name")) not in hidden_excluded]
 

@@ -262,9 +262,9 @@ def measure_ours_compiler(run_id: str, features: list[str], *, S: int, reps: int
     """ours-baseline / ours-tiled go through the COMPILER (model.o). Their pack is fused into
     the kernel (no hoistable pre-pack), so inner==full by construction. We measure the
     inner-compute driver (ours_gemm_driver.c) and label both scopes from it."""
+    from merlin.compiler.passes.contract import PipelineError
     from merlin.llvmlower import c_runtime, toolchain
     from merlin.llvmlower.lower import lower_model_file
-    from merlin.llvmlower.pipeline import PipelineError
     from merlin.mining import workloads
     from merlin.runtime.backends import zephyr_model as zm
 

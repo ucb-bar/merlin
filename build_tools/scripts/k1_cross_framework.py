@@ -163,9 +163,9 @@ def measure_ours_k1(run_id: str, features: list[str], *, M: int, N: int, K: int,
         # Reuse the K1 build path's lowering: model.mlir -> (vectorize, schedule, features) -> model.ll
         # -> model.o, plus the data-driven C runtime artifacts. We replicate build_k1_binary's
         # model.o + cgen steps but link OUR ceiling driver (inner-compute timed) instead of main_linux.
+        from merlin.compiler.passes.contract import PipelineError
         from merlin.llvmlower import c_runtime, toolchain
         from merlin.llvmlower.lower import lower_model_file
-        from merlin.llvmlower.pipeline import PipelineError
         from merlin.runtime.backends import zephyr_model as zm
 
         md = Path(bundle)

@@ -21,7 +21,7 @@ def implementation_paths() -> tuple[Path, ...]:
     from inspect import getfile
 
     from merlin.compiler.ir.boundary import free_values
-    from merlin.semantic_compiler.precision_intake import survey_source_f32_batched_matmuls
+    from merlin.compiler.quantization.contraction.intake import survey_source_f32_batched_matmuls
 
     return tuple(
         dict.fromkeys(
@@ -274,7 +274,7 @@ def diagnostic_host_bridge(
     source = parse_mlir_text(program)
     source_graph = _program_graph(source, hashlib.sha256(program.encode()).hexdigest())
     from merlin.common import mlir_query as mq
-    from merlin.semantic_compiler.precision_intake import survey_source_f32_batched_matmuls
+    from merlin.compiler.quantization.contraction.intake import survey_source_f32_batched_matmuls
 
     parsed_ops = list(mq.walk(source))
     if len(parsed_ops) != len(source_graph["operations"]):

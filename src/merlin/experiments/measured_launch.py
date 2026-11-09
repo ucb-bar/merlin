@@ -169,7 +169,7 @@ def source_inputs(command: dict) -> dict[str, str]:
         COORDINATOR,
         "merlin.experiments.execution.chia_native",
         "merlin.experiments.execution.chia_group",
-        "merlin.targetgen.capsule_runner",
+        "merlin.evaluation.capsule.runner",
         "merlin.benchharness.chia_bridge",
     ):
         if owners.get(name) != _source(name):

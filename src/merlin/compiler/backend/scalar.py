@@ -258,8 +258,8 @@ def _call_artifacts(call, native, output, values, tools):
 
 def compile(request):
     from merlin.compiler.build.objects import compile_llvm_object
+    from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
     from merlin.llvmlower import codegen
-    from merlin.llvmlower.pipeline import lower_to_llvm_ir
     from merlin.llvmlower.target_data_layout import observe_index_width
 
     emission, flags = _parameters(request)

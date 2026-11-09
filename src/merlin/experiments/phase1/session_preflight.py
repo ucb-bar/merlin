@@ -6,6 +6,8 @@ import sys
 
 import yaml
 
+from merlin.evaluation.capsule import availability as capsule_availability
+
 
 def check(
     a,
@@ -21,7 +23,6 @@ def check(
     _bundle_manifest_sha256,
 ):
     """Return the original refusal code, or None after every selected check."""
-    from merlin.targetgen import capsule_runner as _CRpf
 
     _te_pf = _te()
     if context.readback_policy is not None and not a.no_oracle:
@@ -32,8 +33,8 @@ def check(
         if context.readback_policy in MEMORY_TRANSPORTS:
             # Construct the original full ladder before authoring; a global
             # memory override must be supported by every selected engine.
-            _CRpf.qa_checkpoint_adapters(_te_pf.target, _te_pf.sim_via, **readback_kwargs(context))
-    _ora_ok, _ora_why = _CRpf.oracle_available(_te_pf.target, _te_pf.sim_via)
+            capsule_availability.qa_checkpoint_adapters(_te_pf.target, _te_pf.sim_via, **readback_kwargs(context))
+    _ora_ok, _ora_why = capsule_availability.oracle_available(_te_pf.target, _te_pf.sim_via)
     (run_dir / "oracle_preflight.yaml").write_text(
         yaml.safe_dump(
             {
@@ -131,9 +132,9 @@ def check(
     if not a.no_oracle:
         _cg_backend = _te_pf.preflight_codegen_backend
         if _cg_backend is None:
-            _cg_ok, _cg_why = _CRpf.codegen_smoke(_te_pf.target)
+            _cg_ok, _cg_why = capsule_availability.codegen_smoke(_te_pf.target)
         else:
-            _cg_ok, _cg_why = _CRpf.codegen_smoke(_te_pf.target, backend_target=_cg_backend)
+            _cg_ok, _cg_why = capsule_availability.codegen_smoke(_te_pf.target, backend_target=_cg_backend)
         (run_dir / "codegen_smoke.yaml").write_text(
             yaml.safe_dump(
                 {

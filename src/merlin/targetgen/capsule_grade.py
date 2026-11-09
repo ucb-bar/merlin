@@ -25,12 +25,17 @@ import os
 from collections import Counter
 from pathlib import Path
 
+from merlin.evaluation.capsule import adapters as capsule_adapters
+from merlin.evaluation.capsule import eligibility as capsule_eligibility
+from merlin.evaluation.capsule import model_tiers as capsule_model_tiers
+from merlin.evaluation.capsule import runner as CR
 from merlin.perf import comparand as _comparand
 from merlin.perf import cost_plane as _COST_PLANE
 from merlin.perf import gate_phase as _GATE_PHASE
 from merlin.perf import lowering_coverage as _LOWERING_COVERAGE
+from merlin.targetgen import capsule_common as capsule_capsule_common
+from merlin.targetgen import elf_lanes as capsule_elf_lanes
 
-from . import capsule_runner as CR
 from . import coverage_report as CV
 from . import tier_integrity as _TIER_INTEGRITY
 from .capsule_common import NOT_MEASURED_STATUSES
@@ -705,7 +710,7 @@ def model_execution_check(
             _plan_only = sorted(
                 ln
                 for ln in required_lanes
-                if ln not in missing_required and _ev.get(ln) not in CR.EXECUTED_LANE_EVIDENCE
+                if ln not in missing_required and _ev.get(ln) not in capsule_elf_lanes.EXECUTED_LANE_EVIDENCE
             )
             if _plan_only:
                 violations.append("required_lane_evidenced_by_plan_only")
@@ -953,7 +958,7 @@ def enforce_model_execution_check(result: dict, capsule: dict | None, *, target:
     status = "unavailable" if evidence_unmeasured else "fail"
     detail = "whole-model execution proof failed: " + ", ".join(violations)
     tiers = result.get("tiers") or {}
-    rtl_tiers = set(CR._rtl_tiers_of(target))
+    rtl_tiers = set(capsule_model_tiers._rtl_tiers_of(target))
     # A missing descriptor cannot preserve a stale hardware pass. These flags
     # only extend rejection of runner-owned evidence; they never admit a tier.
     rtl_tiers.update(
@@ -1438,7 +1443,7 @@ def grade(
         return score
 
     with shared_compute_pool(timeout_s=timeout):
-        source_caps = CR.discover_capsules(capsules_root, labels=labels, contract=contract)
+        source_caps = capsule_capsule_common.discover_capsules(capsules_root, labels=labels, contract=contract)
     caps = source_caps
     admission_policy = "all_discovered"
     capability_excluded: list[dict] = []
@@ -1449,7 +1454,7 @@ def grade(
         # only an operand dtype absent from EVERY frozen target capability may be excluded.  Models stay
         # admitted because their host/accelerator partition can transform the device-facing dtype.
         op_caps = [c for c in source_caps if c.get("kind") != "model"]
-        _admitted_ops, capability_excluded = CR._split_ineligible(op_caps, target)
+        _admitted_ops, capability_excluded = capsule_eligibility._split_ineligible(op_caps, target)
         excluded_names = {str(r.get("capsule")) for r in capability_excluded}
         caps = [c for c in source_caps if str(c.get("name")) not in excluded_names]
         admission_policy = "frozen_target_capability_operand_dtype"
@@ -1526,7 +1531,7 @@ def grade(
                 continue
             # Reopen under the same trusted adapter selection as the model
             # child. Candidate result records cannot choose their own codec.
-            readback_policy = CR._adapter_readback_policy(oracle_adapters or {})
+            readback_policy = capsule_adapters._adapter_readback_policy(oracle_adapters or {})
             enforce_model_execution_check(
                 result,
                 _caps_by_name.get(str(result.get("capsule"))),
@@ -1537,7 +1542,11 @@ def grade(
             # Keep the durable row in sync because QA/selfcheck/checkpoint consumers deliberately re-glob
             # it rather than trusting this function's in-memory score.
             result_path = (
-                Path(runs_root) / "runs" / CR.suite_for(target) / str(result.get("capsule")) / "capsule_result.json"
+                Path(runs_root)
+                / "runs"
+                / capsule_eligibility.suite_for(target)
+                / str(result.get("capsule"))
+                / "capsule_result.json"
             )
             if result_path.is_file():
                 result_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
@@ -1594,7 +1603,7 @@ def grade(
     # under cfg.suite, e.g. <target>-capsule-bench), not one target's SUITE literal (which left every
     # other target's coverage dict silently empty; same root cause as the self-check n_capsules:0 blind loop).
     traces: dict[str, dict] = {}
-    rr = Path(runs_root) / "runs" / CR.suite_for(target)
+    rr = Path(runs_root) / "runs" / capsule_eligibility.suite_for(target)
     for cap in caps:
         if cap.get("kind") == "model":
             # generated/ is the separate legacy host-graph path, not the
@@ -1951,7 +1960,7 @@ def grade(
     # keying only on the flag counted a whole model that PASSED the RTL tier as cheap-tier-only. Fall
     # back to the target's own declared rtl_tiers, matched by tier NAME -- still derived (the manifest
     # says which tiers are RTL for this target), never a literal.
-    from .capsule_runner import _rtl_tiers_of
+    from merlin.evaluation.capsule.model_tiers import _rtl_tiers_of
 
     _rtl_names = _rtl_tiers_of(target)
 
@@ -2323,7 +2332,7 @@ def emit_perf_ledger(results: list, *, target: str, runs_root: str | Path, versi
         runs_root=runs_root,
         version=version,
         activity_source=_activity_source,
-        suite_for=CR.suite_for,
+        suite_for=capsule_eligibility.suite_for,
     )
 
 

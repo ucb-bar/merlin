@@ -21,6 +21,7 @@ import yaml
 
 from merlin.common.cpu_pool import shared_compute_pool
 from merlin.common.tree_hash import hash_tree
+from merlin.evaluation.capsule import availability as capsule_availability
 from merlin.experiments.phase1 import oot_history as OH
 from merlin.experiments.phase1 import run_inputs as RI
 from merlin.experiments.phase1 import treatments as T
@@ -163,12 +164,11 @@ def cert_tiers_beyond_loop(
     diagnostic callers may lazily materialize their legacy corpus at that point;
     admitted grading callers return their already-resolved immutable public view.
     """
-    from merlin.targetgen import capsule_runner as _CR
 
     try:
         te = load_target_experiment(context.descriptor)
-        ck = _CR.qa_checkpoint_adapters(te.target, te.sim_via, **readback_kwargs(context))
-        loop = _CR.qa_loop_adapters(
+        ck = capsule_availability.qa_checkpoint_adapters(te.target, te.sim_via, **readback_kwargs(context))
+        loop = capsule_availability.qa_loop_adapters(
             te.target, te.sim_via, declared_tiers=declared_loop_tiers(policy_roots), **readback_kwargs(context)
         )
     except Exception:  # noqa: BLE001 — no resolvable checkpoint oracle -> nothing to gate on
@@ -871,7 +871,7 @@ def _independent_admission(result):
 
 
 def _suite_for(target):
-    from merlin.targetgen.capsule_runner import suite_for
+    from merlin.evaluation.capsule.eligibility import suite_for
 
     return suite_for(target)
 
@@ -898,7 +898,6 @@ def fast_grade(
 
     from merlin.experiments.phase1.feedback import qa as _qc
     from merlin.targetgen import capsule_grade as _CG
-    from merlin.targetgen import capsule_runner as _CR
 
     from .background_admission import BackgroundGuard, source_digest
     from .grade_progress import SnapshotProgress
@@ -925,7 +924,7 @@ def fast_grade(
     te = load_target_experiment(inputs.context.descriptor)
     from .. import joint_control
 
-    adapters = _CR.qa_loop_adapters(
+    adapters = capsule_availability.qa_loop_adapters(
         te.target,
         te.sim_via,
         declared_tiers={"L2"} if joint_control.selected() else declared_loop_tiers(inputs.policy_roots),

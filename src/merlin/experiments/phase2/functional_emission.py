@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common.digest import sha256_bytes as _sha256
+from merlin.evaluation.capsule import availability as capsule_availability
 from merlin.targetgen.target_experiment import TargetExperiment
 
 from . import campaign as PC
@@ -202,7 +203,6 @@ def functional_emission_guard(
     regrade = None
     if any(row.get("status") == _GUARD_CHANGED for row in rows):
         from merlin.targetgen import capsule_grade as CG  # noqa: PLC0415
-        from merlin.targetgen import capsule_runner as CR  # noqa: PLC0415
 
         # Grade the complete admitted public cohort: a changed shared producer,
         # runtime or host publication routine can affect consumers elsewhere.
@@ -213,7 +213,9 @@ def functional_emission_guard(
                     raise StageGateError("functional regrade evidence destination is not fresh")
                 output.mkdir(parents=True)
             try:
-                adapters = CR.qa_checkpoint_adapters(target_experiment.target, target_experiment.sim_via)
+                adapters = capsule_availability.qa_checkpoint_adapters(
+                    target_experiment.target, target_experiment.sim_via
+                )
                 import shutil  # noqa: PLC0415
 
                 grading_candidate = output / "compiler"

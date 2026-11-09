@@ -19,7 +19,7 @@ def _load_native_request(args: argparse.Namespace, *, target_identity: str, mode
         staged = load_compile_inputs(args.compile_inputs)
         if staged.precision_policy is not None:
             if "matmul_regions" in staged.precision_policy:
-                from merlin.semantic_compiler.precision_intake import check_source_bound_f32_matmuls
+                from merlin.compiler.quantization.contraction.intake import check_source_bound_f32_matmuls
 
                 check_source_bound_f32_matmuls(
                     staged.program,

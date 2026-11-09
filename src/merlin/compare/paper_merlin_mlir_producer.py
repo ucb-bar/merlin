@@ -135,6 +135,9 @@ def _implementation_identity() -> dict[str, str]:
             )
         ),
     )
+    from merlin.compiler.lower.native.pipeline import implementation_paths
+
+    paths = (*paths, *implementation_paths())
     return {path.relative_to(root).as_posix(): _sha(path) for path in paths}
 
 

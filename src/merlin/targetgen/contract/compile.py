@@ -210,7 +210,7 @@ def llvm_mlir_to_object(
     else:
         from merlin.common import invocation_record
         from merlin.common.ir_audit import IrAudit
-        from merlin.llvmlower.pipeline import lower_to_llvm_ir
+        from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
 
         requested = getattr(executor, "record_stage_inspection", False) is True
         audit = IrAudit(

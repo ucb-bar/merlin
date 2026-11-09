@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from merlin.evaluation.capsule import adapters as capsule_adapters
+from merlin.evaluation.capsule import availability as capsule_availability
 from merlin.targetgen import conformance
 from merlin.targetgen.contract import materialize
 from merlin.targetgen.contract.materialize import validate_materialized_cohort
@@ -30,7 +32,6 @@ def constructed_oracle_tiers(target: str) -> list:
     failures into an empty observation, never an invented cheaper tier.
     """
     try:
-        from merlin.targetgen import capsule_runner as CR
         from merlin.targetgen import corpora
         from merlin.targetgen.target_experiment import load_target_experiment
 
@@ -38,7 +39,7 @@ def constructed_oracle_tiers(target: str) -> list:
         if not desc.is_file():
             return []
         te = load_target_experiment(desc)
-        return sorted(CR.oracle_adapters(target, te.sim_via) or {})
+        return sorted(capsule_adapters.oracle_adapters(target, te.sim_via) or {})
     except Exception:  # noqa: BLE001 — unresolvable: report nothing
         return []
 
@@ -59,12 +60,10 @@ def public_capsules_for(
     """
     roots = materialize.descriptor_corpus_roots(te) if corpus_roots is None else corpus_roots
     if tier_ceiling is None:
-        from merlin.targetgen import capsule_runner as CR
-
         declared = materialize.declared_oracle_tiers(*roots)
-        loop = CR.qa_loop_adapters(te.target, te.sim_via, declared_tiers=declared)
+        loop = capsule_availability.qa_loop_adapters(te.target, te.sim_via, declared_tiers=declared)
         if not loop:
-            reach = sorted(CR.oracle_adapters(te.target, te.sim_via))
+            reach = sorted(capsule_adapters.oracle_adapters(te.target, te.sim_via))
             if reach:
                 raise ValueError(
                     f"target {te.target!r}: its capsule corpus declares required oracle tiers "
@@ -79,7 +78,7 @@ def public_capsules_for(
         else:
             # Preserve the highest declared reachable tier, not just the cheap
             # loop tier; otherwise materialization silently removes cert barriers.
-            reach = set(CR.oracle_adapters(te.target, te.sim_via))
+            reach = set(capsule_adapters.oracle_adapters(te.target, te.sim_via))
             usable = (declared & reach) or set(loop)
             tier_ceiling = max(
                 usable, key=lambda tier: materialize._TIER_ORDER.index(tier) if tier in materialize._TIER_ORDER else -1

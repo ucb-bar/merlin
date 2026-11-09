@@ -30,6 +30,7 @@ import weakref
 from pathlib import Path
 
 from merlin.common.bundle_snapshot import verified_snapshot_scope
+from merlin.evaluation.capsule import adapters as capsule_adapters
 from merlin.runtime.backends import base
 from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
 
@@ -120,13 +121,12 @@ class _Request:
 
 
 def _selected(adapter, target, tier):
+    from merlin.evaluation.capsule import runner as runner
     from merlin.experiments.phase1.feedback.operator_child import adapter_selection
-
-    from . import capsule_runner as runner
 
     original_code = next(
         value
-        for value in runner.simulator_adapter.__code__.co_consts
+        for value in capsule_adapters.simulator_adapter.__code__.co_consts
         if isinstance(value, types.CodeType) and value.co_name == "run"
     )
     if type(adapter) is not types.FunctionType or adapter.__code__ is not original_code:
@@ -315,7 +315,7 @@ def probe_observer(sim, before_execution):
     """
     if sim not in probe_engines():
         return before_execution
-    from .capsule_runner import OracleUnavailable
+    from merlin.evaluation.capsule.adapters import OracleUnavailable
 
     if before_execution is None:
         raise OracleUnavailable(PROBE_CHANGED)
@@ -330,7 +330,8 @@ def probe_observer(sim, before_execution):
 def _probe_reason(elf: Path) -> str:
     """Whether a refused dispatch's exact key already FAILED (a noted verdict), else unknown/changed."""
     try:
-        from .capsule_runner import run_executables
+        from merlin.evaluation.capsule.certificates import run_executables
+
         from .elf_lanes import PACKAGE_ELF_NAME
         from .tier_cache import noted_failure
 

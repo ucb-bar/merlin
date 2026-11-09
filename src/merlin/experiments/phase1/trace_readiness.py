@@ -105,7 +105,7 @@ def require_ready(
 ) -> dict:
     """Use the same selected backend and capsule discovery as grading, once per admission."""
     from merlin.runtime.backends import base
-    from merlin.targetgen.capsule_runner import discover_capsules
+    from merlin.targetgen.capsule_common import discover_capsules
 
     backend = base.get_backend(target)
     capsules = discover_capsules(roots, labels={"public", "dev", "hidden"}, contract=contract)
@@ -114,7 +114,8 @@ def require_ready(
         hidden = discover_capsules(hidden_roots, labels={"hidden"}, contract=contract)
         capsules += hidden
     if expected_hidden_capsules is not None and (
-        type(expected_hidden_capsules) is not int or expected_hidden_capsules < 0
+        type(expected_hidden_capsules) is not int
+        or expected_hidden_capsules < 0
         or len(hidden) != expected_hidden_capsules
     ):
         raise ValueError("trace readiness hidden cohort differs from the verified hidden snapshot")

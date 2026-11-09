@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from merlin.common.tree_hash import hash_tree
+from merlin.evaluation.capsule import eligibility as capsule_eligibility
 
 from ...corpus import public_scalability as S
 
@@ -186,12 +187,11 @@ def _grade(
         name = row.get("capsule")
         if name in observed:
             raise ValueError("duplicate public scalability execution observation")
-        from merlin.targetgen import capsule_runner as CR
         from merlin.targetgen.capsule_common import load_capsule
 
         from .joint_performance import attach as attach_performance
 
-        generated = output / "runs" / "runs" / CR.suite_for(context.target) / name / "generated"
+        generated = output / "runs" / "runs" / capsule_eligibility.suite_for(context.target) / name / "generated"
         performance_started = time.monotonic()
         from .joint_performance import environment_scope
 
@@ -234,14 +234,13 @@ def _grade(
         raise ValueError("public scalability source/input/reference or candidate changed during execution")
     passed = names == all_names and complete(score, observed, names=all_names)
     # Advisory per-case admission records and seed-fallback identity; never part of `passed`.
-    from merlin.targetgen import capsule_runner as CR
 
     from . import abstraction_feedback
 
     try:
         abstraction_feedback.attach_cases(
             observed,
-            output / "runs" / "runs" / CR.suite_for(context.target),
+            output / "runs" / "runs" / capsule_eligibility.suite_for(context.target),
             contract=contract or context.repo / "src/merlin/resources/contracts",
             timeout=min(timeout, 600),
             deadline=request_deadline,
@@ -281,7 +280,8 @@ def grade(submission, **kwargs):
         "target": context.target,
         "complete_roster_requested": kwargs.get("names") is None,
     }
-    from merlin.targetgen import capsule_grade, capsule_runner
+    from merlin.evaluation.capsule import runner as capsule_runner
+    from merlin.targetgen import capsule_grade
 
     with I.observe_call(
         output.parent / "issuers",

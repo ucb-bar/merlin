@@ -35,8 +35,8 @@ from pathlib import Path
 
 import numpy as np
 
+from merlin.compiler.lower.native.vector import RVV_TRANSFORM_SCHEDULE
 from merlin.llvmlower.impr_features import CompositionError, apply_schedule, normalize
-from merlin.llvmlower.pipeline import RVV_TRANSFORM_SCHEDULE
 from merlin.mining.registry import load_rvv_package
 
 _spec = _ilu.spec_from_file_location("k1_e2e_gv", str(Path(__file__).resolve().parent / "k1_e2e_general_validate.py"))

@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from merlin.experiments.phase1.context import InvocationContext
+from merlin.targetgen import oracle_policy as capsule_oracle_policy
 
 
 def _model(context: InvocationContext):
@@ -87,11 +88,10 @@ def _assemble(kernel_s_text: str, model: Callable[[], Any]) -> list[int]:
 
 
 def _endpoint_and_target(context: InvocationContext) -> tuple[str | None, str | None]:
-    from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen.target_experiment import load_target_experiment
 
     te = load_target_experiment(context.descriptor)
-    return CR._endpoint_of(te.target)[0], te.target
+    return capsule_oracle_policy._endpoint_of(te.target)[0], te.target
 
 
 # The endpoint kind whose canonical artifact is ``llvm.inline_asm`` MLIR rather than a ``.word``
@@ -357,11 +357,10 @@ def _debug_ctx(context: InvocationContext):
     """(target, model_ext, public-capsule dir) for the debugger, from the run's descriptor. Cached-free
     (called rarely); raises with an actionable message if the target is not a self-hosted-ISA backend."""
     from merlin.experiments.corpus.admission import public_capsules_for
-    from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen.target_experiment import load_target_experiment
 
     te = load_target_experiment(context.descriptor)
-    endpoint_kind, model_ext = CR._endpoint_of(te.target)
+    endpoint_kind, model_ext = capsule_oracle_policy._endpoint_of(te.target)
     if endpoint_kind != "external_backend":
         raise ValueError(
             "debug is only for a self-hosted-ISA (external_backend) target — this target "

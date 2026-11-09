@@ -5,7 +5,8 @@
       "namespaces": [
         "merlin.benchharness",
         "merlin.targetgen.sandbox",
-        "merlin.experiments"
+        "merlin.experiments",
+        "merlin.evaluation"
       ],
       "modules": [
         "merlin.perf.analysis_worker",
@@ -20,22 +21,13 @@
         "merlin.perf.source_initializer_elision",
         "merlin.perf.source_program_pair",
         "merlin.perf.source_program_pair_provider",
-        "merlin.targetgen._capsule_bundle_worker",
         "merlin.targetgen.aet_bridge",
         "merlin.targetgen.capsule_budget",
-        "merlin.targetgen.capsule_bundle",
-        "merlin.targetgen.capsule_candidate_context",
-        "merlin.targetgen.capsule_diagnostics",
         "merlin.targetgen.capsule_golden",
         "merlin.targetgen.capsule_grade",
-        "merlin.targetgen.capsule_instruction_policy",
-        "merlin.targetgen.capsule_lane_evidence",
         "merlin.targetgen.capsule_perf_ledger",
-        "merlin.targetgen.capsule_processes",
         "merlin.targetgen.capsule_runner",
         "merlin.targetgen.capsule_scheduling",
-        "merlin.targetgen.capsule_source_identity",
-        "merlin.targetgen.capsule_tier_result",
         "merlin.targetgen.checked_source_model_diagnostic",
         "merlin.targetgen.checked_source_model_diagnostic_execution",
         "merlin.targetgen.completion_order_gate",

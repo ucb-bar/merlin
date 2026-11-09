@@ -19,7 +19,7 @@ def request(tmp_path, **parameters):
 
 
 def test_native_failure_leaves_diagnostic_without_success_manifest(tmp_path, monkeypatch):
-    from merlin.llvmlower import pipeline
+    from merlin.compiler.lower.native import pipeline
 
     monkeypatch.setattr(scalar, "_tools", lambda *args: {})
     failure = RuntimeError("diagnostic native failure")

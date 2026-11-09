@@ -26,7 +26,7 @@ from merlin.experiments.phase0 import public_compile_sources as SOURCES
 from merlin.experiments.phase1.brokers.common_transforms import CommonTransformService
 from merlin.experiments.phase2 import campaign as PC
 from merlin.experiments.phase2.contracts import exact_tree_record, sha256_file
-from merlin.targetgen import capsule_runner as CR
+from merlin.targetgen import capsule_common as capsule_capsule_common
 from merlin.targetgen import compile_only_execution as CO
 from merlin.targetgen import package_runtime as P
 from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
@@ -869,7 +869,7 @@ def run(
 ):
     # Discover metadata/source only; run_capsule/reference/harness generators are
     # deliberately absent from this path.
-    capsules = CR.discover_capsules(str(capsules_root), labels={"public", "dev"}, contract=contract)
+    capsules = capsule_capsule_common.discover_capsules(str(capsules_root), labels={"public", "dev"}, contract=contract)
     return observe(
         candidate=submission,
         target_experiment=target_experiment,

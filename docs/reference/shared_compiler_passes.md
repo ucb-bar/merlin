@@ -18,7 +18,7 @@ code_refs:
   - src/merlin/compiler/schedule/dense_panel_build.py
   - src/merlin/compiler/schedule/dense_panel_verify.py
   - src/merlin/kernels/mechanism_applicability.py
-  - src/merlin/targetgen/capsule_bundle.py
+  - src/merlin/evaluation/capsule/bundle.py
   - src/merlin/experiments/phase1/feedback/private_model_completion.py
   - src/merlin/compiler/schedule/dense_source.py
   - src/merlin/llvmlower/shared_source_routing.py
@@ -244,7 +244,7 @@ original membership and bytes; public import compatibility does not authorize
 exporting current code under an older release identity.
 
 Grader source custody is separate from the editable pass library.
-`targetgen/capsule_bundle.py` owns frozen model-asset validation and runtime-bundle
+`evaluation/capsule/bundle.py` owns frozen model-asset validation and runtime-bundle
 construction through the existing bundle worker.
 `merlin.experiments/phase1/feedback/private_model_completion.py` owns completed
 private full-model build receipt and roster checks. These sources retain their

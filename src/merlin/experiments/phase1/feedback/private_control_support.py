@@ -146,7 +146,7 @@ def _record_matches_selected(actual: Mapping[str, Any] | None, selected: Mapping
         return False
     if {key: value for key, value in actual.items() if key != "effective_pipeline"} != dict(selected):
         return False
-    from merlin.llvmlower.pipeline import _INDEX_CONVERSION_PASSES
+    from merlin.compiler.lower.native.pipeline import _INDEX_CONVERSION_PASSES
 
     bits = selected.get("index_bits")
     if (

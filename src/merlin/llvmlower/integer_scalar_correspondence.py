@@ -18,11 +18,11 @@ from xdsl.parser import Parser
 from xdsl.utils.exceptions import ParseError, VerifyException
 
 from merlin.common.strict_json import loads
+from merlin.compiler.lower.native.transport import verify_llvm_dialect_product
 from merlin.targetgen.contract.mlir_source_admission import admit_mlir_source
 from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
 
 from .integer_scalar_contract import IntegerScalarLimits, OriginalIntegerScalarSource
-from .llvm_dialect_product import verify_llvm_dialect_product
 
 
 def _require(condition, detail):

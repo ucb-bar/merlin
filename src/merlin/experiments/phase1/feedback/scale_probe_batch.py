@@ -147,7 +147,7 @@ def emit_cases(
     sandbox_inputs=None,
     timing=None,
 ):
-    from merlin.targetgen.capsule_runner import _kill_tree
+    from merlin.evaluation.capsule.processes import _kill_tree
 
     from . import compile_only as C
 
@@ -375,7 +375,7 @@ def emit_cases(
 
 
 def main(argv=None):
-    from merlin.targetgen.capsule_runner import _die_with_parent
+    from merlin.evaluation.capsule.processes import _die_with_parent
 
     from .public_scalability_gate import selected_budget
 

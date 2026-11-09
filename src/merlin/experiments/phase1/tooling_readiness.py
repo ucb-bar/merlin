@@ -19,6 +19,7 @@ from pathlib import Path
 import yaml
 
 from merlin.common.paths import module_source_path, python_source_dir
+from merlin.targetgen import oracle_policy as capsule_oracle_policy
 from merlin.targetgen import tool_registry as TR
 from merlin.targetgen.sandbox import bwrap as BW
 
@@ -401,12 +402,11 @@ def _frozen_rtl_checks(te, ws: Path, bundle: dict, public_root: Path, *, repo: P
 
 
 def _asm_probe(context) -> str:
-    from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen.isa_model import isa_model_for_target
 
     from .brokers.isa_tools import is_rocc_endpoint
 
-    if is_rocc_endpoint(CR._endpoint_of(context.target)[0]):
+    if is_rocc_endpoint(capsule_oracle_policy._endpoint_of(context.target)[0]):
         return "FENCE"
     model = isa_model_for_target(context.target)
     if model.resolve("FENCE") is not None or "FENCE" in model.opcode_table:

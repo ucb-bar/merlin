@@ -63,6 +63,8 @@ from typing import Any
 
 import yaml
 
+from merlin.evaluation.capsule import adapters as capsule_adapters
+
 _TIER_ORDER = ("L0", "L1", "L2", "L3", "L4", "L5")
 _ALWAYS_TIERS = ("L0", "L1")  # structural/reference floor: always graded, never an oracle adapter
 _DEFAULT_CATEGORIES = ("isa", "layers", "model_slices", "_model_layers")
@@ -469,10 +471,9 @@ def cmd_grade(args: argparse.Namespace) -> int:
 
     from merlin.experiments.phase1.feedback import qa as QA
     from merlin.targetgen import capsule_grade as CG
-    from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen import rtl_check_runner as RUN
 
-    full = CR.oracle_adapters(target)
+    full = capsule_adapters.oracle_adapters(target)
     adapters = {t: a for t, a in full.items() if t in tiers}
     unreachable = [t for t in tiers if t not in full]
     print(f"[support-differential] target={target} support={support}", flush=True)

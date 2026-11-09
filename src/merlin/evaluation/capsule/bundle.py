@@ -112,7 +112,7 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int, artifact_root: Path | 
 
     import numpy as np
 
-    from .owned_host_slice_execution import runtime_bundle, selected_source_slice
+    from merlin.targetgen.owned_host_slice_execution import runtime_bundle, selected_source_slice
 
     if selected_source_slice(capsule):
         return runtime_bundle(capsule, target=target, artifact_root=artifact_root)
@@ -208,8 +208,8 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int, artifact_root: Path | 
         if set(golden_inputs) != set(input_names) or set(outputs) != set(output_names):
             raise ValueError("capsule golden input/output names do not exactly match its declaration")
 
-        from ..common.mlir_query import forward_signature
-        from ..llvmlower.weights_pack import load_safetensors_header
+        from merlin.common.mlir_query import forward_signature
+        from merlin.llvmlower.weights_pack import load_safetensors_header
 
         signature, output_signature = forward_signature(interface)
         header, _payload = load_safetensors_header(weights)
@@ -273,10 +273,10 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int, artifact_root: Path | 
             if manifest_asset is not None:
                 shutil.copyfile(manifest_asset, bundle / "weights.safetensors.manifest.json")
 
-            from .capsule_source import _m2m_python
+            from merlin.targetgen.capsule_source import _m2m_python
 
             torch_python = _m2m_python()
-            worker = Path(__file__).with_name("_capsule_bundle_worker.py").resolve(strict=True)
+            worker = Path(__file__).with_name("bundle_worker.py").resolve(strict=True)
             if not torch_python.is_file():
                 raise ValueError(f"torch interpreter unavailable for frozen loader validation: {torch_python}")
             request = {

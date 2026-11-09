@@ -1,4 +1,5 @@
 """Tier result record and its stable serialized measurement fields."""
+
 from __future__ import annotations
 
 import dataclasses

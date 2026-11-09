@@ -401,8 +401,8 @@ def _semantic_oracle(
         # ones.  Reuse the formal model grader's frozen-bundle adapter.  That adapter validates the
         # loader, export signature, safetensors bytes, runtime inputs, and golden against each other;
         # resolve_forward_args then reads all arguments in the exact exported function order.
+        from merlin.evaluation.capsule.bundle import _model_runtime_bundle
         from merlin.runtime.dispatch_runtime import resolve_forward_args
-        from merlin.targetgen.capsule_runner import _model_runtime_bundle
 
         with _model_runtime_bundle(capsule, timeout=300) as (bundle, provenance, verify_unchanged):
             arrays = resolve_forward_args(bundle)

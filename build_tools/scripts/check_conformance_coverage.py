@@ -46,6 +46,9 @@ import json
 import sys
 from pathlib import Path
 
+from merlin.evaluation.capsule import eligibility as capsule_eligibility
+from merlin.targetgen import capsule_common as capsule_capsule_common
+
 _HERE = Path(__file__).resolve()
 for _p in (_HERE.parents[2] / "src",):
     if str(_p) not in sys.path:
@@ -334,11 +337,10 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
         # reviewed release derives the capability boundary from staged bytes; for a
         # source-pool diagnostic, use the same generic hardware predicate rather
         # than silently treating the now-absent literal list as an empty boundary.
-        from merlin.targetgen import capsule_runner
 
-        public = capsule_runner.discover_capsules(roots, labels={"public", "dev"})
+        public = capsule_capsule_common.discover_capsules(roots, labels={"public", "dev"})
         operations = [capsule for capsule in public if capsule.get("kind") != "model"]
-        _, withheld = capsule_runner._split_ineligible(operations, te.target)
+        _, withheld = capsule_eligibility._split_ineligible(operations, te.target)
         derived_capability_exclusions = sorted({str(row["capsule"]) for row in withheld})
         exclude.update(derived_capability_exclusions)
 

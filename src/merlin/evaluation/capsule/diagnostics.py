@@ -81,7 +81,7 @@ def _engine_token(oracle_kind: str | None) -> str | None:
     engine is unrecorded, i.e. the exact thing this field exists to prevent.
     """
     tokens = {t for part in str(oracle_kind or "").split("_") for t in part.split("-")}
-    from . import rtl_engine_policy as _pol
+    from merlin.targetgen import rtl_engine_policy as _pol
 
     for engine in _pol.ENGINE_PRIORITY:
         if engine in tokens:

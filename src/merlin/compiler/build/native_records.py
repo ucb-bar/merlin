@@ -35,7 +35,7 @@ def _write_manifest(staged, manifest):
 
 def publish_precision_plan(staged, manifest, precision_plan, *, binding=None, staged_root=None):
     """Track a graph plan or source-bound tile and its declared packed inputs."""
-    from merlin.semantic_compiler.precision_contract import DiagnosticMatmulTile
+    from merlin.compiler.quantization.contraction.contract import DiagnosticMatmulTile
 
     raw_plan = precision_plan_bytes(precision_plan)
     tile = isinstance(precision_plan, DiagnosticMatmulTile)

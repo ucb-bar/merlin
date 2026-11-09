@@ -837,8 +837,8 @@ def build(
     elif host_llvm_transform_chain is None:
         model_ir, host_ir_receipt = _transform_host_ir(res.ll_path, work / "host_llvm", host_llvm_transform)
     else:
-        from ...llvmlower.lowering_recipe import FILENAME as LOWERING_RECIPE
-        from ...llvmlower.lowering_recipe import bind_host_transform_chain
+        from merlin.compiler.lower.native.recipe import FILENAME as LOWERING_RECIPE
+        from merlin.compiler.lower.native.recipe import bind_host_transform_chain
 
         model_ir, host_ir_receipt = _transform_host_ir(
             res.ll_path, work / "host_llvm", host_llvm_transform, chain=host_llvm_transform_chain

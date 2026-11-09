@@ -20,6 +20,7 @@ from types import SimpleNamespace
 
 from merlin.common import cpu_pool, invocation_record
 from merlin.common.digest import sha256_file
+from merlin.evaluation.capsule import processes as capsule_processes
 from merlin.experiments.phase2.contracts import StageGateError, exact_tree_record
 from merlin.targetgen import package_runtime as P
 from merlin.targetgen.rtl.facts import observed_facts
@@ -264,7 +265,7 @@ def emit_cases(
                     active.remove((item, process, started))
                     completed.append((item, process, started, time.monotonic()))
                 if time.monotonic() >= deadline and active:
-                    from merlin.targetgen.capsule_runner import _kill_tree
+                    from merlin.evaluation.capsule.processes import _kill_tree
 
                     for item, process, started in active:
                         if process.poll() is None:
@@ -278,7 +279,7 @@ def emit_cases(
             for index, *_ in pending:
                 rows[index]["reason"] = "original aggregate compile budget exhausted"
         finally:
-            from merlin.targetgen.capsule_runner import _kill_tree
+            from merlin.evaluation.capsule.processes import _kill_tree
 
             for _, process, _ in active:
                 if process.poll() is None:
@@ -447,14 +448,13 @@ def observe_case(job, *, spec_path, executor, original_budget):
 
 
 def main(argv=None):
-    from merlin.targetgen import capsule_runner as CR
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--spec", type=Path, required=True)
     parser.add_argument("--result", type=Path, required=True)
     parser.add_argument("--original-profile-fd", type=int, required=True)
     args = parser.parse_args(argv)
-    CR._die_with_parent()
+    capsule_processes._die_with_parent()
     started, started_cpu = time.monotonic(), time.process_time()
     initial_cpus = sorted(os.sched_getaffinity(0))
     raw = args.spec.read_bytes()

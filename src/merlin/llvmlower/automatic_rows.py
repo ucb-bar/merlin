@@ -15,11 +15,11 @@ from xdsl.utils.exceptions import ParseError
 
 
 def prepare_automatic_rows(source, *, serial, index_bits=64, data_layout=None):
+    from merlin.compiler.lower.native import pipeline
     from merlin.compiler.transforms import row_normalization
     from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.xdsl_dialects._common import text
 
-    from . import pipeline
     from .optional_passes import switched
 
     if type(serial) is not bool:

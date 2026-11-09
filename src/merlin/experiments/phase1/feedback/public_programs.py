@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from merlin.common.tree_hash import hash_tree
+from merlin.evaluation.capsule import eligibility as capsule_eligibility
 
 from ...corpus import public_program_suite as S
 
@@ -32,7 +33,7 @@ def request_policy(sim=None, tiers="", *, inspection=False):
 
 
 def _grade(submission, *, context, output, timeout, contract=None, names=None, max_workers=0):
-    from merlin.targetgen import capsule_runner as CR
+    from merlin.evaluation.capsule import runner as CR
     from merlin.targetgen.capsule_common import load_capsule, tier_status
 
     from ...corpus.preparation import copy_input
@@ -100,7 +101,7 @@ def _grade(submission, *, context, output, timeout, contract=None, names=None, m
             )
             # Use the same scoped feedback owner as ordinary selfchecks. Missing
             # coverage remains UNKNOWN; functional instruction counts are not cycles.
-            generated = output / "runs" / "runs" / CR.suite_for(context.target) / name / "generated"
+            generated = output / "runs" / "runs" / capsule_eligibility.suite_for(context.target) / name / "generated"
             with environment_scope(admission):
                 attach(
                     row,

@@ -198,9 +198,9 @@ def _lower_ours(
     ``k1.codegen_march()`` every existing caller relies on; pass ``k1.K1_MARCH`` to compile WITHOUT
     the ``_zvl`` pin, which is the honest way to measure VL-agnostic (scalable) codegen — pinning
     would hide whether the emitted loop really sizes itself at run time."""
+    from merlin.compiler.passes.contract import PipelineError
     from merlin.llvmlower import c_runtime, toolchain
     from merlin.llvmlower.lower import lower_model_file
-    from merlin.llvmlower.pipeline import PipelineError
     from merlin.runtime.backends import zephyr_model as zm
 
     md = Path(bundle)

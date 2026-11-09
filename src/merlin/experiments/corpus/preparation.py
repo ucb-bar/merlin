@@ -13,8 +13,10 @@ from pathlib import Path
 
 import yaml
 
+from merlin.evaluation.capsule import eligibility as capsule_eligibility
 from merlin.experiments.corpus.preparation_io import ordinary_tree as ordinary_tree
 from merlin.experiments.corpus.preparation_io import private_json as private_json
+from merlin.targetgen import capsule_common as capsule_capsule_common
 
 from ..spec import SpecError, read_yaml
 from .phase_selection import validate_phase_selections
@@ -649,12 +651,11 @@ def derive_resource_bound(corpus: Path) -> dict:
     arithmetic needs no such bound was admitted by being written. Any other public model (a retained,
     hand-authored or unqualified one) is excluded by name. Both lists name only capsules present.
     """
-    from merlin.targetgen import capsule_runner
 
     manifest = read_yaml(corpus / "MANIFEST.yaml")
     generated = {str(member) for member in manifest.get("generated") or ()}
     required, excluded = [], []
-    for cap in capsule_runner.discover_capsules(corpus, labels={"public", "dev"}):
+    for cap in capsule_capsule_common.discover_capsules(corpus, labels={"public", "dev"}):
         if cap.get("kind") != "model":
             continue
         name = str(cap["name"])
@@ -682,11 +683,11 @@ def derive_release_admission(staged) -> dict:
     exists. Require one explicit decision per model so corpus growth cannot
     silently expand the expensive formal denominator.
     """
-    from merlin.targetgen import capsule_runner, eligibility
+    from merlin.targetgen import eligibility
 
     if not eligibility.capability_map_for_target(staged.target):
         raise SpecError("release admission requires a resolvable nonempty hardware capability contract")
-    public = capsule_runner.discover_capsules(staged.graded_roots(), labels={"public", "dev"})
+    public = capsule_capsule_common.discover_capsules(staged.graded_roots(), labels={"public", "dev"})
     public_names = [str(cap.get("name")) for cap in public]
     if len(public_names) != len(set(public_names)):
         raise SpecError("release public corpus has duplicate capsule names")
@@ -702,13 +703,13 @@ def derive_release_admission(staged) -> dict:
     if stale := sorted(policy - models):
         issues.append("policy names absent from staged public models: " + ", ".join(stale))
     operations = [cap for cap in public if cap.get("kind") != "model"]
-    _, withheld = capsule_runner._split_ineligible(operations, staged.target)
+    _, withheld = capsule_eligibility._split_ineligible(operations, staged.target)
     capability = sorted({str(row["capsule"]) for row in withheld})
     if set(capability) & models:
         raise SpecError("model capability admission cannot be inferred from operation admission")
-    hidden = capsule_runner.discover_capsules(staged.hidden_roots(), labels={"hidden"})
+    hidden = capsule_capsule_common.discover_capsules(staged.hidden_roots(), labels={"hidden"})
     hidden_ops = [cap for cap in hidden if cap.get("kind") != "model"]
-    _, hidden_withheld = capsule_runner._split_ineligible(hidden_ops, staged.target)
+    _, hidden_withheld = capsule_eligibility._split_ineligible(hidden_ops, staged.target)
     hidden_excluded = {str(row["capsule"]) for row in hidden_withheld}
     if not hidden:
         issues.append("hidden grading cohort is empty; supply an operator-owned private baseline")
@@ -1353,7 +1354,6 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
     from .public_program_suite import selected as selected_programs
 
     programs = selected_programs(te)  # Complete programs add obligations, never core RTL credit.
-    from merlin.targetgen import capsule_runner
     from merlin.targetgen.contract.materialize import (
         _TIER_ORDER,
         materialize_public_cohort,
@@ -1367,10 +1367,10 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
 
     # Re-checked here, not only at assembly: sealing re-runs this admission over the reviewed payload.
     require_accelerator_placement(te.graded_roots())
-    source_public = capsule_runner.discover_capsules(te.graded_roots(), labels={"public", "dev"})
+    source_public = capsule_capsule_common.discover_capsules(te.graded_roots(), labels={"public", "dev"})
     source_hidden = None
     if (te.workload_spec or {}).get("certification_floor") is not None:
-        source_hidden = capsule_runner.discover_capsules(te.hidden_roots(), labels={"hidden"})
+        source_hidden = capsule_capsule_common.discover_capsules(te.hidden_roots(), labels={"hidden"})
         declared_tiers = sorted(
             {tier for cap in [*source_public, *source_hidden] for tier in (cap.get("required_oracle_tiers") or [])}
         )
@@ -1408,13 +1408,15 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
     hidden = (
         source_hidden
         if source_hidden is not None
-        else capsule_runner.discover_capsules(te.hidden_roots(), labels={"hidden"})
+        else capsule_capsule_common.discover_capsules(te.hidden_roots(), labels={"hidden"})
     )
     if selected_scope(coverage_inputs) is not None:
         for capsule in [*source_public, *hidden]:
             if not has_accelerator_work(capsule):
                 raise SpecError("accelerator-only release contains a host-only capsule")
-    _, withheld = capsule_runner._split_ineligible([cap for cap in hidden if cap.get("kind") != "model"], te.target)
+    _, withheld = capsule_eligibility._split_ineligible(
+        [cap for cap in hidden if cap.get("kind") != "model"], te.target
+    )
     excluded = {row["capsule"] for row in withheld}
     count = len(hidden)
     admitted = sum(cap["name"] not in excluded for cap in hidden)

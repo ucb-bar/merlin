@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from merlin.common.tree_hash import hash_tree
+from merlin.targetgen import capsule_common as capsule_capsule_common
 
 
 def _sha(path: Path) -> str:
@@ -123,7 +124,6 @@ def retain_driver_grade(
 ):
     """Retain a complete ordinary grade, never a screen or a redacted claim."""
     from merlin.targetgen import capsule_grade as CG
-    from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen import expected_refusal as ER
 
     from .compiler_profile_child import _original_executor
@@ -148,7 +148,7 @@ def retain_driver_grade(
             or executor.source_sha256 != source
         ):
             return None
-        caps = CR.discover_capsules(public, labels={"public", "dev"}, contract=inputs.contract)
+        caps = capsule_capsule_common.discover_capsules(public, labels={"public", "dev"}, contract=inputs.contract)
         cohort = {cap["name"]: cap for cap in caps}
         if not cohort or len(cohort) != len(caps):
             return None

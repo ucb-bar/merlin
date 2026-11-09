@@ -190,9 +190,8 @@ def materialize_host_leaf(capsule, *, target, output):
 def _materialize_typed_source(declaration, source, certificate, *, output):
     """Shared exact ABI writer; callers independently validate their ownership route."""
     from merlin.common.mlir_query import forward_signature
+    from merlin.evaluation.capsule.bundle import _content_identity, _numpy_dtype, _write_deterministic_npz
     from merlin.targetgen.golden_store import load_golden
-
-    from .capsule_runner import _content_identity, _numpy_dtype, _write_deterministic_npz
 
     root = source.parent
     files = {"source": source, "capsule": root / "capsule.yaml", "golden": root / "golden.yaml"}
@@ -266,7 +265,7 @@ def _materialize_typed_source(declaration, source, certificate, *, output):
 
 
 def _verify_source_identity(capsule, identity):
-    from .capsule_runner import _content_identity
+    from merlin.evaluation.capsule.bundle import _content_identity
 
     root = Path(capsule["__dir__"])
     files = {}
@@ -349,6 +348,9 @@ def grade_owned_host_leaf(
     """Execute one provided-host image at every required tier without candidate compilation."""
     import os
 
+    from merlin.evaluation.capsule.model_inputs import _resolve_model_host_lane
+    from merlin.evaluation.capsule.result import _finalize_capsule_result
+    from merlin.evaluation.capsule.tier import TierResult
     from merlin.model import compile_saved_model
     from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.targetgen import elf_lanes
@@ -356,7 +358,6 @@ def grade_owned_host_leaf(
     from merlin.targetgen.oracle_policy import selected_l3_engine_report
     from merlin.targetgen.rtl_engine_policy import ELABORATED_RTL
 
-    from .capsule_runner import TierResult, _finalize_capsule_result, _resolve_model_host_lane
     from .owned_host_model_execution import (
         _functional_engine_for_facts,
         _numeric_full_output,

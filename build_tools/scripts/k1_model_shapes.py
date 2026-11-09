@@ -225,9 +225,9 @@ def _ours_tiled_mnk(*, M, N, K, reps):
     import tempfile
     from dataclasses import replace
 
+    from merlin.compiler.passes.contract import PipelineError
     from merlin.llvmlower import c_runtime, toolchain
     from merlin.llvmlower.lower import lower_model_file
-    from merlin.llvmlower.pipeline import PipelineError
     from merlin.mining import k1, workloads
     from merlin.mining.registry import load_rvv_package
     from merlin.runtime.backends import zephyr_model as zm

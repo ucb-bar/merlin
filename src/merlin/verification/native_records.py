@@ -36,7 +36,7 @@ def check_ordered_records(
 
 def check_precision_plan(artifact, manifest, precision_plan, *, binding=None, staged_root=None):
     """Rebuild selected tile constants from the original staged parameter source."""
-    from merlin.semantic_compiler.precision_contract import DiagnosticMatmulTile
+    from merlin.compiler.quantization.contraction.contract import DiagnosticMatmulTile
 
     path = artifact / "precision-plan.json"
     if precision_plan is None:

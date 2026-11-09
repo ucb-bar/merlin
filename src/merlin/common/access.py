@@ -101,6 +101,7 @@ AUTHOR_WITHHELD_PREFIXES = (
     "merlin.runtime.simulator",
     "merlin_experiments",
     "merlin.experiments",
+    "merlin.evaluation",
     # Migrated orchestration has the same author-private role as its legacy package.
     "merlin.development",
     # Operator-only consumers of the withheld packages above. Each needs a mined schedule package, the
@@ -193,6 +194,8 @@ module_access = _module
 
 
 MODULE_ACCESS = (
+    # Evaluation implementations retain the original host-only grader boundary.
+    _module("merlin.evaluation", "grader", directory=True),
     # Independent mesh gates/references are not candidate compiler source grants.
     _module("merlin.verification.mesh", "grader"),
     _module("merlin.verification.mesh_reference", "oracle", aliases=("merlin.compile.mesh_reference",)),
@@ -297,8 +300,8 @@ MODULE_ACCESS = (
     _module("merlin.targetgen.trace_check", "grader"),
     _module("merlin.targetgen.capsule_grade", "grader"),
     _module("merlin.targetgen.capsule_perf_ledger", "grader"),
-    _module("merlin.targetgen.capsule_tier_result", "grader"),
-    _module("merlin.targetgen.capsule_lane_evidence", "grader"),
+    _module("merlin.targetgen.capsule_tier_result", "grader", aliases=("merlin.evaluation.capsule.tier",)),
+    _module("merlin.targetgen.capsule_lane_evidence", "grader", aliases=("merlin.evaluation.capsule.lanes_evidence",)),
     _module("merlin.targetgen.executed_program", "grader"),
     _module("merlin.targetgen.oracle_readback", "grader"),
     _module("merlin.targetgen.native_model_values", "grader"),
@@ -327,7 +330,9 @@ MODULE_ACCESS = (
         "grader",
         aliases=("merlin_experiments.phase1.feedback.compiler_pass_parent_proof",),
     ),
-    _module("merlin.targetgen.capsule_candidate_context", "grader"),
+    _module(
+        "merlin.targetgen.capsule_candidate_context", "grader", aliases=("merlin.evaluation.capsule.model_context",)
+    ),
     _module(
         "merlin.targetgen.owned_host_model_execution",
         "grader",
@@ -388,10 +393,14 @@ MODULE_ACCESS = (
             "merlin.targetgen._capsule_bundle_worker",
             "merlin.targetgen.capsule_bundle",
             "merlin.targetgen.capsule_diagnostics",
+            "merlin.evaluation.capsule.runner",
+            "merlin.evaluation.capsule.bundle",
+            "merlin.evaluation.capsule.bundle_worker",
+            "merlin.evaluation.capsule.diagnostics",
         ),
     ),
     _module("merlin.targetgen.capsule_dram", "grader"),
-    _module("merlin.targetgen.capsule_source_identity", "grader"),
+    _module("merlin.targetgen.capsule_source_identity", "grader", aliases=("merlin.evaluation.capsule.source",)),
     _module(
         "merlin.targetgen.oot_runner",
         "grader",

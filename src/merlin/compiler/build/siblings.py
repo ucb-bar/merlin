@@ -234,13 +234,13 @@ def emit_selected(capsule, candidate_llvm, command_buffer, output, *, target, ti
     from xdsl.parser import Parser
 
     from merlin.compiler.build.spatial import normalize_unused_void_asm_results
+    from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
     from merlin.llvmlower import codegen, target_data_layout, toolchain
     from merlin.llvmlower.arena_bind import heap_demand
     from merlin.llvmlower.borrowed_buffer_calls import from_writers
     from merlin.llvmlower.compilation_recipe import CompilationRecipe
     from merlin.llvmlower.device_shim import LogicalBuffer, emit_logical_translation_unit
     from merlin.llvmlower.host_builder import PTR, FnBuilder, append_void_region
-    from merlin.llvmlower.pipeline import lower_to_llvm_ir
     from merlin.llvmlower.source_region_host import emit_ranked_source_entry
     from merlin.runtime.backends.base import harness_build_recipe
     from merlin.targetgen.contract.harness_abi import for_target

@@ -13,12 +13,12 @@ from pathlib import Path
 
 from merlin.common import invocation_record as I
 from merlin.common.jsonio import canonical_json
+from merlin.compiler.lower.native.transport import verify_llvm_dialect_product
 
 from .compiled_layout_query import query_object_layout, select_object
 from .descriptor_object import SECTION, layout_words
 from .descriptor_wrapper import DescriptorWrapperObservation, read, require
 from .layout_observation import _deadline, _remaining, _run
-from .llvm_dialect_product import verify_llvm_dialect_product
 from .target_data_layout import parse as parse_layout
 
 _ISSUED = weakref.WeakKeyDictionary()

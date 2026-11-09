@@ -17,8 +17,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from merlin.common.paths import ext_path, target_env_name
+from merlin.evaluation.capsule.adapters import OracleUnavailable
+from merlin.targetgen import oot_runner as capsule_oot_runner
 
-from .capsule_runner import OracleUnavailable
 from .contract import compile as oot_compile
 
 
@@ -131,7 +132,7 @@ def run_vcs_parallel(
 
     ``target`` is required and threaded into each per-capsule run so the grade uses that target's config
     (no silent default target)."""
-    from . import capsule_runner as CR
+    from merlin.evaluation.capsule import runner as CR
 
     if not vcs_available(target):
         return [
@@ -142,9 +143,9 @@ def run_vcs_parallel(
             }
             for c in capsules
         ]
-    pkg = CR.load_package(package_dir, contract=contract)
-    CR.integrity_scan(pkg)
-    CR.build_package(pkg)
+    pkg = capsule_oot_runner.load_package(package_dir, contract=contract)
+    capsule_oot_runner.integrity_scan(pkg)
+    capsule_oot_runner.build_package(pkg)
     adapters = {"L4": vcs_adapter(target)}
 
     def one(cap):

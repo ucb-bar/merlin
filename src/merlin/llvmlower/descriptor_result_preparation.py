@@ -20,11 +20,11 @@ from xdsl.utils.mlir_lexer import MLIRLexer
 
 from merlin.common import dense_float_ir, ir_lock
 from merlin.common.jsonio import write_pretty_json
+from merlin.compiler.lower.native.recipe import _identity
 from merlin.frontends import linalg_mlir
 
-from . import descriptor_result_identity as D
 from . import borrowed_buffer_calls as K
-from .lowering_recipe import _identity
+from . import descriptor_result_identity as D
 
 
 def _records(identities):
@@ -48,7 +48,11 @@ def _records(identities):
                 "result_argument": identity.result_argument,
                 "argument_types": [str(typ) for typ in identity.argument_types],
                 "argument_access": list(identity.argument_access),
-                **({"argument_layouts": [str(v) for v in identity.argument_layouts]} if identity.argument_layouts else {}),
+                **(
+                    {"argument_layouts": [str(v) for v in identity.argument_layouts]}
+                    if identity.argument_layouts
+                    else {}
+                ),
                 "borrowed_effects": None if identity.borrowed_effects is None else asdict(identity.borrowed_effects),
             }
         )
@@ -68,8 +72,11 @@ def _join_effects(identities, owner):
     """Bind exact original effects, never infer them from returned descriptors."""
     if owner is None:
         return
-    if (type(owner) is not K.BorrowedBufferCalls or len(owner.calls) != len(identities)
-            or any(type(call) is not K.BorrowedBufferCall for call in owner.calls)):
+    if (
+        type(owner) is not K.BorrowedBufferCalls
+        or len(owner.calls) != len(identities)
+        or any(type(call) is not K.BorrowedBufferCall for call in owner.calls)
+    ):
         raise ValueError("descriptor effects differ from the complete original identity roster")
     calls = {(call.wrapper_symbol, call.borrowed_symbol): call for call in owner.calls}
     if len(calls) != len(identities):
@@ -77,22 +84,25 @@ def _join_effects(identities, owner):
     for identity in identities:
         call = calls.get((identity.wrapper_symbol, identity.borrowed_symbol))
         expected = tuple(str(t) for t in D.argument_buffer_types(identity))
-        if (call is None or call.argument_types != expected or call.result_argument != identity.result_argument
-                or call.effects is not identity.borrowed_effects):
+        if (
+            call is None
+            or call.argument_types != expected
+            or call.result_argument != identity.result_argument
+            or call.effects is not identity.borrowed_effects
+        ):
             raise ValueError("descriptor effects differ from the exact original ABI or effect owner")
 
 
 def implementation_paths():
+    from merlin.compiler.lower.native import recipe as lowering_recipe
     from merlin.xdsl_dialects import _common
-
-    from . import lowering_recipe
 
     return tuple(
         dict.fromkeys(
             (
                 Path(__file__),
                 Path(K.__file__),
-                Path(__file__).with_name('borrowed_call_composition.py'),
+                Path(__file__).with_name("borrowed_call_composition.py"),
                 Path(__file__).with_name("lower.py"),
                 Path(lowering_recipe.__file__),
                 Path(linalg_mlir.__file__),
@@ -193,7 +203,7 @@ class DescriptorResultPreparation:
         if self.additional_calls is not None:
             self.additional_calls.revalidate()
             if _effects_state(self.additional_calls) != self._additional_state:
-                raise ValueError('additional original borrowed owner changed during validation')
+                raise ValueError("additional original borrowed owner changed during validation")
 
     def initial_calls(self):
         self.revalidate()
@@ -254,8 +264,11 @@ class DescriptorResultPreparation:
             "binding_stage": "after_automatic_source_passes_before_preprocessing",
             "selection": json.loads(self._selection),
             "borrowed_calls": None if self.effects is None else self.effects.record(),
-            **({'additional_borrowed_calls': self.additional_calls.record()}
-               if self.additional_calls is not None else {}),
+            **(
+                {"additional_borrowed_calls": self.additional_calls.record()}
+                if self.additional_calls is not None
+                else {}
+            ),
             "rewrites": self.rewrites,
             "calls": rows,
             "original_source": _identity(original_path),

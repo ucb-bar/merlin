@@ -16,6 +16,8 @@ from pathlib import Path
 from merlin.benchharness import hash_tree
 from merlin.common import invocation_record as I
 from merlin.common.digest import is_sha256
+from merlin.evaluation.capsule import adapters as capsule_adapters
+from merlin.evaluation.capsule import runner as CR
 from merlin.experiments.phase1.feedback.candidate_census import observe_passed_census
 from merlin.experiments.phase1.feedback.candidate_census import unknown as unknown_census
 from merlin.experiments.phase1.feedback.candidate_observations import (
@@ -24,7 +26,7 @@ from merlin.experiments.phase1.feedback.candidate_observations import (
 )
 from merlin.perf import compiled_static_features as S
 from merlin.runtime.backends.base import get_backend
-from merlin.targetgen import capsule_runner as CR
+from merlin.targetgen import capsule_common as capsule_capsule_common
 from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
 from merlin.targetgen.rtl import facts as RTL_FACTS
 
@@ -178,7 +180,7 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
     capsule = dict(
         policy.load_capsule(member, deadline=deadline)
         if diagnostic_policy(policy)
-        else CR.load_capsule(member.source_dir, contract=str(policy._contract_root))
+        else capsule_capsule_common.load_capsule(member.source_dir, contract=str(policy._contract_root))
     )
     required = tuple(capsule.get("required_oracle_tiers") or ())
     # Keep the full original obligations. The ordinary runner records missing
@@ -218,7 +220,7 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
                 run_id="functional",
                 contract=policy._contract_root,
                 target=policy.target_experiment.target,
-                oracle_adapters={"L2": CR.simulator_adapter("spike", policy.target_experiment.target)},
+                oracle_adapters={"L2": capsule_adapters.simulator_adapter("spike", policy.target_experiment.target)},
                 adapter_managed_tiers=("L2",),
                 timeout=remaining,
                 workers=workers,

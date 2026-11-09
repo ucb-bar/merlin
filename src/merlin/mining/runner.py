@@ -22,10 +22,12 @@ from typing import Any
 
 import numpy as np
 
+from merlin.compiler.lower.native import pipeline
+from merlin.llvmlower import custom_isa
+
 from ..common import schemas
 from ..common.yaml import load_yaml, write_yaml
 from ..llvmlower import codegen_env as _codegen_env
-from ..llvmlower import custom_isa, pipeline
 from ..runtime.backends import zephyr_model as zm
 from . import k1 as k1mod
 from .apply import apply_rvv_package

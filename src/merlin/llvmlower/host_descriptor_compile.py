@@ -149,8 +149,9 @@ def join_host_image(*, selection, build_root, product, image):
 
 def observe_host_descriptor_transport(*, selection, result):
     """Produce a live transport for the ordinary caller's own compiled image."""
+    from merlin.compiler.lower.native.transport import verify_llvm_dialect_product
+
     from .host_descriptor_call import HostDescriptorTransport, _retain_transport
-    from .llvm_dialect_product import verify_llvm_dialect_product
 
     require(type(selection) is HostDescriptorSelection, "host descriptor selection is unsupported")
     selection.verify()

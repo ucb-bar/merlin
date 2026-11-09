@@ -48,8 +48,9 @@ class HostDescriptorTransport:
         return id(self.selection), id(self.layout), self.root, self.image, self.pins, self.records, self.selection_json
 
     def verify(self):
+        from merlin.compiler.lower.native.transport import verify_llvm_dialect_product
+
         from .host_descriptor_compile import _prepared, join_host_image
-        from .llvm_dialect_product import verify_llvm_dialect_product
 
         require(
             _ISSUED.get(self) == self._identity(), "host descriptor transport was not observed by ordinary compilation"

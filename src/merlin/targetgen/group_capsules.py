@@ -26,6 +26,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from merlin.evaluation.capsule import adapters as capsule_adapters
+from merlin.evaluation.capsule import eligibility as capsule_eligibility
+
 from .group_capsule_entries import _IDENTITY_DROPS as _IDENTITY_DROPS
 from .group_capsule_entries import SCHEMA as SCHEMA
 from .group_capsule_entries import SOURCE_ROLE as SOURCE_ROLE
@@ -143,10 +146,11 @@ def run(
     """
     import yaml
 
-    from merlin.targetgen import capsule_runner, tier_policy
+    from merlin.evaluation.capsule import runner as capsule_runner
+    from merlin.targetgen import tier_policy
 
     experiment, _ = _experiment(target, declaration)
-    adapters = capsule_runner.oracle_adapters(target, experiment.sim_via) or {}
+    adapters = capsule_adapters.oracle_adapters(target, experiment.sim_via) or {}
     withheld: list[str] = []
     if max_tier:
         depth = tier_policy.tier_depth_order([*adapters, str(max_tier)])
@@ -189,7 +193,7 @@ def run(
 def _blind_spot_record(target: str, capsule: Mapping[str, Any], result: Mapping[str, Any], runs_root: Path):
     import json as _json
 
-    from merlin.targetgen import capsule_runner, oracle_blind_spots
+    from merlin.targetgen import oracle_blind_spots
 
     try:
         spots = oracle_blind_spots.for_target(target)
@@ -200,7 +204,7 @@ def _blind_spot_record(target: str, capsule: Mapping[str, Any], result: Mapping[
     if not spots:
         return None
     trace_path = (
-        runs_root / "runs" / capsule_runner.suite_for(target) / str(capsule.get("name")) / "generated"
+        runs_root / "runs" / capsule_eligibility.suite_for(target) / str(capsule.get("name")) / "generated"
     ) / "instruction_trace.json"
     trace = None
     if trace_path.is_file():

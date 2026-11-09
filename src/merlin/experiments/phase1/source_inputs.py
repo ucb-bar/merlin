@@ -158,6 +158,11 @@ def paths(
         if str(_source(f"merlin.experiments.execution.{module}").resolve()) not in execution_members.values():
             raise SpecError("managed execution implementation has a missing or foreign source owner")
     inputs.update(execution_members)
+    evaluation_members = _python_members(_source("merlin.evaluation.capsule").parent, "phase1:startup:evaluation:")
+    for module in ("runner", "operation", "model", "bundle"):
+        if str(_source(f"merlin.evaluation.capsule.{module}").resolve()) not in evaluation_members.values():
+            raise SpecError("capsule evaluation has a missing or foreign source owner")
+    inputs.update(evaluation_members)
     for key, module in (
         ("environment_parser", "merlin.targetgen.corpora"),
         ("source_digest", "merlin.common.digest"),
@@ -167,8 +172,8 @@ def paths(
         ("arrival_stamp", "merlin.common.arrival_stamp"),
         ("sandbox_bwrap", "merlin.targetgen.sandbox.bwrap"),
         ("sandbox_mount_visibility", "merlin.targetgen.sandbox.mount_visibility"),
-        ("capsule_diagnostics", "merlin.targetgen.capsule_diagnostics"),
-        ("capsule_bundle", "merlin.targetgen.capsule_bundle"),
+        ("capsule_diagnostics", "merlin.evaluation.capsule.diagnostics"),
+        ("capsule_bundle", "merlin.evaluation.capsule.bundle"),
         ("sandbox_host_surfaces", "merlin.targetgen.sandbox.host_surfaces"),
         ("sandbox_toolchain", "merlin.targetgen.sandbox.toolchain"),
         ("sandbox_claude_home", "merlin.targetgen.sandbox.claude_home"),
@@ -247,7 +252,7 @@ def paths(
         ("readback_codec", "merlin.runtime.out_b64"),
         ("binary_readback_codec", "merlin.runtime.out_bin"),
         ("simulation_certificate", "merlin.targetgen.simulation_certificate"),
-        ("capsule_source_identity", "merlin.targetgen.capsule_source_identity"),
+        ("capsule_source_identity", "merlin.evaluation.capsule.source"),
     ):
         inputs[f"phase1:startup:{key}"] = str(_source(module).resolve())
     # Pin the compatibility file too, independently of whether its exact module

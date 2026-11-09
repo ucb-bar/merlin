@@ -138,7 +138,8 @@ def _values(value):
 
 class _SourceModelBuild:
     def __init__(self, families, device, device_admission):
-        from . import borrowed_buffer_calls, fresh_tensor_writer, pipeline
+        from merlin.compiler.lower.native import pipeline
+        from merlin.llvmlower import borrowed_buffer_calls, fresh_tensor_writer
 
         self.families = families
         self.device, self.device_admission = device, device_admission

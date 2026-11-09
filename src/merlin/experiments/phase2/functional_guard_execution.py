@@ -15,6 +15,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from merlin.evaluation.capsule import model_runtime as capsule_model_runtime
 from merlin.targetgen.compiler_library import active_compiler_library
 
 from . import campaign
@@ -113,9 +114,8 @@ def require_inline_models(capsules):
         and active_compiler_library() is None
     ):
         return
-    from merlin.targetgen import capsule_runner
 
-    if capsule_runner.model_budget_seconds() is not None and any(
+    if capsule_model_runtime.model_budget_seconds() is not None and any(
         mapping_file(Path(path) / "capsule.yaml", yaml_file=True).get("kind") == "model" for path in capsules
     ):
         from merlin.experiments.phase1.feedback.compiler_profile_child import model_child_temporary_root

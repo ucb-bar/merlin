@@ -263,7 +263,7 @@ def _inventory(source):
 
 def _scalar_pipeline(*, hoist: bool, sink: bool):
     """Choose from the existing upstream registry without process env mutation."""
-    from .pipeline import _UPSTREAM_PASSES, _sink_dealloc_passes
+    from merlin.compiler.lower.native.policy import _UPSTREAM_PASSES, _sink_dealloc_passes
 
     dealloc = [
         "ownership-based-buffer-deallocation",

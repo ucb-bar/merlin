@@ -87,7 +87,7 @@ def _token(token: str) -> str:
 
 
 def _elision() -> str:
-    from merlin.targetgen.capsule_diagnostics import ELISION
+    from merlin.evaluation.capsule.diagnostics import ELISION
 
     return ELISION
 

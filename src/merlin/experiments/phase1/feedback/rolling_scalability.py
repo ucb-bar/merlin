@@ -296,7 +296,7 @@ class PerformanceFeedback:
             pool.shutdown(wait=True)
 
     def _case_root(self, name):
-        from merlin.targetgen.capsule_runner import suite_for
+        from merlin.evaluation.capsule.eligibility import suite_for
 
         return self.runs_root / "runs" / suite_for(self.selection.context.target) / name
 

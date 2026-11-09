@@ -19,6 +19,8 @@ import yaml
 
 from merlin.common.paths import repo_root
 from merlin.common.strict_json import loads
+from merlin.evaluation.capsule import bundle as capsule_bundle
+from merlin.targetgen import capsule_common as capsule_capsule_common
 
 SCHEMA = "merlin.test.public_parameter_chain_baseline.v1"
 REQUIRED_TIERS = ("L0", "L1", "L2", "L3")
@@ -98,11 +100,11 @@ def prepare(selected, destination, monkeypatch):
     """Return a LIVE materialized owner only after genuine source/value/ABI checks."""
     from merlin.common import quant_formats as QF
     from merlin.compiler.frontend.materialized import MaterializedModelInputs
+    from merlin.evaluation.capsule import bundle_worker
     from merlin.experiments.capture_execution.m2m_origin import git_origin
     from merlin.experiments.phase0 import capture_execution_attestation as A
     from merlin.experiments.phase0 import capture_selection as selection_owner
     from merlin.experiments.phase0 import sealed_native_program as N
-    from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen import capsule_source as S
     from merlin.targetgen import target_registry as TR
     from merlin.targetgen.contract import schemas as CS
@@ -172,10 +174,10 @@ def prepare(selected, destination, monkeypatch):
             TR.observed_contract.__wrapped__,
             git_origin,
             S._m2m_python,
-            CR.load_capsule,
-            CR._model_runtime_bundle,
-            CR._content_identity,
-            CR._file_identity,
+            capsule_capsule_common.load_capsule,
+            capsule_bundle._model_runtime_bundle,
+            capsule_bundle._content_identity,
+            capsule_bundle._file_identity,
             CS.validate_capsule,
             CS.validate,
             CS.load_schema,
@@ -200,7 +202,7 @@ def prepare(selected, destination, monkeypatch):
         P.pin(P.canonical(str(m2m / "m2m/api.py"))),
         P.pin(root / "src/merlin/resources/contracts/schemas/capsule.schema.json"),
         P.pin(root / "src/merlin/resources/schemas/quant_formats.registry.yaml"),
-        P.pin(Path(CR.__file__).with_name("_capsule_bundle_worker.py")),
+        P.pin(Path(bundle_worker.__file__)),
     ]
 
     def current():
@@ -265,11 +267,11 @@ def prepare(selected, destination, monkeypatch):
         capsule_dir = S.write_model_capsule(entry, binding, destination / "capsules", source=source_owner)
     current()
     assert source_owner.attestations == [attestation]
-    capsule = CR.load_capsule(capsule_dir, contract=root / "src/merlin/resources/contracts")
+    capsule = capsule_capsule_common.load_capsule(capsule_dir, contract=root / "src/merlin/resources/contracts")
     current()
     assert capsule["numeric_policy"] == R.POLICY and capsule["required_oracle_tiers"] == list(REQUIRED_TIERS)
     assert capsule["source_role"] == "pytorch_model_slice"
-    with CR._model_runtime_bundle(capsule, timeout=300, artifact_root=destination / "runtime") as (
+    with capsule_bundle._model_runtime_bundle(capsule, timeout=300, artifact_root=destination / "runtime") as (
         bundle,
         provenance,
         verify,

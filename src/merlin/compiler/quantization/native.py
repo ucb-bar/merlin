@@ -53,8 +53,8 @@ def prepare_tile_request(
     Target arithmetic and geometry are offered by the OOT hook. Its returned
     correspondence must still describe the caller's actual staged program.
     """
+    from merlin.compiler.quantization.contraction.contract import DiagnosticMatmulTile
     from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
-    from merlin.semantic_compiler.precision_contract import DiagnosticMatmulTile
 
     if mode != "diagnostic" or binding is None:
         raise LinalgBridgeError(
@@ -89,7 +89,7 @@ def prepare_tile_request(
 
 def prepared_static_inputs(binding, plan, staged_root: Path, execution_plan: dict):
     """Check the target's source-bound constant payloads before publication."""
-    from merlin.semantic_compiler.precision_constants import PreparedStaticInput
+    from merlin.compiler.quantization.contraction.constants import PreparedStaticInput
 
     prepare = getattr(binding, "prepare_precision_constants", None)
     if not callable(prepare):

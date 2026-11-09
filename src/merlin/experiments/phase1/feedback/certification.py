@@ -18,6 +18,7 @@ from typing import Any
 
 import yaml
 
+from merlin.evaluation.capsule import availability as capsule_availability
 from merlin.experiments.phase1.feedback import loop_grading as LG
 from merlin.targetgen.target_experiment import load_target_experiment
 
@@ -846,11 +847,12 @@ def _cycle_accurate_checkpoint_enabled(*, inputs: LG.GradingInputs) -> tuple[boo
 def _loop_tier_name(inputs: LG.GradingInputs) -> str | None:
     """The fast loop tier THIS target grades on, derived from its own adapter map (``None`` when the
     ladder is unresolvable — promotion then falls back to the capsule's overall status)."""
-    from merlin.targetgen import capsule_runner as _CR
 
     try:
         te = load_target_experiment(inputs.context.descriptor)
-        loop = _CR.qa_loop_adapters(te.target, te.sim_via, declared_tiers=LG.declared_loop_tiers(inputs.policy_roots))
+        loop = capsule_availability.qa_loop_adapters(
+            te.target, te.sim_via, declared_tiers=LG.declared_loop_tiers(inputs.policy_roots)
+        )
     except Exception:  # noqa: BLE001 — unresolvable ladder: no tier name, never a guessed one
         return None
     return sorted(loop)[0] if loop else None

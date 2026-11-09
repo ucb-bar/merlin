@@ -221,7 +221,7 @@ def translate(state: TranslationState, op, ordinal):
             raise LinalgBridgeError("matmul shape or initialized result type differs")
         node_id = f"op{ordinal}r0"
         if op.name == "linalg.matmul" and lhs_type.dtype == "f32":
-            from .precision_intake import _check_matmul_body
+            from merlin.compiler.quantization.contraction.intake import _check_matmul_body
 
             if set(op.properties) != {"indexing_maps", "operandSegmentSizes"} or any(
                 not key.startswith("prov.") for key in op.attributes

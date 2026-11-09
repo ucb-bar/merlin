@@ -386,6 +386,7 @@ def emit(
     from xdsl.dialects.builtin import ModuleOp
     from xdsl.parser import Parser
 
+    from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
     from merlin.llvmlower import codegen, toolchain
     from merlin.llvmlower.compilation_recipe import CompilationRecipe
     from merlin.llvmlower.connected_spatial import group_connected_spatial
@@ -397,7 +398,6 @@ def emit(
         require_device_offload_artifacts,
     )
     from merlin.llvmlower.host_builder import FnBuilder, append_void_region
-    from merlin.llvmlower.pipeline import lower_to_llvm_ir
     from merlin.llvmlower.spatial_scratch_abi import emit_spatial_raw_entry
     from merlin.llvmlower.tensor_helper_inlining import composition_features
     from merlin.targetgen import corpus_spec as CS

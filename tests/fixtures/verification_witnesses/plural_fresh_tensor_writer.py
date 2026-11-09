@@ -49,9 +49,9 @@ def fixture(source=SOURCE):
 def run_plural_results_native_against_separate_calls_and_reference(
     tmp_path, declaration_abi, optimization, upstream_host_tools
 ):
+    from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
     from merlin.llvmlower.abi import HostModel
     from merlin.llvmlower.codegen import mlir_runtime_c
-    from merlin.llvmlower.pipeline import lower_to_llvm_ir
     from merlin.llvmlower.toolchain import clang
 
     adapter = tmp_path / "adapter.c"

@@ -33,6 +33,10 @@ Current implementation entrypoints are:
 
 | Responsibility | Source to open | Current caller |
 | --- | --- | --- |
+| Native lowering lifecycle and transport | `src/merlin/compiler/lower/native/pipeline.py`, `policy.py`, `arguments.py`, `reports.py`, `recipe.py` | Scalar/vector/control callers use shared native invocation; actual target implementations remain OOT |
+| Source-bound contraction precision | `src/merlin/compiler/quantization/contraction/` | Frontend/build preparation and Atlas consume canonical records, intake, conversions and lowering; independent verification remains separate |
+| Independent capsule execution and assessment | `src/merlin/evaluation/capsule/operation.py`, `model.py`, `model_assessment.py`, `ladder.py` | Host-only grading and authoring feedback; source fingerprints include the actual implementation package |
+| Authoring lifecycle | `src/merlin/experiments/phase1/authoring.py` | Controller retains the admitted lease; session, rounds, certification and completion have separate cohesive owners |
 | Scalar computation pass sequence | `src/merlin/compiler/lower/scalar/pipeline.py` | Existing whole-model LLVM pipeline |
 | Shared numerical and source preprocessing | `compiler/frontend/preprocess.py`, `repairs.py`, `quantization/linalg.py`, `transforms/matmul.py`, `transforms/dead.py`, `lower/scalar/casts.py`, `ir/provenance.py` | Existing lowering, editable shared pass exports and fresh SDK27; historical preprocessing import remains an exact module alias |
 | Shared terminal LLVM conversion and index-width binding | `src/merlin/compiler/lower/llvm/passes.py` | Scalar, vector and OpenMP pipelines |

@@ -48,9 +48,9 @@ TAG = "esc"  # unique remote-tag prefix: other agents measure on this board conc
 
 def build_gemm(*, M: int, N: int, K: int, dtype: str, features: list[str], tmp: Path) -> tuple[Path | None, str]:
     """Build the standalone K1 GEMM driver around OUR compiler-emitted kernel. (binary, detail)."""
+    from merlin.compiler.passes.contract import PipelineError
     from merlin.llvmlower import c_runtime, toolchain
     from merlin.llvmlower.lower import lower_model_file
-    from merlin.llvmlower.pipeline import PipelineError
     from merlin.mining import workloads
     from merlin.mining.registry import load_rvv_package
     from merlin.runtime.backends import zephyr_model as zm

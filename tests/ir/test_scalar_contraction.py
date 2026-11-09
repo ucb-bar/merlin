@@ -8,9 +8,9 @@ import pytest
 from corefixtures.compiler_programs import contraction_source as source
 from corefixtures.compiler_programs import ordered_contraction as ordered
 
+from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
 from merlin.llvmlower.abi import HostModel
 from merlin.llvmlower.codegen import mlir_runtime_c
-from merlin.llvmlower.pipeline import lower_to_llvm_ir
 from merlin.llvmlower.scalar_contraction import (
     EIGHT_OUTPUTS_FEATURE,
     FEATURE,

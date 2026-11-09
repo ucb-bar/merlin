@@ -25,8 +25,9 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
+
 from . import codegen
-from .pipeline import lower_to_llvm_ir
 
 MERLIN_INLINE_ASM = "merlin.inline_asm"
 

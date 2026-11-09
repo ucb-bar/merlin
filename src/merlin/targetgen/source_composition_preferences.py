@@ -106,9 +106,9 @@ def host_preparation(preferences, *, target, dtype="fp32", composed=False, lane=
         return options, selection
     import yaml
 
+    from merlin.evaluation.capsule.model_inputs import _model_frozen_input, _resolve_model_host_lane
     from merlin.experiments.corpus.numeric_policy import numeric_profile_path
     from merlin.llvmlower.host_graph_policy import read_host_graph_policy
-    from merlin.targetgen.capsule_runner import _model_frozen_input, _resolve_model_host_lane
     from merlin.targetgen.software_spec import software_spec_path_for_recipe
 
     experiment, _, identity = lane if lane is not None else _resolve_model_host_lane(target, dtype)

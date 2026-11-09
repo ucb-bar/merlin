@@ -408,7 +408,7 @@ def run_source(*, tag_bmm_tails: bool = False) -> str:
     # This transport splits the same scalar pipeline as the ordinary runners.
     # Keep its host and ownership markers executable too; otherwise the native
     # pass manager receives private marker names as unregistered MLIR passes.
-    from .pipeline import (
+    from merlin.compiler.lower.native.stages import (
         _AUTOMATIC_HOST_FEATURES_PRELUDE,
         _BROADCAST_MATH_HOIST_PRELUDE,
         _FMA_INTRINSIC_PRELUDE,

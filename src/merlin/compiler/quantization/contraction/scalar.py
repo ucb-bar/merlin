@@ -11,10 +11,11 @@ import json
 from dataclasses import dataclass
 from hashlib import sha256
 
-from .model import IndexMap, KernelRequest, SemanticNode, TensorType
-from .precision_intake import SourceValueRef
-from .precision_transform import _SOURCE_MAPS, BoundaryConversion, MatmulTileProfile, _permutation
-from .precision_values import contraction_restore_exponent
+from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType
+
+from .intake import SourceValueRef
+from .transform import _SOURCE_MAPS, BoundaryConversion, MatmulTileProfile, _permutation
+from .values import contraction_restore_exponent
 
 
 @dataclass(frozen=True)

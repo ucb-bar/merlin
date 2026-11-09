@@ -20,7 +20,6 @@ merlin/python/merlin/dse_guidance/insight_mining.py  # 5380
 merlin/python/merlin/dse_guidance/presentation_plots.py  # 1520
 merlin/python/merlin/llvmlower/impr_features.py  # 4080
 merlin/python/merlin/llvmlower/passes_quant_int.py  # 1886
-merlin/python/merlin/llvmlower/pipeline.py  # 2240
 merlin/python/merlin/mining/k1.py  # 2649
 merlin/python/merlin/perf/calibration.py  # 1581
 merlin/python/merlin/perf/harvest.py  # 1733
@@ -28,7 +27,6 @@ merlin/python/merlin/perf/host_source_witness.py  # 2016
 merlin/python/merlin/runtime/backends/zephyr_model.py  # 3537
 merlin/python/merlin/targetgen/capability_discovery.py  # 3051
 merlin/python/merlin/targetgen/capsule_grade.py  # 2473
-merlin/python/merlin/targetgen/capsule_runner.py  # 6825
 merlin/python/merlin/targetgen/capsule_source.py  # 4236
 merlin/python/merlin/targetgen/conformance.py  # 2899
 merlin/python/merlin/targetgen/corpus_spec.py  # 2552

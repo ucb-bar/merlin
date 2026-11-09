@@ -9,6 +9,7 @@ from pathlib import Path
 from merlin.experiments.phase1.brokers.common_transforms import CommonTransformService
 from merlin.experiments.phase2.contracts import exact_tree_record, sha256_file
 from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
+from merlin.targetgen import capsule_common as capsule_capsule_common
 from merlin.targetgen.public_codegen_budget import policy_from_profile, resources_complete
 
 
@@ -280,7 +281,6 @@ def verify_retained_resource_observation(run_dir, *, selection_path, verdict_pat
     from merlin.common.tree_hash import hash_tree
     from merlin.experiments.phase0 import public_scale_sources
     from merlin.experiments.phase2.retained_revisions import source_inventory
-    from merlin.targetgen import capsule_runner
     from merlin.targetgen.sandbox import bwrap
 
     from . import compile_only, compiler_profile_runtime, scale_probe_child
@@ -355,7 +355,7 @@ def verify_retained_resource_observation(run_dir, *, selection_path, verdict_pat
             for row in facts_document.get("facts", {}).get("arrays", [])
             if type(row.get("cols")) is int and row["cols"] > 0
         }
-        capsules = capsule_runner.discover_capsules(str(public), labels={"public", "dev"}, contract=contract)
+        capsules = capsule_capsule_common.discover_capsules(str(public), labels={"public", "dev"}, contract=contract)
         cases, manifest = public_scale_sources.derive(
             capsules,
             selected=",".join(policy["capsules"]),

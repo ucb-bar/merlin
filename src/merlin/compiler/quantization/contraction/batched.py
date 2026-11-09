@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from math import prod
 
-from .contraction_precision import SemanticContractionPrecision
-from .model import ConstantBinding, IndexMap, KernelRequest, SemanticNode, TensorType
-from .precision_intake import SourceValueRef
-from .precision_transform import _SOURCE_MAPS, BoundaryConversion, MatmulTileProfile
+from merlin.semantic_compiler.model import ConstantBinding, IndexMap, KernelRequest, SemanticNode, TensorType
+
+from .intake import SourceValueRef
+from .scalar import SemanticContractionPrecision
+from .transform import _SOURCE_MAPS, BoundaryConversion, MatmulTileProfile
 
 
 @dataclass(frozen=True)
@@ -194,7 +195,7 @@ class BatchedContractionPrecision:
 
 
 def lower_batched_contraction(source: KernelRequest, *, profile: MatmulTileProfile) -> BatchedContractionPrecision:
-    from .contraction_precision import lower_semantic_contraction
+    from .scalar import lower_semantic_contraction
 
     plan = plan_batched_contraction(source)
     return BatchedContractionPrecision(plan, lower_semantic_contraction(plan.matrix_source, profile=profile))

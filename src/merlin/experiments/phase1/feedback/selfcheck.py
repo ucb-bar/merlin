@@ -33,6 +33,9 @@ import threading
 import time
 from pathlib import Path
 
+from merlin.evaluation.capsule import adapters as capsule_adapters
+from merlin.evaluation.capsule import availability as capsule_availability
+from merlin.evaluation.capsule import eligibility as capsule_eligibility
 from merlin.experiments.phase1.context import (
     InvocationContext,
     add_context_arguments,
@@ -83,8 +86,8 @@ from merlin.experiments.phase1.feedback.selfcheck_selectors import (
 )
 from merlin.experiments.phase1.feedback.selfcheck_selectors import select_capsules
 from merlin.experiments.phase1.timing import barrier_measurements
+from merlin.targetgen import capsule_common as capsule_capsule_common
 from merlin.targetgen import capsule_grade as CG  # build+run+compare
-from merlin.targetgen import capsule_runner as CR  # tier adapters
 
 from ..compiler_library import selected_child
 from . import selfcheck_progress as SP
@@ -307,28 +310,30 @@ def _adapters(sim: str, target: str, sim_via: str | None, *, readback_policy=Non
     if sim == REQUIRED_SIM:
         # The selection honours MERLIN_REQUIRED_RTL_ENGINE itself (`chipyard_l3_selection`), so there
         # is no named engine here for the pin to refuse.
-        return dict(CR.qa_checkpoint_adapters(target, sim_via, **kwargs)), sim
+        return dict(capsule_availability.qa_checkpoint_adapters(target, sim_via, **kwargs)), sim
     policy_error = _sim_policy_error(sim, sim_via)
     if policy_error:
         raise ValueError(policy_error)
     if sim == "vcs" and readback_policy is not None:
         raise ValueError("VCS self-check does not support the selected invocation readback policy")
     if sim_via == "chipyard":
-        ad = {"L2": CR.simulator_adapter("spike", target, **kwargs)}
+        ad = {"L2": capsule_adapters.simulator_adapter("spike", target, **kwargs)}
         if sim in ("verilator", "gsim"):
             # Build L3 from the engine the caller NAMED. This used to hardcode "verilator", which made
             # --sim gsim silently certify on verilator -- a result attributed to the wrong engine. The
             # adapter factory is engine-generic (it forwards simulator=sim and gates on
             # backend.available(sim)), so an absent engine fails closed here rather than substituting.
             selection = grade_l3_selection(target, sim)
-            ad["L3"] = CR.simulator_adapter(sim, target, **kwargs, **({"selection": selection} if selection else {}))
+            ad["L3"] = capsule_adapters.simulator_adapter(
+                sim, target, **kwargs, **({"selection": selection} if selection else {})
+            )
         if sim == "vcs":
             # In the unpinned legacy ladder VCS is an L4 addition above Verilator L3.  An experiment-wide
             # VCS pin, however, means *no other RTL engine may run*, so do not build that Verilator rung.
             # If VCS is unavailable the pinned run must refuse instead of silently substituting.
             required = _required_rtl_engine()
             if required is None:
-                ad["L3"] = CR.simulator_adapter("verilator", target)
+                ad["L3"] = capsule_adapters.simulator_adapter("verilator", target)
             try:
                 from merlin.targetgen import vcs_adapter as VA  # optional, config-gated
 
@@ -342,7 +347,7 @@ def _adapters(sim: str, target: str, sim_via: str | None, *, readback_policy=Non
                 sim = "verilator"
         return ad, sim
     # non-chipyard target: its contract-resolved tiers (arc / program oracle); --sim does not apply.
-    return CR.oracle_adapters(target, sim_via, **kwargs), sim
+    return capsule_adapters.oracle_adapters(target, sim_via, **kwargs), sim
 
 
 def _model_layers(
@@ -400,7 +405,7 @@ def _model_layers(
                 if member.is_file():
                     (narrowed / name / member.name).symlink_to(member.resolve())
         root = narrowed
-    adapters = CR.oracle_adapters(context.target, experiment.sim_via, **readback_kwargs(context)) or {}
+    adapters = capsule_adapters.oracle_adapters(context.target, experiment.sim_via, **readback_kwargs(context)) or {}
     # The functional tier only: an elaborated-RTL simulator spends about twenty minutes on ONE such
     # layer. Every row names the tiers withheld, so a pass here reads as the screen it is.
     ladder = tier_policy.tier_depth_order(adapters)
@@ -432,7 +437,9 @@ def _model_layers(
     # root this invocation actually graded.
     graded_now = {d.name for d in root.iterdir() if (d / "capsule.yaml").is_file()}
     closed_rows = _qc._per_capsule_from_results(runs_root)
-    for result_path in sorted((runs_root / "runs" / CR.suite_for(context.target)).glob("*/capsule_result.json")):
+    for result_path in sorted(
+        (runs_root / "runs" / capsule_eligibility.suite_for(context.target)).glob("*/capsule_result.json")
+    ):
         if result_path.parent.name not in graded_now:
             continue
         try:
@@ -791,7 +798,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         # Validate the REQUEST against everything the endpoint can reach, not against the cheap loop
         # ladder -- that conflation is exactly what select_tiers documents, and it is why a cert tier
         # (derived as oracle_adapters - qa_loop_adapters) could never be asked for.
-        _full = dict(CR.oracle_adapters(_tgt, _sim_via, **readback_kwargs(context)))
+        _full = dict(capsule_adapters.oracle_adapters(_tgt, _sim_via, **readback_kwargs(context)))
         _full.update(adapters)  # a --sim-selected tier is reachable by definition
         adapters, _tier_err = select_tiers(_full, adapters, a.tiers)
         if _tier_err:
@@ -840,7 +847,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     # build + run + compare (parallel); CG.grade handles the agent's 4 entrypoints + the tier ladder.
     # Publish completed rows independently of the final verdict: a few cycle-cap cases must not hide all
     # fast feedback. The final response remains a separate atomic document owned by the broker.
-    cb_root = runs_root / "runs" / CR.suite_for(_tgt)
+    cb_root = runs_root / "runs" / capsule_eligibility.suite_for(_tgt)
     _progress_stop = threading.Event()
     _progress_thread = None
     if a.progress_out:
@@ -969,7 +976,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     _results = sorted(cb_root.glob("*/capsule_result.json")) if cb_root.exists() else []
     closed_rows = _qc._per_capsule_from_results(runs_root)
     try:
-        selected = CR.discover_capsules(
+        selected = capsule_capsule_common.discover_capsules(
             caps_root,
             labels={"public", "dev"},
             contract=contract if contract is not None else context.repo / "src/merlin/resources/contracts",

@@ -19,6 +19,7 @@ from pathlib import Path
 import yaml
 
 from merlin.benchharness import hash_tree
+from merlin.evaluation.capsule import adapters as capsule_adapters
 from merlin.experiments.phase1.context import (
     InvocationContext,
     add_context_arguments,
@@ -34,7 +35,8 @@ from merlin.experiments.phase1.feedback import private_instruction_coordinator a
 from merlin.experiments.phase1.feedback import private_instruction_declaration as instruction_declaration
 from merlin.experiments.phase1.feedback.private_facts import selected_input_facts
 from merlin.targetgen import capsule_grade as CG
-from merlin.targetgen import capsule_runner as CR
+from merlin.targetgen import oracle_policy as capsule_oracle_policy
+from merlin.targetgen import runner_config as capsule_runner_config
 
 from ..compiler_library import selected_child
 
@@ -170,10 +172,10 @@ def _formal_model_simulator(target: str) -> dict:
     decision.  A target may supply L3 through an adapter while leaving the manifest's static ``tier_sim``
     map empty, so consulting that map here rejects a perfectly valid arc-routed target before grading.
     """
-    cfg = CR._config_for_target(target, None, "i8xi8_i32")
+    cfg = capsule_runner_config._config_for_target(target, None, "i8xi8_i32")
     if FORMAL_REQUIRED_TIER not in cfg.rtl_tiers:
         raise RuntimeError(f"formal tier {FORMAL_REQUIRED_TIER} is not an RTL tier for target {target}")
-    selected = dict(CR.describe_l3_engine(target))
+    selected = dict(capsule_oracle_policy.describe_l3_engine(target))
     if not selected.get("available"):
         raise RuntimeError(
             f"formal tier {FORMAL_REQUIRED_TIER} has no available simulator for target {target}: "
@@ -418,10 +420,10 @@ def _score(
     # chipyard->spike/verilator, else arc) — never pass None here, which historically fell back to the
     # gemmini spike/verilator MLIR-lowering oracle and mis-graded atlas (torch-mlir run_lowering.py crash).
     # `{}` = honest no-oracle (L0/L1/trace only). sim_via is self-resolved from the contract.
-    adapters = {} if no_oracle else CR.oracle_adapters(context.target, **readback_kwargs(context))
+    adapters = {} if no_oracle else capsule_adapters.oracle_adapters(context.target, **readback_kwargs(context))
     functional_hidden = hidden_capsule_mode == "functional_spike"
     if functional_hidden:
-        cfg = CR._config_for_target(context.target, None, "i8xi8_i32")
+        cfg = capsule_runner_config._config_for_target(context.target, None, "i8xi8_i32")
         if (
             labels != {"hidden"}
             or no_oracle
@@ -1188,7 +1190,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "iterations": len(list((run_dir / "iterations").glob("iteration_*"))),
         "oracle_mode": "no_oracle(L0/L1/trace)"
         if a.no_oracle
-        else f"contract-routed({'+'.join(sorted(CR.oracle_adapters(context.target)))})",
+        else f"contract-routed({'+'.join(sorted(capsule_adapters.oracle_adapters(context.target)))})",
         # HONEST gradeability: a --no-oracle run is a structure-only smoke — the numeric verdict is
         # withheld (capsules read back not_gradeable_no_oracle, never a numeric pass), so the run is NOT
         # gradeable. A graded run carries gradeable=true. Sourced from the grade score (gradeable flag).
