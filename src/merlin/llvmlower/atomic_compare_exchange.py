@@ -97,7 +97,7 @@ def _cas_rewrite(ctx, module, *, word_views=False):
         if (word_views and op.name == 'memref.generic_atomic_rmw' and op.results
                 and str(op.results[0].type) in ('f32', 'f64')):
             memory, index, value, width, kind = _word_match(op)
-            plans.append((op, memory, index, (value,), width, 'word', kind))
+            plans.append((op, memory, index, () if value is None else (value,), width, 'word', kind))
         elif (match := _cas_match(op)) is not None:
             memory, index, comparison, value, width = match
             plans.append((op, memory, index, (comparison, value), width, 'cas', 'cas'))
@@ -114,6 +114,10 @@ def _cas_rewrite(ctx, module, *, word_views=False):
     symbols = {ir.StringAttr(op.attributes['sym_name']).value for op in module.body.operations if 'sym_name' in op.attributes}
     helpers = {}
     for op, memory, index, values, width, family, kind in plans:
+        if family == 'word' and (kind == 'constant-float' or kind.startswith('constant-int:')):
+            with ctx, ir.InsertionPoint(op):
+                constant = values[0].clone()
+            values, kind = (constant.results[0],), 'exchange-float' if kind == 'constant-float' else kind.removeprefix('constant-int:')
         key = (family, width, kind)
         if key not in helpers:
             ordinal = 0

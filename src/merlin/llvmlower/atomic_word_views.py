@@ -31,6 +31,35 @@ def _word_match(op):
     def cast(operation, source, destination):
         return (operation.name == 'arith.bitcast' and tuple(operation.operands) == (source,)
                 and len(operation.results) == 1 and operation.results[0].type == destination)
+    if len(operations) == 1 and operations[0].name == 'memref.atomic_yield':
+        value, = operations[0].operands
+        if value == block.arguments[0]:
+            op.verify()
+            return (*op.operands, None, width, 'identity')
+        if value.type == block.arguments[0].type and not (isinstance(value, ir.OpResult) and value.owner.operation.block == block):
+            op.verify()
+            return (*op.operands, value, width, 'exchange-float')
+        raise ValueError('atomic assignment must retain an outside floating scalar')
+    if (len(operations) == 2 and operations[0].name == 'arith.constant' and not operations[0].operands
+            and len(operations[0].results) == 1 and operations[0].results[0].type == block.arguments[0].type
+            and operations[1].name == 'memref.atomic_yield'
+            and tuple(operations[1].operands) == tuple(operations[0].results)):
+        op.verify()
+        return (*op.operands, operations[0], width, 'constant-float')
+    constant = None
+    if len(operations) in (3, 5):
+        constants = [item for item in operations if item.name == 'arith.constant']
+        if (len(constants) == 1 and not constants[0].operands and len(constants[0].results) == 1
+                and constants[0].results[0].type == integer):
+            constant = constants[0]
+            operations = tuple(item for item in operations if item != constant)
+    if len(operations) == 3:
+        viewed, stored, terminal = operations
+        if (cast(viewed, block.arguments[0], integer) and cast(stored, viewed.results[0], block.arguments[0].type)
+                and terminal.name == 'memref.atomic_yield' and tuple(terminal.operands) == tuple(stored.results)):
+            op.verify()
+            return (*op.operands, None, width, 'identity')
+        raise ValueError('atomic identity requires exact inverse current-word bitcasts')
     if len(operations) == 4:
         viewed, updated, stored, terminal = operations
         if (not cast(viewed, block.arguments[0], integer) or updated.name not in _WORD_OPS
@@ -50,20 +79,24 @@ def _word_match(op):
             raise ValueError('word exchange requires one outside word and its storage bitcast')
         kind = 'xchg'
     else:
-        raise ValueError('word atomics require an exact update/bitcast/yield body')
-    if (value is None or value.type != integer or isinstance(value, ir.OpResult) and value.owner.operation.block == block
+        raise ValueError('word atomics require an exact update/bitcast/yield body; found ' + ', '.join(item.name for item in operations))
+    if (value is None or value.type != integer or isinstance(value, ir.OpResult) and value.owner.operation.block == block and (constant is None or value.owner.operation != constant)
             or value == block.arguments[0] or terminal.name != 'memref.atomic_yield'
             or tuple(terminal.operands) != tuple(stored.results)):
         raise ValueError('word atomic value must be an original outside-region integer scalar')
     op.verify()
+    if constant is not None:
+        if value != constant.results[0]:
+            raise ValueError('atomic word constant must be the actual update operand')
+        value, kind = constant, 'constant-int:' + kind
     return (*op.operands, value, width, kind)
 
 
 def _word_source(symbol, width, kind):
     import json
-    if width not in (32, 64) or kind not in (*_WORD_OPS.values(), 'xchg'):
+    if width not in (32, 64) or kind not in (*_WORD_OPS.values(), 'xchg', 'identity', 'exchange-float'):
         raise ValueError('unqualified native word atomic operation or width')
-    return """module {
+    result = """module {
       func.func private @SYMBOL(%buffer: memref<?xfWIDTH>, %index: index, %value: iWIDTH) -> fWIDTH attributes {llvm.linkage = #llvm.linkage<internal>} {
         %bytes = arith.constant BYTES : index
         %base = memref.extract_aligned_pointer_as_index %buffer : memref<?xfWIDTH> -> index
@@ -75,22 +108,42 @@ def _word_source(symbol, width, kind):
         %floating = arith.bitcast %old : iWIDTH to fWIDTH
         func.return %floating : fWIDTH
       }
-    }""".replace('WIDTH', str(width)).replace('BYTES', str(width // 8)).replace('KIND', '_' + kind if kind in ('and', 'or', 'xor') else kind).replace('SYMBOL', json.dumps(symbol))
+    }"""
+    if kind == 'identity':
+        result = result.replace(', %value: iWIDTH', '').replace(
+            '%old = llvm.atomicrmw KIND %pointer, %value', '%zero = arith.constant 0 : iWIDTH\n        %old = llvm.atomicrmw _or %pointer, %zero')
+    elif kind == 'exchange-float':
+        result = result.replace('%value: iWIDTH', '%value: fWIDTH').replace(
+            'llvm.atomicrmw KIND %pointer, %value acq_rel : !llvm.ptr, iWIDTH',
+            'llvm.atomicrmw xchg %pointer, %value acq_rel : !llvm.ptr, fWIDTH').replace(
+            '%floating = arith.bitcast %old : iWIDTH to fWIDTH', '').replace('func.return %floating', 'func.return %old')
+    return result.replace('WIDTH', str(width)).replace('BYTES', str(width // 8)).replace(
+        'KIND', '_' + kind if kind in ('and', 'or', 'xor') else kind).replace('SYMBOL', json.dumps(symbol))
 
 
 def _word_helper_equal(op, symbol, module):
     # This grants synchronous borrowing only. Reconstruct from the actual
     # primitive/type, never the symbol spelling, source tag or saved plan.
     block = op.regions[0].blocks[0]
-    if len(block.arguments) != 3 or str(block.arguments[2].type) not in ('i32', 'i64'):
+    signature = ir.FunctionType(ir.TypeAttr(op.attributes['function_type']).value)
+    if len(signature.results) != 1 or str(signature.results[0]) not in ('f32', 'f64'):
+        return False
+    width = int(str(signature.results[0])[1:])
+    if len(block.arguments) == 2:
+        kinds = ('identity',)
+    elif len(block.arguments) == 3 and str(block.arguments[2].type) == 'i' + str(width):
+        kinds = (*_WORD_OPS.values(), 'xchg')
+    elif len(block.arguments) == 3 and block.arguments[2].type == signature.results[0]:
+        kinds = ('exchange-float',)
+    else:
         return False
     atomics = [item for item in _cas_walk(op) if item.name == 'llvm.atomicrmw']
     if len(atomics) != 1 or 'bin_op' not in atomics[0].attributes:
         return False
     from torch_mlir import passmanager as _word_pm
-    for kind in (*_WORD_OPS.values(), 'xchg'):
+    for kind in kinds:
         with module.context:
-            reference = ir.Module.parse(_word_source(symbol, int(str(block.arguments[2].type)[1:]), kind))
+            reference = ir.Module.parse(_word_source(symbol, width, kind))
             primitive = next(item for item in _cas_walk(reference.operation) if item.name == 'llvm.atomicrmw')
             # LLVM's native binding encodes this enum as an integer attribute.
             # Obtain its value from the registered parser, not a duplicated enum.

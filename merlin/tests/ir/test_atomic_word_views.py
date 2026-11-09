@@ -155,3 +155,34 @@ def test_loop_destination_runner_preserves_the_word_atomic_seam():
     tail = MARKER + ",one-shot-bufferize{bufferize-function-boundaries},ownership-based-buffer-deallocation"
     namespace["_run_stages"](None, None, LOOP_MARKER + "," + tail, 0)
     assert observed == [tail]
+
+
+def canonical_source(width, form):
+    constant = '0x7F801234' if width == 32 else '0x7FF0000000001234'
+    body = {'identity': f'memref.atomic_yield %current:f{width}',
+        'inverse': f'%word=arith.bitcast %current:f{width} to i{width}\n%restored=arith.bitcast %word:i{width} to f{width}\nmemref.atomic_yield %restored:f{width}',
+        'outside': f'memref.atomic_yield %value:f{width}',
+        'constant': f'%constant=arith.constant {constant}:f{width}\nmemref.atomic_yield %constant:f{width}'}[form]
+    return f'''module {{ func.func @forward(%p:memref<?xf{width}>,%i:index,%value:f{width})->f{width} {{
+      %old=memref.generic_atomic_rmw %p[%i]:memref<?xf{width}> {{
+      ^bb0(%current:f{width}): {body}
+      }}
+      return %old:f{width}
+    }} }}'''
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("width", [32, 64])
+@pytest.mark.parametrize("form", ["identity", "inverse", "outside", "constant"])
+def test_canonical_atomic_identity_and_assignment_keep_their_effect(tmp_path, width, form):
+    assert "RESTORED exact word helper" in run(tmp_path, canonical_source(width, form))
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("width", [32, 64])
+@pytest.mark.parametrize("kind", ["add", "xchg"])
+def test_scalarized_integer_constants_keep_actual_atomic_updates(tmp_path, width, kind):
+    text = source(width, kind)
+    text = text.replace(f"%stored=", f"%scalar=arith.constant 0:i{width}\n%stored=") if kind == "xchg" else text.replace("%view=", f"%scalar=arith.constant 0:i{width}\n%view=")
+    text = text.replace("%view,%value", "%view,%scalar").replace(f"bitcast %value:i{width}", f"bitcast %scalar:i{width}")
+    assert "RESTORED exact word helper" in run(tmp_path, text)

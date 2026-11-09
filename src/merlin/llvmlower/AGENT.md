@@ -53,6 +53,12 @@ types. Derive LLVM enum attributes from its registered parser. Original names,
 provenance and source kind labels grant no permission. This feature also handles
 integer CAS and composes at one bufferization seam. No whole-buffer conversion,
 FP min/max substitution or source arithmetic rounding policy is implied.
+Canonical current-word identities, exact inverse bitcasts and current-independent
+assignments remain atomic RMWs with the old value. Scalarized integer constants
+and floating constant assignments are hoisted as actual constant operations,
+without converting NaN payloads through host-language floats. Validate complete
+closed bodies before mutation; unknown effects and unused extra arithmetic do
+not gain permission through this normalization.
 
 Mixed borrowed composition retains distinct live ordinary descriptor and plural
 writer owners for one exact source epoch. Disjoint ABI rows, original effect
