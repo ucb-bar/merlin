@@ -40,7 +40,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [Contracts](reference/contracts.md) — `current`, verified 2026-07-14 · owner: ir — see also: [core_dialects](reference/core_dialects.md)
 - [Core dialects](reference/core_dialects.md) — `current`, verified 2026-07-14 · owner: ir — see also: [dialects](reference/dialects.md), [contracts](reference/contracts.md), [lowering_pipeline](reference/lowering_pipeline.md)
 - [Debug companion PC attribution](reference/debug_pc_attribution.md) — `current`, verified 2026-10-08 · owner: core
-- [Derived tensor compiler inputs](reference/derived_compile_inputs.md) — `current`, verified 2026-11-08 · owner: compiler — see also: [architecture](reference/architecture.md)
+- [Derived tensor compiler inputs](reference/derived_compile_inputs.md) — `current`, verified 2026-11-09 · owner: compiler — see also: [architecture](reference/architecture.md)
 - [Dialects](reference/dialects.md) — `current`, verified 2026-07-14 · owner: ir — see also: [core_dialects](reference/core_dialects.md), [xdsl](reference/xdsl.md)
 - [DSE boundary-placement vocabulary](reference/dse_boundary_vocabulary.md) — `current`, verified 2026-09-23 · owner: dse — see also: [dse_guidance](guides/dse_guidance.md), [contracts](reference/contracts.md), [design_pressure](guides/design_pressure.md)
 - [Encoder row equality](reference/encoded_row_equality.md) — `current`, verified 2026-10-06 · owner: core — see also: [ordered_fma_certificates](reference/ordered_fma_certificates.md), [quantized_host_optimizations](reference/quantized_host_optimizations.md)

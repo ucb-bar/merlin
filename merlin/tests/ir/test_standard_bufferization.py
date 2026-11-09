@@ -44,3 +44,24 @@ def test_shape_and_element_compatibility_does_not_impose_identity_layout(source,
 def test_malformed_shape_element_result_and_access_forms_still_refuse(source, dest, attributes, result):
     with pytest.raises(VerifyException):
         parse_mlir_text(program(source, dest, attributes=attributes, result=result)).verify()
+
+
+@pytest.mark.parametrize("buffer,tensor,valid", [
+    ("memref<4xf32, strided<[2], offset: ?>>", "tensor<4xf32>", True),
+    ("memref<*xf32>", "tensor<*xf32>", True),
+    ("memref<4xf32>", "tensor<5xf32>", False),
+    ("memref<4xi32>", "tensor<4xf32>", False),
+    ("memref<*xf32>", "tensor<4xf32>", False),
+])
+def test_to_tensor_drops_layout_without_changing_shape_or_element_type(buffer, tensor, valid):
+    source = f'''builtin.module {{func.func @view(%p: {buffer}) {{
+      %v = "bufferization.to_tensor"(%p) <{{restrict}}> : ({buffer}) -> {tensor}
+      return
+    }}}}'''
+    if valid:
+        module = parse_mlir_text(source)
+        module.verify()
+        parse_mlir_text(text(module, generic=True)).verify()
+    else:
+        with pytest.raises(VerifyException):
+            parse_mlir_text(source).verify()

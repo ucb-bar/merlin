@@ -16,6 +16,10 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
 - `standard_bufferization.py` checks standard tensor materialization by compatible
   shape/element types independently of memref layout, retaining upstream result
   and access-attribute rules. The binding grants no aliasing or placement proof.
+  It also binds standard tensor views over compatible strided buffers.
+- `standard_memref.py` binds standard reinterpret casts from ranked or unranked
+  memrefs with checked element/space/layout and dynamic operand segments.
+  This corrects a Python binding restriction without changing native semantics.
 - `ir_inspection.py` — read-only generic printer views with large dense tensor attributes
   referenced by separate raw-byte audit payloads. Type, shape and hash descriptors retain
   their interpretation without converting numeric values. The no-sink printer still

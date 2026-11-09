@@ -20,6 +20,7 @@ from xdsl.dialects.func import FuncOp
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.xdsl_dialects._common import text as module_text
+from merlin.frontends.kernel_compile_inputs import _checked_memory_members
 
 
 def _sha(raw: bytes) -> str:
@@ -107,6 +108,7 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
         kernel = {name: checked(directory + "/" + name)
                   for name in ("model.mlir", "source.ttir", "spec.json", "provenance.json")}
         provenance, spec = json.loads(kernel["provenance.json"]), json.loads(kernel["spec.json"])
+        kernel.update(_checked_memory_members(lambda name: checked(directory + "/" + name), provenance))
         if (digest != _sha(kernel["model.mlir"]) or provenance.get("mlir_sha256") != digest
                 or provenance.get("source_sha256") != _sha(kernel["source.ttir"])
                 or provenance.get("spec") != spec or provenance != bindings["kernels"][digest]):

@@ -90,7 +90,7 @@ def layout_bufferization_dialect():
     from xdsl.ir import Dialect
     from xdsl.irdl import IRDLOperation, irdl_op_definition, operand_def, opt_prop_def, result_def
     from xdsl.utils.exceptions import VerifyException
-    from merlin.xdsl_dialects.standard_bufferization import MaterializeInDestinationOp
+    from merlin.xdsl_dialects.standard_bufferization import MaterializeInDestinationOp, ToTensorOp
 
     @irdl_op_definition
     class LayoutToBufferOp(IRDLOperation):
@@ -112,6 +112,7 @@ def layout_bufferization_dialect():
                 raise VerifyException("to_buffer strided layout must retain every ranked dimension")
 
     return Dialect("bufferization", [LayoutToBufferOp if op is bufferization.ToBufferOp else
+                                    ToTensorOp if op is bufferization.ToTensorOp else
                                     MaterializeInDestinationOp if op is bufferization.MaterializeInDestinationOp else op
                                      for op in bufferization.Bufferization.operations],
                    list(bufferization.Bufferization.attributes))
@@ -126,7 +127,7 @@ def make_context():
     from xdsl.dialects.func import Func
     from xdsl.dialects.linalg import Linalg
     from xdsl.dialects.math import Math
-    from xdsl.dialects.memref import MemRef
+    from ..xdsl_dialects.standard_memref import memref_dialect
     from xdsl.dialects.scf import Scf
     from xdsl.dialects.tensor import Tensor
 
@@ -140,7 +141,7 @@ def make_context():
     register_fp8_float_constraints()
 
     ctx = Context(allow_unregistered=True)
-    for d in (Builtin, Func, Arith, Linalg, Tensor, Scf, Math, Cf, MemRef, layout_bufferization_dialect()):
+    for d in (Builtin, Func, Arith, Linalg, Tensor, Scf, Math, Cf, memref_dialect(), layout_bufferization_dialect()):
         ctx.load_dialect(d)
     from ..xdsl_dialects.standard_tensor import register_parallel_tensor_ops
 

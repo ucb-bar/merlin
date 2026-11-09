@@ -17,6 +17,30 @@ from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.xdsl_dialects._common import text
 
 
+def _checked_memory_members(checked, provenance):
+    profile = provenance.get("profile", "shared-functional-tensor")
+    if profile == "shared-functional-tensor":
+        return {}
+    if profile != "shared-functional-buffer":
+        raise ValueError("unsupported kernel memory evidence profile")
+    names = ("memory-witness.mlir", "memory-input.mlir", "memory-stage.mlir", "memory-stage.json")
+    copied = {name: checked(name) for name in names}
+    memory = provenance.get("memory", {})
+    for name, key in ((names[0], "witness_sha256"), (names[1], "continuation_input_sha256"),
+                      (names[2], "continuation_output_sha256")):
+        if memory.get(key) != hashlib.sha256(copied[name]).hexdigest():
+            raise ValueError("kernel memory evidence differs from its provenance")
+    stage = json.loads(copied[names[3]])
+    def record(name):
+        return {"bytes": len(copied[name]), "sha256": hashlib.sha256(copied[name]).hexdigest()}
+    if (stage.get("schema") != "t2m.triton-shared-stage.v1" or stage.get("stage") != "memory-ir"
+            or stage.get("stage_completed") is not True
+            or stage.get("artifacts", {}).get("source.ttir") != record(names[1])
+            or stage.get("artifacts", {}).get("lowered.mlir") != record(names[2])):
+        raise ValueError("kernel memory report does not bind its input/output")
+    return copied
+
+
 def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw: bytes) -> dict:
     def digest(raw):
         return hashlib.sha256(raw).hexdigest()
@@ -33,11 +57,14 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
             raise ValueError("kernel compiler member differs from receipt: " + name)
         return raw
 
-    if receipt.get("profile") != "shared-functional-tensor":
+    if receipt.get("profile") not in ("shared-functional-tensor", "shared-functional-buffer"):
         raise ValueError("unsupported standalone kernel profile")
     raw, ttir, spec_raw, provenance_raw = (checked(name) for name in
                                          ("model.mlir", "source.ttir", "spec.json", "provenance.json"))
     spec, provenance = json.loads(spec_raw), json.loads(provenance_raw)
+    if provenance.get("profile", "shared-functional-tensor") != receipt["profile"]:
+        raise ValueError("kernel receipt and memory provenance profiles differ")
+    memory_members = _checked_memory_members(checked, provenance)
     if spec.get("schema") not in ("t2m.shared-tensor-abi.v1", "t2m.shared-tensor-abi.v2", "t2m.shared-tensor-abi.v3", "t2m.shared-tensor-abi.v4"):
         raise ValueError("unsupported standalone tensor ABI")
     if (provenance.get("spec") != spec or provenance.get("mlir_sha256") != digest(raw)
@@ -127,7 +154,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
     staged = text(module, generic=True).encode()
     parse_mlir_text(staged.decode()).verify()
     # Project compiler provenance, excluding numeric admission/evaluator reports.
-    fields = ("schema", "abi_difference", "correspondence", "emitted_operations", "intent", "memory",
+    fields = ("schema", "profile", "abi_difference", "correspondence", "emitted_operations", "intent", "memory",
               "mlir_sha256", "optimizer", "pipeline", "source_operations", "source_sha256", "spec",
               "transformations", "normalized_operations", "original_attributes", "original_blocks")
     correspondence = {"schema": "merlin.kernel-source-correspondence.v1", "producer": "triton2MLIR",
@@ -137,8 +164,10 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
     members = {"program.mlir": staged, "signature.json": encoded(signature), **weights,
                "source/model.mlir": raw, "source/source.ttir": ttir, "source/spec.json": spec_raw,
                "source/compiler-provenance.json": encoded({k: provenance[k] for k in fields if k in provenance}),
+               **{"source/" + name: data for name, data in memory_members.items()},
                "source-correspondence.json": encoded(correspondence)}
     manifest = {"schema": "merlin.compile-inputs.v1", "source_profile": "standalone-tensor-kernel",
+                "payload_profile": receipt["profile"],
                 "scope": "compiler_only_static_capture; source_closure_and_numerical_admission_unverified",
                 "source": {"capture_receipt_sha256": digest(receipt_raw), "capture_schema": receipt["schema"],
                            "model_mlir_sha256": digest(raw), "correspondence": "source-correspondence.json"},

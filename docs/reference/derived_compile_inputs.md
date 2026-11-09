@@ -3,7 +3,7 @@ title: Derived tensor compiler inputs
 kind: reference
 status: current
 owner: compiler
-last_verified: 2026-11-08
+last_verified: 2026-11-09
 related: [architecture]
 code_refs:
   - src/merlin/frontends/compile_inputs.py
@@ -11,9 +11,11 @@ code_refs:
   - src/merlin/frontends/kernel_compile_inputs.py
   - src/merlin/xdsl_dialects/standard_tensor.py
   - src/merlin/xdsl_dialects/standard_bufferization.py
+  - src/merlin/xdsl_dialects/standard_memref.py
   - merlin/tests/ir/test_derived_compile_inputs.py
   - merlin/tests/ir/test_kernel_compile_inputs.py
   - merlin/tests/ir/test_standard_bufferization.py
+  - merlin/tests/ir/test_standard_memref.py
 ---
 
 # Derived tensor compiler inputs
@@ -80,3 +82,17 @@ remain excluded. This permits a consumer to validate values separately from the
 frontend's executable entry assertions. Bound declarations do not grant a memory
 ownership/initialization proof or certify the guard/payload semantics by staging
 alone. Actual tensor dimensions remain static in this profile.
+
+The explicit `shared-functional-buffer` payload profile retains the same
+functional tensor/scalar boundary with standard memref/bufferization operations
+inside it. Staging checks the additional memory witness, continuation input,
+output and report against provenance and copies them into `source/` (or each
+derived kernel's source directory). The projected receipt retains the payload
+profile; evaluator values remain excluded. This custody check does not validate
+the producer's memory proof or broaden source admission.
+
+Standard `bufferization.to_tensor` accepts compatible strided memrefs with the
+same shape/element checks as native MLIR. Standard `memref.reinterpret_cast`
+accepts ranked or unranked sources while checking element type, memory space,
+size/stride/offset and dynamic operand segments. These bindings preserve the
+upstream raw-buffer representation without changing loop-carried SSA types.

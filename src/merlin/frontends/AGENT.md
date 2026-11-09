@@ -23,6 +23,9 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   labels scalar signature entries and excludes invocation values and tensor-only attributes.
   ABI v4 additionally retains representable signed integer range declarations;
   compiler-only staging grants no memory or guard-equivalence proof from those bounds.
+  The explicit shared-functional-buffer payload retains the public functional ABI,
+  checks byte-bound memory witness/continuation relations and copies their compiler evidence.
+  Both standalone and derived staging exclude evaluator values from that view.
 - `linalg_math_patterns.py` — source-only, closed unary f32 sine/cosine/exponential/roundeven
   scalar-region checks; each operation requires its own explicit declaration. No host admission,
   selected math implementation or numerical-equivalence claim follows. Scalar-literal power refuses.

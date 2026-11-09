@@ -6,8 +6,26 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from xdsl.dialects import builtin
-from xdsl.irdl import IRDLOperation, irdl_op_definition, operand_def, opt_prop_def, opt_result_def
+from xdsl.irdl import IRDLOperation, irdl_op_definition, operand_def, opt_prop_def, opt_result_def, result_def
 from xdsl.utils.exceptions import VerifyException
+
+
+@irdl_op_definition
+class ToTensorOp(IRDLOperation):
+    name = "bufferization.to_tensor"
+    memref = operand_def(builtin.MemRefType | builtin.UnrankedMemRefType)
+    tensor = result_def(builtin.TensorType | builtin.UnrankedTensorType)
+    restrict = opt_prop_def(builtin.UnitAttr)
+    writable = opt_prop_def(builtin.UnitAttr)
+    assembly_format = "$memref (`restrict` $restrict^)? (`writable` $writable^)? attr-dict `:` type($memref) `to` type($tensor)"
+
+    def verify_(self):
+        source, result = self.memref.type, self.tensor.type
+        if (isinstance(source, builtin.MemRefType) != isinstance(result, builtin.TensorType)
+                or source.element_type != result.element_type):
+            raise VerifyException("to_tensor requires matching buffer/tensor rank and element type")
+        if isinstance(source, builtin.MemRefType) and source.get_shape() != result.get_shape():
+            raise VerifyException("to_tensor requires identical buffer/tensor shapes")
 
 
 @irdl_op_definition
