@@ -202,3 +202,26 @@ outputs; input/output aliasing is not promised. The example helper validates
 each edge's shape and dtype independently. There is no new target ABI or
 persistent device-state requirement. Exact comparisons of all three outputs and
 backend qualification remain separate gates.
+
+For all decoder layers, select `ATLAS_CAPTURE_BOUNDARY=model-prefill-cache` or
+`model-decode-cache`. These reuse the tensor-cache source wrappers with the
+original model hierarchy and unchanged parameter words. Their authenticated
+source receipt has `kind="model"`, ordered `input_keys`, and exact `tensors`
+records. Prefill takes `input_0` token IDs, `input_1` absolute positions, and
+`input_2` additive BF16 mask. Decode adds ordered past K/V pairs from `input_3`.
+Both return logits at output zero, followed by K/V pairs in layer order.
+
+For 22 layers, bind prefill outputs 1 through 44 to decode inputs 3 through 46:
+`input_index = output_index + 2`. Compile each fixed phase through the same
+standard application commands and retain separate updated-cache outputs.
+Independent fixture caches used during capture do not establish continuity;
+execute decode with all 44 generated-output bindings. Compare logits and every
+cache tensor, authenticate every producer edge, and check each old cache prefix.
+The [independent whole-cache reference](../../rotary-host/reference/README.md)
+computes its own prefill and decode state from original weights and tokens,
+including v3 rotary preparation.
+
+Whole-model generated-cache numerical evidence uses `qualified_native` only;
+layer-0 continuity is checked separately on both backends. The regional
+`cache_reference.py` remains for saved-capsule layer-0 and composition regressions;
+the whole-cache reference interprets complete live source captures.

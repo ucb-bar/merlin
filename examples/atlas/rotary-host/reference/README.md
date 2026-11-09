@@ -99,3 +99,42 @@ generated final-normalization inputs, independent reference, and actual compiled
 output. It qualifies that head boundary; it does not rerun upstream layers or
 establish a complete live whole-model result. Keep compilation, execution,
 verification, and independent numerical comparison receipts separate.
+
+## Whole-model prefill and decode caches
+
+`cache_decode_reference.py` reconstructs the original source FX from a complete
+captured `frontend-trace.json` and unchanged `weights.safetensors`. It interprets
+the source operations through reference v3, gathers embedding words independently,
+and computes rotary words with the qualified integer oracle. The source boundary
+has token IDs, absolute positions, and an exact BF16 causal mask. A prefill returns
+logits followed by every layer's post-RoPE, pre-GQA K/V pair.
+
+The command requires explicit ordinary arithmetic, row-span80 mask, source-order
+head, and rotary qualification receipts, alongside `--model-root`,
+`--reference-root`, `--export-dir`, `--policy`, `--capture`, and a fresh `--out`.
+The original export is authenticated against its manifest; every captured weight
+must match its original dtype, shape, and raw bytes. Select
+`--engine native --native-qualification RECEIPT` only after qualifying the native
+independent engine. Use `--tokens FILE.npy` when selecting original int64 token
+IDs with the same captured static shape; the publication binds that selection.
+
+For decode, pass `--parent-reference PREFILL_REFERENCE`. Every past K/V input
+comes from the parent's authenticated `expected.npz`, with identical parameters,
+selected arithmetic, and qualification. Captured cache arrays are never read.
+The interpreter verifies the unchanged prefix in each updated cache. The
+publication and `expected.npz` are comparison artifacts, separate from generated
+execution and application cache bindings.
+
+Run the small source replay and refusal checks with:
+
+```sh
+nice -n 10 "$TORCH_PYTHON" -m unittest discover -s reference \
+  -p 'test_cache_decode_reference.py'
+```
+
+The layer-0 `cache_reference.py` in the unchanged-FX example remains the
+reference for saved regional capsules and their independent regression gates.
+This whole-model reference instead interprets complete live source captures.
+
+Whole-model generated-cache execution has been checked on `qualified_native`
+only. Layer-0 continuity has separate exact checks on both backends.
