@@ -12,7 +12,9 @@ import json
 from pathlib import Path
 
 
-def observed_memory_decode(reader, console, *, cb, elf, workdir, policy, dependencies=(), retain_in_invocation=False, inputs=()):
+def observed_memory_decode(
+    reader, console, *, cb, elf, workdir, policy, dependencies=(), retain_in_invocation=False, inputs=()
+):
     """Retain the actual selected decoder and its declared private products.
 
     A callback return or payload pin supplies attribution only. Original packet
@@ -21,6 +23,7 @@ def observed_memory_decode(reader, console, *, cb, elf, workdir, policy, depende
     from merlin.common import invocation_record
 
     from .readback_policy import BUILD_RECEIPT, require_memory_value_roster
+    from .source_ownership import compile_sources
 
     work = Path(workdir).resolve()
     product = work / "readback_decode.json"
@@ -33,7 +36,7 @@ def observed_memory_decode(reader, console, *, cb, elf, workdir, policy, depende
         arguments={"readback_policy": policy.record()},
         inputs=(Path(elf), work / "oracle_console.log", work / BUILD_RECEIPT, *inputs),
         outputs=() if retain_in_invocation else (product,),
-        dependencies=(Path(__file__), Path(__file__).with_name("compile.py"), *dependencies),
+        dependencies=(Path(__file__), *compile_sources(), *dependencies),
     ) as observed:
         if retain_in_invocation:
             # Each real direct execution keeps its own decoder product; a

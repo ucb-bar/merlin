@@ -20,7 +20,8 @@ import os
 import subprocess
 import tempfile
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable as Callable
+from collections.abc import Mapping as Mapping
 from pathlib import Path
 from typing import Any
 
@@ -31,12 +32,36 @@ from merlin.verification.lean_emission_context import observe_object, requires_o
 
 from .artifact_retesting import active_artifact_retests, compare_selected_artifacts, retain_selected_artifacts
 from .build_recipe import named_object_paths
+from .compile_inputs import (
+    _explicit_prepack_inputs as _explicit_prepack_inputs,
+)
+from .compile_inputs import (
+    _recorded_operands as _recorded_operands,
+)
+from .compile_inputs import (
+    _strict_warm_profile as _strict_warm_profile,
+)
 from .counter_observations import counter_observations as _counter_observations
 from .harness_blobs import stage_harness_blobs
 from .memory_decode import observed_memory_decode as _observed_memory_decode
+from .object_preflight import (
+    _abi_receipt as _abi_receipt,
+)
+from .object_preflight import (
+    _module_target_abi as _module_target_abi,
+)
+from .object_preflight import (
+    _repair_oversized_frame as _repair_oversized_frame,
+)
+from .oracle_identity import (
+    _selected_run_timeout as _selected_run_timeout,
+)
+from .oracle_identity import (
+    simulator_provenance as simulator_provenance,
+)
 from .ordinary_inputs import ordinary_integer_harness_inputs as _ordinary_integer_harness_inputs
 from .source_ownership import accepts_keyword as _accepts_keyword
-from .source_ownership import renderer_scratch_options
+from .source_ownership import compile_sources, renderer_scratch_options
 
 
 def _observed_run(argv, *, workdir, stage, inputs=(), outputs=(), **kwargs):
@@ -75,53 +100,15 @@ def _observed_run(argv, *, workdir, stage, inputs=(), outputs=(), **kwargs):
                 stage=stage,
                 inputs=inputs,
                 outputs=outputs,
-                dependencies=(Path(__file__), Path(_deadline_owner.__file__), Path(cpu_owner.__file__)),
+                dependencies=(
+                    *compile_sources(),
+                    Path(_deadline_owner.__file__),
+                    Path(cpu_owner.__file__),
+                ),
                 **kwargs,
             )
     except TimeoutError as exc:
         raise subprocess.TimeoutExpired(argv, timeout) from exc
-
-
-def _module_target_abi(llvm_text: str) -> str | None:
-    """Read the LLVM module's target-abi flag, without treating IR as ABI authority."""
-    references: list[str] = []
-    definitions: dict[str, str] = {}
-    for line in llvm_text.splitlines():
-        line = line.strip()
-        if line.startswith("!llvm.module.flags = !{"):
-            if references:
-                raise ValueError("LLVM module has duplicate module-flag tables")
-            payload = line.partition("!{")[2].removesuffix("}")
-            references = [item.strip() for item in payload.split(",")]
-        elif line.startswith("!") and " = !{" in line:
-            name, _, payload = line.partition(" = !{")
-            definitions[name] = payload.removesuffix("}")
-    found: list[str] = []
-    for reference in references:
-        operands = [part.strip() for part in definitions.get(reference, "").split(",")]
-        if len(operands) > 1 and operands[1] == '!"target-abi"':
-            if len(operands) != 3 or not operands[2].startswith('!"') or not operands[2].endswith('"'):
-                raise ValueError("LLVM module has malformed target-abi flag")
-            found.append(operands[2][2:-1])
-    if len(found) > 1:
-        raise ValueError("LLVM module has ambiguous target-abi flags")
-    return found[0] if found else None
-
-
-def _abi_receipt(workdir: Path, obj: Path, abi: str) -> None:
-    """Bind the object to the ABI selected for its harness in a paired build."""
-    (workdir / "kernel.abi.json").write_text(
-        json.dumps(
-            {
-                "schema": "merlin_kernel_abi_v1",
-                "abi": abi,
-                "object_sha256": hashlib.sha256(obj.read_bytes()).hexdigest(),
-            },
-            sort_keys=True,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
 
 
 @observe_object
@@ -226,7 +213,13 @@ def llvm_mlir_to_object(
         from merlin.llvmlower.pipeline import lower_to_llvm_ir
 
         requested = getattr(executor, "record_stage_inspection", False) is True
-        audit = IrAudit(workdir, enabled=requested, producer="merlin.targetgen.contract.compile", source=__file__)
+        audit = IrAudit(
+            workdir,
+            enabled=requested,
+            producer="merlin.targetgen.contract.compile",
+            source=__file__,
+            sidecars=compile_sources()[1:],
+        )
 
         with (
             audit,
@@ -237,7 +230,7 @@ def llvm_mlir_to_object(
                 arguments=host.translation_arguments() if host is not None else {"workdir": str(workdir.resolve())},
                 inputs=(source, host.selected_source_path) if host is not None else (source,),
                 outputs=(workdir / "kernel.ll",),
-                dependencies=(Path(__file__),),
+                dependencies=compile_sources(),
             ) as observed,
         ):
             options = {"audit": audit} if requested else {}
@@ -346,116 +339,6 @@ def llvm_mlir_to_object(
     )
     _abi_receipt(workdir, compiled, abi)
     return host.complete(compiled, llvm_path, report=host_report) if host is not None else compiled
-
-
-def _repair_oversized_frame(
-    llvm_path, object_path, *, recipe, policy, extra, remaining: Callable[[], float | None] | None = None
-):
-    """Seat the entry frame's static temporaries in one arena and RE-MEASURE.
-
-    Returns ``(object, measurement, llvm_path, report_path, report)``, or ``None`` when the repair
-    is unavailable or did not actually fit. The measurement is taken on the REBUILT object; a repair
-    that is believed rather than measured is how an over-budget frame reaches a device.
-
-    On ``None`` the caller's original refusal stands, and it is deliberately the diagnostic the
-    caller sees: the emitted program is what was asked about, and a second diagnostic describing a
-    repaired variant would name a program nobody requested.
-    """
-    from merlin.llvmlower import codegen as _codegen
-    from merlin.llvmlower.stack_arena import StackArenaError, bind_stack_arena
-
-    from .stack_usage import StackFramePreflightError, measure_entrypoint
-
-    llvm_path, object_path = Path(llvm_path), Path(object_path)
-    try:
-        rewritten, report = bind_stack_arena(llvm_path.read_text(encoding="utf-8"), entry_symbol=policy.entry_symbol)
-    except StackArenaError:
-        return None
-    if not report.n_bound:
-        return None
-    arena_llvm = llvm_path.with_suffix(".arena.ll")
-    arena_object = object_path.with_suffix(".arena.o")
-    arena_su = arena_object.with_suffix(".su")
-    arena_llvm.write_text(rewritten, encoding="utf-8")
-    for stale in (arena_object, arena_su, arena_object.with_suffix(".measured.su")):
-        stale.unlink(missing_ok=True)
-    compile_kwargs = {"extra_flags": (*extra, "-fstack-usage")}
-    if remaining is not None:
-        compile_kwargs["timeout_s"] = remaining()
-    rebuilt = Path(_codegen.compile_ll(arena_llvm, arena_object, "riscv", **compile_kwargs))
-    try:
-        measurement = measure_entrypoint(
-            arena_su, llvm_path=arena_llvm, entry_symbol=policy.entry_symbol, max_static_bytes=policy.max_static_bytes
-        )
-    except StackFramePreflightError:
-        return None
-    # The arena's bytes are NOT free: they are `.bss` in the same image, and a large one narrows the
-    # PC-relative window a medany build has to work in. Reported through the receipt, never absorbed.
-    return rebuilt, measurement, arena_llvm, arena_su, report.to_dict()
-
-
-def _recorded_operands(cb: dict[str, Any]) -> dict[str, list] | None:
-    """The operands an independent-float or WHOLE-PROGRAM buffer must run on, or ``None``.
-
-    A capsule graded under a float policy cannot have had its answer recomputed on the integer engine,
-    so its golden is the INDEPENDENT one — computed off-device, on the operands the runner attached to
-    the buffer as ``canonical_inputs``. The device is only answerable against that golden if it runs
-    on those same operands; nothing consumed them on this path, so the harness materialized each leaf
-    from its NAME and the device computed the right function of the wrong inputs — a guaranteed
-    mismatch, reported as a functional failure of the submission.
-
-    THE FLOAT CONDITION remains load-bearing for ordinary buffers. A per-op integer buffer is graded
-    against a golden recomputed from deterministic name-materialized fill, and may carry unrelated
-    historical operands (``GS0_matmul_spec`` is the guard). A WHOLE-PROGRAM buffer is different: the
-    runner has already replaced/re-keyed ``canonical_inputs`` with the exact semantic stimulus because
-    its compiler may rename leaves positionally. Discarding that table rematerializes from ``arg0``
-    instead of ``A0`` and guarantees a false mismatch. The explicit ABI discriminator separates that
-    exception without changing legacy per-op integer behavior.
-    """
-    from merlin.runtime.backends import base as _backends
-    from merlin.runtime.commandbuffer import declared_output_dtypes
-
-    recorded = cb.get("canonical_inputs") or {}
-    tensors = cb.get("tensors") or {}
-    if not recorded:
-        return None
-    dtypes = declared_output_dtypes(cb)
-    outputs = [n for n, s in tensors.items() if (s or {}).get("role") == "output"]
-    whole_program = (cb.get("kernel_abi") or {}).get("kind") == "whole_program"
-    if not whole_program and (not outputs or not all(_backends.float_format_of(dtypes.get(n, "")) for n in outputs)):
-        return None
-    return {
-        name: spec["values"]
-        for name, spec in recorded.items()
-        if isinstance(spec, dict) and spec.get("values") is not None and name in tensors
-    } or None
-
-
-def _explicit_prepack_inputs(inputs, authorizations) -> None:
-    """Never satisfy a host immutable-payload grant from candidate recorded operands."""
-    if authorizations is None:
-        return
-    if not isinstance(authorizations, Mapping) or not isinstance(inputs, Mapping):
-        raise ValueError("host prepack authorization requires explicit logical inputs")
-    from merlin.runtime.prepack_authority import HostPrepackAuthorization
-
-    if any(type(grant) is not HostPrepackAuthorization for grant in authorizations.values()):
-        raise ValueError("prepack requires an exact host authorization object")
-    if set(authorizations) - set(inputs):
-        raise ValueError("authorized prepack input is missing from explicit logical inputs")
-
-
-def _strict_warm_profile(profile, cb=None):
-    """Validate the explicit final-profile capability without naming a target."""
-    if profile is None:
-        return None
-    from merlin.perf.warm_profile_harness import require_strict_final_warm_profile
-
-    validated = require_strict_final_warm_profile(profile)
-    if cb is not None and (cb.get("kernel_abi") or {}).get("kind") != "whole_program":
-        raise ValueError("strict final warm profiling requires an explicit whole-program kernel ABI")
-    return validated
-
 
 
 def link_elf(
@@ -569,9 +452,15 @@ def link_elf(
     blob_payloads: dict = {}
     blob_kwargs = {"blobs": blob_payloads} if _accepts_keyword(_render, "blobs") else {}
     policy_kwargs = {"readback_policy": readback_policy} if readback_policy is not None else {}
-    policy_kwargs.update(renderer_scratch_options(
-        cb, _render, alternate_caller=(_build_service is not None or _compact_caller is not None
-                                     or prepack_authorizations is not None)))
+    policy_kwargs.update(
+        renderer_scratch_options(
+            cb,
+            _render,
+            alternate_caller=(
+                _build_service is not None or _compact_caller is not None or prepack_authorizations is not None
+            ),
+        )
+    )
     # ``inputs`` INJECTS the caller's real operands into the device harness. A renderer written before
     # this parameter existed still works and still materializes from names -- but silently doing that
     # while the reference and simulator use injected data produces a guaranteed three-way mismatch that
@@ -797,6 +686,8 @@ def link_elf(
         )
         receipt_path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return elf
+
+
 @host_choices_build
 def compile_lowered_to_elf(
     cb: dict[str, Any],
@@ -911,13 +802,17 @@ def compile_lowered_to_elf(
         # llvm_mlir_to_object still performs its actual fresh emission/object
         # custody checks; linking still reopens the selected readback receipt.
         obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
-        return link_elf(cb, obj, work, target=target, inputs=inputs,
-                        warm_profile=warm_profile, readback_policy=readback_policy)
+        return link_elf(
+            cb, obj, work, target=target, inputs=inputs, warm_profile=warm_profile, readback_policy=readback_policy
+        )
     from merlin.targetgen.contract.source_ownership import active_source_owned_mutables
 
-    if prepack_authorizations is not None or active_selection() is not None or (
-        requires_original_object(lowered_mlir_text)
-    ) or active_source_owned_mutables(cb):
+    if (
+        prepack_authorizations is not None
+        or active_selection() is not None
+        or (requires_original_object(lowered_mlir_text))
+        or active_source_owned_mutables(cb)
+    ):
         # Live source ownership, host permissions and traced emissions cannot
         # be reconstructed by a legacy cached ELF or its serialized metadata.
         obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
@@ -958,56 +853,6 @@ def compile_lowered_to_elf(
     elf = link_elf(cb, obj, work, target=target, inputs=inputs)
     _bc.store(key, work, PACKAGE_ELF_NAME)
     return elf
-
-
-def simulator_provenance(backend, simulator: str) -> dict[str, Any] | None:
-    """Identify the simulator BINARY an engine ran on: its path, its digest, and its recorded lineage.
-
-    A result that claims a hardware verdict must record which hardware revision it came from. A cert
-    record already pins the ELF, the RTL commits and the toolchain — and said nothing at all about the
-    prebuilt simulator that produced the numbers, which for GSIM is an out-of-tree build whose bytes are
-    the only thing tying the verdict to an elaboration. A stale or mis-provenanced emulator was therefore
-    undetectable after the fact, which is the same failure mode the binary provenance stamp was added to
-    catch on the ELF side.
-
-    Derived from the backend, not from a table: it is asked for ``<engine>_status()`` (a sentence about
-    how the engine resolved) and ``<engine>_path()`` (where its binary is), both DERIVED attribute names,
-    so an engine or a backend that does not publish them contributes nothing rather than a fabricated
-    entry. Never raises — provenance that cannot be established is recorded as absent.
-    """
-    from pathlib import Path as _Path
-
-    rec: dict[str, Any] = {"engine": simulator}
-    try:
-        getter = getattr(backend, f"{simulator}_path", None)
-        if callable(getter):
-            binary = _Path(str(getter()))
-            rec["binary"] = str(binary)
-            if binary.is_file():
-                from merlin.common import provenance as _prov
-
-                rec["sha256"] = _prov.file_digest(binary)
-        status = getattr(backend, f"{simulator}_status", None)
-        if callable(status):
-            _ok, _why = status()
-            rec["resolution"] = str(_why)
-    except Exception as exc:  # noqa: BLE001 — unestablished provenance is recorded, never invented
-        rec["error"] = f"{type(exc).__name__}: {exc}"
-    return rec if len(rec) > 1 else None
-
-
-def _selected_run_timeout(backend, simulator, requested, deadline):
-    """Keep the job's remaining budget within the selected process ceiling."""
-    import math
-
-    remaining = min(requested, deadline.remaining())
-    selected_limit = getattr(backend, "execution_timeout_limit", None)
-    if selected_limit is not None:
-        limit = selected_limit(simulator)
-        if type(limit) not in (int, float) or not math.isfinite(limit) or limit <= 0:
-            raise ValueError("selected execution deadline ceiling must be finite and positive")
-        remaining = min(remaining, limit)
-    return remaining
 
 
 def run_on_oracle(
@@ -1180,7 +1025,11 @@ def run_on_oracle(
         check_budget()
         verify_execution()
         if readback_policy is not None and readback_build != require_current_build_receipt(
-            cb=cb, target=target, workdir=work, elf_path=elf, policy=readback_policy,
+            cb=cb,
+            target=target,
+            workdir=work,
+            elf_path=elf,
+            policy=readback_policy,
             **({"build_service": _build_service} if _build_service is not None else {}),
         ):
             raise ValueError("preexecution observation changed the completed readback build")
@@ -1210,7 +1059,7 @@ def run_on_oracle(
         # engine subprocess argv and its own lower-level invocation records.
         provenance = (simulator_provenance(backend, simulator) or {}) if _execution_service is None else {}
         engine_path = provenance.get("binary")
-        dependencies = (Path(__file__), Path(_deadline_owner.__file__))
+        dependencies = (*compile_sources(), Path(_deadline_owner.__file__))
         if isinstance(engine_path, str) and Path(engine_path).is_file():
             dependencies += (Path(engine_path),)
         if execution_identity is not None:
@@ -1224,20 +1073,23 @@ def run_on_oracle(
         if admission is not None:
             _elf_admission.revalidate(elf=elf, result=admission, target=target)
         run_timeout = _selected_run_timeout(backend, simulator, timeout, run_deadline)
-        with simulation_runtime_slot(simulator, wait_timeout_s=run_timeout), invocation_record.observe_call(
-            work,
-            stage="execution",
-            function=backend.run_elf,
-            arguments={
-                "target": target,
-                "simulator": simulator,
-                "timeout_s": run_timeout,
-                "capture_bytes": binary,
-                "memory_transport": memory,
-            },
-            inputs=(elf,),
-            dependencies=dependencies,
-        ) as observed:
+        with (
+            simulation_runtime_slot(simulator, wait_timeout_s=run_timeout),
+            invocation_record.observe_call(
+                work,
+                stage="execution",
+                function=backend.run_elf,
+                arguments={
+                    "target": target,
+                    "simulator": simulator,
+                    "timeout_s": run_timeout,
+                    "capture_bytes": binary,
+                    "memory_transport": memory,
+                },
+                inputs=(elf,),
+                dependencies=dependencies,
+            ) as observed,
+        ):
             console = backend.run_elf(elf, simulator=simulator, timeout=run_timeout, **run_kwargs, **memory_kwargs)
             observed.returned(stdout=console)
     except Exception as exc:
@@ -1285,7 +1137,7 @@ def run_on_oracle(
     check_budget()
     memory_evidence = memory_observation = None
     if memory:
-        from .readback_policy import require_memory_completion, require_memory_value_roster
+        from .readback_policy import require_memory_completion
 
         require_memory_completion(console, outputs)
         outputs, memory_evidence, memory_observation = _observed_memory_decode(
@@ -1295,11 +1147,17 @@ def run_on_oracle(
             elf=elf,
             workdir=work,
             policy=readback_policy,
-            dependencies=(tuple(Path(path) for path, _ in _execution_service.source_pins)
-                          if _execution_service is not None else dependencies),
+            dependencies=(
+                tuple(Path(path) for path, _ in _execution_service.source_pins)
+                if _execution_service is not None
+                else dependencies
+            ),
             retain_in_invocation=_execution_service is None,
-            inputs=((Path(memory_kwargs["memory_readback"]["regions_path"]),)
-                    if _execution_service is None and memory_kwargs["memory_readback"].get("regions_path") else ()),
+            inputs=(
+                (Path(memory_kwargs["memory_readback"]["regions_path"]),)
+                if _execution_service is None and memory_kwargs["memory_readback"].get("regions_path")
+                else ()
+            ),
         )
     check_budget()
     output_digests = None

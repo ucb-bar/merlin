@@ -46,6 +46,9 @@ from collections import Counter
 from pathlib import Path
 from typing import NamedTuple
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _source_layout  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
 LEDGER = ROOT / "build_tools" / "scripts" / "silent_default_ratchet.txt"
 
@@ -62,7 +65,8 @@ EVIDENCE_ROOTS: tuple[str, ...] = (
     # Which hardware a result is about, and where a product was written.
     "src/merlin/common/provenance.py",
     "src/merlin/common/artifacts.py",
-    # Verification: the tier verdicts and their oracles.
+    # Verification: preserve this declared scope while following exact compatibility
+    # aliases to their actual implementations. Unrelated new owners are not added implicitly.
     "src/merlin/verify",
     # Phase 1: the controller modules that PRODUCE a verdict -- grading, certification, promotion,
     # freeze, the audit and the conformance check -- not the providers, brokers or task staging that
@@ -325,16 +329,30 @@ def findings_for_source(text: str, relpath: str) -> list[Finding]:
 def _scanned_files() -> list[Path]:
     files: list[Path] = []
     missing: list[str] = []
+    components = None
     for entry in EVIDENCE_ROOTS:
         base = ROOT / entry
         if base.is_file():
             files.append(base)
         elif base.is_dir():
-            files.extend(
+            selected = [
                 path
                 for path in sorted(base.rglob("*.py"))
                 if not any(part in EXCLUDED_PARTS for part in path.relative_to(ROOT).parts)
-            )
+            ]
+            if entry.startswith(("src/merlin/", "merlin/python/merlin/")):
+                # This directory originally selected the core distribution. Moving research
+                # into the same wheel does not add it to that declared evidence scope.
+                # Explicit research roots/files below remain independent selections.
+                if components is None:
+                    components = _source_layout.logical_components(ROOT)
+                selected = [
+                    path
+                    for path in selected
+                    if (module := _source_layout.module_name(path, ROOT)) is None
+                    or _source_layout.component_owner(module, components) == "core"
+                ]
+            files.extend(selected)
         else:
             matched = sorted(ROOT.glob(entry))
             if not matched:
@@ -348,17 +366,30 @@ def _scanned_files() -> list[Path]:
             + ", ".join(missing)
             + ". Point the roster at where the code moved rather than leaving it unscanned."
         )
-    return sorted(set(files))
+    implementations = set()
+    for path in files:
+        alias = _source_layout.module_alias(path, ROOT)
+        implementations.add(path if alias is None else alias[1])
+    return sorted(implementations)
 
 
 def scan() -> list[Finding]:
     found: list[Finding] = []
     for path in _scanned_files():
-        relative = str(path.relative_to(ROOT))
-        if relative.startswith("src/merlin_experiments/"):
-            relative = "packages/merlin-experiments/" + relative
+        relative = path.relative_to(ROOT).as_posix()
         found.extend(findings_for_source(path.read_text(encoding="utf-8", errors="replace"), relative))
     return found
+
+
+def _debt_key(key: str) -> str:
+    """Compare the same finding across an exact implementation relocation."""
+    path, separator, finding = key.partition("::")
+    if path.startswith("src/merlin/verification/"):
+        former = "src/merlin/verify/" + path.removeprefix("src/merlin/verification/")
+        alias = _source_layout.module_alias(ROOT / former, ROOT)
+        if alias is not None and alias[1] == (ROOT / path).resolve():
+            path = former
+    return _source_layout.policy_path(path) + separator + finding
 
 
 def _ledger() -> list[str]:
@@ -373,9 +404,10 @@ def _ledger() -> list[str]:
 
 def verdict(found: list[Finding], known: set[str]) -> tuple[list[Finding], list[str]]:
     """(new findings, stale ledger entries). Pure, so a test can drive both directions."""
-    keys = {finding.key for finding in found}
-    new = [finding for finding in found if finding.key not in known]
-    stale = sorted(known - keys)
+    keys = {_debt_key(finding.key) for finding in found}
+    known_keys = {_debt_key(key) for key in known}
+    new = [finding for finding in found if _debt_key(finding.key) not in known_keys]
+    stale = sorted(key for key in known if _debt_key(key) not in keys)
     return new, stale
 
 

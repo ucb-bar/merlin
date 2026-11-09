@@ -243,7 +243,15 @@ MODULE_ACCESS = (
     _module("merlin_experiments.phase1.brokers", "grader", directory=True),
     _module("merlin_experiments.phase1.feedback", "grader", directory=True),
     _module("merlin_experiments.phase1.telemetry", "grader", directory=True),
-    _module("merlin_experiments.phase1.session", "grader"),
+    _module(
+        "merlin_experiments.phase1.session",
+        "grader",
+        aliases=(
+            "merlin_experiments.phase1.session_resume",
+            "merlin_experiments.phase1.session_guidance",
+            "merlin_experiments.phase1.session_preflight",
+        ),
+    ),
     _module("merlin_experiments.phase1.authoring", "grader"),
     _module("merlin_experiments.phase1.authoring_conformance", "grader"),
     _module("merlin_experiments.phase1.spend", "grader"),
@@ -316,7 +324,7 @@ MODULE_ACCESS = (
     _module(
         "merlin.targetgen.owned_host_model_execution",
         "grader",
-        aliases=("merlin.targetgen.owned_host_dispatch_checks",),
+        aliases=("merlin.targetgen.owned_host_dispatch_checks", "merlin.targetgen.owned_host_selections"),
     ),
     _module("merlin.targetgen.owned_host_leaf_execution", "grader"),
     _module(
@@ -371,6 +379,7 @@ MODULE_ACCESS = (
         aliases=(
             "merlin.targetgen.oracle_policy",
             "merlin.targetgen._capsule_bundle_worker",
+            "merlin.targetgen.capsule_bundle",
             "merlin.targetgen.capsule_diagnostics",
         ),
     ),

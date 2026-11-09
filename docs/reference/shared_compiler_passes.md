@@ -13,6 +13,13 @@ code_refs:
   - src/merlin/compiler/schedule/compact_dense.py
   - src/merlin/compiler/schedule/llvm_program.py
   - src/merlin/compiler/schedule/window_transfer.py
+  - src/merlin/compiler/schedule/window_geometry.py
+  - src/merlin/compiler/schedule/convolution_realization.py
+  - src/merlin/compiler/schedule/dense_panel_build.py
+  - src/merlin/compiler/schedule/dense_panel_verify.py
+  - src/merlin/kernels/mechanism_applicability.py
+  - src/merlin/targetgen/capsule_bundle.py
+  - src/merlin_experiments/phase1/feedback/private_model_completion.py
   - src/merlin/compiler/schedule/dense_source.py
   - src/merlin/llvmlower/shared_source_routing.py
   - src/merlin/compiler/schedule/pointwise_source.py
@@ -156,6 +163,26 @@ lowering mechanism over existing convolution semantics; it needs no new Phase 1
 operation form or Phase 0 capability grant. Target execution must independently
 validate row stride, tails and transfer ordering.
 
+The implementation owners under `compiler/schedule/` separate the existing
+algorithms by responsibility:
+
+| Work | Actual owner |
+| --- | --- |
+| Window geometry, counted coverage and resident input placement | `window_geometry.py`, `convolution_input_rows.py` |
+| Tile emission, transfer premises and column/epoch coordination | `convolution_tiles.py`, `convolution_transfer_laws.py`, `window_transfer.py` |
+| Registered convolution alternatives, RHS preparation and selected realization | `convolution_candidates.py`, `convolution_storage.py`, `convolution_rhs.py`, `convolution_admission.py`, `convolution_realization.py` |
+| Dense panel construction, checking projections and epoch verification | `dense_panel_build.py`, `dense_panel_projection.py`, `dense_panel_verify.py` |
+
+`convolution_exploration.py` retains public convolution orchestration;
+`dense_panel_pipeline.py` retains checked results and public scheduling.
+Their established callable and record imports continue to resolve to the actual
+implementations. For mechanism guidance, `kernels/mechanism_metrics.py` compares
+static observations, `mechanism_ports.py` matches movement roles to consumer
+ports, `mechanism_stream.py` compares proved stream facts, and
+`mechanism_admission.py` evaluates candidate shape/resource conditions.
+`mechanism_applicability.py` composes the report without choosing a schedule or
+claiming a speedup.
+
 Select the original hardware configuration and numerical policy. Supply resource
 and code-growth budgets, with optional optimization controls. Structural RTL
 facts can establish dimensions, widths and capacity; they do not establish
@@ -200,6 +227,21 @@ replan with a stable library. Versions describe source bytes, not loaded-code
 attestation, third-party dependencies or a complete transitive import closure.
 This roster grants no candidate import access: the separate reviewed
 compiler-library contract and existing authoring boundaries still apply.
+
+SDK26 names the actual convolution and dense-panel owners above, including their
+checking projections and admission code. Mechanism guidance remains under its
+existing authoring boundary. Frozen SDK6–25 inventories and archives retain their
+original membership and bytes; public import compatibility does not authorize
+exporting current code under an older release identity.
+
+Grader source custody is separate from the editable pass library.
+`targetgen/capsule_bundle.py` owns frozen model-asset validation and runtime-bundle
+construction through the existing bundle worker.
+`merlin_experiments/phase1/feedback/private_model_completion.py` owns completed
+private full-model build receipt and roster checks. These sources retain their
+private roles and existing asset/receipt byte checks; neither belongs in a
+candidate's shared compiler export or substitutes for numerical execution and
+task quality.
 
 Compact dense C emission binds the actual checked kernel, index width and
 library through an immutable existing `AnalysisStamp`. Editing or deleting its

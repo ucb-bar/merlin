@@ -22,8 +22,6 @@ MAY import merlin.
 
 from __future__ import annotations
 
-from merlin_experiments.phase1.feedback import setup_timing as _host_timing
-
 import dataclasses
 import datetime as _dt
 import json
@@ -40,33 +38,39 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from merlin.common.jsonio import readable_json
+from merlin_experiments.phase1.feedback import setup_timing as _host_timing
 
-from .capsule_lane_evidence import dispatch_boundary_report as dispatch_boundary_report
-from .capsule_lane_evidence import lane_report as _lane_report
-from .capsule_lane_evidence import oracle_source_scope
-from .capsule_lane_evidence import whole_program_completion_lane_report as whole_program_completion_lane_report
-from .capsule_source_identity import _capture_compiler_source, _finish_compiler_source
-from .capsule_tier_result import TierResult as TierResult
+from .capsule_diagnostics import _absent_outputs as _absent_outputs
+from .capsule_diagnostics import _candidate_exception_diagnostic as _candidate_exception_diagnostic
+from .capsule_diagnostics import _clip as _clip
+from .capsule_diagnostics import _engine_token as _engine_token
+from .capsule_diagnostics import _oracle_kind as _oracle_kind
+from .capsule_diagnostics import _range_check_bounds as _range_check_bounds
+from .capsule_diagnostics import _readback_refusal as _readback_refusal
+from .capsule_diagnostics import _record_console as _record_console
+from .capsule_diagnostics import _unwritten_output_detail as _unwritten_output_detail
 from .capsule_instruction_policy import apply_executed_stream_rule, enforce_executed_stream
 from .capsule_instruction_policy import apply_prohibited_instruction_rule as apply_prohibited_instruction_rule
 from .capsule_instruction_policy import graded_prohibited_roles as graded_prohibited_roles
 from .capsule_instruction_policy import prohibited_instruction_report as prohibited_instruction_report
-from .capsule_diagnostics import _candidate_exception_diagnostic as _candidate_exception_diagnostic
-from .capsule_diagnostics import _clip as _clip
-from .capsule_diagnostics import _range_check_bounds as _range_check_bounds
-from .capsule_diagnostics import _readback_refusal as _readback_refusal
-from .capsule_diagnostics import _engine_token as _engine_token
-from .capsule_diagnostics import _record_console as _record_console
-from .capsule_diagnostics import _oracle_kind as _oracle_kind
-from .capsule_diagnostics import _absent_outputs as _absent_outputs
-from .capsule_diagnostics import _unwritten_output_detail as _unwritten_output_detail
-
+from .capsule_lane_evidence import dispatch_boundary_report as dispatch_boundary_report
+from .capsule_lane_evidence import lane_report as _lane_report
+from .capsule_lane_evidence import oracle_source_scope
+from .capsule_lane_evidence import whole_program_completion_lane_report as whole_program_completion_lane_report
+from .capsule_processes import (
+    _descendants as _descendants,
+)
 from .capsule_processes import (
     _die_with_parent as _die_with_parent,
-    _descendants as _descendants,
-    _running as _running,
+)
+from .capsule_processes import (
     _kill_tree as _kill_tree,
 )
+from .capsule_processes import (
+    _running as _running,
+)
+from .capsule_source_identity import _capture_compiler_source, _finish_compiler_source
+from .capsule_tier_result import TierResult as TierResult
 
 if TYPE_CHECKING:
     from aet.core.run_paths import RunPaths
@@ -77,13 +81,31 @@ from merlin.targetgen.tier_integrity import CERT_NOT_MEASURED
 from ..runtime import commandbuffer as _CB
 from ..runtime.backends import base as _backends_mod
 from . import capsule_golden as CG
-from . import seeded_grade as _seeded_grade
-from . import tier_cache as _TC
 from . import completion_order_gate as _CO_GATE
 from . import oracle_policy as _oracle_policy
 from . import partial_console as _partial_console
+from . import seeded_grade as _seeded_grade
+from . import tier_cache as _TC
 from . import tier_policy as _tier_policy
 from . import trace_check as TCK
+from .capsule_bundle import (
+    _content_identity as _content_identity,
+)
+from .capsule_bundle import (
+    _file_identity as _file_identity,
+)
+from .capsule_bundle import (
+    _model_asset as _model_asset,
+)
+from .capsule_bundle import (
+    _model_runtime_bundle as _model_runtime_bundle,
+)
+from .capsule_bundle import (
+    _numpy_dtype as _numpy_dtype,
+)
+from .capsule_bundle import (
+    _write_deterministic_npz as _write_deterministic_npz,
+)
 
 # shared, target-agnostic capsule I/O (also re-exported: callers use CR.discover_capsules/load_capsule)
 from .capsule_common import (  # noqa: F401
@@ -95,6 +117,19 @@ from .capsule_common import (  # noqa: F401
     make_run_paths,
     run_entrypoints,
 )
+
+# Retain historical callable and pickle identities at the existing runner API.
+for _bundle_callable in (
+    _model_asset,
+    _file_identity,
+    _content_identity,
+    _write_deterministic_npz,
+    _numpy_dtype,
+    _model_runtime_bundle,
+):
+    _bundle_callable.__module__ = __name__
+del _bundle_callable
+
 from .contract import compile as oot_compile  # noqa: F401 -- tests patch the oracle here
 from .contract import schemas
 from .oot_runner import (
@@ -372,19 +407,29 @@ class _CarriedPreparedTier(Exception):
 
 
 @contextmanager
-def _prepared_tier_reuse(capsule_name, tier, mandatory, *, target, generated, shas, from_rtl,
-                         simulation_context, first=False):
+def _prepared_tier_reuse(
+    capsule_name, tier, mandatory, *, target, generated, shas, from_rtl, simulation_context, first=False
+):
     """Look up an exact semantic certificate after this engine builds its ELF.
 
     A seeded grade (:mod:`.seeded_grade`) also looks up its ``first`` executed tier, the screen."""
     screen = first and _seeded_grade.screen_carry(capsule_name, tier)
+
     def observe(elf):
         from .elf_lanes import PACKAGE_ELF_NAME
 
         if Path(elf).resolve() != (Path(generated) / PACKAGE_ELF_NAME).resolve():
             return
-        result, _ = carried_tier_result(capsule_name, tier, mandatory, target=target,
-            generated=generated, shas=shas(), from_rtl=from_rtl, simulation_context=simulation_context)
+        result, _ = carried_tier_result(
+            capsule_name,
+            tier,
+            mandatory,
+            target=target,
+            generated=generated,
+            shas=shas(),
+            from_rtl=from_rtl,
+            simulation_context=simulation_context,
+        )
         if result is not None:
             raise _CarriedPreparedTier(result, built=screen)
 
@@ -425,10 +470,19 @@ def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, r
         from .oracle_readback import run_with_readback
 
         res = run_with_readback(
-            cb, llvm_text, sim=sim, target=target, backend=backend, workdir=workdir, timeout=timeout,
+            cb,
+            llvm_text,
+            sim=sim,
+            target=target,
+            backend=backend,
+            workdir=workdir,
+            timeout=timeout,
             policy=readback_policy,
-            **({"before_execution": _PREPARED_EXECUTION_OBSERVER.get()}
-               if _PREPARED_EXECUTION_OBSERVER.get() is not None else {}),
+            **(
+                {"before_execution": _PREPARED_EXECUTION_OBSERVER.get()}
+                if _PREPARED_EXECUTION_OBSERVER.get() is not None
+                else {}
+            ),
         )
         if selection and isinstance(res.get("oracle"), dict):
             res["oracle"]["selection"] = dict(selection)
@@ -562,9 +616,12 @@ def _order_after_certificate(
         return _backends_mod.parse_console(text, strip_warnings=True, tolerant_metric=True)[0]
 
     def _compare(outputs):
-        return CG.compare_declared_outputs(
-            gold, outputs, policy, golden_source=gsource, readback_outputs=readback_outputs
-        )["status"] == "pass"
+        return (
+            CG.compare_declared_outputs(
+                gold, outputs, policy, golden_source=gsource, readback_outputs=readback_outputs
+            )["status"]
+            == "pass"
+        )
 
     return _LO.after_certificate(
         target=target,
@@ -650,8 +707,9 @@ def run_executables(generated) -> tuple:
     return tuple(found)
 
 
-def _tier_certificate_key(capsule_name: str, tier: str, *, target, generated, shas, from_rtl: bool,
-                          simulation_context=None):
+def _tier_certificate_key(
+    capsule_name: str, tier: str, *, target, generated, shas, from_rtl: bool, simulation_context=None
+):
     """``(execution identity, instrument digest, refusal reason)`` for one (capsule, tier).
 
     The identity is ``None`` whenever either half cannot be established -- no executable yet, a
@@ -700,8 +758,9 @@ def stamp_cache_refusals(tiers: dict, refusals: dict) -> None:
             record.cache_unavailable = str(why)
 
 
-def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target, generated, shas, from_rtl: bool,
-                        simulation_context=None):
+def carried_tier_result(
+    capsule_name: str, tier: str, mandatory: bool, *, target, generated, shas, from_rtl: bool, simulation_context=None
+):
     """A verdict this run may CARRY for ``tier``, as a TierResult, or ``None`` to execute the tier.
 
     The returned record is the stored one with the act of measurement stripped out: no wall-clock
@@ -720,7 +779,12 @@ def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target
     that used to be invisible.
     """
     identity, instrument, why = _tier_certificate_key(
-        capsule_name, tier, target=target, generated=generated, shas=shas, from_rtl=from_rtl,
+        capsule_name,
+        tier,
+        target=target,
+        generated=generated,
+        shas=shas,
+        from_rtl=from_rtl,
         simulation_context=simulation_context,
     )
     if identity is None:
@@ -731,8 +795,9 @@ def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target
 
         root = _SC.cache_root()
         hit = None if root is None else _TC.lookup(capsule_name, tier, identity, instrument, root=root, ledgers=False)
-        if hit is not None and _SC.key(simulation_context, run_executables(generated),
-                                      expected=(capsule_name, tier, target)) != (identity, instrument):
+        if hit is not None and _SC.key(
+            simulation_context, run_executables(generated), expected=(capsule_name, tier, target)
+        ) != (identity, instrument):
             return None, "simulation certificate identities changed before publication"
     else:
         hit = _TC.lookup(capsule_name, tier, identity, instrument)
@@ -786,7 +851,12 @@ def record_tier_certificate(
     """
     try:
         identity, instrument, _why = _tier_certificate_key(
-            capsule_name, tier, target=target, generated=generated, shas=shas, from_rtl=from_rtl,
+            capsule_name,
+            tier,
+            target=target,
+            generated=generated,
+            shas=shas,
+            from_rtl=from_rtl,
             simulation_context=simulation_context,
         )
         if identity is None:
@@ -798,9 +868,17 @@ def record_tier_certificate(
             root = cache_root()
             if root is None:
                 return
-            arguments['root'] = root
-        _TC.record(capsule_name, tier, identity, instrument, status=result.status,
-                   tier_result=result.to_dict(), run_id=run_id, **arguments)
+            arguments["root"] = root
+        _TC.record(
+            capsule_name,
+            tier,
+            identity,
+            instrument,
+            status=result.status,
+            tier_result=result.to_dict(),
+            run_id=run_id,
+            **arguments,
+        )
     except Exception:  # noqa: BLE001 -- a cache write may never gate a grade
         return
 
@@ -1453,12 +1531,20 @@ _LANE_COUNTERS: dict[str, tuple[str, str]] = {
 
 
 def lane_report(
-    capsule: dict, routing_plan: dict | None, mesh_execution: dict | None = None,
-    host_execution: dict | None = None, lane_execution: dict | None = None,
+    capsule: dict,
+    routing_plan: dict | None,
+    mesh_execution: dict | None = None,
+    host_execution: dict | None = None,
+    lane_execution: dict | None = None,
 ) -> dict | None:
     """Retain the original counter-map override at the runner boundary."""
     return _lane_report(
-        capsule, routing_plan, mesh_execution, host_execution, lane_execution, lane_counters=_LANE_COUNTERS,
+        capsule,
+        routing_plan,
+        mesh_execution,
+        host_execution,
+        lane_execution,
+        lane_counters=_LANE_COUNTERS,
     )
 
 
@@ -1693,17 +1779,27 @@ def _bind_positional_output_name(cb: dict, capsule: dict) -> None:
         return
     previous = outputs[0]
     if target in tensors:
-        raise CertFailure("positional_output_binding", _cat("PROTOCOL_VIOLATION"),
-                          "positional output name collides with another emitted tensor")
+        raise CertFailure(
+            "positional_output_binding",
+            _cat("PROTOCOL_VIOLATION"),
+            "positional output name collides with another emitted tensor",
+        )
     pointer = cb.get("compiler_pointer_abi")
     if pointer is not None:
         arguments = pointer.get("arguments") if isinstance(pointer, dict) else None
-        if (not isinstance(pointer, dict) or pointer.get("version") != 1 or not isinstance(arguments, list)
-                or arguments.count(previous) != 1
-                or any(not isinstance(name, str) or name not in tensors for name in arguments)
-                or len(set(arguments)) != len(arguments)):
-            raise CertFailure("positional_output_binding", _cat("PROTOCOL_VIOLATION"),
-                              "positional output requires a complete consistent compiler pointer declaration")
+        if (
+            not isinstance(pointer, dict)
+            or pointer.get("version") != 1
+            or not isinstance(arguments, list)
+            or arguments.count(previous) != 1
+            or any(not isinstance(name, str) or name not in tensors for name in arguments)
+            or len(set(arguments)) != len(arguments)
+        ):
+            raise CertFailure(
+                "positional_output_binding",
+                _cat("PROTOCOL_VIOLATION"),
+                "positional output requires a complete consistent compiler pointer declaration",
+            )
     # Preserve tensor iteration order: the logical harness may derive pointer
     # order from the emitted roster. Reinsert-at-end would change that ABI.
     cb["tensors"] = {target if name == previous else name: spec for name, spec in tensors.items()}
@@ -2331,14 +2427,28 @@ def _grade_candidate_model_capsule_inline(capsule, *, target, timeout, package_d
         if context.get("public_program_execution") is not None or "checked_source_diagnostic" in context:
             raise ValueError("source slices require Merlin host ownership")
         return _grade_owned_model_capsule_inline(
-            capsule, target=target, timeout=timeout, package_dir=package_dir, context=context, pkg=pkg)
+            capsule, target=target, timeout=timeout, package_dir=package_dir, context=context, pkg=pkg
+        )
     if "checked_source_diagnostic" in context:
         from .checked_source_model_diagnostic_execution import grade_from_context
-        return grade_from_context(sys.modules[__name__], capsule, target=target, timeout=timeout,
-                                  package_dir=package_dir, context=context, pkg=pkg)
-    selected = _grade_public_program_capsule_inline if context.get("public_program_execution") is not None else (
-        _grade_owned_model_capsule_inline if owned_model_required(capsule, target=target)
-        else _grade_public_program_capsule_inline
+
+        return grade_from_context(
+            sys.modules[__name__],
+            capsule,
+            target=target,
+            timeout=timeout,
+            package_dir=package_dir,
+            context=context,
+            pkg=pkg,
+        )
+    selected = (
+        _grade_public_program_capsule_inline
+        if context.get("public_program_execution") is not None
+        else (
+            _grade_owned_model_capsule_inline
+            if owned_model_required(capsule, target=target)
+            else _grade_public_program_capsule_inline
+        )
     )
     return selected(capsule, target=target, timeout=timeout, package_dir=package_dir, context=context, pkg=pkg)
 
@@ -2380,7 +2490,8 @@ def _grade_owned_model_capsule_inline(
         },
     }
     try:
-        from .owned_host_slice_execution import selected_source_slice, require_slice_placement
+        from .owned_host_slice_execution import require_slice_placement, selected_source_slice
+
         if selected_source_slice(capsule):
             require_slice_placement(capsule)
         result["candidate_source_eligibility"] = independent_frozen_source_eligibility(capsule, target=target)
@@ -2417,6 +2528,7 @@ def _grade_owned_model_capsule_inline(
         # Host lowering is a trusted Merlin service. The candidate is invoked
         # only for independently source-bound device groups by that service.
         from .owned_host_model_execution import execute_owned_host_model
+
         result["owned_host_source"] = {
             "capsule_declaration": _digest(Path(capsule["__dir__"]) / "capsule.yaml"),
             "source_interface": _digest(
@@ -2506,6 +2618,7 @@ def _grade_public_program_capsule_inline(
         result["candidate_source_eligibility_failure"] = {"type": type(exc).__name__, "detail": str(exc)[:2000]}
         if diagnostic_selection is not None:
             from .checked_source_model_diagnostic_execution import finish_unavailable
+
             return finish_unavailable(
                 diagnostic_selection, result, capsule, target=target, deadline=diagnostic_deadline
             )
@@ -2581,8 +2694,11 @@ def _grade_public_program_capsule_inline(
             compiler_provenance="actual submitted whole-program command buffer; physical pricing remains independent",
             store=str(paths.run_path),
         )
-        bundle_kwargs = {"artifact_root": paths.run_path / ".private_runtime_bundle"} if (
-            selection is not None or diagnostic_selection is not None) else {}
+        bundle_kwargs = (
+            {"artifact_root": paths.run_path / ".private_runtime_bundle"}
+            if (selection is not None or diagnostic_selection is not None)
+            else {}
+        )
         stage = "prepare_runtime_bundle"
         with _model_runtime_bundle(capsule, timeout=timeout, **bundle_kwargs) as (bundle, provenance, verify):
             result["candidate_capture"] = provenance
@@ -2618,7 +2734,10 @@ def _grade_public_program_capsule_inline(
         from .checked_source_model_diagnostic_execution import finish
 
         return finish(
-            diagnostic_selection, result, capsule, target=target,
+            diagnostic_selection,
+            result,
+            capsule,
+            target=target,
             native_result=diagnostic_native_result,
             work_root=diagnostic_work_root,
             remaining_s=max(0, diagnostic_deadline - time.monotonic()),
@@ -2692,9 +2811,8 @@ def resolve_numeric_policy(
     """
     if target is None:
         return None, None, None
-    from merlin_experiments.corpus.numeric_policy import load_declared_numeric_policy, numeric_profile_path
-
     from merlin.common.paths import repo_root
+    from merlin_experiments.corpus.numeric_policy import load_declared_numeric_policy, numeric_profile_path
 
     from .corpora import descriptor_path
     from .target_experiment import load_target_experiment
@@ -2828,397 +2946,6 @@ def _verified_model_host_lane_snapshot() -> tuple[Path | None, dict[str, Any] | 
         "manifest_sha256": expected["manifest_sha256"],
         "source_repo": manifest.get("repo"),
     }
-
-
-def _model_asset(capsule_root: Path, declared: object, role: str) -> Path:
-    """Resolve one declared model-capsule asset without permitting aliases or escapes."""
-    if not isinstance(declared, str) or not declared.strip():
-        raise ValueError(f"model capsule does not declare its {role} asset")
-    rel = Path(declared)
-    if rel.is_absolute() or ".." in rel.parts:
-        raise ValueError(f"model capsule {role} path must stay inside the capsule: {declared!r}")
-    lexical = capsule_root / rel
-    if lexical.is_symlink() or not lexical.is_file():
-        raise ValueError(f"model capsule {role} asset is missing or a symlink: {declared!r}")
-    resolved = lexical.resolve(strict=True)
-    if capsule_root not in resolved.parents:
-        raise ValueError(f"model capsule {role} asset escapes its frozen directory: {declared!r}")
-    return resolved
-
-
-def _file_identity(path: Path) -> dict[str, Any]:
-    import hashlib
-
-    h = hashlib.sha256()
-    size = 0
-    with path.open("rb") as fh:
-        for block in iter(lambda: fh.read(1024 * 1024), b""):
-            size += len(block)
-            h.update(block)
-    return {"sha256": h.hexdigest(), "size_bytes": size}
-
-
-def _content_identity(files: dict[str, Path], *, root: Path | None = None) -> dict[str, Any]:
-    """Stable identity of a role-keyed set; paths do not participate in its content hash."""
-    import hashlib
-
-    artifacts = {}
-    for role, path in sorted(files.items()):
-        rel = str(path.relative_to(root)) if root is not None else path.name
-        artifacts[role] = {"path": rel, **_file_identity(path)}
-    canonical = json.dumps(artifacts, sort_keys=True, separators=(",", ":")).encode()
-    return {
-        "version": 1,
-        "content_sha256": hashlib.sha256(canonical).hexdigest(),
-        "artifacts": artifacts,
-        "missing": [],
-    }
-
-
-def _write_deterministic_npz(path: Path, arrays: dict[str, Any]) -> None:
-    """Write an np.load-compatible archive whose bytes do not contain wall-clock timestamps."""
-    import io
-    import zipfile
-
-    import numpy as np
-
-    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as archive:
-        for name, array in sorted(arrays.items()):
-            payload = io.BytesIO()
-            np.save(payload, np.ascontiguousarray(array), allow_pickle=False)
-            member = zipfile.ZipInfo(f"{name}.npy", date_time=(1980, 1, 1, 0, 0, 0))
-            member.compress_type = zipfile.ZIP_STORED
-            member.external_attr = 0o100444 << 16
-            archive.writestr(member, payload.getvalue())
-
-
-def _numpy_dtype(dtype: str):
-    import numpy as np
-
-    dtypes = {
-        "f64": np.float64,
-        "f32": np.float32,
-        "f16": np.float16,
-        "i64": np.int64,
-        "i32": np.int32,
-        "i16": np.int16,
-        "i8": np.int8,
-        "i1": np.int8,
-    }
-    if dtype not in dtypes:
-        # A bf16 array cannot be reconstructed from decoded YAML values without an explicit bit-level
-        # representation.  Guessing by casting to f32 would make the runtime consume different bytes.
-        raise ValueError(f"capsule runtime-bundle adapter cannot losslessly encode dtype {dtype!r}")
-    return dtypes[dtype]
-
-
-def _model_runtime_bundle(capsule: dict, *, timeout: int, artifact_root: Path | None = None, target: str | None = None):
-    """Context manager yielding a read-only capture bundle made only from frozen capsule assets.
-
-    The model capsule intentionally exposes a linalg interface, external weights and an independent
-    golden instead of a live model2MLIR capture directory.  Whole-model execution needs the equivalent
-    runtime files.  This adapter reconstructs those files deterministically, validates their ABI against
-    the capsule's frozen loader via torch.export, and checks every source/bundle digest both before and
-    after compilation.  It never resolves ``out/artifacts/recaptures`` and never captures/downloads a
-    model.
-    """
-    import contextlib
-    import hashlib
-    import shutil
-    import subprocess
-    import tempfile
-
-    import numpy as np
-    from .owned_host_slice_execution import selected_source_slice, runtime_bundle
-
-    if selected_source_slice(capsule):
-        return runtime_bundle(capsule, target=target, artifact_root=artifact_root)
-
-    @contextlib.contextmanager
-    def _materialized():
-        raw_root = capsule.get("__dir__")
-        if not raw_root:
-            raise ValueError("model capsule has no frozen source directory")
-        lexical_root = Path(raw_root)
-        if lexical_root.is_symlink() or not lexical_root.is_dir():
-            raise ValueError("model capsule source directory is missing or a symlink")
-        root = lexical_root.resolve(strict=True)
-        op_attrs = (capsule.get("operation") or {}).get("attributes") or {}
-        ref = capsule.get("pytorch_ref") or {}
-
-        interface_names = [str(x) for x in (capsule.get("linalg_mlir"), capsule.get("interface_mlir")) if x]
-        if not interface_names or len(set(interface_names)) != 1:
-            raise ValueError("model capsule linalg_mlir/interface_mlir declarations are absent or inconsistent")
-        interface = _model_asset(root, interface_names[0], "linalg interface")
-        loader = _model_asset(root, ref.get("loader"), "PyTorch loader")
-        weights = _model_asset(root, op_attrs.get("weights"), "external weights")
-        manifest_name = op_attrs.get("weights_manifest")
-        manifest_asset = _model_asset(root, manifest_name, "capture-time weight manifest") if manifest_name else None
-        profile_name = op_attrs.get("loader_profile")
-        profile_sha = op_attrs.get("loader_profile_sha256")
-        loader_profile = None
-        if profile_name is not None or profile_sha is not None:
-            loader_profile = _model_asset(root, profile_name, "selected loader profile")
-            if (
-                loader_profile != loader.with_name("profile.json")
-                or not isinstance(profile_sha, str)
-                or hashlib.sha256(loader_profile.read_bytes()).hexdigest() != profile_sha
-            ):
-                raise ValueError("selected loader profile differs from its immutable capsule binding")
-        elif loader.with_name("profile.json").exists():
-            raise ValueError("adjacent loader profile has no immutable capsule binding")
-        dependency_name = op_attrs.get("loader_dependencies")
-        dependency_root = None
-        if dependency_name:
-            dependency_lexical = root / str(dependency_name)
-            if (
-                Path(str(dependency_name)).is_absolute()
-                or ".." in Path(str(dependency_name)).parts
-                or dependency_lexical.is_symlink()
-                or not dependency_lexical.is_dir()
-            ):
-                raise ValueError("model loader dependency tree must be a real capsule-local directory")
-            dependency_root = dependency_lexical.resolve(strict=True)
-            if root not in dependency_root.parents:
-                raise ValueError("model loader dependency tree must stay inside the capsule")
-        golden_yaml = _model_asset(root, "golden.yaml", "independent golden")
-        capsule_yaml = _model_asset(root, "capsule.yaml", "capsule declaration")
-        source_files = {
-            "capsule_declaration": capsule_yaml,
-            "loader": loader,
-            "linalg_interface": interface,
-            "external_weights": weights,
-            "independent_golden": golden_yaml,
-        }
-        if loader_profile is not None:
-            source_files["loader_profile"] = loader_profile
-        if manifest_asset is not None:
-            source_files["capture_manifest"] = manifest_asset
-        from merlin.targetgen import golden_store as _GS
-
-        if (root / _GS.ARRAYS).exists() or (root / _GS.ARRAYS).is_symlink():
-            source_files["independent_golden_arrays"] = _model_asset(root, _GS.ARRAYS, "independent golden arrays")
-        if dependency_root is not None:
-            for dependency in sorted(dependency_root.rglob("*.py")):
-                if dependency.is_symlink() or not dependency.is_file():
-                    raise ValueError("model loader dependency source is missing or a symlink")
-                source_files[f"loader_dependency::{dependency.relative_to(dependency_root)}"] = dependency
-        source_before = _content_identity(source_files, root=root)
-
-        golden_doc = _GS.load_golden(root)
-        if not isinstance(golden_doc, dict):
-            raise ValueError("model capsule golden.yaml is not a mapping")
-        prov = golden_doc.get("oracle_provenance") or {}
-        if prov.get("pytorch_source") != loader.name or prov.get("linalg_mlir") != interface.name:
-            raise ValueError("golden provenance does not name the capsule's declared loader/interface")
-        input_specs = list(capsule.get("inputs") or [])
-        input_names = [str(x.get("name")) for x in input_specs]
-        output_names = [str(x) for x in (op_attrs.get("outs") or [])]
-        if not output_names:
-            output_names = [str(op_attrs.get("out") or "")]
-        declared_order = list(op_attrs.get("arg_order") or [])
-        golden_order = list(prov.get("arg_order") or [])
-        if declared_order != input_names + output_names or golden_order != declared_order:
-            raise ValueError("capsule/golden argument order is inconsistent")
-        golden_inputs = prov.get("inputs") or {}
-        outputs = golden_doc.get("outputs") or {}
-        if set(golden_inputs) != set(input_names) or set(outputs) != set(output_names):
-            raise ValueError("capsule golden input/output names do not exactly match its declaration")
-
-        from ..common.mlir_query import forward_signature
-        from ..llvmlower.weights_pack import load_safetensors_header
-
-        signature, output_signature = forward_signature(interface)
-        header, _payload = load_safetensors_header(weights)
-        if len(signature) != len(header) + len(input_names):
-            raise ValueError(
-                f"interface has {len(signature)} arguments but frozen weights+inputs account for "
-                f"{len(header)}+{len(input_names)}"
-            )
-        if len(output_signature) != len(output_names):
-            raise ValueError(
-                f"capsule declares {len(output_names)} outputs but interface returns {len(output_signature)}"
-            )
-
-        arrays: dict[str, np.ndarray] = {}
-        first_input = len(signature) - len(input_names)
-        for offset, (decl, name) in enumerate(zip(input_specs, input_names)):
-            shape, dtype = signature[first_input + offset]
-            source = golden_inputs[name]
-            if list(decl.get("shape") or []) != list(shape) or list(source.get("shape") or []) != list(shape):
-                raise ValueError(f"frozen input {name!r} shape disagrees with the interface")
-            if str(decl.get("dtype") or "") != dtype:
-                raise ValueError(
-                    f"frozen input {name!r} declares dtype {decl.get('dtype')!r} but the executable "
-                    f"interface requires {dtype!r}"
-                )
-            decoded = source.get("decoded")
-            if decoded is None:
-                raise ValueError(f"frozen input {name!r} has no decoded row-major values")
-            array = np.asarray(decoded, dtype=_numpy_dtype(dtype))
-            if array.size != int(np.prod(shape, dtype=np.int64)):
-                raise ValueError(f"frozen input {name!r} element count disagrees with its shape")
-            arrays[f"in{offset}"] = np.ascontiguousarray(array.reshape(shape))
-
-        output_arrays: dict[str, np.ndarray] = {}
-        for output_name, (out_shape, out_dtype) in zip(output_names, output_signature, strict=True):
-            output_array = np.asarray(outputs[output_name], dtype=_numpy_dtype(out_dtype))
-            if output_array.size != int(np.prod(out_shape, dtype=np.int64)):
-                raise ValueError(f"frozen golden {output_name!r} element count disagrees with interface shape")
-            output_arrays[output_name] = np.ascontiguousarray(output_array.reshape(out_shape))
-
-        if artifact_root is None:
-            temp = Path(tempfile.mkdtemp(prefix="merlin_frozen_capsule_bundle_"))
-        else:
-            temp = artifact_root
-            if not temp.is_absolute() or temp.exists() or temp.is_symlink():
-                raise ValueError("retained public runtime bundle requires a fresh private artifact root")
-            temp.mkdir(mode=0o700)
-        bundle = temp / "bundle"
-        bundle.mkdir(mode=0o700)
-        try:
-            shutil.copyfile(interface, bundle / "model.mlir")
-            shutil.copyfile(weights, bundle / "weights.safetensors")
-            # The linalg's prov.weights_file is capsule-relative and remains byte-identical.  Keep an
-            # alias with that declared name instead of rewriting incompatible/unproven IR.
-            shutil.copyfile(weights, bundle / weights.name)
-            _write_deterministic_npz(bundle / "inputs.npz", arrays)
-            with (bundle / "golden.npy").open("wb") as fh:
-                np.save(fh, output_arrays[output_names[0]], allow_pickle=False)
-            _write_deterministic_npz(bundle / "goldens.npz", output_arrays)
-            (bundle / "output_order.json").write_text(json.dumps(output_names, separators=(",", ":")), encoding="utf-8")
-            if manifest_asset is not None:
-                shutil.copyfile(manifest_asset, bundle / "weights.safetensors.manifest.json")
-
-            from .capsule_source import _m2m_python
-
-            torch_python = _m2m_python()
-            worker = Path(__file__).with_name("_capsule_bundle_worker.py").resolve(strict=True)
-            if not torch_python.is_file():
-                raise ValueError(f"torch interpreter unavailable for frozen loader validation: {torch_python}")
-            request = {
-                "loader": str(loader),
-                "weights": str(weights),
-                "inputs_npz": str(bundle / "inputs.npz"),
-                "golden_npy": str(bundle / "golden.npy"),
-                "signature": [{"shape": list(shape), "dtype": dtype} for shape, dtype in signature],
-                "output_signature": [{"shape": list(shape), "dtype": dtype} for shape, dtype in output_signature],
-                "goldens_npz": str(bundle / "goldens.npz"),
-                "output_order": output_names,
-                "torch_seed": int(op_attrs.get("torch_seed", 0)),
-                "numeric_policy": capsule.get("numeric_policy") or {},
-            }
-            if loader_profile is not None:
-                request["loader_profile"] = {"path": str(loader_profile), "sha256": profile_sha}
-            if manifest_asset is not None:
-                request["captured_manifest"] = str(manifest_asset)
-            if dependency_root is not None:
-                request["loader_dependencies"] = str(dependency_root)
-            request_path = temp / "request.json"
-            request_path.write_text(json.dumps(request, sort_keys=True), encoding="utf-8")
-            env = dict(os.environ)
-            # The worker has no hub code path.  These additionally force common model clients offline
-            # if a future frozen loader imports one; an attempted checkout must fail, not mutate inputs.
-            env.update(
-                {
-                    "PYTHONDONTWRITEBYTECODE": "1",
-                    "HF_HUB_OFFLINE": "1",
-                    "TRANSFORMERS_OFFLINE": "1",
-                    "HF_DATASETS_OFFLINE": "1",
-                    "WANDB_MODE": "offline",
-                }
-            )
-            run = subprocess.run(
-                [str(torch_python), "-B", str(worker), "--request", str(request_path)],
-                cwd=str(root),
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=max(30, min(int(timeout), 300)),
-            )
-            marker = "__CAPSULE_BUNDLE_ABI__ "
-            line = next((ln[len(marker) :] for ln in run.stdout.splitlines() if ln.startswith(marker)), None)
-            if run.returncode != 0 or line is None:
-                detail = (run.stderr or run.stdout or "no diagnostic")[-1200:]
-                raise ValueError(
-                    f"frozen loader/weights/interface/golden validation failed (rc={run.returncode}): {detail}"
-                )
-            report = json.loads(line)
-            if (
-                report.get("loader_sha256") != source_before["artifacts"]["loader"]["sha256"]
-                or report.get("weights_sha256") != source_before["artifacts"]["external_weights"]["sha256"]
-            ):
-                raise ValueError("loader or weights changed while the export ABI was being validated")
-            manifest = report.get("manifest")
-            order = report.get("input_order")
-            if not isinstance(manifest, dict) or set(manifest) != {str(i) for i in range(len(signature))}:
-                raise ValueError("loader validator returned an incomplete forward-argument manifest")
-            if not isinstance(order, dict) or sorted(order.values()) != list(range(len(input_names))):
-                raise ValueError("loader validator returned an invalid input order")
-            if manifest_asset is None:
-                (bundle / "weights.safetensors.manifest.json").write_text(
-                    json.dumps(manifest, sort_keys=True, separators=(",", ":")), encoding="utf-8"
-                )
-            (bundle / "input_order.json").write_text(
-                json.dumps(order, sort_keys=True, separators=(",", ":")), encoding="utf-8"
-            )
-
-            bundle_files = {p.name: p for p in bundle.iterdir() if p.is_file()}
-            bundle_before = _content_identity(bundle_files)
-            source_after_materialize = _content_identity(source_files, root=root)
-            if source_after_materialize["content_sha256"] != source_before["content_sha256"]:
-                raise ValueError("frozen capsule assets changed while constructing the runtime bundle")
-            for path in bundle_files.values():
-                path.chmod(0o444)
-            bundle.chmod(0o555)
-            provenance = {
-                "version": 2 if manifest_asset is not None else 1,
-                "source": source_before,
-                "bundle": bundle_before,
-                "construction": (
-                    "frozen_capsule_assets_v2" if manifest_asset is not None else "frozen_capsule_assets_v1"
-                ),
-                "interface_reused_byte_exact": True,
-                "live_recapture_used": False,
-                "network_or_model_checkout_used": False,
-                "validation": {
-                    k: report.get(k)
-                    for k in (
-                        "torch_export",
-                        "capture_manifest_validated",
-                        "golden_validated",
-                        "golden_value_replay",
-                        "weights_validated_exact",
-                        "loader_input_count",
-                    )
-                },
-                "tool": {
-                    "worker_sha256": _file_identity(worker)["sha256"],
-                    "python": report.get("python"),
-                    "python_version": report.get("python_version"),
-                    "torch_version": report.get("torch_version"),
-                },
-            }
-
-            def verify_unchanged() -> None:
-                source_after = _content_identity(source_files, root=root)
-                bundle_after = _content_identity(bundle_files)
-                if source_after["content_sha256"] != source_before["content_sha256"]:
-                    raise ValueError("frozen capsule assets changed during whole-model compilation")
-                if bundle_after["content_sha256"] != bundle_before["content_sha256"]:
-                    raise ValueError("constructed runtime bundle changed during whole-model compilation")
-
-            yield bundle, provenance, verify_unchanged
-        finally:
-            if artifact_root is None:
-                if bundle.exists():
-                    bundle.chmod(0o700)
-                    for path in bundle.iterdir():
-                        if path.is_file() and not path.is_symlink():
-                            path.chmod(0o600)
-                shutil.rmtree(temp, ignore_errors=True)
-
-    return _materialized()
 
 
 def _source_region_execution_verdict(certificate: dict) -> tuple[str, str, str] | None:
@@ -4029,8 +3756,8 @@ def _grade_model_capsule_inline(
                 run_where,
                 _v,
                 "nothing was compared ON THE ACCELERATOR: no declared tier ran, so the host-side number "
-                    "is not a verdict about this backend. A comparison that did not happen is not a "
-                    "passing comparison.",
+                "is not a verdict about this backend. A comparison that did not happen is not a "
+                "passing comparison.",
             ),
             failure={
                 "plane": "model",
@@ -4492,9 +4219,17 @@ def _finalize_capsule_result(
     if result_filename not in ("capsule_result.json", ".operator_child_result.json"):
         raise ValueError("capsule result publication requires its original fixed filename")
     (paths.run_path / result_filename).write_text(readable_json(result), encoding="utf-8")
-    _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=cfg.target, suite=cfg.suite,
-                        filename=".operator_child_manifest.yaml" if result_filename != "capsule_result.json"
-                        else "run_manifest.yaml")
+    _write_run_manifest(
+        paths,
+        run_id,
+        name,
+        status,
+        tiers,
+        capsule,
+        target=cfg.target,
+        suite=cfg.suite,
+        filename=".operator_child_manifest.yaml" if result_filename != "capsule_result.json" else "run_manifest.yaml",
+    )
     try:
         schemas.validate(result, "capsule_result", contract=contract)
     except schemas.ContractViolation as e:
@@ -4573,8 +4308,10 @@ def run_capsule(
         verify_selection(capsule, model_execution_selection)
     if checked_source_diagnostic is not None:
         from .checked_source_model_diagnostic import verify_host_selection
-        verify_host_selection(checked_source_diagnostic, capsule, target=eff_target,
-                              public_selection=model_execution_selection)
+
+        verify_host_selection(
+            checked_source_diagnostic, capsule, target=eff_target, public_selection=model_execution_selection
+        )
     from .owned_host_slice_execution import selected_source_slice
 
     if capsule.get("kind") == "model" or selected_source_slice(capsule):
@@ -4605,16 +4342,30 @@ def run_capsule(
         )
         from .owned_host_model_selection import owned_model_required
 
-        if (owned_model_required(capsule, target=eff_target) or model_execution_selection is not None
-                or checked_source_diagnostic is not None):
+        if (
+            owned_model_required(capsule, target=eff_target)
+            or model_execution_selection is not None
+            or checked_source_diagnostic is not None
+        ):
             from .capsule_candidate_context import grade_selected_model
 
             result = grade_selected_model(
-                sys.modules[__name__], capsule, target=eff_target, package_dir=package_dir,
-                paths=paths, runs_root=runs_root, run_id=run_id, cfg=cfg, contract=contract,
-                pkg=pkg, adapters=adapters, budget_s=_budget, timeout=timeout,
+                sys.modules[__name__],
+                capsule,
+                target=eff_target,
+                package_dir=package_dir,
+                paths=paths,
+                runs_root=runs_root,
+                run_id=run_id,
+                cfg=cfg,
+                contract=contract,
+                pkg=pkg,
+                adapters=adapters,
+                budget_s=_budget,
+                timeout=timeout,
                 model_execution_selection=model_execution_selection,
-                checked_source_diagnostic=checked_source_diagnostic)
+                checked_source_diagnostic=checked_source_diagnostic,
+            )
         else:
             result = _grade_model_capsule(
                 capsule, target=eff_target, timeout=timeout, package_dir=package_dir, budget_s=_budget
@@ -4652,8 +4403,14 @@ def run_capsule(
         if _defer_result_publication:
             raise ValueError("operator publication cannot replace the owned-host route")
         return grade_owned_host_leaf(
-            capsule, target=eff_target, paths=paths, cfg=cfg, run_id=run_id,
-            timeout=timeout, no_oracle=no_oracle, readback_policy=_adapter_readback_policy(adapters),
+            capsule,
+            target=eff_target,
+            paths=paths,
+            cfg=cfg,
+            run_id=run_id,
+            timeout=timeout,
+            no_oracle=no_oracle,
+            readback_policy=_adapter_readback_policy(adapters),
             reachable_oracle_tiers=frozenset(adapters),
         )
 
@@ -4700,7 +4457,12 @@ def run_capsule(
             source_receipt_path = paths.generated / "owned-source" / "receipt.json"
             source_receipt = json.loads(source_receipt_path.read_text())
             from merlin.compiler.build import siblings as owned_shared_source
-            source_receipt_schema = owned_shared_source.RECEIPT if owned_shared_source.selected(capsule) else "merlin.owned_spatial_source_compilation.v1"
+
+            source_receipt_schema = (
+                owned_shared_source.RECEIPT
+                if owned_shared_source.selected(capsule)
+                else "merlin.owned_spatial_source_compilation.v1"
+            )
             if (
                 source_receipt.get("schema") != source_receipt_schema
                 or source_receipt.get("artifact_sha256") != hashlib.sha256(llvm_text.encode()).hexdigest()
@@ -4825,9 +4587,7 @@ def run_capsule(
         # The semantic roster comes from the independent golden; the public logical ABI alone
         # determines which additional published/intermediate console readbacks are legitimate.
         # Apply the same boundary to ordinary and whole-program kernels and every numeric tier.
-        from merlin.compiler.ir.logical_abi import HarnessRenderError
-        from merlin.compiler.ir.logical_abi import logical_abi
-        from merlin.compiler.ir.logical_abi import logical_interface
+        from merlin.compiler.ir.logical_abi import HarnessRenderError, logical_abi, logical_interface
 
         try:
             readback_outputs = tuple(buf.name for buf in logical_interface(cb, logical_abi()) if buf.kind == "output")
@@ -5074,12 +4834,13 @@ def run_capsule(
             trace = (
                 _grade_cpu_step(
                     RD.decode_module,
-                    _parsed_lowered_shared, target=eff_target, source=str(paths.generated / cfg.fourth_output_name)
+                    _parsed_lowered_shared,
+                    target=eff_target,
+                    source=str(paths.generated / cfg.fourth_output_name),
                 )
                 if _parsed_lowered_shared is not None
                 else _grade_cpu_step(
-                    RD.decode_text, llvm_text,
-                    source=str(paths.generated / cfg.fourth_output_name), target=eff_target
+                    RD.decode_text, llvm_text, source=str(paths.generated / cfg.fourth_output_name), target=eff_target
                 )
             )
             decoded_trace = trace  # hand to the advisory localizer on an oracle divergence
@@ -5373,8 +5134,16 @@ def run_capsule(
             _simulation_context = None
             if tier in cfg.rtl_tiers and tier not in adapter_managed_tiers:
                 _simulation_context = _simulation_request(
-                    capsule=capsule, cb=cb, gold=gold, reference=ref, direct_oracle_golden=direct_oracle_golden,
-                    policy=policy, llvm_text=llvm_text, adapter=adapter, target=eff_target, tier=tier,
+                    capsule=capsule,
+                    cb=cb,
+                    gold=gold,
+                    reference=ref,
+                    direct_oracle_golden=direct_oracle_golden,
+                    policy=policy,
+                    llvm_text=llvm_text,
+                    adapter=adapter,
+                    target=eff_target,
+                    tier=tier,
                     package_dir=package_dir,
                 )
             if _executed_here and tier not in adapter_managed_tiers:
@@ -5437,9 +5206,17 @@ def run_capsule(
                     if not isinstance(_cycle_policy, dict):
                         raise ValueError("evaluation_stage with predecessor cycles requires cycle_budget policy")
                     oracle_cb["_oracle_gsim_cycle_policy"] = dict(_cycle_policy)
-                with _prepared_tier_reuse(name, tier, mand, target=eff_target, generated=paths.generated,
-                        shas=_pin_shas, from_rtl=tier in cfg.rtl_tiers, simulation_context=_simulation_context,
-                        first=not _executed_here and tier not in adapter_managed_tiers):
+                with _prepared_tier_reuse(
+                    name,
+                    tier,
+                    mand,
+                    target=eff_target,
+                    generated=paths.generated,
+                    shas=_pin_shas,
+                    from_rtl=tier in cfg.rtl_tiers,
+                    simulation_context=_simulation_context,
+                    first=not _executed_here and tier not in adapter_managed_tiers,
+                ):
                     with oracle_source_scope(capsule, oracle_cb, llvm_text, target=eff_target):
                         with _host_timing.stage("oracle_adapter." + str(tier)):
                             res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
@@ -5768,7 +5545,8 @@ def run_capsule(
                 okt = all(
                     _grade_cpu_step(CG.compare_declared_outputs, expected, res["outputs"], policy, **output_contract)[
                         "status"
-                    ] == "pass"
+                    ]
+                    == "pass"
                     for expected in (gold, ref, sim)
                 )
             # tier_sim is a display LABEL; a tier supplied by an adapter (e.g. arc L3) may have no static
@@ -5865,8 +5643,8 @@ def run_capsule(
             # a later engine can reuse mutable build paths. No observer means
             # no work; this grants only protected model scheduling evidence.
             from merlin_experiments.phase1.feedback.rolling_model_gate import capture_tier
-            capture_tier(name, tier, tiers[tier], generated=paths.generated,
-                         package_dir=package_dir, shas=_pin_shas())
+
+            capture_tier(name, tier, tiers[tier], generated=paths.generated, package_dir=package_dir, shas=_pin_shas())
             # THIS TIER WAS PAID FOR; write down what it bought, against the bytes and the instrument
             # that produced it, so the next grade need not buy it again. Only a pass is stored (a
             # failure is what an agent acts on and is re-run for its detail); never raises.
@@ -5986,7 +5764,8 @@ def run_capsule(
     from merlin.perf.work_volume import command_buffer_evidence as _cb_evidence
 
     _work_volume, _cb_artifact = _grade_cpu_step(  # raw buffer stored beside the result, referenced
-        _cb_evidence, cb, compiler_provenance="submission command-buffer contract entrypoint", store=paths.run_path)
+        _cb_evidence, cb, compiler_provenance="submission command-buffer contract entrypoint", store=paths.run_path
+    )
     _lane_extra: dict[str, Any] = {}
     if (
         whole_program
@@ -6036,7 +5815,8 @@ def run_capsule(
     from merlin.perf.movement_volume import movement_evidence as _mv_evidence
 
     _movement_volume = _grade_cpu_step(
-        _mv_evidence, cb, compiler_provenance="submission command-buffer contract entrypoint")
+        _mv_evidence, cb, compiler_provenance="submission command-buffer contract entrypoint"
+    )
     return _finalize_capsule_result(
         result_filename=".operator_child_result.json" if _defer_result_publication else "capsule_result.json",
         submission=submission_identity(package_dir, run_id=run_id),
@@ -6229,8 +6009,12 @@ def _model_gate_operation_passed(result: dict, capsule: dict, oracle_adapters) -
     if result.get("status") != "incomplete" or "L2" not in capsule.get("required_oracle_tiers", []):
         return False
     failure = result.get("failure") or {}
-    if (failure.get("plane") != "oracle_unavailable" or failure.get("category") != "NOT_RUN_IS_NOT_PASS"
-            or failure.get("tier") != "L3" or failure.get("tier_status") != "unavailable"):
+    if (
+        failure.get("plane") != "oracle_unavailable"
+        or failure.get("category") != "NOT_RUN_IS_NOT_PASS"
+        or failure.get("tier") != "L3"
+        or failure.get("tier_status") != "unavailable"
+    ):
         return False
     tiers = result.get("tiers") or {}
     if (tiers.get("L2") or {}).get("status") != "pass" or (result.get("numeric") or {}).get("status") != "pass":
@@ -6245,9 +6029,21 @@ def _model_gate_operation_passed(result: dict, capsule: dict, oracle_adapters) -
 
 
 def _run_streaming_model_gate(
-    op_caps, model_caps, run_one, *, max_workers, target, oracle_adapters,
-    on_complete=None, calibrate=None, calibration_cap=0, model_gate_continuations=(),
-    defer_pending=None, defer_running=True, boundary_readiness=None, model_gate_prerequisites=None,
+    op_caps,
+    model_caps,
+    run_one,
+    *,
+    max_workers,
+    target,
+    oracle_adapters,
+    on_complete=None,
+    calibrate=None,
+    calibration_cap=0,
+    model_gate_continuations=(),
+    defer_pending=None,
+    defer_running=True,
+    boundary_readiness=None,
+    model_gate_prerequisites=None,
 ):
     """Open capstones on a fixed selected-operator denominator in the same worker pool."""
     from .capsule_scheduling import run_pipelined
@@ -6265,13 +6061,16 @@ def _run_streaming_model_gate(
     def fraction(cap=None):
         if cap is not None:
             from .model_gate_continuation import prerequisite_fraction
+
             prior = prerequisite_fraction(cap, model_gate_prerequisites, target=target)
             if prior is not None:
                 return prior
-        return sum(
-            _model_gate_operation_passed(completed.get(c["name"], {}), c, oracle_adapters)
-            for c in denominator
-        ) / len(denominator) if denominator else 0.0
+        return (
+            sum(_model_gate_operation_passed(completed.get(c["name"], {}), c, oracle_adapters) for c in denominator)
+            / len(denominator)
+            if denominator
+            else 0.0
+        )
 
     def finished(result):
         completed[str(result.get("capsule"))] = result
@@ -6280,11 +6079,15 @@ def _run_streaming_model_gate(
 
     def blocked(cap):
         return {
-            "capsule": cap["name"], "kind": cap.get("kind"), "label": cap.get("label"),
-            "status": "gated", "failure": {
-                "plane": "gate", "category": "GATED",
+            "capsule": cap["name"],
+            "kind": cap.get("kind"),
+            "label": cap.get("label"),
+            "status": "gated",
+            "failure": {
+                "plane": "gate",
+                "category": "GATED",
                 "detail": f"whole-model capsule deferred: op pass fraction {fraction(cap):.2f} "
-                          f"< gate {(cap.get('gate') or {}).get('after_op_pass_fraction')}",
+                f"< gate {(cap.get('gate') or {}).get('after_op_pass_fraction')}",
             },
         }
 
@@ -6294,19 +6097,27 @@ def _run_streaming_model_gate(
         from .model_gate_continuation import admits, prerequisite_fraction
 
         prior = prerequisite_fraction(cap, model_gate_prerequisites, target=target)
-        continuation = prior is None and not op_caps and admits(
-            cap, model_gate_continuations, target=target, adapters=oracle_adapters)
+        continuation = (
+            prior is None
+            and not op_caps
+            and admits(cap, model_gate_continuations, target=target, adapters=oracle_adapters)
+        )
         value = fraction(cap)
         passed = continuation or model_gate_satisfied(cap, value)
         if passed:
             cap["_driver_model_gate_admission"] = {
-                "passed": True, "fraction": value,
+                "passed": True,
+                "fraction": value,
                 "stage": "L2" if set(oracle_adapters or {}) == {"L2"} else "continuation" if continuation else "full",
             }
         return passed
 
     return run_pipelined(
-        caps, run_one, max_workers=max_workers, calibrate=calibrate, calibration_cap=calibration_cap,
+        caps,
+        run_one,
+        max_workers=max_workers,
+        calibrate=calibrate,
+        calibration_cap=calibration_cap,
         boundary_readiness=boundary_readiness,
         on_complete=finished,
         can_start=admitted,
@@ -6353,6 +6164,7 @@ def _candidate_boundary_readiness(capsules, pkg, *, oracle_adapters):
         return None
     from merlin_experiments.phase1 import joint_control
     from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
+
     from .capsule_scheduling import BoundaryReadiness
     from .expected_refusal import expects_refusal
     from .owned_host_leaf_execution import selected_host_leaf
@@ -6369,15 +6181,26 @@ def _candidate_boundary_readiness(capsules, pkg, *, oracle_adapters):
         return None
     import hashlib
 
-    identity = {"compiler_sha256": owner.source_sha256,
-                "bundle_snapshot_sha256": snapshot, "profile_sha256": profile["sha256"],
-                "manifest": pkg.manifest, "route": "native_operator_lower_interface",
-                "requested_tiers": ["L2"]}
+    identity = {
+        "compiler_sha256": owner.source_sha256,
+        "bundle_snapshot_sha256": snapshot,
+        "profile_sha256": profile["sha256"],
+        "manifest": pkg.manifest,
+        "route": "native_operator_lower_interface",
+        "requested_tiers": ["L2"],
+    }
     route = hashlib.sha256(json.dumps(identity, sort_keys=True, allow_nan=False).encode()).hexdigest()
-    return BoundaryReadiness({str(cap["name"]): route for cap in capsules
-        if cap.get("kind") in {"isa", "layer", "model_slice"} and cap.get("label") in {"public", "dev"}
-        and not expects_refusal(cap) and not selected_host_leaf(cap)
-        and not selected_source_slice(cap)})
+    return BoundaryReadiness(
+        {
+            str(cap["name"]): route
+            for cap in capsules
+            if cap.get("kind") in {"isa", "layer", "model_slice"}
+            and cap.get("label") in {"public", "dev"}
+            and not expects_refusal(cap)
+            and not selected_host_leaf(cap)
+            and not selected_source_slice(cap)
+        }
+    )
 
 
 def _run_suite(
@@ -6416,10 +6239,13 @@ def _run_suite(
     if contract is not None and Path(contract).exists():
         contract = str(Path(contract).resolve())
     from merlin_experiments.phase1.feedback import operator_child as _operator_child
-
     from merlin_experiments.phase1.feedback import snapshot_execution
-    process_operators = (not snapshot_execution.selected() and _operator_child.enabled()
-                         and any(cap.get("kind") != "model" for cap in capsules))
+
+    process_operators = (
+        not snapshot_execution.selected()
+        and _operator_child.enabled()
+        and any(cap.get("kind") != "model" for cap in capsules)
+    )
     if process_operators:
         _operator_child.validate(target=target, adapters=oracle_adapters, config=config, perf_extractor=perf_extractor)
     pkg = load_package(package_dir, contract=contract)
@@ -6448,9 +6274,19 @@ def _run_suite(
             from .owned_host_leaf_execution import selected_host_leaf
 
             if not selected_host_leaf(cap):
-                return _operator_child.grade(cap, package_dir, runs_root=runs_root, contract=contract,
-                    target=target, suite=suite, dtype=dtype, adapters=oracle_adapters,
-                    timeout=timeout, workers=workers, no_oracle=no_oracle)
+                return _operator_child.grade(
+                    cap,
+                    package_dir,
+                    runs_root=runs_root,
+                    contract=contract,
+                    target=target,
+                    suite=suite,
+                    dtype=dtype,
+                    adapters=oracle_adapters,
+                    timeout=timeout,
+                    workers=workers,
+                    no_oracle=no_oracle,
+                )
         if _pass_recorder is None:
             return run_capsule(
                 cap,
@@ -6498,8 +6334,12 @@ def _run_suite(
         original = active_original_execution()
         source = None if original is None else original.source_sha256
         with setup_timing.capsule_scope(cap["name"], snapshot_id=str(runs_root)):
-            with setup_timing.selected(Path(runs_root) / "host-stage-timing", source,
-                    operation="native_capsule", queue_wait=True), _original_capsule_worker_scope():
+            with (
+                setup_timing.selected(
+                    Path(runs_root) / "host-stage-timing", source, operation="native_capsule", queue_wait=True
+                ),
+                _original_capsule_worker_scope(),
+            ):
                 with setup_timing.stage("capsule_execution"):
                     result = _one_native(cap, workers)
         gate = cap.get("_driver_model_gate_admission")
@@ -6515,8 +6355,9 @@ def _run_suite(
         # FINISHED (it cites that sibling's published result), with one short calibration head on the
         # cheapest members while tiers are unpriced. No wave barrier, so one slow member never holds
         # the rest (merlin.targetgen.capsule_scheduling).
-        from .capsule_scheduling import run_pipelined
         from merlin_experiments.phase1.feedback import snapshot_execution
+
+        from .capsule_scheduling import run_pipelined
 
         return run_pipelined(
             caps,
@@ -6576,23 +6417,39 @@ def _run_suite(
         # ready. Admission is scheduling, never correctness or prior-op credit.
         for cap in model_caps:
             cap["_driver_model_gate_admission"] = {
-                "policy": "independent_requests_v1", "execution_mode": snapshot_execution.MODE,
+                "policy": "independent_requests_v1",
+                "execution_mode": snapshot_execution.MODE,
                 "prerequisite_credit": False,
             }
         return _run_all(op_caps + model_caps) + ungradeable
     if model_caps and not no_oracle and _tier_policy.budget_seconds() is None:
-        print("  model gate: streaming over the fixed full selected eligible operator denominator",
-              flush=True, file=sys.stderr)
-        return _run_streaming_model_gate(
-            op_caps, model_caps, _one, max_workers=max_workers, target=target,
-            oracle_adapters=oracle_adapters, on_complete=on_capsule_complete,
-            calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
-            calibration_cap=_CALIBRATION_CAP,
-            model_gate_continuations=model_gate_continuations,
-            model_gate_prerequisites=model_gate_prerequisites,
-            boundary_readiness=boundary_readiness,
-            **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
-        ) + ungradeable
+        print(
+            "  model gate: streaming over the fixed full selected eligible operator denominator",
+            flush=True,
+            file=sys.stderr,
+        )
+        return (
+            _run_streaming_model_gate(
+                op_caps,
+                model_caps,
+                _one,
+                max_workers=max_workers,
+                target=target,
+                oracle_adapters=oracle_adapters,
+                on_complete=on_capsule_complete,
+                calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
+                calibration_cap=_CALIBRATION_CAP,
+                model_gate_continuations=model_gate_continuations,
+                model_gate_prerequisites=model_gate_prerequisites,
+                boundary_readiness=boundary_readiness,
+                **(
+                    {"defer_pending": defer_pending, "defer_running": defer_running}
+                    if defer_pending is not None
+                    else {}
+                ),
+            )
+            + ungradeable
+        )
     op_results = _run_all(op_caps) + ungradeable
     if ungradeable:
         print(
@@ -6626,13 +6483,23 @@ def _run_suite(
     eligible = [r for r in graded if _gate_counts(r, capsules, target)]
     denom = eligible or graded  # fall back rather than divide by zero if nothing is classifiable
     capsule_by_name = {str(c["name"]): c for c in op_caps}
-    frac = (sum(
-        _model_gate_operation_passed(r, capsule_by_name.get(str(r.get("capsule")), {}), oracle_adapters)
-        for r in denom
-    ) / len(denom)) if denom else 0.0
+    frac = (
+        (
+            sum(
+                _model_gate_operation_passed(r, capsule_by_name.get(str(r.get("capsule")), {}), oracle_adapters)
+                for r in denom
+            )
+            / len(denom)
+        )
+        if denom
+        else 0.0
+    )
     if oracle_adapters is not None and set(oracle_adapters) == {"L2"}:
-        print("  model gate: selected L2 screen evidence only; full certification remains required",
-              flush=True, file=sys.stderr)
+        print(
+            "  model gate: selected L2 screen evidence only; full certification remains required",
+            flush=True,
+            file=sys.stderr,
+        )
     if len(eligible) != len(graded):
         print(
             f"  model gate: {len(graded) - len(eligible)} graded op capsule(s) excluded from the gate "
@@ -6658,19 +6525,30 @@ def _run_suite(
     for c in model_caps:
         reason = defer_pending() if defer_pending is not None else None
         if reason:
-            model_results.append({"capsule": c["name"], "kind": "model", "label": c.get("label"),
-                "status": "gated", "background_deferred": reason,
-                "failure": {"plane": "gate", "category": "BACKGROUND_DEFERRED", "detail": reason}})
+            model_results.append(
+                {
+                    "capsule": c["name"],
+                    "kind": "model",
+                    "label": c.get("label"),
+                    "status": "gated",
+                    "background_deferred": reason,
+                    "failure": {"plane": "gate", "category": "BACKGROUND_DEFERRED", "detail": reason},
+                }
+            )
             continue
-        from .model_gate_continuation import admits
+        from .model_gate_continuation import admits, prerequisite_fraction
 
-        from .model_gate_continuation import prerequisite_fraction
         prior = prerequisite_fraction(c, model_gate_prerequisites, target=target)
         value = frac if prior is None else prior
-        continuation = prior is None and not op_caps and admits(c, model_gate_continuations, target=target, adapters=oracle_adapters)
+        continuation = (
+            prior is None
+            and not op_caps
+            and admits(c, model_gate_continuations, target=target, adapters=oracle_adapters)
+        )
         if model_gate_satisfied(c, value) or continuation:
             c["_driver_model_gate_admission"] = {
-                "passed": True, "fraction": value,
+                "passed": True,
+                "fraction": value,
                 "stage": "L2" if set(oracle_adapters or {}) == {"L2"} else "continuation" if continuation else "full",
             }
             result = _one(c)

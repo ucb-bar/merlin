@@ -31,6 +31,7 @@ def _selected_build_inputs(service, target: str) -> dict:
     from merlin.llvmlower import codegen, toolchain
     from merlin.targetgen.contract import compile as contract_compile
     from merlin.targetgen.contract.build_service import BuildOnlyService, file_digest
+    from merlin.targetgen.contract.source_ownership import compile_sources
 
     if type(service) is not BuildOnlyService:
         raise ValueError("public object telemetry requires an exact pure build service")
@@ -59,6 +60,7 @@ def _selected_build_inputs(service, target: str) -> dict:
         "producer_modules": {
             "codegen": pin(codegen.__file__),
             "contract_compile": pin(contract_compile.__file__),
+            **{f"contract_{path.stem}": pin(path) for path in compile_sources()[1:]},
             "toolchain": pin(toolchain.__file__),
             "observer": pin(__file__),
         },

@@ -1,3 +1,5 @@
+# Preserve the documented JSON literal when Python docstring examples are formatted.
+# fmt: off
 """Compiler choices read from a source tree's declared tuning settings, and their declaration.
 
 A compiler can expose a choice it would otherwise hard-code -- whether to apply a library pass, an
@@ -32,6 +34,7 @@ else the nearest directory holding ``TUNING_KNOBS.json`` at or above the running
 single-knob change; ``set TREE name=value`` writes declared values (for example into a copied tree).
 """
 
+# fmt: on
 from __future__ import annotations
 
 import argparse

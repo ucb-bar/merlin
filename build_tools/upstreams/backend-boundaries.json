@@ -1,0 +1,75 @@
+{
+  "schema": "merlin.backend-boundaries.v1",
+  "backends": [
+    {
+      "id": "rvv",
+      "repository": "https://github.com/ucb-bar/rvv-mlir.git",
+      "revision": "caadf2c1f1c815819f2190eb717da2a7de5994d5",
+      "xdsl": "0.68.0",
+      "provider_module": "merlin_rvv.service",
+      "tests": ["tests/test_service.py"],
+      "fixtures": [],
+      "selection": "not selected_stock_pipeline_compiles",
+      "installed_service": true
+    },
+    {
+      "id": "gemmini",
+      "repository": "https://github.com/ucb-bar/gemmini-mlir.git",
+      "revision": "124264c86323d308ad66aac77a61fc3902d2e2cb",
+      "xdsl": "0.68.0",
+      "provider_module": "gemmini",
+      "tests": ["tests/test_installed_compiler.py"],
+      "fixtures": ["examples/matmul.mlir"],
+      "selection": null,
+      "installed_service": false
+    },
+    {
+      "id": "kodiak",
+      "repository": "https://github.com/ucb-bar/kodiak-mlir.git",
+      "revision": "9e4e9f5c01635059698def421264ea1d129c84f0",
+      "xdsl": "0.68.0",
+      "provider_module": "merlin_kodiak.service",
+      "tests": ["tests/test_service.py"],
+      "fixtures": [],
+      "selection": null,
+      "installed_service": true
+    },
+    {
+      "id": "iris",
+      "repository": "https://github.com/ucb-bar/iris-mlir.git",
+      "revision": "7280f175ec80279a7bd5940a939fb007eaea7d63",
+      "xdsl": "0.68.0",
+      "provider_module": "merlin_iris.service",
+      "tests": ["tests/test_service.py"],
+      "fixtures": [],
+      "selection": null,
+      "installed_service": true
+    },
+    {
+      "id": "atlas",
+      "repository": "https://github.com/ucb-bar/atlas-mlir.git",
+      "revision": "491410d463ab69368076f213d7b57e86d525e5df",
+      "xdsl": "0.68.0",
+      "provider_module": "atlas_mlir_native.backend",
+      "tests": ["test/test_public_backend.py"],
+      "fixtures": ["docs/selected-variant-inventory.json", "test/examples/native_bf16_relu_linalg.mlir"],
+      "selection": "not binding_stage_custody and not bf16_call and not real_native_tools",
+      "installed_service": false
+    },
+    {
+      "id": "mx-gemmini",
+      "repository": "https://github.com/ucb-bar/mx-gemmini-mlir.git",
+      "revision": "202f1d78d1a39571458b522e0203cecd4c632822",
+      "xdsl": "0.65.0",
+      "provider_module": "mx_gemmini_support.backend",
+      "tests": ["tests/test_backend.py"],
+      "fixtures": [
+        "profiles/gemmini-mx-cleanup-266c593/MxE4M3VpuGemminiRocketConfig.json",
+        "docs/evidence/nicolas_vpu_elementwise_compiled_266c593/add/bound.mlir",
+        "docs/evidence/nicolas_vpu_elementwise_compiled_266c593/add/mx_issue.c"
+      ],
+      "selection": null,
+      "installed_service": false
+    }
+  ]
+}

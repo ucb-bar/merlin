@@ -176,6 +176,7 @@ def bind_entries(
                 "merlin.targetgen.capsule_inputs",
                 "merlin.targetgen.capsule_source",
                 "merlin.targetgen._m2m_capture_worker",
+                "merlin.targetgen._m2m_capture_values",
                 "merlin.runtime.tensor",
                 "merlin.runtime.commandbuffer",
                 "merlin.targetgen.operation_accounting",

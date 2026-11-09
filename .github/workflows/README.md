@@ -13,13 +13,23 @@ retained. `fast` always reports the combined source/format/integration outcome;
 The current-document freshness ratchet remains mandatory. The capsule-corpus
 tests retain their early step and exclusion from the later broad pytest command.
 
+The comparison job resolves one real revision for both format and ratchet checks.
+For a new branch push, whose previous revision is all zeros, it uses the merge
+base with the fetched default branch. An unavailable revision fails the job.
+
 Hosted boundary tests execute C generation and configuration/provider contracts;
 they do not qualify accelerator execution. Their JUnit results retain skips and
-failures alongside built distributions. Native toolchain and hardware lanes and
-a pinned cross-repository consumer matrix remain separate integration work.
-Current OOT refactor changes must be committed and their reviewed revisions
-selected before remote CI can test that matrix; floating branch heads are not
-substitutes. FireSim setup and infrastructure launch remain external to Merlin.
+failures alongside built distributions. The OOT matrix selects six exact commits
+in `build_tools/upstreams/backend-boundaries.json`, builds their wheels and runs
+the selected cases outside source checkouts against the same main wheel. It uses
+separate xDSL 0.68 and 0.65 environments; selected cases must execute without skips.
+Native toolchain and hardware lanes remain separate qualification work.
+
+The selected OOT commits must be available remotely before hosted CI can fetch
+them. During local review, `check_backend_boundaries.py --source ID=PATH` accepts
+only a clean checkout at the exact selected commit. Local commits and passing
+local results do not establish remote CI success. FireSim setup and infrastructure
+launch remain external to Merlin.
 
 All external actions use full Git commit pins and read-only repository
 permissions; checkout credentials are not persisted. The same local packaging

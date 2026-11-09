@@ -6,6 +6,7 @@ keyed by its original path: relocating a file neither forgives it nor grows a ra
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import subprocess
@@ -13,6 +14,68 @@ from pathlib import Path
 
 SOURCE_SCAN_ROOTS = ("src", "merlin/python/merlin", "packages")
 EXCLUDED_PARTS = frozenset({"_data", "__pycache__", ".venv", "venv", "_qa_ws", "build", "dist"})
+
+
+def module_alias(path: Path, root: Path) -> tuple[str, Path] | None:
+    """Resolve a literal, otherwise inert ``sys.modules`` compatibility identity.
+
+    This is static source correspondence, not an access grant or proof of use.
+    Any extra executable statement makes the source an ordinary module again.
+    """
+    try:
+        source = path.read_text(encoding="utf-8")
+        if "modules" not in source or "__name__" not in source:
+            return None
+        tree = ast.parse(source)
+    except (OSError, UnicodeDecodeError, SyntaxError):
+        return None
+    body = list(tree.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        if isinstance(body[0].value.value, str):
+            body.pop(0)
+    owner = binding = None
+    imported_sys = assigned = False
+    for node in body:
+        if isinstance(node, ast.Import) and len(node.names) == 1:
+            if node.names[0].name != "sys" or node.names[0].asname:
+                return None
+            imported_sys = True
+        elif isinstance(node, ast.ImportFrom) and not node.level and len(node.names) == 1:
+            item = node.names[0]
+            if node.module == "__future__" and item.name == "annotations":
+                continue
+            if owner is not None or not item.asname or not node.module:
+                return None
+            owner, binding = f"{node.module}.{item.name}", item.asname
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1:
+            if not imported_sys:
+                return None
+            expected = ast.parse("sys.modules[__name__] = owner").body[0].targets[0]
+            if ast.dump(node.targets[0]) != ast.dump(expected):
+                return None
+            if not isinstance(node.value, ast.Name) or node.value.id != binding:
+                return None
+            assigned = True
+        elif isinstance(node, ast.If) and binding is not None:
+            expected = ast.parse(f'if __name__ == "__main__":\n    raise SystemExit({binding}.main())').body[0]
+            if ast.dump(node) != ast.dump(expected):
+                return None
+        else:
+            return None
+    if not imported_sys or not assigned or owner is None:
+        return None
+    parts = owner.split(".")
+    candidates = set()
+    for package in source_packages(root):
+        if package.name == parts[0]:
+            target = package.joinpath(*parts[1:])
+            for candidate in (target.with_suffix(".py"), target / "__init__.py"):
+                if candidate.is_file():
+                    candidates.add(candidate.resolve())
+    if len(candidates) != 1:
+        return None
+    target = candidates.pop()
+    return (owner, target) if target != path.resolve() and target.is_relative_to(root.resolve()) else None
 
 
 def policy_path(path: str) -> str:

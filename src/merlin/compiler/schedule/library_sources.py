@@ -423,38 +423,74 @@ def canonical_module(name):
 
 # A new source release, not a reinterpretation of any earlier SDK selection.
 # The additional files are the implementation closure of the same public APIs.
-LIBRARY_MODULES_V26 = tuple(dict.fromkeys((
-    *(canonical_module(name) for name in LIBRARY_MODULES_V25),
-    "merlin.compiler.schedule.model",
-    "merlin.compiler.schedule.residency",
-    "merlin.compiler.schedule.block",
-    "merlin.compiler.schedule.convolution",
-    "merlin.compiler.schedule.execute",
-    "merlin.compiler.schedule.readout",
-    "merlin.compiler.schedule.interface",
-    "merlin.compiler.selection",
-    "merlin.compiler.schedule.catalog_dense",
-    "merlin.compiler.schedule.catalog_spatial",
-    "merlin.compiler.schedule.catalog_source",
-    "merlin.compiler.schedule.catalog_effects",
-    "merlin.compiler.frontend",
-    "merlin.compiler.frontend.repairs",
-    "merlin.compiler.ir.provenance",
-    "merlin.compiler.quantization",
-    "merlin.compiler.quantization.linalg",
-    "merlin.compiler.transforms",
-    "merlin.compiler.transforms.matmul",
-    "merlin.compiler.transforms.dead",
-    "merlin.compiler.lower",
-    "merlin.compiler.lower.scalar",
-    "merlin.compiler.lower.scalar.casts",
-)))
+LIBRARY_MODULES_V26 = tuple(
+    dict.fromkeys(
+        (
+            *(canonical_module(name) for name in LIBRARY_MODULES_V25),
+            "merlin.compiler.schedule.model",
+            "merlin.compiler.schedule.residency",
+            "merlin.compiler.schedule.block",
+            "merlin.compiler.schedule.convolution",
+            "merlin.compiler.schedule.execute",
+            "merlin.compiler.schedule.readout",
+            "merlin.compiler.schedule.interface",
+            "merlin.compiler.selection",
+            "merlin.compiler.schedule.catalog_dense",
+            "merlin.compiler.schedule.catalog_spatial",
+            "merlin.compiler.schedule.catalog_source",
+            "merlin.compiler.schedule.catalog_effects",
+            "merlin.compiler.frontend",
+            "merlin.compiler.frontend.repairs",
+            "merlin.compiler.ir.provenance",
+            "merlin.compiler.quantization",
+            "merlin.compiler.quantization.linalg",
+            "merlin.compiler.transforms",
+            "merlin.compiler.transforms.matmul",
+            "merlin.compiler.transforms.dead",
+            "merlin.compiler.lower",
+            "merlin.compiler.lower.scalar",
+            "merlin.compiler.lower.scalar.casts",
+            "merlin.compiler.schedule.window_geometry",
+            "merlin.compiler.schedule.convolution_input_rows",
+            "merlin.compiler.schedule.convolution_transfer_laws",
+            "merlin.compiler.schedule.convolution_tiles",
+            "merlin.compiler.schedule.convolution_rhs",
+            "merlin.compiler.schedule.convolution_admission",
+            "merlin.compiler.schedule.convolution_realization",
+            "merlin.compiler.schedule.convolution_candidates",
+            "merlin.compiler.schedule.convolution_storage",
+            "merlin.compiler.schedule.dense_panel_build",
+            "merlin.compiler.schedule.dense_panel_projection",
+            "merlin.compiler.schedule.dense_panel_verify",
+        )
+    )
+)
 
 
 def library_modules(version=26):
     """Select a closed reviewed inventory; this grants no import access."""
     if type(version) is not int or version not in (
-        6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
     ):
         raise ValueError("shared compiler inventory requires version 6 through 26")
     return {
@@ -598,8 +634,9 @@ def admission_point(api, *, fallback_route, none_refuses=None):
             except Exception as error:
                 try:
                     premise = str(error) if isinstance(error, ValueError) else f"{type(error).__name__}: {error}"
-                    _record_admission(api, False, premise[:ADMISSION_TEXT], _admission_route(fallback_route, args),
-                                      args, kwargs)
+                    _record_admission(
+                        api, False, premise[:ADMISSION_TEXT], _admission_route(fallback_route, args), args, kwargs
+                    )
                 except Exception:  # noqa: BLE001 -- recording never changes the refusal
                     pass
                 raise
@@ -634,7 +671,7 @@ def parse_admission_stream(text, *, limit=ADMISSION_LIMIT):
         if not line.startswith(ADMISSION_PREFIX):
             continue
         try:
-            document = json.loads(line[len(ADMISSION_PREFIX):])
+            document = json.loads(line[len(ADMISSION_PREFIX) :])
         except ValueError:
             continue
         if type(document) is not dict or document.get("schema") != ADMISSION_SCHEMA:
@@ -643,8 +680,12 @@ def parse_admission_stream(text, *, limit=ADMISSION_LIMIT):
             counts = {str(k): v for k, v in document["summary"].items() if type(v) is int and v > 0}
             dropped = document.get("dropped") if type(document.get("dropped")) is int else 0
             continue
-        if (type(document.get("id")) is not int or type(document.get("api")) is not str
-                or type(document.get("admitted")) is not bool or len(records) >= limit):
+        if (
+            type(document.get("id")) is not int
+            or type(document.get("api")) is not str
+            or type(document.get("admitted")) is not bool
+            or len(records) >= limit
+        ):
             continue
         premise, route = document.get("failed_premise"), document.get("fallback_route")
         shape = document.get("shape")
@@ -654,10 +695,12 @@ def parse_admission_stream(text, *, limit=ADMISSION_LIMIT):
             "admitted": document["admitted"],
             "failed_premise": premise[:ADMISSION_TEXT] if type(premise) is str else None,
             "fallback_route": route[:ADMISSION_TEXT] if type(route) is str else None,
-            "shape": ({k: shape[k] for k in ("m", "k", "n") if type(shape.get(k)) is int}
-                      if type(shape) is dict else None),
-            "partial_refusals": ([str(v)[:ADMISSION_TEXT] for v in partial[:4]]
-                                 if type(partial) is list and partial else None),
+            "shape": (
+                {k: shape[k] for k in ("m", "k", "n") if type(shape.get(k)) is int} if type(shape) is dict else None
+            ),
+            "partial_refusals": (
+                [str(v)[:ADMISSION_TEXT] for v in partial[:4]] if type(partial) is list and partial else None
+            ),
         }
     rows = []
     for identifier, record in sorted(records.items()):

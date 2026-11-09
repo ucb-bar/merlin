@@ -11,6 +11,24 @@ import json
 from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
+from pathlib import Path
+
+
+def compile_sources() -> tuple[Path, ...]:
+    """Actual compiler and support owners retained in build/run observations.
+
+    Keep the former compile.py source envelope after responsibility splits,
+    including this declaration's own bytes. These are attribution inputs, not
+    candidate import grants or a transitive toolchain/numerical certificate.
+    """
+    owner = Path(__file__)
+    return (
+        owner.with_name("compile.py"),
+        owner.with_name("compile_inputs.py"),
+        owner.with_name("object_preflight.py"),
+        owner.with_name("oracle_identity.py"),
+        owner,
+    )
 
 
 class SourceOwnershipError(ValueError):
@@ -130,7 +148,9 @@ def _source_owned_mutables(command_buffer: Mapping, inventory: Mapping) -> tuple
     return tuple(sorted(mutable))
 
 
-def source_owned_mutables(source: bytes | str, command_buffer: Mapping, *, lowered_mlir=None, lowered_abi=None) -> tuple[str, ...]:
+def source_owned_mutables(
+    source: bytes | str, command_buffer: Mapping, *, lowered_mlir=None, lowered_abi=None
+) -> tuple[str, ...]:
     """Derive scratch only from the caller's original source and a completely matching plan."""
     from merlin.targetgen.oot_starterkit.plan import source_operation_inventory, validate_mixed_program_plan
 

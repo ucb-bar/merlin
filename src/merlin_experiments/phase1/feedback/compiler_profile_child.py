@@ -162,6 +162,7 @@ def _original_executor():
 def model_child_temporary_root():
     """Keep budget products under the original private/capped execution owner."""
     from .snapshot_execution import active_snapshot
+
     executor = active_snapshot() or _original_executor()
     return None if executor is None else _plain(executor.work_root)
 
@@ -235,6 +236,7 @@ def _closure(*, library=False, passes=False, checked_source=False, parent_delega
         "merlin.llvmlower.borrowed_arena",
         "merlin.targetgen.source_composition_preferences",
         "merlin.targetgen.owned_host_model_execution",
+        "merlin.targetgen.owned_host_selections",
     )
     if library:
         names += (
@@ -315,7 +317,7 @@ class ModelChildTransport:
         self.fd, self.document, self.executor, self.boundary = fd, document, executor, boundary
         from .model_storage_completion import ModelStorageReturn
 
-        self.storage_return = ModelStorageReturn(document['host_sources'], document.get('storage_completion_key'))
+        self.storage_return = ModelStorageReturn(document["host_sources"], document.get("storage_completion_key"))
         self.compiler_library_selection = active_compiler_library()
         self.compiler_pass_selection = active_compiler_passes()
         from merlin.targetgen.checked_source_model_diagnostic import active_checked_source_diagnostic
@@ -450,9 +452,8 @@ class _RestoredChild:
         This checkpoint does not issue a reusable snapshot verification capability
         or retain a verification operation across commands.
         """
-        from merlin.verification import lean_emission_context as emission
-
         from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
+        from merlin.verification import lean_emission_context as emission
 
         document, owner = self.document, self.executor.owner
         if active_shared_pass_requirement() != document.get("shared_pass_requirement"):
@@ -566,8 +567,11 @@ def prepare_model_child(*, spec_path, environment, package_dir):
     no registry metadata scope survives the yield, wait or result checks.
     """
     from . import snapshot_execution, snapshot_model_child
+
     if snapshot_execution.selected():
-        with snapshot_model_child.prepare(spec_path=spec_path, environment=environment, package_dir=package_dir) as transport:
+        with snapshot_model_child.prepare(
+            spec_path=spec_path, environment=environment, package_dir=package_dir
+        ) as transport:
             yield transport
         return
     from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
@@ -620,7 +624,13 @@ def _prepare_model_child(*, spec_path, environment, package_dir):
         selected_diagnostic.verify_for(spec["capsule"], target=spec["target"])
     executor = _original_executor()
     if executor is None:
-        if library is not None or passes is not None or checked is not None or delegated is not None or shared_requirement is not None:
+        if (
+            library is not None
+            or passes is not None
+            or checked is not None
+            or delegated is not None
+            or shared_requirement is not None
+        ):
             raise StageGateError("additional compiler library/pass model child requires its original execution owner")
         yield None
         return
@@ -925,7 +935,7 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
                 raise StageGateError("model child original execution owner changed during setup")
         from .model_storage_completion import signing_scope
 
-        execution.enter_context(signing_scope(document.get('storage_completion_key')))
+        execution.enter_context(signing_scope(document.get("storage_completion_key")))
         state = _RestoredChild(document, R.active_original_execution(), boundary)
         _RESTORED_ISSUED.add(state)
         token = _RESTORED_CHILD.set(state)
@@ -1070,10 +1080,13 @@ def run_model_grade(argv):
         else restore_model_child(sa.original_profile_fd, spec_path=Path(sa.model_grade), spec_bytes=spec_bytes)
     )
     from . import snapshot_execution, snapshot_model_child
+
     if snapshot_execution.selected():
         if sa.snapshot_external_fd is None or sa.original_profile_fd is not None:
             raise StageGateError("external model grade requires its own sealed child transport")
-        scope = snapshot_model_child.restore(sa.snapshot_external_fd, spec_path=Path(sa.model_grade), spec_bytes=spec_bytes)
+        scope = snapshot_model_child.restore(
+            sa.snapshot_external_fd, spec_path=Path(sa.model_grade), spec_bytes=spec_bytes
+        )
     elif sa.snapshot_external_fd is not None:
         raise StageGateError("external child transport requires explicit external execution mode")
     with scope as child_receipt:
@@ -1095,7 +1108,9 @@ def run_model_grade(argv):
                 numeric_policy_identity=spec.get("numeric_policy_identity"),
             )
         if child_receipt is not None:
-            res[snapshot_model_child.FIELD if snapshot_execution.selected() else "original_compiler_child"] = child_receipt
+            res[snapshot_model_child.FIELD if snapshot_execution.selected() else "original_compiler_child"] = (
+                child_receipt
+            )
             from .model_storage_completion import export_return
 
             export_return(res)

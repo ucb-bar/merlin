@@ -35,22 +35,45 @@ from ..boards import CONSOLE_HTIF, CONSOLE_UART
 from ..execution_memory import ExecutionMemoryError, MemoryMapBinding, MemoryReservation, admit_execution_memory
 from . import spike as _spike  # toolchain paths (gcc/spike/objdump)
 from ._model_console import parse_model_console
+from ._model_elf_metadata import (
+    DRAM_BASE_SYMBOL as DRAM_BASE_SYMBOL,
+)
+from ._model_elf_metadata import (
+    DRAM_SPAN_SYMBOL as DRAM_SPAN_SYMBOL,
+)
+from ._model_elf_metadata import (
+    HART_COUNT_SYMBOL as HART_COUNT_SYMBOL,
+)
+from ._model_elf_metadata import (
+    _extension_name as _extension_name,
+)
+from ._model_elf_metadata import _supplemental_object_digest as _supplemental_object_digest
+from ._model_elf_metadata import (
+    arch_extensions as arch_extensions,
+)
+from ._model_elf_metadata import (
+    declared_harts as declared_harts,
+)
+from ._model_elf_metadata import (
+    declared_memory as declared_memory,
+)
 from ._model_host_transform import SpikeModelError as SpikeModelError
 from ._model_host_transform import _transform_host_ir as _transform_host_ir
+from ._model_memory_layout import (
+    _CODE_RESERVE_FIXED as _CODE_RESERVE_FIXED,
+)
+from ._model_memory_layout import (
+    ARENA_BASE as ARENA_BASE,
+)
+from ._model_memory_layout import (
+    DRAM_BASE as DRAM_BASE,
+)
+from ._model_memory_layout import (
+    _layout as _layout,
+)
 from .host_compiler_policy import _harness_cflags as _harness_cflags
 from .host_compiler_policy import _select_host_vectorize as _select_host_vectorize
 from .host_compiler_policy import selected_model_compiler_plan as selected_model_compiler_plan
-
-from ._model_elf_metadata import (
-    DRAM_BASE_SYMBOL as DRAM_BASE_SYMBOL,
-    DRAM_SPAN_SYMBOL as DRAM_SPAN_SYMBOL,
-    HART_COUNT_SYMBOL as HART_COUNT_SYMBOL,
-    declared_harts as declared_harts,
-    _extension_name as _extension_name,
-    arch_extensions as arch_extensions,
-    declared_memory as declared_memory,
-)
-from ._model_elf_metadata import _supplemental_object_digest as _supplemental_object_digest
 
 if TYPE_CHECKING:
     from ...llvmlower.entry_weight_projection import GeneratedDispatchABI
@@ -155,22 +178,6 @@ def _selected_libm_archive(gcc: Path, flags: list[str], link_flags: tuple[str, .
     return archive, sha256_file(archive), driver_sha
 
 
-#: The arena lives here (literal-addressed, inside the -m memory map this backend passes to spike).
-ARENA_BASE = 0xC0000000  # derived-ok: address chosen by this backend's own -m map, not read from a target
-DRAM_BASE = 0x80000000  # derived-ok: RISC-V platform DRAM base used by spike/fesvr; the -m map is passed explicitly
-#: Minimum region ahead of the weights blob for code, rodata, static I/O,
-#: stack, and runtime tables. Large generated objects can raise this floor.
-_CODE_RESERVE_FIXED = 64 * 1024 * 1024
-
-
-#: Absolute symbols an image may define to state the DRAM span it was laid out for (base, bytes). A
-#: functional simulator's default span is a few GB; an image whose arena lies past it faults on its first
-#: allocation, so a runner gives the simulator what the image itself declares.
-
-
-#: How many harts an image runs on (a two-hart open model), stated in its symbol table.
-
-
 def declared_isa(elf: str | Path) -> str | None:
     """The ``--isa`` a functional simulator needs to run the image, read from the ISA its linked objects
     record (``Tag_RISCV_arch``). Even a scalar image may use declared bitmanip or half-float
@@ -189,52 +196,6 @@ def declared_isa(elf: str | Path) -> str | None:
     if widest:
         named.append(widest)
     return "_".join([base + letters, *named])
-
-
-def _layout(
-    arena_bytes: int,
-    weights_bytes: int,
-    *,
-    dram_base: int = DRAM_BASE,
-    dram_bytes: int | None = None,
-    code_reserve: int = 64 * 1024 * 1024,
-) -> dict:
-    """Absolute-address memory map for the bare-metal image.
-
-    Default (``dram_bytes=None``) is the historical spike map: code@0x80000000, arena@0xC0000000,
-    weights 256 MB-aligned above it and at least 0x2_0000_0000. spike is told to span it with ``-m``,
-    so "above the DRAM a real board has" costs nothing there.
-
-    On a REAL board it costs everything: an arena at 0xC0000000 and weights at 0x2_0000_0000 are simply
-    not memory, so the image faults on its first activation. Given ``dram_bytes`` the map is packed
-    inside ``[dram_base, dram_base + dram_bytes)`` instead — code first, then the weights blob, then the
-    arena taking the rest — and it FAILS CLOSED if the model does not fit rather than emitting an image
-    that addresses memory the chip does not have.
-    """
-    if dram_bytes is None:
-        weights_base = ARENA_BASE + arena_bytes
-        weights_base = (weights_base + 0xFFFFFFF) & ~0xFFFFFFF  # 256MB align
-        weights_base = max(weights_base, 0x200000000)
-        mem_end = weights_base + weights_bytes
-        mem_bytes = ((mem_end - DRAM_BASE) + 0x3FFFFFFF) & ~0x3FFFFFFF  # round to 1GB
-        return {"arena_base": ARENA_BASE, "weights_base": weights_base, "mem_bytes": mem_bytes}
-
-    align = 1 << 20  # 1 MB is enough for a blob base
-    weights_base = (dram_base + code_reserve + align - 1) & ~(align - 1)
-    arena_base = (weights_base + weights_bytes + align - 1) & ~(align - 1)
-    end = dram_base + dram_bytes
-    if arena_base + arena_bytes > end:
-        raise RuntimeError(
-            f"does not fit: code+static-I/O reserve {code_reserve / 2**20:.0f} MB + weights "
-            f"{weights_bytes / 2**20:.1f} MB + arena {arena_bytes / 2**20:.0f} MB exceeds the board's "
-            f"{dram_bytes / 2**20:.0f} MB at {hex(dram_base)}. Shrink the arena or the model."
-        )
-    return {
-        "arena_base": arena_base,
-        "weights_base": weights_base,
-        "mem_bytes": dram_bytes,
-        "code_reserve": code_reserve,
-    }
 
 
 def _model_memory_reservations(
@@ -416,18 +377,30 @@ def build(
     from ...llvmlower.device_input_views import validate_selection as validate_input_views
     from ..device_descriptor_results import DeviceDescriptorResults
 
-    validate_input_views(dense_input_views, backend=backend, device=device, unsupported=(
-        source_recomputation, source_optimizations, graph_optimizations, shared_source_lowerings,
-        shared_row_lowering, prepared_model_transform, host_provider_builder,
-    ))
+    validate_input_views(
+        dense_input_views,
+        backend=backend,
+        device=device,
+        unsupported=(
+            source_recomputation,
+            source_optimizations,
+            graph_optimizations,
+            shared_source_lowerings,
+            shared_row_lowering,
+            prepared_model_transform,
+            host_provider_builder,
+        ),
+    )
     descriptor_results = DeviceDescriptorResults(device)
     descriptor_check = descriptor_results.revalidate
     from ...llvmlower.bounded_rne_custody import select_custody
 
     bounded_rne_custody = select_custody(
-        host_llvm_transform, descriptor_identity=descriptor_results.selected,
+        host_llvm_transform,
+        descriptor_identity=descriptor_results.selected,
         intermediate_storage=getattr(device, "intermediate_storage", None) is not None,
-        chain=host_llvm_transform_chain)
+        chain=host_llvm_transform_chain,
+    )
     early_device_objects = None
     device_admission_selection = freeze_device_elf_admission(device)
     if type(host_llvm_bitcode) is not bool:
@@ -537,6 +510,7 @@ def build(
     (work / "quantization-policy.json").unlink(missing_ok=True)
     compilation = CompilationRecipe(work, producer=Path(__file__))
     compilation.bind_preparation("host_compiler_policy", Path(__file__).with_name("host_compiler_policy.py"))
+    compilation.bind_preparation("model_memory_layout", Path(__file__).with_name("_model_memory_layout.py"))
     compilation.bind_preparation("device_preparation", Path(device_preparation.__file__))
     if host_roundeven:
         from .. import host_rounding
@@ -725,6 +699,7 @@ def build(
                 **({"op_profile": True} if op_profile else {}),
                 **source_choices.options(),
             )
+
         sibling_writers = getattr(device, "sibling_source", None) is not None
         if descriptor_results.selected or dense_input_views or sibling_writers:
             from ...llvmlower.device_offload import SIDECAR_NAME
@@ -737,13 +712,23 @@ def build(
 
                 if descriptor_results.selected:
                     prepared_path = descriptor_results.prepare_dense_input_views(
-                        early_device_objects[2], work / "dense_input_views", compilation,
+                        early_device_objects[2],
+                        work / "dense_input_views",
+                        compilation,
                         sibling_source=(device.sibling_source, offload_selection.sibling_host)
-                        if sibling_writers else None)
+                        if sibling_writers
+                        else None,
+                    )
                 else:
                     prepared_path = prepare_dense_input_views(
-                        prepared_path, work / SIDECAR_NAME, early_device_objects[2], work / "dense_input_views", compilation,
-                        sibling_source=(device.sibling_source, offload_selection.sibling_host) if getattr(device, "sibling_source", None) else None,
+                        prepared_path,
+                        work / SIDECAR_NAME,
+                        early_device_objects[2],
+                        work / "dense_input_views",
+                        compilation,
+                        sibling_source=(device.sibling_source, offload_selection.sibling_host)
+                        if getattr(device, "sibling_source", None)
+                        else None,
                     )
                 retain_device_offload_source(offload_selection, prepared_path, compilation=compilation)
             if descriptor_results.selected and early_device_objects[2] is not None:
@@ -755,7 +740,8 @@ def build(
             if selected_borrowed_calls is not None:
                 raise ValueError("sibling device and host-provider borrowed owners need an explicit combined roster")
             selected_borrowed_calls = sibling_borrowed_calls(
-                device, offload_selection, early_device_objects[2], prepared_path, compilation=compilation)
+                device, offload_selection, early_device_objects[2], prepared_path, compilation=compilation
+            )
         recomputation_options = None
         if recomputation_check is not None:
             recomputation_check()
@@ -823,12 +809,18 @@ def build(
 
     if impr_features.FUSE_AFTER_GENERALIZE_NAME in (features or ()):
         fusion_record = work / "host-elementwise-fusion.json"
-        fusion_record.write_text(json.dumps({
-            "schema": "merlin.host_elementwise_fusion.v1",
-            "feature": impr_features.FUSE_AFTER_GENERALIZE_NAME,
-            "effective_pipeline": index_lowering["effective_pipeline"],
-            "rewritten_work": "unmeasured",
-        }, indent=2) + "\n")
+        fusion_record.write_text(
+            json.dumps(
+                {
+                    "schema": "merlin.host_elementwise_fusion.v1",
+                    "feature": impr_features.FUSE_AFTER_GENERALIZE_NAME,
+                    "effective_pipeline": index_lowering["effective_pipeline"],
+                    "rewritten_work": "unmeasured",
+                },
+                indent=2,
+            )
+            + "\n"
+        )
         compilation.bind_preparation("host_elementwise_fusion", fusion_record)
         compilation.bind_preparation("host_elementwise_fusion_implementation", Path(impr_features.__file__))
     if source_observation_effects is not None:
@@ -840,7 +832,8 @@ def build(
     borrowed_arena_lifetime = getattr(res, "borrowed_arena_lifetime", None)
     if bounded_rne_custody is not None:
         model_ir, host_ir_receipt, bounded_rne_emission = bounded_rne_custody.apply(
-            res.ll_path, work / "host_llvm", compilation)
+            res.ll_path, work / "host_llvm", compilation
+        )
     elif host_llvm_transform_chain is None:
         model_ir, host_ir_receipt = _transform_host_ir(res.ll_path, work / "host_llvm", host_llvm_transform)
     else:
@@ -897,12 +890,21 @@ def build(
     if storage_policy is not None:
         from ...llvmlower.host_storage_policy import prepare as prepare_intermediate_storage
 
-        blocked = ("source_recomputation_selected" if recomputation_check is not None else
-                   "descriptor_results_selected" if descriptor_results.selected
-                   and borrowed_arena_lifetime is None else None)
+        blocked = (
+            "source_recomputation_selected"
+            if recomputation_check is not None
+            else "descriptor_results_selected"
+            if descriptor_results.selected and borrowed_arena_lifetime is None
+            else None
+        )
         model_ir = prepare_intermediate_storage(
-            model_ir, storage_policy, work / "intermediate_storage", compilation, blocked_reason=blocked,
-            borrowed_lifetime=borrowed_arena_lifetime)
+            model_ir,
+            storage_policy,
+            work / "intermediate_storage",
+            compilation,
+            blocked_reason=blocked,
+            borrowed_lifetime=borrowed_arena_lifetime,
+        )
     compiler_input = model_ir
     bitcode_receipt = None
     if host_llvm_bitcode:
@@ -1314,46 +1316,49 @@ def build(
         recomputation_check()
     from ...llvmlower.borrowed_arena import retain_borrowed_lifetime
 
-    return retain_borrowed_lifetime({
-        **({"descriptor_results": descriptor_results.record()} if descriptor_results.selected else {}),
-        "elf": elf,
-        "mem_bytes": lay["mem_bytes"],
-        "build_hash": build_hash,
-        "quantization_policy": quantization_policy,
-        "arena_base": lay["arena_base"],
-        "weights_base": lay["weights_base"],
-        # Reported so `run` can be given it. A run at a different vector length than the build
-        # mis-places every scalable-vector spill slot; see run()'s docstring.
-        "vlen": vlen,
-        "host_vectorize": vectorize,
-        "host_math_policy": host_math_policy,
-        **({"source_optimizations": source_choices.record()} if source_optimizations is not None else {}),
-        **({"source_recomputation": source_recomputation.record()} if recomputation_check is not None else {}),
-        "host_llvm_transform": host_ir_receipt,
-        **({"host_bitcode_transport": bitcode_receipt} if bitcode_receipt is not None else {}),
-        "host_artifacts": {
-            role: {"path": str(path.absolute()), "sha256": sha256_file(path), "size_bytes": path.stat().st_size}
-            for role, path in (("llvm_ir", model_ir), ("object", work / "model.o"))
+    return retain_borrowed_lifetime(
+        {
+            **({"descriptor_results": descriptor_results.record()} if descriptor_results.selected else {}),
+            "elf": elf,
+            "mem_bytes": lay["mem_bytes"],
+            "build_hash": build_hash,
+            "quantization_policy": quantization_policy,
+            "arena_base": lay["arena_base"],
+            "weights_base": lay["weights_base"],
+            # Reported so `run` can be given it. A run at a different vector length than the build
+            # mis-places every scalable-vector spill slot; see run()'s docstring.
+            "vlen": vlen,
+            "host_vectorize": vectorize,
+            "host_math_policy": host_math_policy,
+            **({"source_optimizations": source_choices.record()} if source_optimizations is not None else {}),
+            **({"source_recomputation": source_recomputation.record()} if recomputation_check is not None else {}),
+            "host_llvm_transform": host_ir_receipt,
+            **({"host_bitcode_transport": bitcode_receipt} if bitcode_receipt is not None else {}),
+            "host_artifacts": {
+                role: {"path": str(path.absolute()), "sha256": sha256_file(path), "size_bytes": path.stat().st_size}
+                for role, path in (("llvm_ir", model_ir), ("object", work / "model.o"))
+            },
+            **({"device_artifacts": device_artifacts} if device_artifacts is not None else {}),
+            **({"host_provider": host_provider_receipt} if host_provider_receipt is not None else {}),
+            "supplemental_objects_sha256": _supplemental_object_digest(supplemental_objects).hex()
+            if supplemental_objects
+            else None,
+            "console": console,
+            "output_dump_cap": output_dump_cap,
+            "output_sha256": output_sha256,
+            "chip_freq_hz": chip_freq_hz,
+            "console_provenance": dict(console_facts.provenance) if console_facts else {},
+            # The matrix build carries the hardware revision its instructions were derived from, so a
+            # result produced by this ELF can name what it is a result about.
+            "matrix": matrix_build.to_dict() if matrix_build is not None else None,
+            "matrix_routing": matrix.identity() if matrix is not None else None,
+            "index_lowering": index_lowering,
+            **({"execution_memory_admission": memory_admission} if memory_admission is not None else {}),
+            **({"linked_elf_admission": linked_admission} if linked_admission is not None else {}),
+            **info,
         },
-        **({"device_artifacts": device_artifacts} if device_artifacts is not None else {}),
-        **({"host_provider": host_provider_receipt} if host_provider_receipt is not None else {}),
-        "supplemental_objects_sha256": _supplemental_object_digest(supplemental_objects).hex()
-        if supplemental_objects
-        else None,
-        "console": console,
-        "output_dump_cap": output_dump_cap,
-        "output_sha256": output_sha256,
-        "chip_freq_hz": chip_freq_hz,
-        "console_provenance": dict(console_facts.provenance) if console_facts else {},
-        # The matrix build carries the hardware revision its instructions were derived from, so a
-        # result produced by this ELF can name what it is a result about.
-        "matrix": matrix_build.to_dict() if matrix_build is not None else None,
-        "matrix_routing": matrix.identity() if matrix is not None else None,
-        "index_lowering": index_lowering,
-        **({"execution_memory_admission": memory_admission} if memory_admission is not None else {}),
-        **({"linked_elf_admission": linked_admission} if linked_admission is not None else {}),
-        **info,
-    }, borrowed_arena_lifetime if storage_policy is not None else None)
+        borrowed_arena_lifetime if storage_policy is not None else None,
+    )
 
 
 def run(

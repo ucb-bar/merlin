@@ -318,28 +318,28 @@ def _generated_prompt_module_commands(imported_by: dict[str, set[Path]], candida
 
 def unwired() -> list[str]:
     candidates = {}
-    # Evaluators can live in any separately installed shared-namespace distribution. Relocation
-    # must not remove their obligation to have a production caller.
-    extension_roots = (
-        (package / part).relative_to(ROOT).as_posix()
-        for package in _source_layout.source_packages(ROOT)
-        if package.name == "merlin" and package.is_relative_to(ROOT / "packages")
-        for part in ("perf", "targetgen", "verify")
-    )
-    for relative_root in (*INSTRUMENTED, *extension_roots):
-        for path in _python_files(relative_root):
-            if path.name == "__init__.py":
-                continue
-            name = _module_name(path)
-            if name:
-                candidates.setdefault(name, path.resolve())
+    aliases = {}
+    for relative, path in _instrumented_files().items():
+        name = _module_name(path)
+        if name:
+            candidates.setdefault(name, path.resolve())
+            former = _module_name(ROOT / relative)
+            if former and former != name:
+                aliases[former] = name
     imported_by: dict[str, set[Path]] = {name: set() for name in candidates}
     for relative_root in (*PRODUCTION, *_target_workflow_roots()):
         for path in _python_files(relative_root):
+            # The forwarding file is not a production consumer of its owner. Only a real
+            # caller importing either spelling supplies reachability.
+            if _source_layout.module_alias(path, ROOT) is not None:
+                continue
             for name in _imports(path):
+                name = aliases.get(name, name)
                 if name in imported_by and candidates[name] != path.resolve():
                     imported_by[name].add(path)
-    scripts = _console_script_modules() | _generated_prompt_module_commands(imported_by, candidates)
+    prompt_candidates = {**candidates, **{old: candidates[new] for old, new in aliases.items()}}
+    scripts = _console_script_modules() | _generated_prompt_module_commands(imported_by, prompt_candidates)
+    scripts = {aliases.get(name, name) for name in scripts}
     return sorted(
         str(candidates[name].relative_to(ROOT))
         for name, importers in imported_by.items()
@@ -377,9 +377,7 @@ def _console_script_symbols() -> set[str]:
 #: cannot see it: ``claims/dispatch.resolve`` runs exactly one ``preflight_*`` per analyzer module and
 #: no file spells the three that only it reaches. Each dispatcher is declared with the constant it
 #: publishes, and the prefix is READ from its source, so renaming either cannot leave a stale copy here.
-PREFIX_DISPATCHERS = (
-    ("src/merlin_experiments/phase2/claims/dispatch.py", "PREFLIGHT_PREFIX"),
-)
+PREFIX_DISPATCHERS = (("src/merlin_experiments/phase2/claims/dispatch.py", "PREFLIGHT_PREFIX"),)
 
 
 def _published_constant(tree: ast.AST | None, name: str) -> str | None:
@@ -406,6 +404,8 @@ def prefix_dispatched() -> dict[str, set[str]]:
     reached: dict[str, set[str]] = {}
     for relative, constant in PREFIX_DISPATCHERS:
         path = ROOT / relative
+        if not path.is_file():
+            path = ROOT / _source_layout.policy_path(relative)
         if not path.is_file():
             continue
         prefix = _published_constant(_tree(path), constant)
@@ -531,11 +531,23 @@ def _instrumented_files() -> dict[str, Path]:
         for part in ("perf", "targetgen", "verify")
     )
     files: dict[str, Path] = {}
+    seen: set[Path] = set()
     for relative_root in (*INSTRUMENTED, *extension_roots):
         for path in _python_files(relative_root):
             if path.name != "__init__.py":
-                files.setdefault(path.resolve().relative_to(ROOT.resolve()).as_posix(), path)
+                relative = path.resolve().relative_to(ROOT.resolve()).as_posix()
+                alias = _source_layout.module_alias(path, ROOT)
+                actual = path if alias is None else alias[1]
+                if actual.resolve() not in seen:
+                    files[relative] = actual
+                    seen.add(actual.resolve())
     return files
+
+
+def _debt_key(key: str, identities: dict[str, str]) -> str:
+    path, separator, symbol = key.partition("::")
+    normalized = _source_layout.policy_path(path)
+    return identities.get(normalized, normalized) + separator + symbol
 
 
 def unwired_symbols(known_unwired_modules: set[str] | None = None) -> list[str]:
@@ -546,11 +558,18 @@ def unwired_symbols(known_unwired_modules: set[str] | None = None) -> list[str]:
     """
     if known_unwired_modules is None:
         known_unwired_modules = set(unwired())
-    known = {_source_layout.policy_path(path) for path in known_unwired_modules}
+    instrumented = _instrumented_files()
+    identities = {
+        _source_layout.policy_path(path.resolve().relative_to(ROOT.resolve()).as_posix()): _source_layout.policy_path(
+            former
+        )
+        for former, path in instrumented.items()
+    }
+    known = {_debt_key(path, identities) for path in known_unwired_modules}
 
     definitions: dict[str, list[str]] = {}
     modules: dict[str, Path] = {}
-    for relative, path in _instrumented_files().items():
+    for relative, path in instrumented.items():
         policy = _source_layout.policy_path(relative)
         if policy in known:
             continue
@@ -630,10 +649,17 @@ def main(argv: list[str] | None = None) -> int:
         SYMBOL_LEDGER.write_text(SYMBOL_HEADER + "".join(f"{key}\n" for key in found_symbols), encoding="utf-8")
         print(f"wrote {SYMBOL_LEDGER.relative_to(ROOT)} ({len(found_symbols)} entries)")
         return 0
+    identities = {
+        _source_layout.policy_path(path.resolve().relative_to(ROOT.resolve()).as_posix()): _source_layout.policy_path(
+            former
+        )
+        for former, path in _instrumented_files().items()
+    }
     known = set(_ledger())
-    stable_found = {_source_layout.policy_path(path) for path in found}
-    new = [path for path in found if path not in known and _source_layout.policy_path(path) not in known]
-    stale = sorted(known - stable_found - set(found))
+    stable_found = {_debt_key(path, identities) for path in found}
+    stable_known = {_debt_key(path, identities) for path in known}
+    new = [path for path in found if _debt_key(path, identities) not in stable_known]
+    stale = sorted(path for path in known if _debt_key(path, identities) not in stable_found)
     for path in new:
         print(
             f"[FAIL] unwired: {path} has tests at most -- no production code imports it. Call it "
@@ -645,8 +671,10 @@ def main(argv: list[str] | None = None) -> int:
             f"{LEDGER.relative_to(ROOT)} so the ledger keeps shrinking."
         )
     known_symbols = set(_ledger(SYMBOL_LEDGER))
-    new_symbols = [key for key in found_symbols if key not in known_symbols]
-    stale_symbols = sorted(known_symbols - set(found_symbols))
+    stable_symbols = {_debt_key(key, identities) for key in found_symbols}
+    stable_known_symbols = {_debt_key(key, identities) for key in known_symbols}
+    new_symbols = [key for key in found_symbols if _debt_key(key, identities) not in stable_known_symbols]
+    stale_symbols = sorted(key for key in known_symbols if _debt_key(key, identities) not in stable_symbols)
     for key in new_symbols:
         print(
             f"[FAIL] unwired symbol: {key} is referenced by tests and by no production code. Call it "

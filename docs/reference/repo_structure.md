@@ -79,6 +79,12 @@ target-specific. Shared scheduling representations and checks remain in core.
 Within Phase 1, `tools/` holds public standalone clients, `providers/` runs agent
 transports, `brokers/` serves host-side tool requests, and `feedback/` owns trusted
 grading, repair feedback and final freeze.
+Frozen model-capsule bundle construction lives in `targetgen/capsule_bundle.py`,
+with the existing `_capsule_bundle_worker.py` retaining its process boundary.
+Private completed-build admission lives in
+`merlin_experiments/phase1/feedback/private_model_completion.py`. These grader
+owners preserve asset, input/output, loader and receipt checks; they do not
+establish numerical execution, model accuracy or candidate-visible access.
 `controller.py` composes admission and authoring; `session.py` owns fresh/resumed
 admission, `task_staging.py` owns task composition, and `workspace_transport.py`
 owns workspace assembly and mask probes. Installed execution takes explicit operator
@@ -111,6 +117,10 @@ and paper evaluation are consumers of phase results, not phase-engine code.
 | Define or inspect phases 0, 1, 2 | `experiments/README.md`, then `src/merlin_experiments/` |
 | Compile or run explicit inputs | `merlin.api.compile` / `merlin.api.run`, with an explicit backend / runner; [architecture](architecture.md) |
 | Change shared compiler or scheduling behavior | `src/merlin/compiler/{passes,transforms,schedule,lower}/`, `src/merlin/xdsl_dialects/`, `src/merlin/sched/`; historical `compile` imports retain compatibility aliases |
+| Change convolution geometry or transfer emission | `compiler/schedule/window_geometry.py`, `convolution_input_rows.py`, `convolution_transfer_laws.py`, `convolution_tiles.py`; `window_transfer.py` owns column and epoch coordination |
+| Change convolution alternatives or selected realization | `compiler/schedule/convolution_candidates.py`, `convolution_storage.py`, `convolution_rhs.py`, `convolution_admission.py`, `convolution_realization.py`; `convolution_exploration.py` retains the public orchestration |
+| Change dense panel construction or checks | `compiler/schedule/dense_panel_build.py`, `dense_panel_projection.py`, `dense_panel_verify.py`; `dense_panel_pipeline.py` owns checked results and public scheduling |
+| Change mechanism comparisons or route admission | `kernels/mechanism_metrics.py`, `mechanism_ports.py`, `mechanism_stream.py`, `mechanism_admission.py`; `mechanism_applicability.py` composes the public report |
 | Find base scalar code and installed OOT lowering | `compiler/backend/scalar.py`, `compiler/lower/scalar/`, `compiler/lower/llvm/`; explicit OOT providers are selected through `compiler/backend/service.py` and `merlin.backends` |
 | Change saved-model input binding or readiness | `runtime/modelinputs.py`, `compiler/frontend/materialized.py`, `compiler/frontend/preflight.py` |
 | Change source routing, coverage or exported model interfaces | `compiler/planning/{model,complete,coverage}.py`, `compiler/partition/model.py` |
@@ -131,6 +141,10 @@ a plan. Compatibility aliases under `src/merlin/compile/` do not duplicate their
 implementations. Source receipts bind the selected implementation and retained
 compatibility files; independent references and qualification keep their original
 authority. File relocation does not qualify a backend, simulator or platform.
+The scheduling source roster includes the actual split owners in SDK26;
+frozen SDK6–25 inventories and archives remain unchanged. Public imports keep
+their established lookup identities. The [generated module index](module_index.md)
+lists packages; the owner rows above locate their implementation files.
 
 Use `merlin experiment runs --target TARGET --experiment EXPERIMENT` to discover
 stored phase orchestrations under the configured run root. Omit either filter to

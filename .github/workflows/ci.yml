@@ -15,7 +15,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  comparison:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      base: ${{ steps.base.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: resolve a real comparison base
+        id: base
+        env:
+          REQUESTED_BASE: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha || github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          base="$REQUESTED_BASE"
+          case "$base" in
+            ''|0000000000000000000000000000000000000000)
+              base="$(git merge-base HEAD "refs/remotes/origin/$DEFAULT_BRANCH")" ;;
+          esac
+          base="$(git rev-parse --verify "$base^{commit}")"
+          printf 'sha=%s\n' "$base" >> "$GITHUB_OUTPUT"
+
   checks:
+    needs: comparison
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -98,7 +123,7 @@ jobs:
       # Every *_ratchet.txt / *_allowlist.txt claims to be may-only-shrink; this is the step that holds
       # them to it (three had grown with nothing able to notice).
       - name: ratchet gate (every ledger may only shrink)
-        run: uv run --no-sync python build_tools/scripts/check_ratchets_shrink.py --base "${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha || github.event.before }}"
+        run: uv run --no-sync python build_tools/scripts/check_ratchets_shrink.py --base "${{ needs.comparison.outputs.base }}"
       # Draft designs are explicitly unverified work in progress. Gate maintained current docs here;
       # the strict all-status command remains available for release audits and reports draft debt.
       - name: docs freshness ratchet (no NEW drift in current docs)
@@ -209,6 +234,7 @@ jobs:
           -q -m "not slow and not integration"
 
   ruff:
+    needs: comparison
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -222,7 +248,7 @@ jobs:
       # BLOCKING, and incremental: Python this change adds or modifies must be formatted. ~410 files
       # were left alone because other work had them checked out; they converge as they are edited.
       - name: format gate (changed Python must be ruff-formatted)
-        run: python3 build_tools/scripts/check_format.py --base "${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha || github.event.before }}"
+        run: python3 build_tools/scripts/check_format.py --base "${{ needs.comparison.outputs.base }}"
       # Advisory until the untouched remainder reaches zero; then fold into the gate above.
       - name: full-tree ruff lint + format report (advisory)
         continue-on-error: true
@@ -236,7 +262,7 @@ jobs:
   fast:
     # Always report the established required check, including dependency failure.
     if: ${{ always() }}
-    needs: [checks, ruff, integration]
+    needs: [comparison, checks, ruff, integration]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

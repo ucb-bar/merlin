@@ -14,6 +14,7 @@ one-sided test just as well as a scanner that reports the right things.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 
 import pytest
@@ -32,6 +33,18 @@ def _load(name: str):
 
 
 SD = _load("check_silent_defaults")
+
+
+def _ownership(root, analysis=()):
+    components = {
+        owner: {"namespaces": [], "modules": []}
+        for owner in ("merlin-experiments", "merlin-dse", "merlin-mining", "merlin-analysis")
+    }
+    components["merlin-analysis"]["modules"] = list(analysis)
+    components["merlin-experiments"]["namespaces"] = ["merlin_experiments"]
+    path = root / "build_tools/logical_components.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"schema": "merlin.logical_components.v1", "research": components}))
 
 
 def _shapes(source: str) -> list[tuple[str, str]]:
@@ -140,3 +153,59 @@ def test_the_live_scan_covers_real_files():
     """A scan over an empty file set reports the same clean answer as a scan that found nothing."""
     files = SD._scanned_files()
     assert len(files) > 50, f"the evidence roster resolved to {len(files)} files; it is not scanning the repo"
+
+
+def test_moved_verifier_body_keeps_its_debt_but_new_defaults_still_fail(tmp_path, monkeypatch):
+    _ownership(tmp_path)
+    owner = tmp_path / "src/merlin/verification/probe.py"
+    owner.parent.mkdir(parents=True)
+    owner.write_text("def grade(r):\n    return r.get('cycles', 0), r.get('status', 'ok')\n")
+    former = tmp_path / "src/merlin/verify/probe.py"
+    former.parent.mkdir(parents=True)
+    former.write_text(
+        '"""Compatibility identity."""\nimport sys\n'
+        "from merlin.verification import probe as _owner\nsys.modules[__name__] = _owner\n"
+    )
+    monkeypatch.setattr(SD, "ROOT", tmp_path)
+    monkeypatch.setattr(SD, "EVIDENCE_ROOTS", ("src/merlin/verify",))
+    (owner.parent / "outside_declared_scope.py").write_text("def other(r): return r.get('result', True)\n")
+    found = SD.scan()
+    assert len(found) == 2 and all(f.path == "src/merlin/verification/probe.py" for f in found)
+    known = {"src/merlin/verify/probe.py::grade::get-default::cycles"}
+    new, stale = SD.verdict(found, known)
+    assert [finding.subject for finding in new] == ["status"] and stale == []
+    # A real operation in the old file makes it a separate implementation, not an alias.
+    former.write_text(former.read_text() + "EXTRA = True\n")
+    assert len(SD.verdict(found, known)[0]) == 2
+
+
+def test_relocated_research_debt_normalizes_both_sides():
+    finding = SD.Finding("src/merlin_experiments/phase1/audit.py", "audit", "get-default", "status")
+    known = {"packages/merlin-experiments/src/merlin_experiments/phase1/audit.py::audit::get-default::status"}
+    assert SD.verdict([finding], known) == ([], [])
+
+
+def test_core_directory_scope_does_not_expand_when_research_joins_the_wheel(tmp_path, monkeypatch):
+    _ownership(tmp_path, analysis=("merlin.verify.plots",))
+    sources = {
+        "src/merlin/verify/proof.py": "def grade(r): return r.get('cycles', 0)\n",
+        "src/merlin/verify/plots.py": "def plot(r): return r.get('bars', 0)\n",
+        "src/merlin_experiments/phase1/feedback/grader.py": "def grade(r): return r.get('status', 'ok')\n",
+    }
+    for name, source in sources.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source)
+    monkeypatch.setattr(SD, "ROOT", tmp_path)
+    selected = ("src/merlin/verify", "src/merlin_experiments/phase1/feedback")
+    monkeypatch.setattr(SD, "EVIDENCE_ROOTS", selected)
+    assert {f.path for f in SD.scan()} == {
+        "src/merlin/verify/proof.py",
+        "src/merlin_experiments/phase1/feedback/grader.py",
+    }
+    # An explicit file selection still scans research; ownership is not a blanket exemption.
+    monkeypatch.setattr(SD, "EVIDENCE_ROOTS", (*selected, "src/merlin/verify/plots.py"))
+    assert {f.path for f in SD.scan()} == set(sources)
+    (tmp_path / "build_tools/logical_components.json").unlink()
+    with pytest.raises(FileNotFoundError):
+        SD._scanned_files()

@@ -26,13 +26,46 @@ import shutil
 import subprocess
 import time
 from collections import deque
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable as Callable
+from collections.abc import Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, wait
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from .device_build_contracts import (
+    FROM_EXTENTS as FROM_EXTENTS,
+)
+from .device_build_contracts import (
+    FROM_GROUP as FROM_GROUP,
+)
+from .device_build_contracts import (
+    _flags as _flags,
+)
+from .device_build_contracts import (
+    apply_post_offload_transform as apply_post_offload_transform,
+)
+from .device_build_contracts import (
+    executable_kernel_entry as executable_kernel_entry,
+)
+from .device_build_contracts import (
+    kernel_entry as kernel_entry,
+)
+from .device_build_contracts import (
+    kernel_symbol as kernel_symbol,
+)
+from .device_build_contracts import (
+    rename_object_command as rename_object_command,
+)
+from .device_routing_placement import _accum_from_facts, routing_for_placement  # noqa: F401  (re-exported)
+from .device_seam_buildability import (  # noqa: F401  (re-exported)
+    _SEAM_EMITTERS,
+    BUILDABLE_TRANSPORTS,
+    boundary_buildable,
+    objects_buildable,
+)
 
 if TYPE_CHECKING:
     from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection
@@ -82,13 +115,7 @@ def _sibling_emission_batch(selection):
         # This is deliberately a fresh full check, not a same-stat/mtime cache.
         # A failing callback cannot publish earlier objects under stale owners.
         require_host(host, selected)
-from .device_routing_placement import _accum_from_facts, routing_for_placement  # noqa: F401  (re-exported)
-from .device_seam_buildability import (  # noqa: F401  (re-exported)
-    _SEAM_EMITTERS,
-    BUILDABLE_TRANSPORTS,
-    boundary_buildable,
-    objects_buildable,
-)
+
 
 __all__ = [
     "FROM_EXTENTS",
@@ -103,35 +130,10 @@ __all__ = [
 
 #: The kernel was built from the layer's own stated program -- its epilogue, its requantize
 #: multiplier, its convolution geometry, the type it commits.
-FROM_GROUP = "stated_group"
 #: The kernel was built from the extents ALONE, as a bare contraction. Everything a readout absorbs
 #: is absent from it, so the caller has to run those stages somewhere else. Honest for the
 #: contraction-granular rewrite (:mod:`.device_offload`), which routes exactly the contraction and
 #: leaves the epilogue in the driver -- and a silent loss for anything that meant to route a group.
-FROM_EXTENTS = "bare_extents"
-
-
-def rename_object_command(objcopy, original, selected, raw, output):
-    """Expose only the selected entry; retain unresolved runtime imports.
-
-    LLVM applies symbol visibility before renaming; GNU applies it afterward.
-    Naming both sides preserves the entry with either tool, and privatizes helpers.
-    """
-    return [
-        str(objcopy),
-        f"--redefine-sym={original}={selected}",
-        f"--keep-global-symbol={original}",
-        f"--keep-global-symbol={selected}",
-        str(raw),
-        str(output),
-    ]
-
-
-def executable_kernel_entry(device: str) -> str:
-    """The selected executable entry, independently of logical pointer-layout names."""
-    from merlin.runtime.backends import base as backends
-
-    return backends.harness_build_recipe(device).require_kernel_stack_frame().entry_symbol
 
 
 @dataclass(frozen=True)
@@ -213,6 +215,7 @@ class DeviceRouting:
     def __post_init__(self):
         if self.quantized_sum is not None:
             from .quantized_sum_route import freeze_route
+
             freeze_route(self)
         if self.sibling_source is not None:
             from .sibling_source_route import freeze_route
@@ -506,11 +509,6 @@ class DeviceBuild:
         return out if r.returncode == 0 and out.exists() else None
 
 
-def kernel_symbol(base: str, index: int) -> str:
-    """The per-signature kernel symbol. Distinct by construction; see the module docstring."""
-    return f"{base}_{int(index)}"
-
-
 def _ar() -> str | None:
     from .toolchain import llvm_install
 
@@ -550,16 +548,24 @@ def verify_object_symbol_binding(
     """Verify the staged objects with this build owner's selected tools."""
     from .device_object_symbols import verify_object_symbol_binding as verify
 
-    return verify(kernel_object, shim_object, entry_symbol=entry_symbol,
-                  kernel_symbol=kernel_symbol, original_kernel_symbol=original_kernel_symbol,
-                  timeout=timeout, nm=_nm(), run=_run)
+    return verify(
+        kernel_object,
+        shim_object,
+        entry_symbol=entry_symbol,
+        kernel_symbol=kernel_symbol,
+        original_kernel_symbol=original_kernel_symbol,
+        timeout=timeout,
+        nm=_nm(),
+        run=_run,
+    )
 
 
 def _run(argv: Sequence[str], *, timeout: int) -> subprocess.CompletedProcess:
     from .optional_passes import child_environment
 
-    return subprocess.run([str(a) for a in argv], capture_output=True, text=True, timeout=timeout,
-                          env=child_environment())
+    return subprocess.run(
+        [str(a) for a in argv], capture_output=True, text=True, timeout=timeout, env=child_environment()
+    )
 
 
 def _run_build_tool(argv: Sequence[str], *, timeout: int) -> subprocess.CompletedProcess:
@@ -605,6 +611,7 @@ def _observed_build_tool(
                     (
                         Path(__file__),
                         Path(__file__).with_name("device_build_jobs.py"),
+                        Path(__file__).with_name("device_build_contracts.py"),
                         Path(__file__).with_name("device_object_optimization.py"),
                         *dependencies,
                     )
@@ -636,48 +643,6 @@ def _observed_build_tool(
             "size_bytes": path.stat().st_size,
         },
         observed.document["tool_elapsed_s"],
-    )
-
-
-def kernel_entry(
-    symbol: str, extents: Sequence[int], stated: Mapping[str, Any] | None, device: str
-) -> tuple[dict[str, Any] | None, str, str]:
-    """``(entry, provenance, refusal)`` -- what a backend is asked to emit for one routed symbol.
-
-    Two sources, named apart because they compute different functions. A STATED group program is
-    carried verbatim: it is the layer's own program -- epilogue, requantize multiplier, convolution
-    geometry, committed type -- and rebuilding any of it from the extents would emit a kernel that
-    computes something else. Without one the entry is synthesized as a bare contraction of those
-    extents, which is honest for a caller that routed exactly the contraction.
-
-    THE EXTENT TRIPLE IS REQUIRED ONLY OF THE SYNTHESIZED FORM. A statement carries its own shape --
-    a convolution states taps and strides, an integer sum reduces over nothing -- so demanding
-    ``M x K x N`` of one would decline exactly the layers a whole-program route exists to carry
-    (measured on a captured ResNet-50: 54 of its 69 routed groups are convolutions). A separate
-    function so that rule is reachable without a package and a toolchain: inside the build loop it
-    sits behind a package load, and a test of it there passes whether or not the rule is present.
-    """
-    key = tuple(int(v) for v in extents)
-    if stated is not None:
-        entry = dict(stated)
-        entry.setdefault("name", symbol)
-        return entry, FROM_GROUP, ""
-    if len(key) not in (3, 4):
-        return None, FROM_EXTENTS, f"signature {key} has neither 3 nor 4 extents; no kernel shape for it"
-    m, n, k = key[-3:]
-    return (
-        {
-            "name": symbol,
-            "op": "matmul",
-            "kind": "op",
-            "source_role": "mesh_tile_synthesized",
-            "source_reference": f"offloaded layer {m}x{k}x{n} for {device}",
-            "M": m,
-            "K": k,
-            "N": n,
-        },
-        FROM_EXTENTS,
-        "",
     )
 
 
@@ -758,7 +723,8 @@ def build_device_objects(
         ConnectedSpatialRoute.record(selected_spatial)
         private_symbol = selected_spatial.writer.symbol
         if (
-            entries is None or private_symbol not in signatures
+            entries is None
+            or private_symbol not in signatures
             or entries.get(private_symbol) != spatial_host.source_entry
             or call_buffers is None
         ):
@@ -771,10 +737,14 @@ def build_device_objects(
         selected_sibling, sibling_host = sibling_source
         require_host(sibling_host, selected_sibling)
         sibling_hosts = {item.device_symbol: item for item in component_hosts(sibling_host)}
-        if (connected_spatial is not None or signatures != sibling_host.rewrite.signatures
-            or entries != sibling_host.rewrite.entries or call_buffers != sibling_host.rewrite.call_buffers
+        if (
+            connected_spatial is not None
+            or signatures != sibling_host.rewrite.signatures
+            or entries != sibling_host.rewrite.entries
+            or call_buffers != sibling_host.rewrite.call_buffers
             or expected_interfaces != sibling_host.rewrite.expected_interfaces
-            or package_sha256 != sibling_host.rewrite.package_sha256):
+            or package_sha256 != sibling_host.rewrite.package_sha256
+        ):
             raise ValueError("sibling object lost its original source, interface or logical ABI")
     from merlin.common.digest import sha256_text
     from merlin.targetgen import capsule_common as CC
@@ -1144,7 +1114,8 @@ def build_device_objects(
                         raise ValueError("connected source entry lost its original composed program")
                     observed_outputs = (operation["attributes"]["out"],)
                 buffers, refusal = (
-                    logical_buffers(iface) if observed_outputs is None
+                    logical_buffers(iface)
+                    if observed_outputs is None
                     else logical_buffers(iface, observed_outputs=observed_outputs)
                 )
                 call = (call_buffers or {}).get(sym)
@@ -1189,9 +1160,11 @@ def build_device_objects(
 
     # A selected target transformation has its own callback/lifetime contract;
     # package-entrypoint concurrency alone cannot authorize sharing that owner.
-    with (_sibling_emission_batch(sibling_source) as sibling_interfaces,
-          ArtifactCompiler(workers) as compiler,
-          EmissionJobs(workers if target_selection is None else 1) as emissions):
+    with (
+        _sibling_emission_batch(sibling_source) as sibling_interfaces,
+        ArtifactCompiler(workers) as compiler,
+        EmissionJobs(workers if target_selection is None else 1) as emissions,
+    ):
         for job, emission in emissions.map(prepare_emissions(), emit_interface):
             sym, provenance, want, stem, _ifc = job
             lowering = work / f"{sym}.lowering"
@@ -1283,7 +1256,9 @@ def build_device_objects(
 
     unit = (
         emit_logical_translation_unit(
-            device, {s: group_buffers[s] for s in kernels if s != private_symbol}, kernel_symbol_for=kernels.get,
+            device,
+            {s: group_buffers[s] for s in kernels if s != private_symbol},
+            kernel_symbol_for=kernels.get,
             descriptor_results=descriptor_results,
         )
         if grouped
@@ -1327,15 +1302,20 @@ def build_device_objects(
         private_c.write_text(spatial_host.scratch.bridge_source)
         audit, bridge_invocation, _ = _observed_build_tool(
             [clang(), *_flags(codegen_target, cflags), "-c", str(private_c), "-o", str(private_o)],
-            timeout=timeout, directory=work, stage="spatial_descriptor_bridge_audit",
-            inputs=(private_c,), output=private_o,
+            timeout=timeout,
+            directory=work,
+            stage="spatial_descriptor_bridge_audit",
+            inputs=(private_c,),
+            output=private_o,
         )
         if audit.returncode != 0:
             raise ValueError("private spatial descriptor bridge compilation failed: " + (audit.stderr or "")[:300])
         binding = verify_object_symbol_binding(
-            objects_by_symbol[private_symbol], private_o,
+            objects_by_symbol[private_symbol],
+            private_o,
             entry_symbol="_mlir_ciface_" + selected_spatial.writer.borrowed_symbol,
-            kernel_symbol=kernels[private_symbol], original_kernel_symbol=selected_spatial.helper_symbol,
+            kernel_symbol=kernels[private_symbol],
+            original_kernel_symbol=selected_spatial.helper_symbol,
             timeout=timeout,
         )
         custody[private_symbol]["connected_spatial"].update(
@@ -1390,12 +1370,17 @@ def build_device_objects(
     for sibling_symbol in sibling_hosts:
         if sibling_symbol not in kernels:
             continue
+
         def bridge_pin(path):
-            return {"path": str(path.resolve()), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-                    "size_bytes": path.stat().st_size}
+            return {
+                "path": str(path.resolve()),
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "size_bytes": path.stat().st_size,
+            }
 
         custody[sibling_symbol]["sibling_source"]["descriptor_bridge"] = {
-            "source": bridge_pin(shim_c), "object": bridge_pin(shim_o),
+            "source": bridge_pin(shim_c),
+            "object": bridge_pin(shim_o),
             "compilation": _shim_invocation,
         }
 
@@ -1411,21 +1396,29 @@ def build_device_objects(
                     raise ValueError("head source lost its actual per-matrix artifact")
 
                 def pin_head(path):
-                    return {"path": str(path.resolve()), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-                            "size_bytes": path.stat().st_size}
+                    return {
+                        "path": str(path.resolve()),
+                        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                        "size_bytes": path.stat().st_size,
+                    }
 
                 custody[symbol]["head_source"] = {
                     "source_ir_sha256": selected_sibling.source_ir_sha256,
                     "interface_sha256": expected_interfaces[symbol]["sha256"],
                     "matrix_invocations": family["batch_extent"],
-                    "descriptor_bridge": {"source": pin_head(shim_c), "object": pin_head(shim_o),
-                                          "compilation": _shim_invocation},
-                    "bridge_kind": ("whole_logical_batch" if selected_sibling.whole_batch else
-                                    "stock_logical_batch_slices"),
+                    "descriptor_bridge": {
+                        "source": pin_head(shim_c),
+                        "object": pin_head(shim_o),
+                        "compilation": _shim_invocation,
+                    },
+                    "bridge_kind": (
+                        "whole_logical_batch" if selected_sibling.whole_batch else "stock_logical_batch_slices"
+                    ),
                 }
                 if selected_sibling.whole_batch:
                     custody[symbol]["head_source"].update(
-                        kernel_invocations=1, mathematical_products=len(family["members"]))
+                        kernel_invocations=1, mathematical_products=len(family["members"])
+                    )
 
     for lowering, receipt_sha256 in target_receipts.values():
         revalidate_target(
@@ -1449,27 +1442,3 @@ def build_device_objects(
         object_dedup=dedup_receipt(),
         build_metrics=build_metrics,
     )
-
-
-def _flags(codegen_target: str, cflags: Sequence[str] | None = None) -> list[str]:
-    """Compile flags for the device objects: the CALLER's when it supplied them.
-
-    The defaults name an ISA (`-march=rv64gcv`), and a default ISA is an assumption about the
-    hardware. Baking it in here meant the device shim was compiled with the vector extension for a
-    core that does not have one: the whole-model image trapped mid-run on its first `vsetvli`
-    (`mcause=2`, mtval opcode 0x57) on a Rocket whose own DTS reads
-    `rv64imafdcbzicsr_..._xrocket` -- no `v`. The kernels themselves came out clean because they are
-    translated from the target's own lowering; only this C shim was compiled against the default.
-    The matrix/OPU shim path already took its flags from the caller; this one now does too."""
-    if cflags:
-        return list(cflags)
-    from .codegen import RISCV_FLAGS, X86_FLAGS
-
-    return list(RISCV_FLAGS if codegen_target == "riscv" else X86_FLAGS)
-
-
-def apply_post_offload_transform(routing, prepared: Path, sidecar: Path, workdir: Path) -> Path:
-    """Compatibility entry for the ordinary preparation-owned host ABI rewrite."""
-    from .device_preparation import apply_post_offload_transform as prepare
-
-    return prepare(routing, prepared, sidecar, workdir)

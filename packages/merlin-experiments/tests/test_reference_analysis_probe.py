@@ -1,4 +1,5 @@
 """A missing optional broker dependency degrades analysis, and preflight refuses it before authoring."""
+
 from __future__ import annotations
 
 import json
@@ -6,12 +7,13 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+from test_reference_analysis_tool import _request, _world
+
 from merlin.targetgen.sandbox import bwrap
 from merlin_experiments.phase1 import preflight as P
 from merlin_experiments.phase1.feedback import reference_analysis as analysis
 from merlin_experiments.phase1.feedback import reference_analysis_probe as probe
 from merlin_experiments.phase1.feedback import reference_experiments as reference
-from test_reference_analysis_tool import _request, _world
 
 _MINING = "merlin.mining.reconstruction_experiments"
 
@@ -41,8 +43,12 @@ def test_missing_experiment_dependency_degrades_one_call_instead_of_failing_it(t
     _without_mining(monkeypatch)
     with reference.invocation(fixture["path"], fixture["sha"]):
         degraded = reference.record_analysis({}, workspace=tmp_path, compiler_sha256=fixture["compiler"])
-        lifted = analysis.handle(_request("lift", "reference-kernels/trace.txt"), workspace=tmp_path,
-                                 facts=fixture["facts"], compiler_sha256=fixture["compiler"])
+        lifted = analysis.handle(
+            _request("lift", "reference-kernels/trace.txt"),
+            workspace=tmp_path,
+            facts=fixture["facts"],
+            compiler_sha256=fixture["compiler"],
+        )
     assert degraded == dict(status="unknown", reason=reference.DEPENDENCY_UNAVAILABLE, tasks=[], requests=[])
     assert lifted["status"] == "analyzed" and lifted["report"]["listed_instructions"] == 4
     assert lifted["report"]["experiment"]["reason"] == reference.DEPENDENCY_UNAVAILABLE
@@ -52,7 +58,7 @@ def test_probe_refuses_an_environment_without_the_experiment_dependency(tmp_path
     fixture = _world(tmp_path)
     _without_mining(monkeypatch)
     with reference.invocation(fixture["path"], fixture["sha"]):
-        with pytest.raises(ValueError, match="merlin-mining"):
+        with pytest.raises(ValueError, match=r"merlin\[mining\]"):
             probe.probe(workspace=tmp_path, facts=fixture["facts"])
 
 
@@ -70,10 +76,15 @@ def test_preflight_runs_the_probe_with_the_broker_selection_and_records_it(tmp_p
     run = tmp_path / "run"
     run.mkdir()
     selected = []
-    monkeypatch.setattr(bwrap, "frozen_selected_rtl_facts",
-                        lambda ws, bundle, *, repo: selected.append((ws, repo)) or fixture["facts"])
-    prepared = SimpleNamespace(workspace=tmp_path, run_dir=run, bundle={"bundle_id": "b"},
-                               request=SimpleNamespace(context=SimpleNamespace(repo=tmp_path, target="t")))
+    monkeypatch.setattr(
+        bwrap, "frozen_selected_rtl_facts", lambda ws, bundle, *, repo: selected.append((ws, repo)) or fixture["facts"]
+    )
+    prepared = SimpleNamespace(
+        workspace=tmp_path,
+        run_dir=run,
+        bundle={"bundle_id": "b"},
+        request=SimpleNamespace(context=SimpleNamespace(repo=tmp_path, target="t")),
+    )
     assert probe.for_prepared(prepared) is None and not selected
     with reference.invocation(fixture["path"], fixture["sha"]):
         result = probe.for_prepared(prepared)
@@ -87,8 +98,11 @@ def test_preflight_result_carries_the_probe_and_a_failed_probe_stops_it(tmp_path
     run.mkdir()
     prepared = SimpleNamespace(
         request=SimpleNamespace(options=SimpleNamespace(preflight_only=True, codex_binary="")),
-        resuming=False, reviewed_roots=(tmp_path,), run_dir=run,
-        environment={"bundle_input_snapshot": {"content_sha256": "s" * 64}})
+        resuming=False,
+        reviewed_roots=(tmp_path,),
+        run_dir=run,
+        environment={"bundle_input_snapshot": {"content_sha256": "s" * 64}},
+    )
     monkeypatch.setattr(probe, "for_prepared", lambda selected: {"status": "analyzed", "input": "x"})
     assert P.complete(prepared) == 0
     record = json.loads((run / "preflight_result.json").read_text())

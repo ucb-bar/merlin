@@ -388,7 +388,10 @@ def _load_token_ratchet() -> set[str]:
     for line in TOKEN_RATCHET.read_text(encoding="utf-8").splitlines():
         entry = line.split("#", 1)[0].strip()
         if entry:
-            out.add(entry)
+            # Relocation preserves the original debt identity. Normalize the
+            # recorded path just as token_report normalizes the scanned path;
+            # keep the ledger unchanged and continue reporting carried debt.
+            out.add(_source_layout.policy_path(entry))
     return out
 
 

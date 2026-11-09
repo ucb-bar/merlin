@@ -116,6 +116,29 @@ def test_target_name_gate_ignores_a_generic_module(tmp_path):
     assert gate._scan_coupling(benign) == []
 
 
+@pytest.mark.parametrize("recorded_root", ["packages/merlin-analysis/src/merlin", "src/merlin"])
+def test_target_token_debt_survives_relocation_without_admitting_new_debt(tmp_path, monkeypatch, recorded_root):
+    """Existing research debt stays visible; an identical unrecorded mention still fails."""
+    gate = _load_gate("check_no_target_name")
+    retained = "src/merlin/compare/retained.py"
+    unrecorded = "src/merlin/compare/unrecorded.py"
+    for name in (retained, unrecorded):
+        _write(tmp_path, name, 'IMPLEMENTATION = "demo_hw"\n')
+    ratchet = _write(tmp_path, "token_ratchet.txt", f"{recorded_root}/compare/retained.py\n")
+    original = ratchet.read_bytes()
+    monkeypatch.setattr(gate, "ROOT", tmp_path)
+    monkeypatch.setattr(gate, "TOKEN_RATCHET", ratchet)
+    monkeypatch.setattr(gate, "TARGET_NAMES", frozenset({"demo_hw"}))
+
+    violations, healed, carried = gate.token_report([Path(retained), Path(unrecorded)], set(), [])
+
+    assert carried == 1
+    assert healed == []
+    assert len(violations) == 1
+    assert violations[0].startswith(unrecorded + ":") and "demo_hw" in violations[0]
+    assert ratchet.read_bytes() == original
+
+
 # --------------------------------------------------------------------------- regex in core library
 
 

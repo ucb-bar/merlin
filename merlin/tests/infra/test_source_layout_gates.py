@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -270,3 +271,35 @@ def test_formatter_checks_edited_renames_but_preserves_byte_identical_moves(monk
     monkeypatch.setattr(gate, "_git", changed)
     assert gate._changed(True, None) == ["src/edited.py", "src/new.py"]
     assert gate._changed(False, "base") == ["src/edited.py", "src/new.py"]
+
+
+@pytest.mark.parametrize("requested", ["", "0" * 40, "parent", "missing"])
+def test_ci_comparison_base_checks_first_branch_push_without_skipping(tmp_path, requested):
+    import yaml
+
+    workflow = yaml.safe_load((repo_root() / ".github/workflows/ci.yml").read_text())
+    comparison = workflow["jobs"]["comparison"]
+    commands = next(step["run"] for step in comparison["steps"] if step.get("id") == "base")
+    for command in (["init", "-q"], ["config", "user.name", "Test"], ["config", "user.email", "test@example.invalid"]):
+        subprocess.run(["git", *command], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / "source.py").write_text("value = 1\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-qm", "initial fixture"], cwd=tmp_path, check=True, capture_output=True)
+    parent = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True).strip()
+    subprocess.run(["git", "update-ref", "refs/remotes/origin/default", parent], cwd=tmp_path, check=True)
+    (tmp_path / "source.py").write_text("value = 2\n")
+    subprocess.run(["git", "commit", "-qam", "changed fixture"], cwd=tmp_path, check=True, capture_output=True)
+    output = tmp_path / "output"
+    selected = parent if requested == "parent" else "deadbeef" * 5 if requested == "missing" else requested
+    result = subprocess.run(
+        ["bash", "-e", "-o", "pipefail", "-c", commands],
+        cwd=tmp_path,
+        env=dict(os.environ, REQUESTED_BASE=selected, DEFAULT_BRANCH="default", GITHUB_OUTPUT=str(output)),
+        capture_output=True,
+        text=True,
+    )
+    if requested == "missing":
+        assert result.returncode != 0 and not output.exists(), result.stdout + result.stderr
+    else:
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert output.read_text() == f"sha={parent}\n"

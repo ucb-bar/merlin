@@ -61,6 +61,41 @@ def test_shared_extension_evaluators_remain_instrumented(tmp_path):
     assert gate.main([]) == 0
 
 
+def test_exact_compatibility_alias_preserves_owner_debt_and_real_caller(tmp_path):
+    alias = (
+        '"""Compatibility identity."""\nimport sys\n'
+        "from merlin.verification import probe as _owner\nsys.modules[__name__] = _owner\n"
+    )
+    gate = _gate(
+        _tree(
+            tmp_path,
+            {
+                "src/merlin/verify/probe.py": alias,
+                "src/merlin/verification/probe.py": "def grade(): return 1\n",
+                "merlin/tests/infra/test_probe.py": "from merlin.verification.probe import grade\n",
+            },
+        )
+    )
+    # A forwarding import alone cannot fabricate a production consumer of the checker.
+    assert gate.unwired() == ["src/merlin/verification/probe.py"]
+    assert gate.unwired_symbols() == []
+    gate.LEDGER.parent.mkdir(parents=True)
+    gate.LEDGER.write_text("merlin/python/merlin/verify/probe.py\n")
+    assert gate.main([]) == 0
+    _tree(tmp_path, {"src/merlin/consumer.py": "from merlin.verify import probe\n"})
+    assert gate.unwired() == []
+    # Stale debt still fails when the owner gains a real importer.
+    assert gate.main([]) == 1
+    gate.LEDGER.write_text("")
+    _tree(tmp_path, {"src/merlin/verify/orphan.py": "SIGNAL = 1\n"})
+    assert gate.unwired() == ["src/merlin/verify/orphan.py"]
+    assert gate.main([]) == 1
+    former = tmp_path / "src/merlin/verify/probe.py"
+    assert gate._source_layout.module_alias(former, tmp_path) is not None
+    former.write_text(alias + "EXTRA = True\n")
+    assert gate._source_layout.module_alias(former, tmp_path) is None
+
+
 def test_only_a_production_import_wires_a_module(tmp_path: Path) -> None:
     gate = _gate(
         _tree(

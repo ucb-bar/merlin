@@ -58,6 +58,14 @@ jobs:
             merlin/tests/rvv/test_shared_finalization.py \
             merlin/tests/rvv/test_policy_owner.py \
             --junitxml=out/build/python/ci/hosted-boundaries.xml
+      - name: pinned installed OOT provider boundaries
+        run: |
+          wheels=(out/build/python/releases/merlin-*.whl)
+          test "${#wheels[@]}" -eq 1
+          uv run --no-sync python build_tools/scripts/check_backend_boundaries.py \
+            --wheel "${wheels[0]}" \
+            --pins build_tools/upstreams/backend-boundaries.json \
+            --output out/build/python/ci/backend-boundaries
       - name: retain distributions and exact test outcomes
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
