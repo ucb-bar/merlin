@@ -45,9 +45,10 @@ class DeployableChain:
     alignment_bytes: int
     worker_count: int
     source_ir_sha256: str
+    data_preparation: dict | None = None
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "schema": "merlin.deployable_outlined_chain.v1",
             "source_ir_sha256": self.source_ir_sha256,
             "program": self.program.to_dict(),
@@ -63,6 +64,9 @@ class DeployableChain:
             "kernel_parallelism": "serial dependency chain; no nested OpenMP",
             "full_model_admission": False,
         }
+        if self.data_preparation is not None:
+            result["data_preparation"] = self.data_preparation
+        return result
 
 
 def static_tensor_contract(t):
@@ -139,6 +143,7 @@ def plan_deployable_chain(
     workspace_budget_bytes: int,
     alignment_bytes: int,
     entry: str = "forward",
+    data_preparation: bool = False,
 ) -> DeployableChain:
     """Admit a closed chain without changing the caller's module or arithmetic.
 
@@ -156,7 +161,18 @@ def plan_deployable_chain(
         or alignment_bytes & (alignment_bytes - 1)
     ):
         raise ValueError("positive workspace budget and power-of-two alignment >=8 required")
+    if type(data_preparation) is not bool:
+        raise ValueError("explicit boolean data preparation selection required")
     module.verify()
+    source_hash = hashlib.sha256(checked_generic_text(module).encode()).hexdigest()
+    preparation = None
+    if data_preparation:
+        from merlin.llvmlower.deployable_packing import canonicalize_constant_splats
+
+        module = module.clone()
+        count = canonicalize_constant_splats(module)
+        module.verify()
+        preparation = {"constant_splats_canonicalized": count, "controller_permutations": []}
     entries = [op for op in module.body.block.ops if op.name == "func.func" and op.sym_name.data == entry]
     if len(entries) != 1:
         raise ValueError("one explicit source entry required")
@@ -171,13 +187,6 @@ def plan_deployable_chain(
     program = prune_dead_nodes(full)
     if verify_program(program):
         raise ValueError("outlined dispatch program is not a closed DAG")
-    if (
-        not isinstance(worker_slots, tuple)
-        or len(worker_slots) != program.n_dispatches
-        or not worker_slots
-        or any(type(slot) is not int or not 0 <= slot < worker_count for slot in worker_slots)
-    ):
-        raise ValueError("one explicit legal compute-worker assignment required per dispatch")
     driver = next(op for op in outlined.module.body.block.ops if op.name == "func.func" and op.sym_name.data == entry)
     operations = [op for op in driver.body.block.ops if op.name != "func.return"]
     by_node = {id(node): op for node, op in zip(full.nodes, operations, strict=True)}
@@ -195,10 +204,38 @@ def plan_deployable_chain(
             continue
         shape, dtype, size = static_tensor_contract(source_types[bid])
         specs[bid] = ChainBuffer(bid, shape, dtype, size, buffer.arg_index, None)
+    packing = {}
+    if data_preparation:
+        from merlin.llvmlower.deployable_packing import static_permutation
+
+        for node in program.nodes:
+            if node.kind == "dispatch":
+                function = next(
+                    op
+                    for op in outlined.module.body.block.ops
+                    if op.name == "func.func" and op.sym_name.data == node.op
+                )
+                view = static_permutation(function, node, specs)
+                if view is not None:
+                    node.kind = "view"
+                    packing[id(node)] = view
+                    preparation["controller_permutations"].append(view)
+    program = prune_dead_nodes(full)
+    if verify_program(program):
+        raise ValueError("outlined dispatch program is not a closed DAG")
+    if (
+        not isinstance(worker_slots, tuple)
+        or len(worker_slots) != program.n_dispatches
+        or not worker_slots
+        or any(type(slot) is not int or not 0 <= slot < worker_count for slot in worker_slots)
+    ):
+        raise ValueError("one explicit legal compute-worker assignment required per dispatch")
     views, dispatches, aliases = [], [], set()
     for node in program.nodes:
         if node.kind == "view":
-            view = _view(by_node[id(node)], node, specs)
+            view = packing.get(id(node))
+            if view is None:
+                view = _view(by_node[id(node)], node, specs)
             if view["kind"] == "alias":
                 aliases.add(view["output"])
             views.append(view)
@@ -254,7 +291,8 @@ def plan_deployable_chain(
         size,
         alignment_bytes,
         worker_count,
-        hashlib.sha256(checked_generic_text(module).encode()).hexdigest(),
+        source_hash,
+        preparation,
     )
 
 

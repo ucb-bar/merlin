@@ -780,3 +780,10 @@ original FP32 quantization/scaling DAG and account for the added correction work
   exported sources and compiler input. Round-trip all op attributes/properties
   and region bodies or refuse; never change the shared printer default to make
   this opt-in path work.
+
+- `deployable_packing` is default-off outlined preparation. Only proved immutable
+  static literal splats become existing cloneable fills, retaining exact literal
+  attributes. Only complete fresh-output identity-yield static transposes grant
+  controller byte packing. Preserve source/argument/attribute identity, dense
+  encoding, full bounds and whole-chain lifetimes; all numerical work stays in
+  compute callbacks. Unknown effects/layouts/bodies grant no packing permission.

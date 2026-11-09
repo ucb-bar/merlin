@@ -30,6 +30,7 @@ def build_outlined_program(
     codegen_target: str = "rvv",
     prefix: str = "merlin_chain",
     prepared_staged_kernels=None,
+    data_preparation: bool = False,
 ) -> dict:
     """Compile isolated kernels and emit a real C staged chain, default-off.
 
@@ -73,6 +74,7 @@ def build_outlined_program(
             worker_count=len(roles.compute_harts),
             workspace_budget_bytes=workspace_budget_bytes,
             alignment_bytes=alignment_bytes,
+            data_preparation=data_preparation,
         )
         prepared_staged_kernels = {} if prepared_staged_kernels is None else dict(prepared_staged_kernels)
         plan, state_layout = prepared_staged_kernel.reserve_states(
@@ -104,6 +106,13 @@ def build_outlined_program(
                 for module in (deployable_ir, deployable_outline, kernel_backend, prepared_staged_kernel)
             },
         }
+        if data_preparation:
+            from merlin.llvmlower import deployable_packing
+
+            identity["data_preparation"] = True
+            identity["compiler_owner_sha256"][str(Path(deployable_packing.__file__))] = sha256_file(
+                deployable_packing.__file__
+            )
         cache, builds, mappings, entries, prepared_builds = {}, [], [], [], {}
         for index, step in enumerate(plan.dispatches):
             kernel = deployable_outline.canonical_kernel(plan.outlined.module, step["symbol"])
@@ -197,6 +206,8 @@ def build_outlined_program(
                 Path(__file__),
             )
         }
+        if data_preparation:
+            source_pins[str(Path(deployable_packing.__file__))] = sha256_file(deployable_packing.__file__)
         for selected in prepared_staged_kernels.values():
             selected.verify(worker_count=plan.worker_count)
             source_pins.update(selected.input_sha256)

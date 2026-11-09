@@ -8,6 +8,7 @@ related: [staged_dispatch, provider_workflow, worker_placement]
 code_refs:
   - src/merlin/compile/outlined_program.py
   - src/merlin/llvmlower/deployable_outline.py
+  - src/merlin/llvmlower/deployable_packing.py
   - src/merlin/llvmlower/deployable_ir.py
   - src/merlin/llvmlower/kernel_backend.py
   - src/merlin/runtime/outlined_chain.py
@@ -206,3 +207,30 @@ the generated context, platform stacks, executable and runtime-library closure
 need separate memory admission. This path establishes a deployable closed-chain
 mechanism, not full-model readiness, a hardware performance result or a matrix
 offload policy.
+
+## Optional constant and layout preparation
+
+`build_outlined_program(..., data_preparation=True)` and the same optional
+boolean in the JSON config enable a source-proved preparation seam. The default
+is false. Immutable static constant `tensor.splat` producers become equivalent
+`linalg.fill` producers using the exact original literal attribute. The existing
+outliner clones these producers into their arithmetic kernels, so reduction
+seeds and numeric constants require no scalar controller ABI. This changes no
+quantization, floating arithmetic order, overflow policy or literal bits.
+
+A standalone kernel containing only a fresh-output static `linalg.transpose`
+with its exact identity-yield body may become controller byte packing. The
+permutation, dimensions, dtype, full destination coverage and source/destination
+storage are proved from the actual function. Nondefault encodings, unknown
+contracts, dynamic shapes or nonidentity bodies grant no packing permission.
+All views and intermediate buffers retain unique whole-chain storage; packing
+never mutates inputs or shortens an alias lifetime. Only byte/address operations
+run on the controller. All reductions, quantization, integer compensation,
+scaling and other numerical kernels stay on their explicitly assigned workers.
+
+Worker assignments cover the arithmetic dispatches remaining after this explicit
+preparation; source packing entries remain in the recorded DAG with their
+provenance. Plan/build records bind this choice and the preparation owner source.
+This seam supplies neither automatic offload policy nor source-model numerical,
+allocator, target or performance qualification. Full independent target output
+checks and complete memory/runtime admission remain required.

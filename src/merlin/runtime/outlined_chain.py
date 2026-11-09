@@ -21,6 +21,17 @@ def _views(views, positions) -> list[str]:
         if view["kind"] == "alias":
             lines.append(f"    c->buffers[{dst}] = c->buffers[{src}];")
             continue
+        if view["kind"] == "pack_permutation":
+            count = math.prod(view["output_shape"])
+            lines.append(f"    for (size_t i=0; i<{count}; ++i) {{ size_t rem=i, source=0;")
+            for size, stride in reversed(list(zip(view["output_shape"], view["source_strides"], strict=True))):
+                lines.append(f"      source += (rem % {size}) * {stride}; rem /= {size};")
+            width = view["element_bytes"]
+            lines.append(
+                f"      memcpy((unsigned char*)c->buffers[{dst}]+i*{width},"
+                f"(const unsigned char*)c->buffers[{src}]+source*{width},{width});\n    }}"
+            )
+            continue
         count = math.prod(view["sizes"])
         lines.append(f"    for (size_t i=0; i<{count}; ++i) {{ size_t rem=i, source=0;")
         dense = 1
