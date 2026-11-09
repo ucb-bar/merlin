@@ -6,7 +6,7 @@ from merlin.semantic_compiler.model import TensorType, pointwise_identity_maps
 
 from .c_sources import c_source_pair
 
-FLOAT_ARITHMETIC_OPERATIONS = ("f64_mul", "bf16_add", "bf16_sub", "bf16_neg", "f32_neg", "f64_neg")
+FLOAT_ARITHMETIC_OPERATIONS = ("f32_mul", "f64_mul", "bf16_add", "bf16_sub", "bf16_neg", "f32_neg", "f64_neg")
 
 
 def _emit_float_negation_c(source, name):
@@ -153,6 +153,48 @@ static uint64_t compute(uint64_t a,uint64_t b) {
 }
 """
 
+# Binary32 needs at most 48 product bits; uint64_t preserves them exactly.
+_F32_HELPERS = r"""
+static uint64_t load(const unsigned char *p) {
+  uint64_t bits=0; for (unsigned i=0;i<4;++i) bits|=(uint64_t)p[i]<<(8u*i); return bits;
+}
+static int valid(uint64_t a,uint64_t b) {
+  uint64_t am=a&UINT64_C(0x7fffffff), bm=b&UINT64_C(0x7fffffff);
+  const uint64_t inf=UINT64_C(0x7f800000);
+  return am<=inf && bm<=inf && !(am==inf && !bm) && !(bm==inf && !am);
+}
+static uint64_t compute(uint64_t a,uint64_t b) {
+  uint64_t sign=(a^b)&UINT64_C(0x80000000);
+  uint64_t am=a&UINT64_C(0x7fffffff), bm=b&UINT64_C(0x7fffffff);
+  const uint64_t inf=UINT64_C(0x7f800000), hidden=UINT64_C(1)<<23;
+  if (am==inf || bm==inf) return sign|inf;
+  if (!am || !bm) return sign;
+  unsigned ae=(unsigned)(am>>23), be=(unsigned)(bm>>23);
+  uint64_t as=(am&(hidden-1u))|(ae?hidden:0), bs=(bm&(hidden-1u))|(be?hidden:0);
+  int power=(int)(ae?ae:1)+(int)(be?be:1)-300;
+  uint64_t product=(uint64_t)as*bs;
+  unsigned top=0;
+  for (uint64_t rest=product;rest>1;rest>>=1) ++top;
+  int highest=(int)top+power;
+  if (highest>127) return sign|inf;
+  int quantum=highest-23>-149 ? highest-23 : -149;
+  int shift=quantum-power;
+  uint64_t rounded;
+  if (shift<=0) rounded=(uint64_t)(product<<(unsigned)-shift);
+  else if (shift>=64) rounded=0;
+  else {
+    uint64_t high=product>>(unsigned)shift;
+    uint64_t low=product- (high<<(unsigned)shift), half=(uint64_t)1<<(unsigned)(shift-1);
+    rounded=(uint64_t)high+(low>half || (low==half && (high&1u)));
+  }
+  if (rounded==(hidden<<1)) { rounded>>=1; ++quantum; }
+  if (rounded<hidden) return sign|rounded;
+  int exponent=quantum+150;
+  if (exponent>=255) return sign|inf;
+  return sign|((uint64_t)exponent<<23)|(rounded-hidden);
+}
+"""
+
 
 def emit_float_arithmetic_c(source, name):
     """Emit one checked logical operation, without a floating runtime or FENV use.
@@ -172,7 +214,8 @@ def emit_float_arithmetic_c(source, name):
         raise ValueError("float arithmetic needs one supported operation and result")
     keys = tuple(dict.fromkeys(node.inputs))
     bf16 = node.op.startswith("bf16_")
-    dtype, width = ("bf16", 2) if bf16 else ("f64", 8)
+    dtype = node.op.split("_", 1)[0]
+    width = {"bf16": 2, "f32": 4, "f64": 8}[dtype]
     policy = f"ieee754-{dtype}-{node.op[len(dtype) + 1:]}-rne-v1"
     type_ = TensorType(node.type.shape, dtype, "raw-bit-pattern")
     if (
@@ -201,7 +244,11 @@ def emit_float_arithmetic_c(source, name):
         constants[binding.node_id] = tuple(
             int.from_bytes(data[i:i + width], "little") for i in range(0, len(data), width)
         )
-        magnitude, infinity = (32767, 32640) if bf16 else (0x7FFFFFFFFFFFFFFF, 0x7FF0000000000000)
+        magnitude, infinity = {
+            "bf16": (32767, 32640),
+            "f32": (0x7FFFFFFF, 0x7F800000),
+            "f64": (0x7FFFFFFFFFFFFFFF, 0x7FF0000000000000),
+        }[dtype]
         if any(bits & magnitude > infinity for bits in constants[binding.node_id]):
             raise ValueError("float arithmetic constant NaN payload is unqualified")
     if all(key in constants for key in node.inputs):
@@ -220,7 +267,7 @@ def emit_float_arithmetic_c(source, name):
     ]
     a, b = (keys.index(key) for key in node.inputs)
     helpers = (_BF16_HELPERS.replace("SUBTRACT_SIGN", "32768u" if node.op == "bf16_sub" else "0u")
-               if bf16 else _HELPERS)
+               if bf16 else _F32_HELPERS if dtype == "f32" else _HELPERS)
     for symbol in ("load", "valid", "compute", "expand", "bit"):
         helpers = helpers.replace(symbol + "(", name + "_" + symbol + "(")
     implementation = f"""#include <stddef.h>
@@ -249,7 +296,7 @@ int {name}(void *context,const void *const *inputs,void *const *outputs) {{
         "implementation": name,
         "inputs": list(keys),
         "outputs": [node.id],
-        "arithmetic": f"exact-source-{node.op.replace('_', '-')}" if bf16 else "exact-source-f64-multiply",
+        "arithmetic": f"exact-source-{node.op.replace('_', '-')}" if bf16 else f"exact-source-{dtype}-multiply",
         "numeric_semantics": policy,
         "domain": ("non-NaN operands, excluding infinity cancellation; reject before output writes" if bf16
                    else "non-NaN operands, excluding zero times infinity; reject before output writes"),
