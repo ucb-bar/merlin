@@ -62,6 +62,12 @@ generated transpose and the same exact inverse proof; other uses survive.
 
 ## Purpose
 
+`loop_tensor_destinations.py` offers explicit post-fusion reuse of a completely
+overwritten static parallel generic's loop-carried tensor destination. The init
+scalar must be unused and the output map identity. Native tensor alias analysis
+and ordinary ownership/lifetime checks remain authoritative; dynamic trip counts
+grant no release permission. Default source lowering is unchanged.
+
 Aggregate fresh deallocation splitting recognizes selected borrowed calls only
 through `_obl_borrowed_calls` and its actual-operation set. Exact current
 declaration types, ordered result roles, forwarding bodies and fresh/disjoint

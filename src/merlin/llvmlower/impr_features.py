@@ -4061,7 +4061,6 @@ register(
     )
 )
 
-
 register(
     ImprFeature(
         name="specialize_contiguous_copy",
@@ -4077,3 +4076,5 @@ from .scalar_squared_sum import ensure_registered as _ensure_squared_sum  # noqa
 SCALAR_SQUARED_SUM_NAME = _ensure_squared_sum()
 from .tensor_helper_inlining import ensure_registered as _ensure_tensor_helper_inlining  # noqa: E402
 TENSOR_HELPER_INLINING_NAME = _ensure_tensor_helper_inlining()
+from .loop_tensor_destinations import ensure_registered as _ensure_loop_tensor_destinations  # noqa: E402
+LOOP_TENSOR_DESTINATIONS_NAME = _ensure_loop_tensor_destinations()
