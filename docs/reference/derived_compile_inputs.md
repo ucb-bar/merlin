@@ -118,3 +118,11 @@ with the other compiler evidence. Evaluator values and references remain
 excluded. These are declared-contract and byte-custody checks, not a proof that
 the payload executes its guards or preserves source semantics. Actual host
 compilation and independent repeated-invocation checks remain separate.
+
+Static derived models can also retain guarded kernels. Staging derives declared
+scratch from each kernel's typed result dimensions and the complete call
+inventory, checks the model function/binding declarations, and records the sum
+in `signature.json`. Host evaluation accounts for that scratch separately from
+the final model outputs, which may be smaller than kernel intermediates. This
+is declared resource consistency, not a proof of executable allocation lifetime
+or semantic equivalence. Dynamic bound-model scratch requires another contract.

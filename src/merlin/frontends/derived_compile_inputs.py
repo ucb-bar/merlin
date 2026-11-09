@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -101,6 +102,7 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
             or {call.get("implementation_sha256") for call in calls} != set(implementations)
             or len({call.get("id") for call in calls}) != len(calls)):
         raise ValueError("derived kernel call correspondence is incomplete or ambiguous")
+    guard_storage = 0
     for digest, directory in implementations.items():
         relative = _relative(directory)
         if len(relative.parts) != 2 or relative.parts[0] != "kernels":
@@ -109,6 +111,23 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
                   for name in ("model.mlir", "source.ttir", "spec.json", "provenance.json")}
         provenance, spec = json.loads(kernel["provenance.json"]), json.loads(kernel["spec.json"])
         kernel.update(_checked_memory_members(lambda name: checked(directory + "/" + name), provenance))
+        if provenance.get("profile") == "shared-guarded-buffer":
+            outputs = [b for b in spec["buffers"] if b["effect"] != "read"]
+            if any(not b.get("shape") or any(type(n) is not int or n <= 0 for n in b["shape"]) for b in outputs):
+                raise ValueError("guarded derived kernels require static positive scratch dimensions")
+            kernel_module = parse_mlir_text(kernel["model.mlir"].decode())
+            kernel_module.verify()
+            entries = list(kernel_module.ops)
+            if len(entries) != 1 or not isinstance(entries[0], FuncOp):
+                raise ValueError("guarded derived kernel lacks one typed entry")
+            contract = entries[0].attributes.get("prov.memory_guard_bytes_per_result_element")
+            types = list(entries[0].function_type.outputs)
+            if (not isinstance(contract, IntegerAttr) or contract.value.data != 16 or len(types) != len(outputs)
+                    or any(not isinstance(t, TensorType) or list(t.get_shape()) != b["shape"]
+                           or str(t.get_element_type()) != b["dtype"] for t, b in zip(types, outputs))):
+                raise ValueError("guarded derived kernel scratch differs from its typed results")
+            guard_storage += 16 * sum(math.prod(b["shape"]) for b in outputs) * sum(
+                call["implementation_sha256"] == digest for call in calls)
         if (digest != _sha(kernel["model.mlir"]) or provenance.get("mlir_sha256") != digest
                 or provenance.get("source_sha256") != _sha(kernel["source.ttir"])
                 or provenance.get("spec") != spec or provenance != bindings["kernels"][digest]):
@@ -150,6 +169,14 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
                  "inputs": abi(entry.function_type.inputs), "outputs": abi(entry.function_type.outputs),
                  "shape_scope": "static_captured_signature", "capture_dtype": "typed-per-argument",
                  "input_mutability": "borrowed-immutable-tensors"}
+    contract = entry.attributes.get("prov.memory_guard_scratch_bytes")
+    if guard_storage:
+        if (not isinstance(contract, IntegerAttr) or contract.value.data != guard_storage
+                or bindings.get("guard_storage_bytes") != guard_storage):
+            raise ValueError("guarded derived scratch declaration differs from kernel call storage")
+        signature["guard_storage_bytes"] = guard_storage
+    elif contract is not None or "guard_storage_bytes" in bindings:
+        raise ValueError("derived model has an unbound guard storage declaration")
     correspondence = {"schema": "merlin.derived-source-correspondence.v1", "producer": "triton2MLIR",
                       "input_model_sha256": _sha(raw), "staged_model_sha256": _sha(staged),
                       "derivation": bindings, "scope": "byte-bound-lineage; semantic-admission-unverified"}
