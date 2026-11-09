@@ -33,6 +33,7 @@ def build_outlined_program(
     data_preparation: bool = False,
     packing_tile_shape: tuple[int, int] | None = None,
     packing_tile_budget_bytes: int | None = None,
+    frozen_inputs=None,
 ) -> dict:
     """Compile isolated kernels and emit a real C staged chain, default-off.
 
@@ -81,8 +82,54 @@ def build_outlined_program(
             packing_tile_budget_bytes=packing_tile_budget_bytes,
         )
         prepared_staged_kernels = {} if prepared_staged_kernels is None else dict(prepared_staged_kernels)
+        frozen_blob_objects = []
+        frozen_blob_paths = []
+        if frozen_inputs is not None:
+            import subprocess
+
+            from merlin.compile import frozen_inputs as frozen_module
+            from merlin.llvmlower import codegen
+            from merlin.targetgen.contract import harness_blobs
+
+            plan, blob = frozen_module.specialize(plan, frozen_inputs, output / "offline")
+            remap = {
+                row["source_dispatch_index"]: row["runtime_dispatch_index"]
+                for row in plan.frozen_inputs["dispatch_mapping"]
+                if not row["folded"]
+            }
+            if set(prepared_staged_kernels) - set(remap):
+                raise ValueError("explicit prepared selection cannot be silently folded offline")
+            prepared_staged_kernels = {remap[i]: kernel for i, kernel in prepared_staged_kernels.items()}
+            sources = harness_blobs.stage_harness_blobs(
+                output, {prefix + "_frozen_blob": {"bytes": blob, "align": plan.alignment_bytes, "elems": len(blob)}}
+            )
+            for assembly in sources:
+                obj = assembly.with_suffix(".o")
+                subprocess.run(
+                    [
+                        str(toolchain.clang()),
+                        *codegen.RISCV_FLAGS,
+                        *compute_cflags,
+                        "-c",
+                        assembly.name,
+                        "-o",
+                        obj.name,
+                    ],
+                    cwd=output,
+                    check=True,
+                    capture_output=True,
+                )
+                frozen_blob_objects.append(str(obj))
+                frozen_blob_paths.extend([assembly, obj, assembly.with_suffix(".bin")])
+            frozen_blob_paths.extend(
+                [output / "harness_blobs.json", Path(frozen_module.__file__), Path(harness_blobs.__file__)]
+            )
+            (output / "frozen-inputs.json").write_text(json.dumps(plan.frozen_inputs, indent=2) + "\n")
+            frozen_blob_paths.append(output / "frozen-inputs.json")
         plan, state_layout = prepared_staged_kernel.reserve_states(
-            plan, prepared_staged_kernels, budget_bytes=workspace_budget_bytes
+            plan,
+            prepared_staged_kernels,
+            budget_bytes=workspace_budget_bytes - (0 if frozen_inputs is None else len(blob)),
         )
         prepared_staged_kernel.verify_selection(plan, prepared_staged_kernels, state_layout)
         (output / "outlined.mlir").write_text(deployable_ir.checked_generic_text(plan.outlined.module))
@@ -216,6 +263,20 @@ def build_outlined_program(
             if sha256_file(built["object"]) != built["object_sha256"]:
                 raise ValueError("ordinary kernel object changed before build closure")
             source_pins[built["object"]] = built["object_sha256"]
+        if frozen_inputs is not None:
+            for path, digest in plan.frozen_inputs["input_sha256"].items():
+                if sha256_file(path) != digest:
+                    raise ValueError("frozen input changed before build closure")
+            source_pins.update(plan.frozen_inputs["input_sha256"])
+            source_pins.update({str(path): sha256_file(path) for path in frozen_blob_paths})
+            # Published host evidence is an explicit manifest. The retained .so
+            # must equal the actually loaded private-image digest; NFS loader
+            # temporaries are neither dependencies nor publication candidates.
+            for row in plan.frozen_inputs["dispatch_mapping"]:
+                for path, digest in row.get("proof", {}).get("input_sha256", {}).items():
+                    if sha256_file(path) != digest:
+                        raise ValueError("offline evaluation dependency changed before build closure")
+                    source_pins[path] = digest
         if data_preparation:
             source_pins[str(Path(deployable_packing.__file__))] = sha256_file(deployable_packing.__file__)
         for selected in prepared_staged_kernels.values():
@@ -240,6 +301,7 @@ def build_outlined_program(
                     dict.fromkeys(
                         [v["object"] for v in builds]
                         + [str(p) for v in prepared_staged_kernels.values() for p in v.objects]
+                        + frozen_blob_objects
                     )
                 ),
                 "source_to_kernel": mappings,
@@ -258,6 +320,20 @@ def build_outlined_program(
                 ),
             }
         )
+        if frozen_inputs is not None:
+            report["frozen_inputs"] = plan.frozen_inputs
+            report["live_storage_bytes"] = plan.workspace_bytes + plan.frozen_inputs["published_blob_bytes"]
+            report["storage_accounting"] = {
+                "arena_and_live_blob_bytes": report["live_storage_bytes"],
+                "arena_and_live_blob_budget_bytes": workspace_budget_bytes,
+                "caller_input_bytes": sum(
+                    b.bytes for b in plan.buffers if b.arg_index in plan.frozen_inputs["external_input_source_indices"]
+                ),
+                "caller_output_bytes": sum(
+                    next(b.bytes for b in plan.buffers if b.id == bid) for bid in plan.program.results
+                ),
+                "context_stack_code_and_platform_memory": "caller must admit actual linked image separately",
+            }
         return report
     except BaseException as error:
         report.update(status="failed", error=f"{type(error).__name__}: {error}")

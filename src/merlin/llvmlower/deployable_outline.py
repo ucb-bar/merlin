@@ -49,6 +49,7 @@ class DeployableChain:
     worker_count: int
     source_ir_sha256: str
     data_preparation: dict | None = None
+    frozen_inputs: dict | None = None
 
     def to_dict(self) -> dict:
         result = {
@@ -69,6 +70,8 @@ class DeployableChain:
         }
         if self.data_preparation is not None:
             result["data_preparation"] = self.data_preparation
+        if self.frozen_inputs is not None:
+            result["frozen_inputs"] = self.frozen_inputs
         return result
 
 

@@ -7,6 +7,7 @@ last_verified: 2026-11-09
 related: [staged_dispatch, provider_workflow, worker_placement]
 code_refs:
   - src/merlin/compile/outlined_program.py
+  - src/merlin/compile/frozen_inputs.py
   - src/merlin/llvmlower/deployable_outline.py
   - src/merlin/llvmlower/deployable_packing.py
   - src/merlin/llvmlower/deployable_ir.py
@@ -25,6 +26,64 @@ ordinary outliner, typed dispatch DAG, kernel extraction, compiler and memref
 descriptor ABI. It does not compile the parent `forward` or execute a NumPy
 driver on the target. This is a separate opt-in workflow; ordinary model builds
 remain unchanged.
+
+## Explicit immutable inputs
+
+The Python build API accepts `frozen_inputs=FrozenInputs(...)`. The default
+`None` retains the dynamic argument ABI. Parameter names, capture metadata and
+unchanged values observed in earlier calls never grant immutability.
+
+First derive the ordinary plan with `plan_deployable_chain` using the same
+source, worker assignments and data-preparation options as the build. Supply
+its `source_ir_sha256`, plus each selected logical source argument's exact
+ordinal, signless integer dtype, dense shape, absolute raw-file path and SHA256:
+
+```python
+from merlin.compile.frozen_inputs import FrozenInput, FrozenInputs
+from merlin.common.digest import sha256_file
+
+immutable = FrozenInputs(
+    source_ir_sha256=plan.source_ir_sha256,
+    inputs=(FrozenInput(0, "i8", (4, 8), weight_file, sha256_file(weight_file)),),
+    offline_budget_bytes=1 << 20,
+    published_budget_bytes=1 << 20,
+)
+# Forward all the ordinary explicit build arguments, adding:
+# build_outlined_program(..., frozen_inputs=immutable)
+```
+
+This is an explicit Python capability; the outlined JSON CLI does not construct
+it implicitly. Frozen arguments disappear from the generated caller input
+roster. `external_input_source_indices` maps the retained caller slots back to
+the original source arguments. A different frozen value requires a new build.
+Original source, canonical kernels, DAG and dispatch ordinals remain recorded;
+`dispatch_mapping` identifies the remaining runtime ordinals. Explicit prepared
+selections use the original ordinals and cannot be silently folded.
+
+Only closed, admitted wrapping integer kernels are evaluated offline. The
+selected native host compiler's complete output bytes, input preservation and
+guards are compared with an independent typed integer interpreter. Exact
+projected/permuted indexing and initialized wrapping-sum reductions are required.
+Floating arithmetic, unknown contracts and unsupported bodies grant no folding
+permission; they remain worker work or cause explicit refusal. Runtime activation
+quantization, correction and scaling are not algebraically simplified.
+
+Admitted byte views can be packed offline. Only frozen buffers still consumed
+by runtime work or returned as results are published, through the existing
+binary-blob assembly transport and offset descriptors. Tensor values are never
+rendered as C arrays. Compiler-created, temporary host-image names are not
+dependencies: each evaluation records its actual private loaded-image digest,
+a byte-identical retained shared image, typed source/entry, compiler artifacts
+and tools in an explicit manifest.
+
+The offline budget conservatively accounts for live inputs, tensor and Cartesian
+scalar-domain intermediates, independent reference work and guarded native
+evaluation storage. It does not bound compiler-process memory. The published
+blob has its own limit; live blob plus provider/tensor arena also fit the build's
+workspace budget. Caller input/output storage, generated context, stacks, code
+and platform memory require separate complete linked-image admission. Build
+time and live storage are recorded; neither establishes amortization, speedup,
+target numerical qualification or full-model readiness.
 
 Every arithmetic dispatch runs on one explicitly assigned compute worker.
 The controller initializes bindings, packs admitted views, prepares descriptors,

@@ -90,8 +90,15 @@ def render_outlined_chain(
     args = sorted(
         (buffer for buffer in plan.buffers if buffer.arg_index is not None), key=lambda buffer: buffer.arg_index
     )
+    frozen = plan.frozen_inputs
+    if frozen is not None:
+        source_indices = frozen["external_input_source_indices"]
+        args = [next(b for b in args if b.arg_index == i) for i in source_indices]
+    input_slots = {b.arg_index: i for i, b in enumerate(args)}
     results = [specs[bid] for bid in plan.program.results]
-    if not args or not results or [buffer.arg_index for buffer in args] != list(range(len(args))):
+    if not results or (
+        frozen is None and (not args or [buffer.arg_index for buffer in args] != list(range(len(args))))
+    ):
         raise ValueError("complete model argument/result roster required")
     if len(roles.compute_harts) != plan.worker_count:
         raise ValueError("compiled role policy must match the plan's worker count")
@@ -129,8 +136,8 @@ def render_outlined_chain(
 #define {p.upper()}_DISPATCHES {n}
 #define {p.upper()}_WORKSPACE_BYTES {plan.workspace_bytes}u
 typedef struct {{
-  void *inputs[{len(args)}], *outputs[{len(results)}];
-  size_t input_capacity[{len(args)}], output_capacity[{len(results)}];
+  void *inputs[{max(1, len(args))}], *outputs[{len(results)}];
+  size_t input_capacity[{max(1, len(args))}], output_capacity[{len(results)}];
   unsigned char *workspace;
   size_t workspace_capacity;
   atomic_uint running;
@@ -180,6 +187,8 @@ static int overlap(const void*a,size_t an,const void*b,size_t bn) {{
 }}
 '''
     ]
+    if frozen is not None:
+        source.append(f"extern const unsigned char {p}_frozen_blob[{frozen['published_blob_bytes']}];")
     for index, kernel in sorted(prepared_kernels.items()):
         source.append("#include " + json.dumps(str(kernel.header)))
         source.append(f'_Static_assert(sizeof({kernel.state_type})<={kernel.state_bytes},"prepared state budget");')
@@ -207,7 +216,7 @@ static int overlap(const void*a,size_t an,const void*b,size_t bn) {{
         f"(uintptr_t)c->workspace%{plan.alignment_bytes})return -103;"
     )
     for buffer in args:
-        i, pos = buffer.arg_index, positions[buffer.id]
+        i, pos = input_slots[buffer.arg_index], positions[buffer.id]
         source.append(
             f"    if(!c->inputs[{i}] || c->input_capacity[{i}]<{buffer.bytes} || "
             f"(uintptr_t)c->inputs[{i}]%{buffer.bytes // math.prod(buffer.shape)})return -104;"
@@ -217,6 +226,15 @@ static int overlap(const void*a,size_t an,const void*b,size_t bn) {{
             f"overlap(c->inputs[{i}],{buffer.bytes},c->workspace,{plan.workspace_bytes}))return -105;"
         )
         source.append(f"    c->buffers[{pos}]=c->inputs[{i}];")
+    if frozen is not None:
+        symbol = p + "_frozen_blob"
+        count = frozen["published_blob_bytes"]
+        source.append(
+            f"    if(overlap({symbol},{count},c,sizeof(*c)) || "
+            f"overlap({symbol},{count},c->workspace,{plan.workspace_bytes}))return -126;"
+        )
+        for bid, entry in frozen["readonly_buffers"].items():
+            source.append(f"    c->buffers[{positions[bid]}]=(void*)({symbol}+{entry['offset']});")
     for i, buffer in enumerate(results):
         source.append(
             f"    if(!c->outputs[{i}] || c->output_capacity[{i}]<{buffer.bytes} || "
@@ -228,7 +246,13 @@ static int overlap(const void*a,size_t an,const void*b,size_t bn) {{
         )
         for arg in args:
             source.append(
-                f"    if(overlap(c->outputs[{i}],{buffer.bytes},c->inputs[{arg.arg_index}],{arg.bytes}))return -108;"
+                f"    if(overlap(c->outputs[{i}],{buffer.bytes},"
+                f"c->inputs[{input_slots[arg.arg_index]}],{arg.bytes}))return -108;"
+            )
+        if frozen is not None:
+            source.append(
+                f"    if(overlap(c->outputs[{i}],{buffer.bytes},{p}_frozen_blob,"
+                f"{frozen['published_blob_bytes']}))return -127;"
             )
         for earlier in range(i):
             source.append(
@@ -370,22 +394,26 @@ static int overlap(const void*a,size_t an,const void*b,size_t bn) {{
   return c->status;
 }}
 """)
+    metadata = {
+        "prefix": prefix,
+        "kernel_entries": list(kernel_entries),
+        "roles": roles.to_dict(),
+        "controller_math": False,
+        "persistent_workers": "caller-created and pinned",
+        "sequence_policy": "strictly increasing fresh quiescent team per dispatch",
+        "arithmetic_sites": len(plan.dispatches),
+        "workspace_bytes": plan.workspace_bytes,
+        "prepared_staged_kernels": {str(i): k.record() for i, k in prepared_kernels.items()},
+        "provider_state_layout": provider_state_layout,
+        "effective_worker_masks": masks,
+        "full_model_admission": False,
+        "physical_busy": None,
+    }
+    if frozen is not None:
+        metadata["external_input_source_indices"] = frozen["external_input_source_indices"]
+        metadata["frozen_blob_bytes"] = frozen["published_blob_bytes"]
     return {
         "header": header,
         "source": "\n".join(source) + "\n",
-        "metadata": {
-            "prefix": prefix,
-            "kernel_entries": list(kernel_entries),
-            "roles": roles.to_dict(),
-            "controller_math": False,
-            "persistent_workers": "caller-created and pinned",
-            "sequence_policy": "strictly increasing fresh quiescent team per dispatch",
-            "arithmetic_sites": len(plan.dispatches),
-            "workspace_bytes": plan.workspace_bytes,
-            "prepared_staged_kernels": {str(i): k.record() for i, k in prepared_kernels.items()},
-            "provider_state_layout": provider_state_layout,
-            "effective_worker_masks": masks,
-            "full_model_admission": False,
-            "physical_busy": None,
-        },
+        "metadata": metadata,
     }
