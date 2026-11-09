@@ -50,6 +50,7 @@ class DeployableChain:
     source_ir_sha256: str
     data_preparation: dict | None = None
     frozen_inputs: dict | None = None
+    source_argument_ids: tuple[str, ...] | None = None
 
     def to_dict(self) -> dict:
         result = {
@@ -82,6 +83,8 @@ class DeployableChain:
             }
         if self.data_preparation is not None:
             result["data_preparation"] = self.data_preparation
+        if self.source_argument_ids is not None:
+            result["source_argument_ids"] = list(self.source_argument_ids)
         if self.frozen_inputs is not None:
             result["frozen_inputs"] = self.frozen_inputs
         return result
@@ -108,6 +111,22 @@ def _array(attribute):
 
 
 def _view(op, node, buffers) -> dict:
+    if node.kind == "guard":
+        from .outlined_guards import guard_tensor
+
+        guard_tensor(op)
+        if len(node.inputs) != 1 or node.outputs:
+            raise ValueError("a returned-flag guard has one completed tensor and no outputs")
+        flag = buffers[node.inputs[0]]
+        if flag.shape != () or flag.dtype != "i1" or flag.bytes != 1:
+            raise ValueError("a returned-flag guard requires one canonical I1 byte")
+        return {
+            "kind": "assert_flag",
+            "input": flag.id,
+            "message": op.msg.data,
+            "source_op": "cf.assert",
+            "controller_arithmetic": False,
+        }
     if op.name == "tensor.insert_slice":
         from .deployable_packing import static_insert_slice
 
@@ -215,7 +234,19 @@ def plan_deployable_chain(
     entries = [op for op in module.body.block.ops if op.name == "func.func" and op.sym_name.data == entry]
     if len(entries) != 1:
         raise ValueError("one explicit source entry required")
-    if set(entries[0].attributes) - {"llvm.emit_c_interface"} or set(entries[0].properties) - {
+    argument_ids = entries[0].attributes.get("prov.argument_source_node_ids")
+    if argument_ids is not None:
+        from xdsl.dialects.builtin import ArrayAttr, StringAttr
+
+        if (
+            not isinstance(argument_ids, ArrayAttr)
+            or len(argument_ids) != len(entries[0].function_type.inputs)
+            or any(not isinstance(value, StringAttr) or not value.data for value in argument_ids)
+        ):
+            raise ValueError("source argument provenance must match the exact original argument arity")
+    if set(entries[0].attributes) - {"llvm.emit_c_interface", "prov.argument_source_node_ids"} or set(
+        entries[0].properties
+    ) - {
         "sym_name",
         "function_type",
         "sym_visibility",
@@ -282,7 +313,7 @@ def plan_deployable_chain(
         raise ValueError("one explicit legal compute-worker assignment required per dispatch")
     views, dispatches, aliases = [], [], set()
     for node in program.nodes:
-        if node.kind == "view":
+        if node.kind in ("view", "guard"):
             view = packing.get(id(node))
             if view is None:
                 view = _view(by_node[id(node)], node, specs)
@@ -343,6 +374,7 @@ def plan_deployable_chain(
         worker_count,
         source_hash,
         preparation,
+        source_argument_ids=None if argument_ids is None else tuple(value.data for value in argument_ids),
     )
 
 

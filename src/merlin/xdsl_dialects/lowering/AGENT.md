@@ -29,6 +29,9 @@ Plus the **whole-model dialect plane** that brings real model2MLIR modules into 
 
 - **Outliner**: each compute op (`linalg.*` except `fill`/`yield`/`index`) becomes one kernel func; cheap pure producers (`arith.constant`/`tensor.empty`/`linalg.fill`) are *cloned into* the kernel; view/glue ops stay in the driver. Region-captured free values (model2MLIR `linalg.generic` gather bodies) MUST be lifted to kernel params — miss one and the kernel fails `IsolatedFromAbove`. The rewrite is value-preserving: inlining the kernels reproduces the original dataflow (proven bit-identical on host).
 - **Dispatch program** is a DAG: every node input is an earlier node output or a model arg (`verify_program`). `prune_dead_nodes` drops the dead cloned-accumulator view copies. The whole thing is JSON-serializable (runtime ABI).
+- Guards and unproved driver effects retain original order and producer liveness.
+  Partial section slicing refuses them; selecting every dispatch preserves the
+  complete ordered program without inventing a caller-supplied boundary flag.
 - Outlined kernel funcs are clean linalg — no `extract_slice` — so they round-trip through the xDSL printer (the whole model does not). This is what makes per-kernel compile + check work (`llvmlower/kernel_backend.py`).
 - Stages are plain module→module transforms returning fresh/cloned modules; never mutate the caller's module. Every stage output must pass `module.verify()`.
 - Local checks live in op `verify_`; anything needing program order or SSA chains lives in `analyses.py` and is run by the pipeline.

@@ -17,6 +17,10 @@ from merlin.runtime.staged_dispatch import StagedRoles
 def _views(views, positions) -> list[str]:
     lines = []
     for view in views:
+        if view["kind"] == "assert_flag":
+            flag = positions[view["input"]]
+            lines.append(f"    if(!c->buffers[{flag}] || ((const unsigned char*)c->buffers[{flag}])[0]!=1)return -131;")
+            continue
         if view["kind"] == "pack_insert_slice":
             source, initial = (positions[bid] for bid in view["inputs"])
             dst = positions[view["output"]]

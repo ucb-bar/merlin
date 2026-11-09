@@ -2,13 +2,15 @@
 
 Given an outlined module (``outline_dispatches``), this reads the driver ``func @forward``
 and emits a flat, serializable **dispatch program**: an ordered DAG of nodes the Merlin
-runtime walks. Two node kinds:
+runtime walks. Three node kinds:
 
 - ``dispatch`` — invoke a compiled kernel symbol (``forward$kernel_<i>``) with input buffer
   ids, producing output buffer ids. Carries the root op and provenance.
 - ``view`` — a cheap driver-side glue op (``tensor.extract_slice``/``expand_shape``/
   ``collapse_shape``/``cast``, scalar ``arith``) that derives an intermediate buffer from
   others. The runtime executes these directly; they are not compiled kernels.
+- ``guard`` — an ordered assertion of a completed canonical I1 tensor flag.
+  Its producer stays live; it is never discarded as a dead view.
 
 Every value flowing through the driver becomes a **buffer** with a stable id, a shape and
 a dtype. The program records the model arguments (inputs/weights by func-arg index), the
@@ -48,7 +50,7 @@ class Buffer:
 
 @dataclass
 class Node:
-    kind: str  # "dispatch" | "view"
+    kind: str  # "dispatch" | "view" | "guard"
     op: str  # symbol for dispatch, op name for view
     inputs: list[str]  # ordered operand slots (including repeats), then additional region captures
     outputs: list[str]
@@ -63,6 +65,9 @@ class Node:
     #: load-bearing: :func:`~.arena_plan.plan_arena` refuses to plan a region-carrying node whose
     #: capture set is unknown rather than assume the operand list is complete.
     captures: list[str] | None = None
+    #: Only a source-derived purity proof permits dead-view elimination.
+    #: Unknown/may-trap/effectful nodes remain live even with no results.
+    discardable: bool = False
 
 
 @dataclass
@@ -300,6 +305,21 @@ def build_dispatch_program(outlined: OutlineResult, entry: str = "forward") -> D
                 )
             )
             continue
+        if op.name == "cf.assert":
+            from merlin.llvmlower.outlined_guards import guard_tensor
+
+            flag = guard_tensor(op)
+            nodes.append(
+                Node(
+                    kind="guard",
+                    op=op.name,
+                    inputs=resolve([flag], op),
+                    outputs=[],
+                    prov={"message": op.msg.data, "transport": "rank_zero_canonical_i1"},
+                    captures=[],
+                )
+            )
+            continue
         # a driver-side glue / view op
         nested = _nested_call_symbols(op)
         if nested:
@@ -316,8 +336,18 @@ def build_dispatch_program(outlined: OutlineResult, entry: str = "forward") -> D
         capture_ids = resolve(captured, op)
         in_ids.extend(bid for bid in capture_ids if bid not in in_ids)
         out_ids = [bind(r, kind) for r in op.results]
+        from merlin.llvmlower.outlined_guards import discardable_driver_op
+
         nodes.append(
-            Node(kind="view", op=op.name, inputs=in_ids, outputs=out_ids, regions=len(op.regions), captures=capture_ids)
+            Node(
+                kind="view",
+                op=op.name,
+                inputs=in_ids,
+                outputs=out_ids,
+                regions=len(op.regions),
+                captures=capture_ids,
+                discardable=discardable_driver_op(op),
+            )
         )
 
     leftover = [d.symbol for d in disp_iter]
@@ -354,22 +384,22 @@ def verify_program(prog: DispatchProgram) -> list[str]:
 
 
 def prune_dead_nodes(prog: DispatchProgram) -> DispatchProgram:
-    """Drop view nodes whose results never reach a dispatch input or a program result.
+    """Drop proved-pure views whose results do not reach a live source use.
 
     The outliner clones each kernel's accumulator init (``tensor.empty``/``arith.constant``
     /``linalg.fill``) into the kernel, leaving dead copies in the driver. Those become
     dead view nodes here; eliminating them yields the minimal dispatch program. Dispatch
-    nodes are always kept (they are the compute).
+    nodes and unproved/effectful nodes are always retained.
     """
     needed: set[str] = set(prog.results)
     for node in prog.nodes:
-        if node.kind == "dispatch":
+        if node.kind == "dispatch" or not node.discardable:
             needed.update(node.inputs)
 
     keep = [False] * len(prog.nodes)
     for i in range(len(prog.nodes) - 1, -1, -1):
         node = prog.nodes[i]
-        if node.kind == "dispatch" or any(o in needed for o in node.outputs):
+        if node.kind == "dispatch" or not node.discardable or any(o in needed for o in node.outputs):
             keep[i] = True
             needed.update(node.inputs)
 
@@ -403,6 +433,22 @@ def slice_program(prog: DispatchProgram, region_ids, *, entry_suffix: str = "") 
     }
     if not keep:
         raise ValueError(f"slice_program: no dispatch nodes match region_ids {sorted(want)}")
+
+    effects = [n for n in prog.nodes if n.kind != "dispatch" and not n.discardable]
+    if effects:
+        all_dispatches = {i for i, n in enumerate(prog.nodes) if n.kind == "dispatch"}
+        if keep != all_dispatches:
+            raise ValueError("slice_program cannot remove source guards or unproved effects from a partial section")
+        # Selecting the whole compute program retains its original ordered
+        # effects and their producers. No boundary flag or effect permission is
+        # invented for a smaller standalone signature.
+        return DispatchProgram(
+            entry=prog.entry + entry_suffix,
+            args=list(prog.args),
+            buffers={bid: Buffer(**asdict(buffer)) for bid, buffer in prog.buffers.items()},
+            nodes=[Node(**asdict(node)) for node in prog.nodes],
+            results=list(prog.results),
+        )
 
     # Interior view-glue: a view node is kept when EVERY consumer of its outputs is already kept (it is
     # internal to the slice). Fixpoint so a chain of views collapses in. A view feeding outside the

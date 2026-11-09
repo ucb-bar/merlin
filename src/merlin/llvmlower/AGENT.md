@@ -824,3 +824,9 @@ original FP32 quantization/scaling DAG and account for the added correction work
   refuse changes. A complete object does not prove platform library resolution,
   final image memory or numerical execution. Backend facades delegate here
   while retaining their own runner/error seams.
+
+- `outlined_guards` retains exact rank-zero I1 extract/assert source boundaries
+  as ordered completed-flag checks. Only proved-pure driver operations may be
+  pruned; unknown effects stay live and unsupported deployment forms refuse.
+  Compute workers produce canonical boolean bytes; controller inspection grants
+  no inference arithmetic or permission to remove source conditions.
