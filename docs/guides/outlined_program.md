@@ -265,13 +265,27 @@ No frequency, physical busy time or calibrated cycle accuracy is inferred.
 
 ## Initial admission limits
 
-The first path accepts positive static rank-1 through rank-8 tensors with
-`i8/i16/i32/i64/f32/f64` storage and exact dense shape/cast aliases or static
-in-bounds slice packing. Live scalar driver arithmetic, dynamic/control-flow
+The path accepts ordinary dense static rank-0 through rank-8 tensors with
+`i1/i8/i16/i32/i64/f32/f64` storage and exact dense shape/cast aliases or static
+in-bounds slice packing. Positive extents remain required for every existing
+dimension. A rank-zero tensor contains exactly one element: it is neither an
+empty tensor nor a C scalar argument. Its LP64 ranked descriptor contains only
+allocated pointer, aligned pointer and offset, without size/stride fields. Live scalar driver arithmetic, dynamic/control-flow
 drivers, unknown views, external calls, pre-bufferized/effectful kernels and
 plain scalar argument/results refuse. Numerical source semantics remain those
 of the captured/authored IR; this workflow neither quantizes a model nor repairs
 an incorrectly captured dtype.
+
+Boolean `i1` values use one logical bit in a one-byte container per element.
+The explicit ABI requires canonical bytes zero or one: every initial boolean
+input byte is checked before dispatch, and the assigned compute worker checks
+every produced boolean byte before publication. Noncanonical values refuse;
+upper padding bits are never assumed zero and no implicit boolean conversion
+changes input data. These checks add real validation work. Boolean transposes
+stay compiled worker operations rather than unqualified controller byte
+permutations; selected prepared-provider boolean kernels require a separate
+canonical-byte proof and currently refuse through this interface.
+
 Unknown parent-function or argument/result contracts also refuse: a changed
 kernel arity cannot silently inherit or discard those contracts. Module and
 kernel-operation attributes remain in the emitted source and cache identity.
@@ -291,14 +305,35 @@ boolean in the JSON config enable a source-proved preparation seam. The default
 is false. Immutable static constant `tensor.splat` producers become equivalent
 `linalg.fill` producers using the exact original literal attribute. The existing
 outliner clones these producers into their arithmetic kernels, so reduction
-seeds and numeric constants require no scalar controller ABI. This changes no
+seeds and numeric constants require no scalar controller ABI. A closed fresh
+literal fill whose tensor remains live outside those arithmetic roots is outlined
+as its own zero-input tensor kernel on an assigned compute worker. The original
+producer is still cloned into ordinary reduction roots, preserving their immutable
+input contract. Only an exact literal/empty/identity-yield body is eligible.
+This changes no
 quantization, floating arithmetic order, overflow policy or literal bits.
+
+A closed rank-zero `tensor.extract` immediately consumed by one length-one
+`tensor.from_elements` may also stay together in its original tensor-input and
+tensor-output compute kernel. This selection proves exact type, encoding,
+complete scalar uses and equal source attributes. The original operations and
+all their metadata remain intact. It neither evaluates a scalar on the
+controller nor grants a source/destination storage alias. Other scalar
+consumers, arithmetic, indices and unknown contracts retain normal refusal.
 
 A standalone kernel containing only a fresh-output static `linalg.transpose`
 with its exact identity-yield body may become controller byte packing. The
 permutation, dimensions, dtype, full destination coverage and source/destination
 storage are proved from the actual function. Nondefault encodings, unknown
 contracts, dynamic shapes or nonidentity bodies grant no packing permission.
+The outlined transport also supports a static dense `tensor.concat`: its axis,
+all operand/result types, complete contiguous byte spans and fresh destination
+are proved from source. Read-only operands may duplicate or partially overlap
+each other; the destination stays disjoint. Unknown attributes, nondefault
+encodings, empty or dynamic extents, rank-zero concat and unproved boolean
+storage refuse. This is byte transport, without implicit numeric conversion or
+in-place cache-update permission.
+
 All views and intermediate buffers retain unique whole-chain storage; packing
 never mutates inputs or shortens an alias lifetime. Only byte/address operations
 run on the controller. All reductions, quantization, integer compensation,

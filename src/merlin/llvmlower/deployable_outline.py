@@ -24,7 +24,7 @@ from merlin.xdsl_dialects.lowering.outline import outline_dispatches
 # Standard FP8 storage is byte-sized. This metadata does not provide a numeric
 # encoder or an executable kernel: an explicitly selected implementation still
 # binds the exact source format/semantics and its own execution qualification.
-_BYTES = {"i8": 1, "i16": 2, "i32": 4, "i64": 8, "f32": 4, "f64": 8, "f8E4M3FN": 1, "f8E5M2": 1}
+_BYTES = {"i1": 1, "i8": 1, "i16": 2, "i32": 4, "i64": 8, "f32": 4, "f64": 8, "f8E4M3FN": 1, "f8E5M2": 1}
 
 
 @dataclass(frozen=True)
@@ -68,6 +68,18 @@ class DeployableChain:
             "kernel_parallelism": "serial dependency chain; no nested OpenMP",
             "full_model_admission": False,
         }
+        if any(not buffer.shape for buffer in self.buffers):
+            result["rank_zero_tensor_abi"] = {"elements": 1, "descriptor_words": 3, "C_scalar_arguments": False}
+        if any(buffer.dtype == "i1" for buffer in self.buffers):
+            result["boolean_storage_abi"] = {
+                "logical_bits": 1,
+                "container_bytes_per_element": 1,
+                "canonical_values": [0, 1],
+                "input_validation": "complete external input bytes before dispatch",
+                "output_validation": "complete produced bytes on assigned compute worker",
+                "controller_boolean_permutation_admitted": False,
+                "prepared_provider_admission": "separate canonical-byte proof required",
+            }
         if self.data_preparation is not None:
             result["data_preparation"] = self.data_preparation
         if self.frozen_inputs is not None:
@@ -76,10 +88,12 @@ class DeployableChain:
 
 
 def static_tensor_contract(t):
-    from xdsl.dialects.builtin import TensorType
+    from xdsl.dialects.builtin import NoneAttr, TensorType
 
-    if not isinstance(t, TensorType) or not 1 <= t.get_num_dims() <= 8:
-        raise ValueError("deployable chains require ranked tensor arguments/results of rank 1..8")
+    if not isinstance(t, TensorType) or not 0 <= t.get_num_dims() <= 8:
+        raise ValueError("deployable chains require ranked tensor arguments/results of rank 0..8")
+    if not isinstance(t.encoding, NoneAttr):
+        raise ValueError("deployable chains require the ordinary dense tensor encoding")
     shape, dtype = tuple(t.get_shape()), str(t.element_type)
     if dtype not in _BYTES or any(type(d) is not int or d <= 0 for d in shape):
         raise ValueError("deployable chains require supported static positive tensor shapes and dtypes")
@@ -94,6 +108,10 @@ def _array(attribute):
 
 
 def _view(op, node, buffers) -> dict:
+    if op.name == "tensor.concat":
+        from .deployable_packing import static_concat
+
+        return static_concat(op, node, buffers)
     if len(node.inputs) != 1 or len(node.outputs) != 1 or op.regions:
         raise ValueError(f"unsupported deployable driver/view ABI: {op.name}")
     src, out = buffers[node.inputs[0]], buffers[node.outputs[0]]
@@ -199,7 +217,17 @@ def plan_deployable_chain(
         "sym_visibility",
     }:
         raise ValueError("function-level contracts cannot be redistributed across outlined kernel arities")
-    outlined = outline_dispatches(module.clone(), forward=entry)
+    outlined = outline_dispatches(
+        module.clone(),
+        forward=entry,
+        outline_literal_fills=data_preparation,
+        outline_scalar_views=data_preparation,
+    )
+    if preparation is not None:
+        preparation["literal_fill_kernels"] = [d.symbol for d in outlined.dispatches if d.root_op == "linalg.fill"]
+        preparation["scalar_tensor_view_kernels"] = [
+            d.symbol for d in outlined.dispatches if d.root_op == "tensor.from_elements"
+        ]
     full = build_dispatch_program(outlined, entry=entry)
     program = prune_dead_nodes(full)
     if verify_program(program):

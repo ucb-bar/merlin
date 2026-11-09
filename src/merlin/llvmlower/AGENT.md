@@ -774,6 +774,11 @@ original FP32 quantization/scaling DAG and account for the added correction work
 - `deployable_outline` reuses the existing outliner and typed dispatch program.
   It admits only closed static tensor kernels and exact supported views, with
   immutable input/effect checks and unique whole-chain storage lifetimes.
+  Ordinary rank-zero tensors retain one element and rank-exact descriptors;
+  they never become C scalar controller arguments. Boolean i1 storage uses
+  canonical zero/one byte containers with complete boundary validation; unknown
+  encodings, unproved byte permutations and prepared-provider boolean storage
+  refuse. Boolean arithmetic remains in assigned compute kernels.
   `kernel_backend.compile_deployable_kernel` verifies compiler-owned LP64/index64
   ABI and refuses heap/LLVM-stack allocation or nested OpenMP in this first path.
   `deployable_ir.checked_generic_text` is the explicit lossless seam for keys,
@@ -791,3 +796,16 @@ original FP32 quantization/scaling DAG and account for the added correction work
   and logical source-plus-destination tile budget. Infer no cache geometry or
   physical traffic. Keep the default flat loop, exact byte bits, tail coverage,
   fresh-output alias proof and original arithmetic kernels unchanged.
+
+- Closed retained literal fills needed by layout transport may be outlined into
+  zero-input tensor kernels when data preparation is explicitly selected. Keep
+  ordinary root seed cloning unchanged. Static dense concat may copy ordered
+  byte spans on the controller only after proving the axis/types/full extents
+  and fresh disjoint output. Inputs may alias each other. Unknown contracts,
+  rank-zero concat and unproved boolean storage refuse; neither capability
+  permits in-place cache updates or shortened whole-chain lifetimes.
+
+- Data preparation may also retain a closed scalar extract/rebox pair in its
+  original tensor-only compute kernel. Type/encoding/source-attribute equality
+  and complete scalar use closure are mandatory. Do not bypass a reshape
+  verifier, erase a live scalar consumer or introduce a C scalar driver ABI.

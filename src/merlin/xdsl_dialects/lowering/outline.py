@@ -60,6 +60,144 @@ def _is_root(op) -> bool:
     return op.name.startswith("linalg.") and op.name not in ("linalg.fill", "linalg.yield", "linalg.index")
 
 
+def _retained_literal_fill(op) -> bool:
+    """A closed fresh literal fill still needed outside cloned compute roots.
+
+    Ordinary contraction seeds keep their existing producer cloning. Only a
+    complete constant/empty/identity-yield fill read by another driver value is
+    additionally outlined; it never needs a scalar caller or controller math.
+    """
+    from xdsl.dialects import arith, tensor
+    from xdsl.dialects.builtin import (
+        DenseArrayBase,
+        Float32Type,
+        Float64Type,
+        FloatAttr,
+        IntegerAttr,
+        IntegerType,
+        NoneAttr,
+        TensorType,
+    )
+    from xdsl.dialects.linalg.ops import FillOp
+    from xdsl.ir import OpResult
+
+    def provenance_only(value):
+        return "prov.quant_inner" not in value.attributes and all(key.startswith("prov.") for key in value.attributes)
+
+    if (
+        not isinstance(op, FillOp)
+        or len(op.operands) != 2
+        or len(op.results) != 1
+        or not provenance_only(op)
+        or set(op.properties) != {"operandSegmentSizes"}
+        or not isinstance(op.properties["operandSegmentSizes"], DenseArrayBase)
+        or tuple(op.properties["operandSegmentSizes"].get_values()) != (1, 1)
+    ):
+        return False
+    scalar, initial = op.operands
+    output = op.results[0]
+    if (
+        not isinstance(output.type, TensorType)
+        or not isinstance(output.type.encoding, NoneAttr)
+        or not 0 <= output.type.get_num_dims() <= 8
+        or any(d <= 0 for d in output.type.get_shape())
+        or initial.type != output.type
+        or scalar.type != output.type.element_type
+        or not isinstance(scalar, OpResult)
+        or not isinstance(initial, OpResult)
+    ):
+        return False
+    constant, empty = scalar.owner, initial.owner
+    if (
+        not isinstance(constant, arith.ConstantOp)
+        or set(constant.properties) != {"value"}
+        or not provenance_only(constant)
+        or not isinstance(empty, tensor.EmptyOp)
+        or empty.operands
+        or empty.properties
+        or not provenance_only(empty)
+    ):
+        return False
+    literal, elem = constant.properties["value"], output.type.element_type
+    if not (
+        (isinstance(elem, IntegerType) and elem.width.data in (1, 8, 16, 32, 64) and isinstance(literal, IntegerAttr))
+        or (isinstance(elem, (Float32Type, Float64Type)) and isinstance(literal, FloatAttr))
+    ):
+        return False
+    if len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
+        return False
+    body = op.regions[0].block
+    instructions = list(body.ops)
+    if (
+        len(body.args) != 2
+        or any(arg.type != elem for arg in body.args)
+        or len(instructions) != 1
+        or instructions[0].name != "linalg.yield"
+        or instructions[0].properties
+        or not provenance_only(instructions[0])
+        or tuple(instructions[0].operands) != (body.args[0],)
+    ):
+        return False
+    return any(not _is_root(use.operation) for use in output.uses)
+
+
+def _closed_scalar_tensor_view(op):
+    """An exact rank-zero extract/rebox fragment with tensor-only boundaries.
+
+    It remains its original operations, executed on a compute worker. Complete
+    scalar uses and equal retained metadata prevent moving a source identity or
+    exposing a scalar argument; unknown effects/encodings retain normal refusal.
+    """
+    from xdsl.dialects import tensor
+    from xdsl.dialects.builtin import Float32Type, Float64Type, IntegerType, NoneAttr, TensorType
+    from xdsl.ir import OpResult
+
+    if (
+        not isinstance(op, tensor.FromElementsOp)
+        or len(op.operands) != 1
+        or len(op.results) != 1
+        or op.properties
+        or op.regions
+        or "prov.quant_inner" in op.attributes
+        or any(not key.startswith("prov.") for key in op.attributes)
+        or not isinstance(op.operands[0], OpResult)
+    ):
+        return None
+    scalar = op.operands[0]
+    extracted = scalar.owner
+    if (
+        not isinstance(extracted, tensor.ExtractOp)
+        or len(extracted.operands) != 1
+        or len(extracted.results) != 1
+        or extracted.properties
+        or extracted.regions
+        or extracted.attributes != op.attributes
+        or extracted.parent_block() is not op.parent_block()
+        or len(tuple(scalar.uses)) != 1
+        or next(iter(scalar.uses)).operation is not op
+    ):
+        return None
+    source, result = extracted.operands[0].type, op.results[0].type
+    if (
+        not isinstance(source, TensorType)
+        or not isinstance(result, TensorType)
+        or not isinstance(source.encoding, NoneAttr)
+        or not isinstance(result.encoding, NoneAttr)
+        or source.get_shape() != ()
+        or result.get_shape() != (1,)
+        or source.element_type != result.element_type
+        or scalar.type != source.element_type
+    ):
+        return None
+    element = source.element_type
+    if not (
+        isinstance(element, (Float32Type, Float64Type))
+        or (isinstance(element, IntegerType) and element.width.data in (1, 8, 16, 32, 64))
+    ):
+        return None
+    return extracted
+
+
 def _is_block_arg(value) -> bool:
     from xdsl.ir import BlockArgument
 
@@ -291,7 +429,13 @@ def _require_defined_before_use(block, fname: str) -> None:
 
 
 def outline_dispatches(
-    module, forward: str | None = None, *, groups=None, external_symbols: Iterable[str] = ()
+    module,
+    forward: str | None = None,
+    *,
+    groups=None,
+    external_symbols: Iterable[str] = (),
+    outline_literal_fills: bool = False,
+    outline_scalar_views: bool = False,
 ) -> OutlineResult:
     """Outline each compute dispatch of ``func @forward`` into its own kernel func.
 
@@ -304,10 +448,22 @@ def outline_dispatches(
     outside was defined before that member, and nothing outside waits on a member before the last.
     With no groups the behaviour is the single-op baseline, byte for byte.
 
+    ``outline_literal_fills`` optionally keeps closed fresh literal fills used by
+    driver values in tensor kernels. Existing arithmetic seeds retain producer
+    cloning and the default remains unchanged. It does not introduce scalar ABIs.
+
+    ``outline_scalar_views`` keeps a closed zero-rank extract and length-one
+    rebox together in a tensor-only compute kernel, retaining the original body.
+    It introduces neither scalar controller arithmetic nor an alias permission.
+
     ``external_symbols`` explicitly permits retaining existing typed declarations. It does not
     supply their implementations: the caller must verify compiled object closure before execution.
     Missing declarations and all unpermitted external calls still refuse.
     """
+    if type(outline_literal_fills) is not bool or (outline_literal_fills and groups):
+        raise OutlineError("literal fill outlining requires an explicit boolean and ungrouped source")
+    if type(outline_scalar_views) is not bool or (outline_scalar_views and groups):
+        raise OutlineError("scalar view outlining requires an explicit boolean and ungrouped source")
     if not HAS_XDSL:
         return OutlineResult(module=module)
     from xdsl.dialects.builtin import FunctionType, IntegerAttr, IntegerType, ModuleOp, StringAttr
@@ -333,6 +489,12 @@ def outline_dispatches(
         raise OutlineError("outlining requires a single-block model driver")
     src = fn.body.blocks[0]
     _require_defined_before_use(src, fname)
+    literal_fills = {id(op) for op in src.ops if outline_literal_fills and _retained_literal_fill(op)}
+    scalar_views = {
+        id(op): extracted
+        for op in src.ops
+        if outline_scalar_views and (extracted := _closed_scalar_tensor_view(op)) is not None
+    }
 
     arg_types = [a.type for a in src.args]
     driver = Block(arg_types=arg_types)
@@ -364,7 +526,12 @@ def outline_dispatches(
             continue
         if id(op) in group_of and id(op) not in last_member:
             continue  # emitted with its group, where the group's last op is
-        if id(op) not in last_member and not _is_root(op):
+        if (
+            id(op) not in last_member
+            and not _is_root(op)
+            and id(op) not in literal_fills
+            and id(op) not in scalar_views
+        ):
             cloned = op.clone(value_mapper=dmap)
             driver.add_op(cloned)
             for old, new in zip(op.results, cloned.results):
@@ -386,7 +553,10 @@ def outline_dispatches(
         rid = prov.get("prov.region_id")
         suffix = f"__r{_sanitize_symbol(rid)}" if rid else ""
         symbol = f"{fname}$kernel_{idx}{suffix}"
-        kernel_ops = _producer_closure(op) if grp is None else _group_closure(members)
+        if id(op) in scalar_views:
+            kernel_ops = [scalar_views[id(op)], op]
+        else:
+            kernel_ops = _producer_closure(op) if grp is None else _group_closure(members)
         params = _free_values(kernel_ops)
         result_types = [r.type for r in op.results]
 

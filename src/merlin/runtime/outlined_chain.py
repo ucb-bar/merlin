@@ -17,6 +17,19 @@ from merlin.runtime.staged_dispatch import StagedRoles
 def _views(views, positions) -> list[str]:
     lines = []
     for view in views:
+        if view["kind"] == "pack_concat":
+            dst = positions[view["output"]]
+            lines.append(f"    for(size_t block=0;block<{view['outer_blocks']};++block) {{")
+            offset = 0
+            for bid, size in zip(view["inputs"], view["input_block_bytes"], strict=True):
+                src = positions[bid]
+                lines.append(
+                    f"      memcpy((unsigned char*)c->buffers[{dst}]+block*{view['output_block_bytes']}+{offset},"
+                    f"(const unsigned char*)c->buffers[{src}]+block*{size},{size});"
+                )
+                offset += size
+            lines.append("    }")
+            continue
         src, dst = positions[view["input"]], positions[view["output"]]
         if view["kind"] == "alias":
             lines.append(f"    c->buffers[{dst}] = c->buffers[{src}];")
@@ -108,10 +121,12 @@ def render_outlined_chain(
 
     verify_selection(plan, prepared_kernels, provider_state_layout)
     signatures = {}
-    for entry, step in zip(kernel_entries, plan.dispatches, strict=True):
+    for index, (entry, step) in enumerate(zip(kernel_entries, plan.dispatches, strict=True)):
         signature = tuple((specs[bid].shape, specs[bid].dtype) for bid in step["inputs"] + step["outputs"])
         if entry in signatures and signatures[entry] != signature:
             raise ValueError("reused kernel entry has a different typed ABI")
+        if index in prepared_kernels and any(dtype == "i1" for _, dtype in signature):
+            raise ValueError("prepared i1 kernels require a separately qualified canonical-byte contract")
         signatures[entry] = signature
     n, workers = len(plan.dispatches), plan.worker_count
     arity = max(len(step["inputs"]) + len(step["outputs"]) for step in plan.dispatches)
@@ -225,6 +240,11 @@ static int overlap(const void*a,size_t an,const void*b,size_t bn) {{
             f"    if(overlap(c->inputs[{i}],{buffer.bytes},c,sizeof(*c)) || "
             f"overlap(c->inputs[{i}],{buffer.bytes},c->workspace,{plan.workspace_bytes}))return -105;"
         )
+        if buffer.dtype == "i1":
+            source.append(
+                f"    for(size_t byte=0;byte<{buffer.bytes};++byte)"
+                f"if(((const unsigned char*)c->inputs[{i}])[byte]>1)return -126;"
+            )
         source.append(f"    c->buffers[{pos}]=c->inputs[{i}];")
     if frozen is not None:
         symbol = p + "_frozen_blob"
@@ -280,9 +300,8 @@ static int overlap(const void*a,size_t an,const void*b,size_t bn) {{
         for i, bid in enumerate(ordered):
             b = specs[bid]
             kind = "MERLIN_INPUT" if i < len(step["inputs"]) else "MERLIN_OUTPUT"
-            source.append(
-                f"      {{{kind},0,{len(b.shape)},{{{','.join(map(str, b.shape))}}},{b.bytes // math.prod(b.shape)}}},"
-            )
+            dimensions = ",".join(map(str, b.shape)) or "0"
+            source.append(f"      {{{kind},0,{len(b.shape)},{{{dimensions}}},{b.bytes // math.prod(b.shape)}}},")
         source.append("    };")
         source.append("    void *data[]={" + ",".join(f"c->buffers[{positions[bid]}]" for bid in ordered) + "};")
         source.append("    const size_t capacities[]={" + ",".join(str(specs[bid].bytes) for bid in ordered) + "};")
@@ -335,7 +354,24 @@ static int overlap(const void*a,size_t an,const void*b,size_t bn) {{
             + ",".join(f"c->descriptor_ptrs[{i}]" for i in range(count))
             + ");break;"
         )
-    source.append("  default:return -116;\n  }\n  c->kernel_calls[slot]++;return 0;\n}")
+    boolean_outputs = {
+        index: [bid for bid in step["outputs"] if specs[bid].dtype == "i1"]
+        for index, step in enumerate(plan.dispatches)
+        if any(specs[bid].dtype == "i1" for bid in step["outputs"])
+    }
+    if boolean_outputs:
+        source.append("  default:return -116;\n  }\n  c->kernel_calls[slot]++;\n  switch(c->active_dispatch) {")
+        for index, bids in boolean_outputs.items():
+            source.append(f"  case {index}:")
+            for bid in bids:
+                source.append(
+                    f"    for(size_t byte=0;byte<{specs[bid].bytes};++byte)"
+                    f"if(((const unsigned char*)c->buffers[{positions[bid]}])[byte]>1)return -127;"
+                )
+            source.append("    break;")
+        source.append("  default:break;\n  }\n  return 0;\n}")
+    else:
+        source.append("  default:return -116;\n  }\n  c->kernel_calls[slot]++;return 0;\n}")
     source.append(f"static int finish(void*x) {{ {p}_context*c=x;")
     source.append(
         f"  if(!controller(c)||!c->prepared||c->active_dispatch>={n} || "

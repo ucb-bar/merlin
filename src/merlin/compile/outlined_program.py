@@ -49,6 +49,7 @@ def build_outlined_program(
     from merlin.llvmlower import deployable_ir, deployable_outline, kernel_backend, toolchain
     from merlin.llvmlower.portable_math import cache_token
     from merlin.runtime import outlined_chain, prepared_staged_kernel
+    from merlin.xdsl_dialects.lowering import outline as outline_owner
 
     if type(vectorize) is not bool:
         raise ValueError("explicit boolean vectorization selection required")
@@ -164,7 +165,7 @@ def build_outlined_program(
             "portable_math_policy": cache_token(),
             "compiler_owner_sha256": {
                 str(Path(module.__file__)): sha256_file(module.__file__)
-                for module in (deployable_ir, deployable_outline, kernel_backend, prepared_staged_kernel)
+                for module in (deployable_ir, deployable_outline, kernel_backend, prepared_staged_kernel, outline_owner)
             },
         }
         if data_preparation:
@@ -262,6 +263,7 @@ def build_outlined_program(
                 driver,
                 *support,
                 Path(deployable_outline.__file__),
+                Path(outline_owner.__file__),
                 Path(deployable_ir.__file__),
                 Path(kernel_backend.__file__),
                 Path(outlined_chain.__file__),
