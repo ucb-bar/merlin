@@ -58,3 +58,12 @@ evaluation reports and reference data/digests are excluded from that projection.
 No FX trace or Torch capture identity is manufactured. The standalone and derived
 paths share compiler-only custody and borrowed-immutable input semantics; both
 still require separate consumer lowering and execution evidence.
+
+The standalone ABI v3 extension additionally admits explicitly typed by-value
+runtime scalars at declared original TTIR positions. Their public arguments
+follow the logical tensor inputs. The signature labels them `kind: scalar`,
+with empty storage shape and an exact scalar dtype; the MLIR input remains a
+plain scalar. These inputs receive no tensor bufferization attributes.
+Invocation values are forbidden in scalar declarations and remain outside
+compiler staging. Actual host execution uses the existing `ScalarArg` ABI;
+neither staging nor this profile supplies dynamic shape/stride/grid admission.

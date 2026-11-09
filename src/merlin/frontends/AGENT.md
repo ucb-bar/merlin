@@ -17,6 +17,8 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   `kernel_compile_inputs.py` separately stages standalone functional tensor kernels,
   validates declared buffer/result order, projects compiler provenance and records
   the entry-symbol adaptation to `forward` without inventing an FX capture.
+  Its ABI v3 profile retains explicitly positioned by-value runtime scalars,
+  labels scalar signature entries and excludes invocation values and tensor-only attributes.
 - `linalg_math_patterns.py` — source-only, closed unary f32 sine/cosine/exponential/roundeven
   scalar-region checks; each operation requires its own explicit declaration. No host admission,
   selected math implementation or numerical-equivalence claim follows. Scalar-literal power refuses.

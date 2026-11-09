@@ -38,7 +38,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
     raw, ttir, spec_raw, provenance_raw = (checked(name) for name in
                                          ("model.mlir", "source.ttir", "spec.json", "provenance.json"))
     spec, provenance = json.loads(spec_raw), json.loads(provenance_raw)
-    if spec.get("schema") not in ("t2m.shared-tensor-abi.v1", "t2m.shared-tensor-abi.v2"):
+    if spec.get("schema") not in ("t2m.shared-tensor-abi.v1", "t2m.shared-tensor-abi.v2", "t2m.shared-tensor-abi.v3"):
         raise ValueError("unsupported standalone tensor ABI")
     if (provenance.get("spec") != spec or provenance.get("mlir_sha256") != digest(raw)
             or provenance.get("source_sha256") != digest(ttir)):
@@ -51,6 +51,19 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
             or len({b.get("name") for b in buffers}) != len(buffers)):
         raise ValueError("standalone profile has an incomplete memory ABI")
     inputs = [b for b in buffers if b["effect"] != "write"]
+    scalars = spec.get("runtime_scalars", [])
+    if bool(scalars) != (spec["schema"] == "t2m.shared-tensor-abi.v3"):
+        raise ValueError("runtime scalar inputs require the explicit ABI v3 profile")
+    if any(set(s) != {"name", "dtype", "source_arg"} or not isinstance(s["name"], str) or not s["name"].isidentifier() for s in scalars):
+        raise ValueError("runtime scalar declarations carry names/types/positions, never invocation values")
+    positions = [s.get("source_arg") for s in scalars]
+    names = [b.get("name") for b in buffers] + [s.get("name") for s in scalars]
+    if (len(set(names)) != len(names)
+            or any(type(p) is not int or not 0 <= p < len(buffers) + len(spec.get("scalar_constants", [])) + len(scalars) for p in positions)
+            or len(set(positions)) != len(positions)
+            or any(s.get("dtype") not in ("f32", "f64", "i1", "i8", "i16", "i32", "i64") for s in scalars)):
+        raise ValueError("runtime scalar declaration has an invalid type/name/source position")
+    inputs.extend({**s, "shape": [], "abi_kind": "scalar"} for s in scalars)
     outputs = [b for b in buffers if b["effect"] != "read"]
     if (not outputs or receipt.get("materialized_abi") !=
             {"complete": True, "inputs": len(inputs), "outputs": len(outputs)}):
@@ -73,6 +86,11 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
         if len(types) != len(declared):
             raise ValueError("kernel MLIR signature differs from declared buffer order")
         for type_, buffer in zip(types, declared, strict=True):
+            if buffer.get("abi_kind") == "scalar":
+                if isinstance(type_, TensorType) or str(type_) != buffer["dtype"]:
+                    raise ValueError("kernel MLIR scalar type differs from declared ABI")
+                values.append({"shape": [], "dtype": str(type_), "kind": "scalar"})
+                continue
             if not isinstance(type_, TensorType) or any(n <= 0 for n in type_.get_shape()):
                 raise ValueError("standalone profile requires positive static tensor shapes")
             value = {"shape": list(type_.get_shape()), "dtype": str(type_.get_element_type())}
@@ -85,11 +103,15 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
                  "inputs": abi(entry.function_type.inputs, inputs), "outputs": abi(entry.function_type.outputs, outputs),
                  "shape_scope": "static_captured_signature", "capture_dtype": "typed-per-argument",
                  "input_mutability": "borrowed-immutable-tensors"}
+    if scalars:
+        signature["scalar_abi"] = "native-by-value; invocation-data"
     # The native host's existing ABI names @forward. Record this symbol-only
     # adaptation explicitly; retain original source names and provenance IDs.
     entry.properties["sym_name"] = StringAttr("forward")
     attrs = list(entry.arg_attrs) if entry.arg_attrs is not None else [DictionaryAttr({}) for _ in inputs]
-    entry.properties["arg_attrs"] = ArrayAttr(DictionaryAttr({**a.data, "bufferization.writable": IntegerAttr(0, i1)}) for a in attrs)
+    entry.properties["arg_attrs"] = ArrayAttr(DictionaryAttr({**a.data, **(
+        {"bufferization.writable": IntegerAttr(0, i1)} if isinstance(t, TensorType) else {})})
+        for a, t in zip(attrs, entry.function_type.inputs, strict=True))
     staged = text(module, generic=True).encode()
     parse_mlir_text(staged.decode()).verify()
     # Project compiler provenance, excluding numeric admission/evaluator reports.

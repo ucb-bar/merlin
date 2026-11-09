@@ -114,3 +114,57 @@ def test_changed_or_rehashed_inconsistent_kernel_never_publishes(tmp_path, chang
     with pytest.raises(ValueError):
         stage_compile_inputs(source, target)
     assert not target.exists()
+
+
+def scalar_fixture(root):
+    receipt = capture_fixture(root)
+    model = (root / "model.mlir").read_bytes().replace(b"%old: tensor<2xf32>", b"%old: tensor<2xf32>, %alpha: f32")
+    spec = json.loads((root / "spec.json").read_text())
+    spec.update(schema="t2m.shared-tensor-abi.v3", runtime_scalars=[{"name": "alpha", "dtype": "f32", "source_arg": 1}])
+    provenance = json.loads((root / "provenance.json").read_text())
+    provenance.update(spec=spec, mlir_sha256=record(model)["sha256"])
+    manifest = json.loads((root / "weights.safetensors.manifest.json").read_text())
+    manifest["2"] = {"kind": "input", "name": "alpha"}
+    for name, raw in {"model.mlir": model, "spec.json": encoded(spec), "provenance.json": encoded(provenance),
+                      "weights.safetensors.manifest.json": encoded(manifest)}.items():
+        (root / name).write_bytes(raw)
+        receipt["artifacts"][name] = record(raw)
+    receipt["materialized_abi"]["inputs"] = 3
+    (root / "capture_receipt.json").write_bytes(encoded(receipt))
+    return receipt
+
+
+def test_plain_runtime_scalar_staging_retains_type_without_tensor_mutability(tmp_path):
+    source, target = tmp_path / "source", tmp_path / "compiler"
+    scalar_fixture(source)
+    stage_compile_inputs(source, target)
+    signature = json.loads((target / "signature.json").read_text())
+    assert signature["inputs"][-1] == {"shape": [], "dtype": "f32", "kind": "scalar"}
+    assert signature["scalar_abi"] == "native-by-value; invocation-data"
+    entry = next(iter(parse_mlir_text((target / "program.mlir").read_text()).ops))
+    assert "bufferization.writable" in entry.arg_attrs.data[0].data
+    assert "bufferization.writable" not in entry.arg_attrs.data[-1].data
+
+
+@pytest.mark.parametrize("change", ["tensor_box", "scalar_type", "position", "invocation_value"])
+def test_rehashed_invalid_runtime_scalar_profile_refuses(tmp_path, change):
+    source, target = tmp_path / "source", tmp_path / "compiler"
+    receipt = scalar_fixture(source)
+    spec = json.loads((source / "spec.json").read_text())
+    if change in ("tensor_box", "scalar_type"):
+        model = (source / "model.mlir").read_bytes().replace(b"%alpha: f32", b"%alpha: tensor<f32>" if change == "tensor_box" else b"%alpha: i32")
+        (source / "model.mlir").write_bytes(model)
+    elif change == "position":
+        spec["runtime_scalars"][0]["source_arg"] = 4
+    else:
+        spec["runtime_scalars"][0]["value"] = 1.25
+    provenance = json.loads((source / "provenance.json").read_text())
+    provenance.update(spec=spec, mlir_sha256=record((source / "model.mlir").read_bytes())["sha256"])
+    (source / "spec.json").write_bytes(encoded(spec))
+    (source / "provenance.json").write_bytes(encoded(provenance))
+    for name in ("model.mlir", "spec.json", "provenance.json"):
+        receipt["artifacts"][name] = record((source / name).read_bytes())
+    (source / "capture_receipt.json").write_bytes(encoded(receipt))
+    with pytest.raises(ValueError):
+        stage_compile_inputs(source, target)
+    assert not target.exists()
