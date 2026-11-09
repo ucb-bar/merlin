@@ -121,7 +121,9 @@ Display lacks (e.g. `→`, `↑`), put it in an Inter `ax.text`, not in a serif 
 
 ## Migrating an existing plot
 
-The older paper figures live in `scripts/plot_paper_style.py` and `scripts/plot_rvv_comparisons.py`
+The older paper figures live in
+[`merlin.plotting.plot_paper_style`](../../packages/merlin-analysis/src/merlin/plotting/plot_paper_style.py) and
+[`build_tools/plots/plot_rvv_comparisons.py`](../../build_tools/plots/plot_rvv_comparisons.py)
 with an inline (pre-house-style) palette. When you next touch one, port it: replace its local
 palette/rcParams with `from merlin.plotting.merlin_plotstyle import *; use_merlin_style()`, swap `ax.bar/barh` for
 `vbars/hbars`, drop baked-in caption paragraphs, and remove decorative hatches. The presentation
