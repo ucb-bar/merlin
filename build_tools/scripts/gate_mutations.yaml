@@ -19,6 +19,29 @@
 # A gate that is not here must be listed in `mutation_proof_ratchet.txt`, which may only shrink.
 
 proofs:
+  check_backend_boundaries.py:
+    proof: merlin/tests/infra/test_mutation_proofs_gate_can_fail.py::test_a_skipped_boundary_case_changes_the_real_runner_verdict
+    mutation: >-
+      Run the real boundary-runner main over six exact clean local Git source selections and bounded
+      process fixtures, then change the first selected lane's JUnit skipped count from zero to one.
+    removes: >-
+      The mutated lane no longer supplies zero-skip execution evidence. Every manifest field, source
+      HEAD and payload, wheel byte and other lane count remains unchanged; no ratchet or alternate
+      XML suite can forgive the skip. The paired clean main returns zero before the mutation makes
+      the real JUnit admission fail and the durable report remain passed=false. Process fixtures
+      establish no installed-wheel or device qualification.
+
+  check_reference_readiness.py:
+    proof: merlin/tests/infra/test_mutation_proofs_gate_can_fail.py::test_missing_reference_region_evidence_changes_the_real_readiness_verdict
+    mutation: >-
+      Invoke the real readiness main and assessment with complete bounded analyzer-transport reports,
+      then remove one included region's only semantic and source-correspondence projection.
+    removes: >-
+      Every semantic/correspondence satisfier for that region is absent. Both declared regions and
+      all seven instruction sites remain in the denominator, so a successful first region cannot
+      replace the missing second region. The same main first returns zero for complete reports,
+      then returns two and retains the blocked summary and original per-region diagnostic.
+
   check_no_target_name.py:
     proof: merlin/tests/infra/test_overfit_gates.py::test_a_target_identifier_planted_in_a_clean_module_fails_the_gate
     mutation: >-

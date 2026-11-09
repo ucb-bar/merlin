@@ -12,10 +12,16 @@ would fail the suite rather than pass it.
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import importlib.util
+import json
 import sys
+from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
+from test_check_wiring import pinned_backend as pinned_backend  # noqa: F401 -- shared local Git fixture
 
 from merlin.common.paths import repo_root
 
@@ -196,3 +202,152 @@ def test_the_live_scan_sees_the_real_gates():
     """A gate list that resolved to nothing would satisfy every assertion above vacuously."""
     assert len(MP.gate_files()) > 20
     assert MP.load_registry(), "the registry parsed to nothing; every gate would read as ratcheted-or-absent"
+
+
+# ------------------------------------------------------------- concrete CI-preparation witnesses
+
+
+def test_a_skipped_boundary_case_changes_the_real_runner_verdict(tmp_path, pinned_backend, monkeypatch):
+    """Process transport is synthetic; Git custody and JUnit admission are real."""
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    gate = _load("check_backend_boundaries")
+    source, _, git = pinned_backend
+    main_wheel = tmp_path / "merlin-0-py3-none-any.whl"
+    with ZipFile(main_wheel, "w") as archive:
+        archive.writestr("merlin-0.dist-info/METADATA", "Name: merlin\nVersion: 0\n")
+    manifest = json.loads((repo_root() / "build_tools/upstreams/backend-boundaries.json").read_text())
+    consumers = manifest.get("source_consumers", [])
+    # Use the reviewed support roster as data, including later added consumers;
+    # each selected path gets a tiny tracked fixture body, never original code.
+    for row in consumers:
+        for relative in row["files"]:
+            path = source / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("# bounded static source transport fixture\n")
+    if consumers:
+        git("add", "--", ".")
+        git("commit", "-q", "--no-verify", "-m", "Add selected static consumer fixture paths")
+    rows = manifest["backends"]
+    for row in rows:
+        row.update(
+            revision=git("rev-parse", "HEAD"),
+            xdsl="0.68.0",
+            provider_module="fixture",
+            tests=["python/fixture/consumer.py"],
+            fixtures=[],
+            selection="",
+            installed_service=False,
+        )
+    for row in consumers:
+        row["revision"] = git("rev-parse", "HEAD")
+    pins = tmp_path / "boundary-pins.json"
+    pins.write_text(json.dumps(manifest))
+    mutate = False
+
+    def process_fixture(argv, *, cwd, log, env, records):
+        # No provider build, pip install or pytest child is executed. Keep the
+        # runner's actual source checks, fixture transport and XML admission.
+        log.write_text("bounded process transport fixture\n")
+        records.append({"argv": argv, "returncode": 0, "log": str(log)})
+        if "build" in argv:
+            destination = Path(argv[argv.index("--outdir") + 1])
+            with ZipFile(destination / "fixture-0-py3-none-any.whl", "w") as archive:
+                archive.writestr("fixture/__init__.py", "")
+        elif "--junitxml" in argv:
+            junit = Path(argv[argv.index("--junitxml") + 1])
+            skipped = int(mutate and junit.name == rows[0]["id"] + ".xml")
+            junit.write_text(
+                f'<testsuites><testsuite tests="1" failures="0" errors="0" skipped="{skipped}"/></testsuites>'
+            )
+
+    monkeypatch.setattr(gate, "run", process_fixture)
+    sources = [value for row in [*rows, *consumers] for value in ("--source", f"{row['id']}={source}")]
+    common = ["--wheel", str(main_wheel), "--pins", str(pins), "--python068", sys.executable, *sources]
+    clean = tmp_path / "boundary-clean"
+    assert gate.main([*common, "--output", str(clean)]) == 0
+    report = json.loads((clean / "report.json").read_text())
+    assert report["passed"] is True and len(report["lanes"]) == len(rows)
+    assert all(row["counts"] == dict(tests=1, failures=0, errors=0, skipped=0) for row in report["lanes"])
+    assert len(report["static_inputs"]) == len(consumers)
+    for expected, observed in zip(consumers, report["static_inputs"], strict=True):
+        assert {row["path"] for row in observed["files"]} == set(expected["files"])
+    mutate = True
+    changed = tmp_path / "boundary-skipped"
+    assert gate.main([*common, "--output", str(changed)]) == 1
+    report = json.loads((changed / "report.json").read_text())
+    assert report["passed"] is False and "must execute without skips" in report["error"]
+    assert not report["lanes"]  # The first mutated lane was never admitted.
+
+
+def test_missing_reference_region_evidence_changes_the_real_readiness_verdict(tmp_path, monkeypatch):
+    """Only the upstream analyzer transport is substituted; assess/main are real."""
+    from merlin_experiments.phase1.feedback import reference_analysis
+
+    gate = _load("check_reference_readiness")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "visible.dump").write_text("bounded analyzer transport fixture\n")
+    facts, contract = tmp_path / "facts.json", tmp_path / "contract.json"
+    facts.write_text("{}")
+    contract.write_text("{}")
+    report = dict(
+        input=dict(path="visible.dump", sha256=hashlib.sha256((workspace / "visible.dump").read_bytes()).hexdigest()),
+        total=2,
+        coverage=dict(accelerator_sites=7, selected_region_sites=7),
+        regions=[
+            dict(
+                stable_id=f"region-{index}",
+                accelerator_sites=sites,
+                mechanism_projection=dict(
+                    semantic_region_status="established",
+                    source_binary_correspondence="established",
+                    compatible_comparison="established",
+                    unclassified_instruction_classes=[],
+                ),
+                cca=dict(
+                    provenance=dict(
+                        axis_evidence={
+                            "dispatch.loop_offloaded": dict(status="inferred", evidence=["selected-isa-role-roster"])
+                        }
+                    )
+                ),
+            )
+            for index, sites in enumerate((3, 4))
+        ],
+    )
+
+    def analyzer_transport(request, **kwargs):
+        assert kwargs["workspace"] == workspace and kwargs["reference_root"] is None
+        if request.get("operation") == "inventory":
+            return copy.deepcopy(report), {}
+        selected = next(row for row in report["regions"] if row["stable_id"] == request["region"])
+        return dict(report, regions=[copy.deepcopy(selected)]), {}
+
+    monkeypatch.setattr(reference_analysis, "_analyze", analyzer_transport)
+    common = [
+        "--workspace",
+        str(workspace),
+        "--facts",
+        str(facts),
+        "--contract",
+        str(contract),
+        "--target",
+        "fixture",
+        "--reference",
+        "visible.dump",
+    ]
+    clean = tmp_path / "reference-clean"
+    assert gate.main([*common, "--output", str(clean)]) == 0
+    ready = json.loads((clean / "readiness.json").read_text())
+    assert ready["launch_ready"] is True and ready["ready_regions"] == 2
+    # Keep every declared region/site in the denominator; remove its only
+    # semantic/correspondence evidence rather than dropping the difficult row.
+    report["regions"][1]["mechanism_projection"] = {}
+    changed = tmp_path / "reference-missing"
+    assert gate.main([*common, "--output", str(changed)]) == 2
+    blocked = json.loads((changed / "readiness.json").read_text())
+    assert blocked["launch_ready"] is False and blocked["region_count"] == 2
+    assert blocked["ready_regions"] == 1
+    assert blocked["missing"]["complete_upstream_semantic_region"] == 1
+    assert blocked["missing"]["source_binary_correspondence"] == 1
+    assert (changed / "0-region-1.json").is_file()

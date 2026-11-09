@@ -19,6 +19,8 @@ from email.parser import BytesParser
 from pathlib import Path
 from zipfile import ZipFile
 
+from wiring_sources import tracked_consumer_files
+
 SCHEMA = "merlin.backend-boundaries.v1"
 VERSIONS = ("0.68.0", "0.65.0")
 FIELDS = {
@@ -117,7 +119,11 @@ def relative(value: object) -> Path:
 
 def pins(path: Path) -> list[dict]:
     document = json.loads(path.read_text(encoding="utf-8"))
-    if set(document) != {"schema", "backends"} or document["schema"] != SCHEMA:
+    if (
+        not {"schema", "backends"} <= set(document)
+        or set(document) - {"schema", "backends", "source_consumers"}
+        or document["schema"] != SCHEMA
+    ):
         raise ValueError(f"expected schema {SCHEMA!r} and a backends roster")
     rows = document["backends"]
     if not isinstance(rows, list) or len(rows) != 6:
@@ -156,6 +162,38 @@ def pins(path: Path) -> list[dict]:
             raise ValueError(f"{identity}: selection must be a pytest expression or null")
         if not isinstance(row["installed_service"], bool):
             raise ValueError(f"{identity}: installed_service must be boolean")
+    return rows
+
+
+def static_pins(path: Path, backends: list[dict]) -> list[dict]:
+    """Support consumers are source-only inputs, never install or test lanes."""
+    rows = json.loads(path.read_text(encoding="utf-8")).get("source_consumers")
+    if rows is None:
+        return []
+    if not isinstance(rows, list):
+        raise ValueError("source_consumers must be an explicit file roster")
+    identities = {row["id"] for row in backends}
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != {"id", "repository", "revision", "files"}:
+            raise ValueError("malformed source-only consumer pin")
+        identity = row["id"]
+        if (
+            not isinstance(identity, str)
+            or not identity
+            or identity in identities
+            or not all(c.isascii() and (c.isalnum() or c == "-") for c in identity)
+        ):
+            raise ValueError("invalid or duplicate source-only consumer identity")
+        identities.add(identity)
+        revision = row["revision"]
+        if not isinstance(revision, str) or len(revision) != 40 or any(c not in "0123456789abcdef" for c in revision):
+            raise ValueError("source-only consumer requires an exact Git revision")
+        if not isinstance(row["repository"], str) or not row["repository"].startswith("https://"):
+            raise ValueError("source-only consumer requires an HTTPS repository")
+        if not isinstance(row["files"], list) or not row["files"] or len(set(row["files"])) != len(row["files"]):
+            raise ValueError("source-only consumer requires unique exact source files")
+        for name in row["files"]:
+            relative(name)
     return rows
 
 
@@ -202,6 +240,40 @@ def build_source(row: dict, source: Path, destination: Path, env: dict, commands
             if name.startswith("/") or path.is_absolute() or ".." in path.parts or ":" in name:
                 raise ValueError(f"unsafe wheel member: {name}")
     return wheels[0]
+
+
+def source_checkout(row: dict, source: Path, output: Path, env: dict, commands: list, *, sparse=False) -> None:
+    """Prepare persistent exact source; sparse support files are never executed."""
+    identity = row["id"]
+    steps = [
+        ("init", ["git", "init", str(source)]),
+        ("remote", ["git", "-C", str(source), "remote", "add", "origin", row["repository"]]),
+    ]
+    fetch = ["git", "-C", str(source), "fetch", "--depth=1"]
+    if sparse:
+        # Fetch commit/tree metadata first; checkout lazily retrieves only the
+        # selected source blobs from the promisor remote.
+        steps.extend(
+            [
+                ("promisor", ["git", "-C", str(source), "config", "remote.origin.promisor", "true"]),
+                ("blob-filter", ["git", "-C", str(source), "config", "remote.origin.partialclonefilter", "blob:none"]),
+            ]
+        )
+        fetch.append("--filter=blob:none")
+    steps.append(("fetch", [*fetch, "origin", row["revision"]]))
+    if sparse:
+        steps.extend(
+            [
+                ("sparse-init", ["git", "-C", str(source), "sparse-checkout", "init", "--no-cone"]),
+                (
+                    "sparse-files",
+                    ["git", "-C", str(source), "sparse-checkout", "set", "--no-cone", "--", *row["files"]],
+                ),
+            ]
+        )
+    steps.append(("checkout", ["git", "-C", str(source), "checkout", "--detach", "FETCH_HEAD"]))
+    for label, argv in steps:
+        run(argv, cwd=output, log=output / (identity + "-" + label + ".log"), env=env, records=commands)
 
 
 def copy_inputs(row: dict, source: Path, destination: Path) -> list[dict]:
@@ -280,6 +352,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     pins_sha256 = sha(args.pins)
     rows = pins(args.pins)
+    consumers = static_pins(args.pins, rows)
     if sha(args.pins) != pins_sha256:
         raise ValueError("selected pin manifest changed during intake")
     wheel = args.wheel.resolve(strict=True)
@@ -290,7 +363,7 @@ def main(argv: list[str] | None = None) -> int:
     selected = {}
     for value in args.source:
         identity, separator, path = value.partition("=")
-        if not separator or identity in selected or identity not in {row["id"] for row in rows}:
+        if not separator or identity in selected or identity not in {row["id"] for row in [*rows, *consumers]}:
             parser.error(f"invalid or duplicate --source selection: {value}")
         selected[identity] = Path(path).resolve(strict=True)
     output = args.output.resolve()
@@ -302,6 +375,8 @@ def main(argv: list[str] | None = None) -> int:
         "pins_sha256": pins_sha256,
         "commands": [],
         "lanes": [],
+        "static_sources": {},
+        "static_inputs": [],
         "passed": False,
     }
     env = dict(os.environ)
@@ -318,6 +393,23 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with tempfile.TemporaryDirectory(prefix="merlin-backend-boundaries-") as temporary_name:
             temporary = Path(temporary_name)
+            # Read the exact original support call chain as data only. No
+            # support import, build, installation, test or candidate grant.
+            for row in consumers:
+                identity = row["id"]
+                source = selected.get(identity, output / (identity + "-source"))
+                if identity not in selected:
+                    source_checkout(row, source, output, env, report["commands"], sparse=True)
+                files = tracked_consumer_files(source, row["revision"], {source / relative(n) for n in row["files"]})
+                report["static_sources"][identity] = str(source.resolve())
+                report["static_inputs"].append(
+                    {
+                        "id": identity,
+                        "revision": row["revision"],
+                        "scope": "source consumer only; no runtime qualification",
+                        "files": [{"path": p.relative_to(source).as_posix(), "sha256": sha(p)} for p in files],
+                    }
+                )
             sources = {}
             provider_wheels = {}
             for row in rows:
@@ -353,6 +445,7 @@ def main(argv: list[str] | None = None) -> int:
                         records=report["commands"],
                     )
                 sources[identity] = source
+                report.setdefault("sources", {})[identity] = str(source.resolve())
                 provider_wheels[identity] = build_source(
                     row, source, output / (identity + "-wheel"), env, report["commands"]
                 )
@@ -416,7 +509,11 @@ def main(argv: list[str] | None = None) -> int:
                     env=env,
                     records=report["commands"],
                 )
-            roots = [str(Path(__file__).resolve().parents[2]), *[str(source.resolve()) for source in sources.values()]]
+            roots = [
+                str(Path(__file__).resolve().parents[2]),
+                *[str(source.resolve()) for source in sources.values()],
+                *report["static_sources"].values(),
+            ]
             if any(temporary.resolve().is_relative_to(Path(root)) for root in roots):
                 raise ValueError("test and environment temporary storage must be outside all source checkouts")
             for row in rows:
@@ -455,6 +552,9 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("selected main wheel or pin manifest changed during the run")
             for row in rows:
                 clean_source(sources[row["id"]], row["revision"])
+            for row in consumers:
+                source = Path(report["static_sources"][row["id"]])
+                tracked_consumer_files(source, row["revision"], {source / relative(n) for n in row["files"]})
             report["passed"] = True
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         report["error"] = str(exc)

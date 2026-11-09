@@ -62,6 +62,7 @@ LEDGER = ROOT / "build_tools" / "scripts" / "silent_default_ratchet.txt"
 EVIDENCE_ROOTS: tuple[str, ...] = (
     # The gates themselves: a gate that cannot tell absent from passing is the defect, recursively.
     "build_tools/scripts/check_*.py",
+    "build_tools/scripts/wiring_sources.py",
     # Which hardware a result is about, and where a product was written.
     "src/merlin/common/provenance.py",
     "src/merlin/common/artifacts.py",

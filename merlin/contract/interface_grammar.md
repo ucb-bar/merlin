@@ -67,6 +67,7 @@ the prose sections below, `interface_dialect_contract.yaml` and the registered d
 | `evict` | `EVICT` | — | yes |
 | `matmul` | `MATMUL_RESIDENT` | — | yes |
 | `matmul_batched` | `BATCHED_MATMUL` | `a`, `w` | no |
+| `maxpool2d` | `MAXPOOL2D` | `src` | no |
 | `movement` | `MOVEMENT` | `src` | yes |
 | `resident_pack` | `RES_PACK` | — | yes |
 | `residual_add` | `RESIDUAL_ADD` | `lhs`, `rhs` | no |
@@ -228,6 +229,22 @@ Maps to `MOVEMENT` (`operands: {src, dst}`). A load→store round trip: `dst` ho
 UNCHANGED, only the container dtype widens. No clamp, no requantize -- the point of the capsule is that
 the data survives the trip bit-for-bit. Its capsules carry exactly ONE op, so a parser that skips it
 reads them as empty programs.
+
+### `merlin_iface.maxpool2d` ? scaled spatial maximum readout
+```mlir
+%Y0 = merlin_iface.maxpool2d %X {
+        name = "Y0", epilogue = ["acc_scale", "maxpool"], acc_scale = 0.5 : f32,
+        pool_in_dims = [4, 4], pool_size = [2, 2], pool_stride = [2, 2],
+        pool_padding = [0, 0, 0, 0], output_dtype = "i8"
+      } : (tensor<16x8xi8>) -> tensor<4x8xi8>
+```
+Maps to `MAXPOOL2D` (`operands: {src, dst}`). The source is flattened spatial storage
+`[height*width, channels]`. The ordered epilogue is `[acc_scale, maxpool]`: widen the signed
+INT8 input, apply the positive float32 scale with nearest-even rounding and signed INT8
+saturation, then take the spatial maximum. Geometry and explicit padding follow
+`command_buffer_abi.yaml` ? `MAXPOOL2D`; a padded form supplies `pool_pad_value` in the output
+integer domain. This composes movement and readout and does not assert an independent pooling
+engine. A backend must preserve the declared scaling and padding or refuse the form.
 
 ### `merlin_iface.attention_qk` — the first matmul of attention
 ```mlir

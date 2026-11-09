@@ -31,6 +31,19 @@ def _write(root, rel, contents="x = 1\n"):
     return path
 
 
+def test_authored_build_package_is_scanned_while_generated_build_is_pruned(tmp_path):
+    layout = _gate("_source_layout")
+    _write(tmp_path, "src/merlin/__init__.py", "")
+    _write(tmp_path, "src/merlin/compiler/build/__init__.py", "")
+    _write(tmp_path, "src/merlin/compiler/build/hostbridge.py")
+    _write(tmp_path, "src/generated/build/lib/old.py")
+    paths = {p.as_posix() for p in layout.python_files(tmp_path, ("src",))}
+    assert "src/merlin/compiler/build/hostbridge.py" in paths
+    assert "src/generated/build/lib/old.py" not in paths
+    assert layout.in_scope("src/merlin/compiler/build/hostbridge.py", ("src",), root=tmp_path)
+    assert not layout.in_scope("src/generated/build/lib/old.py", ("src",), root=tmp_path)
+
+
 def test_reference_data_is_research_owned_not_a_core_dependency(tmp_path, monkeypatch):
     gate = _gate("check_structure")
     monkeypatch.setattr(gate, "ROOT", str(tmp_path))

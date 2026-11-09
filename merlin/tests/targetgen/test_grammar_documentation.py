@@ -117,6 +117,6 @@ def test_the_gate_fails_closed_when_it_cannot_read_a_source(copies, tmp_path, mo
 
 
 def test_the_gate_runs_in_ci_and_in_the_commit_hook() -> None:
-    workflow = (repo_root() / ".github" / "workflows" / "pr-fast.yml").read_text(encoding="utf-8")
+    workflow = (repo_root() / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     hook = (repo_root() / "build_tools" / "git-hooks" / "pre-commit").read_text(encoding="utf-8")
     assert "check_grammar_documentation.py" in workflow and "check_grammar_documentation.py" in hook

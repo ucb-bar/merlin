@@ -28,12 +28,7 @@ merlin/python/merlin/targetgen/oracle_helpers/functional_errata_runner.py
 merlin/python/merlin/targetgen/oracle_helpers/isa_introspect.py
 merlin/python/merlin/targetgen/oracle_helpers/program_cosim.py
 merlin/python/merlin/targetgen/output_reachability.py
-merlin/python/merlin/targetgen/rtl/gen_iface_irdl.py
-merlin/python/merlin/targetgen/rtl/gen_isa_module.py
-merlin/python/merlin/targetgen/rtl/gen_numeric_facts.py
 merlin/python/merlin/targetgen/rtl/gen_rocc_replay.py
-merlin/python/merlin/targetgen/rtl/gen_rtl_digest.py
-merlin/python/merlin/targetgen/rtl/replay_json_to_h.py
 merlin/python/merlin/targetgen/semantic_fuzzer.py
 merlin/python/merlin/targetgen/store_probe.py
 merlin/python/merlin/verify/ablation.py

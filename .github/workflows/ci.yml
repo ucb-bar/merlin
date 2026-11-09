@@ -86,8 +86,6 @@ jobs:
       # other finding still fails, and a run that resolves no target at all cannot pass.
       - name: semantic-coverage gate (generalization debt may only shrink)
         run: uv run --no-sync python build_tools/scripts/check_semantic_coverage.py --allow-unresolved
-      - name: wiring gate (every instrument has a production caller)
-        run: uv run --no-sync python build_tools/scripts/check_wiring.py
       # A gate nobody has ever seen fail reads exactly like one that cannot. The structural half runs
       # pre-commit; this is the half that cannot be faked: it runs each recorded proof and requires the
       # proof to be observed entering its own gate.

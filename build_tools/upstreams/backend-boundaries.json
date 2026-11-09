@@ -1,5 +1,20 @@
 {
   "schema": "merlin.backend-boundaries.v1",
+  "source_consumers": [
+    {
+      "id": "gemmini-rtl-support",
+      "repository": "https://github.com/ucb-bar/gemmini-mlir.git",
+      "revision": "9e30aa0f15f6985539697c71d92294fde1846372",
+      "files": [
+        "merlin-support/provider.yaml",
+        "merlin-support/backend/__init__.py",
+        "merlin-support/backend/rocc_semantics.py",
+        "merlin-support/backend/rtl_checks.py",
+        "merlin-support/backend/bus_beat_probe.py",
+        "merlin-support/cost_model/calibrate.py"
+      ]
+    }
+  ],
   "backends": [
     {
       "id": "rvv",

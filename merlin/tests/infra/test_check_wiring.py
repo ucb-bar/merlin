@@ -8,7 +8,12 @@ without; the ``__all__`` case is the exact line that hid the real defect.
 
 from __future__ import annotations
 
+import ast
+import hashlib
 import importlib.util
+import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -478,3 +483,352 @@ def test_every_declared_prefix_dispatcher_exists_and_publishes_its_prefix() -> N
         path = repo_root() / relative
         assert path.is_file(), relative
         assert gate._published_constant(gate._tree(path), constant), (relative, constant)
+
+
+_PORTABLE_LOADER = """DEPENDENCIES = ("first", "second")
+def helper(name):
+    if name not in DEPENDENCIES:
+        raise ImportError(name)
+    path = _TARGETGEN / (name + '.py')
+    canonical = 'merlin.targetgen.' + name
+    spec = importlib.util.spec_from_file_location(canonical, path)
+    selected = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(selected)
+    return selected
+
+def prepare_helpers():
+    for name in DEPENDENCIES:
+        helper(name)
+"""
+
+
+@pytest.mark.parametrize("case", ["active", "constant_only", "no_execution", "uninvoked_initializer"])
+def test_closed_portable_sources_require_invoked_loader(tmp_path, case):
+    relative = "src/merlin/compiler/quantization/torchao/portable.py"
+    loader = _PORTABLE_LOADER
+    initializer = "from .portable import prepare_helpers\nprepare_helpers()\n"
+    if case == "constant_only":
+        loader = 'DEPENDENCIES = ("first", "second")\n'
+    elif case == "no_execution":
+        loader = loader.replace("spec.loader.exec_module(selected)", "selected = None")
+    elif case == "uninvoked_initializer":
+        initializer = "from .portable import prepare_helpers\n"
+    _tree(tmp_path, {relative: loader, str(Path(relative).parent / "__init__.py"): initializer})
+    gate = _gate(tmp_path)
+    observed = gate.wiring_sources.closed_source_imports(tmp_path / relative, tmp_path, ast.parse(loader))
+    assert observed == ({"merlin.targetgen.first", "merlin.targetgen.second"} if case == "active" else set())
+
+
+def _published_compiler_tree(root):
+    source = "def existing_api(): return 1\n"
+    relative = "src/merlin/perf/reader.py"
+    digest = hashlib.sha256(source.encode()).hexdigest()
+    document = {
+        "schema": "merlin.fresh10_tooling_projection.v1",
+        "profiles": {
+            "fixture": {
+                "full_members": [
+                    {
+                        "module": "merlin.perf.reader",
+                        "path": "merlin/perf/reader.py",
+                        "source_relative": relative,
+                        "sha256": digest,
+                        "baseline_sha256": digest,
+                    }
+                ]
+            }
+        },
+    }
+    raw = json.dumps(document, sort_keys=True)
+    producer = (
+        f"DATA_SHA256 = {hashlib.sha256(raw.encode()).hexdigest()!r}\n"
+        + """
+def prepare_sources(repo, destination, profile_name):
+    rows = _rows(profile_name, "full")
+    payloads = [(row, _payload(repo, row)) for row in rows]
+    selected = F.select(destination, payloads)
+    verify_sources(profile_name, selected)
+    return selected
+"""
+    )
+    stage = """def stage(selection, submission):
+    for relative, digest, module in selection.members:
+        path = submission / relative
+        payload = _read(selection.root, relative)
+        with path.open("xb") as stream:
+            stream.write(payload)
+"""
+    _tree(
+        root,
+        {
+            relative: source,
+            "src/merlin_experiments/phase1/fresh10_profile_data.json": raw,
+            "src/merlin_experiments/phase1/fresh10_sources.py": producer,
+            "src/merlin_experiments/phase1/full_compiler_workspace.py": stage,
+        },
+    )
+    return root / relative
+
+
+@pytest.mark.parametrize("case", ["active", "changed_owner", "new_api", "stale_inventory", "disconnected_copy"])
+def test_published_source_credit_binds_actual_current_bodies(tmp_path, case):
+    source = _published_compiler_tree(tmp_path)
+    base = tmp_path / "src/merlin_experiments/phase1"
+    if case == "changed_owner":
+        source.write_text("def existing_api(): return 2\n")
+    elif case == "new_api":
+        source.write_text(source.read_text() + "def new_api(): return 3\n")
+        _tree(tmp_path, {"merlin/tests/infra/test_reader.py": "from merlin.perf.reader import new_api\n"})
+    elif case == "stale_inventory":
+        path = base / "fresh10_profile_data.json"
+        path.write_text(path.read_text() + "\n")
+    elif case == "disconnected_copy":
+        path = base / "full_compiler_workspace.py"
+        path.write_text(path.read_text().replace("stream.write(payload)", "stream.write(b'unrelated')"))
+    gate = _gate(tmp_path)
+    if case == "stale_inventory":
+        with pytest.raises(ValueError, match="producer pin"):
+            gate.wiring_sources.published_source_modules(tmp_path)
+    else:
+        assert gate.wiring_sources.published_source_modules(tmp_path) == (
+            {"merlin.perf.reader"} if case == "active" else set()
+        )
+        if case == "new_api":
+            assert any(name.endswith("::new_api") for name in gate.unwired_symbols(set()))
+
+
+@pytest.fixture
+def pinned_backend(tmp_path):
+    source = tmp_path / "provider"
+    _tree(
+        source,
+        {
+            "pyproject.toml": '[tool.setuptools]\npackages = ["fixture"]\npackage-dir = {fixture = "python/fixture"}\n',
+            ".gitignore": "generated.py\n",
+            "python/fixture/__init__.py": "",
+            "python/fixture/consumer.py": "from merlin.perf import tracked_owner\n",
+            "tools/inspect.py": "from merlin.perf import tracked_tool_owner\n",
+        },
+    )
+
+    def git(*arguments):
+        return subprocess.check_output(
+            [
+                "git",
+                "-C",
+                str(source),
+                "-c",
+                "core.autocrlf=false",
+                "-c",
+                "user.name=Wiring fixture",
+                "-c",
+                "user.email=wiring-fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                *arguments,
+            ],
+            text=True,
+        ).strip()
+
+    git("init", "-q")
+    git("add", "--", ".")
+    git("commit", "-q", "--no-verify", "-m", "Create bounded wiring fixture")
+    revision = git("rev-parse", "HEAD")
+    pins = tmp_path / "build_tools/upstreams/backend-boundaries.json"
+    pins.parent.mkdir(parents=True)
+    pins.write_text(json.dumps({"backends": [{"id": "fixture", "revision": revision}]}))
+    return source, pins, git
+
+
+@pytest.mark.parametrize(
+    "case", ["tracked_only", "dirty", "wrong_revision", "missing_id", "skip_worktree_edit", "packaging_edit"]
+)
+def test_backend_consumers_are_exact_tracked_head_payloads(tmp_path, pinned_backend, case):
+    source, pins, git = pinned_backend
+    selected = {"fixture": str(source)}
+    consumer = source / "python/fixture/consumer.py"
+    # An ignored generated file is not part of the reviewed consumer source.
+    generated = source / "python/fixture/generated.py"
+    generated.write_text("from merlin.perf import fabricated_consumer\n")
+    if case == "dirty":
+        consumer.write_text("from merlin.perf import changed_consumer\n")
+    elif case == "wrong_revision":
+        pins.write_text(json.dumps({"backends": [{"id": "fixture", "revision": "0" * 40}]}))
+    elif case == "missing_id":
+        selected = {}
+    elif case == "skip_worktree_edit":
+        git("update-index", "--skip-worktree", "python/fixture/consumer.py")
+        consumer.write_text("from merlin.perf import hidden_changed_consumer\n")
+        assert git("status", "--porcelain=v1", "--untracked-files=all") == ""
+    elif case == "packaging_edit":
+        git("update-index", "--skip-worktree", "pyproject.toml")
+        (source / "pyproject.toml").write_text("[tool.setuptools]\npackages = []\n")
+        assert git("status", "--porcelain=v1", "--untracked-files=all") == ""
+    gate = _gate(tmp_path)
+    if case == "tracked_only":
+        files = gate.wiring_sources.selected_backend_sources(selected, tmp_path)
+        assert set(files) == {consumer, source / "python/fixture/__init__.py", source / "tools/inspect.py"}
+        assert generated not in files
+        gate.EXTERNAL_PRODUCTION = files
+        assert "merlin.perf.fabricated_consumer" not in set().union(*(gate._imports(path) for path in files))
+        assert "merlin.perf.tracked_owner" in gate._imports(consumer)
+    else:
+        with pytest.raises(ValueError, match="changed|revision|every exact|bytes differ"):
+            gate.wiring_sources.selected_backend_sources(selected, tmp_path)
+
+
+def test_saved_backend_consumer_report_requires_current_pin_identity(tmp_path, pinned_backend):
+    source, pins, _ = pinned_backend
+    report = tmp_path / "report.json"
+    body = {
+        "schema": "merlin.backend-boundaries.v1",
+        "passed": True,
+        "pins_sha256": hashlib.sha256(pins.read_bytes()).hexdigest(),
+        "sources": {"fixture": str(source)},
+    }
+    report.write_text(json.dumps(body))
+    gate = _gate(tmp_path)
+    assert source / "python/fixture/consumer.py" in gate.wiring_sources.backend_sources(report, tmp_path)
+    body["pins_sha256"] = "0" * 64
+    report.write_text(json.dumps(body))
+    with pytest.raises(ValueError, match="current reviewed pins"):
+        gate.wiring_sources.backend_sources(report, tmp_path)
+
+
+@pytest.mark.parametrize("case", ["valid", "missing", "wrong_revision", "changed", "skip_worktree", "escape"])
+def test_source_only_consumers_bind_exact_original_call_chain(tmp_path, pinned_backend, case):
+    source, pins, git = pinned_backend
+    identity = "support-source"
+    revision = git("rev-parse", "HEAD")
+    body = json.loads(pins.read_text())
+    body["source_consumers"] = [
+        {
+            "id": identity,
+            "revision": revision,
+            "repository": "https://example.invalid/support.git",
+            "files": ["python/fixture/consumer.py"],
+        }
+    ]
+    pins.write_text(json.dumps(body))
+    selected = {identity: str(source)}
+    consumer = source / "python/fixture/consumer.py"
+    if case == "missing":
+        selected = {}
+    elif case == "wrong_revision":
+        body["source_consumers"][0]["revision"] = "0" * 40
+        pins.write_text(json.dumps(body))
+    elif case in {"changed", "skip_worktree"}:
+        if case == "skip_worktree":
+            git("update-index", "--skip-worktree", "python/fixture/consumer.py")
+        consumer.write_text("from merlin.perf import fabricated_consumer\n")
+    elif case == "escape":
+        body["source_consumers"][0]["files"] = ["../outside.py"]
+        pins.write_text(json.dumps(body))
+    gate = _gate(tmp_path)
+    if case == "valid":
+        files = gate.wiring_sources.selected_static_sources(selected, tmp_path)
+        assert files == (consumer,)
+        assert "merlin.perf.tracked_owner" in gate._imports(consumer)
+    else:
+        with pytest.raises(ValueError, match="every exact|revision|changed|bytes differ|escapes"):
+            gate.wiring_sources.selected_static_sources(selected, tmp_path)
+
+
+@pytest.mark.parametrize("case", ["valid", "wrong_schema", "failed", "missing_static"])
+def test_report_requires_selected_static_sources_without_granting_execution(tmp_path, pinned_backend, case):
+    source, pins, git = pinned_backend
+    manifest = json.loads(pins.read_text())
+    manifest["source_consumers"] = [
+        {
+            "id": "support-source",
+            "revision": git("rev-parse", "HEAD"),
+            "repository": "https://example.invalid/support.git",
+            "files": ["python/fixture/consumer.py"],
+        }
+    ]
+    pins.write_text(json.dumps(manifest))
+    body = {
+        "schema": "merlin.backend-boundaries.v1",
+        "passed": True,
+        "pins_sha256": hashlib.sha256(pins.read_bytes()).hexdigest(),
+        "sources": {"fixture": str(source)},
+        "static_sources": {"support-source": str(source)},
+    }
+    if case == "wrong_schema":
+        body["schema"] = "unrelated.report"
+    elif case == "failed":
+        body["passed"] = False
+    elif case == "missing_static":
+        del body["static_sources"]
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(body))
+    gate = _gate(tmp_path)
+    if case == "valid":
+        assert source / "python/fixture/consumer.py" in gate.wiring_sources.backend_sources(report, tmp_path)
+    else:
+        with pytest.raises(ValueError, match="current reviewed pins|every exact"):
+            gate.wiring_sources.backend_sources(report, tmp_path)
+
+
+def test_static_consumer_sparse_checkout_materializes_only_selected_tracked_files(tmp_path, pinned_backend):
+    source, _, git = pinned_backend
+    gate = _gate(tmp_path)
+    location = Path(gate.__file__).with_name("check_backend_boundaries.py")
+    spec = importlib.util.spec_from_file_location("source_only_boundary_fixture", location)
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    destination = tmp_path / "retained-support-source"
+    commands = []
+    row = {
+        "id": "support-source",
+        "repository": str(source),
+        "revision": git("rev-parse", "HEAD"),
+        "files": ["python/fixture/consumer.py"],
+    }
+    runner.source_checkout(row, destination, tmp_path, dict(os.environ), commands, sparse=True)
+    assert (destination / "python/fixture/consumer.py").is_file()
+    assert not (destination / "tools/inspect.py").exists()
+    assert not (destination / "python/fixture/__init__.py").exists()
+    assert all(command["argv"][0] == "git" for command in commands)
+    fetches = [command["argv"] for command in commands if "fetch" in command["argv"]]
+    assert len(fetches) == 1 and "--filter=blob:none" in fetches[0]
+    assert runner.git(destination, "config", "--get", "remote.origin.promisor") == "true"
+    assert runner.git(destination, "config", "--get", "remote.origin.partialclonefilter") == "blob:none"
+    assert runner.git(destination, "rev-parse", "HEAD") == row["revision"]
+    assert gate.wiring_sources.tracked_consumer_files(
+        destination, row["revision"], {destination / row["files"][0]}
+    ) == (destination / row["files"][0],)
+
+
+@pytest.mark.parametrize(
+    "case", ["valid", "duplicate_backend", "execution_fields", "escaping_path", "floating_revision"]
+)
+def test_static_consumer_roster_does_not_create_an_installed_lane(tmp_path, case):
+    gate = _gate(tmp_path)
+    spec = importlib.util.spec_from_file_location(
+        "source_pin_boundary_fixture", Path(gate.__file__).with_name("check_backend_boundaries.py")
+    )
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    manifest = json.loads((repo_root() / "build_tools/upstreams/backend-boundaries.json").read_text())
+    assert len(manifest["backends"]) == 6
+    assert len(manifest["source_consumers"]) == 1
+    row = manifest["source_consumers"][0]
+    if case == "duplicate_backend":
+        row["id"] = manifest["backends"][0]["id"]
+    elif case == "execution_fields":
+        row["tests"] = ["test_support.py"]
+    elif case == "escaping_path":
+        row["files"] = ["../outside.py"]
+    elif case == "floating_revision":
+        row["revision"] = "main"
+    path = tmp_path / "pins.json"
+    path.write_text(json.dumps(manifest))
+    backends = runner.pins(path)
+    assert len(backends) == 6
+    if case == "valid":
+        assert runner.static_pins(path, backends) == [row]
+        assert row["id"] not in {backend["id"] for backend in backends}
+    else:
+        with pytest.raises(ValueError, match="consumer|escapes"):
+            runner.static_pins(path, backends)

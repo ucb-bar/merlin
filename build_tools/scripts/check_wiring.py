@@ -15,7 +15,9 @@ build tools, excluding the test suite and the module itself. A declared console 
 executable ``python -m`` command in the shared runtime-rendered task prompt counts as wired.
 A literal module selected through the canonical ``module_source_path`` helper is a source
 dependency too: isolated workers execute its file under another interpreter. This static
-dependency scan establishes no actual execution or grading authority. Tests do not: a test proves
+dependency graph also includes closed source loaders and byte-matching editable compiler-library
+inputs. Pinned backend consumers are inspected after the installed provider matrix prepares their
+actual tracked sources. Source use establishes no actual execution or grading authority. Tests do not: a test proves
 a module works, not that anything uses it.
 
 TWO GRANULARITIES, BECAUSE MODULE GRANULARITY HAS A BLIND SPOT THE SIZE OF A MODULE. An imported
@@ -63,6 +65,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _source_layout  # noqa: E402
+import wiring_sources  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = _source_layout.core_package(ROOT).parent
@@ -100,6 +103,7 @@ def _target_workflow_roots() -> tuple[str, ...]:
 
 
 EXCLUDED_PARTS = ("_data", "__pycache__", "tests", "_qa_ws")
+EXTERNAL_PRODUCTION: tuple[Path, ...] = ()
 
 
 def _python_files(relative_root: str) -> list[Path]:
@@ -188,7 +192,7 @@ def _imports(path: Path) -> set[str]:
     package = None
     if own is not None:
         package = own if path.name == "__init__.py" else own.rpartition(".")[0]
-    found = _source_path_selections(tree)
+    found = _source_path_selections(tree) | wiring_sources.closed_source_imports(path, ROOT, tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             found.update(alias.name for alias in node.names)
@@ -214,6 +218,12 @@ def _imports(path: Path) -> set[str]:
                 if not node.level and package and "." not in base and (path.parent / f"{base}.py").is_file():
                     found.add(f"{package}.{base}")
     return found
+
+
+def _production_files():
+    for root in (*PRODUCTION, *_target_workflow_roots()):
+        yield from _python_files(root)
+    yield from EXTERNAL_PRODUCTION
 
 
 def _console_script_modules() -> set[str]:
@@ -327,18 +337,21 @@ def unwired() -> list[str]:
             if former and former != name:
                 aliases[former] = name
     imported_by: dict[str, set[Path]] = {name: set() for name in candidates}
-    for relative_root in (*PRODUCTION, *_target_workflow_roots()):
-        for path in _python_files(relative_root):
-            # The forwarding file is not a production consumer of its owner. Only a real
-            # caller importing either spelling supplies reachability.
-            if _source_layout.module_alias(path, ROOT) is not None:
-                continue
-            for name in _imports(path):
-                name = aliases.get(name, name)
-                if name in imported_by and candidates[name] != path.resolve():
-                    imported_by[name].add(path)
+    for path in _production_files():
+        # The forwarding file is not a production consumer of its owner. Only a real
+        # caller importing either spelling supplies reachability.
+        if _source_layout.module_alias(path, ROOT) is not None:
+            continue
+        for name in _imports(path):
+            name = aliases.get(name, name)
+            if name in imported_by and candidates[name] != path.resolve():
+                imported_by[name].add(path)
     prompt_candidates = {**candidates, **{old: candidates[new] for old, new in aliases.items()}}
-    scripts = _console_script_modules() | _generated_prompt_module_commands(imported_by, prompt_candidates)
+    scripts = (
+        _console_script_modules()
+        | _generated_prompt_module_commands(imported_by, prompt_candidates)
+        | wiring_sources.published_source_modules(ROOT)
+    )
     scripts = {aliases.get(name, name) for name in scripts}
     return sorted(
         str(candidates[name].relative_to(ROOT))
@@ -583,12 +596,15 @@ def unwired_symbols(known_unwired_modules: set[str] | None = None) -> list[str]:
     # Every name production code could be using, ANYWHERE -- including the defining module itself. A
     # public helper called only by its own module's wired entry point is reached; it is not debt.
     used = _console_script_symbols()
-    production = (path for root in (*PRODUCTION, *_target_workflow_roots()) for path in _python_files(root))
+    production = _production_files()
     used |= _referenced_among(production, test_references - used)
     # A definition a prefix dispatcher reaches in its own module is used, by that module only.
     dispatched = prefix_dispatched()
+    source_inputs = wiring_sources.compiler_source_inputs(ROOT)
     reached = {
-        policy: {name for name in names if any(name.startswith(prefix) for prefix in dispatched.get(module, ()))}
+        policy: set(names)
+        if module in source_inputs
+        else {name for name in names if any(name.startswith(prefix) for prefix in dispatched.get(module, ()))}
         for policy, names, module in (
             (policy, names, _module_name(modules[policy])) for policy, names in definitions.items()
         )
@@ -632,7 +648,25 @@ SYMBOL_HEADER = (
 
 
 def main(argv: list[str] | None = None) -> int:
+    global EXTERNAL_PRODUCTION
     arguments = list(sys.argv[1:] if argv is None else argv)
+    EXTERNAL_PRODUCTION = ()
+    if "--backend-report" in arguments:
+        index = arguments.index("--backend-report")
+        if index + 1 >= len(arguments):
+            raise SystemExit("wiring requires the backend report pathname")
+        EXTERNAL_PRODUCTION = wiring_sources.backend_sources(Path(arguments[index + 1]), ROOT)
+    elif "--backend-source" in arguments:
+        selected = {}
+        for index, value in enumerate(arguments):
+            if value == "--backend-source":
+                if index + 1 >= len(arguments):
+                    raise SystemExit("backend source must be ID=PATH")
+                identity, separator, path = arguments[index + 1].partition("=")
+                if not separator or identity in selected:
+                    raise SystemExit("backend source must be a unique ID=PATH")
+                selected[identity] = path
+        EXTERNAL_PRODUCTION = wiring_sources.selected_backend_sources(selected, ROOT)
     found = unwired()
     found_symbols = unwired_symbols(set(found))
     if "--list" in arguments:

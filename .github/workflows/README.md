@@ -25,6 +25,18 @@ the selected cases outside source checkouts against the same main wheel. It uses
 separate xDSL 0.68 and 0.65 environments; selected cases must execute without skips.
 Native toolchain and hardware lanes remain separate qualification work.
 
+The wiring gate runs after the pinned provider matrix, so real OOT consumers
+participate in its source graph. It rechecks the current pins, clean Git heads
+and exact tracked Python payloads; ignored outputs cannot manufacture a caller.
+The separate `source_consumers` pins select exact support call-chain files in a
+persistent sparse checkout. Those files are read only for this static source
+graph; they are never imported, built, installed or exposed to candidates. They
+add no provider test lane or simulator/runtime qualification.
+Closed worker loaders and byte-matching editable compiler-source inputs are
+source dependencies, distinct from host execution. Newly changed bodies gain no
+credit from an older published inventory. The gate does not grant source access
+or establish numerical, execution or hardware qualification.
+
 The selected OOT commits must be available remotely before hosted CI can fetch
 them. During local review, `check_backend_boundaries.py --source ID=PATH` accepts
 only a clean checkout at the exact selected commit. Local commits and passing

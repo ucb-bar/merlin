@@ -192,12 +192,17 @@ def module_name(path: Path, root: Path) -> str | None:
     return None
 
 
-def in_scope(rel: str, roots: tuple[str, ...]) -> bool:
+def in_scope(rel: str, roots: tuple[str, ...], *, root: Path | None = None) -> bool:
     if not any(rel == scope or rel.startswith(scope + "/") for scope in roots):
         return False
     parts = Path(rel).parts
-    if any(part in EXCLUDED_PARTS for part in parts):
-        return False
+    for index, part in enumerate(parts):
+        if part in EXCLUDED_PARTS:
+            # compiler/build is authored Python, not an output directory.
+            # Other generated build/dist trees remain pruned before descent.
+            package = root is not None and (root.joinpath(*parts[: index + 1]) / "__init__.py").is_file()
+            if part not in {"build", "dist"} or not package:
+                return False
     # Extension-owned tests/resources are not library code; their own gates inspect them separately.
     if parts and parts[0] == "packages":
         return len(parts) >= 5 and parts[2] == "src"
@@ -216,11 +221,20 @@ def python_files(root: Path, roots: tuple[str, ...]) -> list[Path]:
     seen: set[Path] = set()
     for base in candidates:
         for directory, subdirs, files in os.walk(base):
-            subdirs[:] = sorted(name for name in subdirs if name not in EXCLUDED_PARTS and not name.startswith("."))
+            subdirs[:] = sorted(
+                name
+                for name in subdirs
+                if not name.startswith(".")
+                and (
+                    name not in EXCLUDED_PARTS
+                    or name in {"build", "dist"}
+                    and (Path(directory) / name / "__init__.py").is_file()
+                )
+            )
             for name in sorted(files):
                 path = Path(directory) / name
                 rel = path.relative_to(root)
-                if not name.endswith(".py") or not in_scope(rel.as_posix(), roots) or path.resolve() in seen:
+                if not name.endswith(".py") or not in_scope(rel.as_posix(), roots, root=root) or path.resolve() in seen:
                     continue
                 seen.add(path.resolve())
                 out.append(rel)
@@ -237,4 +251,4 @@ def scan_python_paths(root: Path, roots: tuple[str, ...], *, staged: bool) -> li
         text=True,
         check=True,
     )
-    return [Path(rel) for rel in result.stdout.splitlines() if rel.endswith(".py") and in_scope(rel, roots)]
+    return [Path(rel) for rel in result.stdout.splitlines() if rel.endswith(".py") and in_scope(rel, roots, root=root)]

@@ -66,6 +66,10 @@ jobs:
             --wheel "${wheels[0]}" \
             --pins build_tools/upstreams/backend-boundaries.json \
             --output out/build/python/ci/backend-boundaries
+      - name: wiring gate with exact backend consumers
+        run: >-
+          uv run --no-sync python build_tools/scripts/check_wiring.py
+          --backend-report out/build/python/ci/backend-boundaries/report.json
       - name: retain distributions and exact test outcomes
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
