@@ -1,0 +1,20 @@
+{
+  "schema": "merlin.compiled_unary_math.v1",
+  "policy": "selected-libm-rne-finite-v1",
+  "isa": "rv64gc",
+  "abi": "lp64d",
+  "effects": "enabled-fpu-rne-unobserved-flags-and-errno-v1",
+  "operations": [
+    "source_f32_cos_unqualified",
+    "source_f32_sin_unqualified"
+  ],
+  "linkage": {
+    "schema": "merlin.host_linkage_contract.v1",
+    "supplier": "selected_math_archive",
+    "archive_sha256": "0626df7b1ce6426945820fd03dbd6752931c7594676c94f2043d5673588d178b",
+    "symbols": [
+      "cosf",
+      "sinf"
+    ]
+  }
+}
