@@ -248,18 +248,12 @@ def _mlir_runtime_compiler(clang: Path, gcc: Path, flags: list[str]) -> list[str
     GCC's unsigned-short fallback uses integer registers and cannot service
     these calls, even when both compilers select the same ISA and LP64D ABI.
     """
-    sysroot_text = _run([gcc, "-print-sysroot"]).stdout.strip()
-    sysroot = Path(sysroot_text)
-    if not sysroot_text or not sysroot.is_absolute() or not (sysroot / "include/math.h").is_file():
-        raise SpikeModelError("GCC must report an absolute sysroot containing include/math.h")
-    return [
-        str(clang),
-        CLANG_TARGET,
-        f"--sysroot={sysroot.resolve()}",
-        "-isystem",
-        str((sysroot / "include").resolve()),
-        *flags,
-    ]
+    from ...llvmlower.native_runtime import NativeRuntimeError, compiler_command
+
+    try:
+        return compiler_command(clang, gcc, flags, target_flags=(CLANG_TARGET,), runner=_run)
+    except NativeRuntimeError as error:
+        raise SpikeModelError(str(error)) from error
 
 
 def _selected_libm_archive(gcc: Path, flags: list[str], link_flags: tuple[str, ...]) -> tuple[Path, str, str]:

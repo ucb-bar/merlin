@@ -35,6 +35,7 @@ def build_outlined_program(
     packing_tile_budget_bytes: int | None = None,
     frozen_inputs=None,
     analysis_workspace_budget_bytes: int | None = None,
+    runtime_header_driver: str | Path | None = None,
 ) -> dict:
     """Compile isolated kernels and emit a real C staged chain, default-off.
 
@@ -231,6 +232,16 @@ def build_outlined_program(
                     "object_sha256": built["object_sha256"],
                 }
             )
+        numeric_runtime = None
+        if runtime_header_driver is not None:
+            from merlin.llvmlower import codegen, native_runtime
+
+            numeric_runtime = native_runtime.build_numeric_runtime(
+                output / "numeric_runtime",
+                model_compiler=toolchain.clang(),
+                header_driver=Path(runtime_header_driver),
+                model_flags=(*codegen.RISCV_FLAGS, *compute_cflags),
+            )
         emitted = outlined_chain.render_outlined_chain(
             plan,
             tuple(entries),
@@ -275,6 +286,16 @@ def build_outlined_program(
             if sha256_file(built["object"]) != built["object_sha256"]:
                 raise ValueError("ordinary kernel object changed before build closure")
             source_pins[built["object"]] = built["object_sha256"]
+        if numeric_runtime is not None:
+            for path, digest in numeric_runtime["input_sha256"].items():
+                if sha256_file(path) != digest:
+                    raise ValueError("numeric runtime input changed before build closure")
+            if sha256_file(numeric_runtime["object"]) != numeric_runtime["object_sha256"]:
+                raise ValueError("numeric runtime object changed before build closure")
+            source_pins.update(numeric_runtime["input_sha256"])
+            source_pins[numeric_runtime["object"]] = numeric_runtime["object_sha256"]
+            record_path = output / "numeric_runtime/numeric-runtime.json"
+            source_pins[str(record_path)] = sha256_file(record_path)
         if frozen_inputs is not None:
             for path, digest in plan.frozen_inputs["input_sha256"].items():
                 if sha256_file(path) != digest:
@@ -317,6 +338,7 @@ def build_outlined_program(
                         [v["object"] for v in builds]
                         + [str(p) for v in prepared_staged_kernels.values() for p in v.objects]
                         + frozen_blob_objects
+                        + ([] if numeric_runtime is None else [numeric_runtime["object"]])
                     )
                 ),
                 "source_to_kernel": mappings,
@@ -335,6 +357,8 @@ def build_outlined_program(
                 ),
             }
         )
+        if numeric_runtime is not None:
+            report["numeric_runtime"] = numeric_runtime
         if frozen_inputs is not None:
             report["frozen_inputs"] = plan.frozen_inputs
             report["live_storage_bytes"] = plan.workspace_bytes + plan.frozen_inputs["published_blob_bytes"]

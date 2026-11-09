@@ -62,3 +62,10 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
   source/byte verification. Their opaque state counts against the whole-chain
   budget. Unselected compiled entries retain their normal ABI; no implicit
   integrated-packing or other provider fallback is permitted.
+
+- `outlined_program.runtime_header_driver` explicitly requests an actual
+  same-model-compiler numeric runtime object. Include that object's exact source,
+  header, compiler, flag and byte identities in the build/link roster. Default
+  None changes no existing route; platform libc/libm suppliers and full image
+  admission remain explicit caller obligations. Do not substitute a differently
+  compiled scalar helper solely because the ISA or nominal C ABI matches.
