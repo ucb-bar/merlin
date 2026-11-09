@@ -21,6 +21,81 @@ def _ltd_walk(op):
                 yield from _ltd_walk(child.operation)
 
 
+def _ltd_numeric(type_):
+    return isinstance(type_, (ir.IntegerType, ir.IndexType)) or str(type_) in ('f16', 'bf16', 'f32', 'f64')
+
+
+def _ltd_fresh_seed(value):
+    if not isinstance(value, ir.OpResult):
+        return False
+    op = value.owner.operation
+    if op.name == 'tensor.empty':
+        return True
+    if op.name == 'arith.constant':
+        return 'value' in op.attributes and isinstance(op.attributes['value'], ir.DenseElementsAttr)
+    if (op.name == 'linalg.generic' and 'library_call' not in op.attributes and len(op.results) == 1 and op.operands
+            and all(_ltd_numeric(v.type) for v in tuple(op.operands)[:-1])
+            and _ltd_fresh_seed(op.operands[-1]) and len(op.regions) == 1 and len(op.regions[0].blocks) == 1):
+        segments = tuple(ir.DenseI32ArrayAttr(op.attributes['operandSegmentSizes']))
+        scalar = op.regions[0].blocks[0]
+        if segments != (len(op.operands) - 1, 1) or not scalar.arguments or list(scalar.arguments[-1].uses):
+            return False
+        with op.context:
+            identity = ir.AffineMap.get_identity(len(ir.RankedTensorType(value.type).shape))
+        maps = tuple(ir.ArrayAttr(op.attributes['indexing_maps']))
+        return (ir.AffineMapAttr(maps[-1]).value == identity
+                and all(str(it) == '#linalg.iterator_type<parallel>' for it in ir.ArrayAttr(op.attributes['iterator_types']))
+                and _ltd_scalar_body(op, fresh_seed=False))
+    return (op.name == 'linalg.fill' and 'library_call' not in op.attributes and len(op.results) == 1
+            and len(op.operands) == 2 and _ltd_numeric(op.operands[0].type) and _ltd_fresh_seed(op.operands[-1]))
+
+
+def _ltd_readonly_input(value):
+    views = ('memref.cast', 'memref.subview', 'memref.reinterpret_cast', 'memref.collapse_shape', 'memref.expand_shape')
+    while isinstance(value, ir.OpResult):
+        op = value.owner.operation
+        if op.name in views:
+            value = op.operands[0]
+            continue
+        if op.name != 'bufferization.to_buffer' or len(op.operands) != 1 or 'read_only' not in op.attributes:
+            return False
+        source = op.operands[0]
+        if not isinstance(source, ir.BlockArgument) or source.owner.owner.operation.name != 'func.func':
+            return False
+        return source.owner == source.owner.owner.operation.regions[0].blocks[0]
+    return False
+
+
+def _ltd_scalar_body(op, *, fresh_seed):
+    # The read extension admits only readonly entry storage, disjoint from a
+    # newly synthesized loop seed. It changes no capture or memory effect;
+    # native bufferization still decides whether physical reuse is legal.
+    for inner in _ltd_walk(op):
+        name = inner.name
+        if name == 'memref.load':
+            if (not fresh_seed or not inner.operands or not _ltd_readonly_input(inner.operands[0])
+                    or inner.regions or len(inner.results) != 1 or not _ltd_numeric(inner.results[0].type)
+                    or any(not isinstance(v.type, ir.IndexType) for v in tuple(inner.operands)[1:])):
+                return False
+            continue
+        if name == 'scf.if':
+            if (not fresh_seed or len(inner.operands) != 1 or str(inner.operands[0].type) != 'i1'
+                    or len(inner.regions) != 2 or any(not _ltd_numeric(v.type) for v in inner.results)):
+                return False
+            for region in inner.regions:
+                if len(region.blocks) != 1 or region.blocks[0].arguments:
+                    return False
+                terminal = tuple(region.blocks[0].operations)[-1].operation
+                if terminal.name != 'scf.yield' or tuple(v.type for v in terminal.operands) != tuple(v.type for v in inner.results):
+                    return False
+            continue
+        if name.split('.')[0] not in ('arith', 'math') and name not in ('linalg.yield', 'linalg.index', 'scf.yield'):
+            return False
+        if inner.regions or any(not _ltd_numeric(v.type) for v in (*inner.operands, *inner.results)):
+            return False
+    return True
+
+
 def _ltd_reuse(ctx, module):
     changed = 0
     for loop in tuple(_ltd_walk(module.operation)):
@@ -30,7 +105,7 @@ def _ltd_reuse(ctx, module):
         terminal = tuple(block.operations)[-1].operation
         if terminal.name != 'scf.yield':
             continue
-        for previous, result in zip(tuple(block.arguments)[1:], terminal.operands):
+        for incoming, previous, result in zip(tuple(loop.operands)[3:], tuple(block.arguments)[1:], terminal.operands):
             if not isinstance(result, ir.OpResult) or not isinstance(result.type, ir.RankedTensorType):
                 continue
             op = result.owner.operation
@@ -55,18 +130,7 @@ def _ltd_reuse(ctx, module):
             scalar = op.regions[0].blocks[0]
             if len(scalar.arguments) != len(op.operands) or list(scalar.arguments[-1].uses):
                 continue
-            # Complete typed scalar region: no captured buffer, call or opaque
-            # operation is hidden by the destination's unused init argument.
-            legal = True
-            for inner in _ltd_walk(op):
-                if inner.name.split('.')[0] not in ('arith', 'math') and inner.name not in ('linalg.yield', 'linalg.index'):
-                    legal = False
-                    break
-                if inner.regions or any(not (isinstance(v.type, (ir.IntegerType, ir.IndexType))
-                        or str(v.type) in ('f16', 'bf16', 'f32', 'f64')) for v in (*inner.operands, *inner.results)):
-                    legal = False
-                    break
-            if not legal:
+            if not _ltd_scalar_body(op, fresh_seed=_ltd_fresh_seed(incoming)):
                 continue
             op.operands[len(op.operands) - 1] = previous
             changed += 1

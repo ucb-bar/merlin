@@ -67,6 +67,10 @@ overwritten static parallel generic's loop-carried tensor destination. The init
 scalar must be unused and the output map identity. Native tensor alias analysis
 and ordinary ownership/lifetime checks remain authoritative; dynamic trip counts
 grant no release permission. Default source lowering is unchanged.
+Its readonly-capture extension additionally requires an independently synthesized
+seed and standard views of a read-only actual function-entry tensor. Numeric
+conditional reads retain every effect. Writes, calls, unknown roots and CFG phi
+aliases refuse; no physical alias or deallocation permission is added.
 
 Aggregate fresh deallocation splitting recognizes selected borrowed calls only
 through `_obl_borrowed_calls` and its actual-operation set. Exact current

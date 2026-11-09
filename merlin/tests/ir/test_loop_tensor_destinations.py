@@ -69,6 +69,91 @@ def test_only_complete_unobserved_init_destinations_change(tmp_path, shape, init
     assert "scf.for" in text
 
 
+def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True, write=False, opaque=False, constant=False):
+    marker = "read_only" if readonly else ""
+    seed = "%seed" if fresh else "%x"
+    declaration = "func.func private @observe()" if opaque else ""
+    extra = "func.call @observe() : () -> ()" if opaque else ""
+    store = "memref.store %v, %mutable[%i] : memref<4xf32>" if write else ""
+    read = "%v = memref.load %view[%i] : memref<?xf32>"
+    if conditional:
+        read = f"""%yes=arith.cmpi slt,%i,%c2:index
+          %v=scf.if %yes -> f32 {{
+            %r=memref.load %view[%i]:memref<?xf32>
+            scf.yield %r:f32
+          }} else {{ {extra} scf.yield %zero:f32 }}"""
+    fill = "%seed=linalg.fill ins(%zero:f32) outs(%empty:tensor<4xf32>)->tensor<4xf32>"
+    if generalize:
+        fill = """%seed=linalg.generic {indexing_maps=[affine_map<(i)->()>,affine_map<(i)->(i)>],iterator_types=["parallel"]}
+          ins(%zero:f32) outs(%empty:tensor<4xf32>) {^bb0(%v:f32,%init:f32):linalg.yield %v:f32}->tensor<4xf32>"""
+    if constant:
+        fill = "%seed=arith.constant dense<0.0>:tensor<4xf32>"
+    return f"""module {{ {declaration}
+      func.func @forward(%x:tensor<4xf32>,%bound:index,%mutable:memref<4xf32>)->tensor<4xf32> {{
+        %c0=arith.constant 0:index
+        %c1=arith.constant 1:index
+        %c2=arith.constant 2:index
+        %zero=arith.constant 0.0:f32
+        %base=bufferization.to_buffer %x {marker}:tensor<4xf32> to memref<4xf32>
+        %view=memref.cast %base:memref<4xf32> to memref<?xf32>
+        %empty=tensor.empty():tensor<4xf32>
+        {fill}
+        %result=scf.for %iv=%c0 to %bound step %c1 iter_args(%old={seed})->tensor<4xf32> {{
+          %next=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
+            ins(%old:tensor<4xf32>) outs(%empty:tensor<4xf32>) {{^bb0(%in:f32,%init:f32):
+              %i=linalg.index 0:index
+              {read}
+              {store}
+              %sum=arith.addf %in,%v:f32
+              linalg.yield %sum:f32
+            }}->tensor<4xf32>
+          scf.yield %next:tensor<4xf32>
+        }}
+        return %result:tensor<4xf32>
+      }}
+    }}"""
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("options,changed", [({}, 1), ({"generalize": True}, 1), ({"constant": True}, 1), ({"conditional": False}, 1),
+    ({"fresh": False}, 0), ({"readonly": False}, 0), ({"write": True}, 0), ({"opaque": True}, 0)])
+def test_read_capture_requires_fresh_seed_and_closed_readonly_entry_origin(tmp_path, options, changed):
+    stdout, output = rewrite(tmp_path, read_source(**options))
+    assert f"OK loop_tensor_destinations {changed}" in stdout
+    assert "memref.load" in output and "scf.for" in output
+    if options.get("conditional", True):
+        assert "scf.if" in output
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+def test_function_cfg_phi_is_not_an_independent_entry_tensor(tmp_path):
+    source = '''module {
+      func.func @forward(%bound:index)->tensor<4xf32> {
+        %zero=arith.constant 0.0:f32
+        %c0=arith.constant 0:index
+        %c1=arith.constant 1:index
+        %empty=tensor.empty():tensor<4xf32>
+        %seed=linalg.fill ins(%zero:f32) outs(%empty:tensor<4xf32>)->tensor<4xf32>
+        cf.br ^other(%seed:tensor<4xf32>)
+      ^other(%alias:tensor<4xf32>):
+        %base=bufferization.to_buffer %alias read_only:tensor<4xf32> to memref<4xf32>
+        %result=scf.for %iv=%c0 to %bound step %c1 iter_args(%old=%seed)->tensor<4xf32> {
+          %next=linalg.generic {indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}
+            ins(%old:tensor<4xf32>) outs(%empty:tensor<4xf32>) {^bb0(%in:f32,%init:f32):
+              %i=linalg.index 0:index
+              %read=memref.load %base[%i]:memref<4xf32>
+              %sum=arith.addf %in,%read:f32
+              linalg.yield %sum:f32
+            }->tensor<4xf32>
+          scf.yield %next:tensor<4xf32>
+        }
+        return %result:tensor<4xf32>
+      }
+    }'''
+    stdout, _ = rewrite(tmp_path, source)
+    assert "OK loop_tensor_destinations 0" in stdout
+
+
 def test_explicit_feature_places_rewrite_after_fusion_before_bufferization():
     passes = ["canonicalize", "func.func(linalg-fuse-elementwise-ops)", "one-shot-bufferize{bufferize-function-boundaries}", "canonicalize"]
     edited = edit_pipeline(passes)
