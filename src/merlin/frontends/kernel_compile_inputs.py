@@ -90,24 +90,14 @@ def _checked_memory_members(checked, provenance):
         for name in ("word-input.mlir", "word-tensor.mlir", "word-stage.json"):
             copied[name] = checked(name)
         word_stage = json.loads(copied["word-stage.json"])
-        command = word_stage.get("command", [])
-        transport = {"--mlir-disable-threading", "--verify-each", "--mlir-print-op-generic",
-                     "--mlir-print-debuginfo", "--mlir-print-local-scope"}
-        pipeline = [flag for flag in (command if isinstance(command, list) else [])
-                    if isinstance(flag, str) and flag.startswith("--") and flag not in transport]
-        expected = ["--triton-to-unstructured=offset-bit-width=64",
-            "--triton-arith-to-linalg=pids-to-func-args=false tt-to-func-func=false", "--remove-dead-values", "--canonicalize"]
         if (not version2 or admission.get("address_policy") != "source-words-offset64"
                 or memory.get("address_policy") != "source-words-offset64"
                 or memory.get("word_stage_sha256") != record("word-stage.json")["sha256"]
                 or admission.get("word_input_sha256") != record("word-input.mlir")["sha256"]
-                or admission.get("word_tensor_sha256") != record("word-tensor.mlir")["sha256"]
-                or word_stage.get("schema") != "t2m.triton-shared-stage.v1" or word_stage.get("stage") != "source-word-tensor"
-                or word_stage.get("stage_completed") is not True
-                or word_stage.get("artifacts", {}).get("source.ttir") != record("word-input.mlir")
-                or word_stage.get("artifacts", {}).get("lowered.mlir") != record("word-tensor.mlir")
-                or not isinstance(command, list) or any(type(flag) is not str for flag in command) or pipeline != expected):
+                or admission.get("word_tensor_sha256") != record("word-tensor.mlir")["sha256"]):
             raise ValueError("source-word address evidence does not bind its declared input/output/policy")
+        from .kernel_word_evidence import checked_word_stages
+        checked_word_stages(word_stage, copied["word-input.mlir"], copied["word-tensor.mlir"], memory, inventory)
     return copied
 
 

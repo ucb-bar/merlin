@@ -38,6 +38,10 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   pre-CSE memory-effects stage. V1 evidence keeps its original scope and cost.
   The source-word buffer profile also retains exact word-stage input/output
   evidence and validates its explicit pass sequence and function access intent.
+  V2 word evidence embeds isolated-event input/output, typed source bindings,
+  arithmetic-only parent input and both actual native reports. Staging checks
+  their byte chain, optimizer identity and declared inventory; producer-side
+  event reconstruction and numerical equivalence remain separate obligations.
   It shares the guarded public ABI without granting source or numeric proof.
   `kernel_shape_abi.py` validates ABI v5's named runtime dimensions and logical
   ceil-divided grids. Standalone compile-signature v2 retains symbolic tensor

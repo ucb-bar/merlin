@@ -382,7 +382,7 @@ def test_rehashed_invalid_mutable_contract_never_publishes(tmp_path, change):
     assert not target.exists()
 
 
-def word_fixture(root, change=None):
+def word_fixture(root, change=None, *, isolated=False):
     """Source-policy byte custody only; this is not an execution oracle."""
     from xdsl.dialects.builtin import StringAttr
     from merlin.xdsl_dialects._common import text
@@ -396,6 +396,37 @@ def word_fixture(root, change=None):
     stage = {"schema": "t2m.triton-shared-stage.v1", "stage": "source-word-tensor", "stage_completed": True,
         "command": ["optimizer", *pipeline, "source.ttir"], "artifacts": {
             "source.ttir": record(word_input), "lowered.mlir": record(word_tensor)}}
+    if isolated:
+        event_input, event_output, compute_input = "typed event template", "one native gather", "parent with event in original region"
+        def native(name, flags, source, output):
+            return {"schema": "t2m.triton-shared-stage.v1", "stage": name, "stage_completed": True,
+                "command": ["optimizer", *flags, "source.ttir"], "optimizer": {"sha256": "a" * 64},
+                "artifacts": {"source.ttir": record(source.encode()), "lowered.mlir": record(output.encode())}}
+        stage = {"schema": "t2m.source-word-stages.v2", "stage_completed": True,
+            "input": record(word_input), "output": record(word_tensor), "reconstruction": "same-region-same-event-order",
+            "events": {"input": event_input, "output": event_output,
+                "native_stage": native("source-word-events", pipeline[:1], event_input, event_output),
+                "bindings": [{"symbol": "event0", "opcode": "tt.load", "source_ids": admission["accesses"][0]["source_ids"],
+                    "input_types": ["!tt.ptr<f32>", "tensor<2xi64>"], "result_types": ["tensor<2xf32>"], "fill": "unchanged"}]},
+            "compute": {"input": compute_input, "native_stage": native("source-word-compute", pipeline[1:], compute_input, word_tensor.decode())}}
+        if change == "event-bytes":
+            stage["events"]["output"] += "changed"
+        elif change == "compute-bytes":
+            stage["compute"]["input"] += "changed"
+        elif change == "pointer-pass-twice":
+            stage["compute"]["native_stage"]["command"].insert(1, pipeline[0])
+        elif change == "different-tools":
+            stage["events"]["native_stage"]["optimizer"]["sha256"] = "b" * 64
+        elif change == "missing-events":
+            stage["events"]["bindings"] = []
+        elif change == "unknown-source":
+            stage["events"]["bindings"][0]["source_ids"] = ["unknown"]
+        elif change == "lost-result":
+            stage["events"]["bindings"][0]["result_types"] = []
+        elif change == "duplicate-event":
+            stage["events"]["bindings"] *= 2
+        elif change == "unknown-fill":
+            stage["events"]["bindings"][0]["fill"] = "discard"
     if change == "pipeline":
         stage["command"].insert(1, "--canonicalize")
     elif change == "width":
@@ -415,6 +446,8 @@ def word_fixture(root, change=None):
     provenance.update(profile="shared-source-word-buffer", mlir_sha256=record(model)["sha256"])
     provenance["memory"].update(address_policy="source-words-offset64", word_stage_sha256=record(encoded(stage))["sha256"],
         admission_sha256=record(encoded(admission))["sha256"])
+    if isolated and change != "undeclared-version":
+        provenance["memory"]["word_conversion"] = "native-isolated-events-v2"
     files = {"word-input.mlir": word_input + (b"changed" if change == "input" else b""),
         "word-tensor.mlir": word_tensor, "word-stage.json": encoded(stage), "model.mlir": model,
         "memory-admission.json": encoded(admission), "provenance.json": encoded(provenance)}
@@ -446,6 +479,33 @@ def test_source_word_staging_keeps_policy_evidence_and_original_access_intent(tm
 def test_rehashed_inconsistent_source_word_policy_never_publishes(tmp_path, change):
     source, target = tmp_path / "capture", tmp_path / "compiler"
     word_fixture(source, change)
+    with pytest.raises(ValueError, match="source-word"):
+        stage_compile_inputs(source, target)
+    assert not target.exists()
+
+
+def test_isolated_word_stages_retain_intermediates_without_evaluator_values(tmp_path, monkeypatch):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    word_fixture(source, isolated=True)
+    original = Path.read_bytes
+    def read(path):
+        if path.name in ("inputs.npz", "golden.npy", "extra.npz", "execution.json"):
+            raise AssertionError("isolated-event compiler accessed evaluator values")
+        return original(path)
+    monkeypatch.setattr(Path, "read_bytes", read)
+    manifest = stage_compile_inputs(source, target)
+    raw = (target / "source/word-stage.json").read_bytes()
+    assert raw == (source / "word-stage.json").read_bytes()
+    assert json.loads(raw)["schema"] == "t2m.source-word-stages.v2"
+    staged = b"".join((target / name).read_bytes() for name in manifest["members"])
+    assert b"EVALUATOR" not in staged
+
+
+@pytest.mark.parametrize("change", ["event-bytes", "compute-bytes", "pointer-pass-twice", "different-tools",
+    "missing-events", "unknown-source", "lost-result", "duplicate-event", "unknown-fill", "undeclared-version"])
+def test_rehashed_invalid_isolated_word_chain_never_publishes(tmp_path, change):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    word_fixture(source, change, isolated=True)
     with pytest.raises(ValueError, match="source-word"):
         stage_compile_inputs(source, target)
     assert not target.exists()
