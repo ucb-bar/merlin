@@ -91,10 +91,11 @@ class StagedBindings:
     worker_instret: str
     completed: str
     relax: str | None = None
+    shared_window_ticks: str | None = None
 
     def __post_init__(self):
         for name, value in asdict(self).items():
-            if value is None and name == "relax":
+            if value is None and name in ("relax", "shared_window_ticks"):
                 continue
             if (
                 not isinstance(value, str)
@@ -114,6 +115,8 @@ def render_zephyr_staged(
     sequence: int,
     max_wait_polls: int,
     stack_bytes: int = 65536,
+    worker_clock_windows: bool = False,
+    shared_clock_domain: str | None = None,
 ) -> tuple[str, dict]:
     """Render pinned startup around the portable C runtime; return explicit metadata.
 
@@ -123,6 +126,16 @@ def render_zephyr_staged(
     No ordinary model build uses this API unless explicitly selected.
     """
     roles.validate_compute_capabilities(compute_capable_harts)
+    if type(worker_clock_windows) is not bool:
+        raise ValueError("worker_clock_windows must be explicitly boolean")
+    if worker_clock_windows and (
+        bindings.shared_window_ticks is None
+        or not isinstance(shared_clock_domain, str)
+        or not shared_clock_domain.strip()
+    ):
+        raise ValueError("worker windows require a checked reader and explicit shared clock domain")
+    if not worker_clock_windows and shared_clock_domain is not None:
+        raise ValueError("shared clock domain supplied without worker windows")
     if (
         type(sequence) is not int
         or not 0 < sequence < 1 << 64
@@ -137,6 +150,7 @@ def render_zephyr_staged(
     worker_cpus = [roles.cpu_hart_ids.index(h) for h in roles.compute_harts]
     controller_cpu = roles.cpu_hart_ids.index(roles.dispatch_hart)
     relax_decl = f"extern void {b.relax}(void *);" if b.relax else ""
+    clock_decl = f"extern int {b.shared_window_ticks}(void *, uint64_t *);" if worker_clock_windows else ""
     source = f"""/* Generated explicit staged dispatch; callbacks contain the selected ABI. */
 #include <zephyr/kernel.h>
 #include <stdint.h>
@@ -152,6 +166,7 @@ extern uint64_t {b.worker_cycles}(void *);
 extern uint64_t {b.worker_instret}(void *);
 extern void {b.completed}(const merlin_staged_report *);
 {relax_decl}
+{clock_decl}
 static merlin_staged_team stage_team;
 static struct k_thread stage_workers[{workers}], stage_controller_thread;
 K_THREAD_STACK_ARRAY_DEFINE(stage_worker_stacks, {workers}, {stack_bytes});
@@ -169,10 +184,13 @@ static void stage_controller(void *a, void *b, void *c) {{
   const merlin_staged_config config = {{
     .controller_hart = {roles.dispatch_hart}, .worker_count = {workers},
     .worker_harts = {{{", ".join(map(str, roles.compute_harts))}}},
-    .sequence = UINT64_C({sequence}), .max_wait_polls = UINT64_C({max_wait_polls})
+    .sequence = UINT64_C({sequence}), .max_wait_polls = UINT64_C({max_wait_polls}),
+    .enable_worker_windows = {int(worker_clock_windows)}
   }};
-  const merlin_staged_hooks hooks = {{{b.current_hart}, {b.global_ticks},
-    {b.worker_cycles}, {b.worker_instret}, {b.relax or "NULL"}}};
+  const merlin_staged_hooks hooks = {{.current_hart = {b.current_hart},
+    .global_ticks = {b.global_ticks}, .worker_cycles = {b.worker_cycles},
+    .worker_instret = {b.worker_instret}, .relax = {b.relax or "NULL"},
+    .shared_window_ticks = {b.shared_window_ticks if worker_clock_windows else "NULL"}}};
   const merlin_staged_callbacks callbacks = {{{b.model_init}, {b.prepare},
     {b.compute}, {b.finish}}};
   stage_status = merlin_staged_team_init(&stage_team, &config, &hooks, &callbacks, {b.context});
@@ -199,6 +217,7 @@ complete:
     stage_published_report.status = stage_status;
     stage_published_report.sequence = UINT64_C({sequence});
     stage_published_report.global_clock_hart = {roles.compute_harts[0]};
+    stage_published_report.worker_clock_windows_enabled = {int(worker_clock_windows)};
   }}
   {b.completed}(&stage_published_report);
   k_sem_give(&stage_controller_exit);
@@ -222,6 +241,10 @@ int main(void) {{
         "bindings": asdict(bindings),
         "sequence": sequence,
         "max_wait_polls": max_wait_polls,
+        "runtime_abi_version": 2,
+        "worker_clock_windows": worker_clock_windows,
+        "shared_clock_domain": shared_clock_domain,
+        "clock_hz": None,
         "stack_bytes_each": stack_bytes,
         "global_interval": "compute-leader global clock before controller init/prepare through final-finish ACK",
         "worker_interval": "local cycle/retirement reads around synchronous compute callback only",

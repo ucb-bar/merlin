@@ -7,6 +7,7 @@ last_verified: 2026-11-08
 related: [worker_placement, provider_workflow, profile_evidence]
 code_refs:
   - src/merlin/runtime/staged_dispatch.py
+  - src/merlin/runtime/staged_windows.py
   - merlin/runtime/c/merlin_staged.h
   - merlin/runtime/c/merlin_staged.c
 ---
@@ -109,3 +110,60 @@ API. A full-model role split needs a separately verified compiler/runtime plan
 that dispatches every nonmatrix and matrix arithmetic task to compute harts,
 retaining source quantization and dependency order. Calling a complete parent
 model on the controller does not satisfy that contract.
+
+## Optional per-worker shared-clock windows
+
+The successor C ABI is version 2 (`MERLIN_STAGED_ABI_VERSION`). It adds a
+default-off `enable_worker_windows` configuration field and a checked
+`shared_window_ticks(context, uint64_t *out)` hook. Source/header layouts change;
+rebuild every consumer against the selected header and implementation together.
+Do not replace the header underneath a running or byte-bound image.
+
+When enabled, each compute worker reads its own ARM-ready, compute-begin,
+compute-end and final-ACK timestamps. The checked hook returns zero on success;
+any read error preserves its exact status and clears that sample's validity.
+The complete mask is 15. Status distinguishes valid, read-error, nonmonotonic
+and incomplete records. Zero is a valid timestamp when its bit is present.
+Clock errors do not cancel numerical execution, but they cannot pass the
+separate profiling gate. The leader's compatibility interval is derived from
+its own ARM/final samples. The legacy clock hook remains the default-off path.
+
+Select these windows explicitly in `render_zephyr_staged` with
+`worker_clock_windows=True`, a checked hook in `StagedBindings`, and an explicit
+`shared_clock_domain`. All compute workers must actually observe one declared
+monotonic epoch. The renderer records that caller declaration; it does not prove
+clock coherence or assign a frequency.
+
+`merlin.runtime.staged_windows.analyze_worker_windows` consumes a quiescent ABI-2
+record and an independently selected role/sequence policy. Records contain only
+the active compute-worker roster. The adapter verifies masks, raw endpoints,
+statuses, leader compatibility and local counter monotonicity. Contradictory
+or malformed records refuse; declared read errors, regressions and incomplete
+records yield failed profiles with null durations. A nonquiescent failure may
+publish only stable error metadata and an empty worker roster; reading unfinished
+worker observations would itself violate the lifetime protocol.
+
+The report separates pre-compute wait, compute callback window and post-compute
+wait in shared raw ticks. These include publication, scheduling, preparation,
+other-worker completion, finish and instrumentation costs in their respective
+windows. They are not pure preparation cost, causal stalls, controller busy time
+or physical compute-unit utilization. Local cycle/retirement counters retain
+their independent semantics and are not mixed with shared-clock ticks.
+
+The adapter writes fresh JSON, worker CSV and aligned Chrome/Perfetto tracks via
+`write_worker_windows`. Tracks use one shared raw-tick origin across workers.
+Without qualified Hz, one tick is one display-microsecond coordinate, explicitly
+marked as a coordinate rather than elapsed microseconds; real seconds, bandwidth
+and physical busy remain null. No controller profiling track is emitted.
+
+```bash
+python -m merlin.runtime.staged_windows --input observed.json --roles roles.json \
+  --sequence 1 --clock-domain declared-shared-clock \
+  --counter-semantics declared-worker-counter-domain --output fresh-profile
+```
+
+The input is a caller-exported C report with `abi_version: 2`; the role JSON
+contains exactly the `StagedRoles` fields using JSON hart lists. Both input byte
+digests are retained. A timing report establishes neither numerical equivalence
+nor actual source-clock/target qualification; keep the complete output gate and
+image association separate.

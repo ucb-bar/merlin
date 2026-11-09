@@ -1,5 +1,6 @@
 """Explicit staged roles and the actual concurrent C publication protocol."""
 
+import json
 import shutil
 import subprocess
 from dataclasses import replace
@@ -98,12 +99,16 @@ _CONCURRENT = r"""
 #include <sched.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
+#include <inttypes.h>
 static _Thread_local unsigned self;
 static _Thread_local uint64_t local_c, local_i;
 static merlin_staged_team team;
 static atomic_uint phase, global_reads, cycle_reads, retire_reads, computes;
 static atomic_uint_fast64_t clock_ticks;
 static int failure;
+static int window_mode;
+static unsigned window_reads[2];
 static unsigned hart(void *x) { (void)x; return self; }
 static uint64_t ticks(void *x) {
   (void)x; assert(self == 0);
@@ -119,6 +124,20 @@ static uint64_t retired(void *x) {
   (void)x; assert(self < 2); atomic_fetch_add(&retire_reads, 1); return local_i;
 }
 static void relax(void *x) { (void)x; sched_yield(); }
+static int shared_ticks(void *x, uint64_t *value) {
+  (void)x; assert(self < 2);
+  unsigned call=window_reads[self]++; assert(call < 4);
+  assert(atomic_load(&phase)==(call==0?0:call==3?4:2));
+  const uint64_t samples[2][4]={{100,110,140,180},{105,115,145,185}};
+  if(window_mode==2 && self==1 && call==1) return 42;
+  if(window_mode==6 && self==0 && call==0) return -9;
+  if(window_mode==7) { *value=atomic_fetch_add(&clock_ticks,1); return 0; }
+  *value=samples[self][call];
+  if(window_mode==3 && self==1 && call==2) *value=90;
+  if(window_mode==4) *value=105; /* a genuinely shared unresolved clock tick */
+  if(window_mode==5 && self==1 && call==0) *value=UINT64_MAX;
+  return 0;
+}
 /* Independent source operands and known complete result, plus exterior guards. */
 static const int8_t A[6] = {1, -2, 127, -128, 4, -5};
 static const int8_t B[9] = {1,2,-3, 4,-5,6, -7,8,9};
@@ -128,7 +147,8 @@ static struct { uint32_t before; int8_t data[9]; uint32_t after; } Bp;
 static struct { uint32_t before; int32_t data[6]; uint32_t after; } Cp, C;
 static int initialize(void *x) {
   (void)x; assert(self == 2 && atomic_load(&team.armed) == 3);
-  assert(atomic_load(&global_reads) == 1);
+  assert(atomic_load(&global_reads) == (window_mode?0:1));
+  if(window_mode) assert(window_reads[0]==1 && window_reads[1]==1);
   At.before=At.after=Bp.before=Bp.after=Cp.before=Cp.after=C.before=C.after=0x12345678;
   atomic_store(&phase, 1); atomic_fetch_add(&clock_ticks, 5); return 0;
 }
@@ -164,15 +184,45 @@ static void *worker(void *v) {
   int rc=merlin_staged_worker(&team,self);
   assert(rc==0 || rc==MERLIN_STAGED_ABORTED); return NULL;
 }
+static void publish(void) {
+  const merlin_staged_report *r=&team.report;
+  printf("{\"abi_version\":2,\"status\":%d,\"quiescent\":%u,\"sequence\":%" PRIu64
+         ",\"global_clock_hart\":%u,\"global_begin\":%" PRIu64 ",\"global_end\":%" PRIu64
+         ",\"global_interval_valid\":%u,\"worker_clock_windows_enabled\":%u,"
+         "\"worker_clock_windows_valid\":%u,\"workers\":[",r->status,r->quiescent,r->sequence,
+         r->global_clock_hart,r->global_begin,r->global_end,r->global_interval_valid,
+         r->worker_clock_windows_enabled,r->worker_clock_windows_valid);
+  for(unsigned i=0;i<2;i++) {
+    const merlin_staged_worker_report *w=&r->workers[i];
+    printf("%s{\"hart\":%u,\"status\":%d,\"wait_status\":%d,\"begin_cycle\":%" PRIu64
+           ",\"end_cycle\":%" PRIu64 ",\"begin_instret\":%" PRIu64 ",\"end_instret\":%" PRIu64
+           ",\"arm_ready_tick\":%" PRIu64 ",\"compute_begin_tick\":%" PRIu64
+           ",\"compute_end_tick\":%" PRIu64 ",\"final_ack_tick\":%" PRIu64
+           ",\"clock_valid_mask\":%u,\"clock_status\":%u,\"clock_reader_status\":%d}",
+           i?",":"",w->hart,w->status,w->wait_status,w->begin_cycle,w->end_cycle,
+           w->begin_instret,w->end_instret,w->arm_ready_tick,w->compute_begin_tick,
+           w->compute_end_tick,w->final_ack_tick,w->clock_valid_mask,w->clock_status,w->clock_reader_status);
+  }
+  puts("]}");
+}
 int main(int argc,char **argv) {
   failure=argc>1?atoi(argv[1]):0; self=2;
+  window_mode=argc>2?atoi(argv[2]):0;
   merlin_staged_config cfg={.controller_hart=2,.worker_count=2,.worker_harts={0,1},
-                           .sequence=17,.max_wait_polls=10000000};
-  merlin_staged_hooks h={hart,ticks,cycles,retired,relax};
+                           .sequence=17,.max_wait_polls=10000000,.enable_worker_windows=window_mode!=0};
+  merlin_staged_hooks h={.current_hart=hart,.global_ticks=ticks,.worker_cycles=cycles,
+                          .worker_instret=retired,.relax=relax,.shared_window_ticks=shared_ticks};
   merlin_staged_callbacks cb={initialize,prepare,compute,finish};
   self=0; assert(merlin_staged_team_init(&team,&cfg,&h,&cb,NULL)==MERLIN_STAGED_ROLE); self=2;
   merlin_staged_config bad=cfg;bad.worker_harts[1]=0;
   assert(merlin_staged_team_init(&team,&bad,&h,&cb,NULL)==MERLIN_STAGED_INVALID);
+  bad=cfg;bad.enable_worker_windows=2;
+  assert(merlin_staged_team_init(&team,&bad,&h,&cb,NULL)==MERLIN_STAGED_INVALID);
+  if(window_mode) {
+    h.shared_window_ticks=NULL;
+    assert(merlin_staged_team_init(&team,&cfg,&h,&cb,NULL)==MERLIN_STAGED_INVALID);
+    h.shared_window_ticks=shared_ticks;
+  }
   assert(merlin_staged_team_init(&team,&cfg,&h,&cb,NULL)==0);
   assert(merlin_staged_worker(&team,0)==MERLIN_STAGED_ROLE);
   atomic_store(&clock_ticks,1000);
@@ -193,12 +243,24 @@ int main(int argc,char **argv) {
   assert(team.report.quiescent==1 && team.report.sequence==17);
   if(failure) {
     assert(rc==(failure==1?77:failure==2?88:99));
-    assert(team.report.global_interval_valid==0 && atomic_load(&global_reads)==1);
+    assert(team.report.global_interval_valid==0 && atomic_load(&global_reads)==(window_mode?0:1));
     assert(atomic_load(&computes)==(failure==1?0:2));
   } else {
-    assert(rc==0 && team.report.global_interval_valid==1);
-    assert(team.report.global_begin==1000 && team.report.global_end==1234);
-    assert(atomic_load(&global_reads)==2 && atomic_load(&cycle_reads)==4 && atomic_load(&retire_reads)==4);
+    assert(rc==0);
+    if(window_mode) {
+      assert(atomic_load(&global_reads)==0 && window_reads[0]==4 && window_reads[1]==4);
+      assert(team.report.global_interval_valid==(window_mode!=6));
+      assert(team.report.worker_clock_windows_valid==(window_mode==1 || window_mode==4 || window_mode==7));
+      if(window_mode==7) assert(team.report.global_begin>=1000 &&
+                               team.report.global_end>team.report.global_begin);
+      else if(window_mode==4) assert(team.report.global_begin==105 && team.report.global_end==105);
+      else assert(team.report.global_begin==(window_mode==6?0:100) && team.report.global_end==180);
+    } else {
+      assert(team.report.global_interval_valid==1);
+      assert(team.report.global_begin==1000 && team.report.global_end==1234);
+      assert(atomic_load(&global_reads)==2);
+    }
+    assert(atomic_load(&cycle_reads)==4 && atomic_load(&retire_reads)==4);
     for(unsigned i=0;i<2;i++) {
       assert(team.report.workers[i].hart==i && team.report.workers[i].status==0);
       assert(team.report.workers[i].end_cycle-team.report.workers[i].begin_cycle==100+i);
@@ -206,12 +268,14 @@ int main(int argc,char **argv) {
     }
   }
   assert(merlin_staged_controller(&team)==MERLIN_STAGED_USED);
+  publish();
   return 0;
 }
 """
 
 
-def test_real_concurrent_runtime_full_outputs_guards_ordering_and_failures(tmp_path):
+@pytest.fixture
+def staged_c_executable(tmp_path):
     source = tmp_path / "concurrent.c"
     source.write_text(_CONCURRENT)
     executable = tmp_path / "concurrent"
@@ -235,8 +299,59 @@ def test_real_concurrent_runtime_full_outputs_guards_ordering_and_failures(tmp_p
         capture_output=True,
         timeout=30,
     )
+    return executable
+
+
+def test_real_concurrent_runtime_full_outputs_guards_ordering_and_failures(staged_c_executable):
     for mode in range(5):
+        executable = staged_c_executable
         subprocess.run([str(executable), str(mode)], check=True, capture_output=True, timeout=20)
+
+
+@pytest.mark.parametrize("window_mode", range(1, 8))
+def test_actual_worker_windows_and_clock_failure_status(staged_c_executable, window_mode):
+    from merlin.runtime.staged_windows import analyze_worker_windows
+
+    result = subprocess.run(
+        [str(staged_c_executable), "0", str(window_mode)], check=True, capture_output=True, text=True, timeout=20
+    )
+    record = json.loads(result.stdout)
+    report, trace = analyze_worker_windows(
+        record,
+        roles(),
+        expected_sequence=17,
+        clock_domain="controlled test shared ticks",
+        counter_semantics="controlled test counters",
+    )
+    assert report["pass"] == (window_mode in (1, 4, 7))
+    assert {event["tid"] for event in trace["traceEvents"]} <= {0, 1}
+    assert report["clock_hz"] is None and report["physical_unit_busy"] is None
+    if window_mode == 1:
+        assert report["inclusive_stage_ticks"] == 80
+        assert report["workers"][0]["pre_compute_wait_ticks"] == 10
+        assert report["workers"][1]["post_compute_wait_ticks"] == 40
+    else:
+        invalid = [worker for worker in report["workers"] if not worker["window_valid"]]
+        for worker in invalid:
+            assert worker["compute_window_ticks"] is None
+
+
+def test_actual_prepare_failure_preserves_incomplete_windows(staged_c_executable):
+    from merlin.runtime.staged_windows import analyze_worker_windows
+
+    result = subprocess.run(
+        [str(staged_c_executable), "1", "1"], check=True, capture_output=True, text=True, timeout=20
+    )
+    report, trace = analyze_worker_windows(
+        json.loads(result.stdout),
+        roles(),
+        expected_sequence=17,
+        clock_domain="controlled test shared ticks",
+        counter_semantics="controlled test counters",
+    )
+    assert report["pass"] is False and trace["traceEvents"] == []
+    assert all(worker["clock_status"] == "incomplete" for worker in report["workers"])
+    assert all(worker["compute_cycles"] is None for worker in report["workers"])
 
 
 def test_actual_generated_zephyr_entry_is_valid_c(tmp_path):

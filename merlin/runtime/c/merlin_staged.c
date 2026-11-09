@@ -30,16 +30,46 @@ static int wait_command(merlin_staged_team *t, unsigned expected) {
   return MERLIN_STAGED_TIMEOUT;
 }
 
+static void sample_window(merlin_staged_team *t, unsigned slot, unsigned bit,
+                          uint64_t *destination) {
+  if (!t->config.enable_worker_windows) return;
+  merlin_staged_worker_report *r = &t->report.workers[slot];
+  uint64_t value = 0;
+  int status = t->hooks.shared_window_ticks(t->context, &value);
+  if (status) {
+    if (!r->clock_reader_status) r->clock_reader_status = status;
+    return;
+  }
+  *destination = value;
+  r->clock_valid_mask |= bit;
+}
+
+static void finish_windows(merlin_staged_team *t, unsigned slot) {
+  if (!t->config.enable_worker_windows) return;
+  merlin_staged_worker_report *r = &t->report.workers[slot];
+  if (r->clock_reader_status) r->clock_status = MERLIN_STAGED_CLOCK_READ_ERROR;
+  else if (r->clock_valid_mask != MERLIN_STAGED_ALL_WINDOWS)
+    r->clock_status = MERLIN_STAGED_CLOCK_INCOMPLETE;
+  else if (r->arm_ready_tick > r->compute_begin_tick ||
+           r->compute_begin_tick > r->compute_end_tick ||
+           r->compute_end_tick > r->final_ack_tick)
+    r->clock_status = MERLIN_STAGED_CLOCK_NONMONOTONIC;
+  else r->clock_status = MERLIN_STAGED_CLOCK_VALID;
+}
+
 int merlin_staged_team_init(merlin_staged_team *t,
                             const merlin_staged_config *config,
                             const merlin_staged_hooks *hooks,
                             const merlin_staged_callbacks *callbacks,
                             void *context) {
   if (!t || !config || !hooks || !callbacks ||
-      !hooks->current_hart || !hooks->global_ticks || !hooks->worker_cycles ||
+      !hooks->current_hart || !hooks->worker_cycles ||
       !hooks->worker_instret || !callbacks->model_init || !callbacks->prepare ||
       !callbacks->compute || !callbacks->finish || !config->max_wait_polls || !config->sequence ||
-      !config->worker_count || config->worker_count > MERLIN_STAGED_MAX_WORKERS)
+      !config->worker_count || config->worker_count > MERLIN_STAGED_MAX_WORKERS ||
+      config->enable_worker_windows > 1 ||
+      (!config->enable_worker_windows && !hooks->global_ticks) ||
+      (config->enable_worker_windows && !hooks->shared_window_ticks))
     return MERLIN_STAGED_INVALID;
   if (hooks->current_hart(context) != config->controller_hart)
     return MERLIN_STAGED_ROLE;
@@ -62,8 +92,12 @@ int merlin_staged_team_init(merlin_staged_team *t,
   t->report = (merlin_staged_report){0};
   t->report.sequence = config->sequence;
   t->report.global_clock_hart = config->worker_harts[0];
-  for (unsigned i = 0; i < config->worker_count; ++i)
+  t->report.worker_clock_windows_enabled = config->enable_worker_windows;
+  for (unsigned i = 0; i < config->worker_count; ++i) {
     t->report.workers[i].hart = config->worker_harts[i];
+    t->report.workers[i].clock_status = config->enable_worker_windows ?
+      MERLIN_STAGED_CLOCK_INCOMPLETE : MERLIN_STAGED_CLOCK_DISABLED;
+  }
   return 0;
 }
 
@@ -105,6 +139,12 @@ int merlin_staged_controller(merlin_staged_team *t) {
         status = t->report.workers[i].wait_status;
         break;
       }
+  if (!status && t->config.enable_worker_windows) {
+    t->report.worker_clock_windows_valid = 1;
+    for (unsigned i = 0; i < t->config.worker_count; ++i)
+      if (t->report.workers[i].clock_status != MERLIN_STAGED_CLOCK_VALID)
+        t->report.worker_clock_windows_valid = 0;
+  }
   t->report.status = status;
   return !t->report.quiescent ? MERLIN_STAGED_UNQUIESCED : status;
 }
@@ -118,25 +158,44 @@ int merlin_staged_worker(merlin_staged_team *t, unsigned slot) {
     return MERLIN_STAGED_USED;
   int status = wait_command(t, ARM);
   if (status) goto exit;
-  if (!slot) t->report.global_begin = t->hooks.global_ticks(t->context);
+  merlin_staged_worker_report *r = &t->report.workers[slot];
+  sample_window(t, slot, MERLIN_STAGED_ARM_READY, &r->arm_ready_tick);
+  if (!slot) {
+    if (t->config.enable_worker_windows) {
+      if (r->clock_valid_mask & MERLIN_STAGED_ARM_READY)
+        t->report.global_begin = r->arm_ready_tick;
+    } else t->report.global_begin = t->hooks.global_ticks(t->context);
+  }
   atomic_fetch_or_explicit(&t->armed, bit, memory_order_release);
   status = wait_command(t, COMPUTE);
   if (status) goto exit;
-  merlin_staged_worker_report *r = &t->report.workers[slot];
+  sample_window(t, slot, MERLIN_STAGED_COMPUTE_BEGIN, &r->compute_begin_tick);
   r->begin_cycle = t->hooks.worker_cycles(t->context);
   r->begin_instret = t->hooks.worker_instret(t->context);
   r->status = t->callbacks.compute(t->context, slot);
   r->end_instret = t->hooks.worker_instret(t->context);
   r->end_cycle = t->hooks.worker_cycles(t->context);
+  sample_window(t, slot, MERLIN_STAGED_COMPUTE_END, &r->compute_end_tick);
   atomic_fetch_or_explicit(&t->done, bit, memory_order_release);
   status = wait_command(t, FINAL_ACK);
-  if (!status && !slot) {
-    t->report.global_end = t->hooks.global_ticks(t->context);
-    t->report.global_interval_valid = 1;
+  if (!status) {
+    sample_window(t, slot, MERLIN_STAGED_FINAL_ACK, &r->final_ack_tick);
+    finish_windows(t, slot);
+    if (!slot) {
+      if (t->config.enable_worker_windows) {
+        if (r->clock_valid_mask & MERLIN_STAGED_FINAL_ACK)
+          t->report.global_end = r->final_ack_tick;
+        t->report.global_interval_valid = r->clock_status == MERLIN_STAGED_CLOCK_VALID;
+      } else {
+        t->report.global_end = t->hooks.global_ticks(t->context);
+        t->report.global_interval_valid = 1;
+      }
+    }
   }
 exit:
   /* No callback is cancelled. Exiting after ABORT is a storage-lifetime ACK. */
   t->report.workers[slot].wait_status = status;
+  finish_windows(t, slot);
   atomic_fetch_or_explicit(&t->exited, bit, memory_order_release);
   return status;
 }

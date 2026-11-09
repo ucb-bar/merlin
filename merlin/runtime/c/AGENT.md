@@ -83,6 +83,10 @@ The **Merlin C runtime**: a generic, data-driven driver that executes a compiled
   target ISA and counters; only compute workers read counters. No OpenMP,
   allocator, implicit hart IDs, cancellation or asynchronous-completion claim.
   Refuse team reuse and retain storage whenever quiescence was not established.
+- ABI 2 adds optional checked per-worker shared-clock samples. Default-off
+  behavior retains the leader-only legacy clock hook. Window read errors and
+  regressions invalidate timing without cancelling numerical callbacks. Rebuild
+  all consumers against matching header/source; never swap a live image's ABI.
 
 ## Testing expectations
 

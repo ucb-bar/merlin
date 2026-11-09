@@ -13,6 +13,21 @@
 #include <stdint.h>
 
 #define MERLIN_STAGED_MAX_WORKERS 8u
+#define MERLIN_STAGED_ABI_VERSION 2u
+enum {
+  MERLIN_STAGED_CLOCK_DISABLED,
+  MERLIN_STAGED_CLOCK_VALID,
+  MERLIN_STAGED_CLOCK_READ_ERROR,
+  MERLIN_STAGED_CLOCK_NONMONOTONIC,
+  MERLIN_STAGED_CLOCK_INCOMPLETE
+};
+enum {
+  MERLIN_STAGED_ARM_READY = 1u,
+  MERLIN_STAGED_COMPUTE_BEGIN = 2u,
+  MERLIN_STAGED_COMPUTE_END = 4u,
+  MERLIN_STAGED_FINAL_ACK = 8u,
+  MERLIN_STAGED_ALL_WINDOWS = 15u
+};
 enum {
   MERLIN_STAGED_OK = 0,
   MERLIN_STAGED_INVALID = -1,
@@ -29,6 +44,7 @@ typedef struct {
   unsigned worker_harts[MERLIN_STAGED_MAX_WORKERS];
   uint64_t sequence;
   uint64_t max_wait_polls; /* finite liveness bound, not a time measurement */
+  unsigned enable_worker_windows; /* default zero preserves legacy readers */
 } merlin_staged_config;
 
 typedef struct {
@@ -37,6 +53,10 @@ typedef struct {
   uint64_t (*worker_cycles)(void *); /* called only by compute workers */
   uint64_t (*worker_instret)(void *);
   void (*relax)(void *); /* optional, must preserve worker context */
+  /* Opt-in checked shared-clock reader, called only by the owning worker.
+   * Return zero on success; a nonzero error preserves the raw reader status.
+   * All workers must use the same declared monotonic clock domain. */
+  int (*shared_window_ticks)(void *, uint64_t *);
 } merlin_staged_hooks;
 
 typedef struct {
@@ -51,12 +71,16 @@ typedef struct {
   int status;
   int wait_status;
   uint64_t begin_cycle, end_cycle, begin_instret, end_instret;
+  uint64_t arm_ready_tick, compute_begin_tick, compute_end_tick, final_ack_tick;
+  unsigned clock_valid_mask, clock_status;
+  int clock_reader_status;
 } merlin_staged_worker_report;
 
 typedef struct {
   int status;
   unsigned quiescent;
   unsigned global_interval_valid;
+  unsigned worker_clock_windows_enabled, worker_clock_windows_valid;
   unsigned global_clock_hart;
   uint64_t sequence;
   uint64_t global_begin, global_end;

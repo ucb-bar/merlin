@@ -85,3 +85,7 @@ the per-backend adapters under `backends/`.
   Source segmentation, target completion/coherence/context safety and buffer
   lifetime remain separate caller obligations; never relabel an integrated
   monolithic build as a staged full-model role split.
+- `staged_windows` validates explicitly selected ABI-2 worker clock windows.
+  Shared raw ticks retain one declared epoch; local counters stay separate.
+  Malformed/status-contradictory records refuse; clock errors/regressions null
+  durations. No Hz, controller tracks, physical busy or causal stalls are inferred.
