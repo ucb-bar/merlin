@@ -161,3 +161,44 @@ The consolidated `test_cache_composition.py` covers phase roles, parent-cache
 publications, driver source and memory selection, oracle lineage, and mutation
 refusal using synthetic artifacts and mocked dispatch. Numerical exactness,
 hardware behavior, quality, and timing require their own qualification evidence.
+
+## Generated cache through standard applications
+
+For a live four-input prefill boundary, select
+`ATLAS_CAPTURE_BOUNDARY=layer0-prefill-cache` before the capture worker. This
+returns hidden state, post-RoPE/pre-GQA K, and V as ordinary application outputs.
+Use the same authenticated source tensors, original weights, precision policy,
+`stage-capture`, and `native-compile --application` commands above. The existing
+`layer0` selection retains its original hidden-only prefill ABI and six-input
+decode ABI.
+
+Execute the generated prefill application first. Bind its generated cache outputs
+to decode with an explicit JSON descriptor:
+
+```json
+{
+  "schema": "merlin.application_output_bindings.v1",
+  "producer_application": "prefill64",
+  "producer_execution": "prefill-execution",
+  "bindings": [
+    {"input_index": 3, "output_index": 1},
+    {"input_index": 5, "output_index": 2}
+  ]
+}
+```
+
+Paths are relative to the descriptor. Pass it to `execute_graph.py
+--input-bindings bindings.json` when executing the separately compiled decode65
+application. This descriptor selects generated cache inputs directly;
+`cache_composition.py` continues to use override archives. The example helper
+checks producer identity, completed execution, output hashes, and exact
+input/output shape and dtype before exposing generated arrays.
+Decode receipts record the producer and each consumed output. Independent
+references remain comparison-only; they do not supply these cache words.
+
+This uses the existing synchronous, caller-owned application buffers. Keep
+producer outputs alive through consumer completion and allocate separate decode
+outputs; input/output aliasing is not promised. The example helper validates
+each edge's shape and dtype independently. There is no new target ABI or
+persistent device-state requirement. Exact comparisons of all three outputs and
+backend qualification remain separate gates.
