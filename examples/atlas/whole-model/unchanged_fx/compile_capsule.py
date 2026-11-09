@@ -56,11 +56,8 @@ def compile_capsule(args):
     torch.set_num_interop_threads(1)
     from m2m import convert
     from atlas_mlir_native.capture import load_export, prepare_model, normalize_capture
-    from atlas_mlir_native.already_quantized import POLICY
     from atlas_mlir_native.application import AtlasApplicationAdapter
-    from atlas_mlir_native.application_precision import CONTRACTION_POLICY
     from atlas_mlir_native.binding import AtlasNativeBinding, TARGET_IDENTITY
-    from atlas_mlir_native.row_softmax import SOFTMAX_POLICY
     from merlin.compile.semantic_application import compile_semantic_application
     from merlin.semantic_compiler.linalg_bridge import translate_linalg_text
     from merlin.semantic_compiler.search import SearchLimits
@@ -155,37 +152,11 @@ def compile_capsule(args):
         elif spec.kind.name == "CONSTANT_TENSOR":
             constants[index] = raw_bytes(program.constants[spec.target])
     source_hash = sha256(result.mlir_text.encode()).hexdigest()
-    policy = dict(schema="atlas.diagnostic_application_precision.v1", source_sha256=source_hash,
-                  target_identity=TARGET_IDENTITY, contraction=CONTRACTION_POLICY,
-                  row_softmax=SOFTMAX_POLICY, host_support=["transpose", "reshape", "copy"],
-                  already_quantized=POLICY)
-    if provenance["kind"] == "attention" or provenance["kind"].startswith("layer") or provenance["kind"] in {"norm", "head"}:
-        from atlas_mlir_native.application_precision import SCALED_CONTRACTION_POLICY
-        from atlas_mlir_native.gelu import GELU_POLICY
-        from atlas_mlir_native.pointwise import POINTWISE_POLICY, BF16_POINTWISE_POLICY
-        from atlas_mlir_native.pointwise_math import MATH_POLICY
-        from atlas_mlir_native.row_softmax import MASKED_SOFTMAX_POLICY, GUARDED_SOFTMAX_POLICY
-        from atlas_mlir_native.sigmoid import SIGMOID_POLICY
+    from precision_options import build_precision_policy
 
-        policy.update(schema="atlas.diagnostic_application_precision.v19",
-                      contraction=dict(policy=SCALED_CONTRACTION_POLICY, operand_scale_exponents=[0, 0]),
-                      host_support=["transpose", "reshape", "copy", "gather", "concat"],
-                      epilogues=["relu"], pointwise=POINTWISE_POLICY, reduction=args.reduction_policy,
-                      pointwise_math=MATH_POLICY, sigmoid=SIGMOID_POLICY, masked_softmax=MASKED_SOFTMAX_POLICY,
-                      host_predicates=["mask", "select"], host_integer_ops=["i64_add"],
-                      guarded_masked_softmax=GUARDED_SOFTMAX_POLICY, gelu=GELU_POLICY,
-                      host_float_casts=["f32_to_bf16", "bf16_to_f32"],
-                      host_float_arithmetic=["f32_neg"],
-                      already_quantized_mask=args.softmax_mask_policy)
-        if provenance["kind"].startswith("layer") or provenance["kind"] in {"norm", "head"}:
-            from atlas_mlir_native.source_exp import POLICY as SOURCE_EXP_POLICY
-
-            policy["bf16_pointwise"] = BF16_POINTWISE_POLICY
-            policy["host_float_arithmetic"] += ["bf16_neg", "bf16_add", "bf16_sub"]
-            policy["source_exp"] = SOURCE_EXP_POLICY
-    if selected_host_bf16_policy:
-        from merlin.compile.c_bf16_linear import POLICY as HOST_BF16_LINEAR_POLICY
-        policy["host_bf16_linear"] = HOST_BF16_LINEAR_POLICY
+    policy = build_precision_policy(provenance["kind"], source_hash,
+                                    reduction_policy=args.reduction_policy,
+                                    softmax_mask_policy=args.softmax_mask_policy)
     (output / "precision.json").write_text(json.dumps(policy, indent=2) + "\n")
     adapter = AtlasApplicationAdapter(policy, original_source_sha256=source_hash)
     if getattr(args, "merge_adjacent_device_regions", False):
@@ -227,7 +198,46 @@ def compile_capsule(args):
                                            destination=output / "application", limits=limits,
                                            name="capsule", capacity=args.application_memory_bytes, parameters=parameters,
                                            allow_host_only=selected_host_bf16_policy)
-    package = output / "application/c-package"
+    interface = build_host_library(output / "application", manifest)
+    data = {}
+    for index, tensor in enumerate(input_tensors):
+        if tensor.dtype == torch.bfloat16:
+            value = tensor.contiguous().view(torch.uint16).numpy()
+        else:
+            value = tensor.contiguous().numpy()
+        data[f"input_{index}"] = value
+    for key, tensor in tensors.items():
+        data[key] = (tensor.contiguous().view(torch.uint16).numpy() if tensor.dtype == torch.bfloat16
+                     else tensor.contiguous().numpy())
+    np.savez(output / "tensors.npz", **data)
+    record = {"status": "COMPILED", "kind": provenance["kind"], "capsule": str(capsule),
+              "source_model_sha256": provenance["model_sha256"],
+              "logical_source_tensors": provenance["tensors"],
+              "source_request_digest": source.digest(), "source_operations": list(source_operations),
+              "precision_policy_sha256": sha256((output / "precision.json").read_bytes()).hexdigest(),
+              "constant_bytes_identical": True, "interface": interface,
+              "io_memory_bytes": args.io_memory_bytes, "application_memory_bytes": args.application_memory_bytes,
+              "allocation_timeout_ms": args.allocation_timeout_ms,
+              "reduction_policy": policy.get("reduction"),
+              "search_limits": asdict(limits),
+              "merge_adjacent_device_regions": bool(getattr(args, "merge_adjacent_device_regions", False)),
+              "segments": manifest["segments"], "regions": manifest["regions"],
+              "external_parameters": parameter_metadata,
+              "source_input_order": [node.id for node in source.nodes if node.effect == "input"]}
+    (output / "compiled.json").write_text(json.dumps(record, indent=2) + "\n")
+    print(json.dumps({"stage": "COMPILED", "segments": len(manifest["segments"]),
+                      "regions": len(manifest["regions"])}), flush=True)
+
+
+def build_host_library(application, manifest, *, package=None):
+    """Build the example runtime shim for a standard capsule application.
+
+    This packages emitted C only; it never captures or compiles source IR.
+    The application must use the explicit ``capsule`` C namespace.
+    """
+    if manifest["application_name"] != "capsule":
+        raise ValueError("example runtime packaging requires application-name capsule")
+    package = application / "c-package" if package is None else package
     interface = manifest["application_interface"]
     header = interface["header"]
     shim = f'''#include "{header}"
@@ -260,34 +270,7 @@ int run(const void *const *inputs,void *const *outputs) {{
     (package / "shim.c").write_text(shim)
     subprocess.run(["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-frounding-math", "-ffp-contract=off", "-shared", "-fPIC",
                     interface["source"], "shim.c", "-o", "capsule.so", "-lm"], cwd=package, check=True)
-    data = {}
-    for index, tensor in enumerate(input_tensors):
-        if tensor.dtype == torch.bfloat16:
-            value = tensor.contiguous().view(torch.uint16).numpy()
-        else:
-            value = tensor.contiguous().numpy()
-        data[f"input_{index}"] = value
-    for key, tensor in tensors.items():
-        data[key] = (tensor.contiguous().view(torch.uint16).numpy() if tensor.dtype == torch.bfloat16
-                     else tensor.contiguous().numpy())
-    np.savez(output / "tensors.npz", **data)
-    record = {"status": "COMPILED", "kind": provenance["kind"], "capsule": str(capsule),
-              "source_model_sha256": provenance["model_sha256"],
-              "logical_source_tensors": provenance["tensors"],
-              "source_request_digest": source.digest(), "source_operations": list(source_operations),
-              "precision_policy_sha256": sha256((output / "precision.json").read_bytes()).hexdigest(),
-              "constant_bytes_identical": True, "interface": interface,
-              "io_memory_bytes": args.io_memory_bytes, "application_memory_bytes": args.application_memory_bytes,
-              "allocation_timeout_ms": args.allocation_timeout_ms,
-              "reduction_policy": policy.get("reduction"),
-              "search_limits": asdict(limits),
-              "merge_adjacent_device_regions": bool(getattr(args, "merge_adjacent_device_regions", False)),
-              "segments": manifest["segments"], "regions": manifest["regions"],
-              "external_parameters": parameter_metadata,
-              "source_input_order": [node.id for node in source.nodes if node.effect == "input"]}
-    (output / "compiled.json").write_text(json.dumps(record, indent=2) + "\n")
-    print(json.dumps({"stage": "COMPILED", "segments": len(manifest["segments"]),
-                      "regions": len(manifest["regions"])}), flush=True)
+    return interface
 
 
 if __name__ == "__main__":

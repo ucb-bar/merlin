@@ -106,7 +106,13 @@ def main():
         parser.error("compact traces currently require the functional backend")
     runtime = runtime_type(args.atlas_root.resolve(), args.model_root.resolve(), images, execution_root / "execution",
                            image_plans=plans, memory_bytes=max(262144, record.get("io_memory_bytes") or 0), **options)
-    library = ct.CDLL(str(root / "application/c-package/capsule.so"))
+    library_path = Path(record.get("host_library", "application/c-package/capsule.so"))
+    if library_path.is_absolute() or ".." in library_path.parts:
+        raise ValueError("host library must be inside the compiled publication")
+    library_path = root / library_path
+    if record.get("host_library_sha256") and sha256(library_path.read_bytes()).hexdigest() != record["host_library_sha256"]:
+        raise ValueError("generated host library changed")
+    library = ct.CDLL(str(library_path))
     library.run.argtypes = [ct.POINTER(ct.c_void_p), ct.POINTER(ct.c_void_p)]
     if record["interface"].get("platform_binding"):
         library.bind.argtypes = [type(callback) for callback in runtime.callbacks]
