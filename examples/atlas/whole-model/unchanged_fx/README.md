@@ -157,13 +157,16 @@ Atlas calls`: the external adapter's no-native-call exception currently requires
 a saved export. Keep that guard. Passing saved-head application execution does
 not establish live head-only capture or complete live whole-model execution.
 
-Rotary preparation is being qualified separately as host computation with a
-pinned correctly rounded sin/cos archive through Merlin's unary-math route. Chipyard
-newlib failed exhaustive BF16 comparison at one angle. The selected library,
-archive, and numerical/effect contract need their own qualification before the
-whole-model standard front door can be checked. Complete live capture of the
-embedding, all 22 layers, final norm, and head, generated cache continuity, and
-full-protocol quality remain separate end-to-end gates.
+Rotary preparation is admitted as host source arithmetic through Merlin's
+selected unary-math route, linked to the pinned CORE-MATH archive in
+[the host-rotary example](../../rotary-host/README.md). Its BF16 outputs match
+Torch over positions 0..2047; binary32 framework equivalence and positions beyond
+2047 are unqualified. Chipyard newlib was rejected because one sine result
+changes a BF16 word at position 1897. The head and rotary are admitted, while
+complete live embedding/all 22 layers/norm/head through the standard front door
+remains the next end-to-end step. A separate integration effort is addressing
+the next non-rotary RMSNorm broadcast multiplication refusal. Generated cache
+continuity and full-protocol quality remain separate gates.
 
 The saved-boundary tools below are regeneration and regression aids. Their
 historical qualification does not qualify the live application path.
