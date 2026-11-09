@@ -38,7 +38,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
     raw, ttir, spec_raw, provenance_raw = (checked(name) for name in
                                          ("model.mlir", "source.ttir", "spec.json", "provenance.json"))
     spec, provenance = json.loads(spec_raw), json.loads(provenance_raw)
-    if spec.get("schema") not in ("t2m.shared-tensor-abi.v1", "t2m.shared-tensor-abi.v2", "t2m.shared-tensor-abi.v3"):
+    if spec.get("schema") not in ("t2m.shared-tensor-abi.v1", "t2m.shared-tensor-abi.v2", "t2m.shared-tensor-abi.v3", "t2m.shared-tensor-abi.v4"):
         raise ValueError("unsupported standalone tensor ABI")
     if (provenance.get("spec") != spec or provenance.get("mlir_sha256") != digest(raw)
             or provenance.get("source_sha256") != digest(ttir)):
@@ -52,10 +52,21 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
         raise ValueError("standalone profile has an incomplete memory ABI")
     inputs = [b for b in buffers if b["effect"] != "write"]
     scalars = spec.get("runtime_scalars", [])
-    if bool(scalars) != (spec["schema"] == "t2m.shared-tensor-abi.v3"):
+    if bool(scalars) != (spec["schema"] in ("t2m.shared-tensor-abi.v3", "t2m.shared-tensor-abi.v4")):
         raise ValueError("runtime scalar inputs require the explicit ABI v3 profile")
-    if any(set(s) != {"name", "dtype", "source_arg"} or not isinstance(s["name"], str) or not s["name"].isidentifier() for s in scalars):
+    if any(set(s) != {"name", "dtype", "source_arg"} | ({"bounds"} if "bounds" in s else set())
+           or not isinstance(s["name"], str) or not s["name"].isidentifier() for s in scalars):
         raise ValueError("runtime scalar declarations carry names/types/positions, never invocation values")
+    if (spec["schema"] == "t2m.shared-tensor-abi.v4") != any("bounds" in s for s in scalars):
+        raise ValueError("guarded runtime scalar ranges require ABI v4")
+    for scalar in scalars:
+        if "bounds" not in scalar:
+            continue
+        bounds, dtype = scalar["bounds"], scalar["dtype"]
+        if (dtype not in ("i8", "i16", "i32", "i64") or not isinstance(bounds, list) or len(bounds) != 2
+                or any(type(n) is not int for n in bounds)
+                or not -(1 << (int(dtype[1:]) - 1)) <= bounds[0] <= bounds[1] < 1 << (int(dtype[1:]) - 1)):
+            raise ValueError("runtime scalar range is outside its signed integer type")
     positions = [s.get("source_arg") for s in scalars]
     names = [b.get("name") for b in buffers] + [s.get("name") for s in scalars]
     if (len(set(names)) != len(names)
@@ -89,7 +100,8 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
             if buffer.get("abi_kind") == "scalar":
                 if isinstance(type_, TensorType) or str(type_) != buffer["dtype"]:
                     raise ValueError("kernel MLIR scalar type differs from declared ABI")
-                values.append({"shape": [], "dtype": str(type_), "kind": "scalar"})
+                values.append({"shape": [], "dtype": str(type_), "kind": "scalar",
+                               **({"bounds": buffer["bounds"]} if "bounds" in buffer else {})})
                 continue
             if not isinstance(type_, TensorType) or any(n <= 0 for n in type_.get_shape()):
                 raise ValueError("standalone profile requires positive static tensor shapes")

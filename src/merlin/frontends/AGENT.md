@@ -19,6 +19,8 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   the entry-symbol adaptation to `forward` without inventing an FX capture.
   Its ABI v3 profile retains explicitly positioned by-value runtime scalars,
   labels scalar signature entries and excludes invocation values and tensor-only attributes.
+  ABI v4 additionally retains representable signed integer range declarations;
+  compiler-only staging grants no memory or guard-equivalence proof from those bounds.
 - `linalg_math_patterns.py` — source-only, closed unary f32 sine/cosine/exponential/roundeven
   scalar-region checks; each operation requires its own explicit declaration. No host admission,
   selected math implementation or numerical-equivalence claim follows. Scalar-literal power refuses.

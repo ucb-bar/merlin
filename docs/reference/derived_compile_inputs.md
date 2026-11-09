@@ -67,3 +67,10 @@ plain scalar. These inputs receive no tensor bufferization attributes.
 Invocation values are forbidden in scalar declarations and remain outside
 compiler staging. Actual host execution uses the existing `ScalarArg` ABI;
 neither staging nor this profile supplies dynamic shape/stride/grid admission.
+
+ABI v4 additionally retains declared inclusive integer scalar bounds in each
+signature entry. The interval must fit the signed scalar type; invocation values
+remain excluded. This permits a consumer to validate values separately from the
+frontend's executable entry assertions. Bound declarations do not grant a memory
+ownership/initialization proof or certify the guard/payload semantics by staging
+alone. Actual tensor dimensions remain static in this profile.

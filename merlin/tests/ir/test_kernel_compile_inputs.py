@@ -168,3 +168,26 @@ def test_rehashed_invalid_runtime_scalar_profile_refuses(tmp_path, change):
     with pytest.raises(ValueError):
         stage_compile_inputs(source, target)
     assert not target.exists()
+
+
+@pytest.mark.parametrize("bounds", [[0, 13], [-1, 13], [0, 2**31], [7, 2], [False, 13]])
+def test_guarded_integer_scalar_profile_has_explicit_ranges(tmp_path, bounds):
+    source, target = tmp_path / "source", tmp_path / "compiler"
+    receipt = scalar_fixture(source)
+    model = (source / "model.mlir").read_bytes().replace(b"%alpha: f32", b"%alpha: i32")
+    spec = json.loads((source / "spec.json").read_text())
+    spec.update(schema="t2m.shared-tensor-abi.v4", runtime_scalars=[{"name": "alpha", "dtype": "i32", "source_arg": 1, "bounds": bounds}])
+    provenance = json.loads((source / "provenance.json").read_text())
+    provenance.update(spec=spec, mlir_sha256=record(model)["sha256"])
+    for name, raw in {"model.mlir": model, "spec.json": encoded(spec), "provenance.json": encoded(provenance)}.items():
+        (source / name).write_bytes(raw)
+        receipt["artifacts"][name] = record(raw)
+    (source / "capture_receipt.json").write_bytes(encoded(receipt))
+    if bounds[0] is False or bounds[0] > bounds[1] or bounds[1] >= 2**31:
+        with pytest.raises(ValueError, match="range is outside"):
+            stage_compile_inputs(source, target)
+        assert not target.exists()
+    else:
+        stage_compile_inputs(source, target)
+        signature = json.loads((target / "signature.json").read_text())
+        assert signature["inputs"][-1]["bounds"] == bounds
