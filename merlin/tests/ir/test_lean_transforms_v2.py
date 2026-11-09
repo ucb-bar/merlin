@@ -87,3 +87,13 @@ def test_real_v2_proofs_bind_actual_pipeline_and_large_shapes(source, options, d
     result = apply_common_pipeline(parse_ir(source), parameters, verifier=verify)
     assert receipts and not result.plan_only
     assert len(result.changes[0].after_ir) < 15000
+
+
+def test_unmodeled_transform_domain_is_explicitly_unsupported():
+    options = PipelineOptions(
+        64, normalize_shapes=False, simplify_integers=False, reuse_buffers=False, eliminate_redundancy=True
+    )
+    change = apply_common_pipeline(parse_ir(SCALAR), options, plan_only=True).changes[0]
+    result = verify_pipeline_change(replace(change, kind="unmodeled_transform"), toolchain=None)
+    assert result.status == "unsupported" and "no formal domain" in result.reason
+    assert not result.verified

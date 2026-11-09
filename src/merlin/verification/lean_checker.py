@@ -368,11 +368,11 @@ def verify_pipeline_change(
     from merlin.transforms.validation import validate_change
 
     model = pipeline_semantic_identity(change.kind)
-    domain = _TRANSFORM_DOMAINS.get(change.kind, "unsupported")
+    domain = _TRANSFORM_DOMAINS.get(change.kind)
     receipt = LeanTransformReceipt(
         SCHEMA,
         "lean_kernel",
-        domain,
+        domain if domain is not None else "unsupported",
         digest(change.before_ir),
         digest(change.after_ir),
         model,
@@ -384,6 +384,8 @@ def verify_pipeline_change(
             "target instruction/RTL, allocation failure and final ABI conformance are separate",
         ),
     )
+    if domain is None:
+        return replace(receipt, reason=f"transform kind {change.kind!r} has no formal domain")
     try:
         validate_change(change)
         statements, proofs = [], []

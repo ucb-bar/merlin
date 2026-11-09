@@ -182,3 +182,10 @@ def test_emitted_call_parser_survives_the_pointer_casts():
     assert gate.emitted_call_args("extern void t_kernel();\n", "t_kernel") is None
     assert gate.emitted_call_args("  t_kernel((void*)T_W,\n", "t_kernel") is None
     assert gate.emitted_call_args("  t_kernel();\n", "t_kernel") == []
+
+
+def test_logical_boundary_reader_refuses_tensor_without_declared_role():
+    gate = _gate()
+    block = {"argument_order": {"default": ["logical_inputs_in_declaration_order"]}, "published_by": []}
+    with pytest.raises(gate.Unresolvable, match="no declared role"):
+        gate.logical_expected({"tensors": {"input": {"dtype": "i8"}}}, block)

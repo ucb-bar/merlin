@@ -165,7 +165,7 @@ def audit_group(
     if not isinstance(address_arithmetic, int) or isinstance(address_arithmetic, bool) or address_arithmetic < 0:
         row.update(verdict=UNKNOWN, why="pointer-setup arithmetic has no derived execution count")
         return row
-    address_loop_arithmetic = activity.get("dynamic_address_loop_control_arithmetic", 0)
+    address_loop_arithmetic = activity.get("dynamic_address_loop_control_arithmetic")
     if type(address_loop_arithmetic) is not int or address_loop_arithmetic < 0:
         row.update(verdict=UNKNOWN, why="address-loop control has no derived execution count")
         return row
@@ -188,8 +188,12 @@ def audit_group(
             # All exclusions are actual closed address/copy execution counts;
             # ordinary budgets still judge every operation outside that proof.
             arithmetic -= preparation["arithmetic"] - address_arithmetic
-            arithmetic -= preparation.get("conversions", 0)
-            value_arithmetic -= preparation.get("conversions", 0)
+            conversions = preparation.get("conversions")
+            if type(conversions) is not int or conversions < 0:
+                row.update(verdict=UNKNOWN, why="input preparation lacks a derived conversion count")
+                return row
+            arithmetic -= conversions
+            value_arithmetic -= conversions
             payload -= preparation["payload_bytes"]
             if arithmetic < 0 or value_arithmetic < 0 or payload < 0:
                 row.update(verdict=UNKNOWN, why="input preparation counts exceed original raw accounting")

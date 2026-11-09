@@ -20,15 +20,16 @@ _PACKING = {"llvm.and", "llvm.or", "llvm.xor", "llvm.shl", "llvm.lshr", "llvm.as
 
 def _packed_mask(op, masks):
     """Follow only bits originating at an immutable load, never scalar values."""
-    mask = masks.get(op.operands[0], 0)
     width = op.results[0].type.width.data
     limit = (1 << width) - 1
     source_width = op.operands[0].type.width.data
     if op.name in _CASTS:
+        mask = masks[op.operands[0]]
         if op.name == "llvm.sext" and mask & (1 << (source_width - 1)):
             mask |= limit ^ ((1 << source_width) - 1)
         return mask & limit
     if op.name in {"llvm.shl", "llvm.lshr", "llvm.ashr"}:
+        mask = masks[op.operands[0]]
         shift = constant_integer(op.operands[1])
         if type(shift) is not int or not 0 <= shift < source_width:
             raise ValueError("command parameter shift has unproved register semantics")
@@ -39,7 +40,11 @@ def _packed_mask(op, masks):
         return (mask >> shift) & limit
     constant = constant_integer(op.operands[1])
     if constant is None:
-        constant, mask = constant_integer(op.operands[0]), masks.get(op.operands[1], 0)
+        constant, mask = constant_integer(op.operands[0]), masks[op.operands[1]]
+    else:
+        mask = masks[op.operands[0]]
+    if constant is None:
+        raise ValueError("command parameter packing has no constant operand")
     if op.name == "llvm.and":
         mask &= constant
     elif op.name == "llvm.or":
@@ -216,6 +221,8 @@ def _prove(function, activity, *, target):
     if activity.get("status") != "derived" or not blocks:
         raise ValueError("command parameters require independently finite CFG counts")
     counts = {blocks[row["block"]]: row["execution_count"] for row in activity["blocks"]}
+    if set(counts) != set(blocks):
+        raise ValueError("command parameters lack a complete independent CFG count roster")
     if any(type(n) is not int or n < 0 for n in counts.values()):
         raise ValueError("command parameters have unknown dynamic counts")
     # Bound diagnostic effort independently of model size; unsupported large CFGs
@@ -243,7 +250,7 @@ def _prove(function, activity, *, target):
     classes, fields_used = set(), set()
     while block is not None:
         visited[block] += 1
-        if visited[block] > counts.get(block, 0):
+        if visited[block] > counts[block]:
             raise ValueError("command parameter traversal differs from independent CFG counts")
         if block is not blocks[0] and len(incoming) != len(block.args):
             raise ValueError("command parameter block argument mismatch")
@@ -283,7 +290,16 @@ def _prove(function, activity, *, target):
                 )
                 if label not in isa["CONFIG_SUBTYPE"].values() or not fields:
                     raise ValueError("configuration selector or operand projection is unresolved")
-                fields_used.update(_configuration_fields(isa, label, [masks.get(v, 0) for v in op.operands]))
+                operand_masks = []
+                for value in op.operands:
+                    if value in masks:
+                        operand_masks.append(masks[value])
+                    elif constant_integer(value) is not None:
+                        # Literal selector/packing bits contain no loaded provenance.
+                        operand_masks.append(0)
+                    else:
+                        raise ValueError("configuration operand lacks loaded-bit provenance")
+                fields_used.update(_configuration_fields(isa, label, operand_masks))
                 classes.add(label)
             elif op.name == "llvm.br":
                 successor, incoming = op.successors[0], tuple(args)

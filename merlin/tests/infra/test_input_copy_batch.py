@@ -66,19 +66,24 @@ def _proof(monkeypatch, text, size, *, batch=True, weight_bytes=1):
         word_bits=64,
         isa_constants=lambda _: {"CUSTOM_OPCODE": 0x7B},
         decode_instruction=lambda funct, rs1, rs2, _: (
-            ("CONFIG_LD", {"stride": size, "state_id": 0}) if funct == 0
-            else ("CONFIG_ST", {"out_stride_bytes": size * 4}) if funct == 4
-            else ("MVOUT", {"dram": rs1, "rows": 1, "cols": size, "readout": "i32"}) if funct == 3
+            ("CONFIG_LD", {"stride": size, "state_id": 0})
+            if funct == 0
+            else ("CONFIG_ST", {"out_stride_bytes": size * 4})
+            if funct == 4
+            else ("MVOUT", {"dram": rs1, "rows": 1, "cols": size, "readout": "i32"})
+            if funct == 3
             else ("MVIN", {"dram": rs1, "rows": 1, "cols": size})
         ),
     )
     monkeypatch.setattr(decode, "_semantics", lambda _: SimpleNamespace(operand_observer=observer))
     function = _functions(_parse_module(text))["kernel"]
-    context = {"call_buffers": [
-        {"role": "input_0", "shape": [size], "dtype": "i8"},
-        {"role": "weight_0", "shape": [weight_bytes, 1], "dtype": "i8"},
-        {"role": "out_0", "shape": [size, 1], "dtype": "i32"},
-    ]}
+    context = {
+        "call_buffers": [
+            {"role": "input_0", "shape": [size], "dtype": "i8"},
+            {"role": "weight_0", "shape": [weight_bytes, 1], "dtype": "i8"},
+            {"role": "out_0", "shape": [size, 1], "dtype": "i32"},
+        ]
+    }
     return prove_input_preparation(
         function, analyze_host_cfg_activity(function), context, target="fixture", batch_copies=batch
     )
@@ -114,9 +119,11 @@ def test_vectorization_does_not_remove_the_cumulative_payload_proof_budget(monke
 
 def test_latch_testing_current_induction_preserves_exact_trip_count(monkeypatch):
     rows, columns = 7, 257
-    text = _program(rows, columns).replace(
-        "%rows =", f"%lastrow = llvm.mlir.constant({rows - 1}) : i64\n %rows ="
-    ).replace("%columns =", f"%lastcol = llvm.mlir.constant({columns - 1}) : i64\n %columns =")
+    text = (
+        _program(rows, columns)
+        .replace("%rows =", f"%lastrow = llvm.mlir.constant({rows - 1}) : i64\n %rows =")
+        .replace("%columns =", f"%lastcol = llvm.mlir.constant({columns - 1}) : i64\n %columns =")
+    )
     text = text.replace('llvm.icmp "eq" %next, %columns', 'llvm.icmp "eq" %j, %lastcol')
     text = text.replace('llvm.icmp "eq" %nextrow, %rows', 'llvm.icmp "eq" %i, %lastrow')
     result = _proof(monkeypatch, text, rows * columns)
@@ -141,9 +148,12 @@ def test_disjoint_sibling_loops_share_axes_without_multiplying_iteration_domains
             renamed = renamed.replace("^" + name, "^" + name + tag)
         return renamed.replace("BYTE_ZERO_OUTSIDE_LOOP", "%bytezero")
 
-    prefix = prefix.replace("llvm.br ^inner(%zero : i64)", """
+    prefix = prefix.replace(
+        "llvm.br ^inner(%zero : i64)",
+        """
       %choice = llvm.icmp "ult" %i, %one : i64
-      llvm.cond_br %choice, ^innerA(%zero : i64), ^innerB(%zero : i64)""")
+      llvm.cond_br %choice, ^innerA(%zero : i64), ^innerB(%zero : i64)""",
+    )
     text = prefix + renamed("A") + renamed("B") + suffix
     result = _proof(monkeypatch, text, rows * columns)
     scalar = _proof(monkeypatch, text, rows * columns, batch=False)
@@ -158,8 +168,9 @@ def test_weights_can_be_repacked_only_as_unchanged_consumed_bytes(monkeypatch):
     text = _program(rows, columns).replace("%input[%offset]", "%weight[%offset]")
     result = _proof(monkeypatch, text, rows * columns, weight_bytes=rows * columns)
     assert result["status"] == "proven", result
-    changed = text.replace("llvm.br ^latch(%byte : i8)",
-                           "%changed = llvm.add %byte, %byte : i8\n llvm.br ^latch(%changed : i8)")
+    changed = text.replace(
+        "llvm.br ^latch(%byte : i8)", "%changed = llvm.add %byte, %byte : i8\n llvm.br ^latch(%changed : i8)"
+    )
     assert _proof(monkeypatch, changed, rows * columns, weight_bytes=rows * columns)["status"] == "unproven"
     memory = CopyStorage({0: 100, 1: 50, "scratch": 2})
     memory["scratch", 0] = (0, 7)
@@ -168,15 +179,20 @@ def test_weights_can_be_repacked_only_as_unchanged_consumed_bytes(monkeypatch):
     assert memory["scratch", 1] == (1, 7)
 
 
-@pytest.mark.parametrize("mutation", [
-    lambda s: s.replace("llvm.store %chosen, %destination", "llvm.store %chosen, %output"),
-    lambda s: s.replace("%input[%offset]", "%input[%size]"),
-    lambda s: s.replace("%scratch[%offset]", "%scratch[%zero]"),
-    lambda s: s.replace("llvm.br ^latch(%byte : i8)",
-                        "%changed = llvm.add %byte, %byte : i8\n llvm.br ^latch(%changed : i8)"),
-    lambda s: s.replace('llvm.icmp "ult" %j, %padding : i64',
-                        'llvm.icmp "ult" %j, %size : i64').replace("%input[%offset]", "%weight[%offset]"),
-])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda s: s.replace("llvm.store %chosen, %destination", "llvm.store %chosen, %output"),
+        lambda s: s.replace("%input[%offset]", "%input[%size]"),
+        lambda s: s.replace("%scratch[%offset]", "%scratch[%zero]"),
+        lambda s: s.replace(
+            "llvm.br ^latch(%byte : i8)", "%changed = llvm.add %byte, %byte : i8\n llvm.br ^latch(%changed : i8)"
+        ),
+        lambda s: s.replace('llvm.icmp "ult" %j, %padding : i64', 'llvm.icmp "ult" %j, %size : i64').replace(
+            "%input[%offset]", "%weight[%offset]"
+        ),
+    ],
+)
 def test_batched_copy_rejects_tensor_compute_wrong_buffers_bounds_and_conflicting_writes(monkeypatch, mutation):
     result = _proof(monkeypatch, mutation(_program(7, 257)), 7 * 257)
     assert result["status"] == "unproven", result
@@ -263,11 +279,16 @@ def test_result_publication_requires_actual_decoded_writes_and_an_intervening_fe
 def test_two_stage_input_packing_matches_scalar_execution(monkeypatch, pad_forward):
     rows, columns = 7, 257
     text = _program(rows, columns)
-    text = text.replace("llvm.br ^outer(%zero : i64)", """
+    text = text.replace(
+        "llvm.br ^outer(%zero : i64)",
+        """
         %staging = llvm.alloca %size x i8 : (i64) -> !llvm.ptr
-        llvm.br ^outer(%zero : i64)""")
-    text = text.replace('^transfer, ^outer(', '^repack, ^outer(')
-    text = text.replace("      ^transfer:", """
+        llvm.br ^outer(%zero : i64)""",
+    )
+    text = text.replace("^transfer, ^outer(", "^repack, ^outer(")
+    text = text.replace(
+        "      ^transfer:",
+        """
       ^repack:
         llvm.br ^move(%zero : i64)
       ^move(%index: i64):
@@ -278,11 +299,14 @@ def test_two_stage_input_packing_matches_scalar_execution(monkeypatch, pad_forwa
         %incremented = llvm.add %index, %one : i64
         %last = llvm.icmp "eq" %incremented, %size : i64
         llvm.cond_br %last, ^transfer, ^move(%incremented : i64)
-      ^transfer:""")
+      ^transfer:""",
+    )
     text = text.replace("%address = llvm.ptrtoint %scratch", "%address = llvm.ptrtoint %staging")
     if pad_forward:
         text = text.replace("%staging =", "%lastvalid = llvm.sub %size, %one : i64\n %staging =")
-        text = text.replace("%copied = llvm.load %from : !llvm.ptr -> i8\n        llvm.store %copied, %to", """
+        text = text.replace(
+            "%copied = llvm.load %from : !llvm.ptr -> i8\n        llvm.store %copied, %to",
+            """
         %movevalid = llvm.icmp "ult" %index, %lastvalid : i64
         llvm.cond_br %movevalid, ^forward, ^fill
       ^forward:
@@ -291,7 +315,8 @@ def test_two_stage_input_packing_matches_scalar_execution(monkeypatch, pad_forwa
       ^fill:
         llvm.br ^move_latch(%bytezero : i8)
       ^move_latch(%forwarded: i8):
-        llvm.store %forwarded, %to""")
+        llvm.store %forwarded, %to""",
+        )
     result = _proof(monkeypatch, text, rows * columns)
     scalar = _proof(monkeypatch, text, rows * columns, batch=False)
     assert result["status"] == scalar["status"] == "proven", (result, scalar)
@@ -300,8 +325,10 @@ def test_two_stage_input_packing_matches_scalar_execution(monkeypatch, pad_forwa
     assert result == scalar
     if pad_forward:
         # Dropping one more lane would strand a real original-byte copy.
-        changed = text.replace('%lastvalid = llvm.sub %size, %one : i64',
-                               '%shorter = llvm.sub %size, %one : i64\n %lastvalid = llvm.sub %shorter, %one : i64')
+        changed = text.replace(
+            "%lastvalid = llvm.sub %size, %one : i64",
+            "%shorter = llvm.sub %size, %one : i64\n %lastvalid = llvm.sub %shorter, %one : i64",
+        )
         for batch in (True, False):
             refused = _proof(monkeypatch, changed, rows * columns, batch=batch)
             assert refused["status"] == "unproven" and "never feeds" in refused["detail"], refused
@@ -309,12 +336,17 @@ def test_two_stage_input_packing_matches_scalar_execution(monkeypatch, pad_forwa
 
 def _result_program():
     text = _program(7, 257)
-    text = text.replace("llvm.br ^outer(%zero : i64)", """
+    text = text.replace(
+        "llvm.br ^outer(%zero : i64)",
+        """
         %four = llvm.mlir.constant(4) : i64
         %resultsize = llvm.mul %size, %four : i64
         %resulttile = llvm.alloca %resultsize x i8 : (i64) -> !llvm.ptr
-        llvm.br ^outer(%zero : i64)""")
-    return text.replace("        llvm.return", """
+        llvm.br ^outer(%zero : i64)""",
+    )
+    return text.replace(
+        "        llvm.return",
+        """
         %resultaddress = llvm.ptrtoint %resulttile : !llvm.ptr to i64
         "llvm.inline_asm"(%resultsize, %resultsize) <{asm_string = ".insn r 0x7b, 3, 4, x0, $0, $1",
           constraints = "r,r,~{memory}", has_side_effects}> : (i64, i64) -> ()
@@ -332,7 +364,8 @@ def _result_program():
         %endresult = llvm.icmp "eq" %nextresult, %size : i64
         llvm.cond_br %endresult, ^finish, ^publish(%nextresult : i64)
       ^finish:
-        llvm.return""")
+        llvm.return""",
+    )
 
 
 def test_result_tile_publication_matches_scalar_execution(monkeypatch):
@@ -344,13 +377,20 @@ def test_result_tile_publication_matches_scalar_execution(monkeypatch):
     assert result == scalar
 
 
-@pytest.mark.parametrize("mutation", [
-    lambda s: s.replace('"llvm.inline_asm"() <{asm_string = "fence", constraints = "~{memory}", has_side_effects}> : () -> ()', ''),
-    lambda s: s.replace('%resulttile[%position]', '%input[%position]'),
-    lambda s: s.replace('llvm.store %resultbyte, %resultto',
-                        '%changedresult = llvm.add %resultbyte, %resultbyte : i32\n llvm.store %changedresult, %resultto'),
-    lambda s: s.replace('%output[%position]', '%output[%zero]'),
-])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda s: s.replace(
+            '"llvm.inline_asm"() <{asm_string = "fence", constraints = "~{memory}", has_side_effects}> : () -> ()', ""
+        ),
+        lambda s: s.replace("%resulttile[%position]", "%input[%position]"),
+        lambda s: s.replace(
+            "llvm.store %resultbyte, %resultto",
+            "%changedresult = llvm.add %resultbyte, %resultbyte : i32\n llvm.store %changedresult, %resultto",
+        ),
+        lambda s: s.replace("%output[%position]", "%output[%zero]"),
+    ],
+)
 def test_output_transport_still_rejects_missing_fences_wrong_sources_arithmetic_and_overlap(monkeypatch, mutation):
     assert _proof(monkeypatch, mutation(_result_program()), 7 * 257)["status"] == "unproven"
 
@@ -360,13 +400,15 @@ def test_fixed_width_payload_copy_preserves_every_byte(monkeypatch):
     text = _program(rows, columns)
     # Keep the original byte loop, but copy adjacent two-byte words at disjoint
     # even addresses and transfer their complete initialized union.
-    text = text.replace(f"llvm.mlir.constant({rows * columns}) : i64",
-                        f"llvm.mlir.constant({rows * columns * 2}) : i64")
+    text = text.replace(
+        f"llvm.mlir.constant({rows * columns}) : i64", f"llvm.mlir.constant({rows * columns * 2}) : i64"
+    )
     text = text.replace("%one =", "%two = llvm.mlir.constant(2) : i64\n %one =")
-    text = text.replace("%offset = llvm.add %row, %j : i64",
-                        "%element = llvm.add %row, %j : i64\n %offset = llvm.mul %element, %two : i64")
-    text = text.replace("%bytezero = llvm.mlir.constant(0 : i8) : i8",
-                        "%bytezero = llvm.mlir.constant(0 : i16) : i16")
+    text = text.replace(
+        "%offset = llvm.add %row, %j : i64",
+        "%element = llvm.add %row, %j : i64\n %offset = llvm.mul %element, %two : i64",
+    )
+    text = text.replace("%bytezero = llvm.mlir.constant(0 : i8) : i8", "%bytezero = llvm.mlir.constant(0 : i16) : i16")
     text = text.replace("llvm.load %source : !llvm.ptr -> i8", "llvm.load %source : !llvm.ptr -> i16")
     text = text.replace("^latch(%byte : i8)", "^latch(%byte : i16)")
     text = text.replace("^latch(%bytezero : i8)", "^latch(%bytezero : i16)")
@@ -407,7 +449,7 @@ def test_integer_batching_matches_scalar_widths_and_proves_poison_flags():
     left = np.array([-128, -1, 0, 1, 127], dtype=np.int64)
     right = np.array([1, 2, 3, 4, 5], dtype=np.int64)
     for op in operations:
-        args = [left, right][:len(op.operands)]
+        args = [left, right][: len(op.operands)]
         actual = integer(op, args, np.ones(5, dtype=np.bool_))
         expected = [integer_operation(op, [int(arg[i]) for arg in args]) for i in range(5)]
         assert actual.tolist() == expected
@@ -462,3 +504,12 @@ def test_vectorized_minimum_and_cast_flags_match_exact_scalar_semantics():
     with pytest.raises(ValueError, match="nonnegative poison"):
         integer(extension, [a], np.ones(4, dtype=bool))
     assert integer(extension, [a], np.array([False, True, True, True])).tolist()[1:] == [0, 127, 256]
+
+
+def test_weight_origin_cannot_invent_missing_original_input_capacity():
+    memory = CopyStorage({"scratch": 1})
+    with pytest.raises(ValueError, match="original input capacity"):
+        memory["scratch", 0] = (1, 0)
+    # Standalone transport instrumentation still admits actual input-byte origins.
+    memory["scratch", 0] = (0, 0)
+    assert memory["scratch", 0] == (0, 0)

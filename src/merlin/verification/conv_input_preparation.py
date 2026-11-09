@@ -102,6 +102,8 @@ def _prove(function, activity, context, *, target, batch_copies):
     if not blocks or len(blocks[0].args) != 3:
         raise ValueError("actual kernel argument count differs from reviewed ABI")
     counts = {blocks[r["block"]]: r["execution_count"] for r in activity["blocks"]}
+    if set(counts) != set(blocks):
+        raise ValueError("input preparation lacks a complete independent CFG count roster")
     if any(type(n) is not int or n < 0 for n in counts.values()):
         raise ValueError("input preparation has unknown independent execution counts")
     regions = copy_regions(function) if batch_copies else {}
@@ -146,7 +148,7 @@ def _prove(function, activity, context, *, target, batch_copies):
         return value
 
     while block is not None:
-        if block in regions and sum(counts.get(b, 0) for b in regions[block][0].nodes) > 1000:
+        if block in regions and sum(counts[b] for b in regions[block][0].nodes) > 1000:
             next_block, batch_counts, totals = execute_copy_batch(
                 regions[block],
                 values,
@@ -165,7 +167,7 @@ def _prove(function, activity, context, *, target, batch_copies):
             batch_payload += totals["payload_bytes"]
             if batch_operations > MAX_OPERATIONS or batch_payload > MAX_OPERATIONS:
                 raise ValueError("input preparation exceeds finite exhaustive copy proof budget")
-            if any(visited[b] > counts.get(b, 0) for b in batch_counts):
+            if any(visited[b] > counts[b] for b in batch_counts):
                 raise ValueError("batched copy counts differ from independently proven CFG")
             arithmetic += totals["arithmetic"]
             conversions += totals["conversions"]
@@ -181,7 +183,7 @@ def _prove(function, activity, context, *, target, batch_copies):
             if scalar_copy_blocks > 100000:
                 raise ValueError("input preparation exceeds finite scalar copy block proof bound")
         visited[block] += 1
-        if visited[block] > counts.get(block, 0):
+        if visited[block] > counts[block]:
             raise ValueError("input preparation traversal differs from independently proven CFG")
         if incoming:
             if len(incoming) != len(block.args):

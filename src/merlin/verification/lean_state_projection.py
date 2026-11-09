@@ -265,7 +265,9 @@ def _projection_nodes(module, block, contract):
         writes.update(_value_key(result, operation_indices, block_indices) for result in operation.results)
         raw.append((index, _operation_name(operation), ir_digest(operation), reads, writes))
     resources = sorted({value for row in raw for value in (*row[3], *row[4]) if not value.startswith("ssa:")})
-    share = {resource: {resource} for resource in resources}
+    # SSA values are distinct cells. Non-SSA resources additionally share the
+    # explicitly modeled alias cells below; every projected value has an entry.
+    share = {value: {value} for row in raw for value in (*row[3], *row[4])}
     disjoint = {frozenset(("declared:" + first, "declared:" + second)) for first, second in contract.disjoint_resources}
     for index, first in enumerate(resources):
         for second in resources[index + 1 :]:
@@ -291,8 +293,8 @@ def _projection_nodes(module, block, contract):
     all_cells = set()
     expanded = []
     for index, name, identity, reads, writes in raw:
-        reads = {cell for value in reads for cell in share.get(value, {value})}
-        writes = {cell for value in writes for cell in share.get(value, {value})}
+        reads = {cell for value in reads for cell in share[value]}
+        writes = {cell for value in writes for cell in share[value]}
         all_cells.update((*reads, *writes))
         if len(all_cells) > contract.maximum_effect_cells:
             raise UnsupportedStateEffects("effect cells exceed the original bounded projection budget")

@@ -483,7 +483,7 @@ def test_imported_unused_void_command_result_is_not_a_host_value(monkeypatch, re
     monkeypatch.setattr(decode, "isa_constants", lambda target: {"CUSTOM_OPCODE": 123, "FUNCT_CLASS": {2: "MVIN"}})
     text = _tile_remainder_kernel(97, 16, store=False)
     text = text.replace('"llvm.inline_asm"(%addr', '%observed = "llvm.inline_asm"(%addr')
-    text = text.replace(': (i64, i64) -> ()', f': (i64, i64) -> {result_type}')
+    text = text.replace(": (i64, i64) -> ()", f": (i64, i64) -> {result_type}")
     ctx = Context()
     for dialect in (builtin.Builtin, llvm.LLVM):
         ctx.load_dialect(dialect)
@@ -497,9 +497,8 @@ def test_command_orchestration_exemption_refuses_unmodeled_effects(monkeypatch):
 
     monkeypatch.setattr(decode, "isa_constants", lambda target: {"CUSTOM_OPCODE": 123, "FUNCT_CLASS": {2: "MVIN"}})
     text = _tile_remainder_kernel(97, 16, store=False).replace(
-        '%addr = llvm.ptrtoint %src',
-        '"llvm.intr.memcpy"(%input, %output, %one) : (!llvm.ptr, !llvm.ptr, i64) -> ()\n'
-        ' %addr = llvm.ptrtoint %src',
+        "%addr = llvm.ptrtoint %src",
+        '"llvm.intr.memcpy"(%input, %output, %one) : (!llvm.ptr, !llvm.ptr, i64) -> ()\n %addr = llvm.ptrtoint %src',
     )
     ctx = Context(allow_unregistered=True)
     for dialect in (builtin.Builtin, llvm.LLVM):
@@ -507,3 +506,27 @@ def test_command_orchestration_exemption_refuses_unmodeled_effects(monkeypatch):
     module = Parser(ctx, text).parse_module()
     (row,) = HA.audit(module, [_site("entry", elements=97)], target="fixture")["groups"]
     assert row["verdict"] == HA.HOST_COMPUTE, row
+
+
+def test_missing_address_loop_count_remains_unknown(monkeypatch):
+    from merlin.perf import host_cfg_activity
+
+    function = next(op for op in _module(_loop("issue", 4, _ISSUE)).body.block.ops if isinstance(op, llvm.FuncOp))
+    activity = host_cfg_activity.analyze_host_cfg_activity(function)
+    del activity["dynamic_address_loop_control_arithmetic"]
+    monkeypatch.setattr(host_cfg_activity, "analyze_host_cfg_activity", lambda function: activity)
+    result = HA.audit_group(_site("issue"), function)
+    assert result["verdict"] == HA.UNKNOWN and "no derived execution count" in result["why"]
+
+
+def test_missing_proven_preparation_conversion_count_remains_unknown(monkeypatch):
+    from merlin.verify import conv_input_preparation
+
+    function = next(op for op in _module(_loop("issue", 4, _ISSUE)).body.block.ops if isinstance(op, llvm.FuncOp))
+    monkeypatch.setattr(
+        conv_input_preparation,
+        "prove_input_preparation",
+        lambda *args, **kwargs: {"status": "proven", "arithmetic": 0, "payload_bytes": 0},
+    )
+    result = HA.audit_group(_site("issue"), function, input_preparation={})
+    assert result["verdict"] == HA.UNKNOWN and "derived conversion count" in result["why"]

@@ -37,7 +37,7 @@ class CopyStorage:
     """
 
     def __init__(self, capacity):
-        if sum(capacity.get(root, 0) for root in (0, 1)) >= 1 << 63:
+        if sum(size for root, size in capacity.items() if root in (0, 1)) >= 1 << 63:
             raise ValueError("input byte-origin storage exceeds finite exact index range")
         self.capacity = capacity
         self.origins = {}
@@ -76,13 +76,17 @@ class CopyStorage:
 
     def __setitem__(self, key, origin):
         root, offset = key
+        if origin != "zero" and origin[0] == 1 and 0 not in self.capacity:
+            raise ValueError("weight byte origins require the original input capacity")
+        if origin != "zero" and origin[0] == 2 and self.output_base is None:
+            raise ValueError("output byte origins require the original ABI capacities")
         self._allocate(root)
         if self.origins[root][offset] >= 0 and not self.consumed[root][offset]:
             raise ValueError("input scratch copy is overwritten before accelerator consumption")
         self.origins[root][offset] = (
             -1
             if origin == "zero"
-            else origin[1] + (self.output_base if origin[0] == 2 else self.capacity.get(0, 0) if origin[0] == 1 else 0)
+            else origin[1] + (self.output_base if origin[0] == 2 else self.capacity[0] if origin[0] == 1 else 0)
         )
         self.consumed[root][offset] = False
         self.next_epoch += 1

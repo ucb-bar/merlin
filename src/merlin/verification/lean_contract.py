@@ -110,6 +110,11 @@ class LeanToolchain:
 
     @classmethod
     def from_manifest(cls, path: Path, *, work_root: Path) -> LeanToolchain:
+        """Read pinned evidence and optional execution policy.
+
+        Omitted budget/reflection options use this record's constructor policy;
+        executable and library evidence remain mandatory manifest selections.
+        """
         raw = json.loads(Path(path).read_text())
         if raw.get("schema") != "merlin.lean_toolchain.v1":
             raise ValueError("unknown Lean toolchain manifest")
@@ -131,11 +136,11 @@ class LeanToolchain:
             library_roots=tuple(selected(p) for p in raw["library_roots"]),
             files=tuple((selected(row["path"]), row["sha256"]) for row in raw["files"]),
             work_root=Path(work_root).absolute(),
-            timeout_s=raw.get("timeout_s", 120),
-            memory_mb=raw.get("memory_mb", 1024),
+            timeout_s=raw.get("timeout_s", cls.timeout_s),
+            memory_mb=raw.get("memory_mb", cls.memory_mb),
             dependency_revision=raw.get("dependency_revision", ""),
             sat_solver=(selected(solver["path"]), solver["sha256"]) if solver is not None else None,
-            allow_native_reflection=raw.get("allow_native_reflection", False),
+            allow_native_reflection=raw.get("allow_native_reflection", cls.allow_native_reflection),
         )
         result.verify()
         return result

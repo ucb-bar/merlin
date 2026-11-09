@@ -593,14 +593,19 @@ def logical_expected(cb: dict, block: dict) -> list[str]:
     kabi = cb.get("kernel_abi") or {}
     order = block["argument_order"]["whole_program" if kabi.get("kind") == "whole_program" else "default"]
     tensors = cb.get("tensors") or {}
+    for name, spec in tensors.items():
+        if not isinstance(spec, dict) or not isinstance(spec.get("role"), str) or not spec["role"]:
+            raise Unresolvable(f"logical tensor {name!r} has no declared role")
     produced = {
         (cmd.get("operands") or {}).get("dst")
         for cmd in cb.get("commands", [])
         if (cmd.get("operands") or {}).get("dst")
     }
     derived = {
-        recipe.get("target") for key, recipes in (cb.get("params") or {}).items()
-        if key.endswith("_recipes") for recipe in recipes or ()
+        recipe.get("target")
+        for key, recipes in (cb.get("params") or {}).items()
+        if key.endswith("_recipes")
+        for recipe in recipes or ()
     }
     published = set(block["published_by"])
     names: list[str] = []
@@ -608,8 +613,11 @@ def logical_expected(cb: dict, block: dict) -> list[str]:
         if token == "declared_whole_program_args":
             names += [arg["tensor"] for arg in kabi["args"]]
         elif token == "logical_inputs_in_declaration_order":
-            names += [n for n, spec in tensors.items() if n not in produced and n not in derived
-                      and (spec or {}).get("role", "input") not in ("output", "intermediate")]
+            names += [
+                n
+                for n, spec in tensors.items()
+                if n not in produced and n not in derived and spec["role"] not in ("output", "intermediate")
+            ]
         elif token == "logical_outputs_in_result_order":
             outs: list[str] = []
             for cmd in cb.get("commands", []):
@@ -633,12 +641,18 @@ def check_logical(renderer: str, target: str, verbose: bool = False) -> list[str
     block = doc.get("logical_kernel_abi")
     if not isinstance(block, dict):
         return [f"{_LOGICAL_CONTRACT.name}: no logical_kernel_abi block -- NOT certified"]
-    (_t, _m, render), = _explicit_renderer(renderer, target)
+    ((_t, _m, render),) = _explicit_renderer(renderer, target)
     symbol = str(block["symbol"]).replace("{target}", target)
-    probes = [("whole_program", _probe_whole_program()), ("host_lane", _probe_host_lane()),
-              ("movement", _probe_movement()), ("resident_matmul", _probe_resident_matmul())]
-    probes += [(f"native_whole_op:{op}", _probe_native_whole_op(op))
-               for op in ("CONV2D", "ATTENTION_QK", "ATTENTION_PV", "BATCHED_MATMUL")]
+    probes = [
+        ("whole_program", _probe_whole_program()),
+        ("host_lane", _probe_host_lane()),
+        ("movement", _probe_movement()),
+        ("resident_matmul", _probe_resident_matmul()),
+    ]
+    probes += [
+        (f"native_whole_op:{op}", _probe_native_whole_op(op))
+        for op in ("CONV2D", "ATTENTION_QK", "ATTENTION_PV", "BATCHED_MATMUL")
+    ]
     problems = []
     for shape, cb in probes:
         expected = logical_expected(cb, block)
@@ -660,8 +674,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--verbose", action="store_true", help="print every order it resolved")
     ap.add_argument("--static", action="store_true", help="contract/probes only; never certifies a renderer")
     ap.add_argument("--staged", action="store_true", help="accepted for pre-commit symmetry (no-op)")
-    ap.add_argument("--logical", metavar="MODULE:FUNCTION",
-                    help="certify this renderer against logical_kernel_abi (v2) instead of the legacy rows")
+    ap.add_argument(
+        "--logical",
+        metavar="MODULE:FUNCTION",
+        help="certify this renderer against logical_kernel_abi (v2) instead of the legacy rows",
+    )
     ap.add_argument("--target", help="the target --logical renders for")
     a = ap.parse_args(argv)
     if a.logical:

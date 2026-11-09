@@ -1,5 +1,6 @@
 """Structural natural-loop domains for conflict-free constant-control input copies."""
 
+import logging
 from dataclasses import dataclass
 
 from xdsl.dialects.builtin import IntegerType
@@ -110,7 +111,8 @@ def copy_loops(function):
                 pending.extend(cfg.predecessors[block])
             try:
                 loop = _post_tested(header, latch, frozenset(nodes), cfg)
-            except ValueError:
+            except ValueError as exc:
+                logging.getLogger(__name__).debug("copy batching declined; retain scalar proof: %s", exc)
                 continue
             if header in found:
                 raise ValueError("copy loop has ambiguous backedges")

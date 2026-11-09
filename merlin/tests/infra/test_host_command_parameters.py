@@ -232,3 +232,24 @@ def test_many_duplicate_storage_roots_refuse_before_repeated_storage_scans(monke
     result = _audit(_SOURCE.replace("llvm.br ^head(%zero", extra + "\n    llvm.br ^head(%zero"))
     assert result["verdict"] == HA.HOST_COMPUTE
     assert "storage roots exceed" in result["command_parameters"]["detail"]
+
+
+def test_configuration_packing_requires_tracked_loaded_bit_provenance():
+    from merlin.verify.host_command_parameters import _packed_mask
+
+    function = next(op for op in _module(_SOURCE).body.block.ops if isinstance(op, llvm.FuncOp))
+    packing = next(op for op in function.walk() if op.name == "llvm.zext")
+    with pytest.raises(KeyError):
+        _packed_mask(packing, {})
+
+
+def test_command_parameter_proof_refuses_incomplete_cfg_roster(monkeypatch):
+    from merlin.perf.host_cfg_activity import analyze_host_cfg_activity
+    from merlin.verify.host_command_parameters import prove_command_parameters
+
+    _observer(monkeypatch)
+    function = next(op for op in _module(_SOURCE).body.block.ops if isinstance(op, llvm.FuncOp))
+    activity = analyze_host_cfg_activity(function)
+    activity["blocks"] = activity["blocks"][:-1]
+    result = prove_command_parameters(function, activity, target="fixture")
+    assert result["status"] != "proven" and "complete independent CFG" in result["detail"]
