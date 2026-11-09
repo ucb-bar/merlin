@@ -48,7 +48,8 @@ def source(tmp_path, monkeypatch):
               "ATLAS_EXPECTED_POLICY_SHA256": sha256((export / "policy.json").read_bytes()).hexdigest()}
     for name, value in values.items():
         monkeypatch.setenv(name, value)
-    return export, architecture, inputs_path, inputs, expected
+    monkeypatch.setenv("ATLAS_CAPTURE_BOUNDARY", "model")
+    return export, architecture, inputs_path, inputs, expected, model
 
 
 def test_loader_reconstructs_native_attention_without_saved_program_or_weight_conversion(source):
@@ -56,7 +57,7 @@ def test_loader_reconstructs_native_attention_without_saved_program_or_weight_co
     import raw_capture
     from safetensors.torch import load_file
 
-    export, _, _, inputs, expected = source
+    export, _, _, inputs, expected, _ = source
     before = raw_capture.inventory(load_file(str(export / "model.safetensors")))
     with patch.object(torch.export, "load", side_effect=AssertionError("saved source program loaded")), \
          patch.object(RefQuantLinear, "__init__", side_effect=AssertionError("quantizing constructor called")):
@@ -90,7 +91,103 @@ def test_loader_refuses_unattributed_architecture(source):
 
 
 def test_loader_refuses_noninteger_token_archive(source):
-    _, _, inputs_path, inputs, _ = source
+    _, _, inputs_path, inputs, *_ = source
     save_file({"input_ids": inputs.float()}, inputs_path)
     with pytest.raises(ValueError, match="only int64 input_ids"):
         adapter_loader.get_model_and_inputs()
+
+
+def test_live_prefill_cache_exports_original_state_and_feeds_decode(source, tmp_path, monkeypatch):
+    from cache_source import phase_positions_and_mask
+    from raw_capture import inventory, tensor_record
+    from ref_profile import RefQuantLinear
+    from safetensors.torch import load_file
+    from transformers import DynamicCache
+    from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
+
+    export, _, inputs_path, ids, _, model = source
+    raw = load_file(str(export / "model.safetensors"))
+    before = inventory(raw)
+    model_before = inventory(dict(list(model.named_parameters()) + list(model.named_buffers())))
+    parameters = {f"model.{name}": tensor_record(value) for name, value in raw.items()
+                  if name.startswith("model.layers.0.")}
+    source_path = tmp_path / "layer0-source.json"
+
+    def select(arguments, selection, cache_roles=None):
+        inputs = {f"input_{index}": value for index, value in enumerate(arguments)}
+        save_file(inputs, inputs_path)
+        receipt = dict(kind="layer0", input_keys=list(inputs), parameters=parameters,
+                       tensors=inventory(inputs))
+        if cache_roles is not None:
+            receipt["cache_roles"] = cache_roles
+        source_path.write_text(json.dumps(receipt))
+        monkeypatch.setenv("ATLAS_CAPTURE_BOUNDARY", selection)
+        monkeypatch.setenv("ATLAS_BOUNDARY_SOURCE_JSON", str(source_path))
+        monkeypatch.setenv("ATLAS_EXPECTED_BOUNDARY_SOURCE_SHA256", sha256(source_path.read_bytes()).hexdigest())
+        with patch.object(torch.export, "load", side_effect=AssertionError("saved source program loaded")), \
+             patch.object(RefQuantLinear, "__init__", side_effect=AssertionError("quantizing constructor called")):
+            return adapter_loader.get_model_and_inputs()
+
+    def state(program):
+        return inventory({name: value for name, value in
+                          list(program.named_parameters()) + list(program.named_buffers())
+                          if value.device.type != "meta"})
+
+    conventional = DynamicCache(config=model.config)
+    with torch.no_grad():
+        positions, mask = phase_positions_and_mask(ids, 0)
+        hidden = model.model.embed_tokens(ids)
+        cosine, sine = model.model.rotary_emb(hidden, positions)
+        expected_hidden = model.model.layers[0](hidden, attention_mask=mask,
+            position_embeddings=(cosine, sine), past_key_values=conventional, use_cache=True)
+        expected_prefill = (expected_hidden, conventional.layers[0].keys, conventional.layers[0].values)
+        # Independently establish that the returned keys precede GQA expansion
+        # and follow the source's RoPE, while values retain the projected words.
+        attention = model.model.layers[0].self_attn
+        normalized = model.model.layers[0].input_layernorm(hidden)
+        shape = (1, ids.shape[1], -1, attention.head_dim)
+        query = attention.q_proj(normalized).view(shape).transpose(1, 2)
+        key = attention.k_proj(normalized).view(shape).transpose(1, 2)
+        value = attention.v_proj(normalized).view(shape).transpose(1, 2)
+        _, rotated_key = apply_rotary_pos_emb(query, key, cosine, sine)
+    arguments = (hidden, cosine, sine, mask)
+    hidden_only, original_inputs = select(arguments, "layer0")
+    prefill, actual_inputs = select(arguments, "layer0-prefill-cache")
+    assert len(original_inputs) == len(actual_inputs) == 4
+    assert len(hidden_only.graph_signature.user_outputs) == 1
+    assert len(prefill.graph_signature.user_outputs) == 3
+    assert state(prefill) == state(hidden_only) == parameters
+    assert set(dict(prefill.named_parameters())) == set(dict(hidden_only.named_parameters()))
+    actual_prefill = prefill.module()(*actual_inputs)
+    assert [tensor_record(value) for value in actual_prefill] == [tensor_record(value) for value in expected_prefill]
+    assert tensor_record(hidden_only.module()(*original_inputs)) == tensor_record(actual_prefill[0])
+    assert tensor_record(actual_prefill[1]) == tensor_record(rotated_key)
+    assert tensor_record(actual_prefill[2]) == tensor_record(value)
+    assert actual_prefill[1].shape == (1, model.config.num_key_value_heads, ids.shape[1], attention.head_dim)
+    assert all(value.dtype == torch.bfloat16 for value in actual_prefill)
+    assert tensor_record(key) != tensor_record(rotated_key)
+
+    with torch.no_grad():
+        decode_ids = torch.tensor([[11]])
+        positions, mask = phase_positions_and_mask(decode_ids, ids.shape[1])
+        hidden = model.model.embed_tokens(decode_ids)
+        cosine, sine = model.model.rotary_emb(hidden, positions)
+        expected_hidden = model.model.layers[0](hidden, attention_mask=mask,
+            position_embeddings=(cosine, sine), past_key_values=conventional, use_cache=True)
+        expected_decode = (expected_hidden, conventional.layers[0].keys, conventional.layers[0].values)
+    arguments = (hidden, cosine, sine, actual_prefill[1], mask, actual_prefill[2])
+    frozen_arguments = [tensor_record(value) for value in arguments]
+    roles = {field: [dict(index=index, role=role,
+        **({"layer": 0} if role not in ("source_tensor", "attention_mask") else {}))
+        for index, role in enumerate(names)] for field, names in (
+            ("inputs", ["source_tensor", "source_tensor", "source_tensor", "past_key", "attention_mask", "past_value"]),
+            ("outputs", ["hidden_state", "updated_key", "updated_value"]))}
+    decode, decode_inputs = select(arguments, "layer0", cache_roles=roles)
+    assert state(decode) == parameters
+    assert [tensor_record(value) for value in decode.module()(*decode_inputs)] == [
+        tensor_record(value) for value in expected_decode]
+    assert [tensor_record(value) for value in arguments] == frozen_arguments
+    assert inventory(load_file(str(export / "model.safetensors"))) == before
+    assert inventory(dict(list(model.named_parameters()) + list(model.named_buffers()))) == model_before
+    with pytest.raises(ValueError, match="original four-input boundary"):
+        select(arguments, "layer0-prefill-cache", cache_roles=roles)

@@ -18,6 +18,9 @@ norm-output archive and source receipt. The current live external adapter may
 refuse this all-host boundary because it contains no native calls.
 An authenticated six-input cache boundary selects the existing tensor-cache
 append semantics and returns hidden state, updated K, and updated V.
+Select ATLAS_CAPTURE_BOUNDARY=layer0-prefill-cache with the original four-input
+layer0 archive to return hidden state and the initial post-RoPE, pre-GQA BF16
+K/V. The default layer0 selection continues to return only hidden state.
 """
 from __future__ import annotations
 
@@ -29,7 +32,7 @@ from pathlib import Path
 from atlas_mlir_native.capture import normalize_capture, prepare_model
 
 
-def layer0_boundary(model, inputs, source, *, tensor_record):
+def layer0_boundary(model, inputs, source, *, tensor_record, prefill_cache=False):
     """Wrap the original decoder, preserving its source parameter paths."""
     import torch
     from torch import nn
@@ -38,6 +41,8 @@ def layer0_boundary(model, inputs, source, *, tensor_record):
         raise ValueError("layer0 requires the original decoder source boundary")
     cache_roles = source.get("cache_roles")
     cached = cache_roles is not None
+    if prefill_cache and cached:
+        raise ValueError("layer0 prefill cache outputs require the original four-input boundary")
     keys = source.get("input_keys")
     if keys != [f"input_{index}" for index in range(6 if cached else 4)]:
         raise ValueError("layer0 requires hidden, cosine, sine, and additive mask")
@@ -85,13 +90,20 @@ def layer0_boundary(model, inputs, source, *, tensor_record):
             return self.model.model.layers[0](hidden, attention_mask=attention_mask,
                                               position_embeddings=(cosine, sine))
 
-    if cached:
+    if cached or prefill_cache:
         import importlib.util
         import sys
         spec = importlib.util.spec_from_file_location("_adapter_cache_source", Path(__file__).with_name("cache_source.py"))
         cache_source = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = cache_source
         spec.loader.exec_module(cache_source)
+
+        class PrefillCacheLayer0(Layer0):
+            def forward(self, hidden, cosine, sine, attention_mask):
+                cache = cache_source._AppendTensorCache(((None, None),))
+                hidden = self.model.model.layers[0](hidden, attention_mask=attention_mask,
+                    position_embeddings=(cosine, sine), past_key_values=cache, use_cache=True)
+                return (hidden, *cache.tensors())
 
         class CachedLayer0(Layer0):
             def forward(self, hidden, cosine, sine, past_key, attention_mask, past_value):
@@ -100,7 +112,7 @@ def layer0_boundary(model, inputs, source, *, tensor_record):
                     position_embeddings=(cosine, sine), past_key_values=cache, use_cache=True)
                 return (hidden, *cache.tensors())
 
-        boundary = CachedLayer0().eval()
+        boundary = CachedLayer0().eval() if cached else PrefillCacheLayer0().eval()
     else:
         boundary = Layer0().eval()
     state = list(boundary.named_parameters()) + list(boundary.named_buffers())
@@ -191,14 +203,15 @@ def get_model_and_inputs():
         if set(inputs) != {"input_ids"} or inputs["input_ids"].dtype != torch.int64:
             raise ValueError("input archive must contain only int64 input_ids")
         arguments = (inputs["input_ids"],)
-    elif selected in {"layer0", "head"}:
+    elif selected in {"layer0", "layer0-prefill-cache", "head"}:
         source_path = raw_capture.checked_path(os.environ["ATLAS_BOUNDARY_SOURCE_JSON"])
         source_bytes = source_path.read_bytes()
         if sha256(source_bytes).hexdigest() != os.environ["ATLAS_EXPECTED_BOUNDARY_SOURCE_SHA256"]:
             raise ValueError("selected boundary source receipt digest differs")
-        selector = layer0_boundary if selected == "layer0" else head_boundary
+        selector = head_boundary if selected == "head" else layer0_boundary
+        options = {"prefill_cache": True} if selected == "layer0-prefill-cache" else {}
         boundary, arguments = selector(model, inputs, json.loads(source_bytes),
-                                              tensor_record=raw_capture.tensor_record)
+                                      tensor_record=raw_capture.tensor_record, **options)
     else:
         raise ValueError(f"unsupported live capture boundary: {selected}")
     with prohibit_weight_conversion(), algos.active(replay):
