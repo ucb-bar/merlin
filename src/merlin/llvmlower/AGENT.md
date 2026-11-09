@@ -151,6 +151,11 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
   capture, optional research workflows or deployment. It requires fresh output,
   defaults to LLVM IR only, and forwards audit/sidecar options. `LowerResult.audit_index`
   identifies the invocation's exact audit index; callers must not guess the latest child.
+- `provider_workflow.py` is a separate explicit typed-integer file mode for that CLI.
+  It calls public provider preparation/copy/pipeline APIs, keeps geometry and
+  budgets explicit, refuses mixed Merlin roots and unsupported runner combinations,
+  and records actual selections and emitted bytes. RVV algorithms and device
+  policies stay in their providers; this mode does not promote floating model capture.
 - `passes_xdsl.py` — Merlin-authored rewrites: `quant_ext.dequantize_per_channel` → `linalg.generic`; `llvm.emit_c_interface`; (future) `scf.parallel` → `merlin_parallel_for`.
   Structural preprocessing accepts the invocation's shared IR audit and records parsed
   input plus each completed rewrite. Inspection must preserve pass order, statistics and

@@ -9,6 +9,9 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
 - `rvv_codegen.py` — command buffer → C driver around the hand-written RVV kernel.
 - `spike.py` — compile (chipyard riscv gcc) + run (`spike --isa=rv64gcv_zfh_zvfh -pN`) + parse + normalize metrics.
 - `vcs.py` — replay the same ELF on `MERLIN_SATURN_SIMV` (never builds RTL).
+- `device_simulator.py` — Execute an explicitly selected byte-bound native descriptor,
+  preserving physical harts, per-hart ISA, maps/devices and qualification. Timeout
+  cleanup owns only the invoked process group; explicit refusal never selects stock fallback.
 
 ## What does not belong here
 

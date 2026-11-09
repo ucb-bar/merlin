@@ -24,6 +24,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--textual", action="store_true", help="use existing text-only preprocessing instead of xDSL")
     parser.add_argument("--feature", action="append", help="explicit registered lowering feature; repeat to combine")
     parser.add_argument(
+        "--provider-config",
+        type=Path,
+        help="explicit provider-native workflow JSON (geometry, default-off panel/copy options)",
+    )
+    parser.add_argument(
+        "--execution-plan",
+        type=Path,
+        help="bind a native-only build/run/full-output postgate plan; requires --provider-config and --target riscv",
+    )
+    parser.add_argument(
         "--ir-audit",
         nargs="?",
         const="exact",
@@ -39,9 +49,15 @@ def main(argv: list[str] | None = None) -> int:
         help="bind an existing weights/manifest file in the audit; repeat for each dependency",
     )
     args = parser.parse_args(argv)
+    if args.provider_config and (args.textual or args.feature or args.ir_audit or args.audit_sidecar):
+        parser.error(
+            "--provider-config is a closed native workflow; runner features/textual/audit require the ordinary path"
+        )
+    if args.execution_plan and (not args.provider_config or "riscv" not in args.target):
+        parser.error("--execution-plan requires --provider-config and --target riscv")
     if args.audit_sidecar and not args.ir_audit:
         parser.error("--audit-sidecar requires --ir-audit")
-    for source in (args.input, *args.audit_sidecar):
+    for source in (args.input, *args.audit_sidecar, *filter(None, (args.provider_config, args.execution_plan))):
         if not source.is_file():
             parser.error(f"input is not an existing file: {source}")
     # Reserve a fresh destination before invoking the pipeline. Existing output,
@@ -54,15 +70,26 @@ def main(argv: list[str] | None = None) -> int:
         from .lower import lower_model_file
 
         output.mkdir(parents=True, exist_ok=False)
-        result = lower_model_file(
-            args.input,
-            output,
-            targets=tuple(dict.fromkeys(args.target)),
-            textual=args.textual,
-            features=frozenset(args.feature) if args.feature else None,
-            ir_audit=args.ir_audit,
-            audit_sidecars=tuple(args.audit_sidecar),
-        )
+        if args.provider_config:
+            from .provider_workflow import ProviderConfig, compile_file
+
+            result = compile_file(
+                args.input, output, ProviderConfig.load(args.provider_config), targets=tuple(dict.fromkeys(args.target))
+            )
+            if args.execution_plan:
+                from merlin.compile.provider_execution import execute
+
+                execute(result, args.execution_plan)
+        else:
+            result = lower_model_file(
+                args.input,
+                output,
+                targets=tuple(dict.fromkeys(args.target)),
+                textual=args.textual,
+                features=frozenset(args.feature) if args.feature else None,
+                ir_audit=args.ir_audit,
+                audit_sidecars=tuple(args.audit_sidecar),
+            )
     except Exception as exc:
         print(f"merlin lower: {type(exc).__name__}: {exc}; output location: {output}", file=sys.stderr)
         return 1
