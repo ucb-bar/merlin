@@ -17,6 +17,9 @@ inspection by the owning loop. Read captures may also use actual private
 allocations disjoint from an independently synthesized seed; this grants no
 readonly, release or escaping-alias fact. Close loop-local scalar capture
 producers and qualified padding/conditional/tensor-import values recursively.
+Scalar `tensor.extract` read captures require an independent seed and an actual
+entry tensor/view or restricted import from the qualified private roots. CFG
+phi tensors and unknown snapshot owners grant no independence or reuse fact.
 
 Mixed borrowed composition retains distinct live ordinary descriptor and plural
 writer owners for one exact source epoch. Disjoint ABI rows, original effect

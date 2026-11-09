@@ -83,7 +83,7 @@ def test_old_state_reads_and_permutations_finish_before_destination_updates(tmp_
         assert output.index("memref.store") < output.index('prov.op = "copy-selected-state"')
 
 
-def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True, write=False, opaque=False, constant=False, while_state=None, outside_read=False, private=False, unknown_owner=False):
+def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True, write=False, opaque=False, constant=False, while_state=None, outside_read=False, private=False, unknown_owner=False, tensor_read=False, tensor_view=False):
     marker = "read_only" if readonly else ""
     seed = "%seed" if fresh else "%x"
     declaration = "func.func private @observe()" if opaque else ""
@@ -101,6 +101,17 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
             %r=memref.load %view[%i]:memref<?xf32>
             scf.yield %r:f32
           }} else {{ {extra} scf.yield %zero:f32 }}"""
+    tensor_import = ""
+    if tensor_read:
+        tensor_source, tensor_type = "%x", "tensor<4xf32>"
+        if private or unknown_owner:
+            tensor_source = "%snapshot"
+            tensor_import = "%snapshot=bufferization.to_tensor %base restrict:memref<4xf32> to tensor<4xf32>"
+        if tensor_view:
+            tensor_import += f"\n%tensor_view=tensor.cast {tensor_source}:{tensor_type} to tensor<?xf32>"
+            tensor_source, tensor_type = "%tensor_view", "tensor<?xf32>"
+        read = read.replace("memref.load %view[%i] : memref<?xf32>", f"tensor.extract {tensor_source}[%i] : {tensor_type}")
+        read = read.replace("memref.load %view[%i]:memref<?xf32>", f"tensor.extract {tensor_source}[%i]:{tensor_type}")
     fill = "%seed=linalg.fill ins(%zero:f32) outs(%empty:tensor<4xf32>)->tensor<4xf32>"
     if generalize:
         fill = """%seed=linalg.generic {indexing_maps=[affine_map<(i)->()>,affine_map<(i)->(i)>],iterator_types=["parallel"]}
@@ -136,6 +147,7 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
         %zero=arith.constant 0.0:f32
         {imported}
         %view=memref.cast %base:memref<4xf32> to memref<?xf32>
+        {tensor_import}
         %empty=tensor.empty():tensor<4xf32>
         {fill}
         {header}
@@ -182,6 +194,17 @@ def test_scalar_read_captures_close_their_loop_local_producer_graph(tmp_path, op
 def test_private_read_roots_require_actual_allocations_and_independent_seeds(tmp_path, options, changed):
     stdout, _ = rewrite(tmp_path, read_source(**options))
     assert f"OK loop_tensor_destinations {changed}" in stdout
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("options,changed", [
+    ({}, 1), ({"tensor_view": True}, 1), ({"conditional": False}, 1),
+    ({"private": True}, 1), ({"fresh": False}, 0), ({"unknown_owner": True}, 0),
+])
+def test_tensor_reads_require_entry_values_or_separate_private_snapshots(tmp_path, options, changed):
+    stdout, output = rewrite(tmp_path, read_source(tensor_read=True, **options))
+    assert f"OK loop_tensor_destinations {changed}" in stdout
+    assert "tensor.extract" in output
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
@@ -274,7 +297,8 @@ def test_branch_state_qualifies_every_path_before_reusing_destinations(tmp_path,
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
-def test_function_cfg_phi_is_not_an_independent_entry_tensor(tmp_path):
+@pytest.mark.parametrize("tensor_read", [False, True])
+def test_function_cfg_phi_is_not_an_independent_entry_tensor(tmp_path, tensor_read):
     source = '''module {
       func.func @forward(%bound:index)->tensor<4xf32> {
         %zero=arith.constant 0.0:f32
@@ -298,6 +322,8 @@ def test_function_cfg_phi_is_not_an_independent_entry_tensor(tmp_path):
         return %result:tensor<4xf32>
       }
     }'''
+    if tensor_read:
+        source = source.replace("memref.load %base[%i]:memref<4xf32>", "tensor.extract %alias[%i]:tensor<4xf32>")
     stdout, _ = rewrite(tmp_path, source)
     assert "OK loop_tensor_destinations 0" in stdout
 

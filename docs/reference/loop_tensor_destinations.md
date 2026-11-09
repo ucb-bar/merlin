@@ -34,6 +34,11 @@ opaque calls do not qualify for that read extension. Private allocations supply
 disjointness from that independent seed, not a readonly fact or release authority.
 Every nested branch and
 operation is checked; no capture, effect or arithmetic changes. Loop-local
+`tensor.extract` captures may read actual function-entry tensor values through
+standard tensor views, or restricted imports from the qualified private roots.
+The independent seed remains required; function CFG phi arguments and unknown
+snapshot owners do not qualify. This recognizes tensor views recovered by native
+canonicalization without weakening lifetime or effect checks. Loop-local
 scalar capture producers also close recursively, so moving a scalar load outside
 the generic cannot bypass its root/seed checks. Pure padding/conditional values
 and restricted tensor imports from the qualified roots remain in that closure.

@@ -82,6 +82,20 @@ def _ltd_separate_read_root(value):
     return _ltd_readonly_input(value)
 
 
+def _ltd_tensor_read_root(value):
+    while isinstance(value, ir.OpResult):
+        op = value.owner.operation
+        if op.name in ('tensor.cast', 'tensor.extract_slice', 'tensor.collapse_shape', 'tensor.expand_shape', 'tensor.reshape'):
+            value = op.operands[0]
+            continue
+        if op.name == 'bufferization.to_tensor':
+            return (len(op.operands) == 1 and 'restrict' in op.attributes
+                    and _ltd_separate_read_root(op.operands[0]))
+        return False
+    return (isinstance(value, ir.BlockArgument) and value.owner.owner.operation.name == 'func.func'
+            and value.owner == value.owner.owner.operation.regions[0].blocks[0])
+
+
 def _ltd_scalar_body(op, *, fresh_seed):
     # Readonly entry storage or an actual private allocation is disjoint from
     # a newly synthesized loop seed. This changes no capture or memory effect;
@@ -90,6 +104,12 @@ def _ltd_scalar_body(op, *, fresh_seed):
         name = inner.name
         if name == 'memref.load':
             if (not fresh_seed or not inner.operands or not _ltd_separate_read_root(inner.operands[0])
+                    or inner.regions or len(inner.results) != 1 or not _ltd_numeric(inner.results[0].type)
+                    or any(not isinstance(v.type, ir.IndexType) for v in tuple(inner.operands)[1:])):
+                return False
+            continue
+        if name == 'tensor.extract':
+            if (not fresh_seed or not inner.operands or not _ltd_tensor_read_root(inner.operands[0])
                     or inner.regions or len(inner.results) != 1 or not _ltd_numeric(inner.results[0].type)
                     or any(not isinstance(v.type, ir.IndexType) for v in tuple(inner.operands)[1:])):
                 return False
