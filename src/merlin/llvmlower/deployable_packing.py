@@ -247,3 +247,103 @@ def static_concat(op, node, specs):
         "logical_bytes_written": out_bytes,
         "effect": "readonly inputs may alias each other; fresh disjoint complete output; no lifetime reuse",
     }
+
+
+def static_insert_slice(op, node, specs):
+    """Prove a complete fresh-output static insertion, never in-place mutation.
+
+    Copying the entire initial tensor precedes bounded ordered source spans.
+    Both inputs remain immutable and may alias each other; unique whole-chain
+    storage keeps the result disjoint. Rank-reduced/dynamic/bool cases require
+    separate proofs and do not gain permission here.
+    """
+    from xdsl.dialects import tensor
+    from xdsl.dialects.builtin import DenseArrayBase
+
+    from .deployable_outline import static_tensor_contract
+
+    fields = {"static_offsets", "static_sizes", "static_strides", "operandSegmentSizes"}
+    if (
+        not isinstance(op, tensor.InsertSliceOp)
+        or not _provenance_only(op)
+        or op.regions
+        or set(op.properties) != fields
+        or any(not isinstance(op.properties[key], DenseArrayBase) for key in fields)
+        or tuple(op.properties["operandSegmentSizes"].get_values()) != (1, 1, 0, 0, 0)
+        or len(op.operands) != 2
+        or len(op.results) != 1
+        or len(node.inputs) != 2
+        or len(node.outputs) != 1
+    ):
+        raise ValueError("unsupported fresh static insert tensor/effect contract")
+    source, initial = (specs[bid] for bid in node.inputs)
+    output = specs[node.outputs[0]]
+    source_shape, dtype, source_bytes = static_tensor_contract(op.operands[0].type)
+    initial_shape, initial_dtype, initial_bytes = static_tensor_contract(op.operands[1].type)
+    out_shape, out_dtype, out_bytes = static_tensor_contract(op.results[0].type)
+    if (
+        not 1 <= len(initial_shape) <= 8
+        or len(source_shape) != len(initial_shape)
+        or dtype == "i1"
+        or dtype != initial_dtype
+        or (out_shape, out_dtype, out_bytes) != (initial_shape, dtype, initial_bytes)
+        or (source.shape, source.dtype, source.bytes) != (source_shape, dtype, source_bytes)
+        or (initial.shape, initial.dtype, initial.bytes) != (initial_shape, dtype, initial_bytes)
+        or (output.shape, output.dtype, output.bytes) != (out_shape, dtype, out_bytes)
+        or output.arg_index is not None
+        or node.outputs[0] in node.inputs
+    ):
+        raise ValueError("insert requires exact same-rank nonboolean types and a distinct fresh output")
+    offsets, sizes, strides = (
+        tuple(op.properties[key].get_values()) for key in ("static_offsets", "static_sizes", "static_strides")
+    )
+    if (
+        any(len(v) != len(initial_shape) for v in (offsets, sizes, strides))
+        or sizes != source_shape
+        or any(type(v) is not int for values in (offsets, sizes, strides) for v in values)
+        or any(
+            o < 0 or n <= 0 or s <= 0 or o + (n - 1) * s >= extent
+            for o, n, s, extent in zip(offsets, sizes, strides, initial_shape, strict=True)
+        )
+    ):
+        raise ValueError("insert static slice coordinates do not match source or initial bounds")
+    dense, pitch = [], 1
+    for extent in reversed(initial_shape):
+        dense.append(pitch)
+        pitch *= extent
+    dense.reverse()
+    width = source_bytes // math.prod(source_shape)
+    contiguous_last = strides[-1] == 1
+    span = source_shape[-1] if contiguous_last else 1
+    iteration_shape = source_shape[:-1] if contiguous_last else source_shape
+    selected_pitches = tuple(s * p for s, p in zip(strides, dense, strict=True))
+    iteration_pitches = selected_pitches[:-1] if contiguous_last else selected_pitches
+    if math.prod(iteration_shape) * span * width != source_bytes:
+        raise ValueError("insert static spans do not cover the exact source bytes")
+    return {
+        "kind": "pack_insert_slice",
+        "inputs": list(node.inputs),
+        "output": node.outputs[0],
+        "source_op": op.name,
+        "source_attributes": {key: str(value) for key, value in op.attributes.items()},
+        "source_shape": source_shape,
+        "initial_shape": initial_shape,
+        "output_shape": out_shape,
+        "dtype": dtype,
+        "offsets": offsets,
+        "sizes": sizes,
+        "strides": strides,
+        "initial_bytes": initial_bytes,
+        "element_bytes": width,
+        "copy_count": math.prod(iteration_shape),
+        "copy_bytes": span * width,
+        "copy_iteration_shape": iteration_shape,
+        "copy_destination_pitches": iteration_pitches,
+        "copy_base_elements": sum(o * p for o, p in zip(offsets, dense, strict=True)),
+        "logical_bytes_read": initial_bytes + source_bytes,
+        "logical_bytes_written": initial_bytes + source_bytes,
+        "effect": (
+            "readonly inputs may alias; full initial copy and bounded source overwrite into fresh disjoint result; "
+            "no lifetime reuse"
+        ),
+    }

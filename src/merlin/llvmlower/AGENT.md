@@ -805,3 +805,10 @@ original FP32 quantization/scaling DAG and account for the added correction work
   original tensor-only compute kernel. Type/encoding/source-attribute equality
   and complete scalar use closure are mandatory. Do not bypass a reshape
   verifier, erase a live scalar consumer or introduce a C scalar driver ABI.
+
+- Static same-rank `tensor.insert_slice` transport must preserve the complete
+  immutable initial tensor and copy bounded source spans into a fresh disjoint
+  result. Prove exact dtype/encoding/extents, offsets and positive strides. The
+  two read-only inputs may alias each other; no in-place update or lifetime
+  reuse is granted. Dynamic/rank-reduced/rank-zero and unproved boolean cases
+  remain refusals. Logical copied bytes are not physical memory traffic.

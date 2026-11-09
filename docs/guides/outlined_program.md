@@ -258,6 +258,17 @@ encodings, empty or dynamic extents, rank-zero concat and unproved boolean
 storage refuse. This is byte transport, without implicit numeric conversion or
 in-place cache-update permission.
 
+A same-rank static `tensor.insert_slice` may likewise become fresh-output byte
+transport. It copies the complete immutable initial tensor before overwriting
+only the proven source spans. Static offsets, sizes, positive strides, dtype,
+encoding, complete bounds and distinct output ownership are mandatory. Inputs
+may overlap each other; neither is modified. A contiguous innermost source span
+may use one byte copy, while other fixed strides retain ordered element copies.
+Dynamic coordinates, rank reduction, rank-zero insertion and unproved boolean
+storage require separate proofs. This does not grant in-place KV-cache reuse.
+Reported read/write byte counts are logical transport work, not measured memory
+traffic or physical bandwidth.
+
 All views and intermediate buffers retain unique whole-chain storage; packing
 never mutates inputs or shortens an alias lifetime. Only byte/address operations
 run on the controller. All reductions, quantization, integer compensation,

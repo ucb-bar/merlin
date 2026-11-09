@@ -105,6 +105,10 @@ def _array(attribute):
 
 
 def _view(op, node, buffers) -> dict:
+    if op.name == "tensor.insert_slice":
+        from .deployable_packing import static_insert_slice
+
+        return static_insert_slice(op, node, buffers)
     if op.name == "tensor.concat":
         from .deployable_packing import static_concat
 
