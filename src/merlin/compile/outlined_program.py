@@ -40,10 +40,9 @@ def build_outlined_program(
 
     from merlin.common.paths import runtime_dir
     from merlin.frontends.linalg_mlir import parse_mlir_text
-    from merlin.llvmlower import deployable_outline, kernel_backend, toolchain
+    from merlin.llvmlower import deployable_ir, deployable_outline, kernel_backend, toolchain
     from merlin.llvmlower.portable_math import cache_token
     from merlin.runtime import outlined_chain
-    from merlin.xdsl_dialects._common import text
 
     if type(vectorize) is not bool:
         raise ValueError("explicit boolean vectorization selection required")
@@ -74,7 +73,7 @@ def build_outlined_program(
             workspace_budget_bytes=workspace_budget_bytes,
             alignment_bytes=alignment_bytes,
         )
-        (output / "outlined.mlir").write_text(text(plan.outlined.module))
+        (output / "outlined.mlir").write_text(deployable_ir.checked_generic_text(plan.outlined.module))
         (output / "plan.json").write_text(json.dumps(plan.to_dict(), indent=2) + "\n")
         identity = {
             "compiler": str(toolchain.clang()),
@@ -85,7 +84,7 @@ def build_outlined_program(
             "portable_math_policy": cache_token(),
             "compiler_owner_sha256": {
                 str(Path(module.__file__)): sha256_file(module.__file__)
-                for module in (deployable_outline, kernel_backend)
+                for module in (deployable_ir, deployable_outline, kernel_backend)
             },
         }
         cache, builds, mappings, entries = {}, [], [], []
@@ -105,7 +104,7 @@ def build_outlined_program(
                     vectorize=vectorize,
                     codegen_target=codegen_target,
                 )
-                (work / "source.mlir").write_text(text(kernel))
+                (work / "source.mlir").write_text(deployable_ir.checked_generic_text(kernel))
                 built["canonical_code_key"] = key
                 builds.append(built)
                 cache[key] = built
@@ -144,6 +143,7 @@ def build_outlined_program(
                 driver,
                 *support,
                 Path(deployable_outline.__file__),
+                Path(deployable_ir.__file__),
                 Path(kernel_backend.__file__),
                 Path(outlined_chain.__file__),
                 Path(__file__),
@@ -168,6 +168,7 @@ def build_outlined_program(
                 "input_sha256": source_pins,
                 "target_link_and_execution": "explicit caller platform recipe required",
                 "implicit_compiler_import_closure_complete": False,
+                "source_serialization": "checked_generic_operation_form",
                 "kernel_cache_scope": (
                     "within this build only; function/SSA spelling normalized, all attributes retained"
                 ),

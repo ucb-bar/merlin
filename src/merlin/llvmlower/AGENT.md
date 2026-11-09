@@ -776,3 +776,7 @@ original FP32 quantization/scaling DAG and account for the added correction work
   immutable input/effect checks and unique whole-chain storage lifetimes.
   `kernel_backend.compile_deployable_kernel` verifies compiler-owned LP64/index64
   ABI and refuses heap/LLVM-stack allocation or nested OpenMP in this first path.
+  `deployable_ir.checked_generic_text` is the explicit lossless seam for keys,
+  exported sources and compiler input. Round-trip all op attributes/properties
+  and region bodies or refuse; never change the shared printer default to make
+  this opt-in path work.

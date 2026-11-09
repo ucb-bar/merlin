@@ -140,8 +140,8 @@ def compile_deployable_kernel(
 
     from merlin.common.digest import sha256_file
 
-    from ..xdsl_dialects._common import text
     from . import codegen, target_data_layout, toolchain
+    from .deployable_ir import checked_generic_text
     from .lower import lower_model
 
     if (
@@ -168,7 +168,7 @@ def compile_deployable_kernel(
         raise ValueError("deployable descriptors require observed little-endian LP64/index64 lowering")
     work = Path(workdir)
     result = lower_model(
-        text(kernel_module),
+        checked_generic_text(kernel_module),
         work,
         targets=(),
         vectorize=vectorize,
@@ -204,7 +204,8 @@ def compile_deployable_kernel(
         "object_sha256": sha256_file(obj),
         "llvm": str(result.ll_path),
         "llvm_sha256": sha256_file(result.ll_path),
-        "source_ir_sha256": hashlib.sha256(text(kernel_module).encode()).hexdigest(),
+        "source_ir_sha256": hashlib.sha256(checked_generic_text(kernel_module).encode()).hexdigest(),
+        "source_serialization": "checked_generic_operation_form",
         "argument_ranks": ranks,
         "index_observation": observation,
         "effective_cflags": list(flags),

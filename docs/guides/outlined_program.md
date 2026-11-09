@@ -8,6 +8,7 @@ related: [staged_dispatch, provider_workflow, worker_placement]
 code_refs:
   - src/merlin/compile/outlined_program.py
   - src/merlin/llvmlower/deployable_outline.py
+  - src/merlin/llvmlower/deployable_ir.py
   - src/merlin/llvmlower/kernel_backend.py
   - src/merlin/runtime/outlined_chain.py
   - merlin/runtime/c/merlin_descriptors.c
@@ -81,6 +82,13 @@ only function and SSA spelling. It retains every constant, type, map, numerical,
 effect, provenance and unknown attribute, plus lowering identity. Reuse is only
 within one build and never follows from equal signatures or shapes. The source
 dispatch-to-function mapping remains explicit even when entries are reused.
+
+This workflow uses checked generic operation assembly for its code keys, emitted
+kernel source and compiler input. It reparses that text independently and refuses
+if operation attributes, properties, types or complete region bodies differ.
+Named/custom assembly can omit extension metadata or reconstruct a named
+operation's standard body; it is not a lossless code-identity format. The shared
+printer default and ordinary monolithic compiler path are unchanged.
 
 ## Link a platform driver
 

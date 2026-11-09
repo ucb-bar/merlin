@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from merlin.common.jsonio import canonical_sha256
-from merlin.xdsl_dialects._common import text
+from merlin.llvmlower.deployable_ir import checked_generic_text
 from merlin.xdsl_dialects.lowering.dispatch_program import (
     build_dispatch_program,
     prune_dead_nodes,
@@ -254,7 +254,7 @@ def plan_deployable_chain(
         size,
         alignment_bytes,
         worker_count,
-        hashlib.sha256(text(module).encode()).hexdigest(),
+        hashlib.sha256(checked_generic_text(module).encode()).hexdigest(),
     )
 
 
@@ -275,4 +275,4 @@ def canonical_kernel(module, symbol: str):
 
 def kernel_code_key(kernel, lowering_identity: dict) -> str:
     """Exact canonical IR plus actual lowering identity, never a shape/signature key."""
-    return canonical_sha256({"ir": text(kernel), "lowering_identity": lowering_identity})
+    return canonical_sha256({"ir": checked_generic_text(kernel), "lowering_identity": lowering_identity})
