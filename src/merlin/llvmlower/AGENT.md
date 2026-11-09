@@ -816,3 +816,11 @@ original FP32 quantization/scaling DAG and account for the added correction work
   two read-only inputs may alias each other; no in-place update or lifetime
   reuse is granted. Dynamic/rank-reduced/rank-zero and unproved boolean cases
   remain refusals. Logical copied bytes are not physical memory traffic.
+
+- `native_runtime` owns matching-model-compiler C runtime compilation. An
+  explicit environment header driver supplies the sysroot, not the arithmetic
+  implementation. Preserve existing math source/policy, actual model flags and
+  scalar register ABI; bind actual preprocessing/compiler dependencies and
+  refuse changes. A complete object does not prove platform library resolution,
+  final image memory or numerical execution. Backend facades delegate here
+  while retaining their own runner/error seams.

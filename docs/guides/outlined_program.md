@@ -169,6 +169,37 @@ Named/custom assembly can omit extension metadata or reconstruct a named
 operation's standard body; it is not a lossless code-identity format. The shared
 printer default and ordinary monolithic compiler path are unchanged.
 
+## Numeric runtime object
+
+The optional Python/JSON `runtime_header_driver` is the explicit path to the
+caller's selected environment C header driver, resolved and byte-bound for the build. The default `None` preserves the
+previous build. When selected, the builder compiles the existing
+`abi/mlir_runtime.c` with the exact model Clang and model ISA/ABI flags, using the
+explicit driver's sysroot headers. The resulting object is added to
+`link_objects`; callers must not compile that runtime again with another C
+compiler. Matching ISA names alone do not establish scalar/BF16 register ABI.
+
+```python
+built = build_outlined_program(
+    source, output, roles=roles, worker_slots=worker_slots,
+    workspace_budget_bytes=budget, alignment_bytes=alignment,
+    compute_cflags=model_flags, runtime_header_driver=header_driver,
+)
+```
+
+This supplies Merlin's existing reciprocal-square-root, round-even, portable
+transcendental and conversion helpers without changing their numeric policy or
+source. Existing RNE, finite-domain and floating-flag assumptions remain
+caller requirements. It supplies neither an implementation of unknown/opaque
+operations nor permission to change quantization. Preprocessor and compiler dependency sets,
+actual C/header bytes, flags, compiler and object enter the build closure;
+changes during compilation refuse. A failed attempt retains its receipt.
+The actual platform still owns libc/libm link suppliers, startup, complete image
+memory admission and numerical execution. A runtime object alone establishes
+neither a successful full-program link nor whole-model correctness. Link one
+compatible numeric runtime per final image; independently built stage runtimes
+with different bytes or ABI requirements cannot be combined by name alone.
+
 ## Explicit prepared staged kernels
 
 The Python builder optionally accepts
