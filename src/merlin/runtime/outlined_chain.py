@@ -139,7 +139,7 @@ def render_outlined_chain(
         raise ValueError("compiled role policy must match the plan's worker count")
     prepared_kernels = {} if prepared_kernels is None else dict(prepared_kernels)
     provider_state_layout = {} if provider_state_layout is None else dict(provider_state_layout)
-    from merlin.runtime.prepared_staged_kernel import verify_selection
+    from merlin.runtime.prepared_staged_kernel import readonly_bindings, verify_selection
 
     verify_selection(plan, prepared_kernels, provider_state_layout)
     signatures = {}
@@ -318,12 +318,16 @@ static int overlap(const void*a,size_t an,const void*b,size_t bn) {{
         source.append(f"  case {index}: {{")
         source.extend(_views(step["views_before"], positions))
         ordered = step["inputs"] + step["outputs"]
+        readonly = readonly_bindings(plan, index, prepared_kernels[index]) if index in prepared_kernels else {}
         source.append("    const merlin_arg_t arguments[]={")
         for i, bid in enumerate(ordered):
             b = specs[bid]
             kind = "MERLIN_INPUT" if i < len(step["inputs"]) else "MERLIN_OUTPUT"
+            offset = 0
+            if i in readonly:
+                kind, offset = "MERLIN_WEIGHT", readonly[i]["blob_offset"]
             dimensions = ",".join(map(str, b.shape)) or "0"
-            source.append(f"      {{{kind},0,{len(b.shape)},{{{dimensions}}},{b.bytes // math.prod(b.shape)}}},")
+            source.append(f"      {{{kind},{offset},{len(b.shape)},{{{dimensions}}},{b.bytes // math.prod(b.shape)}}},")
         source.append("    };")
         source.append("    void *data[]={" + ",".join(f"c->buffers[{positions[bid]}]" for bid in ordered) + "};")
         source.append("    const size_t capacities[]={" + ",".join(str(specs[bid].bytes) for bid in ordered) + "};")

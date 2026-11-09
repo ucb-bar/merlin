@@ -103,3 +103,10 @@ the per-backend adapters under `backends/`.
   identity and every interval, and never fall back after explicit selection.
   Target context, numerical equivalence and synchronous completion stay provider
   obligations; controller prepare/finish and worker-only compute stay distinct.
+
+- Explicit prepared readonly-input requirements bind a whole typed dense member
+  of the actual source-sealed FrozenInputs blob. Its original argument is absent
+  from the runtime caller ABI; runtime arithmetic, view writers and substituted
+  dynamic arguments refuse. MERLIN_WEIGHT annotates an already resolved pointer;
+  do not apply its byte offset again. Retain the complete blob through all joins
+  and count initialization/offline work separately from repeated inference.

@@ -200,6 +200,27 @@ neither a successful full-program link nor whole-model correctness. Link one
 compatible numeric runtime per final image; independently built stage runtimes
 with different bytes or ABI requirements cannot be combined by name alone.
 
+## Sealed readonly prepared operands
+
+A provider can append `readonly_inputs=(ReadonlyInput(...),)` to an explicitly
+selected `PreparedStagedKernel`. Each requirement names an input ordinal, exact
+dtype/shape/byte extent, SHA256 and power-of-two alignment. The shared builder
+binds it to a whole dense member of the actual source-bound `FrozenInputs`
+result. Its original source argument is absent from the runtime caller ABI;
+parameter names, C `const`, pointer identity and an unchanged runtime pointer
+are insufficient. Dynamic inputs, mismatched identities, runtime writers or
+view rebinding refuse.
+
+The generated invocation marks this already resolved pointer as `MERLIN_WEIGHT`
+and records its blob offset and lifetime. The explicit-pointer descriptor API
+does not add that offset again. The complete immutable blob remains live through
+all selected callbacks, worker joins and finish. A provider may then implement
+a separately admitted readonly-storage lease; generic orchestration neither
+infers alias permission nor changes the provider's default implementation.
+Provider state and the whole blob still count toward the full live memory
+budget. Freezing, offline packing, loading and validation are setup costs,
+reported separately from repeated inference; no cold-cache claim follows.
+
 ## Explicit prepared staged kernels
 
 The Python builder optionally accepts

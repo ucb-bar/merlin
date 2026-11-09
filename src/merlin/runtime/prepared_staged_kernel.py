@@ -15,6 +15,52 @@ def _identifier(value):
 
 
 @dataclass(frozen=True)
+class ReadonlyInput:
+    """Require one whole dense input from the program's sealed frozen blob.
+
+    This is not a promise inferred from pointer stability, parameter names or
+    C ``const``. The builder checks the actual immutable member and its source
+    ownership before exposing the existing MERLIN_WEIGHT argument kind.
+    """
+
+    index: int
+    dtype: str
+    shape: tuple[int, ...]
+    bytes: int
+    sha256: str
+    alignment: int = 1
+
+    def __post_init__(self):
+        if (
+            type(self.index) is not int
+            or self.index < 0
+            or not isinstance(self.dtype, str)
+            or not self.dtype
+            or not isinstance(self.shape, tuple)
+            or any(type(d) is not int or d <= 0 for d in self.shape)
+            or type(self.bytes) is not int
+            or not 0 < self.bytes < 1 << 63
+            or not isinstance(self.sha256, str)
+            or len(self.sha256) != 64
+            or any(c not in "0123456789abcdef" for c in self.sha256)
+            or type(self.alignment) is not int
+            or not 0 < self.alignment < 1 << 63
+            or self.alignment & (self.alignment - 1)
+        ):
+            raise ValueError("complete dense readonly input type/span/identity required")
+
+    def record(self):
+        return {
+            "index": self.index,
+            "dtype": self.dtype,
+            "shape": list(self.shape),
+            "bytes": self.bytes,
+            "sha256": self.sha256,
+            "alignment": self.alignment,
+        }
+
+
+@dataclass(frozen=True)
 class PreparedStagedKernel:
     """A provider's explicitly selected, already compiled staged implementation.
 
@@ -37,6 +83,7 @@ class PreparedStagedKernel:
     objects: tuple[Path, ...]
     input_sha256: Mapping[str, str]
     provenance: Mapping[str, Any]
+    readonly_inputs: tuple[ReadonlyInput, ...] = ()
 
     def verify(self, *, worker_count: int) -> None:
         if (
@@ -57,6 +104,9 @@ class PreparedStagedKernel:
             or not self.objects
             or not isinstance(self.provenance, Mapping)
             or not self.provenance
+            or not isinstance(self.readonly_inputs, tuple)
+            or any(not isinstance(r, ReadonlyInput) for r in self.readonly_inputs)
+            or len({r.index for r in self.readonly_inputs}) != len(self.readonly_inputs)
         ):
             raise ValueError("complete typed/bounded prepared staged kernel contract required")
         required = [Path(self.header), *map(Path, self.objects)]
@@ -82,7 +132,80 @@ class PreparedStagedKernel:
             "objects": [str(p) for p in self.objects],
             "input_sha256": dict(self.input_sha256),
             "provenance": dict(self.provenance),
+            **({"readonly_inputs": [r.record() for r in self.readonly_inputs]} if self.readonly_inputs else {}),
         }
+
+
+def readonly_bindings(plan, index: int, kernel: PreparedStagedKernel) -> dict[int, dict]:
+    """Bind explicit requirements to immutable members; no alias inference."""
+    if not kernel.readonly_inputs:
+        return {}
+    frozen = plan.frozen_inputs
+    if (
+        not isinstance(frozen, Mapping)
+        or frozen.get("schema") != "merlin.frozen_inputs.v1"
+        or frozen.get("original_program_preserved") is not True
+        or not isinstance(frozen.get("roots"), list)
+        or frozen.get("source_ir_sha256") != plan.source_ir_sha256
+        or not isinstance(frozen.get("readonly_buffers"), Mapping)
+        or not isinstance(frozen.get("external_input_source_indices"), list)
+        or any(type(i) is not int or i < 0 for i in frozen["external_input_source_indices"])
+        or type(frozen.get("published_blob_bytes")) is not int
+        or not 0 < frozen["published_blob_bytes"] < 1 << 63
+        or not isinstance(frozen.get("published_blob_sha256"), str)
+        or len(frozen["published_blob_sha256"]) != 64
+        or any(c not in "0123456789abcdef" for c in frozen["published_blob_sha256"])
+    ):
+        raise ValueError("readonly selection requires the actual sealed FrozenInput program")
+    roots = {r.get("arg_index"): r for r in frozen["roots"] if isinstance(r, Mapping)}
+    if len(roots) != len(frozen["roots"]) or any(
+        type(i) is not int or i < 0 or i in frozen["external_input_source_indices"] for i in roots
+    ):
+        raise ValueError("readonly selection requires removed immutable source argument ownership")
+    step = plan.dispatches[index]
+    specs = {b.id: b for b in plan.buffers}
+    bindings = {}
+    for requirement in kernel.readonly_inputs:
+        if requirement.index >= len(step["inputs"]):
+            raise ValueError("readonly selection names a non-input operand")
+        bid = step["inputs"][requirement.index]
+        spec = specs[bid]
+        member = frozen["readonly_buffers"].get(bid)
+        if (
+            not isinstance(member, Mapping)
+            or spec.workspace_offset is not None
+            or spec.arg_index in frozen["external_input_source_indices"]
+            or (
+                spec.arg_index is not None
+                and (spec.arg_index not in roots or roots[spec.arg_index].get("buffer") != bid)
+            )
+            or tuple(spec.shape) != requirement.shape
+            or spec.dtype != requirement.dtype
+            or spec.bytes != requirement.bytes
+            or member.get("bytes") != requirement.bytes
+            or member.get("sha256") != requirement.sha256
+            or type(member.get("offset")) is not int
+            or member["offset"] < 0
+            or member["offset"] % requirement.alignment
+            or plan.alignment_bytes < requirement.alignment
+            or member["offset"] + requirement.bytes > frozen["published_blob_bytes"]
+        ):
+            raise ValueError("readonly input differs from the exact immutable type/span/content binding")
+        if bid in plan.program.results or any(bid in s["outputs"] for s in plan.dispatches):
+            raise ValueError("readonly input has a runtime arithmetic/output writer")
+        views = [v for s in plan.dispatches for v in s["views_before"]] + list(plan.trailing_views)
+        if any(v.get("output") == bid for v in views):
+            raise ValueError("readonly input has a runtime view/transport rebinding")
+        bindings[requirement.index] = {
+            **requirement.record(),
+            "buffer": bid,
+            "blob_offset": member["offset"],
+            "blob_sha256": frozen["published_blob_sha256"],
+            "source_ir_sha256": plan.source_ir_sha256,
+            "lifetime": "immutable program blob retained through all callbacks and complete joins",
+            "runtime_argument_removed": True,
+        }
+    return bindings
 
 
 def reserve_states(plan, kernels: Mapping[int, PreparedStagedKernel], *, budget_bytes: int):
@@ -123,6 +246,7 @@ def verify_selection(plan, kernels, layout):
         actual = checked_generic_text(canonical_kernel(plan.outlined.module, plan.dispatches[index]["symbol"]))
         if hashlib.sha256(actual.encode()).hexdigest() != kernel.source_ir_sha256:
             raise ValueError("prepared staged kernel source identity differs from selected dispatch")
+        readonly_bindings(plan, index, kernel)
         slot = layout[index]
         offset = slot.get("offset")
         if (

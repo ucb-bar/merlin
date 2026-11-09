@@ -215,6 +215,8 @@ def build_outlined_program(
                 work.mkdir()
                 (work / "source.mlir").write_text(deployable_ir.checked_generic_text(kernel))
                 record = {**selected.record(), "canonical_code_key": key, "state_layout": state_layout[index]}
+                if selected.readonly_inputs:
+                    record["readonly_input_bindings"] = prepared_staged_kernel.readonly_bindings(plan, index, selected)
                 (work / "prepared.json").write_text(json.dumps(record, indent=2) + "\n")
                 prepared_builds[index] = record
                 entries.append(selected.compute)
