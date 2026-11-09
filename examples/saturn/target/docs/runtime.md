@@ -6,7 +6,7 @@ Saturn is a **Merlin runtime adapter**, not its own runtime. The Merlin command 
 - **simulator** — the Python engine (`merlin.runtime.simulate`), reference oracle.
 - **baremetal (spike)** — `merlin.runtime.backends.spike`: the command buffer is
   compiled into a bare-metal driver around the hand-written RVV kernel
-  (`merlin/runtime/baremetal/spike/rvv_matmul_i8.S`), partitioned row-wise across
+  (`src/merlin/runtime/native/baremetal/spike/rvv_matmul_i8.S`), partitioned row-wise across
   harts, and run with `spike --isa=rv64gcv_zfh_zvfh -pN`. Outputs are gated on
   equality with `reference_outputs(cb)`.
 - **vcs** — `merlin.runtime.backends.vcs`: the *same ELF* replayed on a pre-built

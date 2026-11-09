@@ -9,7 +9,7 @@ code_refs:
   - src/merlin/llvmlower/source_choices.py
   - src/merlin/llvmlower/source_model.py
   - src/merlin/llvmlower/shared_source_routing.py
-  - src/merlin_experiments/phase2/source_choices_workflow.py
+  - src/merlin/experiments/phase2/source_choices_workflow.py
 ---
 
 # Shared scheduling source-choice integration

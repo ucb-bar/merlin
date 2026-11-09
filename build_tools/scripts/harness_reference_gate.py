@@ -17,7 +17,7 @@ this gate:
     headers, its object references no symbol beyond the kernel entry and the console routines, and
     (with ``--forbidden-header``) none of that header's routines is named in the harness or linked.
 
-The build uses Merlin's own bare-metal spike environment (``merlin/runtime/baremetal/spike``), not a
+The build uses Merlin's own bare-metal spike environment (``src/merlin/runtime/native/baremetal/spike``), not a
 target's vendor tree, so nothing here depends on a target support package.
 
 Usage::
@@ -435,7 +435,7 @@ def _macs(cb: dict) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--target", required=True)
-    ap.add_argument("--capsule-root", default=str(_ROOT / "merlin" / "contract" / "capsules"))
+    ap.add_argument("--capsule-root", default=str(_ROOT / "experiments" / "corpora"))
     ap.add_argument("--trees", nargs="+", default=list(_DEFAULT_TREES))
     ap.add_argument(
         "--forbidden-header",

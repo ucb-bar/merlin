@@ -9,7 +9,7 @@ code_refs:
   - src/merlin/benchharness/chia_bridge.py
   - src/merlin/benchharness/chia_tasks.py
   - src/merlin/targetgen/aet_bridge.py
-  - src/merlin_experiments/phase2/telemetry.py
+  - src/merlin/experiments/phase2/telemetry.py
   - src/merlin/kernels/ingest/__init__.py
   - src/merlin/integrations/modelir.py
   - src/merlin/integrations/specir.py
@@ -22,10 +22,10 @@ Integrations are **adapters**, not copied implementations of their upstream proj
 Adapters retain their logical owners inside the main Merlin distribution. Shared compiler
 contracts and import/process integration live under `src/merlin/integrations`; research and
 evaluation adapters remain with their owning workflows under `src/merlin` or
-`src/merlin_experiments`. Stable `merlin.*` imports do not imply shared compiler ownership.
+`src/merlin/experiments`. Stable `merlin.*` imports do not imply shared compiler ownership.
 Shared code can resolve a trusted owner through a declared entry-point group: exact whole-model
 offload (`merlin.llvmlower.exact_offload`) requires exactly one `merlin.exact_offload_release`
-provider named `reviewed_phase0`, registered by the main package (`merlin_experiments.corpus.release:verify_exact_offload_binding`). An absent or
+provider named `reviewed_phase0`, registered by the main package (`merlin.experiments.corpus.release:verify_exact_offload_binding`). An absent or
 ambiguous provider refuses exact offload; the lookup is a trusted-host gate, not a sandbox. See the
 [architecture reference](../reference/architecture.md) and
 [integration rationale](../design/integrations.md).
@@ -217,7 +217,7 @@ establishes that capability. An unsupported host must refuse that qualification;
 it must not silently downgrade to an unverified compatibility mode. Existing v1
 receipts retain their historical meaning above.
 
-The managed-process implementation lives in `merlin_experiments.execution`:
+The managed-process implementation lives in `merlin.experiments.execution`:
 `native_supervisor` is an explicitly provisioned foreground service and the direct
 parent of each `native_guardian`; `chia_native` supplies the public setup/cleanup
 hooks and native command client. The guardian watches kernel process handles for
@@ -233,9 +233,10 @@ Local real-public-hook qualification passed plain and profiled success, body fai
 cooperative cancellation, worker loss before/after native admission, rejected dispatch,
 bypass and local-call refusal on Chia revisions `9bf0bbb98c2a068f4cea79a4a7b968f7db5ce22d`
 and `16c35e92aaaf9511c6453bf94cd5cf589698f4e3`. Unrelated work survived every case.
-The repeatable cancellation regression is
-`packages/merlin-experiments/tests/test_managed_chia_hooks.py`; enable its explicitly
-owned local Ray runtimes with `MERLIN_TEST_MANAGED_CHIA=1`. This qualification does
+The cancellation regression used the now-retired `test_managed_chia_hooks.py`
+matrix in its frozen source environment, with explicitly owned local Ray runtimes
+selected by `MERLIN_TEST_MANAGED_CHIA=1`. That file is not a current test entrypoint.
+Replaying this qualification requires its recorded source and dependencies; it does
 not change the selected dependency pin or establish accounting equivalence between
 those revisions.
 
@@ -280,11 +281,11 @@ from the repository environment (replace both absolute paths):
 import os
 import sys
 from pathlib import Path
-from merlin_experiments.frozen_python import python_command
+from merlin.experiments.frozen_python import python_command
 
 snapshot = Path("/absolute/suite/root/source")
 argv = python_command(snapshot, [
-    sys.executable, "-m", "merlin_experiments.execution.native_supervisor",
+    sys.executable, "-m", "merlin.experiments.execution.native_supervisor",
     "--endpoint", "/absolute/private-native/service.sock",
 ])
 os.execv(argv[0], argv)
@@ -349,7 +350,7 @@ and result transports. They do not requalify real-Ray profiled failures/cancella
 or complete frozen worker imports. The earlier real-hook evidence above remains historical.
 
 Dependency updates must run the bridge lifecycle tests in the ordinary development environment,
-then `merlin/tests/infra/test_chia_upstream_contract.py` in the isolated Chia environment.
+then `tests/infra/test_chia_upstream_contract.py` in the isolated Chia environment.
 **Network safety:** real-Ray opt-in tests additionally require an operator-provisioned
 Linux network namespace/container with only loopback (`--network=none`, loopback up).
 The tests refuse any non-loopback interface before starting Ray; setting an opt-in
@@ -362,7 +363,7 @@ this adapter does not certify an exposed Ray service as safe.
 
 The latter exercises real Chia/AET accounting with synthetic events and replaced cluster transport;
 set `MERLIN_TEST_CHIA_RAY=1` to additionally exercise two sequential workflows on a bounded local
-Ray cluster with no LLM calls. Also run `merlin/tests/infra/test_chia_tasks.py`: its ordinary
+Ray cluster with no LLM calls. Also run `tests/infra/test_chia_tasks.py`: its ordinary
 tests exercise dispatch failures, interruption, unknown outcomes and incomplete cleanup; with
 `MERLIN_TEST_CHIA_RAY=1`, its isolated local-Ray test confirms owned-task cancellation leaves a
 borrowed peer running and able to finish. This does not qualify native descendants, multi-node
@@ -379,7 +380,7 @@ continuation reuses the selected executable and home. Callers omitting these
 explicit inputs retain the environment/cache defaults. This removes two shared
 mutations, not all provider state or concurrency constraints.
 
-`merlin_experiments.phase2.telemetry` owns preflight, lossless round evidence and final AET
+`merlin.experiments.phase2.telemetry` owns preflight, lossless round evidence and final AET
 publication for measured-claim authoring. Global/model-portfolio authoring uses its preflight
 and round evidence, but does not thereby acquire a finalized tool ledger or cost report.
 
@@ -422,7 +423,7 @@ export MERLIN_EXO_REPO=/path/to/exo
 export MERLIN_TRITON_REPO=/path/to/triton
 ```
 
-Each adapter normalizes its source into `merlin/schemas/` artifacts (e.g. `kernel_record`,
+Each adapter normalizes its source into `src/merlin/resources/schemas/` artifacts (e.g. `kernel_record`,
 `abstraction_candidate`, `policy_rule`) so all sources are comparable.
 
 Note: xDSL is consumed as an optional library (adapters call its *tooling*); merlin's own prototype

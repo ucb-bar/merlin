@@ -17,7 +17,7 @@ code_refs:
   - src/merlin/compare/paper_merlin_mlir_producer.py
   - src/merlin/compare/paper_merlin_producers.py
   - src/merlin/compare/paper_session_abi.py
-  - merlin/benchmarks/rvv_paper/study_v2.yaml
+  - src/merlin/resources/benchmarks/rvv_paper/study_v2.yaml
 ---
 
 # Materialize the frozen paper capture set
@@ -32,7 +32,7 @@ Run the default preflight first. This writes a timestamped plan under
 
 ```bash
 merlin-paper-capture \
-  --host-experiment merlin/experiments/cpu_host_compiler_v0/experiment.yaml
+  --host-experiment experiments/studies/cpu_host_compiler_v0/experiment.yaml
 ```
 
 The plan binds the exact paper-input tree digest and every per-model input/checkpoint source, hashes
@@ -45,7 +45,7 @@ After the plan says `ready`, explicitly launch all ten heavy captures:
 
 ```bash
 merlin-paper-capture \
-  --host-experiment merlin/experiments/cpu_host_compiler_v0/experiment.yaml \
+  --host-experiment experiments/studies/cpu_host_compiler_v0/experiment.yaml \
   --execute
 ```
 
@@ -447,6 +447,6 @@ The local non-board regression path is:
 
 ```bash
 PYTHONPATH=merlin/python .venv/bin/pytest -q -p no:cacheprovider \
-  merlin/tests/dse/test_paper_study.py::test_freeze_constructor_derives_measurement_io_from_capture_and_package_receipts \
-  merlin/tests/dse/test_paper_study.py::test_registered_merlin_builder_produces_independently_replayable_live_result
+  tests/dse/test_paper_study.py::test_freeze_constructor_derives_measurement_io_from_capture_and_package_receipts \
+  tests/dse/test_paper_study.py::test_registered_merlin_builder_produces_independently_replayable_live_result
 ```

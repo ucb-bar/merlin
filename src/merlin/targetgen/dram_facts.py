@@ -23,20 +23,15 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from merlin.common.paths import merlin_dir, repo_root
+from merlin.common.paths import resolve_grant
 
 _CACHE: dict[str, int] = {}
 _WINDOW_CACHE: dict[str, tuple[int, int | None, str]] = {}
 
 
 def _resolve(rel: str) -> Path:
-    """Resolve a descriptor-relative path. The ``experiments/…`` bundle-convention paths are
-    ``merlin/``-relative; a few refs are repo-root-relative — try ``merlin/`` first, then repo root."""
-    for base in (merlin_dir(), repo_root()):
-        p = base / rel
-        if p.exists():
-            return p
-    return merlin_dir() / rel
+    """Resolve within the selected source owner's declared layout."""
+    return resolve_grant(rel)
 
 
 def _descriptor_for(target: str) -> Path | None:

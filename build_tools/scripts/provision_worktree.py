@@ -83,7 +83,7 @@ def resolved_library(worktree: Path) -> dict[str, str]:
 
     The linked venv has merlin installed in DEVELOPMENT mode against whichever checkout last installed
     it, so a worktree that links it imports THAT library while running its own scripts. The test suite
-    pins its own checkout (``merlin/tests/conftest.py``); a script, a ``python -c`` and every child
+    pins its own checkout (``tests/conftest.py``); a script, a ``python -c`` and every child
     process a library spawns do not. Measured: a 30-minute sweep against the wrong library, and a phase-1
     run "pinned" to a commit that imported its library from the source tree for its entire life.
     Provisioning is the moment to say so, because provisioning is what creates the link.

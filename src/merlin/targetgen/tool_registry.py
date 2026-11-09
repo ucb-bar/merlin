@@ -64,7 +64,7 @@ class BrokerSpec:
     Brokered tools exist because the tool cannot run INSIDE the box: it needs either the oracle or the
     target model, both of which are masked there. The broker runs outside, the shim forwards over a
     channel dir in the workspace. Canonical host implementations belong to
-    ``merlin_experiments.phase1.brokers``; only public clients are staged in-box.
+    ``merlin.experiments.phase1.brokers``; only public clients are staged in-box.
     """
 
     channel: str  # channel dir under the workspace, e.g. ".isa_channel"
@@ -137,38 +137,38 @@ def describe_grant(spec: ToolSpec, granted) -> str:
 #: because they leak anything, but because unaided raw-ISA authoring is what the baseline measures.
 _ISA_BROKER = BrokerSpec(
     ".isa_channel",
-    "merlin_experiments.phase1.brokers.isa_tools",
+    "merlin.experiments.phase1.brokers.isa_tools",
     "isa_tools_broker.log",
-    (("merlin_experiments.phase1.tools.isa", "isa_tools.py"),),
+    (("merlin.experiments.phase1.tools.isa", "isa_tools.py"),),
 )
 _CCA_BROKER = BrokerSpec(
     ".cca_channel",
-    "merlin_experiments.phase1.brokers.cca",
+    "merlin.experiments.phase1.brokers.cca",
     "cca_broker.log",
     (
-        ("merlin_experiments.phase1.tools.cca", "cca_contract.py"),
-        ("merlin_experiments.phase1.tools.cca", "action_catalog.py"),
+        ("merlin.experiments.phase1.tools.cca", "cca_contract.py"),
+        ("merlin.experiments.phase1.tools.cca", "action_catalog.py"),
     ),
     ("check_bijection", "escalation_ladder"),
 )
 
 # Public standalone clients common to every treatment; brokers remain host-owned.
 COMMON_CLIENTS = (
-    ("merlin_experiments.phase1.tools.selfcheck", "agent_selfcheck.py"),
-    ("merlin_experiments.phase1.tools.simjob", "simjob.py"),
-    ("merlin_experiments.phase1.tools.await_verdict", "await_verdict.py"),
-    ("merlin_experiments.phase1.tools.model_check", "agent_model_check.py"),
-    ("merlin_experiments.phase1.tools.result_details", "qa_result_details.py"),
+    ("merlin.experiments.phase1.tools.selfcheck", "agent_selfcheck.py"),
+    ("merlin.experiments.phase1.tools.simjob", "simjob.py"),
+    ("merlin.experiments.phase1.tools.await_verdict", "await_verdict.py"),
+    ("merlin.experiments.phase1.tools.model_check", "agent_model_check.py"),
+    ("merlin.experiments.phase1.tools.result_details", "qa_result_details.py"),
 )
 
 # Common feedback is not an ablatable tool treatment. Its host owners share the
 # same mapping shape so staging and launch never guess native filenames.
 COMMON_BROKERS = (
-    BrokerSpec(".qa_channel", "merlin_experiments.phase1.brokers.selfcheck", "broker.log", (COMMON_CLIENTS[0],)),
-    BrokerSpec(".qa_channel", "merlin_experiments.phase1.brokers.simjob", "simjob_broker.log", (COMMON_CLIENTS[1],)),
+    BrokerSpec(".qa_channel", "merlin.experiments.phase1.brokers.selfcheck", "broker.log", (COMMON_CLIENTS[0],)),
+    BrokerSpec(".qa_channel", "merlin.experiments.phase1.brokers.simjob", "simjob_broker.log", (COMMON_CLIENTS[1],)),
     BrokerSpec(
         ".model_check_channel",
-        "merlin_experiments.phase1.brokers.model_check",
+        "merlin.experiments.phase1.brokers.model_check",
         "model_check_broker.log",
         (COMMON_CLIENTS[3],),
     ),

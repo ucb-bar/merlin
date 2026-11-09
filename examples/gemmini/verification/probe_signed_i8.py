@@ -18,10 +18,10 @@ import re
 import subprocess
 from pathlib import Path
 
-from merlin_experiments.phase0.cell_probe import verify_characterization
 from probe_headline_kernel import _scaled_i8_reference
 from probe_native_kernel import checked_declared_inputs, checked_source_binding, phase0_manifest_path
 
+from merlin.experiments.phase0.cell_probe import verify_characterization
 from merlin.runtime.backends.base import get_backend
 from merlin.targetgen.contract.compile import compile_lowered_to_elf
 from merlin.targetgen.contract.interface_emit import parse_interface_mlir
@@ -72,8 +72,12 @@ def traced_rocc_pcs(backend: object, elf: Path, case_dir: Path, disassembly: str
     env = dict(os.environ)
     env["LD_LIBRARY_PATH"] = str(libdir) + ":" + env.get("LD_LIBRARY_PATH", "")
     command = [
-        str(backend.spike_path()), "-l", f"--log={trace_path}", "--instructions=250000",
-        *flags, str(elf),
+        str(backend.spike_path()),
+        "-l",
+        f"--log={trace_path}",
+        "--instructions=250000",
+        *flags,
+        str(elf),
     ]
     proc = subprocess.run(command, capture_output=True, text=True, timeout=timeout, env=env)
     if proc.returncode != 0 or proc.stdout != console:
@@ -122,9 +126,7 @@ def run(args: argparse.Namespace) -> dict:
         or storage["accumulator"]["dtype"] != "i32"
     ):
         raise ValueError("selected RTL facts do not establish signed i8, signed i20, and i32 storage")
-    cell = verify_characterization(
-        args.cell_receipt, source_sha256=selected["core_hw"]["sha256"]
-    )
+    cell = verify_characterization(args.cell_receipt, source_sha256=selected["core_hw"]["sha256"])
     if (
         cell.get("vector_count") != 77056
         or cell.get("domain", {}).get("expected") != "signed multiply-add wrapping to 20 bits"
@@ -145,19 +147,17 @@ def run(args: argparse.Namespace) -> dict:
         raise ValueError("selected capsule does not have an unscaled full i32 readout")
     inputs = signed_operands(m, k, n)
     scalar, largest = scalar_and_partial(inputs, m, k, n)
-    semantics = {
-        "internal_arithmetic": {"signed_operand_bits": 8, "mac_result_bits": 20}
-    }
+    semantics = {"internal_arithmetic": {"signed_operand_bits": 8, "mac_result_bits": 20}}
     bound = integer_partial_sum_bound(
-        semantics, reduction_extent=k,
+        semantics,
+        reduction_extent=k,
         lhs_values=[value for row in inputs["A0"] for value in row],
         rhs_values=[value for row in inputs["W"] for value in row],
     )
     if bound["status"] != "proven_safe" or largest > bound["bound"]:
         raise ValueError("selected signed operands can overflow the i20 partial sum")
     if not (
-        any(value < -128 for row in scalar for value in row)
-        and any(value > 127 for row in scalar for value in row)
+        any(value < -128 for row in scalar for value in row) and any(value > 127 for row in scalar for value in row)
     ):
         raise ValueError("signed stimulus does not distinguish both i8 saturation directions")
 
@@ -181,14 +181,22 @@ def run(args: argparse.Namespace) -> dict:
             "software_and_support": selected_inputs,
             "capsule": {"path": str(capsule_path), "sha256": sha(capsule_path)},
             "interface": {"path": str(interface_path), "sha256": sha(interface_path)},
-            "cell_characterization": {"path": str(args.cell_receipt.resolve()), "sha256": sha(args.cell_receipt),
-                                      "vectors": cell["vector_count"], "status": cell["status"]},
+            "cell_characterization": {
+                "path": str(args.cell_receipt.resolve()),
+                "sha256": sha(args.cell_receipt),
+                "vectors": cell["vector_count"],
+                "status": cell["status"],
+            },
             "emitter": {"path": emitter.__file__, "sha256": sha(Path(emitter.__file__))},
             "backend": {"path": backend.__file__, "sha256": sha(Path(backend.__file__))},
-            "backend_implementation": {"path": str(support / "backend/gemmini.py"),
-                                       "sha256": sha(support / "backend/gemmini.py")},
-            "compiler_python": {"path": str(Path(os.environ["MERLIN_M2M_VENV"]) / "bin/python"),
-                                "sha256": sha(Path(os.environ["MERLIN_M2M_VENV"]) / "bin/python")},
+            "backend_implementation": {
+                "path": str(support / "backend/gemmini.py"),
+                "sha256": sha(support / "backend/gemmini.py"),
+            },
+            "compiler_python": {
+                "path": str(Path(os.environ["MERLIN_M2M_VENV"]) / "bin/python"),
+                "sha256": sha(Path(os.environ["MERLIN_M2M_VENV"]) / "bin/python"),
+            },
             "clang": {"path": os.environ["MERLIN_CLANG"], "sha256": sha(Path(os.environ["MERLIN_CLANG"]))},
             "spike": {"path": str(backend.spike_path()), "sha256": sha(backend.spike_path())},
             "spike_extension": {"path": str(spike_extension), "sha256": sha(spike_extension)},
@@ -212,7 +220,9 @@ def run(args: argparse.Namespace) -> dict:
         expected = scalar
         if scale is not None:
             case_cb["commands"][2]["attributes"] = {
-                "epilogue": ["acc_scale"], "output_dtype": "i8", "acc_scale": scale,
+                "epilogue": ["acc_scale"],
+                "output_dtype": "i8",
+                "acc_scale": scale,
             }
             expected = _scaled_i8_reference(scalar, scale)
         case_dir = root / label
@@ -228,17 +238,21 @@ def run(args: argparse.Namespace) -> dict:
         if not rocc_count:
             raise AssertionError(f"{label}: ELF contains no custom-3 RoCC instruction")
         case_receipt = {
-            "status": "incomplete", "readout_dtype": "i32" if scale is None else "i8",
-            "acc_scale": scale, "same_elf_sha256": sha(elf), "rocc_instructions": rocc_count,
+            "status": "incomplete",
+            "readout_dtype": "i32" if scale is None else "i8",
+            "acc_scale": scale,
+            "same_elf_sha256": sha(elf),
+            "rocc_instructions": rocc_count,
             "command_buffer_sha256": sha(case_dir / "command_buffer.json"),
             "expected_sha256": sha(case_dir / "expected.json"),
             "lowered_mlir_sha256": sha(case_dir / "model.mlir"),
             "harness_sha256": sha(case_dir / "harness.c"),
-            "disassembly_sha256": sha(case_dir / "disassembly.txt"), "engines": {},
+            "disassembly_sha256": sha(case_dir / "disassembly.txt"),
+            "engines": {},
         }
         output["cases"][label] = case_receipt
         engines = case_receipt["engines"]
-        for engine in (("spike", "verilator") if args.rtl else ("spike",)):
+        for engine in ("spike", "verilator") if args.rtl else ("spike",):
             try:
                 console = backend.run_elf(elf, simulator=engine, timeout=args.timeout)
             except subprocess.TimeoutExpired as exc:
@@ -250,8 +264,10 @@ def run(args: argparse.Namespace) -> dict:
                     path = case_dir / f"{engine}.{stream}.tail"
                     path.write_bytes(retained)
                     timeout_evidence[stream] = {
-                        "captured_bytes": len(data), "retained_bytes": len(retained),
-                        "tail_sha256": sha(path), "truncated": len(data) > len(retained),
+                        "captured_bytes": len(data),
+                        "retained_bytes": len(retained),
+                        "tail_sha256": sha(path),
+                        "truncated": len(data) > len(retained),
                     }
                 engines[engine] = timeout_evidence
                 case_receipt["status"] = "rtl_timeout_incomplete"
@@ -269,13 +285,13 @@ def run(args: argparse.Namespace) -> dict:
             ):
                 raise AssertionError(f"{label}: {engine} did not report a measured Gemmini target region")
             engines[engine] = {
-                "status": "matched", "console_sha256": sha(case_dir / f"{engine}.log"),
-                "cycles": metrics.get("cycles"), "output_elements": m * n,
+                "status": "matched",
+                "console_sha256": sha(case_dir / f"{engine}.log"),
+                "cycles": metrics.get("cycles"),
+                "output_elements": m * n,
             }
             if engine == "spike":
-                engines["spike"].update(
-                    traced_rocc_pcs(backend, elf, case_dir, disassembly, console, args.timeout)
-                )
+                engines["spike"].update(traced_rocc_pcs(backend, elf, case_dir, disassembly, console, args.timeout))
         case_receipt["status"] = "spike_and_verilator_matched" if args.rtl else "spike_matched_rtl_not_run"
     output["status"] = "spike_and_verilator_passed" if args.rtl else "spike_passed_rtl_not_run"
     save(root / "receipt.json", output)

@@ -314,8 +314,8 @@ REASON = (
 def _declined_buffer(op: str) -> dict:
     """A buffer valid under BOTH command-buffer schemas, carrying the decline.
 
-    The experiment ABI's schema (merlin/contract/schemas) requires abi_version/target/commands; the
-    runtime's own (merlin/schemas) additionally requires backend/resources/metrics_requested. A decline
+    The experiment ABI's schema (src/merlin/resources/contracts/schemas) requires abi_version/target/commands; the
+    runtime's own (src/merlin/resources/schemas) additionally requires backend/resources/metrics_requested. A decline
     that only one of them accepts would be rejected as malformed by whichever reader got it second,
     and "your buffer is malformed" is not the message this is trying to send.
     """

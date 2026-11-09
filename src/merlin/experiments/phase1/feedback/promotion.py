@@ -1,0 +1,1465 @@
+"""Record loop-tier verdicts and enqueue certificate work for BOTH grading brokers.
+
+Every producer of feedback considers promotion. Wiring only the asynchronous broker
+silently missed synchronous verdicts; the shared implementation prevents that drift.
+Scheduling policy stays in ``merlin.targetgen.oracle_schedule``. This module owns
+verdict recording, content identities and the pending/certified ledger.
+
+Identity is narrowest-first:
+
+* Execution identity binds each capsule's executable bytes and recorded target/hardware
+  revisions. Byte-identical programs can retain certificates across compiler edits;
+  Merlin's own source revision is not a program identity.
+* Component identity asks which submission files the declared commands can read. Its
+  vocabulary comes from the manifest, not this module. Use validated ``components``
+  first, otherwise derive command entrypoints, transitive local imports and declared
+  literal paths. Every capsule invokes every command, so this can spare inert notes
+  and documentation, not invent a per-capsule source dependency declaration.
+* Whole-submission identity is the conservative fallback when neither is established.
+
+Missing narrower evidence is explicit in ``fallback_reason`` and the log: correct
+conservatism must not hide broken identity extraction. Source decomposition alone
+cannot retain one capsule's certificate when another emitted program changes;
+execution identity supplies that distinction.
+
+A certificate always belongs to the bytes that earned it. ``record_cert`` resolves
+the enqueue-time pending identity without rehashing the edited live submission.
+Unattributable results remain unrecorded. Private snapshot creation and recovery are
+shared in ``snapshots``; narrowing never credits a verdict to different bytes.
+"""
+
+from __future__ import annotations
+
+import fcntl
+import os
+import time
+from functools import wraps
+from pathlib import Path
+
+from merlin.experiments.phase1.context import InvocationContext
+from merlin.experiments.phase1.feedback import (
+    pending_retirement,
+    promotion_verdicts,
+    snapshots,
+)
+from merlin.experiments.phase1.feedback.certificate_budget import (
+    affordable_cert_items as affordable_cert_items,
+)
+from merlin.experiments.phase1.feedback.dispatch import cert_sim
+from merlin.experiments.phase1.feedback.promotion_sources import (
+    _DYNAMIC_IMPORT as _DYNAMIC_IMPORT,
+)
+from merlin.experiments.phase1.feedback.promotion_sources import (
+    _ast as _ast,
+)
+from merlin.experiments.phase1.feedback.promotion_sources import (
+    _closure as _closure,
+)
+from merlin.experiments.phase1.feedback.promotion_sources import (
+    _command_roots as _command_roots,
+)
+from merlin.experiments.phase1.feedback.promotion_sources import (
+    _files_at as _files_at,
+)
+from merlin.experiments.phase1.feedback.promotion_sources import (
+    _manifest_strings as _manifest_strings,
+)
+from merlin.experiments.phase1.feedback.promotion_sources import (
+    _py_imports as _py_imports,
+)
+from merlin.experiments.phase1.feedback.promotion_sources import (
+    _py_module_file as _py_module_file,
+)
+from merlin.experiments.phase1.feedback.promotion_sources import (
+    _scan as _scan,
+)
+from merlin.experiments.phase1.feedback.promotion_sources import (
+    _src_suffixes as _src_suffixes,
+)
+from merlin.experiments.phase1.feedback.promotion_sources import (
+    _under as _under,
+)
+from merlin.experiments.phase1.feedback.promotion_verdicts import (
+    cert_already_executed as cert_already_executed,
+)
+from merlin.experiments.phase1.feedback.promotion_verdicts import (
+    row_status as row_status,
+)
+
+# The two verdict words this module records. Imported from the scheduler rather than restated here, so
+# the recorder and the policy cannot come to disagree about how a passing tier is spelled -- that
+# disagreement is the class of defect `row_status` below exists to close.
+from merlin.targetgen.oracle_schedule import CERT_LEDGER as _LEDGER
+from merlin.targetgen.oracle_schedule import FAIL as _FAIL
+from merlin.targetgen.oracle_schedule import PASS as _PASS
+
+_NEUTRAL_SIM = "contract"  # "grade on whatever tier this target's contract resolves to"
+
+
+def resolve_tiers(ws, *, context: InvocationContext, capsules_root: Path | None = None):
+    """`(loop_tier, cert_tier, cover)` for this target, DERIVED from its own adapter map.
+
+    loop = the fastest tier the corpus declares; cert = the deepest reachable above it. A target that
+    exposes one tier gets `(None, None, None)` -- promotion disabled rather than a second tier invented.
+    """
+    from .joint_physical_correctness import roster
+
+    if roster():
+        return "L2", "L3", roster()
+    try:
+        from merlin.targetgen import capsule_runner as _CR
+        from merlin.targetgen.contract.materialize import declared_oracle_tiers
+        from merlin.targetgen.target_experiment import load_target_experiment
+
+        te = load_target_experiment(context.descriptor)
+        decl = declared_oracle_tiers(*((capsules_root,) if capsules_root is not None else te.graded_roots()))
+        loop = _CR.qa_loop_adapters(te.target, te.sim_via, declared_tiers=decl)
+        full = _CR.oracle_adapters(te.target, te.sim_via)
+        deeper = sorted(set(full) - set(loop))
+        if not (loop and deeper):
+            return None, None, None
+        return sorted(loop)[0], deeper[-1], _cert_cover(ws, context=context, capsules_root=capsules_root)
+    except Exception:  # noqa: BLE001 -- unresolvable ladder: no promotion, and the caller says so
+        return None, None, None
+
+
+def _submission_digest(ws) -> str:
+    """A content address for the submission the verdict was earned against.
+
+    Verdicts are keyed by BYTES, not by round: unchanged bytes never need re-grading, and changed bytes
+    invalidate exactly the capsules they touch. Without this the loop re-certifies thirty-odd capsules to
+    learn about the one that moved.
+    """
+    return submission_digests(ws)[0]
+
+
+def execution_digest(capsule_result: str | Path) -> str | None:
+    """Content identity for exactly what one capsule's hardware tier executes.
+
+    The identity covers the bytes of every executable the run produced and the target/hardware
+    revisions recorded beside the result. It
+    deliberately excludes Merlin's source commit: a source edit that emits byte-identical code has not
+    changed the program RTL certifies. Missing ELF, target, or a concrete hardware revision returns
+    ``None`` so scheduling falls back to the conservative submission/component digest.
+
+    This is the identity BOTH verdict readers (``qa_check._execution_digest_from_result`` and
+    ``agent_selfcheck``) put on every row. It must live here, next to the other content addressing:
+    when it went missing the readers still called it, their ``except`` swallowed the ImportError, and
+    every row reported ``execution_digest: null`` -- a digest that could not be computed presenting
+    exactly like a submission with no artifact identity.
+    """
+    import json
+
+    import yaml
+
+    from merlin.targetgen.capsule_runner import run_executables
+    from merlin.targetgen.tier_cache import execution_identity
+
+    cr = Path(capsule_result)
+    try:
+        result = json.loads(cr.read_text(encoding="utf-8"))
+        manifest = yaml.safe_load((cr.parent / "run_manifest.yaml").read_text(encoding="utf-8"))
+        # THE HASH ITSELF LIVES IN THE LIBRARY, not here. This function gathers the three inputs off
+        # disk; `tier_cache.execution_identity` turns them into the identity. It was a second copy for
+        # exactly as long as nothing else needed it -- and the moment the RUNNER had to ask "do these
+        # bytes already hold a certificate?", a second copy would have been two answers to one question,
+        # differing only in whichever detail drifted first (a pin the recorder skipped and the reader
+        # did not, a payload key spelled differently). The consequence of such a drift is not a crash:
+        # it is a cache that never hits, or -- far worse -- one that hits for bytes the recorder meant
+        # something else by. One implementation, two callers.
+        # WHICH executables is also the library's question, not this reader's. Asking for one by name
+        # excluded every target whose grade links a differently-named one, or several -- and the
+        # exclusion presented as a null digest rather than as an error.
+        return execution_identity(
+            target=manifest.get("target") if isinstance(manifest, dict) else None,
+            executables=run_executables(cr.parent / "generated"),
+            toolchain_shas=result.get("toolchain_shas") if isinstance(result, dict) else None,
+        )
+    except Exception:  # noqa: BLE001 -- missing/unreadable provenance is the conservative fallback
+        return None
+
+
+def _manifest(ws) -> dict | None:
+    """The submission's own package manifest, or ``None`` if it cannot be read.
+
+    ``None`` is the undeterminable state and is handled as such by every caller: no vocabulary, no
+    decomposition, whole-submission digest. It is NOT "the submission declares no components".
+    """
+    import yaml
+
+    try:
+        doc = yaml.safe_load(Path(ws, "submission", "manifest.yaml").read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 -- absent/unparseable manifest: undeterminable, never assumed empty
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def component_vocabulary(ws) -> set | None:
+    """The legal component names for this submission, DERIVED from its manifest's ``commands`` keys.
+
+    Why the command keys and not a list written down here. The experiment ABI already requires every
+    package to declare exactly these entrypoints (``src/merlin/resources/contracts/schemas/manifest.schema.json``:
+    ``commands.required = [parse, lower_interface_to_target, emit_command_buffer,
+    lower_target_to_llvm]``, open for a target to add more), and they are the SAME axis the grader drives
+    the submission through -- ``oot_runner._resolve_argv`` looks each capsule's compile step up by these
+    keys. So "which command's files moved" is exactly "which step of grading this capsule could now answer
+    differently", with no per-target code and no vocabulary invented here.
+
+    The two alternatives were rejected on the facts: the Merlin pass registry
+    (``xdsl_dialects.lowering.passes.CATALOG``) names Merlin's OWN passes, whose ``entry`` fields are
+    ``merlin.*`` dotted paths -- an out-of-tree submission does not contain those modules, so its files
+    cannot be attributed to them; and a bundle's ``allowed`` paths are read-only REPO grants
+    (``src/merlin/resources/contracts/``, ``third_party/llvm-install/``), not submission files, so they cannot decompose
+    a submission at all.
+
+    Both spellings of the renamed 4th entrypoint resolve, reusing ``oot_runner``'s own alias map rather
+    than restating it -- two copies of an alias table drift, and the one that drifts is the untested one.
+    ``None`` when the manifest is unreadable (undeterminable), never an empty set.
+    """
+    m = _manifest(ws)
+    if m is None or not isinstance(m.get("commands"), dict):
+        return None
+    names = {str(k) for k in m["commands"]}
+    try:
+        from merlin.targetgen.oot_runner import _ENTRYPOINT_ALIASES as _AL
+    except Exception:  # noqa: BLE001 -- merlin not importable from the harness: names as declared
+        _AL = {}
+    return names | {_AL[n] for n in names if n in _AL}
+
+
+def component_paths(ws) -> tuple[dict, list] | None:
+    """``({component: (path-prefix, ...)}, [rejected, ...])`` from the submission's own manifest.
+
+    The manifest's top-level ``components:`` block maps a component name to the submission-relative paths
+    that implement it. It needs no schema change: ``manifest.schema.json`` is ``additionalProperties:
+    true`` at the top level (its per-command objects are NOT, which is why the attribution lives beside
+    ``commands`` rather than inside each one).
+
+    A key outside :func:`component_vocabulary` is REJECTED and returned in the second slot rather than
+    honoured, so a typo cannot quietly mint a component that owns no files -- a component with no files
+    never changes, and since every capsule depends on every component, every certificate would then live
+    forever across edits to the files the typo failed to claim.
+
+    ``None`` when there is no vocabulary or no ``components`` block: undeterminable/undeclared, and the
+    caller falls back to the whole-submission digest.
+    """
+    m = _manifest(ws)
+    vocab = component_vocabulary(ws)
+    if m is None or vocab is None or not isinstance(m.get("components"), dict):
+        return None
+    out, rejected = {}, []
+    for name, paths in m["components"].items():
+        name = str(name)
+        if name not in vocab:
+            rejected.append(name)
+            continue
+        if isinstance(paths, str):
+            paths = [paths]
+        out[name] = tuple(_rel_prefix(p) for p in (paths or []) if str(p).strip())
+    # Returned even when `out` is empty: an all-rejected block must still be REPORTED. Swallowing it
+    # would make "every component name was a typo" look exactly like "no components declared".
+    return out, rejected
+
+
+def _rel_prefix(p) -> str:
+    """One declared path, normalized to submission-relative posix. Structural, no pattern matching."""
+    s = str(p).strip().replace("\\", "/").strip("/")
+    while s.startswith("./"):
+        s = s[2:]
+    if s == "submission":
+        return ""
+    if s.startswith("submission/"):
+        s = s[len("submission/") :]
+    return s
+
+
+def _owner(rel: str, prefixes: dict) -> str | None:
+    """Which component owns submission-relative ``rel``; the LONGEST declared prefix wins so a nested
+    grant (``mlir_oot/lowering/tile.py``) is not swallowed by its parent (``mlir_oot/``).
+
+    Two DIFFERENT components claiming it at the same depth is a tie, and a tie returns ``None`` -- the
+    file falls to ``UNATTRIBUTED``, which every capsule depends on. Breaking the tie by dict order would
+    make ownership depend on the order keys happen to appear in the manifest, so the same file could be
+    attributed differently after a cosmetic reordering and a certificate would survive an edit it should
+    not have. Fail closed: an ambiguously-owned file belongs to everyone.
+    """
+    best, best_len, tied = None, -1, False
+    for name, pres in prefixes.items():
+        for pre in pres:
+            if pre and not (rel == pre or rel.startswith(pre + "/")):
+                continue
+            if len(pre) > best_len:
+                best, best_len, tied = name, len(pre), False
+            elif len(pre) == best_len and name != best:
+                tied = True
+    return None if tied else best
+
+
+# ---------------------------------------------------------------------------------------------------
+# The DERIVED decomposition: what a command's process can read, worked out from the submission's own
+# declared surface. Reached only when the submission declares no usable `components:` block.
+# ---------------------------------------------------------------------------------------------------
+#
+# "Declare, else derive". A submission that says which files implement which command gets exactly that
+# (`component_paths`). One that says nothing used to get the whole-submission digest, which is the bug
+# this file exists to remove: measured on a live arm-4 round, every certificate died on every edit, and
+# the edits were dominated by files no command can even open (the agent's own notes, its report, a
+# scratch `.S` it hand-assembled through a brokered tool). 17% of that run's submission-mutating
+# operations touched ONLY such files.
+#
+# What "can read" means is fixed by the experiment ABI, not guessed: `oot_runner.run_entrypoint` invokes
+# a declared command as a SUBPROCESS with `cwd=<package root>` and an argv in which the only non-literal
+# tokens are the absolute `{input_mlir}` / `{output_json}` the runner substitutes. So the submission bytes
+# that can change a verdict are the bytes that process reaches:
+#
+#   * the files the command's own argv names (its entrypoint script), and
+#   * everything those transitively import from inside the submission, and
+#   * everything they name by a resolvable path literal (a data file read at a fixed path), and
+#   * everything the manifest itself names (build inputs, a second tool) -- charged to EVERY command,
+#     since the manifest is what declares the commands in the first place.
+#
+# Three buckets come out, and the difference between the last two is the whole safety argument:
+#
+#   attributed   -- reached as above; feeds its component's digest.
+#   UNATTRIBUTED -- NOT reached, but the same KIND of thing as reached code (its suffix is one the
+#                   closure already has, one a dynamic loader in the closure names, or one the runner's
+#                   integrity scan reads). A dead module and a plugin loaded by a path we could not
+#                   resolve look identical from here, so this bucket is a dependency of every capsule.
+#   inert        -- NOT reached and not that kind of thing. Nothing depends on it.
+#
+# The derivation REFUSES rather than guesses. A submission in a language whose imports this cannot trace,
+# a command whose argv names no submission file, a closure file that will not parse -- any of those and
+# `derived_components` returns None, and the caller falls back to the whole-submission digest exactly as
+# before. The one judgement it does make is stated plainly: a read whose path expression contains no
+# string literal is taken to be a read of a path handed in from outside the process, because under the
+# ABI above that is what the runner passes it. A submission that computes an intra-package path out of
+# data with no literal anywhere in the expression would defeat that, and would keep a certificate it
+# should have lost; declaring `components:` is the answer for a package built that way.
+#
+# "Inert" means "cannot change a capsule's verdict" -- NOT "unimportant". The agent's REPORT.md is a
+# required deliverable and is inert by this definition, because no graded command opens it.
+INERT = "<inert>"
+
+_DERIVED_CACHE: dict = {}
+
+
+# Constructs that can pull a module in from outside the static import graph. Their presence does not
+# abandon the derivation -- it WIDENS what counts as "the same kind of thing as reached code", so an
+# unreached file a loader could still pick up lands in UNATTRIBUTED rather than in inert.
+
+
+def derived_components(ws):
+    """``({component: frozenset(rel)}, frozenset(unattributed), frozenset(inert))`` or None to refuse.
+
+    Paths are submission-relative. See the block comment above for what each bucket means and for the one
+    judgement this makes. ``None`` is "no derivation" and the caller must then use the whole-submission
+    digest -- never a partial answer.
+    """
+    m = _manifest(ws)
+    sub = Path(ws, "submission")
+    if m is None or not sub.is_dir():
+        return None
+    if str(m.get("language") or "").strip().lower() != "python":
+        # Only Python's import graph is traceable from here. Refusing is the honest answer for a package
+        # whose surface is a compiled binary: we cannot see what it opens.
+        return None
+    roots = _command_roots(sub, m)
+    if roots is None:
+        return None
+    key = (
+        str(sub),
+        tuple(
+            sorted(
+                (f.relative_to(sub).as_posix(), f.stat().st_mtime_ns, f.stat().st_size)
+                for f in sub.rglob("*")
+                if f.is_file() and "__pycache__" not in f.parts
+            )
+        ),
+    )
+    hit = _DERIVED_CACHE.get(key)
+    if hit is not None:
+        return hit
+    every = [f for f in sub.rglob("*") if f.is_file() and "__pycache__" not in f.parts]
+
+    # Files the MANIFEST names OUTSIDE the per-command sections are charged to every component -- a build
+    # input, a second tool, anything the package points at globally: a change to one of those, or to the
+    # manifest itself, can change what every command does. `commands` and `entrypoints` are deliberately
+    # excluded, because those ARE the per-command attribution (`_command_roots` resolves them); folding
+    # them in here would charge each command's own script to all the others and collapse the whole
+    # decomposition back to one bucket.
+    _global = {k: v for k, v in m.items() if k not in ("commands", "entrypoints")}
+    shared = {sub / "manifest.yaml"} if (sub / "manifest.yaml").is_file() else set()
+    for s in _manifest_strings(_global):
+        p = _under(sub, s)
+        if p is not None:
+            shared.update(_files_at(p, s))
+
+    comps, kind_sufs, memo = {}, set(_src_suffixes()), {}
+    resolved = {}  # Components share most literals; resolve each once per derivation.
+    for name, rs in roots.items():
+        got = _closure(sub, rs, memo)
+        if got is None:
+            return None  # a file in the surface we cannot read: refuse, do not guess
+        files, lits, dyn_sufs = got
+        for s in lits:  # a data file opened at a fixed, resolvable path
+            if s not in resolved:
+                p = _under(sub, s)
+                resolved[s] = None if p is None else _files_at(p, s)
+            if resolved[s] is not None:
+                files.update(resolved[s])
+        files |= shared
+        comps[name] = frozenset(f.relative_to(sub).as_posix() for f in files)
+        kind_sufs |= {f.suffix for f in files} | dyn_sufs
+
+    claimed = set().union(*comps.values()) if comps else set()
+    unattributed, inert = set(), set()
+    from merlin.experiments.phase1.run_inputs import (
+        outside_snapshot,  # bytes no grade copies (build/)
+    )
+
+    for f in every:
+        rel = f.relative_to(sub).as_posix()
+        if rel in claimed:
+            continue
+        (unattributed if f.suffix in kind_sufs and not outside_snapshot(Path(rel).parts) else inert).add(rel)
+    out = (comps, frozenset(unattributed), frozenset(inert))
+    # Bounded: a broker lives for the whole run and the agent edits continuously, so an unbounded map
+    # keyed by submission state grows one entry per edit for hours. Only the current state is ever a hit.
+    if len(_DERIVED_CACHE) > 4:
+        _DERIVED_CACHE.clear()
+    _DERIVED_CACHE[key] = out
+    return out
+
+
+def decomposition(ws) -> dict:
+    """How this submission's bytes decompose, and WHERE that decomposition came from.
+
+    ``{"owners": {rel: {component, ...}}, "names": {component, ...}, "rejected": [...],
+      "source": "declared"|"derived"|None, "inert": frozenset(rel)}``
+
+    "Declare, else derive": an agent-declared ``components:`` block wins, and is used even when some of
+    its names were rejected -- but a block whose names were ALL rejected leaves nothing to decompose with,
+    so it falls through to the derivation rather than to the whole submission. Either way the rejected
+    names are carried out for the caller to report; a typo that quietly costs the saving is the failure
+    mode this exists to make visible.
+    """
+    from merlin.targetgen.oracle_schedule import UNATTRIBUTED
+
+    sub = Path(ws, "submission")
+    rels = (
+        [f.relative_to(sub).as_posix() for f in sub.rglob("*") if f.is_file() and "__pycache__" not in f.parts]
+        if sub.is_dir()
+        else []
+    )
+    decl = component_paths(ws)
+    prefixes, rejected = decl if decl else ({}, [])
+    if prefixes:
+        # INERT IS NOT UNATTRIBUTED. A declared block says who owns what; it says nothing about which
+        # bytes any command can READ. This branch returned an empty inert set, so every file no prefix
+        # claimed -- a REPORT.md, an agent note, a scratch listing -- became UNATTRIBUTED. UNATTRIBUTED is
+        # a dependency of EVERY capsule (oracle_schedule.py), so one edit to one such file invalidated the
+        # whole corpus at once. Measured on a live run: 253 "L2 invalidated by <unattributed>" against 2
+        # promotion events, still climbing, with the run's own log reading "0 file(s) outside every
+        # command's reach" -- which was len(frozenset()), not a measurement.
+        #
+        # The reachability closure already answers this, so ask it for that ONE fact. Declared ownership
+        # still wins outright: the closure is never allowed to say who owns a file, only whether anything
+        # could read it. When it refuses (a non-Python surface, an unreadable file) there is no inert set
+        # and the old behaviour stands, which errs toward invalidating rather than toward a stale cert.
+        der = derived_components(ws)
+        inert = der[2] if der is not None else frozenset()
+        owners, fell_through = {}, False
+        for rel in rels:
+            own = _owner(rel, prefixes)
+            if own is not None:
+                owners[rel] = {own}
+            elif rel not in inert:
+                owners[rel] = {UNATTRIBUTED}
+                fell_through = True
+        return {
+            "owners": owners,
+            "names": set(prefixes) | ({UNATTRIBUTED} if fell_through else set()),
+            "rejected": rejected,
+            "source": "declared",
+            "inert": inert,
+        }
+    der = derived_components(ws)
+    if der is None:
+        return {"owners": {}, "names": set(), "rejected": rejected, "source": None, "inert": frozenset()}
+    comps, unattributed, inert = der
+    owners = {}
+    for name, files in comps.items():
+        for rel in files:
+            owners.setdefault(rel, set()).add(name)
+    for rel in unattributed:
+        owners.setdefault(rel, set()).add(UNATTRIBUTED)
+    names = set(comps) | ({UNATTRIBUTED} if unattributed else set())
+    return {"owners": owners, "names": names, "rejected": rejected, "source": "derived", "inert": inert}
+
+
+def _submission_file_bytes(sub):
+    """The ledger's canonical source stream, independent of tree location and of ``build/`` state
+    (``run_inputs.outside_snapshot``), which no grade or frozen copy carries. Bytes are reused while a file
+    keeps its stat identity (:mod:`merlin.common.stat_memo`); each completion used to re-read every file."""
+    from merlin.common import stat_memo
+    from merlin.experiments.phase1.run_inputs import outside_snapshot
+
+    sub = Path(sub)
+    for path in sorted(sub.rglob("*")):
+        if path.is_file() and not outside_snapshot(path.relative_to(sub).parts):
+            body = stat_memo.cached(
+                "file_bytes", str(path.absolute()), lambda path=path: stat_memo.file_signature(path), path.read_bytes
+            )
+            yield path, ("submission/" + path.relative_to(sub).as_posix()).encode(), body
+
+
+def submission_tree_digest(sub) -> str:
+    """Recompute the existing short ledger digest from an already reopened snapshot."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    for _, key, body in _submission_file_bytes(sub):
+        digest.update(key)
+        digest.update(body)
+    return digest.hexdigest()[:16]
+
+
+def submission_digests(ws) -> tuple:
+    """``(whole_digest, {component: digest}, rejected_names)``, computed once per unchanged submission
+    tree (see :mod:`.tree_value_cache`)."""
+    from merlin.experiments.phase1.feedback import tree_value_cache
+
+    return tree_value_cache.cached(Path(ws, "submission"), lambda: _submission_digests(ws))
+
+
+def _submission_digests(ws) -> tuple:
+    """``(whole_digest, {component: digest}, rejected_names)`` for the submission on disk.
+
+    The whole digest is byte-for-byte what it always was -- one pass, sorted paths, path bytes then file
+    bytes -- so turning components on never invalidates a certificate by itself. Each file additionally
+    feeds the hasher of EVERY component that owns it (a shared helper genuinely belongs to each command
+    that imports it, and a change to it must move all of their digests). A file the decomposition cannot
+    place feeds ``UNATTRIBUTED``, which every capsule depends on; a file it places OUTSIDE every command's
+    reach feeds nothing, which is where the saving comes from. The component map is ``{}`` when there is
+    no decomposition at all, and the scheduler reads that as "compare the whole submission"
+    (see ``CapsuleState._dep_components``).
+    """
+    import hashlib
+
+    d = decomposition(ws)
+    owners, names = d["owners"], d["names"]
+    h = hashlib.sha256()
+    parts = {}
+    sub = Path(ws, "submission")
+    for f, key, body in _submission_file_bytes(sub):
+        h.update(key)
+        h.update(body)
+        for owner in owners.get(f.relative_to(sub).as_posix(), ()):
+            ph = parts.get(owner)
+            if ph is None:
+                ph = parts[owner] = hashlib.sha256()
+            ph.update(key)
+            ph.update(body)
+    # A declared component with no files on disk still gets an entry -- an EMPTY digest, not a missing
+    # one. Missing would read as undeterminable and re-run forever; empty is a real, comparable state
+    # that changes the moment the component gains a file.
+    comps = {
+        name: (parts[name].hexdigest()[:16] if name in parts else hashlib.sha256().hexdigest()[:16]) for name in names
+    }
+    return h.hexdigest()[:16], comps, d["rejected"]
+
+
+# ---------------------------------------------------------------------------------------------------
+# WHY NO CAPSULE DECLARES ITS OWN DEPENDENCY SET
+# ---------------------------------------------------------------------------------------------------
+# `capsule.yaml` used to accept a `depends_on: [<component>, ...]` block, read here and handed to
+# `CapsuleState.depends_on` so a capsule could keep its certificate across an edit to a component it did
+# not name. Nothing ever declared one -- 0 of the 509 capsules in the shipped corpus -- and the field is
+# gone from `capsule.schema.json` because a truthful narrow declaration cannot exist:
+#
+#   * THE GRADER RUNS EVERY COMMAND FOR EVERY CAPSULE. `capsule_common.run_entrypoints` -- the shared ABI
+#     front half every target's runner goes through -- invokes parse, lower_interface_to_target,
+#     emit_command_buffer and the fourth entrypoint unconditionally, and a nonzero rc from any of them is
+#     a CertFailure. `oot_runner`'s K-ladder does the same at K2-K6. There is no per-capsule command
+#     subset anywhere, so an edit to ANY command's files can flip ANY capsule's verdict. A capsule naming
+#     a proper subset would keep a certificate its current bytes did not earn -- the one direction
+#     `oracle_schedule` calls "far worse than re-running".
+#   * THE NARROWING WOULD BUY NOTHING ANYWAY. Every package in this repo maps all four commands onto the
+#     same `{tool}` argv, differing only in flags, so `_command_roots` hands the four components the same
+#     entrypoint and `_closure` gives them identical file sets. Four identical digests move together on
+#     every edit; picking a subset of them changes no answer.
+#   * AND IT COULD NOT BE AUTHORED. The vocabulary is the SUBMISSION's manifest `commands` keys
+#     (`component_vocabulary`, enforced by `component_paths` rejecting anything else). A capsule.yaml is
+#     written against the corpus long before any submission exists, so its author would be naming
+#     components of a package that has not been built.
+#
+# The saving the decomposition actually delivers needs no declaration: it is the `inert` bucket -- bytes
+# the derivation PROVED no command can read -- and `promote()` gives it to every capsule by passing the
+# full component set. That is measured at 17% of a live round's submission-mutating operations (see the
+# module docstring), and it is a fact about the submission, not a claim by a capsule.
+
+
+def _cert_cover(ws, *, context: InvocationContext, capsules_root: Path | None = None) -> set | None:
+    """Which capsules are worth certifying at all. The hardware cannot tell two capsules in the same
+    (family, dtype) cell apart, so certifying both spends minutes to learn nothing. `None` on any failure
+    -> certify anything eligible, because a cover that silently comes back empty is indistinguishable
+    from everything already being done."""
+    try:
+        from merlin.targetgen.contract.materialize import cert_capsule_cover
+        from merlin.targetgen.target_experiment import load_target_experiment
+
+        te = load_target_experiment(context.descriptor)
+        # Pass the tile edge so the cover certifies PARTIAL tiles as their own cell. A cover built on
+        # family and dtype alone can pick, per cell, the capsule whose extents happen to divide evenly and
+        # then certify no ragged extent anywhere -- and a partial tile is exactly what a functional model
+        # is least able to stand in for (a taped-out unit here got `n % 64 != 0` wrong while every
+        # functional check passed).
+        _td = None
+        try:
+            from merlin.targetgen.corpus_spec import _tile_dim
+            from merlin.targetgen.target_experiment import load_capability_manifest
+
+            _td = int(_tile_dim(te.target, load_capability_manifest(te.target).contract)) or None
+        except Exception:  # noqa: BLE001 -- no derivable tile edge: cover without the alignment axis
+            _td = None
+        # Exclusions travel WITH the roots. A capsule the descriptor withholds from the paid loop cannot
+        # stand for its cell, because promotion only enqueues capsules in the cover — picking one that
+        # never runs retires the cell for a certificate nobody will produce.
+        from merlin.targetgen.capsule_common import discover_capsules
+
+        _source = discover_capsules(
+            ((capsules_root,) if capsules_root is not None else te.graded_roots()),
+            labels={"public", "dev"},
+            contract=context.repo / "src/merlin/resources/contracts",
+        )
+        _excluded = set(te.effective_exclusions(cap.get("name") for cap in _source))
+        return set(
+            cert_capsule_cover(
+                tuple(Path(cap["__dir__"]) for cap in _source),
+                labels={"public", "dev"},
+                tile_dim=_td,
+                exclude=_excluded,
+            )["capsules"]
+        )
+    except Exception:  # noqa: BLE001 -- no resolvable corpus: stay permissive, never silently empty
+        return None
+
+
+def _mandatory_cert_members(*, context: InvocationContext, capsules_root: Path | None, cert_tier: str) -> set[str]:
+    """Declared mandatory tiers cannot be suppressed by representative coverage.
+
+    Inspect only the selected graded public/dev cohort, never performance or hidden roots.
+    Descriptor exclusions still apply. Optional certification keeps its ordinary cover.
+    """
+    from merlin.targetgen.capsule_common import discover_capsules
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    te = load_target_experiment(context.descriptor)
+    caps = discover_capsules(
+        ((capsules_root,) if capsules_root is not None else te.graded_roots()),
+        labels={"public", "dev"},
+        contract=context.repo / "src/merlin/resources/contracts",
+    )
+    excluded = set(te.effective_exclusions(cap.get("name") for cap in caps))
+    return {
+        str(cap["name"])
+        for cap in caps
+        if cap.get("name") and cap["name"] not in excluded and cert_tier in (cap.get("required_oracle_tiers") or ())
+    }
+
+
+def _tier_state(ws) -> dict:
+    import json as _j
+
+    f = Path(ws, "qa", "tier_state.json")
+    try:
+        return _j.loads(f.read_text())
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_tier_state(ws, st) -> None:
+    """Replace the state file ATOMICALLY.
+
+    Two brokers write this file (the synchronous self-check broker and the async simjob broker). A plain
+    ``write_text`` truncates first, so the other broker can read a half-written one; `_tier_state` answers
+    an unparseable read with ``{}``, and the next save then PERSISTS that empty dict -- every capsule's
+    recorded verdict gone, and re-bought at minutes each. A temp file in the same directory plus
+    ``os.replace`` makes the swap atomic, so a concurrent reader sees either the old state or the new one
+    and never an empty one.
+    """
+    import json as _j
+
+    f = Path(ws, "qa", "tier_state.json")
+    f.parent.mkdir(parents=True, exist_ok=True)
+    tmp = f.with_name(f".{f.name}.{os.getpid()}.tmp")
+    tmp.write_text(_j.dumps(st, indent=2))
+    os.replace(tmp, f)
+
+
+# ------------------------------------------------------------------------------------------------
+# The certificate LEDGER: one recorded verdict per (capsule, tier, the bytes it belongs to).
+#
+# The single-slot record this replaces was the reason a paid-for certificate was thrown away. A cert job
+# takes minutes; the agent keeps editing while it runs; the next loop verdict re-enqueued the capsule and
+# OVERWROTE the pending record. When the in-flight job then finished, `record_cert` found a record for
+# different bytes, could not attribute the result (correctly -- see its docstring), and dropped it. So the
+# RTL time bought nothing and the capsule read `certified: None` forever. Measured on
+# merlincirct_arm4_func_20260901_codex1 round 1: 17 cert jobs, all passing 1/1, zero certificates recorded.
+#
+# Keyed per identity, a verdict is RETAINED instead of discarded: a completed job resolves the record that
+# was enqueued FOR IT, and an edit that changes a capsule's program leaves the old record in place rather
+# than destroying it -- so if those exact bytes come back, so does their certificate. Nothing is ever
+# consulted unless its identity matches the current bytes EXACTLY, which is why retaining cannot turn a
+# stale certificate into a valid one.
+# ------------------------------------------------------------------------------------------------
+# `_LEDGER` -- the reserved key inside a capsule's tier map (delimiters no tier label can produce) -- is
+# IMPORTED at the top of this file, not restated here. `merlin.targetgen.tier_cache` reads this same file
+# to decide whether a tier may be carried instead of re-executed, and two spellings of the key would not
+# fail loudly: the reader would find nothing and re-buy every certificate, which looks exactly like a run
+# with nothing to reuse.
+
+# How many records one (capsule, tier) retains. The state file is re-read and re-written on EVERY verdict,
+# and a continuous round produces dozens per hour, so an unbounded ledger would grow the hot file without
+# limit. The bound only ever costs a re-run (the conservative direction): an evicted record means the
+# scheduler no longer knows those bytes passed, never that it believes they did. An OUTSTANDING record is
+# never evicted -- that is an in-flight job whose result would otherwise become unattributable.
+_LEDGER_KEEP = 16
+
+
+def _valid_execution(value) -> bool:
+    """Whether *value* is the artifact identity the result readers emit.
+
+    Imported, never restated: two copies of this predicate is how the recorder and the scheduler come to
+    disagree about what counts as an identity, and the disagreement always resolves as a silent fallback.
+    """
+    from merlin.targetgen.oracle_schedule import valid_execution_digest
+
+    return valid_execution_digest(value)
+
+
+def record_identity(entry) -> str:
+    """Which bytes one recorded verdict belongs to, as a ledger key.
+
+    The exact executable identity when the run that earned it produced one, else the whole-submission
+    digest. The two key spaces cannot collide: an execution identity is 64 hex characters, and the
+    fallback carries a prefix no digest can spell.
+    """
+    ed = (entry or {}).get("execution_digest")
+    if _valid_execution(ed):
+        return str(ed)
+    return "submission:" + str((entry or {}).get("digest") or "")
+
+
+def current_identity(execution_digest, digest) -> str:
+    """The ledger key for the bytes on disk RIGHT NOW, in the same space as :func:`record_identity`."""
+    if _valid_execution(execution_digest):
+        return str(execution_digest)
+    return "submission:" + str(digest)
+
+
+def _slots_ro(st, name, tier) -> dict:
+    """``{identity: entry}`` for one (capsule, tier). READ-ONLY.
+
+    It must not create the capsule: a result for a capsule nobody promoted has to leave no trace at all
+    (that is what makes an unattributable result recordable as "nothing happened" rather than as a guess).
+
+    A state file written before the ledger existed carries only the single mirror entry. That is seeded
+    into the returned map rather than reported as absent -- absent would read as "nothing was ever
+    recorded here" and re-buy the cert tier for bytes that already hold a verdict.
+    """
+    led = (st.get(name) or {}).get(_LEDGER)
+    slots = led.get(tier) if isinstance(led, dict) else None
+    if isinstance(slots, dict) and slots:
+        return slots
+    mirror = (st.get(name) or {}).get(tier)
+    return {record_identity(mirror): mirror} if isinstance(mirror, dict) else {}
+
+
+def _slots(st, name, tier) -> dict:
+    """:func:`_slots_ro`, materialized in ``st`` so it can be written to."""
+    per = st.setdefault(name, {})
+    led = per.get(_LEDGER)
+    if not isinstance(led, dict):
+        led = per[_LEDGER] = {}
+    slots = led.get(tier)
+    if not isinstance(slots, dict):
+        slots = led[tier] = dict(_slots_ro(st, name, tier))
+    return slots
+
+
+def _record(st, name, tier, entry) -> None:
+    """Store one verdict for (capsule, tier): in the ledger under the bytes it belongs to, AND as the
+    ``st[capsule][tier]`` mirror every existing reader of this file already uses. The mirror is the most
+    recently written record; the ledger is every record, bounded by :data:`_LEDGER_KEEP`."""
+    key = record_identity(entry)
+    slots = _slots(st, name, tier)
+    slots.pop(key, None)  # re-insert so the most recently touched record is the newest
+    slots[key] = entry
+    st.setdefault(name, {})[tier] = entry
+    # Evict oldest-first (dict order is insertion order, and the state file round-trips it), skipping the
+    # record just written and every outstanding one.
+    for old in list(slots):
+        if len(slots) <= _LEDGER_KEEP:
+            break
+        if old == key or (slots[old] or {}).get("status") == "pending":
+            continue
+        del slots[old]
+
+
+def _log_invalidations(states, executions, components, loop_tier, cert_tier, log, *, observed_names=None):
+    """Report only current observed cases in per-completion joint callbacks.
+
+    Other ledger entries have no fresh executable identity in this callback;
+    comparing them to this source cannot establish that their code changed.
+    Scheduling, evidence retention and ordinary non-joint diagnostics are untouched.
+    """
+    from merlin.targetgen.oracle_schedule import UNATTRIBUTED_RESULT, WHOLE_SUBMISSION
+
+    unobserved = 0
+    for state in states:
+        if observed_names is not None and state.name not in observed_names:
+            unobserved += 1
+            continue
+        broad = _no_narrower_cause(executions.get(state.name), components)
+        for tier in (loop_tier, cert_tier):
+            for why in state.invalidated_by(tier) if tier in state.verdicts else ():
+                extra = f"; no narrower cause: {broad}" if why.component == WHOLE_SUBMISSION and broad else ""
+                retried = getattr(why, "reason", None) == UNATTRIBUTED_RESULT  # not a changed program
+                said = "requeued: earlier job unattributed" if retried else f"invalidated by {why}"
+                print(f"[promote] {state.name} {tier} {said}{extra}", file=log, flush=True)
+    if unobserved:
+        print(
+            f"[promote] {unobserved} historical capsule(s) not re-observed by this callback; "
+            "no new invalidation diagnosis for them",
+            file=log,
+            flush=True,
+        )
+
+
+def _recorded_tiers(per) -> list:
+    """Every tier one capsule holds a verdict for, from the mirror and the ledger both. The reserved
+    ledger key is never mistaken for a tier -- a phantom tier would enter the scheduler as a verdict."""
+    out = {t for t, v in (per or {}).items() if t != _LEDGER and isinstance(v, dict)}
+    led = (per or {}).get(_LEDGER)
+    if isinstance(led, dict):
+        out |= {t for t, v in led.items() if isinstance(v, dict)}
+    return sorted(out)
+
+
+def _verdict_for(st, name, tier, identity):
+    """The record to judge (capsule, tier) by: the one earned by EXACTLY the current bytes when the
+    ledger holds it, otherwise the mirror.
+
+    Preferring the exact-identity record is what stops a certificate being discarded by an edit it does
+    not depend on. It cannot loosen anything: the record that comes back is still put through
+    ``CapsuleState.invalidated_by``, so a record for other bytes is invalidated rather than trusted, and
+    a capsule with no matching record falls back to exactly today's comparison.
+    """
+    slots = _slots_ro(st, name, tier)
+    hit = slots.get(identity)
+    if isinstance(hit, dict):
+        return hit
+    mirror = (st.get(name) or {}).get(tier)
+    return mirror if isinstance(mirror, dict) else None
+
+
+def _no_narrower_cause(execution_digest, comps) -> str | None:
+    """Why this capsule's staleness cannot be decided by anything narrower than bytes every capsule
+    shares, or ``None`` when the narrowest identity was available.
+
+    The conservative fallback stays the fallback, but it stops being SILENT. Every line of the log that
+    diagnosed this defect read ``invalidated by <whole-submission> (changed)`` and named none of the
+    inputs that were missing, so a correct conservative answer and a broken decomposition looked
+    identical. Each clause below names one input that was absent -- so the reason is recorded, on disk
+    and in the log, rather than inferred.
+
+    NOTE the two clauses are different KINDS of loss and both are worth naming. Without an execution
+    identity, every capsule rides on the same submission bytes and one capsule's edit requeues the whole
+    corpus. Without a decomposition on top of that, even bytes no declared command can read count.
+    """
+    if execution_digest is not None:
+        return None  # the narrowest identity is available; no fallback happened
+    why = ["no execution identity for this capsule in this verdict"]
+    if not comps:
+        why.append("the submission has no component decomposition, declared or derived")
+    return "; ".join(why)
+
+
+def _ledger_transaction(function):
+    """Serialize complete ledger read/modify/write operations across grading brokers."""
+
+    @wraps(function)
+    def locked(ws, *args, **kwargs):
+        root = Path(ws, "qa")
+        root.mkdir(parents=True, exist_ok=True)
+        with (root / ".tier_state.lock").open("a") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                return function(ws, *args, **kwargs)
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+    return locked
+
+
+@_ledger_transaction
+@pending_retirement.completed_request
+def record_cert(ws, verdict, cert_tier, log=None, identity=None, source_identity_verified: bool = False) -> list[str]:
+    """Write a COMPLETED promotion's result into the tier state, against the bytes that earned it.
+
+    `promote()` marks a capsule `pending` when it enqueues the cert job, and the broker's reap skips
+    `_promote` for a job that WAS a promotion -- correctly, so a cert verdict cannot re-enqueue itself.
+    But nothing then wrote the outcome back, so a capsule stayed `pending` forever: the certificate was
+    earned on real RTL and discarded, and the next loop verdict re-certified the same bytes.
+
+    Measured on merlincirct_arm4_func_20260901_v4 and _p2: promotions fired and COMPLETED (21 and 3
+    `simdone_promo*` respectively, one verified `barrier_tier=L3 barrier_status=pass`), while both tier
+    states showed only `L3: pending` and never once `L3: pass`.
+
+    The digest is NOT recomputed here. A cert belongs to the exact bytes that were pending when the job
+    was enqueued; re-hashing now would attribute it to whatever the agent has edited since. So this only
+    resolves an existing pending entry, and leaves anything else alone -- a result with no pending entry
+    is a result we cannot attribute, and that is recorded by doing nothing rather than by guessing.
+
+    That property is enforced against the per-identity LEDGER rather than against a single slot. The
+    single slot was overwritten by the next re-enqueue, so a completed job routinely arrived to find a
+    record for OTHER bytes: with an artifact identity that was refused (the cert was dropped), and
+    WITHOUT one it was silently accepted and the certificate was re-attributed to bytes that never earned
+    it. Looking the completed job's own identity up in the ledger resolves exactly the record it belongs
+    to, and refuses when no such record exists.
+
+    ``identity`` is the ledger key the ENQUEUER wrote onto the request, forwarded by the reap. It is what
+    lets a result whose reader produced no artifact identity still be attributed exactly, instead of
+    falling back to "the one outstanding record" (which cannot be used at all once two are outstanding).
+    A result that DOES carry an artifact identity normally decides for itself: the job may have launched
+    after an edit, and then only the identity it actually ran may be credited. The sole exception is a
+    broad ``submission:...`` pending record whose broker copied and verified the enqueue-time source
+    before launch (``source_identity_verified``). That result may resolve the broad record because the
+    verified snapshot proves which source bytes produced the reported executable; an exact-identity
+    mismatch is never relaxed.
+    """
+    rows = (verdict or {}).get("per_capsule") or []
+    if not rows:
+        return []
+    st = _tier_state(ws)
+    resolved = []
+    for row in rows:
+        name = str((row or {}).get("capsule") or "")
+        if not name:
+            continue
+        slots = _slots_ro(st, name, cert_tier)
+        completed = row.get("execution_digest")
+        if _valid_execution(completed):
+            # The identity the job ACTUALLY ran. It selects its own record; a job whose bytes hold no
+            # record is unattributable, however many other records this capsule has.
+            key = str(completed)
+            entry = slots.get(key)
+            if not isinstance(entry, dict) or entry.get("status") != "pending":
+                requested = slots.get(str(identity)) if identity is not None else None
+                from .tier_boundary_join import resolve as resolve_boundary
+
+                joined = (
+                    resolve_boundary(st, name, str(identity), row, source_identity_verified=source_identity_verified)
+                    if cert_tier == "L3"
+                    else None
+                )
+                if joined is not None:
+                    entry = joined
+                    mirror = (st.get(name) or {}).get(cert_tier)
+                    if isinstance(mirror, dict) and record_identity(mirror) == str(identity):
+                        st[name][cert_tier] = dict(joined)
+                elif (
+                    source_identity_verified
+                    and str(identity or "").startswith("submission:")
+                    and isinstance(requested, dict)
+                    and requested.get("status") == "pending"
+                ):
+                    # The broker made an isolated copy and verified its source digest against this broad
+                    # request identity before executing it. Preserve the actual program identity as
+                    # evidence without changing ``record_identity(entry)``: this ledger slot remains an
+                    # assertion about the verified source bytes, while the exact program keeps its own
+                    # independently keyed certificate.
+                    key, entry = str(identity), requested
+                    entry = dict(entry)
+                    entry["certified_execution_digest"] = str(completed)
+                else:
+                    if log is not None:
+                        print(
+                            f"[promote] {name} {cert_tier} result not recorded: no outstanding record "
+                            f"for the execution identity this job ran",
+                            file=log,
+                            flush=True,
+                        )
+                    continue
+        elif identity is not None:
+            # The enqueuer stated which record this job was launched for. That is a fact about the
+            # request, not a guess about the result, so it attributes exactly -- including when several
+            # records are outstanding at once, which is the case the heuristic below cannot serve.
+            key = str(identity)
+            entry = slots.get(key)
+            if not isinstance(entry, dict) or entry.get("status") != "pending":
+                if log is not None:
+                    print(
+                        f"[promote] {name} {cert_tier} result not recorded: the record this job was "
+                        f"enqueued for is no longer outstanding",
+                        file=log,
+                        flush=True,
+                    )
+                continue
+            if _valid_execution(entry.get("execution_digest")):
+                # The record names an exact artifact and the result does not carry one -- so whether the
+                # job ran THAT artifact cannot be established. The request only says what was asked for;
+                # the agent may have edited between enqueue and launch. Fail closed: an unreadable
+                # artifact identity is never evidence that the right artifact ran.
+                if log is not None:
+                    print(
+                        f"[promote] {name} {cert_tier} result not recorded: the record names an "
+                        f"execution identity and the result carries none",
+                        file=log,
+                        flush=True,
+                    )
+                continue
+        else:
+            # No artifact identity on the result and none on the request: the only attributable case is a
+            # single outstanding record that ALSO carries no artifact identity. Two outstanding records
+            # and a result that cannot say which it belongs to is precisely the misattribution this
+            # guards -- refuse.
+            outstanding = {i: e for i, e in slots.items() if isinstance(e, dict) and e.get("status") == "pending"}
+            if len(outstanding) != 1:
+                if log is not None and outstanding:
+                    print(
+                        f"[promote] {name} {cert_tier} result not recorded: {len(outstanding)} "
+                        f"outstanding records and the result carries no execution identity, so which "
+                        f"bytes earned it cannot be determined",
+                        file=log,
+                        flush=True,
+                    )
+                continue
+            key, entry = next(iter(outstanding.items()))
+            if _valid_execution(entry.get("execution_digest")):
+                if log is not None:
+                    print(
+                        f"[promote] {name} {cert_tier} result not recorded: the outstanding record "
+                        f"names an execution identity this result does not carry",
+                        file=log,
+                        flush=True,
+                    )
+                continue
+        status = row_status(row)
+        if status is None:
+            # The job ran and came back saying nothing this recorder can read. Resolving the pending
+            # record to `fail` would spend a real RTL certificate on a fabricated verdict; leaving it
+            # pending re-runs it, which is the fail-closed direction.
+            if log is not None:
+                print(
+                    f"[promote] {name} {cert_tier} result not recorded: the result states no verdict "
+                    f"this recorder can read (neither a boolean 'pass' nor a 'status' of pass/fail)",
+                    file=log,
+                    flush=True,
+                )
+            continue
+        entry = dict(entry)
+        entry["status"] = status
+        slots_w = _slots(st, name, cert_tier)
+        slots_w.pop(key, None)  # re-insert: a just-resolved record is the freshest, not the oldest
+        slots_w[key] = entry
+        # The mirror moves only when it is the SAME record. Moving it to a different identity is exactly
+        # the re-attribution this function exists to prevent.
+        mirror = (st.get(name) or {}).get(cert_tier)
+        if isinstance(mirror, dict) and record_identity(mirror) == key:
+            st[name][cert_tier] = entry
+        resolved.append(f"{name}={status}")
+    if resolved:
+        _save_tier_state(ws, st)
+        from .joint_physical_correctness import project
+
+        project(ws, st)
+        if log is not None:
+            print(f"[promote] {cert_tier} recorded: {resolved}", file=log, flush=True)
+    return resolved
+
+
+def cert_instrument(cert_tier: str, *, context: InvocationContext) -> str | None:
+    """Identity of the JUDGE this promotion's certificate will be earned under, or ``None``.
+
+    A certificate describes a verdict produced by a particular grading path on a particular engine, and
+    a run whose grading path has moved is not the run that earned it. Recorded ON the ledger entry so a
+    later grade can decide whether the certificate still describes ITS instrument -- without it, the
+    entry states which bytes were certified and says nothing about who certified them, and a reader that
+    trusted it would carry a verdict produced by a different judge.
+
+    ``None`` when the instrument cannot be established, and then nothing is recorded -- an entry with no
+    instrument can never be carried (``tier_cache._from_ledger``), which is the fail-closed direction.
+    """
+    try:
+        from merlin.targetgen.capsule_runner import rtl_tiers_of
+        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.targetgen.tier_cache import instrument_digest
+
+        te = load_target_experiment(context.descriptor)
+        return instrument_digest(te.target, cert_tier, rtl_tier=cert_tier in rtl_tiers_of(te.target))
+    except Exception:  # noqa: BLE001 -- unresolvable instrument: record none, so nothing is carried
+        return None
+
+
+@_ledger_transaction
+def promote(
+    ws,
+    ch,
+    verdict,
+    loop_tier,
+    cert_tier,
+    cover,
+    log,
+    *,
+    source_ws=None,
+    context: InvocationContext,
+    capsules_root: Path | None = None,
+    closed_loop_rows: dict | None = None,
+):
+    """Record what the loop tier just learned, and enqueue cert jobs for what it unlocked.
+
+    Returns the capsule names promoted. Enqueues by writing a `simreq_` the broker's own queue picks up --
+    the same path an agent request takes, so it inherits the constrained-runner validation rather than
+    routing around it.
+    """
+    verdict = promotion_verdicts.hydrated(ws, verdict)  # compact rows hold their boundary in the case store
+    from .. import joint_control
+    from . import joint_physical_correctness as physical
+
+    joint_required = physical.roster() if joint_control.selected() is not None else None
+    if joint_required is not None:
+        if not joint_required or (loop_tier, cert_tier) != ("L2", "L3") or not closed_loop_rows:
+            return []
+        source_ws = Path(source_ws) if source_ws is not None else Path(ws)
+        ready = physical.eligible(closed_loop_rows, source_root=source_ws / "submission")
+        verdict = dict(
+            verdict, per_capsule=[row for row in verdict.get("per_capsule", ()) if row.get("capsule") in ready]
+        )
+        cover = joint_required
+    import json as _j
+
+    from merlin.targetgen.oracle_schedule import (
+        WHOLE_SUBMISSION,
+        CapsuleState,
+        Verdict,
+        schedule,
+        valid_execution_digest,
+    )
+
+    # A driver grade runs a frozen ``cand_*/submission`` rather than the moving workspace. Attribute
+    # its verdict to that source tree; the broker will run only if it can reproduce this digest in an
+    # isolated copy. Broker-produced verdicts omit ``source_ws`` because they already grade ``ws``.
+    source_ws = Path(source_ws) if source_ws is not None else Path(ws)
+    digest, comps, rejected = submission_digests(source_ws)
+    d = decomposition(source_ws)
+    st = _tier_state(ws)
+    _instrument = cert_instrument(cert_tier, context=context)
+    _loop_instrument = cert_instrument(loop_tier, context=context)
+    # Same program bytes under a different judge are historical evidence, not
+    # a reason to suppress the newly required physical execution. Preserve the
+    # complete old ledger before retiring terminal records; pending jobs keep
+    # their original identity until their own completion is resolved.
+    from .instrument_retirement import retire as retire_instrument
+
+    retirement = retire_instrument(ws, st, tier=cert_tier, instrument=_instrument)
+    if retirement is not None:
+        print(
+            f"[promote] retained {retirement['retired_records']} historical {cert_tier} "
+            f"record(s) for another instrument: {retirement['path']}",
+            file=log,
+            flush=True,
+        )
+    if rejected:
+        # Loud, not silent: a rejected name owns no bytes, so the component it was meant to be never
+        # moves and every certificate keeps riding on the files it failed to claim.
+        print(
+            f"[promote] manifest components outside the declared command vocabulary, ignored: {sorted(rejected)}",
+            file=log,
+            flush=True,
+        )
+    print(
+        f"[promote] components: {d['source'] or 'none (whole-submission digest)'}"
+        + (
+            f" -- {len(comps)} component(s), {len(d['inert'])} file(s) outside every command's reach"
+            if d["source"]
+            else ""
+        ),
+        file=log,
+        flush=True,
+    )
+
+    # What EVERY capsule rides on: all of it. "Everything" is expressed as the set of components rather
+    # than as the whole digest, and the two differ by exactly the bytes the decomposition PROVED no
+    # command can read. With no decomposition the fallback is `None`, which is the whole digest, i.e. the
+    # behaviour before the decomposition existed. No capsule may narrow this -- see WHY NO CAPSULE
+    # DECLARES ITS OWN DEPENDENCY SET above for why a per-capsule claim cannot be truthful.
+    #
+    # The per-capsule saving comes from the EXECUTION identity instead, one layer down: the source-level
+    # decomposition can only spare bytes no command reads (the same set for every capsule), while the
+    # executable identity distinguishes capsule from capsule, because each capsule emits its own program.
+    # That is the layer at which "capsule 1 moved, capsule 2 did not" is a truthful statement.
+    deps = tuple(sorted(comps)) or None
+
+    # Record what the loop tier just learned, keyed by the bytes that earned it -- the exact per-capsule
+    # executable identity when the reader produced one, and BOTH the whole digest and the per-component
+    # decomposition regardless, because a verdict that carries only the whole digest cannot be
+    # re-examined per component later (it comes back UNDETERMINABLE, which re-runs).
+    execution_by_name = {}
+    boundary_by_name = {}
+    refusal_names = set()
+    n_pass = n_fail = 0
+    unreadable = []
+    for row in verdict.get("per_capsule") or []:
+        name = row.get("capsule")
+        if not name:
+            continue
+        name = str(name)
+        refusal = row.get("expected_refusal")
+        if isinstance(refusal, dict) and refusal.get("status") == "met":
+            # A correct stated refusal satisfies its obligation but executes no loop tier.
+            # It cannot authorize a native certificate, including from an older ledger slot.
+            refusal_names.add(name)
+            continue
+        execution_digest = row.get("execution_digest")
+        if not valid_execution_digest(execution_digest):
+            execution_digest = None
+        execution_by_name[name] = execution_digest
+        boundary_by_name[name] = row.get("tier_boundary")
+        # WHAT the row said, over BOTH producers' spellings, or nothing. A row that states no verdict is
+        # not a failed row: recording it as one is what silently retired 96 capsules a round.
+        status = row_status(row)
+        if status is None:
+            unreadable.append(name)
+            continue
+        n_pass += status == _PASS
+        n_fail += status == _FAIL
+        entry = {"status": status, "digest": digest, "components": dict(comps)}
+        if _loop_instrument is not None:
+            entry["instrument"] = _loop_instrument
+        if execution_digest is not None:
+            entry["execution_digest"] = execution_digest
+        if boundary_by_name[name] is not None:
+            entry["tier_boundary"] = boundary_by_name[name]
+        # RECORD WHY, on disk, when this verdict can only be compared against bytes every capsule shares.
+        # A conservative fallback that says nothing is why the defect read as correct behaviour for a
+        # whole round.
+        _why_broad = _no_narrower_cause(execution_digest, comps)
+        if _why_broad:
+            entry["fallback_reason"] = _why_broad
+        _record(st, name, loop_tier, entry)
+
+    # WHAT to run next is `oracle_schedule`'s decision, not this file's. The rules (a cert tier is gated
+    # on the loop tier passing; the cert tier runs a representative cover; a verdict already earned by
+    # these bytes is never re-run) were implemented here once and in the scheduler once, which is one
+    # implementation too many -- two expressions of the same policy drift, and the one that drifts is
+    # whichever has no tests. The scheduler has them; this is now only plumbing.
+    # Each capsule is judged against the record earned by EXACTLY its current bytes when the ledger holds
+    # one, so an edit elsewhere does not throw its certificate away; anything else keeps today's
+    # comparison and is still put through `invalidated_by`.
+    identity_by_name = {n: current_identity(execution_by_name.get(n), digest) for n in st}
+    states = []
+    for n, e in st.items():
+        if n in refusal_names:
+            continue
+        _id = identity_by_name[n]
+        verdicts = {}
+        for t in _recorded_tiers(e):
+            v = _verdict_for(st, n, t, _id)
+            if isinstance(v, dict):
+                verdicts[t] = Verdict(
+                    v.get("status"), v.get("digest"), dict(v.get("components") or {}), v.get("execution_digest")
+                )
+        states.append(
+            CapsuleState(
+                name=n,
+                digest=digest,
+                verdicts=verdicts,
+                components=dict(comps),
+                depends_on=deps,
+                execution_digest=execution_by_name.get(n),
+            )
+        )
+    # A representative subset is an optional-cert cost policy, not authority to omit
+    # a tier the admitted manifest requires. Keep the same scheduler, PASS gate and
+    # identity ledger; only its eligibility set includes these mandatory members.
+    if cover is not None and joint_required is None:
+        cover = set(cover) | _mandatory_cert_members(context=context, capsules_root=capsules_root, cert_tier=cert_tier)
+    want = [
+        w
+        for w in schedule(states, tier_order=[loop_tier, cert_tier], cert_tiers=(cert_tier,), cert_cover=cover)
+        if w.tier == cert_tier
+    ]
+    # A DECLARED per-capsule budget may decline a capsule here. Inert unless one is declared.
+    if joint_required is None:
+        want, _budget_declined = affordable_cert_items(
+            want, cert_tier=cert_tier, log=log, context=context, capsules_root=capsules_root
+        )
+    else:
+        # Own correctness budget, never a calibration price; only a closed receipt unlocks a case, and
+        # only under continuous promotion (off by default: L3 is then a best-effort final step).
+        want = [w for w in want if w.capsule in ready and joint_control.continuous_l3_promotion()]
+
+    # WHAT THIS VERDICT ACTUALLY SAID, every time, in one line. An idle promotion and a broken one are
+    # indistinguishable by design -- the call is wrapped in a try/except so it can never gate a run -- so
+    # the only thing that can tell them apart is an accounting line that is printed unconditionally. The
+    # defect this closes ran for 8 hours behind exactly two log lines, neither of which was a count.
+    # `unreadable` is named, not summarised away: it is the shape a THIRD verdict producer would take.
+    print(
+        f"[promote] {loop_tier}: {n_pass} pass, {n_fail} fail"
+        + (
+            f", {len(unreadable)} stating no verdict ({', '.join(sorted(unreadable)[:3])}"
+            + (", ..." if len(unreadable) > 3 else "")
+            + ")"
+            if unreadable
+            else ""
+        )
+        + f"; {cert_tier} cover={len(cover) if cover is not None else 'all'}"
+        + f"; {len(want)} capsule(s) want {cert_tier}",
+        file=log,
+        flush=True,
+    )
+
+    # WHICH component requeued each capsule, so a reader of the log can see why a certificate was dropped
+    # rather than only that the count went up. A run that requeues everything and one that requeues one
+    # capsule are indistinguishable from the promotion count alone. A whole-submission cause additionally
+    # NAMES the inputs that were missing -- the diagnosis of this defect stalled on 21 identical
+    # `<whole-submission> (changed)` lines that named none of them.
+    _log_invalidations(
+        states,
+        execution_by_name,
+        comps,
+        loop_tier,
+        cert_tier,
+        log,
+        observed_names=set(execution_by_name) if joint_required is not None else None,
+    )
+
+    promoted = []
+    _sim = cert_sim(cert_tier, context=context)
+    from merlin.experiments.phase1.feedback import promotion_admission as admission
+
+    try:
+        current_source = admission.observe_source(Path(ws)) if want else None
+    except (OSError, ValueError):
+        current_source = None
+    if joint_required is not None and _instrument is None:
+        print("[promote] selected certificate instrument unavailable; physical work deferred", file=log, flush=True)
+        want = []
+    if want and _sim is None:
+        # Say it once, loudly. Marking a capsule pending for a job that cannot be enqueued is how a
+        # capsule strands at `pending` and never resolves.
+        print(
+            f"[promote] no --sim this broker accepts serves {cert_tier}; {len(want)} capsule(s) NOT "
+            f"enqueued and NOT marked pending",
+            file=log,
+            flush=True,
+        )
+    for w in want:
+        if _sim is None:
+            continue
+        # A frozen loop can keep completing after the author changes source.
+        # Retain its loop evidence, but do not replenish obsolete native work.
+        refusal = None
+        if current_source is None:
+            refusal = "current source identity unavailable"
+        elif current_source.digest != digest:
+            refusal = admission.reason(
+                w.capsule,
+                current=current_source,
+                original=admission.Source(digest, comps),
+                current_instrument=_instrument,
+                original_instrument=_instrument,
+                original_execution=execution_by_name.get(w.capsule),
+                observed_execution=admission.current_execution(
+                    st, w.capsule, loop_tier, current_source.digest, instrument=_loop_instrument
+                ),
+            )
+        if refusal and joint_required is None:
+            print(f"[promote] {w.capsule} {cert_tier} auto promotion deferred: {refusal}", file=log, flush=True)
+            continue
+        execution_digest = execution_by_name.get(w.capsule)
+        token = execution_digest[:16] if execution_digest is not None else digest
+        if _instrument is not None:
+            import hashlib
+
+            token = hashlib.sha256(f"{token}:{_instrument}".encode()).hexdigest()[:16]
+        key = identity_by_name.get(w.capsule) or current_identity(execution_digest, digest)
+        attempt = pending_retirement.requeue_attempt(_slots_ro(st, w.capsule, cert_tier), key)
+        if attempt is None:
+            continue
+        jid = f"promo{len(promoted)}_{token}_r{attempt}_{w.capsule}"[:80]
+        req = ch / f"simreq_{jid}.json"
+        if req.exists():
+            # The ledger says these bytes hold no record, yet a request for them is on the queue. That is
+            # a state the ledger cannot explain (a hand-cleared state file, a request written by a broker
+            # whose state write was lost). Say so instead of skipping silently: the silent version is how
+            # a capsule stranded with a request nobody would ever answer.
+            print(
+                f"[promote] {w.capsule} {cert_tier}: {req.name} is already queued while the tier "
+                f"state holds no record for these bytes; NOT re-enqueued and NOT marked outstanding",
+                file=log,
+                flush=True,
+            )
+            continue
+        # Freeze before enqueue: L3 may wait behind minutes of work while the agent keeps editing.
+        snapshot, snapshot_error = snapshots.create_promotion_snapshot(
+            ws, source_ws, digest, submission_digest=_submission_digest
+        )
+        if snapshot_error:
+            print(f"[promote] {w.capsule} {cert_tier}: NOT enqueued -- {snapshot_error}", file=log, flush=True)
+            continue
+        try:
+            req.write_text(
+                _j.dumps(
+                    # `identity` travels WITH the request so the reap can hand a completed result back to the
+                    # exact record it was launched for. Without it, a result whose reader produced no artifact
+                    # identity is unattributable as soon as a second record is outstanding -- and the certificate
+                    # the RTL just paid for is dropped.
+                    {
+                        "sim": _sim,
+                        "capsules": w.capsule,
+                        "workers": 1,
+                        "tiers": cert_tier,
+                        "promoted": True,
+                        **({"joint_physical_correctness": True} if joint_required is not None else {}),
+                        "identity": key,
+                        "submission_digest": digest,
+                        "submission_snapshot": snapshot,
+                        "submitted_at": time.time(),
+                    }
+                )
+            )
+        except Exception:
+            # No queue record owns this snapshot, so nothing else can clean it up.
+            import shutil as _shutil
+
+            _snapshot_path = snapshots.promotion_snapshot_path(ws, snapshot)
+            if _snapshot_path is not None:
+                _shutil.rmtree(_snapshot_path, ignore_errors=True)
+            raise
+        # Mark pending only once the request is actually on the queue.
+        pending = {"status": "pending", "digest": digest, "components": dict(comps), "request": jid, "attempt": attempt}
+        if boundary_by_name.get(w.capsule) is not None:
+            pending["tier_boundary"] = boundary_by_name[w.capsule]
+        if execution_digest is not None:
+            pending["execution_digest"] = execution_digest
+        # WHICH JUDGE this certificate will have been earned under. `record_cert` copies this record
+        # forward when it resolves, so the resolved certificate carries it too, and a later grade can
+        # decide whether the verdict still describes its own instrument instead of assuming it does.
+        if _instrument is not None:
+            pending["instrument"] = _instrument
+        if _loop_instrument is not None:
+            pending["loop_instrument"] = _loop_instrument
+        _why_broad = _no_narrower_cause(execution_digest, comps)
+        if _why_broad:
+            pending["fallback_reason"] = _why_broad
+        _record(st, w.capsule, cert_tier, pending)
+        promoted.append(w.capsule)
+    _save_tier_state(ws, st)
+    if joint_required is not None:
+        physical.project(ws, st, source=digest, instrument=_instrument, closed_rows=closed_loop_rows)
+    if promoted:
+        print(f"[promote] {loop_tier} pass -> {cert_tier}: {promoted}", file=log, flush=True)
+    return promoted

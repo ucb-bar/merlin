@@ -293,7 +293,7 @@ def _identity(*, target, executables, toolchain_shas) -> tuple[str | None, str]:
             return None, (
                 f"target {target!r} declares no hardware pin that resolves to a revision, so "
                 f"a verdict cannot be attributed to a device -- declare one in "
-                f"merlin/contract/hardware_pins.yaml (see Pin.targets)"
+                f"src/merlin/resources/contracts/hardware_pins.yaml (see Pin.targets)"
             )
         digests = {}
         for item in executables or ():
@@ -331,7 +331,7 @@ def _digest_of(payload: dict) -> str:
 #: the backend registry in :func:`grading_path`. See the module docstring for what is deliberately
 #: absent (the ELF build path and the RTL revision, both already inside the execution identity).
 _GRADING_MODULES = (
-    "merlin_experiments.corpus.admission",
+    "merlin.experiments.corpus.admission",
     "merlin.targetgen.conformance",
     "merlin.targetgen.contract.materialize",
     "merlin.targetgen.capsule_runner",

@@ -69,7 +69,7 @@ before treating independently lowered stages as one program:
 PYTHONPATH=src:packages/merlin-experiments/src "$MERLIN_COMPILER_PYTHON" - "$CAPTURE" <<'PY'
 import sys
 from pathlib import Path
-from merlin_experiments.model_qualification import inspect_workflow
+from merlin.experiments.model_qualification import inspect_workflow
 
 report = inspect_workflow(Path(sys.argv[1]))
 print([(row["name"], row["missing_runtime_inputs"]) for row in report["programs"]])

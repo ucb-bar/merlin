@@ -9,8 +9,8 @@ code_refs:
   - src/merlin/compile_cli.py
   - src/merlin/llvmlower/pipeline.py
   - src/merlin/runtime/backends/zephyr_model.py
-  - merlin/runtime/c/libomp_zephyr.c
-  - merlin/runtime/c/omp_static_schedule.h
+  - src/merlin/runtime/native/c/libomp_zephyr.c
+  - src/merlin/runtime/native/c/omp_static_schedule.h
   - src/merlin/mining/k1.py
   - src/merlin/targetgen/publish.py
   - build_tools/scripts/k1_multicore_scaling.py
@@ -360,7 +360,7 @@ merlin-compile --workload tiny_llama --dtype int8 --target rvv \
   `omp.parallel` + `omp.wsloop`, so the object carries real RVV vectors **and** `__kmpc_*` calls.
   Only parallel dims are split — matmul over N, batch_matmul over B. K is the reduction dim and is
   never tiled, because splitting it would race the accumulator.
-- **Runtime.** `merlin/runtime/c/libomp_zephyr.c` provides the OpenMP surface Zephyr does not have,
+- **Runtime.** `src/merlin/runtime/native/c/libomp_zephyr.c` provides the OpenMP surface Zephyr does not have,
   over one COOP worker **pinned 1:1 per hart**.
 
 ### The pinning is a correctness requirement, not tuning
@@ -379,7 +379,7 @@ Two independent reasons, both learned the hard way:
 Neither failure crashes; both produce a plausible wrong answer. So the gate is **bit-exactness**:
 
 ```bash
-.venv/bin/python -m pytest merlin/tests/runtime/test_zephyr_multicore.py -q
+.venv/bin/python -m pytest tests/runtime/test_zephyr_multicore.py -q
 ```
 
 1 hart and N harts must agree **bit for bit**. That is a legitimate bar here, not an overreach: the

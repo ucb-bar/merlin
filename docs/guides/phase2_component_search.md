@@ -6,14 +6,14 @@ owner: merlin-experiments
 last_verified: 2026-11-09
 related: [component_phase2_workflow, phase2_cpu_timing_study, phase2_test_justification]
 code_refs:
-  - src/merlin_experiments/phase2/search_configuration.py
-  - src/merlin_experiments/phase2/search_coordinator.py
-  - src/merlin_experiments/phase2/evaluation_pool.py
-  - src/merlin_experiments/phase2/retained_revisions.py
-  - src/merlin_experiments/phase2/component_launch_inputs.py
-  - src/merlin_experiments/phase2/component_stage.py
-  - src/merlin_experiments/phase2/component_workflow.py
-  - src/merlin_experiments/phase0/operator_exclusion.py
+  - src/merlin/experiments/phase2/search_configuration.py
+  - src/merlin/experiments/phase2/search_coordinator.py
+  - src/merlin/experiments/phase2/evaluation_pool.py
+  - src/merlin/experiments/phase2/retained_revisions.py
+  - src/merlin/experiments/phase2/component_launch_inputs.py
+  - src/merlin/experiments/phase2/component_stage.py
+  - src/merlin/experiments/phase2/component_workflow.py
+  - src/merlin/experiments/phase0/operator_exclusion.py
 ---
 
 # Launch a bounded component compiler search
@@ -93,10 +93,10 @@ affinity and reopens the policy before returning. It does not allocate AWS
 resources or issue an enforcing envelope.
 
 ```python
-from merlin_experiments.phase2 import component_launch as launch
-from merlin_experiments.phase2.evaluation_pool import AssignedResources, JobResources
-from merlin_experiments.phase2.search_configuration import prepare_search_configuration
-from merlin_experiments.phase2.search_coordinator import SearchSettings
+from merlin.experiments.phase2 import component_launch as launch
+from merlin.experiments.phase2.evaluation_pool import AssignedResources, JobResources
+from merlin.experiments.phase2.search_configuration import prepare_search_configuration
+from merlin.experiments.phase2.search_coordinator import SearchSettings
 
 # inputs comes from the original controller's live owner handoff above.
 qualified = launch.qualify_component_launch(
@@ -211,7 +211,7 @@ the frozen compiler and its identities before the separately authorized final
 validation run. No FPGA measurement belongs in the authoring loop.
 
 This is an optional research search controller, under
-`src/merlin_experiments/phase2/`, with target execution selected through original
+`src/merlin/experiments/phase2/`, with target execution selected through original
 qualified runtime owners. It is separate from the common compile/run API.
 A provider's compiler capability record cannot issue the independent measurement,
 held applicability or final evaluation owners required by this workflow.

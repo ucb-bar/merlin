@@ -83,7 +83,7 @@ class _Corpus:
     witness: dict[Path, ast.Module] = field(default_factory=dict)
     #: Identifier-shaped tokens appearing in NON-Python data (capsule yaml/mlir, schemas, headers).
     #: A vocabulary member can be produced by DATA as legitimately as by code -- `SCALE_KINDS`
-    #: members are minted by `merlin/schemas/quant_formats.registry.yaml`, not by any `.py` -- so a
+    #: members are minted by `src/merlin/resources/schemas/quant_formats.registry.yaml`, not by any `.py` -- so a
     #: census that reads only Python manufactures false "never produced" findings.
     data_tokens: set = field(default_factory=set)
     root: Path = ROOT

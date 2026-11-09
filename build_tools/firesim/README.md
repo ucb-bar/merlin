@@ -11,7 +11,7 @@ FireSim runs whatever ELF you stage. Merlin has two ways to produce one, and the
 
 | | Zephyr application | Bare-metal |
 |---|---|---|
-| Built by | `zephyr_model.build_app(board="chipyard_riscv64")` | `merlin/runtime/baremetal/spike/` harness |
+| Built by | `zephyr_model.build_app(board="chipyard_riscv64")` | `src/merlin/runtime/native/baremetal/spike/` harness |
 | Linker script | **Zephyr's own `zephyr.lds`** | ours (`-T`) |
 | Large weights | devicetree `zephyr,memory-region` + a `zephyr_linker_sources(SECTIONS)` snippet, emitted by `zephyr_model.py` | absolute-address section in the linker script |
 | libc | picolibc (from the Zephyr SDK) | none — `libc_min.c` |
@@ -70,7 +70,7 @@ split is what keeps a multi-GB model from silently pushing ordinary symbols outs
 
 Parameterized at link time (`-Wl,--defsym=MERLIN_WEIGHTS_BASE=…`, `MERLIN_DRAM_BASE`,
 `MERLIN_STACK_BYTES`). At its defaults it lays out the same image as
-`merlin/runtime/baremetal/spike/model_link.ld`, so a spike build and a FireSim build are
+`src/merlin/runtime/native/baremetal/spike/model_link.ld`, so a spike build and a FireSim build are
 directly comparable.
 
 **Not yet exercised on the FPGA.** It is the bare-metal sibling of a spike script that is.

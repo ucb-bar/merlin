@@ -52,7 +52,7 @@ _GRAMMAR_EMITTERS = ("merlin.targetgen.corpus_spec.build", "merlin.perf.command_
 #: Emitter entry points that drive the TARGET'S OWN driver emitter through a knob on its signature
 #: (see `merlin.perf.barrier_arms.pair_from_emitter`, whose `knob=` names a parameter belonging to the
 #: emitter, not to that module). Whether a given target's emitter accepts the knob is a fact about
-#: that target's backend, which does not live on the import path -- `merlin/targets` is not a package
+#: that target's backend, which does not live on the import path -- `experiments/reference-data/target-inputs` is not a package
 #: -- so this module cannot resolve it and does not pretend to.
 _DRIVES_TARGET_EMITTER = ("merlin.perf.barrier_arms.pair_from_emitter",)
 

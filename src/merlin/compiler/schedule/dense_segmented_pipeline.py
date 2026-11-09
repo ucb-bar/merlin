@@ -696,7 +696,7 @@ class DenseSegmentedPipelineResult:
             self.kernel.digest() != self.checked_kernel_sha256
             or _digest(asdict(self.admission)) != self.checked_admission_sha256
             or sha256(Path(__file__).read_bytes()).hexdigest() != self.checked_owner_sha256
-            or tuple(sorted(shared_library_sources(version=26).items())) != self.checked_library_sources
+            or tuple(sorted(shared_library_sources(version=27).items())) != self.checked_library_sources
             or _digest(
                 (
                     None if self.output_readout is None else asdict(self.output_readout),
@@ -883,7 +883,7 @@ def schedule_dense_segmented_pipeline(
         kernel.digest(),
         _digest(asdict(admission)),
         sha256(Path(__file__).read_bytes()).hexdigest(),
-        tuple(sorted(shared_library_sources(version=26).items())),
+        tuple(sorted(shared_library_sources(version=27).items())),
         output_readout,
         bias_source,
         readout_qualification_identity,

@@ -6,7 +6,7 @@ ordinary authoring entry now accepts a separate original host choice,
 are frozen. The original Phase 1 compiler remains a separate readonly snapshot.
 
 The host supplies `CompilerPassPreparation(mechanism, baseline_policy=...,
-candidate_policy=...)` from `merlin_experiments.phase2.compiler_pass_preparation`.
+candidate_policy=...)` from `merlin.experiments.phase2.compiler_pass_preparation`.
 Its versioned JSON format is:
 
 ```json

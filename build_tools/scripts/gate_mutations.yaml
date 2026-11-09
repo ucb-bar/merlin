@@ -2,7 +2,7 @@
 #
 # Read `build_tools/scripts/check_mutation_proofs.py` first. The short version:
 #
-#   proof:    a RUNNABLE pytest node -- `<file under merlin/tests/>::<test function>` -- that drives
+#   proof:    a RUNNABLE pytest node -- `<file under tests/>::<test function>` -- that drives
 #             the gate into its failing direction. It must name its gate structurally, so it cannot
 #             be a reimplementation of the gate's logic that passes while the gate itself is broken.
 #   mutation: what that proof changes.
@@ -20,7 +20,7 @@
 
 proofs:
   check_backend_boundaries.py:
-    proof: merlin/tests/infra/test_mutation_proofs_gate_can_fail.py::test_a_skipped_boundary_case_changes_the_real_runner_verdict
+    proof: tests/infra/test_mutation_proofs_gate_can_fail.py::test_a_skipped_boundary_case_changes_the_real_runner_verdict
     mutation: >-
       Run the real boundary-runner main over six exact clean local Git source selections and bounded
       process fixtures, then change the first selected lane's JUnit skipped count from zero to one.
@@ -32,7 +32,7 @@ proofs:
       establish no installed-wheel or device qualification.
 
   check_reference_readiness.py:
-    proof: merlin/tests/infra/test_mutation_proofs_gate_can_fail.py::test_missing_reference_region_evidence_changes_the_real_readiness_verdict
+    proof: tests/infra/test_mutation_proofs_gate_can_fail.py::test_missing_reference_region_evidence_changes_the_real_readiness_verdict
     mutation: >-
       Invoke the real readiness main and assessment with complete bounded analyzer-transport reports,
       then remove one included region's only semantic and source-correspondence projection.
@@ -43,7 +43,7 @@ proofs:
       then returns two and retains the blocked summary and original per-region diagnostic.
 
   check_no_target_name.py:
-    proof: merlin/tests/infra/test_overfit_gates.py::test_a_target_identifier_planted_in_a_clean_module_fails_the_gate
+    proof: tests/infra/test_overfit_gates.py::test_a_target_identifier_planted_in_a_clean_module_fails_the_gate
     mutation: >-
       Point the real gate's main at one core module, first byte-identical to the tracked clean file and
       then with a module-level identifier FOO_SATURN_X appended, and assert the exit status flips from
@@ -54,7 +54,7 @@ proofs:
       it; the file is in neither the allowlist nor the token ratchet; the line carries no target-ok
       marker; and the clean run returning 0 proves nothing else in the file was already failing.
   check_opset_coverage.py:
-    proof: merlin/tests/infra/test_opset_coverage_gate_can_fail.py::test_an_unclassified_operation_changes_the_real_gate_verdict
+    proof: tests/infra/test_opset_coverage_gate_can_fail.py::test_an_unclassified_operation_changes_the_real_gate_verdict
     mutation: >-
       Replace an explicitly structural source operation with an unclassified
       operation in the declared vocabulary and invoke the real gate entry point.
@@ -65,7 +65,7 @@ proofs:
       restored structural operation must return the verdict to clean.
 
   check_numeric_falsifiability.py:
-    proof: merlin/tests/infra/test_numeric_falsifiability_gate_can_fail.py::test_the_verdict_and_not_only_the_finding_changes
+    proof: tests/infra/test_numeric_falsifiability_gate_can_fail.py::test_the_verdict_and_not_only_the_finding_changes
     mutation: >-
       Derive the same small capsule twice, with tolerance above and below its
       golden half-spread, and invoke the real gate for both.
@@ -75,7 +75,7 @@ proofs:
       companion proves that findings actually control the exit status.
 
   check_mutation_proofs.py:
-    proof: merlin/tests/infra/test_mutation_proofs_gate_can_fail.py::test_a_gate_with_no_recorded_mutation_is_reported
+    proof: tests/infra/test_mutation_proofs_gate_can_fail.py::test_a_gate_with_no_recorded_mutation_is_reported
     mutation: >-
       Audit a two-gate roster in which the second gate appears in neither the registry nor the
       ratchet, and assert that exactly that gate is reported.
@@ -85,7 +85,7 @@ proofs:
       asserts that a roster with nothing wrong produces no failures at all.
 
   check_silent_defaults.py:
-    proof: merlin/tests/infra/test_silent_defaults_gate_can_fail.py::test_numeric_default_reaches_the_gate_finding
+    proof: tests/infra/test_silent_defaults_gate_can_fail.py::test_numeric_default_reaches_the_gate_finding
     mutation: >-
       Scan one otherwise clean synthetic grade function that defaults absent explicit_cycles to zero.
     removes: >-
@@ -94,7 +94,7 @@ proofs:
       The real scanner must emit get-default rather than silently treating missing cycles as zero.
 
   check_grammar_documentation.py:
-    proof: merlin/tests/infra/test_grammar_documentation.py::test_a_removed_row_and_a_reordered_operand_are_both_caught
+    proof: tests/infra/test_grammar_documentation.py::test_a_removed_row_and_a_reordered_operand_are_both_caught
     mutation: >-
       On a private copy of the grammar spec, delete the `rope` index row and swap the operand order of
       the `attention_qk` row, and require the gate to report the missing row and the drifted one and
@@ -106,7 +106,7 @@ proofs:
       reported everything would not pass both.
 
   check_wiring.py:
-    proof: merlin/tests/infra/test_check_wiring.py::test_new_debt_fails_and_a_stale_entry_fails
+    proof: tests/infra/test_check_wiring.py::test_new_debt_fails_and_a_stale_entry_fails
     mutation: >-
       Build a tree holding one module that nothing in production imports, beside one that a build
       script does import, and require the gate to exit non-zero naming the orphan as unwired.
@@ -116,7 +116,7 @@ proofs:
       WIRED module to prove a stale entry also fails, and only the honest ledger passes.
 
   check_conformance_coverage.py:
-    proof: merlin/tests/infra/test_coverage_gates_can_fail.py::test_shape_geometry_gap_reaches_the_verdict
+    proof: tests/infra/test_coverage_gates_can_fail.py::test_shape_geometry_gap_reaches_the_verdict
     mutation: >-
       Put one uncovered shape_geometry cell in an otherwise clean coverage report and invoke the real
       uncovered_debt accumulator, retaining the original geometry regression as one direct witness.
@@ -125,7 +125,7 @@ proofs:
       uncovered axis can produce the observed geometry debt or mask an accumulator that ignores it.
 
   check_claim_set_disjointness.py:
-    proof: merlin/tests/infra/test_coverage_gates_can_fail.py::test_uncaptured_claim_reaches_the_unmeasured_verdict
+    proof: tests/infra/test_coverage_gates_can_fail.py::test_uncaptured_claim_reaches_the_unmeasured_verdict
     mutation: >-
       Feed claim_model_uncaptured, the actual status previously absent from every verdict bucket,
       to the real verdict classifier and require its explicit unmeasured result.
@@ -134,7 +134,7 @@ proofs:
       or disappear as an unclassified value, which formerly kept the measured failure from the exit code.
 
   check_rtl_facts_schema.py:
-    proof: merlin/tests/infra/test_rtl_facts_schema_gate_can_fail.py::test_an_artifact_whose_body_contradicts_its_family_is_caught
+    proof: tests/infra/test_rtl_facts_schema_gate_can_fail.py::test_an_artifact_whose_body_contradicts_its_family_is_caught
     mutation: >-
       Write a facts artifact whose declared family contradicts its own body and require the gate to
       report it.
@@ -144,7 +144,7 @@ proofs:
       be a gate that does not compare.
 
   check_target_package_duplication.py:
-    proof: merlin/tests/infra/test_target_package_duplication_gate_can_fail.py::test_the_same_function_in_two_target_packages_is_flagged
+    proof: tests/infra/test_target_package_duplication_gate_can_fail.py::test_the_same_function_in_two_target_packages_is_flagged
     mutation: >-
       Put the same function body in two target packages and require the gate to report the shape.
     removes: >-
@@ -152,7 +152,7 @@ proofs:
       DIFFERENT packages, and the function is long enough not to be dismissed as trivial.
 
   check_schedule_ir_coverage.py:
-    proof: merlin/tests/infra/test_schedule_ir_coverage_gate_can_fail.py::test_a_primitive_with_no_row_is_flagged
+    proof: tests/infra/test_schedule_ir_coverage_gate_can_fail.py::test_a_primitive_with_no_row_is_flagged
     mutation: >-
       Present a live primitive that the declared axis register does not mention, and require the gate
       to report it.
@@ -161,7 +161,7 @@ proofs:
       else in the register can answer for it.
 
   check_inert_capabilities.py:
-    proof: merlin/tests/infra/test_inert_capabilities.py::test_runtime_inert_flags_a_pass_that_saw_candidates_and_transformed_none
+    proof: tests/infra/test_inert_capabilities.py::test_runtime_inert_flags_a_pass_that_saw_candidates_and_transformed_none
     mutation: >-
       Hand the checker a pass report showing candidates seen and zero transformed, the shape of a
       capability that is declared and never fires.
@@ -171,7 +171,7 @@ proofs:
       clean, which is the absence-reads-as-pass half of the same defect.
 
   check_capability_backing.py:
-    proof: merlin/tests/infra/test_capability_backing.py::test_the_gate_fails_on_a_reintroduced_unbacked_narrowing
+    proof: tests/infra/test_capability_backing.py::test_the_gate_fails_on_a_reintroduced_unbacked_narrowing
     mutation: >-
       Point the gate at one synthetic target whose only contract document declares an elementwise map
       reachable only behind a contraction, justified by prose alone, and run its main with the ledger
@@ -182,7 +182,7 @@ proofs:
       module. The same test then adds a module citation to show the gate passes once one resolves.
 
   check_test_budget.py:
-    proof: merlin/tests/infra/test_ci_contracts.py::test_global_budget_counts_expanded_cases_not_functions
+    proof: tests/infra/test_ci_contracts.py::test_global_budget_counts_expanded_cases_not_functions
     mutation: >-
       Give the real complete-collection validator 150 unique expanded parameter nodeids, then add
       a 151st nodeid while keeping the collection exit, errors, skips and deselections clean.

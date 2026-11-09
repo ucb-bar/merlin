@@ -14,7 +14,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from merlin.common.paths import merlin_dir, repo_root
+from merlin.common.paths import resolve_grant
 
 from .rtl.facts import UNKNOWN_KEY  # ONE vocabulary for "could not be derived" (see rtl/facts.py)
 
@@ -147,13 +147,8 @@ def require_taxonomy(taxonomy: dict | None, subject: str, *, needs: str) -> dict
 
 
 def _resolve(rel: str) -> Path:
-    """Resolve a descriptor-relative path. The ``experiments/…`` bundle-convention paths are
-    ``merlin/``-relative; a few refs are repo-root-relative — try merlin/ first, then repo root."""
-    for base in (merlin_dir(), repo_root()):
-        p = base / rel
-        if p.exists():
-            return p
-    return merlin_dir() / rel
+    """Resolve within the selected source owner's declared layout."""
+    return resolve_grant(rel)
 
 
 def _isa_def_path(te) -> Path | None:

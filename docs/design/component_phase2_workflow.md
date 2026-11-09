@@ -9,22 +9,22 @@ code_refs:
   - src/merlin/perf/component_cost.py
   - src/merlin/perf/component_screen.py
   - src/merlin/perf/analytical_resources.py
-  - src/merlin_experiments/phase2/component_analytical.py
-  - src/merlin_experiments/phase2/component_screening.py
-  - src/merlin_experiments/phase2/supervised_feedback.py
-  - src/merlin_experiments/phase2/component_workflow.py
-  - src/merlin_experiments/phase2/component_cca.py
-  - src/merlin_experiments/phase2/broker_policy.py
-  - src/merlin_experiments/phase2/stage_inputs.py
-  - src/merlin_experiments/phase2/stage_prompt.py
-  - src/merlin_experiments/phase2/authoring.py
-  - src/merlin_experiments/phase2/authoring_cli.py
-  - src/merlin_experiments/phase0/component_generation.py
-  - src/merlin_experiments/phase0/generation.py
-  - src/merlin_experiments/phase2/corpus.py
-  - src/merlin_experiments/phase2/authoring_selections.py
-  - src/merlin_experiments/phase2/component_launch.py
-  - src/merlin_experiments/phase2/feedback_guardian.py
+  - src/merlin/experiments/phase2/component_analytical.py
+  - src/merlin/experiments/phase2/component_screening.py
+  - src/merlin/experiments/phase2/supervised_feedback.py
+  - src/merlin/experiments/phase2/component_workflow.py
+  - src/merlin/experiments/phase2/component_cca.py
+  - src/merlin/experiments/phase2/broker_policy.py
+  - src/merlin/experiments/phase2/stage_inputs.py
+  - src/merlin/experiments/phase2/stage_prompt.py
+  - src/merlin/experiments/phase2/authoring.py
+  - src/merlin/experiments/phase2/authoring_cli.py
+  - src/merlin/experiments/phase0/component_generation.py
+  - src/merlin/experiments/phase0/generation.py
+  - src/merlin/experiments/phase2/corpus.py
+  - src/merlin/experiments/phase2/authoring_selections.py
+  - src/merlin/experiments/phase2/component_launch.py
+  - src/merlin/experiments/phase2/feedback_guardian.py
 ---
 
 # Component-only Phase 2
@@ -46,7 +46,7 @@ feedback tiers as unavailable.
 ## Independent Phase 0 inputs
 
 The ordinary `phase0.generate_target(..., component_only=True)` API and
-`python -m merlin_experiments.phase0 --component-only` reuse the existing sweep
+`python -m merlin.experiments.phase0 --component-only` reuse the existing sweep
 expansion, builders, independent golden engines and written-program admission.
 The normal `capsule_derivation` adapter forwards the explicit option. This mode
 requires a fresh output directory, explicit descriptor/recipe/shared template,

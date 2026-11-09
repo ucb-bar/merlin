@@ -124,7 +124,7 @@ and unsupported ownership/effects. Reproduce the ordinary paired model tests
 with the configured native toolchain and functional simulator:
 
 ```sh
-python -m pytest merlin/tests/infra/test_weight_prepack_model.py
+python -m pytest tests/infra/test_weight_prepack_model.py
 ```
 
 They compare complete recurrent model outputs and state against independent

@@ -196,8 +196,8 @@ def select_checked_source_diagnostic(
     passes, *, target, rtl_facts, board_config, native_execution_protocol=None, verification_protocol=None
 ):
     """Select a live original issuer; neither labels nor saved success grant it."""
+    from merlin.experiments.phase0 import connected_integer_qualification as source_owner
     from merlin.runtime.modelinputs import selected_firrtl
-    from merlin_experiments.phase0 import connected_integer_qualification as source_owner
 
     if type(passes) is not CompilerPassSelection or passes.factory is None:
         raise ValueError("checked source diagnostic needs the original independently replayable pass factory")
@@ -259,7 +259,7 @@ def select_checked_source_diagnostic(
 
 def restore_checked_source_diagnostic(record, *, capsule, target, package_dir):
     """Rejoin data only inside the actual original sealed model child context."""
-    from merlin_experiments.phase1.feedback.compiler_profile_child import require_restored_model_context
+    from merlin.experiments.phase1.feedback.compiler_profile_child import require_restored_model_context
 
     require_restored_model_context(CONTEXT_FIELD, record, package_dir=package_dir, target=target)
     passes = active_compiler_passes()
@@ -308,7 +308,7 @@ def scoped_checked_source_diagnostic(selection):
 
 def selection_from_context(record, *, capsule, target, package_dir):
     """Only an actual restored sealed worker may consume the selected record."""
-    from merlin_experiments.phase1.feedback.compiler_profile_child import require_restored_model_context
+    from merlin.experiments.phase1.feedback.compiler_profile_child import require_restored_model_context
 
     require_restored_model_context(CONTEXT_FIELD, record, package_dir=package_dir, target=target)
     selection = active_checked_source_diagnostic()

@@ -204,7 +204,7 @@ step or synthetic input remains a diagnostic, not full application validation.
 The experiments package provides a deterministic, offline observation command:
 
 ```sh
-python -m merlin_experiments.model_qualification \
+python -m merlin.experiments.model_qualification \
   --bundle /absolute/held-out-capture \
   --package /absolute/generated-compiler-package \
   --target gemmini \

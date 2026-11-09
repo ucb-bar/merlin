@@ -62,7 +62,7 @@ REGISTRY = ROOT / "build_tools" / "scripts" / "gate_mutations.yaml"
 LEDGER = ROOT / "build_tools" / "scripts" / "mutation_proof_ratchet.txt"
 GATE_DIR = "build_tools/scripts"
 GATE_PREFIX = "check_"
-TESTS_ROOT = "merlin/tests"
+TESTS_ROOT = "tests"
 
 #: A one-word `mutation:` or a `removes:` that restates it proves the field was filled in, not that
 #: anyone thought about it. Short enough not to be busywork, long enough to be a sentence.

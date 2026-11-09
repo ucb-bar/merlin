@@ -87,7 +87,7 @@ def _declared_output_shape(capsule: dict | None) -> tuple[int, int] | None:
     return (int(M), int(N))
 
 
-SCHEMA = "rtl_checks/v0"  # advisory artifact tag — deliberately NOT a frozen merlin/contract schema
+SCHEMA = "rtl_checks/v0"  # advisory artifact tag — deliberately NOT a frozen src/merlin/resources/contracts schema
 RENDER_SCHEMA = "rtl-trace-render/v1"
 
 #: Contract key holding a target's protocol.

@@ -6,44 +6,44 @@ owner: experiments
 last_verified: 2026-11-09
 related: [experiment_console, storage, reproducibility, artifact_evaluation, phase2_test_justification]
 code_refs:
-  - src/merlin_experiments/tracking/console/discovery.py
-  - src/merlin_experiments/tracking/console/model.py
-  - src/merlin_experiments/tracking/console/serve.py
-  - src/merlin_experiments/tracking/console/diagnose.py
-  - src/merlin_experiments/tracking/console/placement.py
-  - src/merlin_experiments/tracking/console/sources/timeline.py
-  - src/merlin_experiments/tracking/console/sources/machine.py
-  - src/merlin_experiments/tracking/console/sources/__init__.py
+  - src/merlin/experiments/tracking/console/discovery.py
+  - src/merlin/experiments/tracking/console/model.py
+  - src/merlin/experiments/tracking/console/serve.py
+  - src/merlin/experiments/tracking/console/diagnose.py
+  - src/merlin/experiments/tracking/console/placement.py
+  - src/merlin/experiments/tracking/console/sources/timeline.py
+  - src/merlin/experiments/tracking/console/sources/machine.py
+  - src/merlin/experiments/tracking/console/sources/__init__.py
   - packages/merlin-experiments/console/internal/ui/model.go
-  - merlin/contract/compiler_stages.yaml
-  - src/merlin_experiments/tracking/terminal.py
-  - src/merlin_experiments/tracking/terminal_views.py
-  - src/merlin_experiments/tracking/terminal_probe.py
-  - src/merlin_experiments/tracking/terminal_metadata.py
-  - src/merlin_experiments/tracking/records.py
-  - src/merlin_experiments/tracking/html.py
-  - src/merlin_experiments/tracking/text.py
-  - src/merlin_experiments/tracking/__init__.py
-  - src/merlin_experiments/tracking/views.py
-  - src/merlin_experiments/tracking/live.py
-  - src/merlin_experiments/tracking/tail.py
-  - src/merlin_experiments/tracking/charts.py
-  - src/merlin_experiments/tracking/phase0.py
-  - src/merlin_experiments/tracking/phase0_html.py
-  - src/merlin_experiments/tracking/activity.py
-  - src/merlin_experiments/tracking/activity_html.py
-  - src/merlin_experiments/tracking/phase1_detail.py
-  - src/merlin_experiments/tracking/phase1_views.py
-  - src/merlin_experiments/tracking/compiler.py
-  - src/merlin_experiments/tracking/phase2_paired.py
-  - src/merlin_experiments/tracking/phase2_views.py
-  - src/merlin_experiments/tracking/resources.py
-  - src/merlin_experiments/tracking/explorer.py
-  - src/merlin_experiments/cli.py
+  - src/merlin/resources/contracts/compiler_stages.yaml
+  - src/merlin/experiments/tracking/terminal.py
+  - src/merlin/experiments/tracking/terminal_views.py
+  - src/merlin/experiments/tracking/terminal_probe.py
+  - src/merlin/experiments/tracking/terminal_metadata.py
+  - src/merlin/experiments/tracking/records.py
+  - src/merlin/experiments/tracking/html.py
+  - src/merlin/experiments/tracking/text.py
+  - src/merlin/experiments/tracking/__init__.py
+  - src/merlin/experiments/tracking/views.py
+  - src/merlin/experiments/tracking/live.py
+  - src/merlin/experiments/tracking/tail.py
+  - src/merlin/experiments/tracking/charts.py
+  - src/merlin/experiments/tracking/phase0.py
+  - src/merlin/experiments/tracking/phase0_html.py
+  - src/merlin/experiments/tracking/activity.py
+  - src/merlin/experiments/tracking/activity_html.py
+  - src/merlin/experiments/tracking/phase1_detail.py
+  - src/merlin/experiments/tracking/phase1_views.py
+  - src/merlin/experiments/tracking/compiler.py
+  - src/merlin/experiments/tracking/phase2_paired.py
+  - src/merlin/experiments/tracking/phase2_views.py
+  - src/merlin/experiments/tracking/resources.py
+  - src/merlin/experiments/tracking/explorer.py
+  - src/merlin/experiments/cli.py
   - src/merlin/targetgen/target_index.py
-  - merlin/contract/storage.yaml
-  - src/merlin_experiments/tracking/console/cli.py
-  - src/merlin_experiments/tracking/console/launch.py
+  - src/merlin/resources/contracts/storage.yaml
+  - src/merlin/experiments/tracking/console/cli.py
+  - src/merlin/experiments/tracking/console/launch.py
 ---
 
 # Tracking experiments: the dashboard and the watch view
@@ -72,7 +72,7 @@ The page is a single HTML file. Its CSS, its SVG charts and its short tooltip sc
 so it opens from disk, through an ssh port-forward, or as a mailed copy, and it never fetches anything.
 By default it is written to `out/artifacts/experiments/<target>/dashboard/<run>.html`. A target
 view goes to `.../dashboard/target.html`. That home is the storage contract's `experiment-dashboards`
-product root (`merlin/contract/storage.yaml`). `--out` writes elsewhere, and `--open` also opens the
+product root (`src/merlin/resources/contracts/storage.yaml`). `--out` writes elsewhere, and `--open` also opens the
 page in a browser.
 
 ## Experiment command console
@@ -82,7 +82,7 @@ The interactive terminal console (`merlin-experiment console`) has its own user 
 every panel and key, common debugging tasks, the bottleneck findings and troubleshooting. Notes for
 maintainers:
 
-- **Two processes.** The data process (`python -m merlin_experiments.tracking.console.serve`) owns
+- **Two processes.** The data process (`python -m merlin.experiments.tracking.console.serve`) owns
   every record read. It streams `merlin.console.snapshot.v1` JSON lines (after the first snapshot,
   only the sections that changed) and answers `select`, `inspect` and `refresh` commands on stdin.
   The Bubble Tea v2 frontend (`packages/merlin-experiments/console`) only renders that stream. The
@@ -105,7 +105,7 @@ maintainers:
 ```bash
 merlin-experiment watch --task /path/to/campaign-task --legacy
 # Direct module entrypoint, with the research package installed:
-python -m merlin_experiments.tracking.terminal --task /path/to/campaign-task
+python -m merlin.experiments.tracking.terminal --task /path/to/campaign-task
 ```
 
 Install `merlin[experiments]` into the selected environment and
@@ -114,7 +114,7 @@ run on the Linux worker (for example through SSH). See the
 web service or additional terminal package is required. For a plain snapshot:
 
 ```sh
-python -m merlin_experiments.tracking.terminal \
+python -m merlin.experiments.tracking.terminal \
   --task /path/to/campaign-task --once --no-color --width 160 --height 55
 ```
 
@@ -437,7 +437,7 @@ Measured on a synthetic Phase 1 run with a 200 MB event stream growing about 90 
 10 s and pinned to one CPU: catching up on the whole file took 1.7 s of CPU, steady state averaged
 about 0.3 % of one CPU, and RSS stayed at 61 MB.
 
-The installed tracking APIs come from `src/merlin_experiments/tracking/` in
+The installed tracking APIs come from `src/merlin/experiments/tracking/` in
 the current Merlin wheel. Console frontend code remains in the separate Go
 source tree described above. Both views consume producer records; missing
 execution, certification or timing evidence stays missing even when the page

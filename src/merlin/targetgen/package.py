@@ -16,7 +16,7 @@ a ``ContractViolation``, a missing attribute — long after the point where the 
 "this package does not do that".
 
 WHAT CONVERGES, AND WHAT DELIBERATELY DOES NOT. Not the file layout. ``oot_runner``'s ``manifest.yaml``
-is a FROZEN experiment ABI (``merlin/contract/mlir_oot_backend_contract.yaml``, ``version: "0.1"``),
+is a FROZEN experiment ABI (``src/merlin/resources/contracts/mlir_oot_backend_contract.yaml``, ``version: "0.1"``),
 schema-validated, mirrored, and depended on by certified packages and in-flight agent sessions; changing
 its required keys would retro-invalidate artifacts that already carry verdicts. What converges is the
 VOCABULARY: one closed set of capability names, one answer shape, inferred from what packages already

@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-07-25
 related: [compiler_plane, target_publishing]
-code_refs: [merlin/contract/capsules, src/merlin/targetgen/capsule_golden.py, src/merlin/targetgen/capsule_runner.py, merlin/contract/schemas/capsule.schema.json]
+code_refs: [experiments/corpora, src/merlin/targetgen/capsule_golden.py, src/merlin/targetgen/capsule_runner.py, src/merlin/resources/contracts/schemas/capsule.schema.json]
 ---
 
 # The cross-target dialect test bar
@@ -58,8 +58,8 @@ then confirmed against RTL.
 
 ## The case that forced this: atlas float MXU vs the gemmini integer corpus
 The atlas 4-arm evaluation originally pointed `capsule_corpus` at the shared gemmini corpus
-(`merlin/contract/capsules/isa`, i8×i8→i32, `exact_int`). That grades a float MXU against integer answers —
-unwinnable by construction. The fix is an atlas-correct corpus (`merlin/contract/capsules/atlas/`): fp8-e4m3
+(`experiments/corpora/isa`, i8×i8→i32, `exact_int`). That grades a float MXU against integer answers —
+unwinnable by construction. The fix is an atlas-correct corpus (`experiments/corpora/atlas/`): fp8-e4m3
 operands, bf16 output, `tolerance_float`, goldens from the specir refmodel's fp8/bf16 datapath.
 
 **Honest limitation recorded here:** the current runner recomputes the L0 golden via

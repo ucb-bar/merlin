@@ -10,7 +10,7 @@
 # is always "derive the fact from CIRCT/RTL instead", never "widen the list".
 #
 # The way OUT of an entry is one of:
-#   * derive the fact from the elaboration — see merlin/targets/muon/backend/muon_introspect.py, which
+#   * derive the fact from the elaboration — see experiments/reference-data/target-inputs/muon/backend/muon_introspect.py, which
 #     was never on this list because the rewrite read lanes/warps/cores/registers/clock/SMEM out of the
 #     FIRRTL port types, the instance hierarchy, the SRAM macro list and the device tree;
 #   * demote the read to a cross-check and annotate it `# fact-source-ok: <why>` on its line;

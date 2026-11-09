@@ -360,7 +360,7 @@ def _fix_insert_slices(line: str) -> str:
     stays verifier-clean, so it surfaced only as a wrong number (measured on deepjscc, whose two
     transposed convolutions are the only non-unit-stride inserts in any tracked recapture --
     whole-model ``fp32_cos 0.885366`` against the capture's own golden, ``1.000000`` with this
-    predicate). ``merlin/tests/ir/test_insert_slice_strides.py`` pins both directions.
+    predicate). ``tests/ir/test_insert_slice_strides.py`` pins both directions.
     """
     out: list[str] = []
     i = 0

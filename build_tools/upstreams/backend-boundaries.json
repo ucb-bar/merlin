@@ -41,7 +41,7 @@
     {
       "id": "kodiak",
       "repository": "https://github.com/ucb-bar/kodiak-mlir.git",
-      "revision": "9e4e9f5c01635059698def421264ea1d129c84f0",
+      "revision": "bc419901d73d4e1f537ce00a778f3a82b35d92d8",
       "xdsl": "0.68.0",
       "provider_module": "merlin_kodiak.service",
       "tests": ["tests/test_service.py"],
@@ -74,7 +74,7 @@
     {
       "id": "mx-gemmini",
       "repository": "https://github.com/ucb-bar/mx-gemmini-mlir.git",
-      "revision": "202f1d78d1a39571458b522e0203cecd4c632822",
+      "revision": "e93772c55797f2163e4d19bb8f81c79527458a80",
       "xdsl": "0.65.0",
       "provider_module": "mx_gemmini_support.backend",
       "tests": ["tests/test_backend.py"],

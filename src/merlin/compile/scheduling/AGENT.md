@@ -54,7 +54,7 @@ and where each operand's region sits on chip.
   placement and loop order were each measured or shown to move cycles, and none has a value that wins
   everywhere: the best setting depends on the SHAPE and on the SUBSTRATE. Defaults are documented in
   `Knobs`; a target picks values by measurement. Never bake one into a backend by hand -- mint it
-  (`merlin/experiments/scheduled_backend_v0`).
+  (`experiments/studies/scheduled_backend_v0`).
 - **Geometry is derived, never passed as a literal.** `derive.geometry_from_address_space` reads block
   edge, store rows, per-bank depth and accumulator rows from `targetgen.address_space`. Stores are
   resolved to roles by ROW WIDTH (`address_space.operand_store`), and an accumulator is scheduled into
@@ -81,15 +81,15 @@ and where each operand's region sits on chip.
 
 ## Testing expectations
 
-- `merlin/tests/infra/test_block_schedule.py` — knob semantics over two synthetic geometries with
+- `tests/infra/test_block_schedule.py` — knob semantics over two synthetic geometries with
   neutral store names, every loop order and conv shape executed exactly, the refusals, mutation controls
   on the residency check and the executor, and that the module stays vendorable.
-- `merlin/tests/targetgen/test_store_roles.py` — role resolution, accumulator kind and declared counts,
+- `tests/targetgen/test_store_roles.py` — role resolution, accumulator kind and declared counts,
   on synthetic facts and on the real targets.
-- `merlin/tests/gemmini/test_block_schedule_matches_packages.py` — the pass reproduces each measured
+- `tests/gemmini/test_block_schedule_matches_packages.py` — the pass reproduces each measured
   package variant's stream (matmul and the zero-path conv), held to a checked-in golden so it runs on any
   checkout.
-- `merlin/tests/gemmini/test_scheduled_package.py` — packages MINTED from the pass emit the hand-written
+- `tests/gemmini/test_scheduled_package.py` — packages MINTED from the pass emit the hand-written
   packages' raw instruction streams, op for op.
 
 

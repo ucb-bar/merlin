@@ -5,13 +5,13 @@ status: current
 owner: dse
 last_verified: 2026-07-07
 related: [dse, lowering_pipeline]
-code_refs: [src/merlin/dse/pipelines]
+code_refs: [src/merlin/analysis/dse/search/pipelines]
 ---
 
 # Parallel compilation strategies
 
 A **compilation strategy** is a first-class, hashable object describing ONE way of compiling a
-workload (schema: `merlin/schemas/compilation_strategy.schema.yaml`). It generalizes the
+workload (schema: `src/merlin/resources/schemas/compilation_strategy.schema.yaml`). It generalizes the
 `baseline / software_visible / hardware_managed / oracle` variant enum.
 
 Because xDSL pass pipelines are assembled from a string of named passes, a strategy's
@@ -22,8 +22,8 @@ pipeline or exposed interface features are two comparable approaches you can run
 
 ```
 src/merlin/pipelines/   named xDSL passes + build_pipeline(spec)
-src/merlin/dse/strategy.py   Strategy + registry (loads compilation_strategy YAML)
-src/merlin/dse/harness.py    parallel runner over (workload x strategy) matrix
+src/merlin/analysis/dse/search/strategy.py   Strategy + registry (loads compilation_strategy YAML)
+src/merlin/analysis/dse/search/harness.py    parallel runner over (workload x strategy) matrix
 ```
 
 ## Flow

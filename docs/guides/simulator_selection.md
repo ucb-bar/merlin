@@ -203,11 +203,11 @@ data sampling are kept), each after a seeded latency:
    `merlin-target-tools mem-perturb-variant --obj-dir DIR --makefile MK --out FRESH_DIR --base-artifact PIN`
    (`mem_perturb.build_verilator_variant`).
    The memory harness is found by content, patched to construct the model in
-   `merlin/contract/external/sim_memory/`, and relinked into `out_dir`. A control relink of the
+   `src/merlin/resources/contracts/external/sim_memory/`, and relinked into `out_dir`. A control relink of the
    unmodified objects is compared with the declared reference simulator, and the receipt beside the
    binary records that comparison and the preload invocation (derived by content) that makes the
    program's operands actually reach the memory model.
-2. Pin it in `merlin/contract/hardware_pins.yaml` under the role `verilator_binary_mem_perturb`, so a
+2. Pin it in `src/merlin/resources/contracts/hardware_pins.yaml` under the role `verilator_binary_mem_perturb`, so a
    lookup for the reference `verilator_binary` can never resolve to it.
 3. Grade with `MERLIN_L3_ORDER_SEEDS=<n>`. Unset or `0`, the tier is off and a grade is byte-identical to
    one without it. On, `merlin.targetgen.load_order` checks the decoded trace after a passing cert tier:

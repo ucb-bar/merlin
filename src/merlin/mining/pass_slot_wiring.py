@@ -125,9 +125,7 @@ def overlay_for(proposal: PassProposal, *, package_root: Path | None = None):
 
     The working tree is never written. This is not tidiness -- other sessions are building from it.
     """
-    from ..common.paths import merlin_dir
-
-    root = Path(package_root) if package_root is not None else merlin_dir() / "python"
+    root = Path(package_root) if package_root is not None else python_source_dir()
     rel = module_to_relpath(proposal.module)
     if not (root / rel).is_file():
         raise FileNotFoundError(
@@ -476,7 +474,6 @@ def make_pass_slot_fn(
     honest outcome for four of the six blocked seams, and dropping it would make the ladder look
     complete when it is not.
     """
-    from ..common.paths import merlin_dir
     from . import pass_agent
     from .pass_slot import iterate_pass_slot
 
@@ -501,7 +498,7 @@ def make_pass_slot_fn(
                 f"disk, so there is nothing to gate the proposal against",
             )
             return rec
-        src_path = merlin_dir() / "python" / module_to_relpath(module)
+        src_path = python_source_dir() / module_to_relpath(module)
         ws = Path(runs_root) / f"pass_slot_{parent_run_id or 'seed'}_{module.replace('.', '_')}"
         propose = propose_fn
         attempts: list = []

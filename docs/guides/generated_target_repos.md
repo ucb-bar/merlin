@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-09-27
 related: [targetgen, adding_a_target, reproducibility, target_resolution]
-code_refs: [src/merlin/targetgen/publish.py, src/merlin/targetgen/oot_runner.py, merlin/targets/publish.yaml]
+code_refs: [src/merlin/targetgen/publish.py, src/merlin/targetgen/oot_runner.py, experiments/reference-data/target-inputs/publish.yaml]
 ---
 
 # Generated target repos
@@ -48,7 +48,7 @@ lowered-memref calling convention and the lowering in two places and force a "wh
 op" decision on every addition, while the scalar side has no payload of its own to justify it.
 
 Precedence: `--repo-name` > `MERLIN_PUBLISH_REPO_NAME_<TARGET>` > `repo_names` in
-`merlin/targets/publish.yaml` > the default `<target>-mlir`. The build contract is untouched — the
+`experiments/reference-data/target-inputs/publish.yaml` > the default `<target>-mlir`. The build contract is untouched — the
 tool is still `<target>-opt`.
 
 ## Publishing

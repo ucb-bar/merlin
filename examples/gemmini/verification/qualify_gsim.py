@@ -16,9 +16,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from merlin_experiments.phase2 import gsim_certificate as certificate
-
 from merlin.common.digest import sha256_file
+from merlin.experiments.phase2 import gsim_certificate as certificate
 from merlin.runtime.backends.base import get_backend
 from merlin.targetgen import gsim_emulator
 

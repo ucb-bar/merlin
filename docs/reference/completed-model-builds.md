@@ -24,8 +24,8 @@ completed_build_reuse:
 ```
 
 Create the framework source release through the existing
-`merlin_experiments.source_snapshot.create` API. Include the complete core,
-experiments sources (both its `merlin_experiments` and `merlin` namespaces)
+`merlin.experiments.source_snapshot.create` API. Include the complete core,
+experiments sources (both its `merlin.experiments` and `merlin` namespaces)
 C runtime, contract and schema sources, use `runtime_links=False`, and launch its
 producer through `frozen_python.python_command`. The producer's actual guarded
 seal, builder module origins and runtime path must match that release. The

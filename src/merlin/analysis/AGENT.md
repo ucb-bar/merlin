@@ -1,8 +1,8 @@
 # AGENT.md — src/merlin/analysis
 
-These owners observe actual IR, instruction words, artifact bytes and selected
+The observation SDK owners at this level observe actual IR, instruction words, artifact bytes and selected
 target declarations. They supply no kernels, schedules, tuned choices, measured
-answers, reference runtime or acceptance policy. Do not import `merlin.kernels`,
+answers, reference runtime or acceptance policy. These SDK owners must not import `merlin.kernels`,
 `merlin.mining`, experiment engines or graders, even lazily. Candidate staging
 must preserve the explicit selected source closure and withheld identities.
 
@@ -22,3 +22,7 @@ Old `merlin.compile.analysis` and applicable `merlin.kernels` paths are temporar
 exact module identities. Fresh record and pickle paths are canonical here;
 historical replay uses its frozen source environment. Do not introduce a
 permanent legacy module label or widen an SDK grant merely to support relocation.
+
+`dse/` contains research consumers rather than observation SDK components. Its
+scoped instructions allow analysis of compiler/kernel choices without exposing
+that research implementation through the observation source grants.

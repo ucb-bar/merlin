@@ -15,8 +15,8 @@ code_refs:
   - src/merlin/compiler/quantization/admission.py
   - src/merlin/targetgen/output_path.py
   - src/merlin/xdsl_dialects/lowering/output_fusion.py
-  - src/merlin_experiments/phase0/capture_recipe.py
-  - src/merlin_experiments/phase0/requirements.py
+  - src/merlin/experiments/phase0/capture_recipe.py
+  - src/merlin/experiments/phase0/requirements.py
   - examples/gemmini/target/software-spec.yaml
   - src/merlin/target/spec/load.py
   - src/merlin/target/spec/quantization.py
@@ -162,7 +162,7 @@ derived from its facts. If that path has no preload, the bias becomes a host add
 (`epilogue.bias.mode: host_float`). If it has no rectifier, the relu stays on the host. With a scale
 per column, the weights take ungrouped channel scales. Another clamp becomes every activation's grid.
 A rounding or format the capture graph cannot spell exactly is refused. All of these cases are covered
-by `merlin/tests/targetgen/test_quant_methodology.py` (derivation) and
+by `tests/targetgen/test_quant_methodology.py` (derivation) and
 `test_recipe_integer_epilogue.py` (the quantized graphs, in the capture interpreter).
 
 ## How model variants are reviewed

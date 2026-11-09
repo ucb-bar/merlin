@@ -23,10 +23,10 @@ THIS IS NOT A FOURTH SPELLING. Three vocabularies already exist and each is righ
 -- ``TIER_ORDER`` (tier), :data:`merlin.targetgen.rtl_engine_policy.ENGINE_PRIORITY` (which engine
 answers at a fidelity, ranked by cost) and ``runner_config.conventional_tier_sim()`` (capsule tier to simulator).
 Every rung binds to them by declaring its ``tier``, ``engines`` and ``capsule_tier``, and
-``merlin/tests/targetgen/test_measurement_ladder.py`` holds the declaration against all three, so a
+``tests/targetgen/test_measurement_ladder.py`` holds the declaration against all three, so a
 rung naming a tier or engine those modules do not have fails the suite rather than drifting quietly.
 
-THE ROSTER IS DATA. ``merlin/contract/measurement_ladder.yaml`` -- the same posture as
+THE ROSTER IS DATA. ``src/merlin/resources/contracts/measurement_ladder.yaml`` -- the same posture as
 ``storage.yaml`` (concerns) and ``perf_reference_targets.yaml`` (program identities). Nothing here
 knows what any rung or target is called, and a target the contract does not describe resolves to
 :data:`UNKNOWN` rather than to a default rung: a default would be a rung nobody chose answering for a

@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-09-08
 code_refs:
-  - merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml
+  - experiments/studies/capsule_bench/targets/radiance/target_experiment.yaml
   - src/merlin/targetgen/evaluation_cohort.py
 ---
 
@@ -64,10 +64,10 @@ The self-check runner defaults to the repository's default target when no descri
 Radiance selection must be explicit.  A canonical clean Stage-1 run is:
 
 ```bash
-MERLIN_TARGET_EXPERIMENT=merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml \
+MERLIN_TARGET_EXPERIMENT=experiments/studies/capsule_bench/targets/radiance/target_experiment.yaml \
 MERLIN_ELF_BUILD_CACHE=0 MERLIN_MUON_TRUSTED_COMPACT_NUMERIC=1 \
 PYTHONPATH=merlin/python .venv/bin/python \
-  merlin/experiments/capsule_bench/harness/agent_selfcheck.py \
+  experiments/studies/capsule_bench/harness/agent_selfcheck.py \
   --submission out/runs/radiance/capsule-bench/<run>/submission \
   --sim spike --tiers L2 --capsules all --workers 4 --timeout 300 \
   --out out/artifacts/capsule-bench/radiance/<run>/l2_score.json \

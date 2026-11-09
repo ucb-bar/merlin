@@ -41,7 +41,7 @@ identity:
   schedule: continuous
 launcher:
   python: ${PYTHON}
-  module: merlin_experiments.phase1
+  module: merlin.experiments.phase1
   cwd: ${REPO}
   run_id_placeholder: <set by supervisor>
   environment_file: ${PREP}/repro-profile/environment.sh
@@ -250,7 +250,7 @@ runtime_pins:
     path: ${REPO}/examples/gemmini/phase1/launch/selected_chain_supervision.py
     sha256: '0000000000000000000000000000000000000000000000000000000000000000'
   private_chain_receipt_verifier:
-    path: ${REPO}/packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_chain_receipt.py
+    path: ${REPO}/packages/merlin-experiments/src/merlin/experiments/phase1/feedback/private_chain_receipt.py
     sha256: '0000000000000000000000000000000000000000000000000000000000000000'
   operator_resource_reservation:
     path: ${REPO}/examples/gemmini/phase1/launch/resource_reservation.py
@@ -262,7 +262,7 @@ runtime_pins:
     path: ${REPO}/examples/gemmini/phase1/launch/capsule_handoff_intake.py
     sha256: '0000000000000000000000000000000000000000000000000000000000000000'
   capsule_certification_verifier:
-    path: ${REPO}/packages/merlin-experiments/src/merlin_experiments/phase1/feedback/capsule_certification.py
+    path: ${REPO}/packages/merlin-experiments/src/merlin/experiments/phase1/feedback/capsule_certification.py
     sha256: '0000000000000000000000000000000000000000000000000000000000000000'
 target_selection:
   contract:

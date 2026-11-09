@@ -97,9 +97,7 @@ def variants(workspace: Path, seed_source: Path, out: Path, store: _Store) -> di
     """Copy every variant tree and record what it changed and which seed records name it."""
     root = Path(workspace) / "variants"
     baseline = {k: _sha(p) for k, p in _files(seed_source).items()} if Path(seed_source).is_dir() else {}
-    records = sorted(
-        f"{kind}/{p.name}" for kind in ("evidence", "ab") for p in (Path(workspace) / kind).glob("*")
-    )
+    records = sorted(f"{kind}/{p.name}" for kind in ("evidence", "ab") for p in (Path(workspace) / kind).glob("*"))
     outcomes = {}
     for directory in sorted(p for p in root.glob("*") if p.is_dir() and not p.is_symlink()):
         files = _files(directory)
@@ -119,10 +117,17 @@ def variants(workspace: Path, seed_source: Path, out: Path, store: _Store) -> di
         }
     if outcomes:
         (out / VARIANTS_DIR).mkdir(parents=True, exist_ok=True)
-        (out / VARIANTS_DIR / "OUTCOMES.json").write_text(json.dumps({
-            "against": "the seed compiler (submission/ at the start of this run)",
-            "seed_records": "paths under SEED_EXPERIMENTS/ (evidence/ and ab/ of the seed workspace)",
-            "variants": outcomes}, indent=1) + "\n")
+        (out / VARIANTS_DIR / "OUTCOMES.json").write_text(
+            json.dumps(
+                {
+                    "against": "the seed compiler (submission/ at the start of this run)",
+                    "seed_records": "paths under SEED_EXPERIMENTS/ (evidence/ and ab/ of the seed workspace)",
+                    "variants": outcomes,
+                },
+                indent=1,
+            )
+            + "\n"
+        )
     return {"variants": len(outcomes)}
 
 
@@ -135,7 +140,7 @@ def _number(value):
 
 def _headroom_entries(grade: dict) -> dict:
     brief = (grade or {}).get("feedback_brief") or {}
-    block = ((brief.get("performance_priority") or {}).get("development_headroom") or {})
+    block = (brief.get("performance_priority") or {}).get("development_headroom") or {}
     out = {}
     for entry in block.get("largest_headroom") or ():
         if isinstance(entry, dict) and isinstance(entry.get("test_case"), str):
@@ -177,10 +182,12 @@ def baseline(workspace: Path, seed_run: str) -> dict:
         detail = _json(workspace / ((row.get("detail") or {}).get("path") or "")) or {}
         performance = detail.get("performance") if isinstance(detail.get("performance"), dict) else {}
         compact = row.get("performance") if isinstance(row.get("performance"), dict) else {}
-        complete = performance.get("status") in ("PROVISIONAL", "QUALIFIED") and performance.get(
-            "complete_event_accounting") is True
+        complete = (
+            performance.get("status") in ("PROVISIONAL", "QUALIFIED")
+            and performance.get("complete_event_accounting") is True
+        )
         roofline = performance.get("structural_roofline") or {}
-        counts = ((performance.get("feature_counts") or {}).get("target") or {})
+        counts = (performance.get("feature_counts") or {}).get("target") or {}
         fast = performance.get("fast_estimate") if isinstance(performance.get("fast_estimate"), dict) else {}
         listed = headroom.get(name) or {}
         fence = listed.get("fence_overlap") if isinstance(listed.get("fence_overlap"), dict) else {}
@@ -196,8 +203,8 @@ def baseline(workspace: Path, seed_run: str) -> dict:
             "cycles": cycles,
             "evidence": evidence,
             "best_cycles": history["best"].get(name),
-            "model_sha256": performance.get("model_sha256") or (modeled.get("performance_identity") or {}).get(
-                "model_sha256"),
+            "model_sha256": performance.get("model_sha256")
+            or (modeled.get("performance_identity") or {}).get("model_sha256"),
             "selection_sha256": performance.get("selection_sha256"),
             "elf_sha256": performance.get("elf_sha256"),
             "roofline_bound_cycles": _number(roofline.get("structural_compute_floor_cycles")),
@@ -215,8 +222,10 @@ def baseline(workspace: Path, seed_run: str) -> dict:
         "seed_run": seed_run,
         "graded_source_sha256": grade.get("graded_source_sha256"),
         "graded_at": grade.get("graded_at"),
-        "note": ("The seed's per-case numbers from its last completed grade (a row may come from an older "
-                 "seed version: see currency). Model cycles compare only under the same model_sha256."),
+        "note": (
+            "The seed's per-case numbers from its last completed grade (a row may come from an older "
+            "seed version: see currency). Model cycles compare only under the same model_sha256."
+        ),
         "cases": cases,
     }
 
@@ -229,17 +238,40 @@ def timing(workspace: Path, out: Path, seed_run: str) -> dict:
         if not isinstance(detail, dict):
             continue
         performance = detail.get("performance")
-        if (not isinstance(performance, dict) or performance.get("status") not in ("PROVISIONAL", "QUALIFIED")
-                or performance.get("complete_event_accounting") is not True
-                or not isinstance(performance.get("elf_sha256"), str)
-                or _number(performance.get("estimated_whole_soc_cycles")) is None):
+        if (
+            not isinstance(performance, dict)
+            or performance.get("status") not in ("PROVISIONAL", "QUALIFIED")
+            or performance.get("complete_event_accounting") is not True
+            or not isinstance(performance.get("elf_sha256"), str)
+            or _number(performance.get("estimated_whole_soc_cycles")) is None
+        ):
             continue
-        key = tuple(performance.get(k) for k in (
-            "elf_sha256", "capsule_sha256", "selection_sha256", "model_sha256", "facts_sha256", "timing_epoch"))
+        key = tuple(
+            performance.get(k)
+            for k in (
+                "elf_sha256",
+                "capsule_sha256",
+                "selection_sha256",
+                "model_sha256",
+                "facts_sha256",
+                "timing_epoch",
+            )
+        )
         record = {
             "capsule": detail.get("capsule"),
-            "key": dict(zip(("elf_sha256", "capsule_sha256", "selection_sha256", "model_sha256", "facts_sha256",
-                             "timing_epoch"), key)),
+            "key": dict(
+                zip(
+                    (
+                        "elf_sha256",
+                        "capsule_sha256",
+                        "selection_sha256",
+                        "model_sha256",
+                        "facts_sha256",
+                        "timing_epoch",
+                    ),
+                    key,
+                )
+            ),
             "seed_run": seed_run,
             "performance": performance,
             "compiler_diagnostics": detail.get("compiler_diagnostics"),
@@ -255,8 +287,9 @@ def timing(workspace: Path, out: Path, seed_run: str) -> dict:
     directory = out / RUN_PRIVATE / "seed_timing"
     for elf, records in by_elf.items():
         directory.mkdir(parents=True, exist_ok=True)
-        (directory / f"{elf}.json").write_text(json.dumps(
-            {"schema": TIMING_SCHEMA, "seed_run": seed_run, "records": records}, sort_keys=True) + "\n")
+        (directory / f"{elf}.json").write_text(
+            json.dumps({"schema": TIMING_SCHEMA, "seed_run": seed_run, "records": records}, sort_keys=True) + "\n"
+        )
     return {"timed_executables": len(by_elf), "timed_records": len(newest)}
 
 
@@ -267,8 +300,8 @@ def calibration_pairs(workspace: Path, run_dir: Path, out: Path) -> dict:
     stream of the executable it timed, from any retained case work tree of the seed run whose
     executable has those bytes (the executable itself, else the digest its readback build recorded:
     retention keeps the decoded stream longer than the executable)."""
+    from merlin.experiments.phase1.feedback import fast_estimate as FE
     from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
-    from merlin_experiments.phase1.feedback import fast_estimate as FE
 
     run_dir = Path(run_dir)
     ledger = _json(run_dir / FE.LEDGER) or {}
@@ -278,8 +311,11 @@ def calibration_pairs(workspace: Path, run_dir: Path, out: Path) -> dict:
         if not (root / "generated" / FE.TRACE).is_file():
             continue
         elf = root / "generated" / PACKAGE_ELF_NAME
-        digest = _sha(elf) if elf.is_file() else ((_json(root / "generated" / "readback_build.json") or {}).get(
-            "elf_sha256"))
+        digest = (
+            _sha(elf)
+            if elf.is_file()
+            else ((_json(root / "generated" / "readback_build.json") or {}).get("elf_sha256"))
+        )
         if isinstance(digest, str):
             roots.setdefault((root.name, digest), root)
     seen, counts = set(), {"complete_estimates": 0, "no_work_tree": 0, "partial_census": 0}
@@ -299,8 +335,15 @@ def calibration_pairs(workspace: Path, run_dir: Path, out: Path) -> dict:
         if not counted or not counted.get("complete"):
             counts["partial_census"] += 1
             continue
-        pairs.append({"floor": FE.floor(performance.get("structural_roofline")), "commands": counted["commands"],
-                      "fences": counted["fences"], "cycles": cycles, "facts_sha256": performance.get("facts_sha256")})
+        pairs.append(
+            {
+                "floor": FE.floor(performance.get("structural_roofline")),
+                "commands": counted["commands"],
+                "fences": counted["fences"],
+                "cycles": cycles,
+                "facts_sha256": performance.get("facts_sha256"),
+            }
+        )
     if not pairs:
         return {"calibration_pairs": 0, "calibration_sources": counts}
     fits = {}
@@ -309,7 +352,7 @@ def calibration_pairs(workspace: Path, run_dir: Path, out: Path) -> dict:
         fits[str(facts)] = FE.fit([(p.get("floor"), p.get("commands"), p.get("fences"), p.get("cycles")) for p in same])
     target = out / RUN_PRIVATE / FE.LEDGER
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps({"schema": FE.SCHEMA, "pairs": pairs[-FE._KEEP:], "fits": fits}, sort_keys=True))
+    target.write_text(json.dumps({"schema": FE.SCHEMA, "pairs": pairs[-FE._KEEP :], "fits": fits}, sort_keys=True))
     return {"calibration_pairs": len(pairs), "calibration_sources": counts}
 
 
@@ -324,9 +367,11 @@ def performance(workspace: Path, run_dir: Path, out: Path, seed_run: str) -> dic
     (out / PERFORMANCE_DIR / "baseline.json").write_text(text)
     (out / RUN_PRIVATE).mkdir(parents=True, exist_ok=True)
     (out / RUN_PRIVATE / "seed_baseline.json").write_text(text)
-    summary = {"perf_history_rows": sum(1 for _ in history.open()) if history.is_file() else 0,
-               "baseline_cases": len(document["cases"]),
-               "baseline_cases_with_cycles": sum(1 for c in document["cases"].values() if c["cycles"] is not None)}
+    summary = {
+        "perf_history_rows": sum(1 for _ in history.open()) if history.is_file() else 0,
+        "baseline_cases": len(document["cases"]),
+        "baseline_cases_with_cycles": sum(1 for c in document["cases"].values() if c["cycles"] is not None),
+    }
     summary.update(timing(workspace, out, seed_run))
     summary.update(calibration_pairs(workspace, run_dir, out))
     return summary
@@ -360,11 +405,17 @@ INDEX_LINES = (
     ("SEED_INDEX.md", "this list: everything the previous run left you, outside submission/"),
     ("PREVIOUS_SESSION.md", "where the previous session stopped and what it was doing next"),
     ("OPTIMIZATION_RULES.json", "the previous run's optimization rules with their evidence; keep maintaining it"),
-    ("SEED_VARIANTS/", "every variant compiler tree the previous run left, whole; OUTCOMES.json says what each "
-                       "changed against submission/ and which records name it. Copy one into variants/ to "
-                       "continue it, or into submission/ to promote it"),
-    ("SEED_PERFORMANCE/baseline.json", "per case, the previous run's cycles, roofline, utilization, headroom and "
-                                       "fences: the baseline your grades are compared with (vs_seed)"),
+    (
+        "SEED_VARIANTS/",
+        "every variant compiler tree the previous run left, whole; OUTCOMES.json says what each "
+        "changed against submission/ and which records name it. Copy one into variants/ to "
+        "continue it, or into submission/ to promote it",
+    ),
+    (
+        "SEED_PERFORMANCE/baseline.json",
+        "per case, the previous run's cycles, roofline, utilization, headroom and "
+        "fences: the baseline your grades are compared with (vs_seed)",
+    ),
     ("SEED_PERFORMANCE/perf_history.jsonl", "the previous run's per-case performance history, every grade"),
     ("SEED_EXPERIMENTS/", "the previous run's A/B records (ab/), its evidence records (evidence/) and an index"),
     ("SEED_TOOLS/", "the helper scripts the previous author wrote"),
@@ -376,19 +427,26 @@ INDEX_LINES = (
 def write_index(out: Path, summary: dict) -> None:
     """``SEED_INDEX.md``: one plain line for each carried item that is present."""
     out = Path(out)
-    lines = ["# What the previous run left you", "",
-             "Everything below sits at the workspace root, outside `submission/`. The compiler in `submission/` "
-             "is the previous run's; its proven verdicts and model cycles carry for unchanged executables, and "
-             "the timing-model calibration starts from its estimates.", ""]
+    lines = [
+        "# What the previous run left you",
+        "",
+        "Everything below sits at the workspace root, outside `submission/`. The compiler in `submission/` "
+        "is the previous run's; its proven verdicts and model cycles carry for unchanged executables, and "
+        "the timing-model calibration starts from its estimates.",
+        "",
+    ]
     for name, text in INDEX_LINES:
         present = name in ("SEED_INDEX.md", "PREVIOUS_SESSION.md") or (out / name.rstrip("/")).exists()
         if present:
             lines.append(f"* `{name}`: {text}.")
     counts = summary.get("performance") or {}
     if counts:
-        lines += ["", f"Seed baseline: {counts.get('baseline_cases_with_cycles', 0)} of {counts.get('baseline_cases', 0)} "
-                  f"cases with cycles; {counts.get('timed_executables', 0)} executables carry their model cycles; "
-                  f"{counts.get('calibration_pairs', 0)} calibration pairs."]
+        lines += [
+            "",
+            f"Seed baseline: {counts.get('baseline_cases_with_cycles', 0)} of {counts.get('baseline_cases', 0)} "
+            f"cases with cycles; {counts.get('timed_executables', 0)} executables carry their model cycles; "
+            f"{counts.get('calibration_pairs', 0)} calibration pairs.",
+        ]
     (out / INDEX).write_text("\n".join(lines) + "\n")
 
 

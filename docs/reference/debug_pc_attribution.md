@@ -7,7 +7,7 @@ last_verified: 2026-11-09
 code_refs:
   - src/merlin/perf/debug_companion.py
   - src/merlin/perf/whole_model_group_timing.py
-  - src/merlin_experiments/group_inspect.py
+  - src/merlin/experiments/group_inspect.py
 ---
 
 # Debug companion PC attribution

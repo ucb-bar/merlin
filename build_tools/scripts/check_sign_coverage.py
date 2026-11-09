@@ -35,7 +35,7 @@ for _path in (ROOT / "merlin" / "python",):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
-CORPUS = ROOT / "merlin" / "contract" / "capsules"
+CORPUS = ROOT / "experiments" / "corpora"
 LEDGER = ROOT / "build_tools" / "scripts" / "sign_coverage_ratchet.txt"
 
 

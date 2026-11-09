@@ -238,7 +238,7 @@ def _captures(model_root: Path | None = None, *, include_claim_models: bool = Fa
     is then reported over captured models -- so a capture doing both jobs means the corpus was built
     from the model it is said to generalize to. This used to return EVERY bundle, the four claim models
     included, and lstmnetvit was already in both roles. The split is declared in
-    ``merlin/contract/claim_models.yaml`` and applied by ``merlin.targetgen.claim_models``.
+    ``src/merlin/resources/contracts/claim_models.yaml`` and applied by ``merlin.targetgen.claim_models``.
 
     Matching runs on the bundle's RAW directory name, before the label is prettified: the matcher works
     on token boundaries and the prettified label erases the tokens it needs.
@@ -272,7 +272,7 @@ def _target_experiment(target: str) -> Path | None:
     ``target:``. Asked about the name everything else resolves by, the gate found nothing and called it
     clean. Directory first (cheap, and the common case), then the declared name.
     """
-    root = repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets"
+    root = repo_root() / "experiments" / "studies" / "capsule_bench" / "targets"
     cand = root / target / "target_experiment.yaml"
     if cand.is_file():
         return cand
@@ -351,7 +351,7 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
         app_demands = doc.get("application_demands") or {}
         sidecar = app_demands.get("sidecar")
         if sidecar:
-            from merlin_experiments.phase0.profiles import application_inventory_path
+            from merlin.experiments.phase0.profiles import application_inventory_path
 
             try:
                 inventory_path = application_inventory_path(spec_path)
@@ -371,7 +371,7 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
         # The corpus is handed in as a SECOND evidence source for the negative lane: it is what the
         # grader will run, and it can present work the captures never do (a bf16 contraction on an
         # int8-only array). See `conformance.corpus_presented_pairs`.
-        from merlin_experiments.corpus.admission import conformance_spec
+        from merlin.experiments.corpus.admission import conformance_spec
 
         try:
             doc = conformance_spec(
@@ -677,10 +677,9 @@ def main(argv=None) -> int:
                 file=sys.stderr,
             )
             return 2
-        from merlin_experiments.phase0.declarations import for_target
-        from merlin_experiments.phase0.evidence import export_evidence, select_evidence
-        from merlin_experiments.phase0.profiles import selected_software_spec_path
-
+        from merlin.experiments.phase0.declarations import for_target
+        from merlin.experiments.phase0.evidence import export_evidence, select_evidence
+        from merlin.experiments.phase0.profiles import selected_software_spec_path
         from merlin.targetgen.application_inventory import application_demand_inventory
         from merlin.targetgen.corpora import descriptor_path
         from merlin.targetgen.target_experiment import load_target_experiment
@@ -760,7 +759,7 @@ def main(argv=None) -> int:
         # requirement, and omitting the corpus here produced a spec that named fewer negative-lane
         # pairs than the one `audit` derives from the very same tree -- the two disagreeing about the
         # requirement is worse than either being wrong.
-        from merlin_experiments.corpus.admission import conformance_spec
+        from merlin.experiments.corpus.admission import conformance_spec
 
         try:
             _app_paths = (

@@ -34,7 +34,7 @@ fpga:
   # FireSim. The receipt checks `config` and `platform_config` against the bitstream's pin: its `config`
   # key and the deploy quintuplet (<platform>-<project>-<design>-<config>-<platform config>) of its path.
   pin:
-    file: {repo: merlin/contract/hardware_pins.yaml}
+    file: {repo: src/merlin/resources/contracts/hardware_pins.yaml}
     key: [artifacts, firesim_gemmini_rocket_30mhz]
   board: firesim_gemmini_rocket_u250_30mhz
   config: FireSimGemminiRocketConfig
@@ -114,7 +114,7 @@ citations:
     line: 123
     contains: auto const cols = (sp_addr >> addr_len) & 0xFFFF;
   - claim: the FPGA board entry is the pinned bitstream
-    file: {repo: merlin/contract/hardware_pins.yaml}
+    file: {repo: src/merlin/resources/contracts/hardware_pins.yaml}
     key: [artifacts, firesim_gemmini_rocket_30mhz, path]
     contains: alveo_u250_firesim_gemmini_rocket_30mhz
   - claim: the FPGA board entry is the pinned bitstream

@@ -14,7 +14,7 @@ model's calls can be answered in seconds:
 - pooling and anything outside this vocabulary are computed by the reference engine itself, so no
   second definition of those exists.
 
-The two engines are kept equal by test (``merlin/tests/runtime/test_model_check_kernel_reference.py``)
+The two engines are kept equal by test (``tests/runtime/test_model_check_kernel_reference.py``)
 and, per model, by evaluating the device-rewritten program with these answers against the unrewritten
 INT8 reference (:mod:`merlin.model_check.catalog`).
 """

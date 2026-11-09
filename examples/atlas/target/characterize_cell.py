@@ -8,8 +8,7 @@ import json
 import random
 from pathlib import Path
 
-from merlin_experiments.phase0.cell_probe import characterize
-
+from merlin.experiments.phase0.cell_probe import characterize
 from merlin.integrations.specir import importable
 
 

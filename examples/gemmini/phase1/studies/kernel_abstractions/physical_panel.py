@@ -7,6 +7,7 @@ Inputs and oracle arrays are materialized operator-only fixtures. No author
 workspace is an output destination. The ``legacy-runtime`` action adapts pinned
 HTIF/Gemmini support to this builder without changing retained source files.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,8 +54,12 @@ def write(path, value):
 
 
 def _token(value):
-    return (isinstance(value, str) and value and len(value) <= 120
-            and all(c.isascii() and (c.isalnum() or c in "_.-") for c in value))
+    return (
+        isinstance(value, str)
+        and value
+        and len(value) <= 120
+        and all(c.isascii() and (c.isalnum() or c in "_.-") for c in value)
+    )
 
 
 def _canonical_directory(path):
@@ -81,8 +86,12 @@ def _abi(cb):
     if explicit:
         order = [row["tensor"] for row in explicit["args"]]
     else:
-        order = [name for role in (True, False) for name, value in tensors.items()
-                 if (value.get("role") in ("input", "weight", "bias", "scale")) == role]
+        order = [
+            name
+            for role in (True, False)
+            for name, value in tensors.items()
+            if (value.get("role") in ("input", "weight", "bias", "scale")) == role
+        ]
     if len(order) != len(set(order)) or set(order) != set(tensors):
         raise ValueError("kernel pointer ABI must name every tensor exactly once")
     return order
@@ -106,17 +115,21 @@ def _artifact(row, subject, case):
         return None
     cb = read(row["command_buffer"])
     receipt = read(row["build_receipt"])
-    expected = {"compiler_sha256": subject["source"]["sha256"], "case": case["case"],
-                "source_sha256": case["source"]["sha256"],
-                "object_sha256": row["object"]["sha256"],
-                "command_buffer_sha256": row["command_buffer"]["sha256"]}
+    expected = {
+        "compiler_sha256": subject["source"]["sha256"],
+        "case": case["case"],
+        "source_sha256": case["source"]["sha256"],
+        "object_sha256": row["object"]["sha256"],
+        "command_buffer_sha256": row["command_buffer"]["sha256"],
+    }
     if any(receipt.get(key) != value for key, value in expected.items()):
         raise ValueError("build receipt does not bind source, object and ABI")
     reopen(row["object"])
     tensors = cb["tensors"]
-    if not tensors or any(t.get("dtype") not in WIDTHS or not t.get("shape")
-                          or any(type(d) is not int or d < 1 for d in t["shape"])
-                          for t in tensors.values()):
+    if not tensors or any(
+        t.get("dtype") not in WIDTHS or not t.get("shape") or any(type(d) is not int or d < 1 for d in t["shape"])
+        for t in tensors.values()
+    ):
         raise ValueError("physical panel currently supports positive-shape i8/i32 tensors")
     return cb, _abi(cb)
 
@@ -140,8 +153,12 @@ def prepare(selection_path, output):
         if hash_tree(subject["source"]["path"])["sha256"] != subject["source"]["sha256"]:
             raise ValueError("frozen compiler changed")
         freeze = subject.get("freeze") or {}
-        if (freeze.get("requirements_complete") is not True or type(freeze.get("frozen_unix")) not in (int, float)
-                or not math.isfinite(freeze["frozen_unix"]) or freeze["frozen_unix"] <= 0):
+        if (
+            freeze.get("requirements_complete") is not True
+            or type(freeze.get("frozen_unix")) not in (int, float)
+            or not math.isfinite(freeze["frozen_unix"])
+            or freeze["frozen_unix"] <= 0
+        ):
             raise ValueError("source, rules, settings and freeze time must be pinned first")
         for key in ("rules", "settings"):
             reopen(freeze[key])
@@ -159,10 +176,15 @@ def prepare(selection_path, output):
         for key in ("inputs", "outputs"):
             reopen(panel_cases[name]["fixtures"][key])
     domain = selection["domain"]
-    if (not isinstance(domain.get("agfi"), str) or not domain["agfi"]
-            or type(domain.get("target_clock_hz")) is not int or domain["target_clock_hz"] <= 0
-            or domain.get("roi") != "complete_call_including_completion_v1"
-            or not domain.get("cache_policy") or not domain.get("preparation_policy")):
+    if (
+        not isinstance(domain.get("agfi"), str)
+        or not domain["agfi"]
+        or type(domain.get("target_clock_hz")) is not int
+        or domain["target_clock_hz"] <= 0
+        or domain.get("roi") != "complete_call_including_completion_v1"
+        or not domain.get("cache_policy")
+        or not domain.get("preparation_policy")
+    ):
         raise ValueError("select explicit deployment, preparation, cache and complete-call ROI")
     tools = selection["toolchain"]
     for key in ("compiler", "nm", "objcopy", "runtime_header", "linker_script"):
@@ -189,8 +211,13 @@ def prepare(selection_path, output):
         for case in cases:
             row = rows.get((name, case))
             if row is None:
-                row = {"subject": name, "case": case, "state": "missing", "reason": "no compiled artifact supplied",
-                       "compiler_sha256": subjects[name]["source"]["sha256"]}
+                row = {
+                    "subject": name,
+                    "case": case,
+                    "state": "missing",
+                    "reason": "no compiled artifact supplied",
+                    "compiler_sha256": subjects[name]["source"]["sha256"],
+                }
             parsed = _artifact(row, subjects[name], panel_cases[case])
             cells.append(row)
             if parsed is not None:
@@ -198,9 +225,9 @@ def prepare(selection_path, output):
     if not available:
         raise ValueError("no compiled cells to measure")
     slots = []
-    orders = [cases, list(reversed(cases)), cases[len(cases) // 2:] + cases[:len(cases) // 2]]
+    orders = [cases, list(reversed(cases)), cases[len(cases) // 2 :] + cases[: len(cases) // 2]]
     for round_id, order in enumerate(orders):
-        names = selected[round_id % len(selected):] + selected[:round_id % len(selected)]
+        names = selected[round_id % len(selected) :] + selected[: round_id % len(selected)]
         if round_id == 1:
             names = list(reversed(names))
         for case in order:
@@ -209,19 +236,39 @@ def prepare(selection_path, output):
                 if item is None:
                     continue
                 row, (cb, abi) = item
-                slots.append({"slot": len(slots), "subject": name, "case": case, "round": round_id,
-                              "compiler_sha256": subjects[name]["source"]["sha256"],
-                              "object": row["object"], "command_buffer": row["command_buffer"],
-                              "build_receipt": row["build_receipt"], "abi": abi,
-                              "fixtures": panel_cases[case]["fixtures"]})
+                slots.append(
+                    {
+                        "slot": len(slots),
+                        "subject": name,
+                        "case": case,
+                        "round": round_id,
+                        "compiler_sha256": subjects[name]["source"]["sha256"],
+                        "object": row["object"],
+                        "command_buffer": row["command_buffer"],
+                        "build_receipt": row["build_receipt"],
+                        "abi": abi,
+                        "fixtures": panel_cases[case]["fixtures"],
+                    }
+                )
     # Repeat the first measured invocation after all other cases as an order-effect control.
     slots.append({**slots[0], "slot": len(slots), "round": "order_control", "repeats": 0})
     output.mkdir(parents=True, mode=0o700)
-    result = {"schema": SCHEMA + ".prepared", "selection": selection_pin, "evaluation_plan": selection["evaluation_plan"],
-              "panel": selection["panel"], "snapshot": selection["snapshot"], "subjects": selected,
-              "cases": cases, "cells": cells, "slots": slots, "domain": domain,
-              "domain_sha256": hashlib.sha256(json.dumps(domain, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
-              "toolchain": tools, "paid_jobs_launched": 0, "physical_performance_verified": False}
+    result = {
+        "schema": SCHEMA + ".prepared",
+        "selection": selection_pin,
+        "evaluation_plan": selection["evaluation_plan"],
+        "panel": selection["panel"],
+        "snapshot": selection["snapshot"],
+        "subjects": selected,
+        "cases": cases,
+        "cells": cells,
+        "slots": slots,
+        "domain": domain,
+        "domain_sha256": hashlib.sha256(json.dumps(domain, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+        "toolchain": tools,
+        "paid_jobs_launched": 0,
+        "physical_performance_verified": False,
+    }
     write(output / "prepared.json", result)
     return result
 
@@ -262,8 +309,10 @@ def render(prepared, output):
         declarations.append(f"extern void K{index}_entry({', '.join('void *' for _ in slot['abi'])});")
         declarations.append(f"extern void K{index}_complete(void);")
         setup, checks = [], []
-        with np.load(reopen(slot["fixtures"]["inputs"]), allow_pickle=False) as inputs, \
-                np.load(reopen(slot["fixtures"]["outputs"]), allow_pickle=False) as outputs:
+        with (
+            np.load(reopen(slot["fixtures"]["inputs"]), allow_pickle=False) as inputs,
+            np.load(reopen(slot["fixtures"]["outputs"]), allow_pickle=False) as outputs,
+        ):
             declared_outputs = {n for n, t in tensors[index].items() if t["role"] == "output"}
             declared_inputs = set(tensors[index]) - declared_outputs
             if set(inputs.files) != declared_inputs or set(outputs.files) != declared_outputs:
@@ -273,25 +322,29 @@ def render(prepared, output):
                 raw = _array_bytes(outputs if is_output else inputs, name, tensor)
                 ref = _declare_blob(raw, output, blobs, declarations)
                 dst = "panel_tensor_" + name
-                setup.append(f"for (size_t j=0;j<{len(raw)};j++) ((volatile unsigned char*){dst})[j] = "
-                             + (f"(unsigned char)~{ref}[j];" if is_output else f"{ref}[j];"))
+                setup.append(
+                    f"for (size_t j=0;j<{len(raw)};j++) ((volatile unsigned char*){dst})[j] = "
+                    + (f"(unsigned char)~{ref}[j];" if is_output else f"{ref}[j];")
+                )
                 if is_output:
-                    checks.append(f"for (size_t j=0;j<{len(raw)};j++) mismatches += ((volatile unsigned char*){dst})[j] != {ref}[j];")
+                    checks.append(
+                        f"for (size_t j=0;j<{len(raw)};j++) mismatches += ((volatile unsigned char*){dst})[j] != {ref}[j];"
+                    )
         arguments = ", ".join("panel_tensor_" + name for name in slot["abi"])
-        functions.append(f'''static void panel_slot_{index}(void) {{
-  {' '.join(setup)}
+        functions.append(f"""static void panel_slot_{index}(void) {{
+  {" ".join(setup)}
   panel_prepare();
   const uint64_t start = panel_read_cycles();
   K{index}_entry({arguments}); K{index}_complete();
   const uint64_t end = panel_read_cycles();
   size_t mismatches = 0;
-  {' '.join(checks)}
+  {" ".join(checks)}
   panel_puts("PANEL {index} "); panel_number(end-start); panel_puts(" ");
   panel_number(mismatches); panel_puts("\\n");
-}}''')
+}}""")
         calls.append(f"  panel_slot_{index}();")
     header = str(reopen(prepared["toolchain"]["runtime_header"]))
-    text = f'''#include <stdint.h>
+    text = f"""#include <stdint.h>
 #include <stddef.h>
 #include {json.dumps(header)}
 static void panel_number(uint64_t value) {{
@@ -299,7 +352,7 @@ static void panel_number(uint64_t value) {{
   do {{ out[--i]=(char)('0'+value%10); value/=10; }} while(value);
   panel_puts(out+i);
 }}
-'''
+"""
     text += "\n".join(dict.fromkeys(declarations)) + "\n" + "\n".join(functions)
     text += '\nint main(void) {\n  panel_init();\n  panel_puts("PANEL_BEGIN\\n");\n'
     text += "\n".join(calls) + '\n  panel_puts("PANEL_DONE\\n"); panel_exit(0); return 0;\n}\n'
@@ -310,8 +363,9 @@ static void panel_number(uint64_t value) {{
 
 def _run(argv, *, cwd, log):
     with log.open("ab") as stream:
-        subprocess.run([str(a) for a in argv], cwd=cwd, stdout=stream, stderr=subprocess.STDOUT,
-                       check=True, timeout=600)
+        subprocess.run(
+            [str(a) for a in argv], cwd=cwd, stdout=stream, stderr=subprocess.STDOUT, check=True, timeout=600
+        )
 
 
 def build(prepared_path):
@@ -341,16 +395,39 @@ def build(prepared_path):
         names = [line.split()[-1] for line in symbols.splitlines() if line.split()]
         if "kernel_entry" not in names or "kernel_complete" not in names:
             raise ValueError("object lacks entry/completion symbols")
-        arguments = [f"--redefine-sym={name}=" + (f"K{slot['slot']}_entry" if name == "kernel_entry" else
-                     f"K{slot['slot']}_complete" if name == "kernel_complete" else f"K{slot['slot']}_{name}")
-                     for name in names]
+        arguments = [
+            f"--redefine-sym={name}="
+            + (
+                f"K{slot['slot']}_entry"
+                if name == "kernel_entry"
+                else f"K{slot['slot']}_complete"
+                if name == "kernel_complete"
+                else f"K{slot['slot']}_{name}"
+            )
+            for name in names
+        ]
         target = output / f"kernel_{slot['slot']}.o"
         _run([objcopy, *arguments, source, target], cwd=output, log=log)
         objects.append(target)
     for name, binary in blobs.values():
         target = output / (name + ".o")
-        _run([objcopy, "-I", "binary", "-O", "elf64-littleriscv", "-B", "riscv", "--rename-section",
-              ".data=.rodata.panel,alloc,load,readonly,data,contents", binary.name, target.name], cwd=output, log=log)
+        _run(
+            [
+                objcopy,
+                "-I",
+                "binary",
+                "-O",
+                "elf64-littleriscv",
+                "-B",
+                "riscv",
+                "--rename-section",
+                ".data=.rodata.panel,alloc,load,readonly,data,contents",
+                binary.name,
+                target.name,
+            ],
+            cwd=output,
+            log=log,
+        )
         objects.append(target)
     flags = tools["cflags"]
     dependency_file = output / "harness.d"
@@ -358,8 +435,22 @@ def build(prepared_path):
     obj = output / "harness.o"
     _run([compiler, *flags, *includes, "-MMD", "-MF", dependency_file, "-c", harness, "-o", obj], cwd=output, log=log)
     elf = output / "panel.elf"
-    _run([compiler, *flags, "-T", reopen(tools["linker_script"]), obj, *objects,
-          *[reopen(p) for p in tools["support_objects"]], *tools.get("ldflags", []), "-o", elf], cwd=output, log=log)
+    _run(
+        [
+            compiler,
+            *flags,
+            "-T",
+            reopen(tools["linker_script"]),
+            obj,
+            *objects,
+            *[reopen(p) for p in tools["support_objects"]],
+            *tools.get("ldflags", []),
+            "-o",
+            elf,
+        ],
+        cwd=output,
+        log=log,
+    )
     if elf.read_bytes()[:4] != b"\x7fELF":
         raise ValueError("compiler did not produce an ELF")
     # The compiler reports the concrete transitive local headers it consumed.
@@ -371,10 +462,17 @@ def build(prepared_path):
     if not separator:
         raise ValueError("compiler did not record its consumed header dependencies")
     dependencies = [pin((output / name).resolve()) for name in shlex.split(dependency_names)]
-    result = {"schema": SCHEMA + ".build", "prepared": pin(prepared_path), "elf": pin(elf),
-              "harness": pin(harness), "included_dependencies": dependencies, "blobs": [pin(binary) for _, binary in blobs.values()],
-              "domain_sha256": prepared["domain_sha256"], "paid_jobs_launched": 0,
-              "physical_performance_verified": False}
+    result = {
+        "schema": SCHEMA + ".build",
+        "prepared": pin(prepared_path),
+        "elf": pin(elf),
+        "harness": pin(harness),
+        "included_dependencies": dependencies,
+        "blobs": [pin(binary) for _, binary in blobs.values()],
+        "domain_sha256": prepared["domain_sha256"],
+        "paid_jobs_launched": 0,
+        "physical_performance_verified": False,
+    }
     write(output / "build.json", result)
     return result
 
@@ -397,23 +495,31 @@ def legacy_runtime(config_path, output):
     if type(count) is not int or count <= 0 or count % 1024:
         raise ValueError("primitive sweep must be a positive multiple of 1024 bytes")
     output.parent.mkdir(parents=True, exist_ok=True)
-    text = '\n'.join([
-        '#include <stddef.h>',
-        '#include ' + json.dumps(str(reopen(config["timing_header"]))),
-        '#include ' + json.dumps(str(reopen(config["accelerator_header"]))),
-        f'static unsigned char SWEEP[{count}] NOINIT;',
-        '#include ' + json.dumps(str(reopen(config["common_c"]))),
-        'static void panel_init(void) { console_init(); gemmini_flush(0); }',
-        'static void panel_prepare(void) { l2_sweep(); }',
-        'static uint64_t panel_read_cycles(void) { return rd_mcycle(); }',
-        'static void panel_puts(const char *text) { htif_puts(text); }',
-        'static void panel_exit(int status) { htif_exit(status); }', '',
-    ])
+    text = "\n".join(
+        [
+            "#include <stddef.h>",
+            "#include " + json.dumps(str(reopen(config["timing_header"]))),
+            "#include " + json.dumps(str(reopen(config["accelerator_header"]))),
+            f"static unsigned char SWEEP[{count}] NOINIT;",
+            "#include " + json.dumps(str(reopen(config["common_c"]))),
+            "static void panel_init(void) { console_init(); gemmini_flush(0); }",
+            "static void panel_prepare(void) { l2_sweep(); }",
+            "static uint64_t panel_read_cycles(void) { return rd_mcycle(); }",
+            "static void panel_puts(const char *text) { htif_puts(text); }",
+            "static void panel_exit(int status) { htif_exit(status); }",
+            "",
+        ]
+    )
     with output.open("x") as stream:
         stream.write(text)
-    result = {"schema": SCHEMA + ".runtime", "config": config_pin, "header": pin(output),
-              "sweep_bytes": count, "cache_claim": "declared sweep; cold cache is not established",
-              "dependency_pins": {key: config[key] for key in ("timing_header", "accelerator_header", "common_c")}}
+    result = {
+        "schema": SCHEMA + ".runtime",
+        "config": config_pin,
+        "header": pin(output),
+        "sweep_bytes": count,
+        "cache_claim": "declared sweep; cold cache is not established",
+        "dependency_pins": {key: config[key] for key in ("timing_header", "accelerator_header", "common_c")},
+    }
     write(output.with_suffix(output.suffix + ".json"), result)
     return result
 
@@ -441,7 +547,7 @@ def _uart(path, expected):
 
 def collect(build_path, observation_path):
     """Import exact host observations; no callbacks, hardware launches or author feedback."""
-    from merlin_experiments.post_freeze.booted_elf import _boot_path
+    from merlin.experiments.post_freeze.booted_elf import _boot_path
 
     built = read(pin(build_path))
     prepared = read(built["prepared"])
@@ -456,14 +562,20 @@ def collect(build_path, observation_path):
     _boot_path(boot, reopen(observation["sim_run"]))
     consumed = boot.get("consumed_elf", {})
     uploaded = observation["uploaded_elf"]
-    if (pin(reopen(uploaded))["sha256"] != built["elf"]["sha256"]
-            or consumed.get("sha256") != built["elf"]["sha256"]
-            or boot.get("agfi") != prepared["domain"]["agfi"]
-            or boot.get("ssm_command_id") != invocation.get("CommandId")
-            or invocation.get("Status") != "Success" or invocation.get("ResponseCode") != 0):
+    if (
+        pin(reopen(uploaded))["sha256"] != built["elf"]["sha256"]
+        or consumed.get("sha256") != built["elf"]["sha256"]
+        or boot.get("agfi") != prepared["domain"]["agfi"]
+        or boot.get("ssm_command_id") != invocation.get("CommandId")
+        or invocation.get("Status") != "Success"
+        or invocation.get("ResponseCode") != 0
+    ):
         raise ValueError("physical boot, upload, deployment or successful SSM identity differs")
     for subject in read(prepared["evaluation_plan"])["subjects"]:
-        if subject["id"] in prepared["subjects"] and hash_tree(subject["source"]["path"])["sha256"] != subject["source"]["sha256"]:
+        if (
+            subject["id"] in prepared["subjects"]
+            and hash_tree(subject["source"]["path"])["sha256"] != subject["source"]["sha256"]
+        ):
             raise ValueError("frozen compiler changed after physical build")
     actual = read(observation["runtime_domain"])
     if actual.get("domain") != prepared["domain"] or actual.get("ssm_command_id") != invocation["CommandId"]:
@@ -474,9 +586,14 @@ def collect(build_path, observation_path):
     for slot in prepared["slots"]:
         row = observed.get(slot["slot"])
         state = "missing" if row is None else "fail" if row["mismatched_bytes"] else "pass"
-        samples.append({**{k: slot[k] for k in ("slot", "subject", "case", "round", "compiler_sha256", "object")},
-                        "state": state, "cycles": row["cycles"] if row else None,
-                        "mismatched_bytes": row["mismatched_bytes"] if row else None})
+        samples.append(
+            {
+                **{k: slot[k] for k in ("slot", "subject", "case", "round", "compiler_sha256", "object")},
+                "state": state,
+                "cycles": row["cycles"] if row else None,
+                "mismatched_bytes": row["mismatched_bytes"] if row else None,
+            }
+        )
     first, last = samples[0], samples[-1]
     order_ppm = None
     order_pass = False
@@ -486,8 +603,11 @@ def collect(build_path, observation_path):
         order_pass = order_ppm <= limit
     cells = []
     for supplied in prepared["cells"]:
-        rows = [s for s in samples if s["subject"] == supplied["subject"] and s["case"] == supplied["case"]
-                and type(s["round"]) is int]
+        rows = [
+            s
+            for s in samples
+            if s["subject"] == supplied["subject"] and s["case"] == supplied["case"] and type(s["round"]) is int
+        ]
         if any(r["state"] == "fail" for r in rows):
             state, reason = "fail", "physical all-output comparison failed"
         elif not terminated or len(rows) != 3 or any(r["state"] != "pass" for r in rows):
@@ -497,19 +617,40 @@ def collect(build_path, observation_path):
         else:
             state, reason = "pass", None
         cycles = [r["cycles"] for r in rows]
-        cells.append({"subject": supplied["subject"], "snapshot": prepared["snapshot"], "case": supplied["case"],
-                      "compiler_sha256": supplied["compiler_sha256"], "state": state, "reason": reason,
-                      "ordered_samples": cycles, "sample_slots": [r["slot"] for r in rows],
-                      "cycles_median": statistics.median(cycles) if state == "pass" else None,
-                      "domain_sha256": prepared["domain_sha256"], "elf": built["elf"], "uart": uart_pin,
-                      "all_output_bytes_checked": state == "pass"})
-    return {"schema": OBSERVATION + ".collection", "build": pin(build_path), "observation": pin(observation_path),
-            "evaluation_plan": prepared["evaluation_plan"], "panel": prepared["panel"], "domain": prepared["domain"],
-            "domain_sha256": prepared["domain_sha256"], "cells": cells, "samples": samples,
-            "complete": terminated and all(c["state"] in ("pass", "fail") for c in cells),
-            "order_effect_ppm": order_ppm, "order_effect_pass": order_pass,
-            "deployment_source_equivalence": "UNKNOWN; separate reviewed correspondence required",
-            "scientific_qualification": False, "paid_jobs_launched": 0}
+        cells.append(
+            {
+                "subject": supplied["subject"],
+                "snapshot": prepared["snapshot"],
+                "case": supplied["case"],
+                "compiler_sha256": supplied["compiler_sha256"],
+                "state": state,
+                "reason": reason,
+                "ordered_samples": cycles,
+                "sample_slots": [r["slot"] for r in rows],
+                "cycles_median": statistics.median(cycles) if state == "pass" else None,
+                "domain_sha256": prepared["domain_sha256"],
+                "elf": built["elf"],
+                "uart": uart_pin,
+                "all_output_bytes_checked": state == "pass",
+            }
+        )
+    return {
+        "schema": OBSERVATION + ".collection",
+        "build": pin(build_path),
+        "observation": pin(observation_path),
+        "evaluation_plan": prepared["evaluation_plan"],
+        "panel": prepared["panel"],
+        "domain": prepared["domain"],
+        "domain_sha256": prepared["domain_sha256"],
+        "cells": cells,
+        "samples": samples,
+        "complete": terminated and all(c["state"] in ("pass", "fail") for c in cells),
+        "order_effect_ppm": order_ppm,
+        "order_effect_pass": order_pass,
+        "deployment_source_equivalence": "UNKNOWN; separate reviewed correspondence required",
+        "scientific_qualification": False,
+        "paid_jobs_launched": 0,
+    }
 
 
 def apply_physical(collection, paths):
@@ -536,8 +677,12 @@ def apply_physical(collection, paths):
             continue
         if row["compiler_sha256"] != cell["source"]["sha256"]:
             raise ValueError("physical cell belongs to another frozen compiler")
-        cell["physical"] = {**row, "status": row["state"], "cycles": row["cycles_median"],
-                            "ordinary_numeric_pass": cell["state"] == "pass"}
+        cell["physical"] = {
+            **row,
+            "status": row["state"],
+            "cycles": row["cycles_median"],
+            "ordinary_numeric_pass": cell["state"] == "pass",
+        }
     plan = read(collection["plan"])
     baseline_ids = {s["id"] for s in plan["subjects"] if s.get("role") == "initial_baseline" or s["id"] == "baseline"}
     lookup = {(c["subject"], c["case"]): c for c in collection["cells"]}
@@ -546,25 +691,35 @@ def apply_physical(collection, paths):
             continue
         other = lookup.get((cell.get("baseline_subject", "baseline"), cell["case"]))
         left, right = cell.get("physical", {}), (other or {}).get("physical", {})
-        valid = (cell["state"] == "pass" and (other or {}).get("state") == "pass"
-                 and left.get("state") == right.get("state") == "pass"
-                 and left.get("domain_sha256") == right.get("domain_sha256"))
-        cell["physical_comparison"] = {"status": "measured" if valid else "UNKNOWN",
-                                       "candidate_to_baseline_ratio": left["cycles"] / right["cycles"] if valid else None}
+        valid = (
+            cell["state"] == "pass"
+            and (other or {}).get("state") == "pass"
+            and left.get("state") == right.get("state") == "pass"
+            and left.get("domain_sha256") == right.get("domain_sha256")
+        )
+        cell["physical_comparison"] = {
+            "status": "measured" if valid else "UNKNOWN",
+            "candidate_to_baseline_ratio": left["cycles"] / right["cycles"] if valid else None,
+        }
     for summary in collection.get("summaries", []):
-        cells = [c for c in collection["cells"] if c["subject"] == summary["subject"]
-                 and c["split"] == summary["split"]]
+        cells = [
+            c for c in collection["cells"] if c["subject"] == summary["subject"] and c["split"] == summary["split"]
+        ]
         ratios = [(c.get("physical_comparison") or {}).get("candidate_to_baseline_ratio") for c in cells]
         complete = bool(cells) and all(type(r) in (int, float) and math.isfinite(r) and r > 0 for r in ratios)
         summary["physical_status"] = "measured" if complete else "UNKNOWN"
         summary["physical_candidate_to_baseline_geomean"] = (
-            math.exp(sum(math.log(r) for r in ratios) / len(ratios)) if complete else None)
+            math.exp(sum(math.log(r) for r in ratios) / len(ratios)) if complete else None
+        )
         summary["physical_coverage"] = {
             "required": len(cells),
-            "measured": sum(c.get("physical", {}).get("state") == "pass" for c in cells)}
+            "measured": sum(c.get("physical", {}).get("state") == "pass" for c in cells),
+        }
     collection["physical_timing_qualified"] = False
     collection["physical_measurements_imported"] = len(by_key)
-    collection["physical_scope"] = "Exact uploaded/booted image, selected runtime domain and all-output checks; source/build correspondence remains separate."
+    collection["physical_scope"] = (
+        "Exact uploaded/booted image, selected runtime domain and all-output checks; source/build correspondence remains separate."
+    )
     return collection
 
 

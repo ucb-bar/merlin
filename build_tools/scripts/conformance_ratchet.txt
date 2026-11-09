@@ -9,7 +9,7 @@
 # NEVER ADD A LINE. A new gap means a corpus that no longer evidences something a real model needs — write
 # the capsule instead. Regenerate the requirement with:
 #   build_tools/scripts/check_conformance_coverage.py --target <t> --write \
-#       merlin/contract/capsules/conformance/<t>.yaml
+#       experiments/corpora/conformance/<t>.yaml
 #
 # ⚠️ THE ONE EXEMPTION TO "NEVER ADD A LINE", AND WHY THIS FILE GREW ON 2026-09-21. Six axes were being
 # measured, printed with the same `*` un-ratcheted marker as the rest, and never accumulated into the

@@ -8,8 +8,8 @@ related: [ordered_fma_certificates, quantized_host_optimizations]
 code_refs:
   - src/merlin/runtime/backends/spike_model.py
   - src/merlin/runtime/output_digest.py
-  - merlin/runtime/baremetal/spike/output_sha256.h
-  - merlin/runtime/baremetal/spike/model_main.c
+  - src/merlin/runtime/native/baremetal/spike/output_sha256.h
+  - src/merlin/runtime/native/baremetal/spike/model_main.c
 ---
 
 # Compact whole-output evidence

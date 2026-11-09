@@ -31,7 +31,7 @@ compute_units:
   # DERIVED, not authored: the unit capability_manifests.manifest_for('atlas') synthesizes from the
   # selected RTL facts (AtlasRocketConfig FIRRTL, sha256 fefa711dba44498317573ee5af2cfd82edb674cdfff1505318ea93e896fc123d).
   # The ISA role census evidences the engine; the lane-replication reader names its element format.
-  # merlin/tests/targetgen/test_lane_datapaths.py re-derives it and compares whenever that checkout is present.
+  # tests/targetgen/test_lane_datapaths.py re-derives it and compares whenever that checkout is present.
   - name: vector_unit
     kind: vector
     dtypes: [bf16]

@@ -44,12 +44,12 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 
-from merlin.common.paths import merlin_dir  # noqa: E402
+from merlin.common.paths import capsules_dir, repo_root
 
 #: Path roots whose OWN business is the holdout, so naming one there is the point rather than a leak.
 #: Each entry needs a reason: an allowlist without one is how a gate becomes decorative.
 _ALLOWED: dict[str, str] = {
-    "merlin/contract/capsules/hidden": "the hidden corpus itself; its own capsules name themselves",
+    "experiments/corpora/hidden": "the hidden corpus itself; its own capsules name themselves",
     # RATCHETS RECORD DEBT BY NAME, DELIBERATELY. A ratchet whose entries were anonymised could not be
     # checked against the thing it ratchets, which is the whole mechanism; `holdout_disjointness_ratchet`
     # has always worked this way. They are tracked, reviewed, and may only shrink.
@@ -60,7 +60,7 @@ _ALLOWED: dict[str, str] = {
     # A TEST ABOUT THE LEAK HAS TO BE ABLE TO SPELL ONE. These construct a holdout name as a fixture or
     # assert that some artifact does NOT contain it; forbidding the string here would forbid testing the
     # property. Tests are not published artifacts.
-    "merlin/tests": "a test whose subject is the holdout must be able to name one as a fixture",
+    "tests": "a test whose subject is the holdout must be able to name one as a fixture",
     "build_tools/scripts/check_no_holdout_names.py": "this gate's own docstring describes the leak it was written for",
 }
 
@@ -74,12 +74,12 @@ def _holdout_stores() -> dict[str, str]:
     tomorrow either trips this gate on its own hidden corpus or gets quietly forgotten. Reading the
     directories is the same answer with neither failure mode.
     """
-    root = merlin_dir() / "contract" / "capsules"
+    root = capsules_dir()
     found = dict(_ALLOWED)
     for hidden in sorted(root.glob("*/hidden")):
         if not hidden.is_dir():
             continue
-        rel = hidden.relative_to(merlin_dir().parent).as_posix()
+        rel = hidden.relative_to(repo_root()).as_posix()
         found.setdefault(rel, "a target's own hidden corpus; its capsules name themselves")
     return found
 
@@ -100,7 +100,7 @@ def holdout_names() -> set[str]:
     import yaml
 
     names: set[str] = set()
-    root = merlin_dir() / "contract" / "capsules"
+    root = capsules_dir()
     for cy in root.rglob("capsule.yaml"):
         try:
             doc = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}

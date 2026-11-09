@@ -28,13 +28,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 
 def _discovered_targets():
-    """Curated reference target names — the dirs under ``merlin/targets/`` carrying a
+    """Curated reference target names — the dirs under ``experiments/reference-data/target-inputs/`` carrying a
     ``contracts/target_contract.yaml``. This covers only the retained native shape;
     example-owned inputs have no required in-tree generated directory. Discovery
     stays import-free and runs with no deps installed (as in the docs CI job). Targets are
     DISCOVERED, never named here, so registering a new target extends the gate with zero edits.
     """
-    tdir = os.path.join(ROOT, "merlin", "targets")
+    tdir = os.path.join(ROOT, "experiments", "reference-data", "target-inputs")
     if not os.path.isdir(tdir):
         return []
     return sorted(
@@ -48,22 +48,21 @@ REQUIRED_DIRS = [
     "build_tools/scripts",
     "docs",
     "third_party",
-    "merlin/tests",
-    "merlin/python/merlin/xdsl_dialects",
-    "merlin/python/merlin/targetgen",
-    "merlin/python/merlin/kernels",
-    "merlin/python/merlin/design_pressure",
-    "merlin/python/merlin/dse",
-    "merlin/python/merlin/runtime",
-    "merlin/python/merlin/common",
-    "merlin/python/merlin/validation",
-    "merlin/runtime/c",
-    "merlin/runtime/abi",
-    "merlin/runtime/baremetal",
-    "merlin/schemas",
-    "merlin/benchmarks/semantic_memory",
-    "merlin/experiments/kernel_policy",
-    "merlin/tests/data",
+    "tests",
+    "src/merlin/compiler",
+    "src/merlin/target",
+    "src/merlin/runtime",
+    "src/merlin/verification",
+    "src/merlin/experiments",
+    "src/merlin/analysis/dse",
+    "src/merlin/common",
+    "src/merlin/runtime/native/c",
+    "src/merlin/runtime/native/abi",
+    "src/merlin/runtime/native/baremetal",
+    "src/merlin/resources/schemas",
+    "src/merlin/resources/benchmarks/semantic_memory",
+    "experiments/studies/kernel_policy",
+    "tests/data",
 ]
 
 # Canonical per-target source shape: contracts/ is required for every discovered
@@ -71,7 +70,7 @@ REQUIRED_DIRS = [
 # artifact root, not beside source contracts; docs/ and examples/ exist only
 # when they have content. The set remains derived from registration.
 for _t in _discovered_targets():
-    REQUIRED_DIRS.append(f"merlin/targets/{_t}/contracts")
+    REQUIRED_DIRS.append(f"experiments/reference-data/target-inputs/{_t}/contracts")
 
 REQUIRED_SCHEMAS = [
     "target_contract",
@@ -120,7 +119,7 @@ REQUIRED_SCHEMAS = [
     "exactness_contract",
     # Full-model check report (merlin.model_check): build, census, kernel exactness, model metrics.
     "model_check_report",
-    # Custody of sealed Phase 0 evidence (merlin_experiments.corpus.evidence_custody).
+    # Custody of sealed Phase 0 evidence (merlin.experiments.corpus.evidence_custody).
     "evidence_seal",
     "evidence_repair",
 ]
@@ -182,48 +181,29 @@ SKIP_DIRS = {
 
 
 def check_required_dirs(errors):
-    for d in REQUIRED_DIRS:
-        actual = d
-        if d.startswith("merlin/python/merlin/"):
-            tail = d.removeprefix("merlin/python/merlin/")
-            locations = [
-                package / tail for package in _source_layout.source_packages(Path(ROOT)) if package.name == "merlin"
-            ]
-            actual = str(
-                next((path for path in locations if path.is_dir()), _source_layout.core_package(Path(ROOT)) / tail)
-            )
-        if not os.path.isdir(os.path.join(ROOT, actual)):
-            errors.append(f"missing required directory: {actual}")
+    for directory in REQUIRED_DIRS:
+        if not (Path(ROOT) / directory).is_dir():
+            errors.append(f"missing required directory: {directory}")
 
 
 def check_agent_md(errors):
-    # AGENT.md is required at MEANINGFUL levels only:
-    #   - the repo root,
-    #   - each top-level area  merlin/<area>,
-    #   - each experiment      merlin/experiments/<exp>,
-    #   - each test bucket      merlin/tests/<bucket>.
-    # The importable package tree (merlin/python/merlin/<pkg>) is owned by gen_package_docs.py
-    # (--check enforces AGENT.md coverage + freshness there). Everything deeper — experiment
-    # scripts/inputs, test fixtures, frozen archives, capsule/schema data — is exempt.
-    root_md = os.path.join(ROOT, "AGENT.md")
-    if not os.path.isfile(root_md):
-        errors.append("missing AGENT.md: (root)")
+    """Require scoped instructions at maintained area and study boundaries.
 
-    def require(rel):
-        if not os.path.isfile(os.path.join(ROOT, rel, "AGENT.md")):
-            errors.append(f"missing AGENT.md: {rel}")
+    Package instructions are checked by gen_package_docs. Deep fixture, resource
+    and archival directories inherit the nearest meaningful owner's rules.
+    """
 
-    merlin = os.path.join(ROOT, "merlin")
-    for area in sorted(os.listdir(merlin)):
-        ap = os.path.join(merlin, area)
-        if not os.path.isdir(ap) or area in SKIP_DIRS or area == "python":
-            continue
-        require(f"merlin/{area}")
-        if area in ("experiments", "tests"):
-            for sub in sorted(os.listdir(ap)):
-                sp = os.path.join(ap, sub)
-                if os.path.isdir(sp) and sub not in SKIP_DIRS and sub not in ("fixtures", "data"):
-                    require(f"merlin/{area}/{sub}")
+    def require(relative):
+        if not (Path(ROOT) / relative / "AGENT.md").is_file():
+            errors.append(f"missing AGENT.md: {relative or '(root)'}")
+
+    require("")
+    for area in ("tests", "experiments/studies"):
+        root = Path(ROOT) / area
+        require(area)
+        for child in sorted(root.iterdir()):
+            if child.is_dir() and child.name not in SKIP_DIRS | {"fixtures", "data"}:
+                require(child.relative_to(ROOT).as_posix())
 
 
 EXPERIMENT_STATUSES = ("active", "blocked", "frozen", "reference")
@@ -239,7 +219,7 @@ def check_experiment_status(errors):
     ``reference`` (a scaffold others copy, with no runs of its own).
     Retiring an experiment means deleting it -- git history is the archive -- so no status names that.
     """
-    exp = os.path.join(ROOT, "merlin", "experiments")
+    exp = os.path.join(ROOT, "experiments", "studies")
     if not os.path.isdir(exp):
         return
     for sub in sorted(os.listdir(exp)):
@@ -251,15 +231,15 @@ def check_experiment_status(errors):
             head = [next(fh, "") for _ in range(15)]
         declared = [ln[len("Status:") :].strip() for ln in head if ln.startswith("Status:")]
         if not declared or not declared[0]:
-            errors.append(f"experiment declares no `Status:` in its AGENT.md: merlin/experiments/{sub}")
+            errors.append(f"experiment declares no `Status:` in its AGENT.md: experiments/studies/{sub}")
             continue
         word = declared[0].split()[0]
         if word not in EXPERIMENT_STATUSES:
             errors.append(
-                f"experiment status {word!r} is not one of {list(EXPERIMENT_STATUSES)}: merlin/experiments/{sub}"
+                f"experiment status {word!r} is not one of {list(EXPERIMENT_STATUSES)}: experiments/studies/{sub}"
             )
         elif word == "frozen" and not os.path.isfile(os.path.join(sp, "FINDINGS.md")):
-            errors.append(f"frozen experiment has no FINDINGS.md: merlin/experiments/{sub}")
+            errors.append(f"frozen experiment has no FINDINGS.md: experiments/studies/{sub}")
 
 
 TARGET_MARKER_RATCHET = os.path.join(ROOT, "build_tools", "scripts", "test_target_marker_ratchet.txt")
@@ -296,7 +276,7 @@ def check_test_target_marker(errors):
     if os.path.isfile(TARGET_MARKER_RATCHET):
         with open(TARGET_MARKER_RATCHET, encoding="utf-8") as fh:
             ratchet = {ln.split("#", 1)[0].strip() for ln in fh if ln.split("#", 1)[0].strip()}
-    tests = os.path.join(ROOT, "merlin", "tests")
+    tests = os.path.join(ROOT, "tests")
     if not os.path.isdir(tests):
         return
     for bucket in sorted(os.listdir(tests)):
@@ -307,7 +287,7 @@ def check_test_target_marker(errors):
         for fn in sorted(os.listdir(bp)):
             if not (fn.startswith("test_") and fn.endswith(".py")):
                 continue
-            rel = f"merlin/tests/{bucket}/{fn}"
+            rel = f"tests/{bucket}/{fn}"
             with open(os.path.join(bp, fn), encoding="utf-8", errors="replace") as fh:
                 text = fh.read()
             if _quoted_target_literals(text, names) < TARGET_HEAVY_LITERALS or "mark.target(" in text or rel in ratchet:
@@ -367,11 +347,11 @@ def check_module_size(errors):
 
 def check_schemas(errors):
     for s in REQUIRED_SCHEMAS:
-        p = os.path.join(ROOT, "merlin", "schemas", f"{s}.schema.yaml")
+        p = os.path.join(ROOT, "src", "merlin", "resources", "schemas", f"{s}.schema.yaml")
         if not os.path.isfile(p):
-            errors.append(f"missing schema: merlin/schemas/{s}.schema.yaml")
+            errors.append(f"missing schema: src/merlin/resources/schemas/{s}.schema.yaml")
         elif os.path.getsize(p) == 0:
-            errors.append(f"empty schema: merlin/schemas/{s}.schema.yaml")
+            errors.append(f"empty schema: src/merlin/resources/schemas/{s}.schema.yaml")
 
 
 def check_docs(errors):
@@ -383,9 +363,9 @@ def check_docs(errors):
 
 def check_benchmarks(errors):
     for b in REQUIRED_BENCHMARKS:
-        p = os.path.join(ROOT, "merlin", "benchmarks", "semantic_memory", f"{b}.yaml")
+        p = os.path.join(ROOT, "src", "merlin", "resources", "benchmarks", "semantic_memory", f"{b}.yaml")
         if not os.path.isfile(p):
-            errors.append(f"missing benchmark: merlin/benchmarks/semantic_memory/{b}.yaml")
+            errors.append(f"missing benchmark: src/merlin/resources/benchmarks/semantic_memory/{b}.yaml")
 
 
 # Subsystem test buckets. The generic (cross-target) buckets are fixed; a target may additionally own
@@ -408,13 +388,13 @@ TEST_BUCKETS = _GENERIC_TEST_BUCKETS | set(_discovered_targets()) | _example_tes
 
 
 def check_test_layout(errors):
-    """Every test lives in merlin/tests/<bucket>/test_*.py (bucket in the fixed set); none at root."""
-    tdir = os.path.join(ROOT, "merlin", "tests")
+    """Every test lives in tests/<bucket>/test_*.py (bucket in the fixed set); none at root."""
+    tdir = os.path.join(ROOT, "tests")
     if not os.path.isdir(tdir):
         return
     for name in os.listdir(tdir):
         if name.startswith("test_") and name.endswith(".py"):
-            errors.append(f"test at merlin/tests/ root (must be in a subsystem bucket): {name}")
+            errors.append(f"test at tests/ root (must be in a subsystem bucket): {name}")
     for b in sorted(os.listdir(tdir)):
         bp = os.path.join(tdir, b)
         if not os.path.isdir(bp) or b in {"fixtures", "data", "__pycache__"}:
@@ -422,7 +402,7 @@ def check_test_layout(errors):
         if b not in TEST_BUCKETS:
             has_tests = any(f.startswith("test_") and f.endswith(".py") for f in os.listdir(bp))
             if has_tests:
-                errors.append(f"unknown test bucket merlin/tests/{b} (allowed: {sorted(TEST_BUCKETS)})")
+                errors.append(f"unknown test bucket tests/{b} (allowed: {sorted(TEST_BUCKETS)})")
 
     # A basename may appear once across ALL buckets. The buckets carry no __init__.py, so pytest imports
     # each test file under its bare basename; two files sharing one cannot both be imported and pytest
@@ -439,8 +419,8 @@ def check_test_layout(errors):
                 continue
             if f in seen:
                 errors.append(
-                    f"duplicate test module basename {f!r}: merlin/tests/{seen[f]}/{f} and "
-                    f"merlin/tests/{b}/{f} — pytest imports test files by bare basename, so this "
+                    f"duplicate test module basename {f!r}: tests/{seen[f]}/{f} and "
+                    f"tests/{b}/{f} — pytest imports test files by bare basename, so this "
                     f"aborts collection for the WHOLE suite. Rename one after what it actually covers."
                 )
             else:
@@ -524,7 +504,7 @@ def check_docs_freshness(errors):
 
 
 def check_schema_docs(errors):
-    """docs/reference/schemas.md is in sync with merlin/schemas/ (see gen_schema_docs.py)."""
+    """docs/reference/schemas.md is in sync with src/merlin/resources/schemas/ (see gen_schema_docs.py)."""
     import subprocess
 
     gen = os.path.join(ROOT, "build_tools", "scripts", "gen_schema_docs.py")
@@ -546,7 +526,12 @@ def check_docs_index(errors):
 # The library (merlin/python/merlin) reads INPUTS from benchmarks/ and contract/, never from
 # experiments/ (experiments consume the library, one-way). The ONE sanctioned indirection to a corpus
 # still under experiments/ is the corpus locator; everything else must not name experiments/ as a path.
-_BOUNDARY_ALLOW = {os.path.join("merlin", "python", "merlin", "targetgen", "corpora.py")}
+# Corpus discovery and the package/source-owner path resolver own physical layout.
+# These are indirections, not permission for compiler algorithms to read study code.
+_BOUNDARY_ALLOW = {
+    "merlin/python/merlin/targetgen/corpora.py",
+    "merlin/python/merlin/common/paths.py",
+}
 BOUNDARY_RATCHET = os.path.join(ROOT, "build_tools", "scripts", "library_boundary_ratchet.txt")
 # The module a violating caller is supposed to go through is NOT spelled here: `check_library_boundary`
 # derives it from `_BOUNDARY_ALLOW` above, so the remedy the message names and the module the gate
@@ -559,17 +544,17 @@ BOUNDARY_RATCHET = os.path.join(ROOT, "build_tools", "scripts", "library_boundar
 _BOUNDARY_LITERAL_ALLOW = {
     (
         "merlin/python/merlin/compare/host_experiment.py",
-        "merlin/experiments/cpu_host_compiler_v0/grader.py",
+        "experiments/studies/cpu_host_compiler_v0/grader.py",
     ): "loads that experiment's source-sealed grader to reuse its gate functions verbatim (not a corpus)",
     (
         "merlin/python/merlin/compare/host_experiment.py",
-        "merlin/experiments/cpu_host_compiler_v0/optimization_space_v1.yaml",
+        "experiments/studies/cpu_host_compiler_v0/optimization_space_v1.yaml",
     ): "binds the calibration to that experiment's frozen optimization space, by content",
 }
 
 
 def check_schema_usage(errors):
-    """Every merlin/schemas/*.schema.yaml must be referenced by name in merlin/python/ — either
+    """Every src/merlin/resources/schemas/*.schema.yaml must be referenced by name in merlin/python/ — either
     validated (validate/validate_or_raise/_SCHEMA/PLAN_SCHEMAS) or mirrored as a vocabulary spec
     (a code constant / generated view / docstring that names it). Zero references ⇒ dead schema."""
     import glob
@@ -578,10 +563,10 @@ def check_schema_usage(errors):
     for path in _source_layout.python_files(Path(ROOT), _source_layout.SOURCE_SCAN_ROOTS):
         corpus.append((Path(ROOT) / path).read_text(encoding="utf-8"))
     blob = "\n".join(corpus)
-    for path in sorted(glob.glob(os.path.join(ROOT, "merlin", "schemas", "*.schema.yaml"))):
+    for path in sorted(glob.glob(os.path.join(ROOT, "src", "merlin", "resources", "schemas", "*.schema.yaml"))):
         name = os.path.basename(path)[: -len(".schema.yaml")]
         if f'"{name}"' not in blob and f"'{name}'" not in blob and f"{name}.schema" not in blob:
-            errors.append(f"dead schema (no reference in merlin/python): merlin/schemas/{name}.schema.yaml")
+            errors.append(f"dead schema (no reference in src/merlin): src/merlin/resources/schemas/{name}.schema.yaml")
 
 
 def _prose_lines(src):
@@ -709,7 +694,7 @@ def check_library_boundary(errors):
     # `merlin.common.corpora`, which has never existed -- an author following the instruction found no
     # such module, and the gate that reported four docstring false positives also told them the wrong
     # place to put the fix.
-    _sanctioned = ".".join(os.path.splitext(sorted(_BOUNDARY_ALLOW)[0])[0].split(os.sep)[2:])
+    _sanctioned = "merlin.targetgen.corpora"
     for relative in _source_layout.python_files(Path(ROOT), _source_layout.SOURCE_SCAN_ROOTS):
         key = relative.as_posix()
         stable = _source_layout.policy_path(key)
@@ -745,6 +730,19 @@ def check_library_boundary(errors):
                     != "core"
                 )
                 and resource.parts[:2] == ("experiments", "reference-data")
+                and ".." not in resource.parts
+            ):
+                continue
+            # These read-only inputs moved intact from benchmarks/, targets/,
+            # contract/capsules/ and tests/data/. The move does not make them
+            # orchestration code; study engines remain behind the same boundary.
+            if (
+                resource.parts[:2]
+                in {
+                    ("experiments", "benchmarks"),
+                    ("experiments", "reference-data"),
+                    ("experiments", "corpora"),
+                }
                 and ".." not in resource.parts
             ):
                 continue

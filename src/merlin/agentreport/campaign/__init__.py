@@ -4,6 +4,6 @@
 draws them, ``cli`` writes a versioned product. Run ``python -m merlin.agentreport.campaign --help``.
 """
 
-#: Product name (declared in ``merlin/contract/storage.yaml`` ``product_roots``) and figure version.
+#: Product name (declared in ``src/merlin/resources/contracts/storage.yaml`` ``product_roots``) and figure version.
 PRODUCT = "campaign-figure"
 FIGURE_VERSION = 3

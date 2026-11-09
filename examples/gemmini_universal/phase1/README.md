@@ -13,7 +13,7 @@ RTL-checks bundle together. Provision a genuine oracle timing record, external
 toolchain and ordinary (non-symlink-grant) input trees. Inspect and preflight
 the copied definition before `merlin experiment run`; resume the same run only
 while every frozen input remains unchanged. A changed descriptor or grant needs
-a new run. The installed controller is `python -m merlin_experiments.phase1`.
+a new run. The installed controller is `python -m merlin.experiments.phase1`.
 
 The old Universal RTL link names another user's workspace and is not copied or
 endorsed here. Its target contract also records a missing registered runtime

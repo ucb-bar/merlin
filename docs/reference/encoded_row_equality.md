@@ -8,7 +8,7 @@ related: [ordered_fma_certificates, quantized_host_optimizations]
 code_refs:
   - src/merlin/llvmlower/encoded_row_equality.py
   - src/merlin/llvmlower/source_attention_frontier.py
-  - merlin/runtime/c/encoded_row_equality.h
+  - src/merlin/runtime/native/c/encoded_row_equality.h
 ---
 
 # Encoder row equality

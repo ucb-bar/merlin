@@ -1571,7 +1571,7 @@ sweeps:
 # mechanism that makes the machine fast. These three are decided from the candidate's own decoded
 # instruction stream against a property derived from the target, by the analyzer each acceptance block
 # names (merlin.perf.{load_state,stationary,movein}_claim, dispatched by
-# merlin_experiments.phase2.claims.dispatch). Passing says redundant or exposed work is ABSENT; none of
+# merlin.experiments.phase2.claims.dispatch). Passing says redundant or exposed work is ABSENT; none of
 # them is a speedup claim. They read no cycles, so their members cap at the correctness tier and owe no
 # ceiling (`not_a_cycle_observable`).
 #
@@ -1981,7 +1981,7 @@ sweeps:
 # THE CAPACITY COHORT. Every other family tops out around M<=17, N<=32, K=128: shapes that fit every
 # on-chip store many times over, so no tiling, blocking, DMA scheduling, double-buffering, store reuse,
 # epilogue or command-queue decision ever moves their cycles. This family's extents are derived from
-# the target's own facts (merlin_experiments.phase0.capacity_families): only the multiples below are
+# the target's own facts (merlin.experiments.phase0.capacity_families): only the multiples below are
 # policy. Phase 2 iterates on the calibrated Spike timing model, so these shapes are measured there;
 # the RTL simulator sees only the calibration-validation list (phase2.calibration_validation).
 # Merlin-supplied host compute is outside every member: each is one accelerator-placed operation.

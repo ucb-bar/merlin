@@ -1555,7 +1555,7 @@ def host_op_reference(op: HostOp, tensors: Mapping[str, Any], out_shape: tuple, 
 
     ``tensors`` maps DRAM names to arrays (integers as int64, bfloat16 values as float32);
     ``out_shape``/``out_dtype`` are the output tensor's. Voyager's own ops follow Voyager's reference
-    semantics (checked against its op library by ``merlin/tests/ir/test_voyager_host_ops.py``); the
+    semantics (checked against its op library by ``tests/ir/test_voyager_host_ops.py``); the
     bridge's ops follow the target: ``merlin::requantize`` is the scale unit into int32,
     ``merlin::dequantize`` a float32 scale, then relu, then the output dtype.
     """

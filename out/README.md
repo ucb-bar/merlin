@@ -19,7 +19,7 @@ merlin storage layout
 merlin storage experiments
 ```
 
-The [storage contract](../merlin/contract/storage.yaml) owns product categories;
+The [storage contract](../src/merlin/resources/contracts/storage.yaml) owns product categories;
 the [storage guide](../docs/guides/storage.md) explains inspection and cleanup.
 Reports and frozen manifests may cite old paths. Do not manually rename those
 directories, infer liveness from age, or delete a run because its name looks stale.

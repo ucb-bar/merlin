@@ -26,7 +26,7 @@ emission; capsule generation does not admit a target scale-change schedule.
 - `harness_render.py` — Solution-neutral runner-owned harness renderer (logical kernel ABI v2), driven only by declared contract data.
 - `reference_kernel.py` — Naive C reference kernel (and deliberate mutants) for qualifying the harness; a test instrument, never graded.
 - `interface_emit.py` — ``merlin_iface`` interface-grammar: emit a Merlin command buffer as contract text, and
-- `schemas.py` — Fail-closed JSON-Schema validation against the ``merlin/contract/schemas/`` bundle.
+- `schemas.py` — Fail-closed JSON-Schema validation against the ``src/merlin/resources/contracts/schemas/`` bundle.
 - `toolchain.py` — MLIR toolchain resolution for the experiment ABI (env-overridable).
 
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
@@ -35,7 +35,7 @@ emission; capsule generation does not admit a target scale-change schedule.
 `materialize.py` owns public copying, explicit-ceiling cohort publication, admission
 validation, coverage and leases. It never selects evaluator adapters. Use core
 `materialize_public_cohort` with an explicit ceiling; default evaluated selection is
-`merlin_experiments.corpus.admission.public_capsules_for`, not a lazy core export.
+`merlin.experiments.corpus.admission.public_capsules_for`, not a lazy core export.
 
 `linalg_iface` inventories returned/data-consumed tensor constants, splats and fills
 as payloads; destination-only initializers keep their prior representation. Ordered
@@ -223,7 +223,7 @@ poisoned before every invocation. The host completion and cycle-counter instruct
 the target contract's `logical_harness` block. Its correctness is gated by
 `build_tools/scripts/harness_reference_gate.py` (naive reference kernel exact on spike, mutants
 caught, no excluded-header routine visible). The version-1 `kernel_abi` lives in
-`merlin/contract/legacy/kernel_abi_v1.yaml`; only Merlin's device shim and version-1 harness
+`src/merlin/resources/contracts/legacy/kernel_abi_v1.yaml`; only Merlin's device shim and version-1 harness
 certification (`check_kernel_abi_arg_order.py`) read it.
 
 `compile_only.require_pointer_entry` checks the actual nonvariadic external C

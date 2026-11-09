@@ -6,9 +6,9 @@ last_verified: 2026-11-09
 owner: experiments
 related: [phase0_specification, generating_capsules, normal_search_feedback]
 code_refs:
-  - src/merlin_experiments/phase2/test_justification.py
-  - src/merlin_experiments/phase2/bottleneck_priority.py
-  - src/merlin_experiments/phase2/corpus.py
+  - src/merlin/experiments/phase2/test_justification.py
+  - src/merlin/experiments/phase2/bottleneck_priority.py
+  - src/merlin/experiments/phase2/corpus.py
 ---
 
 # Justifying Phase 2 tests from Phase 0 evidence
@@ -195,7 +195,7 @@ nothing, and as `blocked_unimplemented` when the requirement lacks the scope the
 emitted-stream families (PD load-configuration residency, PA stationary residency, PJ move-in
 placement) are generated: each is decided from the candidate's own decoded instruction stream by the
 analyzer its acceptance block names (`merlin.perf.{load_state,stationary,movein}_claim`, dispatched by
-`merlin_experiments.phase2.claims.dispatch`). They read no cycles, cap at the correctness tier and
+`merlin.experiments.phase2.claims.dispatch`). They read no cycles, cap at the correctness tier and
 say only that redundant or exposed work is absent, never that anything got faster. A family the
 template declares but no materializer can derive yet (PT, whose starting depth is a measured property
 of the machine) stays `blocked_unimplemented`.

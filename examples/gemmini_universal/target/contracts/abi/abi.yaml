@@ -45,7 +45,7 @@ corroboration:
 # THE DELTA AGAINST MERLIN'S CURATED GEMMINI HEADER, which is the whole reason this target is separate.
 # Measured by diff, not asserted: ONE line.
 delta_vs_gemmini:
-  other_header: merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/gemmini_params.h
+  other_header: experiments/studies/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/gemmini_params.h
   other_sha256: 3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924
   diff: >-
     exactly one line: merlin's gemmini header defines BOTH `ACC_READ_SMALL_WIDTH` and

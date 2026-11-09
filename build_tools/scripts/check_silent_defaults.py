@@ -72,24 +72,24 @@ EVIDENCE_ROOTS: tuple[str, ...] = (
     # Phase 1: the controller modules that PRODUCE a verdict -- grading, certification, promotion,
     # freeze, the audit and the conformance check -- not the providers, brokers or task staging that
     # merely carry one.
-    "src/merlin_experiments/phase1/feedback",
-    "src/merlin_experiments/phase1/audit.py",
-    "src/merlin_experiments/phase1/conformance.py",
-    "src/merlin_experiments/phase1/tools/await_verdict.py",
+    "src/merlin/experiments/phase1/feedback",
+    "src/merlin/experiments/phase1/audit.py",
+    "src/merlin/experiments/phase1/conformance.py",
+    "src/merlin/experiments/phase1/tools/await_verdict.py",
     # The retained native capsule-bench drivers that still grade or audit a run.
-    "merlin/experiments/capsule_bench/harness/conformance.py",
-    "merlin/experiments/capsule_bench/harness/freeze_run.py",
-    "merlin/experiments/capsule_bench/harness/freeze_state.py",
-    "merlin/experiments/capsule_bench/harness/full_suite_audit.py",
-    "merlin/experiments/capsule_bench/harness/generalization_difftest.py",
-    "merlin/experiments/capsule_bench/harness/grade_agent_run.py",
-    "merlin/experiments/capsule_bench/harness/qa_check.py",
-    "merlin/experiments/capsule_bench/harness/qa_check_rtlchecks.py",
-    "merlin/experiments/capsule_bench/harness/regrade_run_snapshot.py",
-    "merlin/experiments/capsule_bench/harness/verify_no_cheat.py",
+    "experiments/studies/capsule_bench/harness/conformance.py",
+    "experiments/studies/capsule_bench/harness/freeze_run.py",
+    "experiments/studies/capsule_bench/harness/freeze_state.py",
+    "experiments/studies/capsule_bench/harness/full_suite_audit.py",
+    "experiments/studies/capsule_bench/harness/generalization_difftest.py",
+    "experiments/studies/capsule_bench/harness/grade_agent_run.py",
+    "experiments/studies/capsule_bench/harness/qa_check.py",
+    "experiments/studies/capsule_bench/harness/qa_check_rtlchecks.py",
+    "experiments/studies/capsule_bench/harness/regrade_run_snapshot.py",
+    "experiments/studies/capsule_bench/harness/verify_no_cheat.py",
     # Phase 2: what chains a candidate to a certified whole-model number -- the measured mode's gates
     # and the champion export that records it.
-    "src/merlin_experiments/phase2/whole_model_measured/gates.py",
+    "src/merlin/experiments/phase2/whole_model_measured/gates.py",
     "src/merlin/targetgen/champions.py",
 )
 
@@ -347,12 +347,14 @@ def _scanned_files() -> list[Path]:
                 # Explicit research roots/files below remain independent selections.
                 if components is None:
                     components = _source_layout.logical_components(ROOT)
-                selected = [
-                    path
-                    for path in selected
-                    if (module := _source_layout.module_name(path, ROOT)) is None
-                    or _source_layout.component_owner(module, components) == "core"
-                ]
+                owner = _source_layout.module_name(base, ROOT)
+                if owner is None or _source_layout.component_owner(owner, components) == "core":
+                    selected = [
+                        path
+                        for path in selected
+                        if (module := _source_layout.module_name(path, ROOT)) is None
+                        or _source_layout.component_owner(module, components) == "core"
+                    ]
             files.extend(selected)
         else:
             matched = sorted(ROOT.glob(entry))

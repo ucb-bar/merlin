@@ -56,7 +56,7 @@ import _source_layout  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 ALLOW_FILE = ROOT / "build_tools" / "scripts" / "target_name_allowlist.txt"
-SCAN_ROOTS = (*_source_layout.SOURCE_SCAN_ROOTS, "merlin/contract", "build_tools/scripts")
+SCAN_ROOTS = (*_source_layout.SOURCE_SCAN_ROOTS, "src/merlin/resources/contracts", "build_tools/scripts")
 # Path fragments that mark BUILD-GENERATED (gitignored) trees, not source — never scanned.
 EXCLUDE_FRAGMENTS = ("/_data/",)
 INLINE_MARKER = "# target-ok:"
@@ -78,7 +78,7 @@ TARGET_NAMES = frozenset((_target_roster.target_names(ROOT) | RESIDUAL_NAMES) - 
 # SUBSTRATES: boards, simulators and hardware-unit names. Not targets, but a literal naming one welds shared
 # code to one machine all the same, and none was gated (measured 2026-09-14: 56 in-scope files). Each is
 # attested by a registry -- a runtime BOARDS key, a sandbox SIM_TOOLCHAINS key, an RTL-facts producer, or a
-# target contract -- and merlin/tests/infra/test_overfit_gate_regression.py fails if one stops being. A
+# target contract -- and tests/infra/test_overfit_gate_regression.py fails if one stops being. A
 # file whose own path names the substrate is that substrate's module and is exempt; the existing debt in
 # generic files is recorded per file in target_substrate_ratchet.txt, which may only shrink.
 SUBSTRATE_NAMES = frozenset({"k1", "spacemit", "kodiak", "cyclotron", "opu"})  # target-ok: the set hunted

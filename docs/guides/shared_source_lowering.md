@@ -22,7 +22,7 @@ code_refs:
   - src/merlin/runtime/source_recomputation_build.py
   - src/merlin/compiler/transforms/recomputation.py
   - src/merlin/transforms/recomputation_check.py
-  - merlin/tests/gemmini/recomputation_host_work.py
+  - tests/gemmini/recomputation_host_work.py
   - src/merlin/compiler/schedule/multioutput_fusion.py
   - src/merlin/compiler/schedule/multioutput_fusion_check.py
   - src/merlin/llvmlower/source_rows.py
@@ -111,7 +111,7 @@ CPU lowering. It establishes source-level compatibility and native execution,
 not a target instruction mapping:
 
 ```sh
-python -B -m pytest merlin/tests/ir/test_dense_zero_splat.py \
+python -B -m pytest tests/ir/test_dense_zero_splat.py \
   -k native_ordinary_source_model_preserves_observed_zero_splat \
   -o tmp_path_retention_policy=all -p no:cacheprovider \
   --basetemp "$TMPDIR/dense-zero-observer"
@@ -247,12 +247,12 @@ linked execution and target qualification remain provider obligations.
 Run the ordinary connected native comparisons and the refusal/mutation checks:
 
 ```sh
-python -B -m pytest merlin/tests/infra/test_shared_lhs_source.py \
-  merlin/tests/infra/test_shared_lhs_provider.py \
-  merlin/tests/infra/test_compact_dense_group.py \
-  merlin/tests/infra/test_source_dense_group_freshness.py \
-  merlin/tests/infra/test_source_dense_group_custody.py \
-  merlin/tests/infra/test_source_group_context.py \
+python -B -m pytest tests/infra/test_shared_lhs_source.py \
+  tests/infra/test_shared_lhs_provider.py \
+  tests/infra/test_compact_dense_group.py \
+  tests/infra/test_source_dense_group_freshness.py \
+  tests/infra/test_source_dense_group_custody.py \
+  tests/infra/test_source_group_context.py \
   -o tmp_path_retention_policy=all --basetemp "$TMPDIR/shared-lhs-check"
 ```
 
@@ -318,10 +318,10 @@ remain barriers. Unsupported allocation retains the individual source route.
 Run the ordinary paired native cases and mutation checks with:
 
 ```sh
-python -B -m pytest merlin/tests/infra/test_multi_output_source.py \
-  merlin/tests/infra/test_multioutput_fusion.py \
-  merlin/tests/infra/test_source_multioutput_freshness.py \
-  merlin/tests/infra/test_source_multioutput_early_callbacks.py \
+python -B -m pytest tests/infra/test_multi_output_source.py \
+  tests/infra/test_multioutput_fusion.py \
+  tests/infra/test_source_multioutput_freshness.py \
+  tests/infra/test_source_multioutput_early_callbacks.py \
   -o tmp_path_retention_policy=all --basetemp "$TMPDIR/multi-output-check"
 ```
 
@@ -496,7 +496,7 @@ regression; that file supplies inputs, never restored admission authority:
 ```sh
 MERLIN_TEST_GEMMINI_RECOMPUTATION_SELECTION=/absolute/path/selection.json \
 MERLIN_COMPILER_DRIVER=python \
-python -B -m pytest merlin/tests/gemmini/test_public_recomputation_execution.py \
+python -B -m pytest tests/gemmini/test_public_recomputation_execution.py \
   -p no:cacheprovider -o tmp_path_retention_policy=all \
   --basetemp "$TMPDIR/recomputation-calibration"
 ```
@@ -514,10 +514,10 @@ not final machine traffic; functional Spike counters establish no latency gain.
 Run the paired native source models and mutation checks with:
 
 ```sh
-python -B -m pytest merlin/tests/ir/test_recomputation.py \
-  merlin/tests/ir/test_source_recomputation_selection.py \
-  merlin/tests/infra/test_recomputation_llvm_payload.py \
-  merlin/tests/infra/test_source_recomputation_model.py \
+python -B -m pytest tests/ir/test_recomputation.py \
+  tests/ir/test_source_recomputation_selection.py \
+  tests/infra/test_recomputation_llvm_payload.py \
+  tests/infra/test_source_recomputation_model.py \
   -o tmp_path_retention_policy=all --basetemp "$TMPDIR/recomputation-check"
 ```
 
@@ -591,9 +591,9 @@ With the ordinary toolchain configured, reproduce its neutral paired model,
 fallback and mutation checks with:
 
 ```sh
-python -B -m pytest merlin/tests/infra/test_logical_dense_model.py \
-  merlin/tests/infra/test_source_logical_abi.py \
-  merlin/tests/ir/test_logical_borrowed_abi.py -p no:cacheprovider \
+python -B -m pytest tests/infra/test_logical_dense_model.py \
+  tests/infra/test_source_logical_abi.py \
+  tests/ir/test_logical_borrowed_abi.py -p no:cacheprovider \
   --basetemp "$TMPDIR/logical-buffer-check"
 ```
 
@@ -886,11 +886,11 @@ neither accelerator latency nor Gemmini support. See the
 and reproduce the source/fallback and ordinary-model checks with:
 
 ```sh
-python -B -m pytest merlin/tests/infra/test_source_convolution_routes.py \
-  merlin/tests/infra/test_convolution_route_outcomes.py \
-  merlin/tests/infra/test_source_convolution_fallback.py \
-  merlin/tests/infra/test_host_packing_storage.py \
-  merlin/tests/infra/test_convolution_route_model.py -p no:cacheprovider \
+python -B -m pytest tests/infra/test_source_convolution_routes.py \
+  tests/infra/test_convolution_route_outcomes.py \
+  tests/infra/test_source_convolution_fallback.py \
+  tests/infra/test_host_packing_storage.py \
+  tests/infra/test_convolution_route_model.py -p no:cacheprovider \
   --basetemp "$TMPDIR/convolution-storage-check"
 ```
 
@@ -1060,9 +1060,9 @@ isolated model comparisons and the allocator's capacity, alias and completion
 checks together:
 
 ```sh
-python -B -m pytest merlin/tests/infra/test_pointwise_storage_model.py \
-  merlin/tests/infra/test_selected_storage_contracts.py \
-  merlin/tests/infra/test_private_copy_elimination.py \
+python -B -m pytest tests/infra/test_pointwise_storage_model.py \
+  tests/infra/test_selected_storage_contracts.py \
+  tests/infra/test_private_copy_elimination.py \
   -p no:cacheprovider --basetemp "$TMPDIR/source-storage-check"
 ```
 

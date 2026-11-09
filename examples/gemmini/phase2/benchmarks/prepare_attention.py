@@ -15,10 +15,10 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-from merlin_experiments.phase0 import development_attention as attention
-from merlin_experiments.phase0.development_attention_diagnostic import retain
 
 from merlin.common.cpu_pool import shared_compute_pool
+from merlin.experiments.phase0 import development_attention as attention
+from merlin.experiments.phase0.development_attention_diagnostic import retain
 from merlin.targetgen.capsule_source import PytorchRefSource
 
 
@@ -32,8 +32,14 @@ def prepare(profile, member, output):
         raise ValueError("select one uniquely declared attention member")
     g = matches[0]["geometry"]
     declaration = attention.declaration(
-        member, heads=g["query_heads"], kv=g["kv_heads"], width=g["head_dim"], value_width=g["value_dim"],
-        prefix=g["prefix_tokens"], queries=g["query_tokens"], mask=g["mask"],
+        member,
+        heads=g["query_heads"],
+        kv=g["kv_heads"],
+        width=g["head_dim"],
+        value_width=g["value_dim"],
+        prefix=g["prefix_tokens"],
+        queries=g["query_tokens"],
+        mask=g["mask"],
     )
     description = attention.describe(declaration)
     output = Path(output)
@@ -48,7 +54,10 @@ def prepare(profile, member, output):
     loader.write_text(attention.render(declaration))
     with shared_compute_pool(timeout_s=300):
         captured = PytorchRefSource(timeout=240).capture_loader(
-            loader, "int8", workdir=output / "capture", already_quantized=True,
+            loader,
+            "int8",
+            workdir=output / "capture",
+            already_quantized=True,
         )
         inputs = attention.inputs(declaration)
         expected = attention.evaluate(declaration, inputs)
@@ -70,11 +79,13 @@ def prepare(profile, member, output):
         else:
             if not np.isfinite(actual).all() or not np.isfinite(wanted).all():
                 raise ValueError("the public diagnostic produced nonfinite attention outputs")
-            diagnostics.append({
-                "comparison": "diagnostic_only_no_new_tolerance",
-                "bit_equal": actual.tobytes() == wanted.tobytes(),
-                "max_abs_error": float(np.max(np.abs(actual.astype(np.float64) - wanted), initial=0)),
-            })
+            diagnostics.append(
+                {
+                    "comparison": "diagnostic_only_no_new_tolerance",
+                    "bit_equal": actual.tobytes() == wanted.tobytes(),
+                    "max_abs_error": float(np.max(np.abs(actual.astype(np.float64) - wanted), initial=0)),
+                }
+            )
     closure = retain(description, captured, expected, golden, output / "capture-closure")
     portable_source = (output / "capture-closure/capture.interface.mlir").read_text()
     (output / "source.mlir").write_text(portable_source)
@@ -87,15 +98,20 @@ def prepare(profile, member, output):
         prefix = "input" if name == "inputs" else "output"
         np.savez(output / (name + ".npz"), **{f"{prefix}_{i}": x for i, x in enumerate(values)})
     record = {
-        "schema": "merlin.example.public_phase2_attention_capture.v1", "member": member,
+        "schema": "merlin.example.public_phase2_attention_capture.v1",
+        "member": member,
         "profile_sha256": hashlib.sha256(profile.read_bytes()).hexdigest(),
         "source_sha256": hashlib.sha256(portable_source.encode()).hexdigest(),
-        "source_description": description, "campaign_policy": document["campaign"],
+        "source_description": description,
+        "campaign_policy": document["campaign"],
         "capture_closure": closure,
-        "complete_outputs": sum(x.size for x in expected), "floating_diagnostics": diagnostics,
+        "complete_outputs": sum(x.size for x in expected),
+        "floating_diagnostics": diagnostics,
         "scope": "complete attention and carried KV; projections and RoPE are outside this source boundary",
-        "device_execution": "not_yet_run", "timing": "not_yet_observed",
-        "full_attainable_roofline": None, "selected_full_model_qualification": False,
+        "device_execution": "not_yet_run",
+        "timing": "not_yet_observed",
+        "full_attainable_roofline": None,
+        "selected_full_model_qualification": False,
     }
     write("attention-member.json", record)
     return record

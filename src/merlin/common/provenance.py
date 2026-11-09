@@ -7,7 +7,7 @@ checked out in the same tree, and nothing recorded which one the numbers belonge
 
 Three operations, deliberately separate:
 
-* :func:`pin` — read the DECLARED revision from ``merlin/contract/hardware_pins.yaml``. Tracked and
+* :func:`pin` — read the DECLARED revision from ``src/merlin/resources/contracts/hardware_pins.yaml``. Tracked and
   reviewed, so changing what a result is measured against is a diff someone sees.
 * :func:`observe` — read what is ACTUALLY in a checkout: commit, branch, remote, dirtiness. No
   interpretation, no comparison; just the facts as found.

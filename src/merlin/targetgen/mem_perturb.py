@@ -10,7 +10,7 @@ ordered by completion passed L2 and L3 and then failed on FireSim with exactly t
 in the failing elements, differently from run to run.
 
 WHAT IT CHANGES. Exactly one thing, and only when asked: ``mm_perturb_t``
-(``merlin/contract/external/sim_memory/``) lets read and write responses with DIFFERENT AXI ids complete
+(``src/merlin/resources/contracts/external/sim_memory/``) lets read and write responses with DIFFERENT AXI ids complete
 out of order, each after a seeded random latency. Everything AXI4 guarantees is kept (same-id order,
 contiguous bursts); read data is sampled at acceptance and writes land at their W beat, as in the stock
 model. The model is chosen at run time by a plusarg -- without ``+mem_perturb_seed`` the variant builds

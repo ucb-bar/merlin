@@ -20,7 +20,7 @@ It is a property of THE TARGET, and a target that has its own model declares it 
 STRICTLY ADDITIVE, AND THAT IS LOAD-BEARING. A target that declares no ``runner.spike_extension`` is
 resolved exactly as before: the caller's own default library directory and default extension name, with
 no ``--extlib`` flag. Nothing about such a target's invocation changes, byte for byte
-(``merlin/tests/gemmini/test_spike_extension.py`` asserts that against the live reference backend).
+(``tests/gemmini/test_spike_extension.py`` asserts that against the live reference backend).
 
 FAIL CLOSED, NEVER SUBSTITUTE. When a target DOES declare one, every way of not getting exactly those
 bytes raises :class:`SpikeExtensionError`:

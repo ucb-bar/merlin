@@ -19,7 +19,7 @@ code_refs:
   - src/merlin/compiler/schedule/dense_panel_verify.py
   - src/merlin/kernels/mechanism_applicability.py
   - src/merlin/targetgen/capsule_bundle.py
-  - src/merlin_experiments/phase1/feedback/private_model_completion.py
+  - src/merlin/experiments/phase1/feedback/private_model_completion.py
   - src/merlin/compiler/schedule/dense_source.py
   - src/merlin/llvmlower/shared_source_routing.py
   - src/merlin/compiler/schedule/pointwise_source.py
@@ -85,7 +85,7 @@ code_refs:
 
 The active permanent suite is capped at 150 collected cases, including
 parameterization. Current direct scheduling and custody examples include
-`merlin/tests/infra/test_schedule_pipeline.py`, `test_dense_array_retention.py`
+`tests/infra/test_schedule_pipeline.py`, `test_dense_array_retention.py`
 and `test_sdk_custody.py`. Use the collection-budget and execution commands in
 [repository structure](repo_structure.md). Regression family names and measured
 controls below describe their original Git/frozen evidence; they are not a
@@ -237,16 +237,16 @@ attestation, third-party dependencies or a complete transitive import closure.
 This roster grants no candidate import access: the separate reviewed
 compiler-library contract and existing authoring boundaries still apply.
 
-SDK26 names the actual convolution and dense-panel owners above, including their
+SDK27 names the actual convolution and dense-panel owners above, including their
 checking projections and admission code. Mechanism guidance remains under its
-existing authoring boundary. Frozen SDK6–25 inventories and archives retain their
+existing authoring boundary. Frozen SDK6–26 inventories and archives retain their
 original membership and bytes; public import compatibility does not authorize
 exporting current code under an older release identity.
 
 Grader source custody is separate from the editable pass library.
 `targetgen/capsule_bundle.py` owns frozen model-asset validation and runtime-bundle
 construction through the existing bundle worker.
-`merlin_experiments/phase1/feedback/private_model_completion.py` owns completed
+`merlin.experiments/phase1/feedback/private_model_completion.py` owns completed
 private full-model build receipt and roster checks. These sources retain their
 private roles and existing asset/receipt byte checks; neither belongs in a
 candidate's shared compiler export or substitutes for numerical execution and
@@ -476,7 +476,7 @@ Export all seven shared scheduling families with:
 python -m merlin.compiler.schedule.export --shared-library --output-dir "$TMPDIR/shared-sdk"
 ```
 
-The destination must be empty and unlinked. Fresh exports select SDK26 and its
+The destination must be empty and unlinked. Fresh exports select SDK27 and its
 canonical source owners. The manifest records the actual source and namespace
 roster, plus `LICENSE` and `NOTICE`; its module count is not a pass count. All
 algorithm, checker and numerical implementation files are byte-identical to the
@@ -488,9 +488,9 @@ and a deterministic library digest. Source/resource changes during export
 prevent completed manifest publication. Existing standalone dense exports keep
 their original format.
 
-Current SDK26 explicitly exposes `affine_gather_runs` and `compact_dense_group`,
+Current SDK27 explicitly exposes `affine_gather_runs` and `compact_dense_group`,
 whose generic implementations were already in its source closure. Current
-compact-dense receipts name SDK26 independently of whether loop transforms are
+compact-dense receipts name SDK27 independently of whether loop transforms are
 selected. This corrects source attribution; it does not change loop-transform
 legality or widen an earlier frozen SDK's membership or grants.
 
@@ -652,7 +652,7 @@ observations do not measure cache/DRAM traffic, device transfers, machine spill
 traffic or accelerator timing. Final native/model execution remains necessary.
 
 The separate public synthetic fixture
-`merlin/tests/ir/producer_packing_connected.mlir` connects two exact signed
+`tests/ir/producer_packing_connected.mlir` connects two exact signed
 integer contractions through an activation cast/clamp and channel shuffle. The
 shuffle changes the second contraction's input coordinates; it is not an unused
 or identity packing operation. The program returns the final result, packed

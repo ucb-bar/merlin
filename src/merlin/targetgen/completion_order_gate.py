@@ -90,9 +90,22 @@ def _semantic_environment(environment: dict[str, str]) -> dict[str, Any]:
     from merlin.perf.command_recorder import INNER_ENV, LIMIT_ENV, OUT_ENV, SELECTION_ENV
 
     outputs = {
-        "PWD", "OLDPWD", "TMPDIR", "TMP", "TEMP", "MERLIN_OUT_ROOT", "MERLIN_BUNDLE_CAS",
-        "MERLIN_COMPUTE_CPU_SLOTS", "MERLIN_COMPUTE_CPUS", "MERLIN_GRADE_CPUS",
-        "MERLIN_PREPARATION_CPUS", "MERLIN_CPU_PRIORITY", SELECTION_ENV, OUT_ENV, INNER_ENV, LIMIT_ENV,
+        "PWD",
+        "OLDPWD",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+        "MERLIN_OUT_ROOT",
+        "MERLIN_BUNDLE_CAS",
+        "MERLIN_COMPUTE_CPU_SLOTS",
+        "MERLIN_COMPUTE_CPUS",
+        "MERLIN_GRADE_CPUS",
+        "MERLIN_PREPARATION_CPUS",
+        "MERLIN_CPU_PRIORITY",
+        SELECTION_ENV,
+        OUT_ENV,
+        INNER_ENV,
+        LIMIT_ENV,
     }
     identity = {}
     for key, value in sorted(environment.items()):
@@ -137,8 +150,8 @@ def _observation_identity(target: str, elf: Path) -> dict[str, Any] | None:
     """
     import shutil
 
-    from merlin.perf.executed_trace import trace_invocation
     from merlin.perf import command_recorder
+    from merlin.perf.executed_trace import trace_invocation
     from merlin.targetgen.completion_order import trace_isa
 
     invocation = trace_invocation(target, elf)
@@ -167,13 +180,19 @@ def _observation_identity(target: str, elf: Path) -> dict[str, Any] | None:
         else:
             command.append(arg)
     recorder = command_recorder.selected()
-    recorder_identity = None if recorder is None else {
-        "library": recorder["library"]["sha256"],
-        "engine": recorder["engine"]["sha256"],
-        "source": recorder["source_sha256"],
-    }
+    recorder_identity = (
+        None
+        if recorder is None
+        else {
+            "library": recorder["library"]["sha256"],
+            "engine": recorder["engine"]["sha256"],
+            "source": recorder["source_sha256"],
+        }
+    )
     return {
-        "command": command, "isa": trace_isa(target), "environment": _semantic_environment(env),
+        "command": command,
+        "isa": trace_isa(target),
+        "environment": _semantic_environment(env),
         "recorder": recorder_identity,
     }
 
@@ -313,9 +332,9 @@ def _check(target: str, generated: Path | str) -> dict[str, Any]:
             "elf": _sha(elf),
             "facts": _digest_json(document.get("facts")),
             # The selection's content digests; its path names where this grade's copy lives.
-            "ordering_selection": None if selection is None else _digest_json(
-                {k: (v.get("sha256") if isinstance(v, dict) else v) for k, v in selection.items()}
-            ),
+            "ordering_selection": None
+            if selection is None
+            else _digest_json({k: (v.get("sha256") if isinstance(v, dict) else v) for k, v in selection.items()}),
             "row_masks": model.row_masks,
             "select_flag": model.select_flag,
             "sentinel": model.sentinel,
@@ -337,13 +356,15 @@ def _check(target: str, generated: Path | str) -> dict[str, Any]:
                 record = json.loads(path.read_text(encoding="utf-8"))
                 if (
                     observed == _observation_identity(target, elf)
-                    and _sha(elf) == identity["elf"] and _checker_digest() == identity["readers"]
+                    and _sha(elf) == identity["elf"]
+                    and _checker_digest() == identity["readers"]
                 ):
                     record["cache"] = "carried"
                     return record
         record = CO.check_elf(target, elf, model=model, timeout_s=timeout)
         if (
-            _sha(elf) != identity["elf"] or _checker_digest() != identity["readers"]
+            _sha(elf) != identity["elf"]
+            or _checker_digest() != identity["readers"]
             or observed != _observation_identity(target, elf)
         ):
             return {"schema": CO.SCHEMA, "verdict": "unknown", "detail": "observation inputs changed during the check"}
@@ -367,7 +388,9 @@ def _publish_cache(path: Path, record: dict[str, Any]) -> None:
     """Concurrent checks of byte-identical executables may publish the same cache key."""
     import tempfile
 
-    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, prefix=path.stem, suffix=".tmp", delete=False) as handle:
+    with tempfile.NamedTemporaryFile(
+        mode="w", dir=path.parent, prefix=path.stem, suffix=".tmp", delete=False
+    ) as handle:
         tmp = Path(handle.name)
         json.dump(record, handle)
     try:
@@ -414,8 +437,9 @@ def deferred(tier: str | None = None) -> dict[str, Any]:
     return record
 
 
-def after_coverage(target: str, results: dict[str, Path], *, remaining, workers: int = 1,
-                   margin_s: float = 30.0) -> dict[str, Any]:
+def after_coverage(
+    target: str, results: dict[str, Path], *, remaining, workers: int = 1, margin_s: float = 30.0
+) -> dict[str, Any]:
     """Best-effort check of already published passes, inside whatever time ``remaining()`` leaves.
 
     ``results`` maps a case to its ``capsule_result.json``. Runs after the final coverage is written
@@ -433,8 +457,9 @@ def after_coverage(target: str, results: dict[str, Path], *, remaining, workers:
             return
         record = check(target, Path(results[name]).parent / "generated", timeout_s=budget)
         with lock:
-            verdicts[name] = {k: record.get(k) for k in ("verdict", "detail", "cache", "hazard_pairs")
-                              if record.get(k) is not None}
+            verdicts[name] = {
+                k: record.get(k) for k in ("verdict", "detail", "cache", "hazard_pairs") if record.get(k) is not None
+            }
 
     names = sorted(results)
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
@@ -496,7 +521,7 @@ def ladder_step(target: str, tier: str | None, tiers: dict, generated, cfg=None,
             return None, None
     if not certify:
         return deferred(tier), None
-    from merlin_experiments.phase1.feedback import setup_timing
+    from merlin.experiments.phase1.feedback import setup_timing
 
     # Its own host stage: on large programs this commit-log trace runs for minutes after the numeric
     # comparison (measured 520-960 s per case) and was otherwise invisible between two stages.

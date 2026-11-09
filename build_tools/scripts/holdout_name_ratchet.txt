@@ -13,4 +13,4 @@
 # Format: one repo-relative path per line, then `# ` and the reason it is still here.
 
 out/artifacts/capsule-bench/gemmini/full_suite_audit.json  # audit output over the full suite, hidden set included.
-merlin/experiments/gemmini_perf_bench/scripts/perf_campaign.py  # a docstring names one holdout as an example. Fix by using a placeholder, as cert_cost.py did.
+experiments/studies/gemmini_perf_bench/scripts/perf_campaign.py  # a docstring names one holdout as an example. Fix by using a placeholder, as cert_cost.py did.

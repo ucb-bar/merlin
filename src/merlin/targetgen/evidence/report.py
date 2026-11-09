@@ -7,7 +7,7 @@ parsed model of the hardware.
 
 The concept vocabulary is DATA, not a core literal: each target owns an
 ``evidence_concepts.yaml`` in its discovered target dir (``rtl.facts.target_base`` — the curated
-``merlin/targets/<t>`` or the generated ``out/artifacts/targets/<t>``). A target with no such file
+``experiments/reference-data/target-inputs/<t>`` or the generated ``out/artifacts/targets/<t>``). A target with no such file
 contributes no concepts (honest: nothing authored ⇒ nothing detected), so the core stays
 target-name-free and a brand-new accelerator plugs in by dropping its vocabulary beside its sources.
 """

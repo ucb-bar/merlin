@@ -19,7 +19,7 @@ from merlin.compiler.schedule.export import (
     namespace_replacements,
     public_modules,
 )
-from merlin.compiler.schedule.library_sources import canonical_module, library_modules
+from merlin.compiler.schedule.library_sources import CURRENT_SDK_VERSION, canonical_module, library_modules
 
 _NAMESPACE_MODULES_V6 = (
     "merlin",
@@ -53,7 +53,7 @@ _NAMESPACE_MODULES_V24 = (*_NAMESPACE_MODULES_V20, "merlin.capture", "merlin.tar
 
 def _namespace_modules(version):
     library_modules(version)
-    if version == 26:
+    if version in (26, 27):
         # The exporter's reviewed package replacements also determine source
         # paths. Treating one as an implementation would request ``scalar.py``
         # instead of the real ``scalar/__init__.py`` namespace.
@@ -62,7 +62,7 @@ def _namespace_modules(version):
                 (
                     *map(canonical_module, _namespace_modules(25)),
                     "merlin.compiler.selection",
-                    *namespace_replacements(26),
+                    *namespace_replacements(version),
                 )
             )
         )
@@ -124,7 +124,7 @@ def withholds_author_packages(version) -> bool:
 
 def sdk_support_sources(version) -> tuple[str, ...]:
     """Exact extra source files (relative to ``merlin/``) a release stages for its tool grants."""
-    if version == 26:
+    if version in (26, 27):
         return _SDK_SUPPORT_SOURCES_V26
     return _SDK_SUPPORT_SOURCES_V22 if withholds_author_packages(version) else ()
 
@@ -142,7 +142,7 @@ def staged_module(relative: str) -> str:
 
 
 def _selected_inventory(namespaces, public, modules, exported, *, version):
-    if version == 26:
+    if version in (26, 27):
         namespaces = tuple(canonical_module(name) for name in namespaces)
         public = tuple(canonical_module(name) for name in public)
     namespaces = tuple(
@@ -153,9 +153,9 @@ def _selected_inventory(namespaces, public, modules, exported, *, version):
     return namespaces, public, implementation
 
 
-def shared_inventory(namespaces, public, *, version=26):
+def shared_inventory(namespaces, public, *, version=CURRENT_SDK_VERSION):
     """Stable exact membership; package initializers never become public APIs."""
-    if version == 26:
+    if version in (26, 27):
         namespaces = tuple(canonical_module(name) for name in namespaces)
         public = tuple(canonical_module(name) for name in public)
     namespaces = tuple(dict.fromkeys((*namespaces, *(name + ".__init__" for name in _namespace_modules(version)))))
@@ -178,7 +178,7 @@ def _manifest_version(document, version):
         return "inventory_version" not in document and schema == (
             "merlin.shared_scheduling_library.v2" if binding else "merlin.shared_scheduling_library.v1"
         )
-    if version in (16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26):
+    if version in (16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27):
         schemas = {
             16: "merlin.shared_scheduling_library.v10",
             17: "merlin.shared_scheduling_library.v11",
@@ -191,6 +191,7 @@ def _manifest_version(document, version):
             24: "merlin.shared_scheduling_library.v18",
             25: "merlin.shared_scheduling_library.v19",
             26: "merlin.shared_scheduling_library.v20",
+            27: "merlin.shared_scheduling_library.v21",
         }
         return (
             schema == schemas[version]
@@ -612,7 +613,7 @@ def _release_inventory(document, *, version=6):
     if binding:
         binding_modules = (
             tuple(canonical_module(name) for name in SOURCE_BINDING_MODULES)
-            if version == 26
+            if version in (26, 27)
             else SOURCE_BINDING_MODULES
         )
         candidates = [((*modules, *binding_modules), (*public, *binding_modules)) for modules, public in candidates]
@@ -794,15 +795,15 @@ def prepare_shared_source_release(
     python_source_root: Path,
     license_directory: Path | None = None,
     tools: tuple[str, ...] = (),
-    version=26,
+    version=CURRENT_SDK_VERSION,
     source_binding: bool = False,
 ) -> dict:
     """Prepare one source root before Phase 1; never alter a frozen run's grants."""
     from .tool_profile import _SHARED_SUBSTRATES, substrate_data, substrate_inventory
 
     library_modules(version)
-    if version != 26:
-        raise ValueError("legacy source preparation requires its frozen release environment; fresh work uses SDK26")
+    if version != CURRENT_SDK_VERSION:
+        raise ValueError("legacy source preparation requires its frozen release environment; fresh work uses SDK27")
     substrate = next((name for name, number in _SHARED_SUBSTRATES.items() if number == version), None)
     if substrate is None:
         raise ValueError("selected shared inventory has no explicit common-substrate integration")
@@ -862,7 +863,7 @@ def main(argv=None):
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--python-source-root", required=True, type=Path)
     parser.add_argument("--license-directory", required=True, type=Path)
-    parser.add_argument("--library-version", type=int, choices=(26,), default=26)
+    parser.add_argument("--library-version", type=int, choices=(CURRENT_SDK_VERSION,), default=CURRENT_SDK_VERSION)
     parser.add_argument("--tool", action="append", default=[], help="existing tool registry name to stage, not grant")
     parser.add_argument("--source-binding", action="store_true", help="explicit version-8 typed-source/LLVM lexer APIs")
     args = parser.parse_args(argv)

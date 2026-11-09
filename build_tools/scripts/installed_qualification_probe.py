@@ -43,7 +43,7 @@ sys.meta_path.insert(0, NoNative())
 
 
 _TEST_SOURCES = None
-_PACKAGE_NAMES = ("merlin", "merlin_experiments", "merlin_dse")
+_PACKAGE_NAMES = ("merlin", "merlin.experiments", "merlin_dse")
 _LEGACY_DISTRIBUTIONS = ("merlin-experiments", "merlin-analysis", "merlin-dse", "merlin-mining")
 
 

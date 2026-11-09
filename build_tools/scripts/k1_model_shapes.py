@@ -306,8 +306,8 @@ def _ours_tiled_mnk(*, M, N, K, reps):
             }
         cgen = work / "cgen"
         c_runtime.generate(md, cgen, md / "inputs.npz")
-        rt = L.REPO / "merlin/runtime/c"
-        abi = L.REPO / "merlin/runtime/abi"
+        rt = L.REPO / "src/merlin/runtime/native/c"
+        abi = L.REPO / "src/merlin/runtime/native/abi"
         binp = Path(tmp) / "ours_gemm"
         inc_flags = []
         for d in [L.K1H, L.HERE, cgen, rt]:

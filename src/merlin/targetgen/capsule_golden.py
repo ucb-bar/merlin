@@ -480,12 +480,13 @@ def golden(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, li
     return _recompute_golden(capsule)
 
 
-def _original_residual_output(attrs,env,out_name):
+def _original_residual_output(attrs, env, out_name):
     """One original residual source evaluator, also consumed after staged Q1."""
     from merlin.runtime.commandbuffer import residual_add_params
-    lhs_scale,rhs_scale,_bound=residual_add_params(attrs,op=f"residual_add {out_name!r}")
-    result=env[attrs["lhs"]].residual_add_scaled(env[attrs["rhs"]],lhs_scale,rhs_scale)
-    result=_narrow_to_dtype(result,str(attrs.get("output_dtype","i32")))
+
+    lhs_scale, rhs_scale, _bound = residual_add_params(attrs, op=f"residual_add {out_name!r}")
+    result = env[attrs["lhs"]].residual_add_scaled(env[attrs["rhs"]], lhs_scale, rhs_scale)
+    result = _narrow_to_dtype(result, str(attrs.get("output_dtype", "i32")))
     return result.relu() if "relu" in (attrs.get("epilogue") or ()) else result
 
 
@@ -506,27 +507,43 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         outputs[prelude["out"]] = _narrow_to_dtype(product, str(prelude.get("output_dtype", "i32"))).to_list()
         return outputs
     if capsule["operation"]["op"] == "component_program":
-        from merlin_experiments.phase0.component_numerics import evaluate
+        from merlin.experiments.phase0.component_numerics import evaluate
 
         return evaluate(capsule)
     if capsule["operation"]["op"] == "quantized_producer_sum":
-        attrs=capsule["operation"].get("attributes") or {}
-        if set(attrs)!={"producer","residual","producer_result_operand","intermediate_shape","intermediate_dtype","out"}:
+        attrs = capsule["operation"].get("attributes") or {}
+        if set(attrs) != {
+            "producer",
+            "residual",
+            "producer_result_operand",
+            "intermediate_shape",
+            "intermediate_dtype",
+            "out",
+        }:
             raise ValueError("closed original quantized producer/sum attributes required")
-        producer,residual=attrs["producer"],attrs["residual"]
-        side=attrs["producer_result_operand"]
-        if (producer.get("op") not in ("matmul","conv2d") or residual.get("op")!="residual_add"
-                or type(side)is not int or side not in (0,1) or attrs["intermediate_dtype"]!="i8"
-                or producer["attributes"].get("output_dtype")!="i8"):
+        producer, residual = attrs["producer"], attrs["residual"]
+        side = attrs["producer_result_operand"]
+        if (
+            producer.get("op") not in ("matmul", "conv2d")
+            or residual.get("op") != "residual_add"
+            or type(side) is not int
+            or side not in (0, 1)
+            or attrs["intermediate_dtype"] != "i8"
+            or producer["attributes"].get("output_dtype") != "i8"
+        ):
             raise ValueError("original INT8 Q1 and ordered sum source stages required")
-        edge=producer["attributes"]["out"]
-        if residual["attributes"].get(("lhs","rhs")[side])!=edge or residual["attributes"].get("out")!=attrs["out"]:
+        edge = producer["attributes"]["out"]
+        if (
+            residual["attributes"].get(("lhs", "rhs")[side]) != edge
+            or residual["attributes"].get("out") != attrs["out"]
+        ):
             raise ValueError("quantized pair lost its complete original source edge")
-        values=_recompute_golden({**capsule,"operation":producer})
-        if set(values)!={edge}:raise ValueError("quantized producer has another observed output")
-        env=materialize_capsule_leaves(capsule)
-        env[edge]=Tensor(tuple(attrs["intermediate_shape"]),list(_flat(values[edge])),"i8")
-        return {attrs["out"]:_original_residual_output(residual["attributes"],env,attrs["out"]).to_list()}
+        values = _recompute_golden({**capsule, "operation": producer})
+        if set(values) != {edge}:
+            raise ValueError("quantized producer has another observed output")
+        env = materialize_capsule_leaves(capsule)
+        env[edge] = Tensor(tuple(attrs["intermediate_shape"]), list(_flat(values[edge])), "i8")
+        return {attrs["out"]: _original_residual_output(residual["attributes"], env, attrs["out"]).to_list()}
     if capsule["operation"]["op"] == "spatial_producer_pool":
         attrs = capsule["operation"].get("attributes") or {}
         if set(attrs) != {"producer", "pool", "intermediate_shape", "intermediate_dtype", "out"}:
@@ -535,10 +552,13 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         if producer.get("op") != "conv2d" or pool.get("op") != "maxpool2d":
             raise ValueError("spatial pair requires original convolution then maximum")
         intermediate = producer["attributes"]["out"]
-        if (pool["attributes"].get("src") != intermediate or pool["attributes"].get("out") != attrs["out"]
-                or attrs["intermediate_dtype"] != "i8"
-                or producer["attributes"].get("output_dtype") != "i8"
-                or pool["attributes"].get("epilogue") != ["acc_scale", "maxpool"]):
+        if (
+            pool["attributes"].get("src") != intermediate
+            or pool["attributes"].get("out") != attrs["out"]
+            or attrs["intermediate_dtype"] != "i8"
+            or producer["attributes"].get("output_dtype") != "i8"
+            or pool["attributes"].get("epilogue") != ["acc_scale", "maxpool"]
+        ):
             raise ValueError("spatial pair must retain the exact signed-i8 source edge and ordered pool readout")
         values = _recompute_golden({**capsule, "operation": producer})
         if set(values) != {intermediate}:
@@ -663,7 +683,7 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         return {out_name: _apply_epilogue(src, {**attrs, "epilogue": stages, "bias": _bias_name()}, env).to_list()}
 
     if op == "residual_add":
-        return {out_name: _original_residual_output(attrs,env,out_name).to_list()}
+        return {out_name: _original_residual_output(attrs, env, out_name).to_list()}
 
     if op == "sibling_feed":
         from merlin.targetgen.corpus_sibling_feed import golden as sibling_feed_golden

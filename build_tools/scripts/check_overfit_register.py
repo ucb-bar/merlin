@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: every target coupling in the core tree is DECLARED, and the count only falls.
 
-``merlin/contract/overfit_register.yaml`` says where the target-agnostic core is still welded to a
+``src/merlin/resources/contracts/overfit_register.yaml`` says where the target-agnostic core is still welded to a
 specific target OR to a specific workload, what each weld costs, and what would remove it. A
 hand-maintained debt list rots, so this gate does not trust it: it re-measures the live tree with the
 same scan the name gate uses and compares.
@@ -44,7 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _source_layout  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
-REGISTER = ROOT / "merlin" / "contract" / "overfit_register.yaml"
+REGISTER = ROOT / "src/merlin/resources/contracts" / "overfit_register.yaml"
 NAME_GATE = ROOT / "build_tools" / "scripts" / "check_no_target_name.py"
 
 REQUIRED = ("id", "kind", "status", "items", "owner")

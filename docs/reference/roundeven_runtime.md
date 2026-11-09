@@ -6,7 +6,7 @@ owner: runtime
 last_verified: 2026-11-09
 related: [runtime, whole_model_op_profile, shared_compiler_passes]
 code_refs:
-  - merlin/runtime/abi/mlir_runtime.c
+  - src/merlin/runtime/native/abi/mlir_runtime.c
   - src/merlin/model_check/full_build.py
 ---
 

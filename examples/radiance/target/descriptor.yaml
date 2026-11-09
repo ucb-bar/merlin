@@ -22,19 +22,19 @@
 # (~2x on gemm_simt: occupancy / latency-hiding is the documented frontier item, not fitted to look
 # tight). Status: prototype, not RTL-certified (requires_human_review).
 target: radiance
-resources_root: merlin/experiments/capsule_bench/targets/radiance
+resources_root: experiments/studies/capsule_bench/targets/radiance
 numeric_profile: examples/radiance/phase0/recipe.yaml
 preflight:
   codegen_backend: muon
 
 # This experiment target is served by the MUON core package (the SIMT core inside RadianceMuonConfig),
 # so its contracts/ — and therefore the rtl_facts / irdl bundle pins the CIRCT arm is granted — live
-# under merlin/targets/muon, NOT merlin/targets/radiance (which does not exist). Declared because it
+# under experiments/reference-data/target-inputs/muon, NOT experiments/reference-data/target-inputs/radiance (which does not exist). Declared because it
 # cannot be inferred from the target name: inferring it produced a bundle that claimed to grant the
 # CIRCT arm its RTL-extracted facts while pointing at a path that can never exist.
-backend_package_dir: merlin/targets/muon
+backend_package_dir: experiments/reference-data/target-inputs/muon
 
-# Registry pins (merlin/contract/hardware_pins.yaml) this target's hardware sources live behind.
+# Registry pins (src/merlin/resources/contracts/hardware_pins.yaml) this target's hardware sources live behind.
 # Declared so a tool asking "where is this target's RTL" resolves it the same way every other target
 # does -- through the pin registry, which verifies BY CONTENT -- instead of carrying a path of its own.
 # Consumed by merlin.targetgen.isa_rtl_crosscheck.rtl_source_roots (the encoding cross-check reads this
@@ -80,7 +80,7 @@ information_sets:
 # an attention tile (PR#1 op shapes) composed with the contained MX tensor path (simt_cluster contains
 # mx_pe), generated from profiles/radiance.yaml. SIMT goldens are ordinary IEEE float; the MX capsule's
 # golden comes from mlc's mx_ref. NOT the gemmini int8 corpus (numerically meaningless for SIMT-fp / MX).
-capsule_corpus: merlin/contract/capsules/radiance/isa
+capsule_corpus: experiments/corpora/radiance/isa
 
 # Radiance's RTL oracle is its bespoke cyclotron sim (the muon capsule path), NOT the arc MXU model.
 toolchain:
@@ -144,7 +144,7 @@ grading:
   # on -- it makes the denominator STATED, so a hidden capsule that silently appears or disappears is
   # caught the way gemmini's is.
   #
-  # RECOMPUTED, NOT ASSERTED: `merlin/contract/capsules/radiance/hidden/` holds 12 capsules and
+  # RECOMPUTED, NOT ASSERTED: `experiments/corpora/radiance/hidden/` holds 12 capsules and
   # `capsule_runner._split_ineligible` withholds NONE of them -- every operand dtype they carry has a
   # datapath in this target's own contract -- so admitted == source == 12. Gemmini declares 15/14
   # because one of its rows carries a dtype its int8 array cannot hold; radiance has no such row.
@@ -265,7 +265,7 @@ answer_surfaces:
 # what the host lane does cannot reason about where the boundary should fall), and the surface that
 # would let it be CHANGED is denied to every arm.
 #
-# VERIFIED BY CONTENT, NOT BY BRANCH NAME — the same discipline as merlin/contract/hardware_pins.yaml.
+# VERIFIED BY CONTENT, NOT BY BRANCH NAME — the same discipline as src/merlin/resources/contracts/hardware_pins.yaml.
 # `branch` is informational: branches move, and the same branch name on a fork and on upstream are
 # different histories. `requires_paths` names the files whose PRESENCE is what the lane actually is, so
 # a checkout that is the right repo on a plausible branch and missing the schedule is caught.
@@ -306,7 +306,7 @@ host_lane:
   repo_canonical: https://github.com/ucb-bar/rvv-mlir.git
   branch: stable/rvv_tuned_v1_d1_vfmacc_outerproduct
   # UNKNOWN, and recorded as UNKNOWN rather than defaulted: this repo publishes TO that remote (see
-  # merlin/targets/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
+  # experiments/reference-data/target-inputs/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
   # is readable here. The pin is therefore carried by `package` + `requires_paths` below, which is a
   # CONTENT check over the bytes this experiment actually reads. Fill the sha in the moment a checkout
   # exists; never invent one.

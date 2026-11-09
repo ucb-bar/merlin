@@ -3,23 +3,23 @@ title: Ordered FMA certificates
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [verified_compiler_roadmap]
 code_refs:
-  - merlin/runtime/c/ordered_fma_bounds.h
-  - merlin/runtime/c/fma_product_norms.h
-  - merlin/runtime/c/bf16_radix_pack.h
-  - merlin/runtime/c/monotone_bit_polynomial.h
-  - merlin/runtime/c/bf16_quant_frontier.h
-  - merlin/runtime/c/positive_scalar_interval.h
-  - merlin/runtime/c/f32_floor_bits.h
+  - src/merlin/runtime/native/c/ordered_fma_bounds.h
+  - src/merlin/runtime/native/c/fma_product_norms.h
+  - src/merlin/runtime/native/c/bf16_radix_pack.h
+  - src/merlin/runtime/native/c/monotone_bit_polynomial.h
+  - src/merlin/runtime/native/c/bf16_quant_frontier.h
+  - src/merlin/runtime/native/c/positive_scalar_interval.h
+  - src/merlin/runtime/native/c/f32_floor_bits.h
   - src/merlin/llvmlower/source_numeric_capability.py
-  - merlin/runtime/c/source_f32_math.h
+  - src/merlin/runtime/native/c/source_f32_math.h
 ---
 
 # Ordered FMA certificates
 
-`merlin/runtime/c/ordered_fma_bounds.h` provides optional arithmetic certificates.
+`src/merlin/runtime/native/c/ordered_fma_bounds.h` provides optional arithmetic certificates.
 It does not select a compiler transform or change any model accuracy gate.
 The source operation is zero-seeded increasing-K binary32 FMA, with round to
 nearest even and gradual underflow. An OOT backend can supply reconstructed

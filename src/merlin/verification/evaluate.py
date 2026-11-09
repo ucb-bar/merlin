@@ -96,12 +96,12 @@ def _finish_lowering(interface_module, tc):
 
 def _static(interface_module) -> tuple[bool, str]:
     """FileCheck the structural obligations over the module's printed form."""
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import repo_root
     from merlin.verify.tools import find_filecheck
     from merlin.xdsl_dialects import _common
 
     fc = find_filecheck()
-    checks = merlin_dir() / "tests" / "data" / "lit" / "core" / "materialize_interface_residency.mlir"
+    checks = repo_root() / "tests" / "data" / "lit" / "core" / "materialize_interface_residency.mlir"
     if fc is None or not checks.is_file():
         # The layer could not RUN. That is an abstention, never a clean result.
         return False, "abstained", "FileCheck or check file unavailable"
@@ -430,7 +430,7 @@ def _write_product(rec: dict[str, Any]) -> Path:
             f"fault corpus: merlin.verify.faults.CORPUS ({len(rec['faults'])} seeded faults)",
             f"program under test: merlin.xdsl_dialects.lowering.pipeline.lower_repeated_rhs_matmul"
             f"(m={shape['m']}, k={shape['k']}, n={shape['n']}, reuse={shape['reuse']})",
-            "static layer checks: merlin/tests/data/lit/core/materialize_interface_residency.mlir",
+            "static layer checks: tests/data/lit/core/materialize_interface_residency.mlir",
             f"solver: {z3_version} (bound {rec.get('timeout_ms', 'UNKNOWN')} ms per attempt)",
             f"exporter: {_ver(find_mlir_tool('mlir-translate'), '--version')}",
             f"matcher: {_ver(find_filecheck(), '--version')}",

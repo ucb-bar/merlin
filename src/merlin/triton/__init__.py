@@ -12,7 +12,7 @@ that target becomes programmable from Triton with ZERO Triton-specific work — 
 ``Triton<Target>Backend``, no per-target Triton plan, no extra TargetGen prompt.
 
 That property is only real if this package stays target-blind, so it is gate-enforced:
-``merlin/tests/infra/test_triton_target_independence.py`` asserts no target-name literal, no
+``tests/infra/test_triton_target_independence.py`` asserts no target-name literal, no
 import of a target-specific module, and no ``import re`` (structural parsing only) anywhere under
 this package. The target is a PARAMETER threaded in from the descriptor/contract; if supporting a
 second target ever requires editing a file here, the abstraction failed and the fix belongs in

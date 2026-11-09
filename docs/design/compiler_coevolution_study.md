@@ -6,9 +6,9 @@ owner: experiments
 last_verified: 2026-10-25
 related: [joint_campaign_execution, ../guides/public_capability_planning, ../guides/conditional_compiler_pipelines, ../guides/artifact_evaluation]
 code_refs:
-  - src/merlin_experiments/phase1/capability_inventory.py
-  - src/merlin_experiments/phase1/feedback/capability_brief.py
-  - src/merlin_experiments/phase1/telemetry/token_budget.py
+  - src/merlin/experiments/phase1/capability_inventory.py
+  - src/merlin/experiments/phase1/feedback/capability_brief.py
+  - src/merlin/experiments/phase1/telemetry/token_budget.py
   - src/merlin/transforms/pipeline_policy.py
   - src/merlin/targetgen/isa_codegen_cli.py
 ---
@@ -163,7 +163,7 @@ does not stop necessary correctness/performance work or change qualification.
 Use the canonical operator live accounting command outside the read-only run:
 
 ```sh
-python -m merlin_experiments.phase1.telemetry.author_agents \
+python -m merlin.experiments.phase1.telemetry.author_agents \
   --run-dir "$RUN_DIR" --out "$OPERATOR_DIR/author-usage.json"
 ```
 

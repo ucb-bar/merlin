@@ -6,18 +6,24 @@ convention about whether one MAC is one or two operations is hidden in the numbe
 malformed compute commands make the whole result UNKNOWN; known work is retained only as a lower
 bound.
 """
+
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from merlin.runtime.commandbuffer import batched_matmul_geometry
 
-__all__ = ["CommandWork", "ProgramWork", "command_buffer_evidence", "work_from_command_buffer",
-           "NO_COMMAND_BUFFER_REFUSAL"]
+__all__ = [
+    "CommandWork",
+    "ProgramWork",
+    "command_buffer_evidence",
+    "work_from_command_buffer",
+    "NO_COMMAND_BUFFER_REFUSAL",
+]
 
 
 @dataclass(frozen=True)
@@ -29,8 +35,13 @@ class CommandWork:
     refusal: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"index": self.index, "opcode": self.opcode, "macs": self.macs,
-                "provenance": self.provenance, "refusal": self.refusal}
+        return {
+            "index": self.index,
+            "opcode": self.opcode,
+            "macs": self.macs,
+            "provenance": self.provenance,
+            "refusal": self.refusal,
+        }
 
 
 @dataclass(frozen=True)
@@ -48,18 +59,27 @@ class ProgramWork:
         return None if self.is_lower_bound else self.known_macs
 
     def to_dict(self) -> dict[str, Any]:
-        return {"basis": self.basis, "unit": self.unit, "known_macs": self.known_macs,
-                "exact_macs": self.exact_macs, "is_lower_bound": self.is_lower_bound,
-                "artifact_sha256": self.artifact_sha256,
-                "refusals": list(self.refusals),
-                "commands": [command.to_dict() for command in self.commands]}
+        return {
+            "basis": self.basis,
+            "unit": self.unit,
+            "known_macs": self.known_macs,
+            "exact_macs": self.exact_macs,
+            "is_lower_bound": self.is_lower_bound,
+            "artifact_sha256": self.artifact_sha256,
+            "refusals": list(self.refusals),
+            "commands": [command.to_dict() for command in self.commands],
+        }
 
 
 def _shape(tensors: Mapping[str, Any], name: Any) -> tuple[int, ...] | None:
     tensor = tensors.get(name) if isinstance(name, str) else None
     raw = tensor.get("shape") if isinstance(tensor, Mapping) else None
-    if (not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)) or not raw
-            or any(not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in raw)):
+    if (
+        not isinstance(raw, Sequence)
+        or isinstance(raw, (str, bytes))
+        or not raw
+        or any(not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in raw)
+    ):
         return None
     return tuple(int(value) for value in raw)
 
@@ -92,16 +112,21 @@ def _axis_order(attrs: Mapping[str, Any]) -> str | None:
     return order if tuple(sorted(order)) == _CONV_AXES else None
 
 
-def _conv_work(ifm: tuple[int, ...] | None, weight: tuple[int, ...] | None,
-               attrs: Mapping[str, Any]) -> int | None:
+def _conv_work(ifm: tuple[int, ...] | None, weight: tuple[int, ...] | None, attrs: Mapping[str, Any]) -> int | None:
     kernel = attrs.get("kernel")
     stride = attrs.get("stride")
     padding = attrs.get("padding")
     dilation = attrs.get("dilation")
     order = _axis_order(attrs)
-    if (ifm is None or len(ifm) != 4 or order is None
-            or not all(isinstance(value, Sequence) and not isinstance(value, (str, bytes))
-                       for value in (kernel, stride, padding, dilation))):
+    if (
+        ifm is None
+        or len(ifm) != 4
+        or order is None
+        or not all(
+            isinstance(value, Sequence) and not isinstance(value, (str, bytes))
+            for value in (kernel, stride, padding, dilation)
+        )
+    ):
         return None
     try:
         kh, kw, ci, co = (int(value) for value in kernel)
@@ -116,8 +141,12 @@ def _conv_work(ifm: tuple[int, ...] | None, weight: tuple[int, ...] | None,
     # Either weight orientation is accepted because both are unambiguous against the declared kernel:
     # a prepacking backend emits (co, kh*kw*ci) and a row-major im2col one emits (kh*kw*ci, co). They
     # coincide only when the two extents are equal, and then both readings price the same MACs.
-    if (any(value <= 0 for value in values) or min(pt, pl, pb, pr) < 0 or channels != ci
-            or weight not in ((kh * kw * ci, co), (co, kh * kw * ci))):
+    if (
+        any(value <= 0 for value in values)
+        or min(pt, pl, pb, pr) < 0
+        or channels != ci
+        or weight not in ((kh * kw * ci, co), (co, kh * kw * ci))
+    ):
         return None
     effective_h = dh * (kh - 1) + 1
     effective_w = dw * (kw - 1) + 1
@@ -138,8 +167,9 @@ def work_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramWork:
     would make dropping work look like an optimization.
     """
     try:
-        artifact_sha256 = hashlib.sha256(json.dumps(
-            command_buffer, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        artifact_sha256 = hashlib.sha256(
+            json.dumps(command_buffer, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
     except (TypeError, ValueError):
         artifact_sha256 = ""
     params = command_buffer.get("params")
@@ -171,8 +201,11 @@ def work_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramWork:
         )
     tensors = command_buffer.get("tensors")
     instructions = command_buffer.get("commands")
-    if not isinstance(tensors, Mapping) or not isinstance(instructions, Sequence) \
-            or isinstance(instructions, (str, bytes)):
+    if (
+        not isinstance(tensors, Mapping)
+        or not isinstance(instructions, Sequence)
+        or isinstance(instructions, (str, bytes))
+    ):
         refusal = "command buffer must carry tensor declarations and a command sequence"
         return ProgramWork((), 0, True, (refusal,), artifact_sha256=artifact_sha256)
 
@@ -210,7 +243,7 @@ def work_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramWork:
             reason = "resident-pack source/destination does not resolve to a declared tensor"
         elif opcode == "EVICT":
             # ``handle`` is the canonical ABI spelling and ``src`` the legacy one accepted by older
-            # fixtures; merlin/runtime/reference.py reads both, so pricing must not refuse a buffer
+            # fixtures; src/merlin/runtime/native/reference.py reads both, so pricing must not refuse a buffer
             # the reference engine executes.
             handle = operands.get("handle", operands.get("src"))
             if isinstance(handle, str) and handle in handles:
@@ -257,8 +290,7 @@ def work_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramWork:
             weight_name = operands.get("weight")
             if isinstance(weight_name, str) and weight_name in handles:
                 weight_name = handles[weight_name]
-            macs = _conv_work(_shape(tensors, operands.get("ifm")),
-                              _shape(tensors, weight_name), attrs)
+            macs = _conv_work(_shape(tensors, operands.get("ifm")), _shape(tensors, weight_name), attrs)
             if macs is not None:
                 rows.append(CommandWork(index, opcode, macs, provenance))
                 continue
@@ -271,27 +303,30 @@ def work_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramWork:
         refusals.append(f"[{index}] {reason}")
 
     known = sum(row.macs or 0 for row in rows)
-    return ProgramWork(tuple(rows), known, bool(refusals), tuple(refusals),
-                       artifact_sha256=artifact_sha256)
+    return ProgramWork(tuple(rows), known, bool(refusals), tuple(refusals), artifact_sha256=artifact_sha256)
 
 
 #: Stated when a graded run produced no command buffer at all. The keys are still emitted carrying
 #: this: an ABSENT key reads to a consumer as "this axis does not apply", while an explicit UNKNOWN
 #: reads as "the work could not be priced" -- and only the second one is true. A zero would be worse
 #: still, because on a performance bench "this program does no work" means "infinitely fast".
-NO_COMMAND_BUFFER_REFUSAL = ("the graded run produced no compiler command buffer, so its work "
-                             "volume is UNKNOWN")
+NO_COMMAND_BUFFER_REFUSAL = "the graded run produced no compiler command buffer, so its work volume is UNKNOWN"
 
 
 def _unknown_evidence(refusal: str, compiler_provenance: str) -> tuple[dict[str, Any], dict[str, Any]]:
     work = ProgramWork((), 0, True, (refusal,)).to_dict()
-    artifact = {"command_buffer": None, "artifact_sha256": None,
-                "compiler_provenance": str(compiler_provenance), "refusal": refusal}
+    artifact = {
+        "command_buffer": None,
+        "artifact_sha256": None,
+        "compiler_provenance": str(compiler_provenance),
+        "refusal": refusal,
+    }
     return work, artifact
 
 
-def command_buffer_evidence(command_buffer: Any, *, compiler_provenance: str, store: Any = None
-                            ) -> tuple[dict[str, Any], dict[str, Any]]:
+def command_buffer_evidence(
+    command_buffer: Any, *, compiler_provenance: str, store: Any = None
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Return the ``(work_volume, command_buffer_artifact)`` pair a perf consumer reads.
 
     ONE notion of work. The totals are :func:`work_from_command_buffer`'s and nothing else's, and the
@@ -320,14 +355,16 @@ def command_buffer_evidence(command_buffer: Any, *, compiler_provenance: str, st
         replayed = json.loads(canonical) if store is None else None
     except (TypeError, ValueError) as exc:
         return _unknown_evidence(
-            f"command buffer is not serialisable evidence and cannot be priced: {exc}",
-            compiler_provenance)
+            f"command buffer is not serialisable evidence and cannot be priced: {exc}", compiler_provenance
+        )
     work = work_from_command_buffer(command_buffer).to_dict()
     sha256 = hashlib.sha256(canonical).hexdigest()
     if store is not None:
-        artifact = {"artifact_sha256": sha256, "compiler_provenance": str(compiler_provenance),
-                    **store_canonical(command_buffer, canonical, sha256, store)}
+        artifact = {
+            "artifact_sha256": sha256,
+            "compiler_provenance": str(compiler_provenance),
+            **store_canonical(command_buffer, canonical, sha256, store),
+        }
         return work, artifact
-    artifact = {"command_buffer": replayed, "artifact_sha256": sha256,
-                "compiler_provenance": str(compiler_provenance)}
+    artifact = {"command_buffer": replayed, "artifact_sha256": sha256, "compiler_provenance": str(compiler_provenance)}
     return work, artifact

@@ -103,8 +103,8 @@ def build_gemm(*, M: int, N: int, K: int, dtype: str, features: list[str], tmp: 
 
     cgen = work / "cgen"
     c_runtime.generate(bundle, cgen, bundle / "inputs.npz")
-    rt = Path(repo_root()) / "merlin/runtime/c"
-    abi = Path(repo_root()) / "merlin/runtime/abi"
+    rt = Path(repo_root()) / "src/merlin/runtime/native/c"
+    abi = Path(repo_root()) / "src/merlin/runtime/native/abi"
     driver = L.HERE / ("ours_int8_gemm_driver.c" if dtype == "int8" else "ours_gemm_driver.c")
     binp = tmp / f"esc_gemm_{dtype}_{M}"
     inc_flags: list[str] = []

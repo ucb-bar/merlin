@@ -8,7 +8,7 @@ related: [ordered_fma_certificates, quantized_host_optimizations]
 code_refs:
   - src/merlin/llvmlower/source_attention_frontier.py
   - src/merlin/llvmlower/prepared_polynomial_batch.py
-  - merlin/runtime/c/prepared_polynomial_batch.h
+  - src/merlin/runtime/native/c/prepared_polynomial_batch.h
 ---
 
 # Four-cell prepared polynomial scheduling

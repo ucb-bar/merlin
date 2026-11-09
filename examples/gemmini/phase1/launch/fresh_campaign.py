@@ -15,7 +15,7 @@ settings derived from an earlier recorded launch are spelled out in the spec's `
 so a reviewer reads the exact argv and environment instead of a rewrite rule. Preparation and
 reservation reuse the sibling launch modules of the export (prepare_author_library,
 prepare_source_release, prepare_author_launch, resource_reservation) and
-``merlin_experiments.phase1.full_compiler_workspace``. Only ``launch`` starts anything.
+``merlin.experiments.phase1.full_compiler_workspace``. Only ``launch`` starts anything.
 
 A spec with a ``seed:`` section starts from an existing compiler instead of an empty backend;
 ``fresh_seed.py`` beside this file owns that path, and a spec without one never loads it.
@@ -446,7 +446,7 @@ def stage_launch_references(manifest, destination, prefixes):
     if forbidden:
         raise SpecError(f"public references carry forbidden members: {forbidden[:3]}")
     if document.get("schema") == "operator.allowed_reference_sources.v2":
-        from merlin_experiments.corpus.public_references import stage
+        from merlin.experiments.corpus.public_references import stage
 
         stage(manifest, destination)
         # The original reviewed origin containers are needed for release staging.
@@ -468,8 +468,8 @@ def require_bank_raw_references(ctx, manifest, profile):
     originals = getattr(profile, "raw_originals", False)
     if getattr(profile, "bank_sha256", None) is None and not originals:
         return
-    from merlin_experiments.phase1 import fresh10_profiles as F10
-    from merlin_experiments.phase1.author_profiles import bank_raw_sha256
+    from merlin.experiments.phase1 import fresh10_profiles as F10
+    from merlin.experiments.phase1.author_profiles import bank_raw_sha256
 
     document = json.loads(Path(manifest).read_text())
     if document.get("schema") != "operator.allowed_reference_sources.v2":
@@ -507,7 +507,8 @@ def profile_reference_manifest(ctx, section, destination, profile):
         raise SpecError("this author profile requires its reviewed public references")
     require_bank_raw_references(ctx, ctx.path(selected) / "reference-manifest.json", profile)
     return stage_launch_references(
-        ctx.path(selected) / "reference-manifest.json", destination,
+        ctx.path(selected) / "reference-manifest.json",
+        destination,
         section.get("forbidden_reference_prefixes") or (),
     )
 
@@ -516,8 +517,12 @@ def planned_reference_manifest(ctx, plan, profile):
     """Bind a reviewed reference manifest or the explicit no-reference treatment."""
     selected = plan.get("public_reference_manifest")
     if getattr(profile, "raw_kernel_references", True) is False:
-        if (selected is not None or ctx.section("inputs").get("public_references") is not None
-                or ctx.reference_guidance != "off" or plan.get("reference_map") is not None):
+        if (
+            selected is not None
+            or ctx.section("inputs").get("public_references") is not None
+            or ctx.reference_guidance != "off"
+            or plan.get("reference_map") is not None
+        ):
             raise SpecError("the no-reference plan cannot select reference material, guidance or a map")
         return None
     if selected is None:
@@ -540,8 +545,14 @@ def extra_source_selections(ctx, section):
     """
     selected = {}
     tuple_selections = {"host_capability_selection", "operand_protocol_selection", "operand_protocol_revision"}
-    for key in ("public_program_suite", "host_capability_selection", "phase1_policy_descriptor", "source_run",
-                "operand_protocol_selection", "operand_protocol_revision"):
+    for key in (
+        "public_program_suite",
+        "host_capability_selection",
+        "phase1_policy_descriptor",
+        "source_run",
+        "operand_protocol_selection",
+        "operand_protocol_revision",
+    ):
         pin = section.get(key)
         if pin is None:
             continue
@@ -578,10 +589,16 @@ def require_coverage_isolation(plan, environment, profile, guidance):
     """Coverage and raw-originals arms receive no reference map, guidance or reference-experiment packet."""
     if not (getattr(profile, "coverage", False) or getattr(profile, "raw_originals", False)):
         return
-    if (plan.get("reference_map") is not None or plan.get("reference_experiments") is not None
-            or guidance != "off" or any(key.startswith("MERLIN_REFERENCE") for key in environment)):
-        raise SpecError("coverage arms take no reference map, guidance, reference experiments or "
-                        "MERLIN_REFERENCE* environment; a bank arm's bank is its only CCA input")
+    if (
+        plan.get("reference_map") is not None
+        or plan.get("reference_experiments") is not None
+        or guidance != "off"
+        or any(key.startswith("MERLIN_REFERENCE") for key in environment)
+    ):
+        raise SpecError(
+            "coverage arms take no reference map, guidance, reference experiments or "
+            "MERLIN_REFERENCE* environment; a bank arm's bank is its only CCA input"
+        )
 
 
 def require_bank_dependencies(environment, profile):
@@ -590,8 +607,10 @@ def require_bank_dependencies(environment, profile):
         return
     entries = [Path(entry) for entry in environment.get("PYTHONPATH", "").split(":") if entry]
     if not any(entry.parts[-3:] == ("packages", "merlin-mining", "src") for entry in entries):
-        raise SpecError("a CCA bank arm needs packages/merlin-mining/src on plan.environment.PYTHONPATH "
-                        "(the broker verifies the bank with merlin.mining.reference_subsets)")
+        raise SpecError(
+            "a CCA bank arm needs packages/merlin-mining/src on plan.environment.PYTHONPATH "
+            "(the broker verifies the bank with merlin.mining.reference_subsets)"
+        )
 
 
 def cmd_inputs_stage(ctx: Context, args) -> int:
@@ -605,8 +624,8 @@ def cmd_inputs_stage(ctx: Context, args) -> int:
     out.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
 
-    from merlin_experiments.phase1.author_profiles import prepare_sources, resolve
-    from merlin_experiments.phase1.full_compiler_workspace import prepare as prepare_full
+    from merlin.experiments.phase1.author_profiles import prepare_sources, resolve
+    from merlin.experiments.phase1.full_compiler_workspace import prepare as prepare_full
 
     profile = resolve(ctx.section("plan").get("author_profile", ""))
     library = load_module("prepare_author_library", modules)
@@ -622,29 +641,51 @@ def cmd_inputs_stage(ctx: Context, args) -> int:
         library_version=int(section["library_version"]),
         reviewed_module=tuple(section.get("reviewed_modules") or ()),
     )
-    if (profile is not None and profile.name.startswith("fresh10-tooling-v1/")
-            and not getattr(profile, "current_library", False)):
+    if (
+        profile is not None
+        and profile.name.startswith("fresh10-tooling-v1/")
+        and not getattr(profile, "current_library", False)
+    ):
         # Current-library arms keep the reviewed library just prepared, as the coverage arms do.
-        from merlin_experiments.phase1.fresh10_sources import project_author_library
+        from merlin.experiments.phase1.fresh10_sources import project_author_library
 
         report = {**report, **project_author_library(out / "author-library", profile.name, repo=framework)}
     contract = report["contract_sha256"]
     print(json.dumps({"stage": "author_library", "contract": contract, "members": report["members"]}), flush=True)
 
-    full = (prepare_full(framework, out / "full-compiler", review_id=ctx.x(section["full_compiler_review_id"]))
-            if profile is None else prepare_sources(framework, out / "full-compiler", profile=profile,
-                                                    review_id=ctx.x(section["full_compiler_review_id"]),
-                                                    source_selection=ctx.x_tree(section.get("author_profile_source_selection"))))
+    full = (
+        prepare_full(framework, out / "full-compiler", review_id=ctx.x(section["full_compiler_review_id"]))
+        if profile is None
+        else prepare_sources(
+            framework,
+            out / "full-compiler",
+            profile=profile,
+            review_id=ctx.x(section["full_compiler_review_id"]),
+            source_selection=ctx.x_tree(section.get("author_profile_source_selection")),
+        )
+    )
     if full is not None:
         full.verify()
-    (out / "full-compiler-selection.json").write_text(json.dumps(None if full is None else full.record(), indent=2) + "\n")
-    print(json.dumps({"stage": "full_compiler", "members": len(full.members) if full else 0,
-                      "manifest": full.manifest_sha256 if full else None}))
+    (out / "full-compiler-selection.json").write_text(
+        json.dumps(None if full is None else full.record(), indent=2) + "\n"
+    )
+    print(
+        json.dumps(
+            {
+                "stage": "full_compiler",
+                "members": len(full.members) if full else 0,
+                "manifest": full.manifest_sha256 if full else None,
+            }
+        )
+    )
 
     # Public references: the pinned base members only; a forbidden prefix (private measured kernels)
     # refuses the whole preparation before anything is copied.
     reference_manifest = profile_reference_manifest(
-        ctx, section, out / "public-references", profile,
+        ctx,
+        section,
+        out / "public-references",
+        profile,
     )
 
     bank = cca_bank_selection(ctx, section, profile)
@@ -658,8 +699,15 @@ def cmd_inputs_stage(ctx: Context, args) -> int:
         **extra_source_selections(ctx, section),
         logical_storage_budget_bytes=budget,
         common_substrate=section["common_substrate"],
-        **(dict(author_profile=profile.name, author_profile_sources=full,
-                author_profile_common_inputs=section.get("author_profile_common_inputs")) if profile else {}),
+        **(
+            dict(
+                author_profile=profile.name,
+                author_profile_sources=full,
+                author_profile_common_inputs=section.get("author_profile_common_inputs"),
+            )
+            if profile
+            else {}
+        ),
         **({"cca_bank": bank} if bank is not None else {}),
     )
     selection = {
@@ -689,7 +737,7 @@ def cmd_seal(ctx: Context, args) -> int:
     section, inputs = ctx.section("seal"), ctx.path(ctx.section("inputs")["output"])
     environment, framework = _prepared_runtime(ctx)
     release = inputs / "source-release"
-    corpus = ["taskset", "-c", ctx.preparation_cpus, ctx.x("${PYTHON}"), "-B", "-m", "merlin_experiments", "corpus"]
+    corpus = ["taskset", "-c", ctx.preparation_cpus, ctx.x("${PYTHON}"), "-B", "-m", "merlin.experiments", "corpus"]
     inspected = subprocess.run(
         [*corpus, "inspect", str(release)], cwd=framework, env=environment, check=True, capture_output=True, text=True
     ).stdout
@@ -745,7 +793,7 @@ def edited_policy(base: dict, *, max_wall_s, final_model_s, workers, excluded, v
 
 
 def _validate_policy(policy: dict) -> dict:
-    from merlin_experiments.phase1.joint_control import policy as load_policy
+    from merlin.experiments.phase1.joint_control import policy as load_policy
 
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
         json.dump(policy, handle)
@@ -756,7 +804,7 @@ def _validate_policy(policy: dict) -> dict:
 
 
 def restore_library(selection_path: Path):
-    from merlin_experiments.phase2.compiler_library_state import restore_selection
+    from merlin.experiments.phase2.compiler_library_state import restore_selection
 
     return restore_selection(json.loads(Path(selection_path).read_bytes()))
 
@@ -767,7 +815,7 @@ def set_wrapper_option(argv: list[str], flag: str, value: str) -> None:
     if flag in wrapper:
         argv[wrapper.index(flag) + 1] = value
     else:
-        argv[len(wrapper):len(wrapper)] = [flag, value]
+        argv[len(wrapper) : len(wrapper)] = [flag, value]
 
 
 WORKER_KEYS = (
@@ -787,8 +835,12 @@ def profile_omitted_flags(profile):
         return set()
     if profile.name.startswith("fresh10-tooling-v1/"):
         return set() if profile.allows("transform_library") else {"--required-shared-pass"}
-    removed = {"--compiler-library-root", "--compiler-library-contract", "--compiler-library-contract-sha256",
-               "--required-shared-pass"}
+    removed = {
+        "--compiler-library-root",
+        "--compiler-library-contract",
+        "--compiler-library-contract-sha256",
+        "--required-shared-pass",
+    }
     if profile.level == 1:
         removed.update(("--full-compiler-root", "--full-compiler-manifest", "--full-compiler-manifest-sha256"))
     return removed
@@ -804,8 +856,12 @@ def profile_campaign_argv(profile, argv):
         else:
             filtered.append(argv[cursor])
             cursor += 1
-    if (profile is not None and not profile.seeded and not profile.name.startswith("fresh10-tooling-v1/")
-            and "--compiler-access" in filtered):
+    if (
+        profile is not None
+        and not profile.seeded
+        and not profile.name.startswith("fresh10-tooling-v1/")
+        and "--compiler-access" in filtered
+    ):
         filtered[filtered.index("--compiler-access") + 1] = (
             "selected_library" if profile.level == 1 else "full_compiler"
         )
@@ -851,7 +907,7 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
     timing = {"path": str(selection), "sha256": sha256(selection)}
 
     # 3. Inputs: full compiler manifest, author library selection and public references.
-    from merlin_experiments.phase1.author_profiles import resolve as resolve_author_profile
+    from merlin.experiments.phase1.author_profiles import resolve as resolve_author_profile
 
     author_profile = resolve_author_profile(plan.get("author_profile", ""))
     manifest = None if author_profile and author_profile.level == 1 else ctx.path(plan["full_compiler_manifest"])
@@ -887,7 +943,7 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
     if ctx.reference_guidance == "on" and reference is None:
         raise SpecError("reference guidance on requires a pinned reference_experiments selection")
     if reference is not None:
-        from merlin_experiments.phase1.feedback.reference_experiments import invocation
+        from merlin.experiments.phase1.feedback.reference_experiments import invocation
 
         if (
             not isinstance(reference, dict)
@@ -916,7 +972,7 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
     require_bank_dependencies(environment, author_profile)
     reference_map = pin_reference_map(ctx, plan, output, references)
     if reference_map is not None:
-        from merlin_experiments.phase1.feedback.reference_map import ENV as REFERENCE_MAP_ENV
+        from merlin.experiments.phase1.feedback.reference_map import ENV as REFERENCE_MAP_ENV
 
         if REFERENCE_MAP_ENV in environment:
             raise SpecError(f"select the reference map through plan.reference_map, not {REFERENCE_MAP_ENV}")
@@ -1068,7 +1124,7 @@ def pin_reference_map(ctx: Context, plan: dict, output: Path, references: Path |
         )
     if not path.is_file():
         raise SpecError(f"reference map is unavailable: {path}")
-    from merlin_experiments.phase1.feedback.reference_map import FILENAME, read_pin
+    from merlin.experiments.phase1.feedback.reference_map import FILENAME, read_pin
 
     try:
         _, document = read_pin({"path": str(path.resolve()), "sha256": digest})
@@ -1089,7 +1145,7 @@ def _check_campaign(ctx: Context, argv: list[str], plan: dict) -> None:
     leftover = [item for item in argv if "${" in item]
     if leftover:
         raise SpecError(f"unexpanded variables: {leftover[:3]}")
-    from merlin_experiments.phase1.author_profiles import resolve
+    from merlin.experiments.phase1.author_profiles import resolve
 
     profile = resolve(plan.get("author_profile", ""))
     omitted = profile_omitted_flags(profile)
@@ -1150,7 +1206,7 @@ def check_capture_interpreter(environment: dict, *, framework: Path) -> None:
     python = environment.get(CAPTURE_PYTHON_ENV)
     if not python:
         return
-    probe = "from merlin_experiments.phase1.brokers.model_check import import_probe; import_probe()"
+    probe = "from merlin.experiments.phase1.brokers.model_check import import_probe; import_probe()"
     selected = dict(os.environ, **environment)
     try:
         done = subprocess.run(
@@ -1207,9 +1263,9 @@ def preflight_script(plan: dict, *, run: bool) -> str:
                 command[position + 1] = command[position + 1].replace(name, preflight)
         writable = {"TMPDIR", "MERLIN_BUNDLE_CAS", "MERLIN_COMPUTE_CPU_SLOTS", "MERLIN_GSIM_SLOT_ROOT"}
         command = [
-            key + "=" + value.replace(name, preflight)
-            if separator and key in writable else item
-            for item in command for key, separator, value in (item.partition("="),)
+            key + "=" + value.replace(name, preflight) if separator and key in writable else item
+            for item in command
+            for key, separator, value in (item.partition("="),)
         ]
         command += ["--preflight-only"]
     cpus = plan["environment"]["MERLIN_COMPUTE_CPUS"]
@@ -1444,7 +1500,7 @@ def workspace_progress(ctx: Context) -> dict:
 def console_dump(ctx: Context) -> dict:
     console = ctx.section("check")["console"]
     command = ["nice", "-n", "19", "timeout", str(console.get("timeout_s", 400)), ctx.x(console["python"]), "-B"]
-    command += ["-m", "merlin_experiments.tracking.console.serve", *(ctx.x(item) for item in console["args"])]
+    command += ["-m", "merlin.experiments.tracking.console.serve", *(ctx.x(item) for item in console["args"])]
     environment = dict(os.environ, PYTHONPATH=ctx.x(console["pythonpath"]))
     out = subprocess.run(command, cwd=ctx.x(console["cwd"]), env=environment, capture_output=True, text=True)
     dump = json.loads(out.stdout)

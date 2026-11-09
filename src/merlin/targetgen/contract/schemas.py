@@ -1,4 +1,4 @@
-"""Fail-closed JSON-Schema validation against the ``merlin/contract/schemas/`` bundle.
+"""Fail-closed JSON-Schema validation against the ``src/merlin/resources/contracts/schemas/`` bundle.
 
 A single place to load + validate the contract schemas so the runner, the tests, and the
 packages all enforce the same rules. Validation raises :class:`ContractViolation` with a concise
@@ -17,7 +17,7 @@ class ContractViolation(ValueError):
 
 
 def contract_dir(override: str | Path | None = None) -> Path:
-    """Resolve the contract dir: explicit override > $MERLIN_CONTRACT_DIR > in-repo merlin/contract
+    """Resolve the contract dir: explicit override > $MERLIN_CONTRACT_DIR > in-repo src/merlin/resources/contracts
     (or, in an installed wheel with no checkout, the bundled ``_data/contract``)."""
     if override:
         return Path(override)
@@ -151,7 +151,7 @@ def validate_capsule(cap: Any, *, contract: str | Path | None = None) -> None:
     mx_gemmini's corpora could not be LOADED at all — every capsule in them failed validation — while the
     generator that wrote them saw nothing wrong, because the two vocabularies had nothing tying them
     together. Copying a format list into a shared schema is the overfit: which numeric formats exist is a
-    property of ``merlin/schemas/quant_formats.registry.yaml``, the declared single source of truth where
+    property of ``src/merlin/resources/schemas/quant_formats.registry.yaml``, the declared single source of truth where
     a new format is a data entry. Accumulator widths beside them are plain machine types. Both are checked
     here, so an unrecognized token still fails closed with the ContractViolation the enum used to raise.
     """
@@ -166,7 +166,7 @@ def validate_capsule(cap: Any, *, contract: str | Path | None = None) -> None:
         if not isinstance(tok, str) or not qf.is_element_dtype(tok):
             raise ContractViolation(
                 f"capsule schema violation at {loc}: {tok!r} is not a registered numeric format "
-                f"(merlin/schemas/quant_formats.registry.yaml declares {qf.names()}) "
+                f"(src/merlin/resources/schemas/quant_formats.registry.yaml declares {qf.names()}) "
                 f"nor a machine width (i8/i32/f32/…)"
             )
 

@@ -239,7 +239,7 @@ launching, capsule grading, golden generation, sandboxing and certification. The
   evaluation or a public answer loader. Its access identity stays withheld even in core-only installs.
 - `conformance.py` — requirement derivation from explicitly supplied constructed-tier evidence;
   optional observers run at the historical observation point, never through default discovery.
-  Evaluated conformance/default corpus selection belong to `merlin_experiments.corpus.admission`.
+  Evaluated conformance/default corpus selection belong to `merlin.experiments.corpus.admission`.
   Import evaluated operations from that experiments owner; core has no lazy workflow exports.
 - `capsule_inputs.py` — host-only canonical input bytes, values and deterministic leaf materialization.
   The evaluator reexports these implementations; numerical answers and derived MX intermediates stay
@@ -394,7 +394,7 @@ members and resource bytes for independent compiler packages. Candidate metadata
 cannot grant access. Direct-import closure is not dynamic/interpreter isolation;
 the owning experiment must independently qualify its minimal runtime boundary.
 
-- Produces artifacts that validate against `merlin/schemas/*.schema.yaml`.
+- Produces artifacts that validate against `src/merlin/resources/schemas/*.schema.yaml`.
 - `pipeline.build(...)` returns a `BuildResult`; `cli.py` exposes `build` and `inspect`.
 - Consumes `merlin.common` (paths/io/yaml/artifacts/schemas) and `merlin.validation`.
 
@@ -482,7 +482,7 @@ one grade must not be attributed to different hardware revisions — and a large
 
 ## Testing expectations
 
-- `merlin/tests/targetgen/test_targetgen_toy.py` must pass (toy_npu build + inspect + simulate).
+- `tests/targetgen/test_targetgen_toy.py` must pass (toy_npu build + inspect + simulate).
 - Core metadata tests must run without importing optional evaluators. Moves retain registered
   access identities, and installed-package checks must not accidentally resolve checkout sources.
 

@@ -10,7 +10,7 @@ better rather than assume.
 
 The agent is the injectable ``llm_fn`` (default merlin.common.llm.complete — uses the Anthropic API
 when ANTHROPIC_API_KEY is set, else returns None so the harness degrades to deterministic-only).
-The prompt is a versioned artifact: merlin/prompts/rvv_mining_v{V}.md. The library prepares prompts
+The prompt is a versioned artifact: src/merlin/resources/prompts/rvv_mining_v{V}.md. The library prepares prompts
 + post-processes findings; it never reads raw files for the agent — only the dossier.
 """
 

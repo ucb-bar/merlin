@@ -541,7 +541,7 @@ class TargetExperiment:
     # operations its target-owned fixture must actually demonstrate. Empty means no additional claim.
     preflight_capability_probes: tuple[PreflightCapabilityProbe, ...] = ()
     # OPTIONAL: repo-relative dir of the BACKEND package whose ``contracts/`` hold this target's
-    # rtl_facts / irdl pins, when it is NOT ``merlin/targets/<target>``. An experiment target can be
+    # rtl_facts / irdl pins, when it is NOT ``experiments/reference-data/target-inputs/<target>``. An experiment target can be
     # served by a differently-named core package; leaving that to be inferred from the target name
     # yields bundle grants pointing at paths that cannot exist (a CIRCT arm granted nothing while the
     # manifest claims otherwise). Declared, never inferred; default preserves same-name targets.
@@ -777,7 +777,7 @@ class TargetExperiment:
 
     @property
     def exp_name(self) -> str:
-        """The experiment dir path RELATIVE TO ``merlin/experiments`` (e.g.
+        """The experiment dir path RELATIVE TO ``experiments/studies`` (e.g.
         ``capsule_bench/targets/<target>``) — for the exp-scoped bundle paths. In the target-neutral layout
         each target lives under ``capsule_bench/targets/<target>/``; this returns that full relative path
         (not just the leaf) so ``experiments/{exp_name}/...`` reconstructs the real location. Falls back to
@@ -794,14 +794,14 @@ class TargetExperiment:
     def backend_package(self) -> str:
         """Repo-relative dir of the target's BACKEND package, where its contracts/ live.
 
-        Defaults to ``merlin/targets/<target>`` — true whenever the experiment target and the backend
+        Defaults to ``experiments/reference-data/target-inputs/<target>`` — true whenever the experiment target and the backend
         package share a name. It is NOT universally true: an experiment target may
         be served by a differently-named core package (a SIMT experiment served by its core's package),
         and assuming otherwise silently produces grant paths that can never exist — a bundle that
         *looks* like it hands the CIRCT arm its RTL facts while handing it nothing. So the mapping is a
         DECLARED fact (``backend_package`` in the descriptor) whenever it differs, never inferred."""
         d = self.backend_package_dir
-        return str(d).rstrip("/") if d else f"merlin/targets/{self.target}"
+        return str(d).rstrip("/") if d else f"experiments/reference-data/target-inputs/{self.target}"
 
     @property
     def rtl_facts_pin(self) -> str:
@@ -993,7 +993,7 @@ def descriptor_for(target: str) -> Path | None:
     Returns None rather than raising: a caller that cannot find a descriptor must degrade to the naming
     convention, not fail.
     """
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import repo_root
 
     env = os.environ.get("MERLIN_TARGET_EXPERIMENT")
     if env:
@@ -1006,7 +1006,7 @@ def descriptor_for(target: str) -> Path | None:
     for candidate in sorted((repo_root() / "examples").glob("*/target/descriptor.yaml")):
         if candidate.is_file() and _declared_target(candidate) == target:
             return candidate
-    root = merlin_dir()
+    root = repo_root()
     for pattern in _DESCRIPTOR_GLOBS:
         for cand in sorted(root.glob(pattern.format(t=target, f=_DESCRIPTOR_FILE))):
             if cand.is_file() and _declared_target(cand) == target:

@@ -6,10 +6,10 @@ owner: dse
 last_verified: 2026-11-09
 related: [dse_guidance, contracts, design_pressure]
 code_refs:
-  - src/merlin/dse_guidance/boundary_placement.py
-  - src/merlin/dse_guidance/compiler_proof.py
-  - src/merlin/dse_guidance/operator_geometry.py
-  - src/merlin/dse_guidance/case_study.py
+  - src/merlin/analysis/dse/guidance/boundary_placement.py
+  - src/merlin/analysis/dse/guidance/compiler_proof.py
+  - src/merlin/analysis/dse/guidance/operator_geometry.py
+  - src/merlin/analysis/dse/guidance/case_study.py
 ---
 
 # DSE boundary-placement vocabulary
@@ -21,7 +21,7 @@ chooses within it.
 
 This page is the reference definition of that vocabulary — the 27 abstractions in the catalog, the
 per-abstraction fields, and the level and status values that appear in the emitted artifacts. Source
-of truth is `src/merlin/dse_guidance/boundary_placement.py`.
+of truth is `src/merlin/analysis/dse/guidance/boundary_placement.py`.
 The DSE namespace owns the catalog, proof matrix, workload geometry and case-study
 emitters; this page describes their current emitted vocabulary, not a target-specific design choice.
 
@@ -231,7 +231,7 @@ Written by the case study under its output directory:
 | `runtime_object_candidates.yaml` · `command_isa_candidates.yaml` · `isa_candidate_primitives.yaml` | per-level candidate lists |
 | `interface_contract_sketches.md` | HAL / command / ISA field sketches |
 
-The vocabulary is owned by the `merlin.dse_guidance` namespace in the current
+The vocabulary is owned by the `merlin.analysis.dse.guidance` namespace in the current
 `merlin` distribution; optional dependencies use the `dse` extra. Its catalog
 classifies possible responsibility placements. It is separate from the compiler's
 actual implementation/resource planner and cannot select a physical device,

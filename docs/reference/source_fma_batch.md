@@ -8,7 +8,7 @@ related: []
 code_refs:
   - src/merlin/llvmlower/source_fma_batch.py
   - src/merlin/runtime/host_arithmetic.py
-  - merlin/runtime/c/prepared_polynomial_batch.h
+  - src/merlin/runtime/native/c/prepared_polynomial_batch.h
 ---
 
 # Independent source FMA batch permission

@@ -2,7 +2,7 @@
 
 Generated output, so it lands under the ``out/`` root (never tracked): a target-named ``.mlir`` in the
 source tree would go stale against the facts cache and is exactly the overfit the repo's register
-exists to shrink. The tracked seed suite in ``merlin/tests/data/lit`` is target-INDEPENDENT and stays
+exists to shrink. The tracked seed suite in ``tests/data/lit`` is target-INDEPENDENT and stays
 hand-authored.
 
 ``coverage.json`` is the deliverable for a target that can derive nothing. For a target with no
@@ -127,9 +127,9 @@ def _install_lit_cfg(root: Path) -> None:
     The tracked config locates the repo by walking up for ``pyproject.toml``, and the generated tree
     lives inside the repo, so the copy works unchanged — no second implementation to drift.
     """
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import repo_root
 
-    src = merlin_dir() / "tests" / "data" / "lit" / "lit.cfg.py"
+    src = repo_root() / "tests" / "data" / "lit" / "lit.cfg.py"
     if not src.is_file():
         return
     root.mkdir(parents=True, exist_ok=True)
@@ -194,9 +194,9 @@ def record_verdicts(target: str, compiled, *, lit_passed: bool | None) -> None:
 
 def core_suite_dir() -> Path:
     """The hand-written core lit suite (tracked), as opposed to the derived per-target one."""
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import repo_root
 
-    return merlin_dir() / "tests" / "data" / "lit" / "core"
+    return repo_root() / "tests" / "data" / "lit" / "core"
 
 
 def passes_exercised_by(path: Path) -> list[str]:

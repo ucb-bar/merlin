@@ -31,7 +31,7 @@ from typing import Any
 from merlin.perf import epilogue_oracle as EO
 from merlin.perf import gate_phase
 
-#: The name this gate is declared under in ``merlin/contract/gate_phases.yaml``. There is no default
+#: The name this gate is declared under in ``src/merlin/resources/contracts/gate_phases.yaml``. There is no default
 #: phase; a rename that orphans the declaration raises rather than silently never blocking.
 GATE = "epilogue_store_path"
 PLANE = "epilogue_store_path"

@@ -21,11 +21,11 @@ from pathlib import Path
 
 import yaml
 
-from merlin.common.paths import artifacts_dir, merlin_dir
+from merlin.common.paths import artifacts_dir, repo_root
 from merlin.common.yaml import write_yaml
 from merlin.targetgen import capability_manifests as cm
 
-_TARGET_DIR = merlin_dir() / "experiments" / "capsule_bench" / "targets"
+_TARGET_DIR = repo_root() / "experiments" / "studies" / "capsule_bench" / "targets"
 
 
 def main(argv: list[str] | None = None) -> int:

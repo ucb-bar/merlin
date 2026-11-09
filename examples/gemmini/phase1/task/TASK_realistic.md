@@ -15,7 +15,7 @@ outputs that match the expected result exactly.
   ground truth (opcodes, mesh `DIM`, scratchpad/accumulator geometry, element widths); derive encodings
   from them and from the RTL checks your granted tools expose. This mirrors real bring-up: you have the
   hardware's observable facts, not a library of finished kernels.
-- The bench contract (`merlin/contract/`): the command-buffer ABI, schemas, grammar, integrity policy, and
+- The bench contract (`src/merlin/resources/contracts/`): the command-buffer ABI, schemas, grammar, integrity policy, and
   the **public capsule inputs** (the problems to solve).
 - The LLVM/MLIR-23 toolchain to build your package.
 - **A self-check tool** (`agent_selfcheck.py`) — see below.

@@ -6,9 +6,9 @@ owner: merlin-experiments
 last_verified: 2026-10-23
 related: [joint_compiler_development, joint_compiler_author_requirements, combined_phase1_phase2_authoring]
 code_refs:
-  - src/merlin_experiments/phase1/session.py
-  - src/merlin_experiments/phase1/workspace_transport.py
-  - src/merlin_experiments/phase1/feedback/public_scalability.py
+  - src/merlin/experiments/phase1/session.py
+  - src/merlin/experiments/phase1/workspace_transport.py
+  - src/merlin/experiments/phase1/feedback/public_scalability.py
   - src/merlin/perf/staged_roofline.py
 ---
 
@@ -455,7 +455,7 @@ release; the existing sealed release is not edited in place.
 
 ## Continuous timing-model epochs
 
-The operator can run `python -m merlin_experiments.phase1.joint_calibration_owner`
+The operator can run `python -m merlin.experiments.phase1.joint_calibration_owner`
 with `--selection`, `--selection-sha256`, `--native-owner`, `--output`, and
 `--calibration-output`. It adopts an already launched native process; it cannot
 start an initial author. `--once` checks adoption without starting any process.

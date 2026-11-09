@@ -4,7 +4,7 @@
 This repo is public (github.com/ucb-bar/merlin). The graded answers — golden outputs, required
 instruction-coverage, the held-out HIDDEN capsule sets, and the holdout SPECIFICATION sidecars
 (``profiles/<target>.hidden.yaml`` — a holdout's op, dtype and exact shape is itself an answer, and
-the tracked profile sits inside the ``merlin/contract/`` grant every arm receives) — must never be
+the tracked profile sits inside the ``src/merlin/resources/contracts/`` grant every arm receives) — must never be
 committed: publishing them
 defeats the benchmark and lets an agent cheat. They are regenerable from the tracked generators + the
 oracle; the public CONTRACT (``capsule.interface.mlir`` + ``capsule.yaml`` + ``MANIFEST.yaml``, outside

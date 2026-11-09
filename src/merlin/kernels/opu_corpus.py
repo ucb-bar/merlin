@@ -26,7 +26,7 @@ Three properties, each deliberate:
   contractions in one model, together under 1% of its work), so they earn their place here for
   correctness, not for throughput — which is also why a cost model is expected to decline to route them.
 
-The corpus is DATA (``merlin/tests/data/opu_shapes/corpus.json``) rather than a generator, so a case
+The corpus is DATA (``experiments/reference-data/opu-shapes/corpus.json``) rather than a generator, so a case
 cannot silently disappear when the enumeration logic changes, and a case that was ever certified stays in
 the record.
 """
@@ -39,6 +39,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+from merlin.common.paths import resolve_grant
 
 __all__ = [
     "Case",
@@ -58,13 +60,11 @@ _ACC_BITS = 32
 
 
 def corpus_path() -> Path:
-    """The frozen corpus file. Under the test data root, because it is an input to a gate."""
-    from ..common.paths import merlin_dir
-
-    return Path(merlin_dir()) / "tests" / "data" / "opu_shapes" / "corpus.json"
+    """Frozen read-only qualification inputs from the selected source project."""
+    return resolve_grant(CORPUS_PATH)
 
 
-CORPUS_PATH = "merlin/tests/data/opu_shapes/corpus.json"
+CORPUS_PATH = "experiments/reference-data/opu-shapes/corpus.json"
 
 
 #: Extents may be written as an expression over ``tile`` — the target's derived logical tile edge —

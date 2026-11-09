@@ -6,7 +6,7 @@ one. The missing half was never a model — it was a measurement nobody took and
 The project's single measured rate lived in a TEST FILE, where it was a fixture for the comparator
 rather than a fact anything could cite, check, or attribute to a machine.
 
-This module reads the ledger at ``merlin/contract/perf_exchange_rates.yaml`` and hands
+This module reads the ledger at ``src/merlin/resources/contracts/perf_exchange_rates.yaml`` and hands
 :class:`~merlin.perf.cost_terms.Rate` objects to a caller that has already resolved WHICH DEVICE its
 measurement came from. It adds exactly two refusals to what ``cost_terms`` already enforces, and both
 exist because their absence would be silent:
@@ -64,9 +64,9 @@ def _validated(body: Mapping[str, Any], where: str) -> dict[str, Any]:
 def load_ledger() -> dict[str, Any]:
     import yaml
 
-    from ..common.paths import merlin_dir
+    from ..common.paths import data_path
 
-    path = merlin_dir().joinpath(*_LEDGER)
+    path = data_path(*_LEDGER)
     if not path.is_file():
         raise ExchangeRatesError(f"no exchange-rate ledger at {path}; a rate is declared, never assumed")
     return _validated(yaml.safe_load(path.read_text(encoding="utf-8")) or {}, str(path))

@@ -7,7 +7,7 @@ hardware runs it. That datatype -> compute-unit mapping belongs in a target cont
 the rest of the tooling (framework ingestion, mixed-precision split, routing, verification) stay
 **format-agnostic**: it consults the descriptor, never a hardcoded list of formats.
 
-The single source of truth is ``merlin/schemas/quant_formats.registry.yaml`` (bundled read-only via
+The single source of truth is ``src/merlin/resources/schemas/quant_formats.registry.yaml`` (bundled read-only via
 :func:`merlin.common.paths.schemas_dir`), each entry validated against ``quant_format.schema.yaml``.
 A new format plugs in as a data entry — no code change. An optional ``MERLIN_QUANT_FORMATS`` overlay
 (a YAML file with the same ``{version, formats}`` shape) is merged on top, so a downstream target repo
@@ -288,7 +288,7 @@ def storage_bits(dtype: str) -> int:
     if bits is None:
         raise KeyError(
             f"capsule_dram: cannot size dtype {dtype!r} — it is neither a format registered in "
-            f"merlin/schemas/quant_formats.registry.yaml ({names()}) nor a machine width; "
+            f"src/merlin/resources/schemas/quant_formats.registry.yaml ({names()}) nor a machine width; "
             f"register the format rather than assuming a width"
         )
     return bits

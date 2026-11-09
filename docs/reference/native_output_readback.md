@@ -8,15 +8,15 @@ related: [runtime, experiment_abi]
 code_refs:
   - src/merlin/targetgen/contract/readback_policy.py
   - src/merlin/targetgen/contract/compile.py
-  - src/merlin_experiments/phase1/feedback/native_memory_readback.py
-  - src/merlin_experiments/phase1/feedback/native_output_readback.py
-  - src/merlin_experiments/phase1/feedback/native_packet_readback.py
+  - src/merlin/experiments/phase1/feedback/native_memory_readback.py
+  - src/merlin/experiments/phase1/feedback/native_output_readback.py
+  - src/merlin/experiments/phase1/feedback/native_packet_readback.py
   - src/merlin/runtime/out_packet.py
   - src/merlin/runtime/out_packet_v2.py
   - src/merlin/targetgen/capsule_runner.py
   - src/merlin/runtime/backends/chipyard_rocc.py
   - src/merlin/runtime/out_digest.py
-  - src/merlin_experiments/phase2/gsim_digest_readback.py
+  - src/merlin/experiments/phase2/gsim_digest_readback.py
 ---
 
 # Native full-value output readback
@@ -59,7 +59,7 @@ core.
 transport, and it is not listed in `READBACK_TRANSPORTS`. The grader-rendered
 harness prints one line per output, `OUT_DIGEST <name> <nbytes> <hex>`: an
 XXH64 (seed 0) of the output's dense little-endian container bytes
-(`merlin/runtime/baremetal/out_digest.h`; host side `merlin.runtime.out_digest`).
+(`src/merlin/runtime/native/baremetal/out_digest.h`; host side `merlin.runtime.out_digest`).
 
 `run_on_oracle` returns the digests as `output_digests` and refuses:
 

@@ -489,7 +489,7 @@ REGIONS: dict[str, Region] = {
             "The CCA->lever router + escalation ladder; DSE candidate selection.",
             (
                 "merlin/python/merlin/kernels/action_catalog.py",
-                "src/merlin/dse_guidance/candidates.py",
+                "src/merlin/analysis/dse/guidance/candidates.py",
             ),
             [
                 _ep(
@@ -507,7 +507,7 @@ REGIONS: dict[str, Region] = {
             "The cost model + the datatype->compute-unit target-capability manifests (also the INPUT to "
             "agentic target-dialect generation).",
             (
-                "src/merlin/dse/cost_model.py",
+                "src/merlin/analysis/dse/search/cost_model.py",
                 "merlin/python/merlin/targetgen/capability_manifests.py",
             ),
             [

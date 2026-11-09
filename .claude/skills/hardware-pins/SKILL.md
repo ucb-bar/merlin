@@ -4,7 +4,7 @@ description: >-
   Which external hardware revision a result is about — pinning, verifying and recording RTL/toolchain
   versions in merlin. Use whenever you run RTL or a simulator, derive facts from an external checkout
   (Scala/Verilog/headers), build a binary for a board or sim, or write any artifact that claims a
-  numerical or functional verdict. One registry: merlin/contract/hardware_pins.yaml.
+  numerical or functional verdict. One registry: src/merlin/resources/contracts/hardware_pins.yaml.
 ---
 
 # Hardware provenance (MANDATORY for anything that claims a verdict)
@@ -38,7 +38,7 @@ is the raising form — use it where proceeding under drift would be meaningless
 
 ## The four rules
 
-1. **Declare the revision in `merlin/contract/hardware_pins.yaml`.** Tracked and reviewed, so changing
+1. **Declare the revision in `src/merlin/resources/contracts/hardware_pins.yaml`.** Tracked and reviewed, so changing
    what a result is measured against is a diff someone sees. Full 40-char shas, quoted (an all-digit sha
    is valid hex and YAML reads it as a number, silently dropping leading zeros — the loader rejects this).
 

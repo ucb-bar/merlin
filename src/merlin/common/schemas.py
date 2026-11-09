@@ -1,6 +1,6 @@
-"""Load and validate artifacts against the YAML schemas in ``merlin/schemas/``.
+"""Load and validate artifacts against the YAML schemas in ``src/merlin/resources/schemas/``.
 
-The schemas are intentionally lightweight (see ``merlin/schemas/AGENT.md``): each is a
+The schemas are intentionally lightweight (see ``src/merlin/resources/schemas/AGENT.md``): each is a
 YAML doc with a ``title``, ``purpose``, a ``required_top_level_fields`` list, and an
 ``example`` block. They are *not* formal JSON Schema yet. Validation here therefore means:
 "the object is a mapping that contains every required top-level field." That is enough to
@@ -23,7 +23,7 @@ def schemas_dir() -> Path:
     """Return the directory holding ``*.schema.yaml`` files.
 
     Delegates to :func:`merlin.common.paths.schemas_dir` — honors ``MERLIN_SCHEMAS_DIR``, resolves
-    the in-repo ``<repo>/merlin/schemas`` when a checkout is present, and falls back to the copy
+    the in-repo ``<repo>/src/merlin/resources/schemas`` when a checkout is present, and falls back to the copy
     bundled into an installed wheel (``merlin/_data/schemas``).
     """
     from merlin.common.paths import schemas_dir as _schemas_dir

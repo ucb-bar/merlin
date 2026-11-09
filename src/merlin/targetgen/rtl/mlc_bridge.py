@@ -407,7 +407,7 @@ def core_hw_mlir(target: str) -> Path | None:
     return next((p for p in cands if p.exists() and ".generic." not in p.name), None)
 
 
-#: Where the mlc arc-model registry lives: ``merlin/contract/arc_models.yaml`` (bundled with the rest of
+#: Where the mlc arc-model registry lives: ``src/merlin/resources/contracts/arc_models.yaml`` (bundled with the rest of
 #: the contract tree). What merlin knows about each model mlc builds -- the kind of a model with no
 #: capability manifest, the file its encoding fact is written to -- is DATA there, keyed by the arc key.
 ARC_MODELS_FILE: tuple[str, ...] = ("contract", "arc_models.yaml")

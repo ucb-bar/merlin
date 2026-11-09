@@ -172,8 +172,8 @@ def _run_point(
         base.update(facts)
 
     cc = X._cc()
-    rt = REPO / "merlin/runtime/c"
-    abi = REPO / "merlin/runtime/abi"
+    rt = REPO / "src/merlin/runtime/native/c"
+    abi = REPO / "src/merlin/runtime/native/abi"
     inc = []
     for d in (X.K1H, X.HERE, cgen, rt):
         inc += ["-I", str(d)]

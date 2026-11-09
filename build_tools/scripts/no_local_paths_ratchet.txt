@@ -17,14 +17,14 @@
 
 # -- 1. measurement provenance ---------------------------------------------------------------
 build_tools/scripts/make_torchao_affine_reference.py
-merlin/benchmarks/rvv_paper/study_v2.yaml
-merlin/contract/hardware_pins.yaml
-merlin/contract/perf_reference_targets.yaml
+experiments/benchmarks/rvv_paper/study_v2.yaml
+src/merlin/resources/contracts/hardware_pins.yaml
+src/merlin/resources/contracts/perf_reference_targets.yaml
 examples/gemmini_universal/target/descriptor.yaml
-merlin/experiments/cpu_host_compiler_v0/experiment.yaml
+experiments/studies/cpu_host_compiler_v0/experiment.yaml
 examples/gemmini_universal/target/contracts/abi/abi.yaml
 examples/gemmini_universal/target/contracts/target_contract.yaml
-merlin/tests/data/torchao_affine/PROVENANCE.json
+tests/data/torchao_affine/PROVENANCE.json
 
 # -- 2. retained machine-readable evidence ----------------------------------------------------
 out/artifacts/capsule-bench/gemmini/generalization_arr.json
@@ -33,4 +33,4 @@ out/artifacts/perf-bench/gemmini/q536_native_loopconv_hybrid_receipt.json
 out/artifacts/targets/radiance/hand_v0/inputs/derived_facts.yaml
 
 # -- 3. the guardrail itself -------------------------------------------------------------------
-merlin/experiments/voyager_h2h/AGENT.md
+experiments/studies/voyager_h2h/AGENT.md

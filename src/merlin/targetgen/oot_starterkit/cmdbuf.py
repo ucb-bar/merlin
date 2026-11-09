@@ -2,7 +2,7 @@
 
 Target-agnostic: the command-buffer schema is fixed by the bench contract, identical for every target.
 This builder removes the hand-rolled serializer (~80 LOC) AND the `command_buffer_schema` failure plane —
-it validates against `merlin/contract/schemas/command_buffer.schema.json` before writing. It does NOT pick
+it validates against `src/merlin/resources/contracts/schemas/command_buffer.schema.json` before writing. It does NOT pick
 opcodes or operands for you (that's the agent's target lowering); it only guarantees a well-formed buffer.
 """
 

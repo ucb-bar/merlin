@@ -354,6 +354,6 @@ for w in spectformer whisper_tiny lstmnetvit deepjscc; do
 done
 
 # merlin: gates and sizing
-.venv/bin/python -m pytest merlin/tests/rvv merlin/tests/runtime -q
+.venv/bin/python -m pytest tests/rvv tests/runtime -q
 .venv/bin/python build_tools/scripts/check_repro_env.py
 ```

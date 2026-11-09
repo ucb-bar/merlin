@@ -9,7 +9,7 @@ code_refs:
   - src/merlin/llvmlower/independent_lane_schedule.py
   - src/merlin/llvmlower/radius_stage_schedule.py
   - src/merlin/llvmlower/source_attention_frontier.py
-  - merlin/runtime/c/separable_fma_radius.h
+  - src/merlin/runtime/native/c/separable_fma_radius.h
 ---
 
 # Independent scalar lane schedules

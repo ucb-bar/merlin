@@ -32,7 +32,7 @@ Missing prerequisites remain explicit failures or documented skips, never fabric
 Historical instruments use their original Git/frozen inputs. Set up the pieces for your workflow;
 §4 is the map.
 
-## 1. Base install — needed for every workflow
+## 1. Install and compile a first input
 
 The project uses [uv](https://docs.astral.sh/uv/) and Python 3.12+, per `requires-python`
 in `pyproject.toml`. A plain clone is enough — **no `--recursive`**; the multi-GB `third_party/`
@@ -41,10 +41,34 @@ submodules are opt-in per task (§5).
 ```bash
 git clone https://github.com/ucb-bar/merlin.git
 cd merlin
-uv venv
-uv pip install -e '.[dev,xdsl,targetgen]'
-.venv/bin/python -m merlin.cli --help
+uv venv --python 3.12
+uv pip install -e '.[compiler]'
+uv run --no-sync merlin --help
+uv run --no-sync merlin compile examples/quickstart/flatten.mlir \
+  --backend merlin.layout --output out/build/quickstart/compiled
+uv run --no-sync merlin inspect out/build/quickstart/compiled
 ```
+
+This compiles an actual `2x3xi32` to `6xi32` layout operation to portable C. It
+needs no Torch, native MLIR toolchain, OOT checkout or target hardware. The output
+directory must be fresh. The [complete example](../../examples/quickstart/README.md)
+shows the equivalent Python call and optional Linux x86-64 execution with a host
+C compiler, which prints `1 2 3 4 5 6`. This small provider does not admit general
+arithmetic or full models.
+
+`merlin compile SOURCE --backend PROVIDER` always uses the explicit-source
+grammar and `merlin.api.compile` service. CLI inputs are MLIR, saved `.pt2`
+exports, or admitted compiler-stage directories. The Python service also accepts
+supported modules, FX graphs and functions with example inputs. Model capture
+requires its framework/import dependencies and a provider admitting the result;
+it does not follow from installing the small layout example.
+
+Backend selects a compiler implementation; system selects hardware; platform
+selects an image environment such as Zephyr or bare metal. Each provider admits
+its own combinations and namespaced `--option NAMESPACE.KEY=JSON` values. The
+retained workload/operator route has a separate compatibility command,
+`merlin-compile --help`. See `merlin compile --help` and `merlin inspect --backends`
+before selecting an installed provider.
 
 Select the dependency extras needed by your workflow from the same package:
 
@@ -53,7 +77,7 @@ uv pip install -e '.[dev,xdsl,targetgen,experiments,analysis,dse,mining]'
 .venv/bin/merlin experiment list
 .venv/bin/python build_tools/scripts/check_structure.py
 .venv/bin/python build_tools/scripts/check_test_budget.py --output out/build/python/ci/test-budget.json
-.venv/bin/python -m pytest merlin/tests -q -ra
+.venv/bin/python -m pytest tests -q -ra
 ```
 
 The `experiments` extra installs the pinned AET dependency; no implicit sibling checkout is
@@ -90,6 +114,7 @@ installs them all):
 
 | extra | pulls in | needed for |
 |---|---|---|
+| `compiler` | xDSL | the first MLIR layout compilation and shared compiler IR |
 | `dev` | pytest, pytest-timeout, pyyaml, pydantic, rich | the test suite (always) |
 | `xdsl` | xdsl≥0.68 | the xDSL prototyping plane / dialect descent |
 | `targetgen` | jsonschema | targetgen contract validation (fail-closed schema checks) |
@@ -272,7 +297,7 @@ Point-in-time reports live under `out/artifacts/`, **not** in `docs/`.
 ## 8. Conventions before you commit
 
 - **Changes** should be isolated on a contribution branch and verified before publication.
-- **Tests** go in `merlin/tests/<bucket>/test_*.py` (`test-layout` skill).
+- **Tests** go in `tests/<bucket>/test_*.py` (`test-layout` skill).
 - **Docs** carry front-matter and are indexed by the hub; run
   `build_tools/scripts/gen_docs_index.py` after adding one. See `docs/AGENT.md`.
 - Re-run `check_structure.py` after any structural change.

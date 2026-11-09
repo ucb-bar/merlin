@@ -6,7 +6,7 @@ jobs makes the claim circular -- the corpus was built from the model it is said 
 Measured before this split existed: every bundle under ``out/artifacts/recaptures/`` fed the derivation,
 the four claim models included, and lstmnetvit was already in both roles.
 
-The declaration is ``merlin/contract/claim_models.yaml`` (tracked and reviewed). This module is the only
+The declaration is ``src/merlin/resources/contracts/claim_models.yaml`` (tracked and reviewed). This module is the only
 reader, so "is this model held out?" has one answer.
 
 ⚠️ MATCHING IS STRUCTURAL, ON TOKEN BOUNDARIES. A bundle is named ``<model>_<dtype>_<variant>``

@@ -34,8 +34,8 @@ import check_no_target_name as _names  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG = "docs/design/joint_optimization_catalog.json"
-OUTPUT = "src/merlin_experiments/phase1/author_skills/pass-library"
-TEST_ROOTS = ("merlin/tests", "packages")
+OUTPUT = "src/merlin/experiments/phase1/author_skills/pass-library"
+TEST_ROOTS = ("tests", "packages")
 WITHHELD = "(withheld: names a specific target; derive it from your workspace facts)"
 #: Generic timing-model resource names, one per kind the hint mapping distinguishes.
 RESOURCE_PROBES = (
@@ -68,7 +68,7 @@ def _screen(text, forbidden) -> str:
 
 
 def _resource_facets() -> list[tuple[str, str, tuple[str, ...]]]:
-    from merlin_experiments.phase1.feedback import mechanism_hints
+    from merlin.experiments.phase1.feedback import mechanism_hints
 
     rows = []
     for label, probe in RESOURCE_PROBES:

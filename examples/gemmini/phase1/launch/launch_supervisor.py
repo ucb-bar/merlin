@@ -123,7 +123,7 @@ def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int
         raise ValueError("invalid supervisor time or memory policy")
     if document.get("validation_scope", "full") != "capsules" and time.monotonic() - started >= total - reserve:
         raise ValueError("preparation exhausted the authoring allocation")
-    from merlin_experiments.phase1.launch_config import Prepend
+    from merlin.experiments.phase1.launch_config import Prepend
 
     env = {key: value for key, value in os.environ.items() if not key.startswith("MERLIN_")}
     for name, value in {**launch.environment, **launch.launch_environment}.items():

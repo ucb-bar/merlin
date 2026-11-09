@@ -188,7 +188,7 @@ def to_dict(space: DesignSpace) -> dict:
 # ---------------------------------------------------------------------------------------------
 #
 # Without this the module is a parallel search of its own, which is worse than useless: the tree
-# already HAS a design-space explorer (`merlin.dse.search`), and a second one that never meets it
+# already HAS a design-space explorer (`merlin.analysis.dse.search.search`), and a second one that never meets it
 # means the corpus evidence never reaches the thing that actually searches.
 #
 # What the corpus adds to that explorer is a PRIOR. `grid_search` enumerates the cartesian product and
@@ -199,7 +199,7 @@ def to_dict(space: DesignSpace) -> dict:
 
 
 def to_search_space(space: DesignSpace) -> dict:
-    """The design as the ``space`` dict :func:`merlin.dse.search.grid.grid_search` consumes.
+    """The design as the ``space`` dict :func:`merlin.analysis.dse.search.search.grid.grid_search` consumes.
 
     ``axis -> [levels]``, matching ``search_space.schema.yaml``. Deliberately the axes the CORPUS
     varies, not a hand-written grid: an expert corpus is a sample of a real design somebody ran, and

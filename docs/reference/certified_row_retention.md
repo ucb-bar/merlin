@@ -7,7 +7,7 @@ last_verified: 2026-11-09
 related: [ordered_fma_certificates, quantized_host_optimizations]
 code_refs:
   - src/merlin/llvmlower/source_attention_frontier.py
-  - merlin/runtime/c/templates/source_attention_endpoint_prepared.c.in
+  - src/merlin/runtime/native/c/templates/source_attention_endpoint_prepared.c.in
 ---
 
 # Retaining completed observation certificates

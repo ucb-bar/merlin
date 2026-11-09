@@ -6,7 +6,7 @@ owner: ir
 last_verified: 2026-11-09
 related: [verified_compiler_tooling, compiler_verification, lowering_pipeline, phase2_test_justification, component_compiler_convergence]
 code_refs:
-  - src/merlin_experiments/phase1/brokers/common_transforms.py
+  - src/merlin/experiments/phase1/brokers/common_transforms.py
   - src/merlin/transforms/pipeline.py
   - src/merlin/transforms/analyses.py
   - src/merlin/transforms/resource_allocation.py

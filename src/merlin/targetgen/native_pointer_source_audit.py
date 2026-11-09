@@ -127,7 +127,7 @@ def _verify_current(emission, native, *, target, entry_symbol, readback_policy, 
     elf = original._pinned_native_file(native, "elf")
     if artifacts.get(elf.relative_to(build).as_posix()) != native["elf"]:
         raise NativeModelExecutionError("standalone source original ELF is outside its complete build")
-    from merlin_experiments.phase1.feedback.candidate_observations import reopen_native_products
+    from merlin.experiments.phase1.feedback.candidate_observations import reopen_native_products
 
     emission_root = _plain(Path(emission["command_buffer"]["path"]).parent)
     if Path(emission["lowered_mlir"]["path"]).parent != emission_root:
@@ -141,9 +141,9 @@ def _verify_current(emission, native, *, target, entry_symbol, readback_policy, 
         build_artifacts=artifacts,
         candidate=native["candidate"],
     )
-    service = original._build_service_for(target, **(
-        {"source_intake_protocol": source_intake_protocol} if source_intake_protocol is not None else {}
-    ))
+    service = original._build_service_for(
+        target, **({"source_intake_protocol": source_intake_protocol} if source_intake_protocol is not None else {})
+    )
     selected_entry = service.recipe.require_kernel_stack_frame().entry_symbol
     execution = native.get("pointer_execution") or {}
     if (
@@ -223,8 +223,9 @@ def _verify_current(emission, native, *, target, entry_symbol, readback_policy, 
     return cb, module, policy, binding
 
 
-def audit_pointer_source_tiers(emission, native, *, target, entry_symbol, readback_policy=None,
-                               source_intake_protocol=None):
+def audit_pointer_source_tiers(
+    emission, native, *, target, entry_symbol, readback_policy=None, source_intake_protocol=None
+):
     """Recompute original required tiers under the explicit L2 pointer protocol."""
     from .native_instruction_audit import audit_native_instruction_tier
     from .native_numerical_audit import audit_native_numerical_tier
@@ -237,7 +238,11 @@ def audit_pointer_source_tiers(emission, native, *, target, entry_symbol, readba
         if type(readback_policy) is not ReadbackPolicy or readback_policy.transport != FULL_VALUES_B64:
             raise NativeModelExecutionError("standalone source audit needs its explicit complete B64 transport")
         cb, module, policy, binding = _verify_current(
-            emission, native, target=target, entry_symbol=entry_symbol, readback_policy=readback_policy,
+            emission,
+            native,
+            target=target,
+            entry_symbol=entry_symbol,
+            readback_policy=readback_policy,
             source_intake_protocol=source_intake_protocol,
         )
         required = policy["required_tiers"]
@@ -256,19 +261,32 @@ def audit_pointer_source_tiers(emission, native, *, target, entry_symbol, readba
                 raise NativeModelExecutionError("standalone numerical re-audit changed current artifacts")
             cap = original._pinned_native_file(native["source"], "capsule_declaration").parent
             capture = original._pinned_native_file(native["source"], "interface").parent
-            _, fresh = bind_pointer_source(cb, cap, capture, **(
-                {"intake_protocol": source_intake_protocol} if source_intake_protocol is not None else {}
-            ))
+            _, fresh = bind_pointer_source(
+                cb,
+                cap,
+                capture,
+                **({"intake_protocol": source_intake_protocol} if source_intake_protocol is not None else {}),
+            )
             if fresh != binding or set(observed) != {r["compiled_name"] for r in fresh["returns"]}:
                 raise NativeModelExecutionError("standalone numerical re-audit changed original complete storage")
             return {r["source_name"]: observed[r["compiled_name"]] for r in fresh["returns"]}
 
         tiers["L2"] = audit_native_numerical_tier(
-            emission, native, target=target, readback_policy=readback_policy, output_values=output_values,
+            emission,
+            native,
+            target=target,
+            readback_policy=readback_policy,
+            output_values=output_values,
             **({"source_intake_protocol": source_intake_protocol} if source_intake_protocol is not None else {}),
         )
-        _verify_current(emission, native, target=target, entry_symbol=entry_symbol, readback_policy=readback_policy,
-                        source_intake_protocol=source_intake_protocol)
+        _verify_current(
+            emission,
+            native,
+            target=target,
+            entry_symbol=entry_symbol,
+            readback_policy=readback_policy,
+            source_intake_protocol=source_intake_protocol,
+        )
     except Exception as error:
         tiers = {
             tier: dict(status="unverified", detail=f"{type(error).__name__}: {error}") for tier in ("L0", "L1", "L2")

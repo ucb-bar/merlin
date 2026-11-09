@@ -5,8 +5,8 @@ status: current
 owner: experiments
 last_verified: 2026-11-09
 code_refs:
-  - src/merlin_experiments/phase0/development_joint_capacity.py
-  - src/merlin_experiments/phase0/development_capacity_materialize.py
+  - src/merlin/experiments/phase0/development_joint_capacity.py
+  - src/merlin/experiments/phase0/development_capacity_materialize.py
 ---
 
 # Retained joint-store capacity controls
@@ -55,7 +55,7 @@ refusal rather than inventing reference authority.
 An example operator command, under the existing shared compute namespace, is:
 
 ```sh
-python -m merlin_experiments.phase0.development_capacity_materialize \
+python -m merlin.experiments.phase0.development_capacity_materialize \
   --sources "$FROZEN_SOURCES" --manifest-sha256 "$MANIFEST_SHA256" \
   --facts "$FACTS" --facts-sha256 "$FACTS_SHA256" \
   --operand-memory "$OPERAND_ADDRESS_SPACE" \

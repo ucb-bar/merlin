@@ -121,10 +121,10 @@ unchanged:
 * the attention scale moves before the reshape that hid it from fusion.
 
 It matches the structure only. Anything that differs is left as it was, and the build prints the
-reason (`int_softmax_table_report.json` beside the lowered IR). `merlin/tests/ir/test_int_softmax_table.py`
+reason (`int_softmax_table_report.json` beside the lowered IR). `tests/ir/test_int_softmax_table.py`
 runs the captured and the rewritten modules on the same inputs and requires identical bits. It covers
 the table at every grid index, the softmax alone, and two whole int8 attentions, including flat rows
-whose quantization scale clamps to its eps. The fixtures live in `merlin/tests/data/int_softmax_table/`.
+whose quantization scale clamps to its eps. The fixtures live in `tests/data/int_softmax_table/`.
 
 ## layer-norm-chunked-sums
 
@@ -144,7 +144,7 @@ least two chunks and divisible by the chunk, and its initial value is a `+0.0` s
 reduction is left byte-identical. The rewritten reduction and its new partial-sum generic carry
 `merlin.normalization_reassociation`, so a second application finds nothing. When the lowering
 records a source transform map, the reduction owns the operations the rewrite adds.
-`merlin/tests/ir/test_normalization_reassociation.py` checks the scope, both permissions, the default-off
+`tests/ir/test_normalization_reassociation.py` checks the scope, both permissions, the default-off
 seam, and that the rewritten sum equals the source sum on inputs whose partial sums are exact.
 
 ## Adding one
@@ -154,7 +154,7 @@ seam, and that the rewritten sum equals the source sum on inputs whose partial s
 2. Register it as one of the switches above.
 3. Add an `OptionalPass` entry. Give it an honest `exactness`: if you claim `exact`, add a test that
    runs the original and the rewritten program on the same inputs and compares the bits.
-4. `merlin/tests/ir/test_optional_passes.py` checks that every entry names a real switch.
+4. `tests/ir/test_optional_passes.py` checks that every entry names a real switch.
 
 For source navigation, `compiler/frontend/preprocess.py` owns the shared
 pre-bufferization preparation, while `llvmlower/optional_passes.py` owns these

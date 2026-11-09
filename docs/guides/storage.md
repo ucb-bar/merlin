@@ -11,19 +11,19 @@ code_refs:
   - src/merlin/common/artifacts.py
   - src/merlin/targetgen/champions.py
   - src/merlin/targetgen/target_index.py
-  - src/merlin_experiments/phase1/oot_history.py
+  - src/merlin/experiments/phase1/oot_history.py
   - src/merlin/common/storage_cli.py
   - src/merlin/common/storage_lifecycle.py
   - src/merlin/common/storage_ops.py
   - src/merlin/common/cited_evidence.py
   - src/merlin/common/immutability.py
-  - src/merlin_experiments/corpus/evidence_custody.py
-  - src/merlin_experiments/phase1/feedback/scratch_retention.py
-  - src/merlin_experiments/phase2/external_resources.py
-  - src/merlin_experiments/phase2/_kernel_resources.py
-  - merlin/contract/storage.yaml
+  - src/merlin/experiments/corpus/evidence_custody.py
+  - src/merlin/experiments/phase1/feedback/scratch_retention.py
+  - src/merlin/experiments/phase2/external_resources.py
+  - src/merlin/experiments/phase2/_kernel_resources.py
+  - src/merlin/resources/contracts/storage.yaml
   - src/merlin/targetgen/sandbox/bwrap.py
-  - merlin/tests/conftest.py
+  - tests/conftest.py
   - build_tools/scripts/provision_worktree.py
   - build_tools/scripts/worktree_provisioning.yaml
 ---
@@ -178,10 +178,10 @@ Consequences worth knowing:
   a caller performs to delete its own frozen tree. That is harmless for a freeze verified by
   *content*, which is what the bundle closure does. It is unsound for one that treats "this file is
   not writable" as evidence of its own integrity: the perf-bench source snapshot
-  (`merlin_experiments.source_snapshot`) does exactly that in `verify()`,
+  (`merlin.experiments.source_snapshot`) does exactly that in `verify()`,
   and adopting the store there made a second snapshot fail verification because an unrelated first
   one had been chmodded during teardown. It deliberately still deep-copies, and
-  `merlin/tests/infra/test_content_store.py` pins both halves of that so the saving does not tempt
+  `tests/infra/test_content_store.py` pins both halves of that so the saving does not tempt
   someone to weaken the check instead. Its snapshots are ~76 MB each, against 12.8 GB for a bundle
   closure, so this is a small amount of duplication bought with a real invariant.
 - A bundle copy may also mark additional execution resources private. Sources overlapping those
@@ -190,7 +190,7 @@ Consequences worth knowing:
 
 **2. Retention that was never bounded.** pytest keeps the last *three* runs' `tmp_path` trees for every
 test, passed or failed, and many tests obtain scratch space from a bare `tempfile.mkdtemp()` inside a
-module-level helper — no fixture, so nothing ever removed those at all. `merlin/tests/conftest.py` now
+module-level helper — no fixture, so nothing ever removed those at all. `tests/conftest.py` now
 points `tempfile` and `TMPDIR` at pytest's managed base temp root (on the big filesystem, not the small
 root volume), and `pyproject.toml` keeps only the failing tests' trees from the last run. A spawned
 compiler or simulator inherits `TMPDIR` and writes its intermediates in the same reclaimable place. Measured on 2026-09-15: three consecutive runs
@@ -204,7 +204,7 @@ Their frozen input closures remain siblings, outside the writable agent view. Hi
 `environment.yaml` workspace pointer, then generated placement, then the legacy location.
 The first version of `merlin-storage` walked only the `out/` root and was therefore blind
 to 40 GB of completed closures and one 8.7 GB closure abandoned mid-copy — precisely the class it
-exists to find. The extra roots are declared in `merlin/contract/storage.yaml` (patterns relative to
+exists to find. The extra roots are declared in `src/merlin/resources/contracts/storage.yaml` (patterns relative to
 `merlin/`, globs allowed, a pattern matching nothing is skipped) rather than spelled in code, for the
 same reason every other path in that directory is declared: no library module names a checkout
 directory, so relocating a workspace is an edit to data. Losing the contract degrades the tool to the
@@ -231,7 +231,7 @@ Two things to know before running it with `--apply`:
   bytes. That is correct for a frozen product and wrong for anything a later step rewrites in place.
   It is also why a tree whose own integrity check reads the file mode must be skipped — chmod follows
   the inode, so one holder's change would break every other holder's verification. The seal that
-  marks such a tree is named in `merlin/contract/storage.yaml` under `mode_verified_seals`, and
+  marks such a tree is named in `src/merlin/resources/contracts/storage.yaml` under `mode_verified_seals`, and
   `dedup` prunes those subtrees from the walk.
 - Only files that **share a size** with another file are digested. Two files of different sizes cannot
   have the same content, and that prefilter is what makes a whole-root scan affordable; it is an
@@ -375,7 +375,7 @@ roots and 52 undeclared concerns against 16 declared ones**, the undeclared ones
 
 Most of those 52 were well-formed `<concern>/<axis>/<unit>` products whose only fault was that the
 roster was a literal inside `storage_cli.py` that nobody edited. It is data now —
-`merlin/contract/storage.yaml` declares the three roots, every concern with a line saying what it
+`src/merlin/resources/contracts/storage.yaml` declares the three roots, every concern with a line saying what it
 holds, and where a directory that predates the roster belongs — and three things read it: the tool,
 the `test_storage_accounting.py` tests that hold it against CLAUDE.md, and the PreToolUse write guard,
 which now refuses a write into an undeclared concern. That last one is what stops concern number 53:
@@ -414,7 +414,7 @@ Everything else is **reported and left alone.** Whether a run directory is finis
 this tool can read off the filesystem, and "modified recently" is not a proxy for it — a purge's own
 deletions update the mtimes of the units it touched, so any liveness rule built on mtime reports the
 units you just edited as the live ones. Deleting run output is an operator decision made against the
-report, and `merlin/experiments/*/AGENT.md` records what a campaign still needs.
+report, and `experiments/studies/*/AGENT.md` records what a campaign still needs.
 
 Dry run is the default. `--apply` acts, and prints every path it removed.
 
@@ -450,7 +450,7 @@ is refused when it overlaps the agent's writable sandbox.
 The phase-1 engine does this itself: a new run lives at `out/runs/<target>/phase1/<run-id>/`
 (`--run-id` is typically `<TS>_<arm>_<sha7>`; under `merlin experiment run --phase 1` the engine
 adopts the orchestration's own phase-run directory), loop grading commits the operator-only snapshot
-it is about to grade (`merlin_experiments.phase1.oot_history`), the round records in
+it is about to grade (`merlin.experiments.phase1.oot_history`), the round records in
 `qa_loop_summary.yaml` and `oot_commits.jsonl` carry the commit sha, and the official freeze tags
 `frozen` and records it in `freeze.json` under `oot`. A run that began under the legacy
 `capsule-bench/<arm>/` root resumes there without a history. Only a sandboxed (`--sandbox bwrap`)
@@ -513,7 +513,7 @@ provenance blocks cover it, each printed in `MERLIN_PUBLICATION.md` as well as r
   `reconstructed: true`, the export records it under `phase2`, and the reconstruction's `frozen` must
   be the declared one.
 
-**Retention is declared, not remembered.** `retention.pinned` in `merlin/contract/storage.yaml` names
+**Retention is declared, not remembered.** `retention.pinned` in `src/merlin/resources/contracts/storage.yaml` names
 the sealed releases and the champions; `merlin-storage retain` and `prune` treat a unit that is,
 contains or lies inside a pinned pattern as protected, exactly like a lifecycle pin. The producers take
 a lifecycle pin as well, so either alone keeps the evidence.

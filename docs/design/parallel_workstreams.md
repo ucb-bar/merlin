@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-08-23
 related: [architecture, kernel_mining, dse, targetgen]
-code_refs: [merlin/python/merlin]
+code_refs: [src/merlin]
 ---
 
 # Subsystem boundaries and the schemas between them
@@ -18,13 +18,13 @@ produces shows up as a schema change rather than as a broken assumption downstre
 
 | Subsystem | Owns |
 | --- | --- |
-| **TargetGen** | `src/merlin/targetgen/`, `merlin/targets/`, `src/merlin/xdsl_dialects/contract.py` |
-| **Kernel mining** | `src/merlin/kernels/`, `src/merlin/rvvgen/`, `merlin/experiments/kernel_policy/` (external-tool adapters live in-package — see `docs/design/integrations.md`) |
-| **Design-pressure / DSE** | `packages/merlin-dse/src/merlin/design_pressure/`, `packages/merlin-dse/src/merlin/dse/`, `merlin/benchmarks/semantic_memory/` |
+| **TargetGen** | `src/merlin/targetgen/`, `experiments/reference-data/target-inputs/`, `src/merlin/xdsl_dialects/contract.py` |
+| **Kernel mining** | `src/merlin/kernels/`, `src/merlin/rvvgen/`, `experiments/studies/kernel_policy/` (external-tool adapters live in-package — see `docs/design/integrations.md`) |
+| **Design-pressure / DSE** | `packages/merlin-dse/src/merlin/analysis/dse/pressure/`, `packages/merlin-dse/src/merlin/analysis/dse/search/`, `experiments/benchmarks/semantic_memory/` |
 
 ## Shared artifacts and who owns them
 
-Every row is a schema in `merlin/schemas/`. The producer is the only subsystem that writes it.
+Every row is a schema in `src/merlin/resources/schemas/`. The producer is the only subsystem that writes it.
 
 | Artifact | Produced by | Consumed by |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ DSE:            baseline vs software_visible vs hardware_managed vs oracle -> ex
 
 ## Rules
 
-- **Do not invent private file formats.** Add or extend a schema in `merlin/schemas/` first — the
+- **Do not invent private file formats.** Add or extend a schema in `src/merlin/resources/schemas/` first — the
   schema is the interface, and a format that exists only inside one subsystem cannot be consumed.
 - **Land schema changes before the code that depends on them**, so a subsystem is never blocked on
   another's in-flight refactor.

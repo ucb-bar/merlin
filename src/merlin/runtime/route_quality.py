@@ -48,7 +48,7 @@ program. Absent or unparseable host IR is ``incomplete`` with a stated cause, ne
 
 PHASED, BOTH TIERS
 ------------------
-Each tier is a gate with a phase declared in ``merlin/contract/gate_phases.yaml`` and read through
+Each tier is a gate with a phase declared in ``src/merlin/resources/contracts/gate_phases.yaml`` and read through
 :func:`merlin.perf.gate_phase.configured_phase`. ``incomplete`` is a STATUS, orthogonal to phase,
 and never a pass at either.
 
@@ -101,7 +101,7 @@ __all__ = [
 
 SCHEMA = "route_quality_v1"
 
-#: The two gates, as they are spelled in ``merlin/contract/gate_phases.yaml``.
+#: The two gates, as they are spelled in ``src/merlin/resources/contracts/gate_phases.yaml``.
 GATE_DECLARATION = "route_declaration_quality"
 GATE_HOST_COMPUTE = "route_host_compute"
 

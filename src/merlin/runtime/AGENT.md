@@ -149,7 +149,7 @@ the per-backend adapters under `backends/`.
 
 ## What does not belong here
 
-- The deployable C runtime (that is `merlin/runtime/`, outside the Python tree).
+- The deployable C runtime (that is `src/merlin/runtime/native/`, outside the Python tree).
 - Generated artifacts (write those to `runs/` or `artifacts/`).
 
 ## Invariants

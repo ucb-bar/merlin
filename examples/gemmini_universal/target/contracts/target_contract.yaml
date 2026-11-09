@@ -17,7 +17,7 @@
 #     (`ex_read_from_acc = false`, `ex_write_to_spad = false`).
 #   * the D operand is hardcoded to GARBAGE_ADDR (`hardcode_d_to_garbage_addr = true`).
 #
-# NOTHING HERE IS SHARED WITH `merlin/targets/gemmini/`. This contract is a sibling, never an override:
+# NOTHING HERE IS SHARED WITH `experiments/reference-data/target-inputs/gemmini/`. This contract is a sibling, never an override:
 # a verdict measured on one device is not a verdict about the other, and the two must not be mixed.
 #
 # WHAT IS DERIVED AND WHAT IS DECLARED. Mesh geometry, scratchpad/accumulator capacities, datapath
@@ -78,7 +78,7 @@ runner:
   # mismatch, missing operator path, incomplete declaration, relative path -- and it never falls back to another target's
   # extension, because that fallback IS the params-skew failure (memory
   # `libgemmini-driver-allzeros-header-skew`). A target that declares nothing keeps its caller's default
-  # byte for byte; asserted for the reference backend in merlin/tests/gemmini/test_spike_extension.py.
+  # byte for byte; asserted for the reference backend in tests/gemmini/test_spike_extension.py.
   #
   # ⚠️ STILL UNREACHABLE FROM A GRADED ROUND, for a different reason: this target has no registered
   # runtime backend at all (see `gaps`), so nothing calls `run_elf` for it yet. The resolver is in place
@@ -321,7 +321,7 @@ notes: >-
   contracts/rtl_facts/facts.json, promoted from the hand-driven extraction cached at
   out/artifacts/cache/rtl_introspect/gemmini_universal/. The ABI is the build's own elaborated
   gemmini_params.h, carried and digested at contracts/abi/. NOTHING in this target reads or writes
-  merlin/targets/gemmini/.
+  experiments/reference-data/target-inputs/gemmini/.
 
 # How a runner-owned harness calls into this target's kernel. These are conventions of the
 # gemmini-rocc-tests bare-metal environment, which this device shares with `gemmini` -- the same
@@ -364,7 +364,7 @@ gaps:
     CLOSED 2026-09-09: the declared L2 extension IS wired. `merlin.targetgen.spike_extension` reads
     `runner.spike_extension` for any target, verifies the declared sha256 against the bytes on disk, and
     raises rather than substituting a sibling's `.so`; the only in-tree spike caller
-    (`merlin/targets/gemmini/backend/gemmini.py:run_elf`) resolves through it, with the previous
+    (`experiments/reference-data/target-inputs/gemmini/backend/gemmini.py:run_elf`) resolves through it, with the previous
     `libgemmini_dir()` value as the exact fallback for a target that declares nothing. What remains is
     not a wiring gap: nothing calls `run_elf` for this target because it has no runtime backend (below).
   - >-

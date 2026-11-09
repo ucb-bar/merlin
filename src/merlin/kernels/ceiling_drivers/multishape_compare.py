@@ -91,7 +91,7 @@ def _build_expert(
     config = expert.harness_config()
     sat = config.benchmarks_dir()
     if sat is None:
-        return "no standalone-benchmark corpus registered (merlin/contract/corpora.yaml)"
+        return "no standalone-benchmark corpus registered (src/merlin/resources/contracts/corpora.yaml)"
     enc = config.encoding_include_dir()
     if enc is None:
         return "encoding.h not found (set MERLIN_CHIPYARD)"
@@ -273,12 +273,12 @@ def _build_ours(out: Path, model_o: Path, cgen: Path, *, M: int, N: int, K: int,
     config = expert.harness_config()
     sat = config.benchmarks_dir()
     if sat is None:
-        return "no standalone-benchmark corpus registered (merlin/contract/corpora.yaml)"
+        return "no standalone-benchmark corpus registered (src/merlin/resources/contracts/corpora.yaml)"
     enc = config.encoding_include_dir()
     if enc is None:
         return "encoding.h not found (set MERLIN_CHIPYARD)"
     runtime_c = runtime_dir() / "c" / "merlin_model.c"
-    mlir_rt = repo_root() / "merlin" / "runtime" / "abi" / "mlir_runtime.c"  # memrefCopy + math shims
+    mlir_rt = runtime_dir() / "abi" / "mlir_runtime.c"  # memrefCopy + math shims
     incs = [HERE, cgen, runtime_c.parent]
     inc_flags: list[str] = []
     for d in incs:

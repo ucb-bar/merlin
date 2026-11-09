@@ -27,10 +27,10 @@ file contract + integrity scan**: a package is invoked only through CLI entrypoi
 import the harness internals. This is language-agnostic — proven by a Python and a C++ package
 passing the identical runner.
 
-## The contract (`merlin/contract/`)
+## The contract (`src/merlin/resources/contracts/`)
 
-> The contract bundle lives at `merlin/contract/` (core infra). External package bundles and the
-> `--contract merlin/contract` examples below reference it by that repo-root-relative path.
+> The contract bundle lives at `src/merlin/resources/contracts/` (core infra). External package bundles and the
+> `--contract src/merlin/resources/contracts` examples below reference it by that repo-root-relative path.
 
 
 A package consumes an `*.interface.mlir` in the frozen `merlin_iface` grammar
@@ -86,7 +86,7 @@ Integer workloads ⇒ exact `==` gates (no tolerance); the cert is three-way:
 Running
 
 ```
-python -m merlin.targetgen.oot_runner --contract merlin/contract \
+python -m merlin.targetgen.oot_runner --contract src/merlin/resources/contracts \
   --package out/artifacts/targets/gemmini/hand_smoke_oot \
   --input examples/gemmini/phase0/reference/g0_matmul.interface.mlir \
   --run-id contract_smoke_g0 --simulator verilator
@@ -146,7 +146,7 @@ plane-routed `FailureCategory`. The seven `tests/fixtures/broken_packages/` fixt
 
 ## Tests
 
-- `merlin/tests/gemmini/test_bench_contract.py` — schemas, grammar round-trip, golden examples (K0).
-- `merlin/tests/gemmini/test_oot_runner_smoke.py` — native g0/g1/g2 + C++ g0/g1 through the runner
+- `tests/gemmini/test_bench_contract.py` — schemas, grammar round-trip, golden examples (K0).
+- `tests/gemmini/test_oot_runner_smoke.py` — native g0/g1/g2 + C++ g0/g1 through the runner
   (K1–K9); oracle gates skip-if-unavailable.
-- `merlin/tests/gemmini/test_oot_runner_negative.py` — every broken fixture fails closed (K10).
+- `tests/gemmini/test_oot_runner_negative.py` — every broken fixture fails closed (K10).

@@ -1,4 +1,5 @@
 """Judge execution lanes only from the independent evidence actually recorded."""
+
 from __future__ import annotations
 
 from . import trace_check as TCK
@@ -300,8 +301,9 @@ def oracle_source_scope(capsule, command_buffer, lowered_mlir, *, target=None):
 
     from merlin.targetgen.contract.source_ownership import source_mutable_scope
 
-    if ((command_buffer.get("kernel_abi") or {}).get("kind") != "whole_program"
-            or not any(spec.get("role") == "intermediate" for spec in command_buffer["tensors"].values())):
+    if (command_buffer.get("kernel_abi") or {}).get("kind") != "whole_program" or not any(
+        spec.get("role") == "intermediate" for spec in command_buffer["tensors"].values()
+    ):
         return nullcontext()
     source_name = capsule.get("linalg_mlir") or capsule.get("interface_mlir")
     if not source_name or not capsule.get("__dir__"):
@@ -309,8 +311,10 @@ def oracle_source_scope(capsule, command_buffer, lowered_mlir, *, target=None):
     source_path = Path(capsule["__dir__"]) / source_name
     lowered_abi = None
     if target is not None:
-        from .target_experiment import load_capability_manifest
         from merlin.targetgen.contract.harness_abi import lowered_plan_abi
+
+        from .target_experiment import load_capability_manifest
+
         contract = load_capability_manifest(target).contract
         lowered_abi = lowered_plan_abi(contract, target=target)
     # The plan names the bytes the compiler was given. For an enriched public
@@ -322,13 +326,14 @@ def oracle_source_scope(capsule, command_buffer, lowered_mlir, *, target=None):
     # The live original-snapshot owner selects the compiler transport. Recreate
     # its bytes from the trusted capsule, never from submitted plan metadata or
     # a candidate-controlled path. Shared/historical transports remain exact.
-    from merlin_experiments.phase1.feedback.snapshot_execution import active_snapshot
+    from merlin.experiments.phase1.feedback.snapshot_execution import active_snapshot
+
     executor = active_snapshot()
     if executor is not None:
         disclosure = (executor.owner.bundle.get("author_profile") or {}).get("disclosure") or {}
         if disclosure.get("input_format") == "neutral_math_v1":
-            from merlin_experiments.phase1.neutral_program_inputs import encode_source
+            from merlin.experiments.phase1.neutral_program_inputs import encode_source
+
             source_bytes = encode_source(source_bytes)
 
-    return source_mutable_scope(source_bytes, command_buffer,
-                                lowered_mlir=lowered_mlir, lowered_abi=lowered_abi)
+    return source_mutable_scope(source_bytes, command_buffer, lowered_mlir=lowered_mlir, lowered_abi=lowered_abi)

@@ -324,7 +324,7 @@ def write_spec(
     the markdown path. Regenerable at any time from the (answer-free) capsule declarations.
 
     The JSON sibling is written beside it and validates against
-    ``merlin/contract/schemas/verification_spec.schema.json``. The markdown is for the agent to read;
+    ``src/merlin/resources/contracts/schemas/verification_spec.schema.json``. The markdown is for the agent to read;
     the JSON is what a checker, a report or the agent's own tooling can consume without parsing prose.
     """
     dest = Path(dest_dir)

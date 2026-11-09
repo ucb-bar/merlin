@@ -76,7 +76,7 @@ def _request_digest(request):
     capsule = request["capsule"]
     if "__dir__" not in capsule:
         return _digest(request)
-    from merlin_experiments.phase2.retained_revisions import source_inventory
+    from merlin.experiments.phase2.retained_revisions import source_inventory
 
     directory = Path(capsule["__dir__"])
     if directory.resolve() != directory or directory.is_symlink():
@@ -120,7 +120,7 @@ class _Request:
 
 
 def _selected(adapter, target, tier):
-    from merlin_experiments.phase1.feedback.operator_child import adapter_selection
+    from merlin.experiments.phase1.feedback.operator_child import adapter_selection
 
     from . import capsule_runner as runner
 
@@ -152,7 +152,7 @@ def capture(
     if os.environ.get(ENV) != "1":
         return None
     try:
-        from merlin_experiments.phase1.feedback import compiler_profile_child as child
+        from merlin.experiments.phase1.feedback import compiler_profile_child as child
 
         executor = child.P.active_package_executor()
         if type(executor) is not child.R._Executor or type(executor.owner) is not child.CommonTransformService:
@@ -225,7 +225,7 @@ def capture(
 def key(request, executables, *, expected=None):
     """Freshly reopen every bound identity before a lookup or accepted cache record."""
     try:
-        from merlin_experiments.phase1.feedback import compiler_profile_child as child
+        from merlin.experiments.phase1.feedback import compiler_profile_child as child
 
         if (
             os.environ.get(ENV) != "1"

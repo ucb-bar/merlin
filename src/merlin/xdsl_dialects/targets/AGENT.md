@@ -25,7 +25,7 @@ Generic xDSL target-dialect factory. Authored dialect plans live in examples or 
 
 ## Testing expectations
 
-Covered by `merlin/tests/ir/test_xdsl_lowering_e2e.py` and per-dialect tests.
+Covered by `tests/ir/test_xdsl_lowering_e2e.py` and per-dialect tests.
 
 ## Notes for future agents
 

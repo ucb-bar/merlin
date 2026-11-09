@@ -14,7 +14,7 @@ code_refs:
   - src/merlin/llvmlower/device_build.py
   - src/merlin/targetgen/coverage_certificate.py
   - src/merlin/targetgen/native_model_execution.py
-  - src/merlin_experiments/phase1/feedback/private_full_model_execution.py
+  - src/merlin/experiments/phase1/feedback/private_full_model_execution.py
   - src/merlin/api.py
   - src/merlin/service_cli.py
   - src/merlin/compiler/pipeline.py
@@ -61,7 +61,7 @@ or whole-model numerical equivalence. Those require separate executed evidence.
 
 That executed evidence is a second, separately declared gate,
 `phase1_gates.whole_model.private_full_models`
-(`merlin_experiments.phase1.feedback.private_full_model_execution`). After the freeze the
+(`merlin.experiments.phase1.feedback.private_full_model_execution`). After the freeze the
 formal grade runs the same linked ELFs the build-only gate verified, each on the engine the
 descriptor names for its program, and holds the printed output to the capture's own
 references: bit-exact against an integer reference the capture binds (where it binds one) and
@@ -237,7 +237,7 @@ LLVM operations tagged `merlin.global_task`. These declarations help the indepen
 source regions, outlined symbols and completed dispatch ledger entries. They do not self-certify:
 missing or mixed provenance, unexecuted eligible siblings, failed/fallback calls and unaccounted host
 work remain vetoes. A complete output match, a static sidecar, or an instruction count cannot waive
-those obligations. See the shared [OOT backend contract](../../merlin/contract/mlir_oot_backend_contract.yaml)
+those obligations. See the shared [OOT backend contract](../../src/merlin/resources/contracts/mlir_oot_backend_contract.yaml)
 and [target generation guide](targetgen.md) for the authoring boundary.
 
 ## What a full claim needs

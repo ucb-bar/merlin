@@ -6,11 +6,11 @@ owner: merlin-experiments
 last_verified: 2026-11-09
 related: [phase2_corpus_search, phase2_public_diagnostic_launch, phase2_archive_screen, shared_pass_phase2]
 code_refs:
-  - src/merlin_experiments/phase2/public_diagnostic_launch.py
-  - src/merlin_experiments/phase2/timing_domain_readiness.py
-  - src/merlin_experiments/phase2/compiler_pass_preparation.py
-  - src/merlin_experiments/phase2/diagnostic_pair_check.py
-  - src/merlin_experiments/phase2/search_coordinator.py
+  - src/merlin/experiments/phase2/public_diagnostic_launch.py
+  - src/merlin/experiments/phase2/timing_domain_readiness.py
+  - src/merlin/experiments/phase2/compiler_pass_preparation.py
+  - src/merlin/experiments/phase2/diagnostic_pair_check.py
+  - src/merlin/experiments/phase2/search_coordinator.py
 ---
 
 # Prepare and check a Phase 2 experiment

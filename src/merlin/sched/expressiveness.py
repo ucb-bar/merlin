@@ -1,6 +1,6 @@
 """Does an expert corpus and our own schedule AGREE on a capability axis, and over how many fields?
 
-`merlin/contract/schedule_ir_coverage.yaml` declares thirteen capability axes and a gate computes each
+`src/merlin/resources/contracts/schedule_ir_coverage.yaml` declares thirteen capability axes and a gate computes each
 one's status from the live tree. Eleven read EXPRESSED -- a primitive claims the axis, exports its
 symbol, declares an obligation and has a live test -- and none reads EXERCISED, because EXERCISED is
 the state that needs something the tree could not do: a resolvable expert corpus populating the axis'
@@ -26,7 +26,7 @@ DERIVED from the two CCAs rather than from a list kept here:
 
 That last case is real and is why the reason is derived. `cca_agree` iterates a hardcoded facet tuple
 that omits two facets, so a field on one of them is invisible to it even when BOTH sides populate it,
-and the report still says the two agree. `merlin/tests/kernels/test_cca_agree_blindness_is_declared.py`
+and the report still says the two agree. `tests/kernels/test_cca_agree_blindness_is_declared.py`
 declares that gap with a tripwire on the day it heals. Nothing here duplicates that declaration -- a
 second copy of a known-limitation list is a second thing to forget -- and nothing here widens the
 tuple, which would change what an existing backend's bijection suite asserts without anyone deciding
@@ -279,7 +279,7 @@ def _eligibility(spec: dict, root: Path, unit: str, root_env: str) -> tuple[int,
     admits = {str(a) for a in (spec.get("admits") or [])}
     if not admits:
         return 0, (
-            "it declares no `provenance_record` in merlin/contract/corpora.yaml, so nothing in it is "
+            "it declares no `provenance_record` in src/merlin/resources/contracts/corpora.yaml, so nothing in it is "
             "admitted as expert-authored"
         )
     record = sched_corpus_record(spec)
@@ -331,7 +331,7 @@ def corpus_status(name: str) -> CorpusStatus:
         return CorpusStatus(
             name=name,
             resolved=False,
-            missing_input=f"no corpus named {name!r} in merlin/contract/corpora.yaml (sched_corpora)",
+            missing_input=f"no corpus named {name!r} in src/merlin/resources/contracts/corpora.yaml (sched_corpora)",
         )
 
     pin_name = str(spec.get("pin") or "")
@@ -341,7 +341,7 @@ def corpus_status(name: str) -> CorpusStatus:
             name=name,
             resolved=False,
             pin=pin_name,
-            missing_input=f"hardware pin {pin_name!r}, which merlin/contract/hardware_pins.yaml does not resolve",
+            missing_input=f"hardware pin {pin_name!r}, which src/merlin/resources/contracts/hardware_pins.yaml does not resolve",
         )
 
     checkout = pin.checkout()

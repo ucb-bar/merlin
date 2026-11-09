@@ -191,9 +191,9 @@ execution with:
 
 ```sh
 python -m pytest \
-  merlin/tests/infra/test_source_offload_selection.py \
-  merlin/tests/infra/test_source_offload_cost.py \
-  merlin/tests/infra/test_native_offload_model.py
+  tests/infra/test_source_offload_selection.py \
+  tests/infra/test_source_offload_cost.py \
+  tests/infra/test_native_offload_model.py
 ```
 
 The native experiment exercises two rectangular resource descriptions and
@@ -205,7 +205,7 @@ The all-CPU control has no provider instrumentation: absence of provider calls
 is established through source/link custody and separate complete execution.
 This experiment alone does not supply whole-call execution timing.
 
-`merlin/tests/infra/test_native_offload_profitability.py` adds a separate paired
+`tests/infra/test_native_offload_profitability.py` adds a separate paired
 warmed-call experiment. It retains raw nanosecond samples and primitive traces,
 checks every timed output, consumes the cost decision through ordinary
 compilation, and checks the complete selected state history. Timing reuse
@@ -372,7 +372,7 @@ task-local `TMPDIR` and retain successful artifacts:
 
 ```sh
 python -m pytest \
-  merlin/tests/infra/test_device_offload_package_model.py \
+  tests/infra/test_device_offload_package_model.py \
   -o tmp_path_retention_policy=all
 ```
 

@@ -2,7 +2,7 @@
 
 Declarations live with their dense, spatial and source-contract families. Their
 ordering remains explicit here. Discovery selects no target law or import grant.
-Historical inventories retain their records; inventory 26 names canonical owners.
+Historical inventories retain their records; current inventories name canonical owners.
 """
 
 from __future__ import annotations
@@ -80,10 +80,10 @@ def _canonical(value):
     return value
 
 
-def scheduling_capabilities(version=26):
+def scheduling_capabilities(version=27):
     """Return fresh usage metadata; only the selected contract grants access."""
-    if type(version) is not int or version not in range(16, 27):
-        raise ValueError("scheduling discovery requires explicit inventory 16 through 26")
+    if type(version) is not int or version not in range(16, 28):
+        raise ValueError("scheduling discovery requires explicit inventory 16 through 27")
     historical = min(version, 25)
     records = {
         row["name"]: row
@@ -103,13 +103,13 @@ def scheduling_capabilities(version=26):
         from .library_sources import library_modules
 
         catalog["composition"] = composition_capabilities(selected_modules=library_modules(historical))
-    if version == 26:
+    if version in (26, 27):
         catalog = _canonical(catalog)
         catalog["inventory_version"] = version
     return catalog
 
 
-def capability_effects(version=26):
+def capability_effects(version=27):
     """Join declared effects to the selected inventory in original effect order."""
     capabilities = {row["name"]: row for row in scheduling_capabilities(version)["capabilities"]}
     rows = []

@@ -166,12 +166,12 @@ traffic, placement, overlap, whole-call attainment or timing authority.
 - Build stages are compile-trace stages (`whole_model_build.BUILD_STAGES`, the stage clock's own
   vocabulary); the builder CLI lives in `whole_model_build_cli` so the builder module holds the build.
 - Tests go in an existing bucket — there is no `perf` bucket and the list is an enum. Contract, record
-  and profile tests live in `merlin/tests/targetgen/`; envelope, attribution and analysis tests in
-  `merlin/tests/dse/`. Resolve paths via `merlin.common.paths.repo_root()`.
+  and profile tests live in `tests/targetgen/`; envelope, attribution and analysis tests in
+  `tests/dse/`. Resolve paths via `merlin.common.paths.repo_root()`.
 
 ## Where the task register lives
 
-`merlin/experiments/performance_contract/TASKS.md` — input identities, measurement validation and reporting requirements.
+`experiments/studies/performance_contract/TASKS.md` — input identities, measurement validation and reporting requirements.
 Rationale for the cost and oracle decisions: `docs/design/performance_budget_unit.md`.
 
 `debug_companion` admits only byte/address/attribute-identical allocated ELF
@@ -214,8 +214,8 @@ no vendored provider declares a decoder for them. A provider that adds one is th
 
 `schedule_proxy` prices what a schedule asks the device for in array-tile transactions (compute tiles
 plus moved bytes, never one without the other). It is validated as an ORDER against 71 FireSim-measured
-groups (`merlin/tests/dse/test_schedule_proxy.py`, points in `examples/<target>/phase2/`) and is the
-`cost_proxy` rung of `merlin/contract/measurement_ladder.yaml`: ranking only, never a cycle count.
+groups (`tests/dse/test_schedule_proxy.py`, points in `examples/<target>/phase2/`) and is the
+`cost_proxy` rung of `src/merlin/resources/contracts/measurement_ladder.yaml`: ranking only, never a cycle count.
 Its production caller is `group_headroom.group_rank`, reported beside each stated group's bound.
 
 `load_state_residency`/`load_state_claim`, `stationary_residency`/`stationary_claim` and
@@ -223,7 +223,7 @@ Its production caller is `group_headroom.group_rank`, reported beside each state
 candidate's own decoded stream. Every bound is derived through the selected support (the
 load-configuration layout and retain sentinel via `targetgen.rocc.decode`) or the target's RTL
 facts, and an underivable one REFUSES. Callers: `trace_check`'s declared residency modes and
-`merlin_experiments.phase2.claims.dispatch`. The measured-claims coordinator refuses to seal them:
+`merlin.experiments.phase2.claims.dispatch`. The measured-claims coordinator refuses to seal them:
 they read no cycles.
 
 `staged_roofline` V2 preserves useful work independently from hypothetical tiling

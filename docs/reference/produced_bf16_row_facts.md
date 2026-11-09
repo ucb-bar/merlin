@@ -8,7 +8,7 @@ related: [fused_encoded_witness, prepared_probability_bins, ordered_fma_certific
 code_refs:
   - src/merlin/llvmlower/produced_bf16_row_facts.py
   - src/merlin/llvmlower/source_attention_frontier.py
-  - merlin/runtime/c/source_rms_produced_maximum.h
+  - src/merlin/runtime/native/c/source_rms_produced_maximum.h
 ---
 
 # Owned BF16 producer facts

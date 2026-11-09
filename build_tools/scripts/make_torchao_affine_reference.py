@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Regenerate the torchao reference fixture `merlin/tests/data/torchao_affine/reference.npz`.
+"""Regenerate the torchao reference fixture `tests/data/torchao_affine/reference.npz`.
 
-The fixture is what `merlin/tests/ir/test_torchao_affine.py` grades our linalg decomposition of
+The fixture is what `tests/ir/test_torchao_affine.py` grades our linalg decomposition of
 `torchao.choose_qparams_affine` / `torchao.quantize_affine` against. It is a REFERENCE, not a
 recorded output of ours: every array here is produced by calling torchao's own implementation, and
 the quantize half is additionally cross-checked against ExecuTorch's `quantized_decomposed`
@@ -27,7 +27,7 @@ import torchao
 from torchao.quantization.quant_primitives import MappingType, choose_qparams_affine, quantize_affine
 
 qd = torch.ops.quantized_decomposed
-out = pathlib.Path(__file__).resolve().parents[2] / "merlin" / "tests" / "data" / "torchao_affine"
+out = pathlib.Path(__file__).resolve().parents[2] / "tests" / "data" / "torchao_affine"
 out.mkdir(parents=True, exist_ok=True)
 prev = np.load(out / "reference.npz")
 keep = {name: prev[f"{name}::x"] for name in ("ties", "ulp", "tiny", "zeros", "r3")}

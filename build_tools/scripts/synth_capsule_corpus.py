@@ -37,9 +37,8 @@ for _p in (_HERE.parents[2] / "src",):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from merlin_experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
-from merlin_experiments.phase0.synthesis_policy import apply_model_gates  # noqa: E402
-
+from merlin.experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
+from merlin.experiments.phase0.synthesis_policy import apply_model_gates  # noqa: E402
 from merlin.targetgen.corpora import conformance_reference, conformance_reference_dir  # noqa: E402
 from merlin.targetgen.corpus_synth import SynthesisError, synthesize  # noqa: E402
 
@@ -175,8 +174,7 @@ _MX_ONLY_GOLDEN = frozenset({"attention_mx"})
 
 
 def _binding(target: str, *, software_spec: Path | None = None, evidence=None):
-    from merlin_experiments.phase0 import profiles
-
+    from merlin.experiments.phase0 import profiles
     from merlin.targetgen import corpus_spec as CSPEC
     from merlin.targetgen.target_experiment import load_target_experiment
 
@@ -207,14 +205,15 @@ def synth_for(
     rtl_facts: Path | None = None,
 ) -> dict:
     import yaml
-    from merlin_experiments.phase0.profiles import selected_software_spec_path, synthesis_input_identity
+
+    from merlin.experiments.phase0.profiles import selected_software_spec_path, synthesis_input_identity
 
     declaration = for_target(target)
     try:
         selected_spec = selected_software_spec_path(declaration.recipe, software_spec)
         evidence = None
         if evidence_input is not None:
-            from merlin_experiments.phase0.evidence import load_exported_evidence
+            from merlin.experiments.phase0.evidence import load_exported_evidence
 
             evidence = load_exported_evidence(evidence_input)
             if evidence.target != declaration.target:
@@ -225,7 +224,7 @@ def synth_for(
                 if load_software_spec(selected_spec, target=declaration.target) != evidence.software_spec:
                     raise ValueError("selected software spec differs from captured hardware evidence")
         elif selected_spec is not None or rtl_facts is not None:
-            from merlin_experiments.phase0.evidence import select_evidence
+            from merlin.experiments.phase0.evidence import select_evidence
 
             evidence = select_evidence(
                 declaration.target,

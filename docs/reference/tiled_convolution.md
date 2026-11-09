@@ -106,7 +106,7 @@ speedup or complete-model validation follows from the shared tests.
 Reproduce the core checks with:
 
 ```sh
-python -m pytest -q merlin/tests/infra/test_block_schedule.py \
-  merlin/tests/infra/test_tiled_convolution_schedule.py \
-  merlin/tests/infra/test_shared_scheduling_export.py
+python -m pytest -q tests/infra/test_block_schedule.py \
+  tests/infra/test_tiled_convolution_schedule.py \
+  tests/infra/test_shared_scheduling_export.py
 ```

@@ -22,7 +22,7 @@ The vocabulary lives here, in one module, so two gates cannot spell the same thr
 differently and drift.
 
 WHICH phase a given gate is in is not decided here either: :func:`configured_phase` reads it from
-``merlin/contract/gate_phases.yaml``. Making the phase a parameter was only half the idea -- every
+``src/merlin/resources/contracts/gate_phases.yaml``. Making the phase a parameter was only half the idea -- every
 caller still passed ``PHASE_REPORT`` as a literal, so a rollout meant editing Python and left no
 reviewable record that holding a gate back had been a decision rather than an oversight. A gate the
 declaration does not name RAISES; there is no default, because a default phase is a phase nobody

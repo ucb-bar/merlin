@@ -13,7 +13,7 @@ measurement & analysis harnesses, repo linters `check_structure.py` / `check_art
 ## What does not belong here
 
 - Generated build *output* (that is gitignored under `out/build/`).
-- Application/library source (`src/merlin/` or `packages/*/src/`) or schemas (`merlin/schemas/`).
+- Application/library source (`src/merlin/` or `packages/*/src/`) or schemas (`src/merlin/resources/schemas/`).
 
 ## Invariants
 

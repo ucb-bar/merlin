@@ -2,7 +2,7 @@
 
 A from-scratch spec has no ``seed:`` section and nothing here runs for it. With one, ``plan``
 first renders the ordinary fresh launch (every fresh invariant is checked on that unseeded argv),
-then turns it into a reviewed source-only joint seed (``merlin_experiments.phase1.joint_seed``):
+then turns it into a reviewed source-only joint seed (``merlin.experiments.phase1.joint_seed``):
 
 * the seed is a directory holding the compiler source (for example a finished run's
   ``joint_frozen_submission`` or ``fcand_*`` snapshot), pinned by its tree digest, plus optional
@@ -13,7 +13,7 @@ then turns it into a reviewed source-only joint seed (``merlin_experiments.phase
   compiler, unless the compiler's own sources name the file;
 * ``carry`` (default: everything, when the seed names its ``run``) carries the seed run's
   evidence: ``certificates`` and ``results`` re-key its tier verdicts for byte-identical
-  executables onto this export's judge (``merlin_experiments.phase1.seed_certificates``, with
+  executables onto this export's judge (``merlin.experiments.phase1.seed_certificates``, with
   ``MERLIN_TIER_CERT_PORTABLE=1``) when the judge decides verdicts the same way in both exports
   (identical bytes, comment/docstring-only code changes, or changes listed in ``judge_review``
   with their exact old and new digests); otherwise those tiers re-run and the plan's
@@ -55,8 +55,14 @@ EVIDENCE_DIR, NOTES_DIR, EXPERIMENTS_DIR = "SEED_EVIDENCE", "SEED_NOTES", "SEED_
 #: Compiler sources whose text may name a note the compiler reads.
 READER_SUFFIXES = (".py", ".yaml", ".yml", ".json", ".toml", ".cfg", ".txt")
 #: A/B record files summarized from the seed run (bounded copies), by name.
-EXPERIMENT_FILES = ("README.md", "report.json", "summary.json", "comparison.json", "comparison.txt",
-                    "comparison_results.json")
+EXPERIMENT_FILES = (
+    "README.md",
+    "report.json",
+    "summary.json",
+    "comparison.json",
+    "comparison.txt",
+    "comparison_results.json",
+)
 MAX_RECORD_BYTES = 64 << 10
 LEGACY_CARRY = "inherit_certificates_for_identical_executables"
 
@@ -110,7 +116,7 @@ def settings(ctx) -> dict:
 def verify_source(path: Path, digest: str) -> str:
     """The pinned seed digest names this tree (``hash_tree`` or the graded source hash)."""
     from merlin.common.tree_hash import hash_tree
-    from merlin_experiments.phase1 import run_inputs
+    from merlin.experiments.phase1 import run_inputs
 
     if not path.is_dir():
         raise SeedError(f"seed source is unavailable: {path}")
@@ -128,8 +134,10 @@ def copy_source(source: Path, dest: Path, strip) -> None:
     shutil.copytree(
         source,
         dest,
-        ignore=lambda d, names: {n for n in names if Path(d) == source and n in top}
-        | {n for n in names if n in {"build", "__pycache__", ".git"}},
+        ignore=lambda d, names: (
+            {n for n in names if Path(d) == source and n in top}
+            | {n for n in names if n in {"build", "__pycache__", ".git"}}
+        ),
     )
     # A frozen seed is often read-only; the copy is ours to rearrange (notes and evidence move out).
     dest.chmod(dest.stat().st_mode | 0o200)
@@ -258,9 +266,23 @@ def carry_certificates(ctx, seed: dict, environment: dict, report: Path) -> dict
     """Re-key the seed run's verdicts in the export's own runtime (its judge, its store)."""
     run, carry = seed["run"], seed["carry"]
     target = seed.get("target") or ctx.x(ctx.section("ordering")["target"])
-    command = ["taskset", "-c", ctx.preparation_cpus, ctx.x("${PYTHON}"), "-B", "-m",
-               "merlin_experiments.phase1.seed_certificates", "--seed-framework", run["framework"],
-               "--seed-run-id", run["run_id"], "--target", target, "--report", str(report)]
+    command = [
+        "taskset",
+        "-c",
+        ctx.preparation_cpus,
+        ctx.x("${PYTHON}"),
+        "-B",
+        "-m",
+        "merlin.experiments.phase1.seed_certificates",
+        "--seed-framework",
+        run["framework"],
+        "--seed-run-id",
+        run["run_id"],
+        "--target",
+        target,
+        "--report",
+        str(report),
+    ]
     if run.get("certificate_store"):
         command += ["--store", run["certificate_store"]]
     if seed.get("judge_review"):
@@ -268,10 +290,12 @@ def carry_certificates(ctx, seed: dict, environment: dict, report: Path) -> dict
         reviewed = report.with_name("seed-judge-review.json")
         reviewed.write_text(json.dumps(seed["judge_review"], indent=2) + "\n")
         command += ["--reviewed", str(reviewed)]
-    command += [flag for key, flag in (("certificates", "--no-certificates"), ("results", "--no-results"))
-                if not carry[key]]
-    done = subprocess.run(command, cwd=ctx.path("${FRAMEWORK}"), env=dict(os.environ, **environment),
-                          capture_output=True, text=True)
+    command += [
+        flag for key, flag in (("certificates", "--no-certificates"), ("results", "--no-results")) if not carry[key]
+    ]
+    done = subprocess.run(
+        command, cwd=ctx.path("${FRAMEWORK}"), env=dict(os.environ, **environment), capture_output=True, text=True
+    )
     if done.returncode:
         raise SeedError(f"carrying the seed run's verdicts failed: {done.stderr.strip()[-600:]}")
     return json.loads(report.read_text())
@@ -312,13 +336,16 @@ def apply(ctx, record: dict, *, validate_policy, check_campaign, reserve, carry_
     twin_policy = out / "policy-unseeded.json"
     shutil.copyfile(out / "policy.json", twin_policy)
     twin_argv = _replace_value(record["argv"], "--joint-campaign", str(twin_policy))
-    twin = {"argv": twin_argv, "reserved_argv": reserve(twin_argv, record["environment"]),
-            "policy": {"path": str(twin_policy), "sha256": _sha256(twin_policy)}}
+    twin = {
+        "argv": twin_argv,
+        "reserved_argv": reserve(twin_argv, record["environment"]),
+        "policy": {"path": str(twin_policy), "sha256": _sha256(twin_policy)},
+    }
 
     # Seed bytes: the pinned tree without stripped members, old-harness notes moved out.
     copy_source(source, dest, seed["strip"])
     evidence = build_evidence(seed, source, dest, out / "seed-evidence")
-    from merlin_experiments.phase1 import run_inputs
+    from merlin.experiments.phase1 import run_inputs
 
     graded = run_inputs.graded_source_hash(dest)
 
@@ -341,8 +368,15 @@ def apply(ctx, record: dict, *, validate_policy, check_campaign, reserve, carry_
         raise SeedError("a seeded plan writes its own author-guidance.md: select the base guidance elsewhere")
     guidance.write_text(ctx.path(plan["guidance"]).read_text().rstrip("\n") + "\n\n" + addendum.read_text())
 
-    origin = {"schema": "merlin.joint_reviewed_seed.v1", "review_id": seed["review_id"], "source": str(dest),
-              "sha256": graded, "inherit_clock": False, "inherit_results": False, "variants": []}
+    origin = {
+        "schema": "merlin.joint_reviewed_seed.v1",
+        "review_id": seed["review_id"],
+        "source": str(dest),
+        "sha256": graded,
+        "inherit_clock": False,
+        "inherit_results": False,
+        "variants": [],
+    }
     if carry["certificates"] or carry["results"]:
         origin["inherit_certificates_for_identical_executables"] = True
     if carry["handoff"]:
@@ -353,9 +387,15 @@ def apply(ctx, record: dict, *, validate_policy, check_campaign, reserve, carry_
         origin,
         schema="operator.joint_seed_review.v1",
         approved=True,
-        derived_from={"path": str(source), "sha256": seed["from"]["sha256"], "digest": basis,
-                      "stripped": sorted(seed["strip"]), "run": (seed.get("run") or {}).get("run_id")},
-        scope=seed.get("scope") or "Seeded launch: the seed compiler as starting source; no inherited clock or "
+        derived_from={
+            "path": str(source),
+            "sha256": seed["from"]["sha256"],
+            "digest": basis,
+            "stripped": sorted(seed["strip"]),
+            "run": (seed.get("run") or {}).get("run_id"),
+        },
+        scope=seed.get("scope")
+        or "Seeded launch: the seed compiler as starting source; no inherited clock or "
         "credit. Verdicts carry only for byte-identical executables under a byte-identical judge.",
     )
     review_path = out / "seed-review.json"
@@ -383,8 +423,12 @@ def apply(ctx, record: dict, *, validate_policy, check_campaign, reserve, carry_
         "carry": carry,
         "run": seed.get("run"),
         "evidence": evidence,
-        "certificates": None if carried is None else {k: carried.get(k) for k in (
-            "decision", "carried", "already_portable", "judge_unreproducible", "rerun", "by_tier", "judge")},
+        "certificates": None
+        if carried is None
+        else {
+            k: carried.get(k)
+            for k in ("decision", "carried", "already_portable", "judge_unreproducible", "rerun", "by_tier", "judge")
+        },
         "guidance_addendum": {"path": str(addendum), "sha256": _sha256(addendum)},
         "gsim": "optional",
         "preflight_twin": twin,
@@ -400,8 +444,8 @@ VERIFY_SCRIPT = HERE / "fresh_seed.py"
 
 def options_from_argv(argv):
     """The runtime's options for the exact planned argv (the arguments the module parses)."""
-    from merlin_experiments.phase1.options import RunOptions, build_parser
-    from merlin_experiments.phase2.compiler_library_state import add_selection_arguments
+    from merlin.experiments.phase1.options import RunOptions, build_parser
+    from merlin.experiments.phase2.compiler_library_state import add_selection_arguments
 
     parser = build_parser()
     add_selection_arguments(parser)
@@ -410,16 +454,27 @@ def options_from_argv(argv):
     parser.add_argument("--language", default="")
     parser.add_argument("--treatment", default="baseline")
     parser.add_argument("--level")
-    values = vars(parser.parse_args(argv[argv.index("merlin_experiments.phase1") + 1 :]))
-    for key in ("descriptor", "repo", "bundle_manifest", "oracle_timing", "public_root", "language", "treatment",
-                "level", "compiler_library_root", "compiler_library_contract", "compiler_library_contract_sha256"):
+    values = vars(parser.parse_args(argv[argv.index("merlin.experiments.phase1") + 1 :]))
+    for key in (
+        "descriptor",
+        "repo",
+        "bundle_manifest",
+        "oracle_timing",
+        "public_root",
+        "language",
+        "treatment",
+        "level",
+        "compiler_library_root",
+        "compiler_library_contract",
+        "compiler_library_contract_sha256",
+    ):
         values.pop(key, None)
     return RunOptions(**values)
 
 
 def verify_in_runtime(record: dict) -> dict:
     """Inside the campaign runtime: the runtime accepts the seed and stages it as the session does."""
-    from merlin_experiments.phase1 import fresh_backend, joint_control, joint_seed
+    from merlin.experiments.phase1 import fresh_backend, joint_control, joint_seed
 
     options = options_from_argv(record["argv"])
     fresh_backend.validate(options)
@@ -427,7 +482,7 @@ def verify_in_runtime(record: dict) -> dict:
     origin = joint_seed.selected(options)
     if origin != record["origin"]:
         raise SeedError("the runtime selects another seed origin than the plan recorded")
-    from merlin_experiments.phase1.session import validate_options
+    from merlin.experiments.phase1.session import validate_options
 
     validate_options(options)
     with tempfile.TemporaryDirectory(prefix="seed-placement-") as scratch:
@@ -456,19 +511,26 @@ def _argv_value(argv, flag):
 def compile_staged(record: dict, options, submission: Path, scratch: Path) -> dict:
     """Complete the session's staging (the full compiler beside the seed), then compile one small case."""
     import yaml
+
     from merlin.targetgen.contract.materialize import descriptor_corpus_roots
     from merlin.targetgen.target_experiment import load_target_experiment
 
     probe = _sibling("seed_compile_probe")
     if options.compiler_access == "full_compiler":
-        from merlin_experiments.phase1 import full_compiler_workspace as FCW
+        from merlin.experiments.phase1 import full_compiler_workspace as FCW
 
-        FCW.stage(FCW.select(options.full_compiler_root, options.full_compiler_manifest,
-                             options.full_compiler_manifest_sha256), submission)
+        FCW.stage(
+            FCW.select(
+                options.full_compiler_root, options.full_compiler_manifest, options.full_compiler_manifest_sha256
+            ),
+            submission,
+        )
     argv = record["argv"]
     repo = Path(_argv_value(argv, "--repo") or record["cwd"])
     bundle = yaml.safe_load(Path(_argv_value(argv, "--bundle-manifest")).read_text())
-    cases = probe.smallest_public_cases(descriptor_corpus_roots(load_target_experiment(_argv_value(argv, "--descriptor"))))
+    cases = probe.smallest_public_cases(
+        descriptor_corpus_roots(load_target_experiment(_argv_value(argv, "--descriptor")))
+    )
     granted = probe.granted_sources(bundle, repo, scratch / "granted")
     try:
         return probe.compile_one(submission, cases, granted=granted, work=scratch / "compile")
@@ -478,8 +540,16 @@ def compile_staged(record: dict, options, submission: Path, scratch: Path) -> di
 
 def verify(ctx, record: dict) -> dict:
     """Check the seed in the campaign runtime (its interpreter, export and environment)."""
-    command = ["taskset", "-c", ctx.preparation_cpus, ctx.x("${PYTHON}"), "-B", str(VERIFY_SCRIPT), "verify",
-               str(ctx.path("${ARTIFACTS}") / "proposed-launch.json")]
+    command = [
+        "taskset",
+        "-c",
+        ctx.preparation_cpus,
+        ctx.x("${PYTHON}"),
+        "-B",
+        str(VERIFY_SCRIPT),
+        "verify",
+        str(ctx.path("${ARTIFACTS}") / "proposed-launch.json"),
+    ]
     environment = dict(os.environ, **record["environment"])
     done = subprocess.run(command, cwd=record["cwd"], env=environment, capture_output=True, text=True)
     if done.returncode:

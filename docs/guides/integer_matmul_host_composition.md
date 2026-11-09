@@ -91,7 +91,7 @@ initialization and unknown operation attributes, plus symbol collisions and
 changed prepared files. Run with the ordinary compiler environment:
 
 ```bash
-python -B -m pytest merlin/tests/ir/test_integer_matmul_calls.py
+python -B -m pytest tests/ir/test_integer_matmul_calls.py
 ```
 
 ## Exact integer readout fusion

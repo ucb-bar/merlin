@@ -3,12 +3,12 @@ name: test-layout
 description: >-
   Where to put tests in merlin and how to name them. Use whenever you add, move, or organize
   a test, write a new test_*.py, or wonder which folder a test belongs in. One suite at
-  merlin/tests/, organized by subsystem bucket.
+  tests/, organized by subsystem bucket.
 ---
 
 # Test layout (MANDATORY)
 
-All tests live in **`merlin/tests/`** (the only pytest `testpaths`), in **subsystem buckets**:
+All tests live in **`tests/`** (the only pytest `testpaths`), in **subsystem buckets**:
 
 | Bucket | Put tests for… |
 |--------|----------------|
@@ -23,12 +23,12 @@ All tests live in **`merlin/tests/`** (the only pytest `testpaths`), in **subsys
 
 ## Rules (enforced by `build_tools/scripts/check_structure.py` "test layout")
 
-- Path: `merlin/tests/<bucket>/test_<area>.py`. **Never** put a `test_*.py` at the `merlin/tests/` root,
+- Path: `tests/<bucket>/test_<area>.py`. **Never** put a `test_*.py` at the `tests/` root,
   and `<bucket>` must be one of the eight above (add a new bucket only by also adding it to
   `TEST_BUCKETS` in `check_structure.py`).
 - Place a test in the subsystem folder it exercises.
-- Shared inputs: `merlin/tests/fixtures/`, `merlin/tests/data/`.
+- Shared inputs: `tests/fixtures/`, `tests/data/`.
 - Resolve repo paths via `from merlin.common.paths import repo_root, merlin_dir` — **never**
   `Path(__file__).resolve().parents[N]` (keeps tests location-independent).
 
-Run: `.venv/bin/python -m pytest merlin/tests` (or a bucket: `pytest merlin/tests/dse`).
+Run: `.venv/bin/python -m pytest tests` (or a bucket: `pytest tests/dse`).

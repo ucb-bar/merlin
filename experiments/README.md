@@ -7,8 +7,26 @@ phase definitions, typed settings, budgets, and frozen inputs. `inspect` and
 The workflow follows the paper's terminology: **Hardware-Guided Test Generation**
 (Phase 0), **Functional Compiler Generation** (Phase 1), and **Performance
 Optimization** (Phase 2). Definitions select experiments; phase tooling and engines
-live in `packages/merlin-experiments/src/merlin_experiments/phase{0,1,2}/`.
+live in `src/merlin/experiments/phase{0,1,2}/`, within the single Merlin package.
 Shared compiler infrastructure and generated target backends are separate owners.
+
+For discovery, install the experiment dependencies and inspect a definition:
+
+```sh
+uv pip install -e '.[experiments]'
+uv run --no-sync merlin experiment list
+uv run --no-sync merlin experiment inspect gemmini-functional --phase 1
+```
+
+These commands launch no agent. `preflight` checks configuration and available
+inputs; `engine_readiness: not_executed` means the worker has not yet been
+qualified. Real runs additionally require the definition's reviewed source and
+corpus closure, selected toolchains and independent runtime/oracle inputs, agent
+credentials and budgets, and the native sandbox facilities required by that
+engine. Run its native readiness checks on the execution worker. FireSim setup
+and launch remain external; Merlin prepares guest files and collects observations.
+For a small compiler run without an experiment worker, use the
+[quickstart example](../examples/quickstart/README.md).
 
 Phase 1 comparisons use the same names across targets: **EL1** raw baseline,
 **EL2** C++ infrastructure, **EL3** Merlin-assisted, and **EL4** RTL-informed
@@ -74,7 +92,7 @@ the shared performance template and applicable sidecars; do not combine the two 
 `config.profile` optionally selects a profile name different from the target.
 The runner provides the output path and pins input and implementation contents for run/resume.
 The package does not ship private profiles, holdouts or golden answers. The direct
-engine is `python -m merlin_experiments.phase0`; installed use requires explicit
+engine is `python -m merlin.experiments.phase0`; installed use requires explicit
 `--descriptor`, `--target`, and `--output-root`, plus either `--recipe` with
 `--performance-template` or a legacy `--profiles-root` argument. No checkout recipe
 directory is selected implicitly. Start with the
@@ -170,7 +188,7 @@ merlin experiment preflight TARGET_FUNCTIONAL_ID --phase 1 \
 The seal selects its immutable release descriptor. The manifest must be the
 bundle generated inside **that same release**; copying a retained manifest to
 another path does not qualify it. The selected bundle must not grant the
-historical `merlin/contract/capsules` tree or an ancestor. Preflight and native
+historical `experiments/corpora` tree or an ancestor. Preflight and native
 admission refuse either mismatch. The bundle identity comes from the selected
 manifest and both paths are frozen for resume. `inspect` and `run` accept the
 same flags.
@@ -293,13 +311,13 @@ explicit legacy key or recognized bundle is rejected. The Phase 1 runner still u
 historical bundles or frozen runs to change their displayed level. Phase 0
 derivation and Phase 2 optimization are separate phases, **not** EL0 or EL5.
 
-Agent transports live in `merlin_experiments.phase1.providers`; baseline Phase 1
-uses the installed `python -m merlin_experiments.phase1` controller with explicit
+Agent transports live in `merlin.experiments.phase1.providers`; baseline Phase 1
+uses the installed `python -m merlin.experiments.phase1` controller with explicit
 operator inputs. The resource sampler's standalone CLI is
-`python -m merlin_experiments.phase1.providers.resource_sampler` (the old native script
+`python -m merlin.experiments.phase1.providers.resource_sampler` (the old native script
 path is retired). Installed proxy users supply `MERLIN_PROXY_CONFIG` and
 `MERLIN_PROXY_EXECUTABLE`; provider packages do not infer executable paths from a
-synthetic repository root. Bedrock SDK support is the optional `merlin-experiments[bedrock]`
+synthetic repository root. Bedrock SDK support is the optional `merlin[bedrock]`
 extra. None of these imports launches a provider or selects a target.
 
 `merlin experiment list` is the entry point. Definitions select phase 0 (derive
@@ -379,12 +397,12 @@ Selected support-provider Python membership and identity are bound on admission
 and resume, and support sources remain host-private. This is live-source binding,
 not copied-provider or complete toolchain execution qualification.
 
-Install the separate `packages/merlin-experiments` package alongside Merlin and
-AET. Phase 0, baseline/RTLchecks Phase 1 and measured-claims Phase 2 use installed
+Install `merlin[experiments]`; it includes the declared AET dependency. No separate
+experiment code distribution is installed. Phase 0, baseline/RTLchecks Phase 1 and measured-claims Phase 2 use installed
 implementations. Model-portfolio Phase 2 still requires its
 declared native source checkout. Functional orchestration
 requires an authored `task/` directory adjacent to its descriptor, the selected
-bundle directory, operator-root `merlin/contract` and `merlin/schemas`, and all
+bundle directory, operator-root `src/merlin/resources/contracts` and `src/merlin/resources/schemas`, and all
 declared allowed/host-input grants. Their bytes and membership are frozen before
 execution. Descriptor-adjacent optional timing records and `experiment.env` bind
 absence too; creating them later invalidates resume. This is the explicit operator
@@ -433,7 +451,7 @@ and managed-launch admission still run inside the installed engines.
 For phase 2, specify both `adapter` and `mode` with the corresponding value. The
 adapter accepts explicit named options, using underscores for the engine's
 hyphenated flag names. Its option contract is in
-`packages/merlin-experiments/src/merlin_experiments/adapters.py`. A campaign config
+`src/merlin/experiments/adapters.py`. A campaign config
 may name further input bundles; native gates still validate and freeze those
 closures. List additional immutable roots in the definition's `inputs` mapping
 when they must also be checked by orchestration resume.
@@ -468,7 +486,7 @@ trial. The report revalidates candidate handoffs, parent-pinned child/result byt
 and the complete statistics predeclaration before writing output:
 
 ```sh
-python merlin/experiments/gemmini_perf_bench/scripts/gen_perf_report.py \
+python experiments/studies/gemmini_perf_bench/scripts/gen_perf_report.py \
   --experiment-manifest /path/to/experiment_manifest.EXPECTED_PARENT_SHA256.json \
   --manifest-sha256 EXPECTED_PARENT_SHA256 \
   --candidate-record TRIAL_1=/path/to/first_candidate_record.json \

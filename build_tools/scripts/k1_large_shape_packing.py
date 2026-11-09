@@ -344,8 +344,8 @@ def measure_ours_compiler(run_id: str, features: list[str], *, S: int, reps: int
             }
         cgen = work / "cgen"
         c_runtime.generate(md, cgen, md / "inputs.npz")
-        rt = REPO / "merlin/runtime/c"
-        abi = REPO / "merlin/runtime/abi"
+        rt = REPO / "src/merlin/runtime/native/c"
+        abi = REPO / "src/merlin/runtime/native/abi"
         binp = Path(tmp) / "ours_gemm"
         incs = [K1H, HERE, cgen, rt]
         inc_flags = []

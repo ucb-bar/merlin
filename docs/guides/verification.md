@@ -241,9 +241,9 @@ To inventory the current captured models against the source-side subset, run:
 
 ```sh
 python -m merlin.verification.model_coverage \
-  merlin/contract/capsules/model/SY_model_tiny_llama/capsule.interface.mlir \
-  merlin/contract/capsules/model/SY_model_smolvla/capsule.interface.mlir \
-  merlin/contract/capsules/model/SY_model_resnet50/capsule.interface.mlir
+  experiments/corpora/model/SY_model_tiny_llama/capsule.interface.mlir \
+  experiments/corpora/model/SY_model_smolvla/capsule.interface.mlir \
+  experiments/corpora/model/SY_model_resnet50/capsule.interface.mlir
 ```
 
 The JSON includes each capture's SHA-256, operation counts, observed tensor ranks/dtypes, and

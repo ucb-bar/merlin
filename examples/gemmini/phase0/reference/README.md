@@ -4,8 +4,8 @@ These three hand-authored `merlin_iface` inputs are the public g0–g2 reference
 samples for the historical Gemmini OOT contract. They are target-specific source
 inputs, not Phase 0 generated capsules or a selected grading release. Their
 expected command buffer is a test fixture at
-`merlin/tests/gemmini/fixtures/expected_command_buffer_g0.json` and is not
+`tests/gemmini/fixtures/expected_command_buffer_g0.json` and is not
 part of the public example or core release.
 
-`merlin/contract/examples/` retains checkout-only compatibility links for old
+`src/merlin/resources/contracts/examples/` retains checkout-only compatibility links for old
 commands and frozen path references. New callers should use this directory.

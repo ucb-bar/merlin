@@ -9,7 +9,12 @@ from importlib.metadata import distribution
 from importlib.metadata import version as package_version
 from pathlib import Path
 
-from merlin.compiler.schedule.library_sources import canonical_module, library_modules, shared_library_sources
+from merlin.compiler.schedule.library_sources import (
+    CURRENT_SDK_VERSION,
+    canonical_module,
+    library_modules,
+    shared_library_sources,
+)
 
 # These package initializers expose only shared leaf implementations. They
 # omit installed host orchestration and backend discovery, without changing
@@ -246,9 +251,9 @@ SOURCE_BINDING_PROTOCOL = "merlin.shared_source_binding.v1"
 SOURCE_BINDING_MODULES = ("merlin.compile.scheduling.direct_source", "merlin.compile.scheduling.source_tokens")
 
 
-def public_modules(version=26):
+def public_modules(version=CURRENT_SDK_VERSION):
     library_modules(version)
-    if version == 26:
+    if version in (26, 27):
         return (
             *(canonical_module(name) for name in PUBLIC_MODULES_V24),
             "merlin.compiler.frontend.repairs",
@@ -285,9 +290,9 @@ def public_modules(version=26):
     }[version]
 
 
-def namespace_replacements(version=26):
+def namespace_replacements(version=CURRENT_SDK_VERSION):
     library_modules(version)
-    if version == 26:
+    if version in (26, 27):
         return {
             **{canonical_module(name): text for name, text in _NAMESPACES_V24.items()},
             "merlin": '"""Selected shared compiler SDK; public APIs are explicit leaf modules."""\n',
@@ -330,7 +335,7 @@ def namespace_replacements(version=26):
 def _source_identities(source_root, *, version, source_binding):
     sources = shared_library_sources(version=version)
     if source_binding:
-        for module in (canonical_module(name) if version == 26 else name for name in SOURCE_BINDING_MODULES):
+        for module in (canonical_module(name) if version in (26, 27) else name for name in SOURCE_BINDING_MODULES):
             path = source_root.joinpath(*module.split(".")).with_suffix(".py")
             sources[module] = hashlib.sha256(path.read_bytes()).hexdigest()
     return sources
@@ -386,7 +391,7 @@ def export_shared_scheduling(
     directory: Path,
     *,
     license_directory: Path | None = None,
-    version=26,
+    version=CURRENT_SDK_VERSION,
     source_binding: bool = False,
     frozen_release: Path | None = None,
 ) -> dict:
@@ -397,21 +402,21 @@ def export_shared_scheduling(
     calibration record is discovered or included. Namespace glue is the only
     source replacement; every algorithm/checker file is copied byte for byte.
 
-    Fresh work uses SDK26 canonical owners. Older source releases require their
+    Fresh work uses SDK27 canonical owners. Older source releases require their
     exact reviewed frozen directory; current code is never relabeled as an older
     SDK. Import closure and candidate grants still need independent host review.
     """
-    if version != 26:
+    if version != CURRENT_SDK_VERSION:
         if frozen_release is None:
-            raise ValueError("legacy SDK export requires its explicit frozen_release; fresh work uses SDK26")
+            raise ValueError("legacy SDK export requires its explicit frozen_release; fresh work uses SDK27")
         return _export_frozen_release(directory, frozen_release, version=version, source_binding=source_binding)
     if frozen_release is not None:
-        raise ValueError("SDK26 exports current canonical owners; frozen_release is only for legacy replay")
+        raise ValueError("SDK27 exports current canonical owners; frozen_release is only for legacy replay")
     modules, namespaces = library_modules(version), namespace_replacements(version)
     if type(source_binding) is not bool:
         raise ValueError("shared source-binding export requires an explicit Boolean")
-    if source_binding and version not in (8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26):
-        raise ValueError("new source-binding exports require explicit inventory version 8 or 10 through 26")
+    if source_binding and version not in (8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27):
+        raise ValueError("new source-binding exports require explicit inventory version 8 or 10 through 27")
     if source_binding:
         modules = (*modules, *(canonical_module(name) for name in SOURCE_BINDING_MODULES))
     directory = Path(directory).absolute()
@@ -468,6 +473,7 @@ def export_shared_scheduling(
             24: "merlin.shared_scheduling_library.v18",
             25: "merlin.shared_scheduling_library.v19",
             26: "merlin.shared_scheduling_library.v20",
+            27: "merlin.shared_scheduling_library.v21",
         }[version],
         "public_modules": list(
             (*public_modules(version), *(canonical_module(name) for name in SOURCE_BINDING_MODULES))
@@ -485,7 +491,7 @@ def export_shared_scheduling(
         manifest["inventory_version"] = version
     if source_binding:
         manifest["source_binding_protocol"] = SOURCE_BINDING_PROTOCOL
-    if version in (16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26):
+    if version in (16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27):
         from merlin.compiler.schedule.api_catalog import scheduling_capabilities
 
         manifest["scheduling_capabilities"] = scheduling_capabilities(version)
@@ -531,8 +537,8 @@ def main(argv=None):
     parser.add_argument(
         "--library-version",
         type=int,
-        choices=(6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26),
-        default=26,
+        choices=(6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27),
+        default=CURRENT_SDK_VERSION,
     )
     parser.add_argument("--frozen-release", type=Path, help="exact reviewed legacy SDK directory to copy")
     parser.add_argument(
@@ -547,7 +553,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.shared_library and args.include_block_schedule:
         parser.error("--shared-library and --include-block-schedule select different export formats")
-    if args.library_version != 26 and not args.shared_library:
+    if args.library_version != CURRENT_SDK_VERSION and not args.shared_library:
         parser.error("--library-version requires --shared-library")
     if args.license_directory is not None and not args.shared_library:
         parser.error("--license-directory requires --shared-library")

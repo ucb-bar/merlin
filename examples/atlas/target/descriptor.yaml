@@ -1,7 +1,7 @@
 # Experiment resources and workload policy; hardware facts are extracted inputs.
 # See ../phase0/README.md for deterministic derivation and evidence selection.
 target: atlas
-resources_root: merlin/experiments/capsule_bench/targets/atlas
+resources_root: experiments/studies/capsule_bench/targets/atlas
 numeric_profile: examples/atlas/phase0/recipe.yaml
 
 rtl:
@@ -20,7 +20,7 @@ hardware_spec:
     - examples/atlas/phase1/contracts/hwbringup_atlas_v0/isa_include/isa_definition.py
   hwbringup_set: examples/atlas/phase1/contracts/hwbringup_atlas_v0
 
-capsule_corpus: merlin/contract/capsules/atlas/isa
+capsule_corpus: experiments/corpora/atlas/isa
 
 toolchain:
   sim_via: ""         # arc-only (the mlc arc MXU model is the RTL tier)

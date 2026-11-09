@@ -19,13 +19,20 @@ _ROOT = Path(__file__).resolve().parent
 
 def public_resources() -> list[str]:
     """Reviewed inclusion manifest; untracked build-host files cannot enter a release."""
-    manifest = json.loads((_ROOT / "build_tools" / "package_resources.json").read_text())
-    if manifest.get("version") != 1:
+    manifest = json.loads((_ROOT / "build_tools" / "package_resources.json").read_text(encoding="utf-8"))
+    if manifest.get("version") != 2:
         raise ValueError("unsupported public-resource manifest version")
     result = manifest["files"]
+    if not isinstance(result, list) or not result or len(result) != len(set(result)):
+        raise ValueError("public-resource paths must be a nonempty unique list")
     for name in result:
         path = Path(name)
-        if path.is_absolute() or ".." in path.parts or path.parts[0] != "merlin":
+        if (
+            path.is_absolute()
+            or ".." in path.parts
+            or "\\" in name
+            or not name.startswith(("src/merlin/resources/", "src/merlin/runtime/native/"))
+        ):
             raise ValueError(f"invalid public-resource path: {name}")
         if any(p in {"golden", "hidden"} for p in path.parts) or name.endswith(".hidden.yaml"):
             raise ValueError(f"private resource cannot be packaged: {name}")
@@ -53,6 +60,7 @@ class BuildPyWithData(build_py):
         # directory must not silently carry them into a new release.
         # These import roots have one distribution owner. Clear each owned root
         # so an interrupted earlier build cannot retain removed workflow code.
+        # Retired namespace staging is cleared too; these are not installed packages.
         for package in ("merlin", "merlin_experiments", "merlin_dse"):
             staged = Path(self.build_lib) / package
             if staged.is_symlink() or not staged.resolve().is_relative_to((_ROOT / "out/build").resolve()):
@@ -61,14 +69,13 @@ class BuildPyWithData(build_py):
                 shutil.rmtree(staged)
         super().run()
         for name in public_resources():
-            destination = Path(self.build_lib) / "merlin" / "_data" / Path(name).relative_to("merlin")
+            destination = Path(self.build_lib) / Path(name).relative_to("src")
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(_ROOT / name, destination)
 
     def get_outputs(self, include_bytecode: bool = True) -> list[str]:
         return super().get_outputs(include_bytecode) + [
-            str(Path(self.build_lib) / "merlin" / "_data" / Path(name).relative_to("merlin"))
-            for name in public_resources()
+            str(Path(self.build_lib) / Path(name).relative_to("src")) for name in public_resources()
         ]
 
 
@@ -103,7 +110,16 @@ class SourceDistributionInOutput(sdist):
             # The same reviewed manifest owns wheel and source resources. A new
             # runtime dependency must not need a second MANIFEST.in declaration
             # before a wheel rebuilt from the source archive can use it.
-            files = sorted(set(self.filelist.files) | set(public_resources()))
+            public = set(public_resources())
+            files = sorted(
+                {
+                    name
+                    for name in self.filelist.files
+                    if not name.startswith(("src/merlin/resources/", "src/merlin/runtime/native/"))
+                    or name == "src/merlin/resources/__init__.py"
+                }
+                | public
+            )
             self.make_release_tree(str(Path(stage) / name), files)
             self.archive_files = [
                 self.make_archive(

@@ -576,7 +576,8 @@ def _endpoint_kind(sources: Sources) -> tuple[str | None, str, str]:
     if derived:
         detail = (
             "RoCC command transport and selected custom opcode"
-            if derived == "inline_asm_insn" else "self-hosted instruction interface"
+            if derived == "inline_asm_insn"
+            else "self-hosted instruction interface"
         )
         return derived, TIER_FACTS, f"facts.interfaces: {detail} -> endpoint {derived}"
     declared = sources.residual.get("endpoint_kind")
@@ -1093,7 +1094,7 @@ def _t_multiple_operand_encodings(sources: Sources) -> tuple[Trait, str]:
 #: an artifact of dict insertion order rather than a decision anyone made. Neither half of that shows
 #: up at run time (the dict dedupes, and the duplicate trait name only surfaced as a name reported
 #: twice by :meth:`TargetProfile.satisfied` and friends), so the pin is a test that reads this file's
-#: own syntax tree -- ``merlin/tests/targetgen/test_perf_profile.py``.
+#: own syntax tree -- ``tests/targetgen/test_perf_profile.py``.
 _DERIVERS = {
     "self_hosted_program": _t_self_hosted_program,
     "host_dispatched_queue": _t_host_dispatched_queue,

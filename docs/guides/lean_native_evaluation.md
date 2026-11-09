@@ -5,7 +5,7 @@ optimization without requiring historical qualification before exploration.
 Compiler emission and complete-output checks run for each candidate;
 final qualification is deferred until a compiler has been selected and frozen.
 
-`merlin_experiments.phase2.lean_authoring.run_lean_authoring` drives the existing
+`merlin.experiments.phase2.lean_authoring.run_lean_authoring` drives the existing
 continuous Codex author and asynchronous evaluation broker. The author edits
 compiler source, freezes its exact bytes, submits selected capsules, reads
 feedback and continues without an operator managing individual iterations.
@@ -24,7 +24,7 @@ an ideal compute floor and a frozen approximate timing model. It does not admit
 an attainable whole-invocation roofline or establish measured hardware latency.
 Freeze the chosen compiler before subsequent FireSim validation.
 
-`merlin_experiments.phase2.lean_native_evaluation.evaluate_candidate` accepts
+`merlin.experiments.phase2.lean_native_evaluation.evaluate_candidate` accepts
 `candidate_source`, `baseline_source`, a tuple of `selected_members`, a fresh
 `work_root`, `timeout_s` and persistent `baseline_cache_root`. Each member declares
 `id`, `capsule_dir`, `interface_mlir`, `runtime_bundle`, `target_descriptor` and

@@ -52,7 +52,7 @@ def boundary_buildable(device: str) -> str | None:
     # to a shape for every `device_native` capsule, and doing that on the strength of a module that
     # merely exists is exactly the move `boundary.profile_linalg` exists to prevent -- "the composition
     # numbers would improve by argument alone". What changed is an artifact, not an argument:
-    # `merlin/tests/infra/test_device_native_seam_emits.py` builds a complete seam for a device_native
+    # `tests/infra/test_device_native_seam_emits.py` builds a complete seam for a device_native
     # target from its own backend package -- the package's emitted directives ASSEMBLED to the bytes the
     # device fetches, the address contract read off the command buffer the same package emitted for the
     # same capsule and converted to offsets in the device's own derived DRAM window, and the host stager

@@ -14,9 +14,9 @@ code_refs:
   - src/merlin/kernels/consumer_structure.py
   - src/merlin/compiler/schedule/dense_panel_pipeline.py
   - src/merlin/mining/reconstruction_cli.py
-  - src/merlin_experiments/phase1/feedback/reference_mechanisms.py
-  - src/merlin_experiments/phase1/feedback/candidate_build_views.py
-  - src/merlin_experiments/phase1/feedback/public_scalability_inspection.py
+  - src/merlin/experiments/phase1/feedback/reference_mechanisms.py
+  - src/merlin/experiments/phase1/feedback/candidate_build_views.py
+  - src/merlin/experiments/phase1/feedback/public_scalability_inspection.py
   - src/merlin/transforms/pass_exploration.py
   - src/merlin/compiler/schedule/api_catalog.py
   - src/merlin/compiler/schedule/library_sources.py
@@ -470,7 +470,7 @@ The output contains `packet.json`, `selection.json`, an indexed report, and the 
 SHA256. An explicit operator invocation enables it for a new experiment or continuation:
 
 ```sh
-python -m merlin_experiments.phase1 <ordinary invocation arguments> \
+python -m merlin.experiments.phase1 <ordinary invocation arguments> \
   --reference-experiments "$TMPDIR/steering/selection.json" \
   --reference-experiments-sha256 <printed selection SHA256>
 ```
@@ -547,7 +547,7 @@ parity requires matched numerical and measurement scopes and actual timing obser
 The manifest's `library_version` selects the exact discovery inventory; the
 example explicitly selects23, which is also the retained CLI default. It does
 not regenerate that historical SDK or grant its sources to an author. A current
-SDK26 experiment selects its actual inventory and source/profile contract
+SDK27 experiment selects its actual inventory and source/profile contract
 explicitly. Generic schedule owners live under `compiler/schedule/`; reference
 reconstruction stays in the mining/kernel workflow and cannot redefine a
 backend's production applicability or evaluator policy.

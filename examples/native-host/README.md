@@ -30,7 +30,7 @@ export MERLIN_MLIR_TRANSLATE=/absolute/llvm/bin/mlir-translate
 Choose a generated capture directory and a fresh output path:
 
 ```sh
-python -m merlin_experiments.model_qualification \
+python -m merlin.experiments.model_qualification \
   --native-host-only \
   --bundle /absolute/generated-phase0/materialized/coverage_mlp \
   --out out/artifacts/native-host/coverage-mlp-1 \

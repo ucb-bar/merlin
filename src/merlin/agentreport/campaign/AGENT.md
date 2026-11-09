@@ -12,7 +12,7 @@ python -m merlin.agentreport.campaign --run-dir RUN [--workspace WS] [--agent-ho
 ```
 
 Without `--out-dir` the output is a versioned product (`new_product("campaign-figure", ...)`, declared
-under `agentic-report/campaign-figures` in `merlin/contract/storage.yaml`, target axis from the manifest).
+under `agentic-report/campaign-figures` in `src/merlin/resources/contracts/storage.yaml`, target axis from the manifest).
 Re-run any time during or after a run; edit the MANIFEST (not code) when an attempt is archived or a
 new one starts. Keep a campaign's manifest with its outputs.
 
@@ -37,4 +37,4 @@ new one starts. Keep a campaign's manifest with its outputs.
 - **Compute** is an estimate: recorded job intervals scaled per launch (one factor <= 1, capped at the
   reservation) to the CPU time systemd measured; unattributable CPU is "other". Say so wherever it is shown.
 - User-facing text says "test case(s)", never the corpus' internal word for them.
-- Paired tests: `merlin/tests/infra/test_agent_report_campaign.py`.
+- Paired tests: `tests/infra/test_agent_report_campaign.py`.

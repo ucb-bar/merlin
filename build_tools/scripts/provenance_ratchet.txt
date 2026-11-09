@@ -49,7 +49,7 @@ out/artifacts/measurements/k1_spacemit/xr0/cross_framework_v1_20260708T004147Z_f
 # result to leave unattributable.
 #
 # ROOT CAUSE, and why nobody could simply fix it in passing: there is no `k1_spacemit` pin in
-# merlin/contract/hardware_pins.yaml. `provenance.record()` has nothing to attribute to, so adding the
+# src/merlin/resources/contracts/hardware_pins.yaml. `provenance.record()` has nothing to attribute to, so adding the
 # call alone would record an empty block. The real fix is two steps, in order:
 #   1. declare a k1_spacemit pin (identifies the board image + the RVV toolchain it was built against);
 #   2. call merlin.common.provenance.record() in BaselineResult.write().

@@ -342,7 +342,7 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
 class FamilyTeacher:
     census_family: str
     op: str  # CCA op tag used when lifting (drives activation/reduction inference)
-    fixture: str | None  # basename under merlin/tests/data/cca_asm/ (None => no teacher)
+    fixture: str | None  # basename under experiments/reference-data/cca-asm/ (None => no teacher)
     ukernel_src: str | None = None  # rel path under <XNNPACK>/src for the harvester (None => already harvested)
     note: str = ""
 
@@ -869,7 +869,7 @@ def dtype_fixture_teachers() -> list["FamilyTeacher"]:
 def cca_asm_dir() -> Path:
     from ..common.paths import repo_root
 
-    return repo_root() / "merlin" / "tests" / "data" / "cca_asm"
+    return repo_root() / "experiments/reference-data/cca-asm"
 
 
 #: DTYPE-MATCHED expert fixtures, per family. A CCA diff across dtypes manufactures divergences that

@@ -4,11 +4,11 @@ The no-target-name gate used to hunt a hand-written set of seven names, so every
 after that set was written was invisible to it: a literal naming one passed the gate by construction.
 The roster is now the union of every place the repository DECLARES a target:
 
-  * ``name:`` in ``merlin/targets/*/contracts/target_contract.yaml`` (curated reference targets);
-  * ``target:`` in ``merlin/experiments/capsule_bench/targets/*/target_experiment.yaml``;
+  * ``name:`` in ``experiments/reference-data/target-inputs/*/contracts/target_contract.yaml`` (curated reference targets);
+  * ``target:`` in ``experiments/studies/capsule_bench/targets/*/target_experiment.yaml``;
   * ``target:`` in ``examples/*/experiment.yaml`` (including uncatalogued declarations);
-  * every ``targets:`` list in ``merlin/contract/hardware_pins.yaml``;
-  * the stem of every ``merlin/contract/capsules/profiles/<target>[.hidden|.synth].yaml``.
+  * every ``targets:`` list in ``src/merlin/resources/contracts/hardware_pins.yaml``;
+  * the stem of every ``experiments/corpora/profiles/<target>[.hidden|.synth].yaml``.
 
 Registering a target in any of them extends the gate with zero edits. Stdlib only (no PyYAML, no
 merlin import) and structural -- column-0 ``key: value`` lines and flow/block lists, no regex -- so it
@@ -20,11 +20,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-CONTRACTS = "merlin/targets"
-EXPERIMENTS = "merlin/experiments/capsule_bench/targets"
+CONTRACTS = "experiments/reference-data/target-inputs"
+EXPERIMENTS = "experiments/studies/capsule_bench/targets"
 EXAMPLES = "examples"
-PINS = "merlin/contract/hardware_pins.yaml"
-PROFILES = "merlin/contract/capsules/profiles"
+PINS = "src/merlin/resources/contracts/hardware_pins.yaml"
+PROFILES = "experiments/corpora/profiles"
 
 
 class RosterError(RuntimeError):

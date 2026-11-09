@@ -12,7 +12,7 @@ remember to run. It answers three things and refuses rather than guesses on each
 
 * the member's own ``(M, K, N)``, read from its declared operands -- never recomputed from the entry
   that produced them, because two derivations of one quantity eventually disagree;
-* the geometric class, from :mod:`merlin.dse_guidance.shape_taxonomy`, whose thresholds are fixed and
+* the geometric class, from :mod:`merlin.analysis.dse.guidance.shape_taxonomy`, whose thresholds are fixed and
   documented so a reader can re-derive the label independently;
 * whether the target's census (``conformance/<target>.yaml`` -> ``shape_geometry.required``, itself
   derived from real captures) contains that class, and with what share of the MAC mass.
@@ -167,7 +167,7 @@ def stamp_for(capsule: object, *, target: str) -> dict[str, Any] | None:
         "N": N,
         "out_elements": M * N,
         "geometry_class": label,
-        "classifier": "merlin.dse_guidance.shape_taxonomy.classify_geometry",
+        "classifier": "merlin.analysis.dse.guidance.shape_taxonomy.classify_geometry",
         "basis": declared["basis"],
     }
     if not census:

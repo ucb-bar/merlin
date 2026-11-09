@@ -34,7 +34,7 @@ Current implementation entrypoints are:
 | Responsibility | Source to open | Current caller |
 | --- | --- | --- |
 | Scalar computation pass sequence | `src/merlin/compiler/lower/scalar/pipeline.py` | Existing whole-model LLVM pipeline |
-| Shared numerical and source preprocessing | `compiler/frontend/preprocess.py`, `repairs.py`, `quantization/linalg.py`, `transforms/matmul.py`, `transforms/dead.py`, `lower/scalar/casts.py`, `ir/provenance.py` | Existing lowering, editable shared pass exports and SDK26; historical preprocessing import remains an exact module alias |
+| Shared numerical and source preprocessing | `compiler/frontend/preprocess.py`, `repairs.py`, `quantization/linalg.py`, `transforms/matmul.py`, `transforms/dead.py`, `lower/scalar/casts.py`, `ir/provenance.py` | Existing lowering, editable shared pass exports and fresh SDK27; historical preprocessing import remains an exact module alias |
 | Shared terminal LLVM conversion and index-width binding | `src/merlin/compiler/lower/llvm/passes.py` | Scalar, vector and OpenMP pipelines |
 | Selected OOT region emission and receipt checks | `src/merlin/compiler/lower/regions.py` | Existing device object builder |
 | Provider identity and explicit component composition | `src/merlin/compiler/backend/load.py`, `composition.py` | Target provider selection; explicit composition API |
@@ -66,6 +66,7 @@ Current implementation entrypoints are:
 | Saved-export input and compiler-only staging | `compiler/frontend/torch/export.py`, `capture.py`, `frontend/inputs.py`, `signature.py`, `archives.py`, `constants.py` | Saved-export and native application inputs; exact ABI, archive and lifted-argument handling |
 | Installed compiler and runtime selection | `src/merlin/compiler/backend/service.py` | Explicit `merlin.backends` and `merlin.runners` entry points |
 | Metadata-only installed backend inventory | `api.inspect_backends`, `compiler/backend/service.py` | `merlin inspect --backends`; interpreter, distribution and declared origin, without importing providers |
+| Experiment definition, selection and execution | `experiments/definition.py`, `spec.py`, `adapters.py`, `runner.py` | `merlin experiment`; research orchestration stays outside the compiler service |
 | Selected topology and actual-source proposal admission | `src/merlin/system/topology.py`, `compiler/backend/sourceproposal.py` | Explicit source-bound heterogeneous planning |
 | Bounded region/resource cover and shared-memory budgeting | `src/merlin/compiler/planning/execution.py` | `select_execution`; costs remain unknown without a selected cost model |
 | Complete-SSA region partitioning | `src/merlin/compiler/partition/regions.py` | `PlannedCompiler`; original CPU operations remain inline |
@@ -418,9 +419,10 @@ does not yet orchestrate every backend from a full-model compile request.
 The public Python services are `merlin.api.compile`, `merlin.api.inspect`,
 `merlin.api.run` and `merlin.api.collect`. The corresponding `merlin compile`,
 `merlin inspect`, `merlin run` and `merlin collect` commands adapt the same
-requests. Existing model commands without `--backend` still delegate to
-`merlin.compile_cli`; the legacy `merlin.compile` package is not a root function.
-Experiment commands use their existing experiment controller.
+requests. `merlin compile` always uses explicit-source grammar; the retained
+`merlin-compile` workload/operator command calls `merlin.compile_cli` separately.
+The legacy `merlin.compile` package is not a root function. Experiment commands
+use `merlin.experiments.definition` and their existing experiment controller.
 
 Compilation accepts MLIR text, a `Path`, an explicit `Source`, supported PyTorch
 objects/FX graphs with example inputs, or a saved exported program. `SavedExport`
@@ -634,7 +636,8 @@ versioned public inventory lives in `compiler/schedule/export.py`, with the
 implementation closure in `compiler/schedule/library_sources.py` and author
 exposure in `targetgen/tool_profile.py` and `tool_profile_shared.py`. The selected
 release determines availability; the newest inventory does not enlarge a frozen
-experiment's grants. SDK26 currently names 133 public modules and 269 source modules, including
+experiment's grants. Fresh SDK27 uses shared-library schema v21 and common substrate
+V20, naming 133 public modules and 269 source modules, including
 analyses, contracts and emitters as well as transformations; this is not a pass count.
 The pinned Gemmini paper [shared-library manifest](https://github.com/ucb-bar/gemmini-mlir/blob/7cd030e13360fd0961bd83fa288bd9009ba813df/dependencies/generic-library/shared-library.json)
 has 123 public modules, 220 source members and 44 capability entries. Its exact
@@ -655,7 +658,7 @@ For architecture-based optimization discovery, open
 Its `required_traits` describe capability prerequisites; each entry names the
 implementation, backend adapter and evidence to request. The generated author
 guide lives at
-`src/merlin_experiments/phase1/author_skills/pass-library/`.
+`src/merlin/experiments/phase1/author_skills/pass-library/`.
 `phase1/optimization_suggestions.py` joins the catalog to the selected target
 traits and emits `OPTIMIZATION_SUGGESTIONS.json` into an author workspace;
 `phase1/operation_optimizations.py` checks actual workload prerequisites.
@@ -665,9 +668,11 @@ agent prompt. A suggestion is not semantic legality or verification evidence.
 The actual scheduling implementations now live under `compiler/schedule/`;
 `compile/scheduling/` retains temporary exact module aliases. Shared tensor and
 loop rewrites continue moving into `compiler/transforms/`. Agent prompts and
-feedback live in the optional experiment distribution. Fresh experiments select
-SDK26 and freeze its exact source closure; historical SDK6 through SDK25 replay
-requires the corresponding frozen release. Source inventories, editable overlays,
+feedback live in `merlin.experiments` within the same distribution, with optional
+engine dependencies. Fresh experiments select SDK27 and freeze its exact source
+closure; historical SDK6 through SDK26 replay requires the corresponding frozen
+release and explicit source environment. Their metadata and source rosters are
+unchanged. Source inventories, editable overlays,
 generated guides and their callers migrate together, with one editable owner
 for each implementation.
 
@@ -690,7 +695,7 @@ Backend authors and agents may call, configure, compose, modify or replace these
 implementations. This is already supported by
 `targetgen/compiler_library_fork.py`: an enabled selected library admits sparse
 candidate source overrides under `submission/compiler_library/merlin/`.
-`merlin_experiments/phase1/compiler_library.py` explains this workflow to the
+`merlin.experiments/phase1/compiler_library.py` explains this workflow to the
 agent. Unchanged leaves use the selected baseline; candidate edits are hashed
 with the backend and run through the ordinary candidate execution path.
 Independent checking, approved facts and reference behavior remain outside those
@@ -757,7 +762,8 @@ source readers retain responsibility for effects, aliases and legal movement;
 enumerating a boundary does not authorize a transformation. Matrix offers adapt
 the existing explicitly selected provider and preserve Boolean selection;
 their cost is unknown unless supplied, and they establish no additional hardware
-or numerical capability. Global heterogeneous selection remains to be integrated.
+or numerical capability. This legacy image route does not yet consume the
+global heterogeneous selection service described above.
 
 The ignored Zephyr-only `arena_mb` keyword and FireSim driver's `--arena-mb`
 option have been removed. Zephyr sizes activation memory from the lowered
@@ -766,14 +772,24 @@ arena setting. Generated drivers no longer advertise an unimplemented RTIO
 switch. No CCA, mining, scheduling, or independent verification capability has
 been retired by these changes.
 
-All active Merlin implementation lives under `src/` in one distribution:
-`merlin`, `merlin_experiments` and `merlin_dse`. Shared compiler mechanisms,
-trusted evaluation and research retain distinct logical ownership and access;
-optional dependency extras enable their engines. Active Merlin regression cases
-live under `merlin/tests/`; `packages/` retains historical inputs and the independent
-timing observer distribution. Historical imports remain
-compatible, and an import prefix alone grants no candidate access.
-`merlin/python/merlin` is a compatibility symlink, not a second implementation.
+All active Merlin implementation lives in the single `src/merlin/` package.
+Experiment engines use `merlin.experiments`; design-space analysis uses
+`merlin.analysis.dse.{search,pressure,guidance}`. There is no root `merlin/`
+source/resource tree or second project-named Python package. The src layout
+keeps imports bound to the selected installation, enabling checks outside the
+checkout to detect missing packaged code or data.
+
+Shared compiler mechanisms, trusted evaluation and research retain distinct
+logical ownership and access; dependency extras enable optional engines without
+installing another copy of the code. Installed public resources live under
+`src/merlin/resources/`, and native runtime C/header sources under
+`src/merlin/runtime/native/`. Active regression cases live under `tests/`.
+Target examples, study drivers, captures, retained corpora and reproduction inputs
+live under `examples/` and `experiments/`, outside the wheel's declared resource
+inventory. Installed research workflows require their selected external inputs.
+`packages/` retains historical metadata/inputs and the independent timing observer.
+An import prefix or wheel membership alone grants no candidate access; frozen
+historical inputs retain their original source environment.
 
 ### Compiler and target boundary
 
@@ -805,7 +821,7 @@ and cost models tested on independent cases, including tails and refused/fallbac
 Provenance IDs support traceability and exact source-to-device binding, independently of
 the semantic and cost-based decision to apply an optimization.
 
-The catalog defines experiments; `merlin/experiments/` still contains checkout-dependent
+The catalog defines experiments; `experiments/studies/` still contains checkout-dependent
 native engines and resources. Reviewed phase-0 handoff and frozen phase-1/2 inputs preserve
 the existing grading authority. Installed commands and synthetic tests do not establish
 hardware readiness or qualify a compiler. See [repository structure](repo_structure.md)

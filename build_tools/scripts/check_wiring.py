@@ -10,7 +10,7 @@ unreported for a year. An unwired check reads exactly like a passing one.
 This gate builds the import graph structurally (``ast``; a word search over-counts, because a
 module's name appears in comments and docstrings of code that never imports it) and requires every
 module under the instrumented packages to have a PRODUCTION importer: code under the library, the
-experiments, the targets (``merlin/targets`` and the target workflows under ``examples/``) or the
+experiments, the targets (``experiments/reference-data/target-inputs`` and the target workflows under ``examples/``) or the
 build tools, excluding the test suite and the module itself. A declared console script or an
 executable ``python -m`` command in the shared runtime-rendered task prompt counts as wired.
 A literal module selected through the canonical ``module_source_path`` helper is a source
@@ -76,10 +76,15 @@ INSTRUMENTED = tuple(
     f"{prefix}/{package}"
     for prefix in ("src/merlin", "merlin/python/merlin")
     for package in ("perf", "targetgen", "verify")
-) + ("src/merlin_experiments/evaluation",)
+) + ("src/merlin/experiments/evaluation",)
 #: Where a production importer may live.
-PRODUCTION = (*_source_layout.SOURCE_SCAN_ROOTS, "merlin/experiments", "merlin/targets", "build_tools")
-#: Where target workflows live since the layout consolidation moved them out of ``merlin/targets``.
+PRODUCTION = (
+    *_source_layout.SOURCE_SCAN_ROOTS,
+    "experiments/studies",
+    "experiments/reference-data/target-inputs",
+    "build_tools",
+)
+#: Where target workflows live since the layout consolidation moved them out of ``experiments/reference-data/target-inputs``.
 EXAMPLES = "examples"
 
 
@@ -89,7 +94,7 @@ def _target_workflow_roots() -> tuple[str, ...]:
 
     These hold the operator commands a target's README documents -- binding a run to an exact RTL
     binary, probing a headline kernel -- so an import there is a production caller, exactly as one
-    under ``merlin/targets`` was before the move. Frontend samples, shared shell helpers and
+    under ``experiments/reference-data/target-inputs`` was before the move. Frontend samples, shared shell helpers and
     standalone packages beside them (no ``target/``, no ``experiment.yaml``) do not count.
     """
     base = ROOT / EXAMPLES
@@ -390,7 +395,7 @@ def _console_script_symbols() -> set[str]:
 #: cannot see it: ``claims/dispatch.resolve`` runs exactly one ``preflight_*`` per analyzer module and
 #: no file spells the three that only it reaches. Each dispatcher is declared with the constant it
 #: publishes, and the prefix is READ from its source, so renaming either cannot leave a stale copy here.
-PREFIX_DISPATCHERS = (("src/merlin_experiments/phase2/claims/dispatch.py", "PREFLIGHT_PREFIX"),)
+PREFIX_DISPATCHERS = (("src/merlin/experiments/phase2/claims/dispatch.py", "PREFLIGHT_PREFIX"),)
 
 
 def _published_constant(tree: ast.AST | None, name: str) -> str | None:
@@ -525,7 +530,7 @@ def _public_definitions(path: Path) -> list[str]:
 
 def _test_files() -> list[Path]:
     """Every test-suite source: the cross-subsystem suite and each distribution's own tests."""
-    roots = [ROOT / "merlin" / "tests", *sorted((ROOT / "packages").glob("*/tests"))]
+    roots = [ROOT / "tests", *sorted((ROOT / "packages").glob("*/tests"))]
     return [
         path
         for base in roots

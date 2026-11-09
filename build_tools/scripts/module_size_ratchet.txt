@@ -43,4 +43,4 @@ merlin/python/merlin/targetgen/rtl/mlc_bridge.py  # 2366
 # different in kind, because it moves issuer logic out of the hashed file: the identity must then be
 # hashed over every issuer module, which changes the capture path's trust model, not a constant. That
 # change belongs with the capture path's owners while it is under active development on main.
-packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_m2m.py  # 1738
+packages/merlin-experiments/src/merlin/experiments/capture_execution/sealed_m2m.py  # 1738

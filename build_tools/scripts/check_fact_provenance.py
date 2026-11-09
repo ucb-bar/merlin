@@ -117,7 +117,7 @@ import _source_layout  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 RATCHET_FILE = Path(__file__).resolve().parent / "fact_provenance_ratchet.txt"
-SCAN_ROOTS = (*_source_layout.SOURCE_SCAN_ROOTS, "merlin/targets", "build_tools/scripts")
+SCAN_ROOTS = (*_source_layout.SOURCE_SCAN_ROOTS, "experiments/reference-data/target-inputs", "build_tools/scripts")
 #: Path fragments that mark COPIED sandbox workspaces / build output, not source.
 EXCLUDE_FRAGMENTS = ("/_qa_ws/", "/_data/", "/bundle_inputs/", "/workspace/", "/__pycache__/")
 INLINE_MARKER = "# fact-source-ok:"

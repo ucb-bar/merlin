@@ -3,7 +3,7 @@
 
 The target's shipped ``isa_definition.py`` is evidence and deliberately remains
 read-only.  When RTL establishes that one of its fixed instruction fields is
-wrong, Merlin records the adjudication in ``merlin/contract/isa_errata.yaml``.
+wrong, Merlin records the adjudication in ``src/merlin/resources/contracts/isa_errata.yaml``.
 This helper runs inside the target model's virtualenv, applies only those
 reviewed corrections to the live instruction classes, and then invokes the
 model-owned functional runner unchanged.

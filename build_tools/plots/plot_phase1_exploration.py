@@ -40,7 +40,7 @@ def extract(run, conclusion, out):
     sys.path.insert(0, str(REPO / "src"))
     from phase1_abstraction_trace import abstraction_markers
 
-    from merlin_experiments.phase1.telemetry.author_agents import _thread_metrics, read_rollout
+    from merlin.experiments.phase1.telemetry.author_agents import _thread_metrics, read_rollout
 
     sources = {}
 

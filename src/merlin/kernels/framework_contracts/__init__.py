@@ -8,7 +8,7 @@ target-specific contract is instead selected explicitly from its target owner wi
 ``use_feature_contract``. No checkout or target-name lookup supplies one implicitly.
 
 Which ``kernel.source`` spellings name which framework is not held here: it belongs to the corpus
-registry (``merlin/contract/corpora.yaml``, read through :mod:`merlin.targetgen.corpora`), so a source
+registry (``src/merlin/resources/contracts/corpora.yaml``, read through :mod:`merlin.targetgen.corpora`), so a source
 alias and the corpus location it selects cannot drift apart.
 """
 

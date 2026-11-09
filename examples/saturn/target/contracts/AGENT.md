@@ -14,7 +14,7 @@ Curated saturn plan artifacts: `target_contract.yaml`, `dialect_plan.yaml`.
 
 ## Interfaces
 
-Validated against `merlin/schemas/*.schema.yaml`; consumed by `xdsl_dialects/lowering/` (lowering table) and `targetgen/synthesize/` (kept in sync).
+Validated against `src/merlin/resources/schemas/*.schema.yaml`; consumed by `xdsl_dialects/lowering/` (lowering table) and `targetgen/synthesize/` (kept in sync).
 
 ## Invariants
 

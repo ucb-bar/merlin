@@ -11,7 +11,7 @@ code_refs:
   - src/merlin/model_check/chain_image_readback.py
   - src/merlin/model_check/chain_image_data.py
   - src/merlin/model_check/chain_image_timing.py
-  - merlin/runtime/c/chain_guest.c
+  - src/merlin/runtime/native/c/chain_guest.c
 ---
 
 # Retained-object chain images
@@ -76,7 +76,7 @@ floating values within tolerance, including opposite signed zeros, may have diff
 All steps still execute on a mismatch, and any mismatch or runtime rank error fails the guest.
 Expected tensors embedded in these images remain private artifacts.
 
-`merlin_experiments.post_freeze.firesim` explicitly admits this compact transport only through the
+`merlin.experiments.post_freeze.firesim` explicitly admits this compact transport only through the
 pinned chain manifest. Its collector joins the original uploaded/consumed ELF and complete workload
 roster, then decodes the actual UART. It keeps model validation incomplete pending independent
 source placement, accelerator-kernel, instruction and hardware gates. A linked image or transport

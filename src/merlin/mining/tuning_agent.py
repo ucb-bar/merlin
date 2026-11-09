@@ -9,7 +9,7 @@ the expert kernel.
 Honest contract:
   * The LLM is the injectable ``llm_fn`` (default merlin.common.llm.complete — Anthropic when
     ANTHROPIC_API_KEY is set, else None so we degrade to []). The prompt is a versioned artifact
-    (merlin/prompts/rvv_tuning_v{V}.md).
+    (src/merlin/resources/prompts/rvv_tuning_v{V}.md).
   * Every proposed override is VALIDATED/CLAMPED against the known knob vocabulary before it can be
     minted; an override key the generator (mining.from_strategy.render_schedule) cannot render is
     DROPPED with a note rather than emitted (the beam never tries to render an unknown knob).

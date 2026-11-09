@@ -162,54 +162,84 @@ def _normalized(value, normalize):
 
 def _seeded_identity(plan, arm):
     """Reopen the existing reviewed-seed boundary; compare content, not arm-local paths."""
-    from merlin_experiments.phase1 import joint_seed
+    from merlin.experiments.phase1 import joint_seed
 
     options, env, _, _, normalize = arm
     seed, origin = plan["seed"], plan.get("origin")
-    if ("--fresh-backend" in options or "--resume" in options or "--seed-submission" not in options
-            or options.get("--sandbox") != "bwrap" or "--allow-unsandboxed" in options):
+    if (
+        "--fresh-backend" in options
+        or "--resume" in options
+        or "--seed-submission" not in options
+        or options.get("--sandbox") != "bwrap"
+        or "--allow-unsandboxed" in options
+    ):
         raise ValueError("paired seeded runs require isolated reviewed seed origins")
     policy = json.loads(Path(options["--joint-campaign"]).read_text())
-    selected = joint_seed.selected(SimpleNamespace(
-        joint_campaign=options["--joint-campaign"], seed_submission=options["--seed-submission"],
-        sandbox=options["--sandbox"], fresh_backend=False, resume=False,
-        joint_epoch=options.get("--joint-epoch", ""),
-        qualify_submission=options.get("--qualify-submission", ""),
-    ), policy)
-    if (not isinstance(selected, dict) or selected != origin or seed.get("source") != selected["source"]
-            or seed.get("graded_source_sha256") != selected["sha256"]):
+    selected = joint_seed.selected(
+        SimpleNamespace(
+            joint_campaign=options["--joint-campaign"],
+            seed_submission=options["--seed-submission"],
+            sandbox=options["--sandbox"],
+            fresh_backend=False,
+            resume=False,
+            joint_epoch=options.get("--joint-epoch", ""),
+            qualify_submission=options.get("--qualify-submission", ""),
+        ),
+        policy,
+    )
+    if (
+        not isinstance(selected, dict)
+        or selected != origin
+        or seed.get("source") != selected["source"]
+        or seed.get("graded_source_sha256") != selected["sha256"]
+    ):
         raise ValueError("paired seed source differs from its recorded origin")
     source = seed["from"]
     if _module("fresh_seed").verify_source(Path(source["path"]), source["sha256"]) != seed["from_digest"]:
         raise ValueError("paired seed digest basis differs from its recorded origin")
     carry = seed["carry"]
-    if (set(carry) != {"certificates", "results", "rules", "handoff"}
-            or any(type(value) is not bool for value in carry.values())):
+    if set(carry) != {"certificates", "results", "rules", "handoff"} or any(
+        type(value) is not bool for value in carry.values()
+    ):
         raise ValueError("paired seed carry policy requires explicit booleans")
     carries = carry["certificates"] or carry["results"]
-    if (carries != (selected.get(joint_seed.CARRY) is True)
-            or carries != (env.get("MERLIN_TIER_CERT_PORTABLE") == "1")
-            or carries and env.get("MERLIN_SEEDED_GRADE") != (seed.get("run") or {}).get("run_id")
-            or carry["handoff"] != (selected.get(joint_seed.PREVIOUS) is not None)):
+    if (
+        carries != (selected.get(joint_seed.CARRY) is True)
+        or carries != (env.get("MERLIN_TIER_CERT_PORTABLE") == "1")
+        or carries
+        and env.get("MERLIN_SEEDED_GRADE") != (seed.get("run") or {}).get("run_id")
+        or carry["handoff"] != (selected.get(joint_seed.PREVIOUS) is not None)
+    ):
         raise ValueError("paired seed carry policy differs from its runtime approval")
     evidence = (seed.get("evidence") or {}).get("pin")
     if evidence != selected.get(joint_seed.EVIDENCE):
         raise ValueError("paired seed evidence differs from its recorded origin")
     review = _reopen(selected["review"])
     if review.get("derived_from") != {
-        "path": source["path"], "sha256": source["sha256"], "digest": seed["from_digest"],
-        "stripped": seed["stripped"], "run": (seed.get("run") or {}).get("run_id"),
+        "path": source["path"],
+        "sha256": source["sha256"],
+        "digest": seed["from_digest"],
+        "stripped": seed["stripped"],
+        "run": (seed.get("run") or {}).get("run_id"),
     }:
         raise ValueError("paired seed derivation differs from its operator review")
     # Each arm has its own reviewed copy. Its review's SHA differs because it contains
     # arm-local paths; the existing seed reader has reopened and checked those bytes.
     policy["compiler_origin"] = {**selected, "review": review}
     certificates = seed.get("certificates") or {}
-    identity = {key: seed.get(key) for key in (
-        "from", "from_digest", "stripped", "graded_source_sha256", "carry", "run", "guidance_addendum",
-    )}
-    identity.update(policy=policy, evidence_sha256=(evidence or {}).get("sha256"),
-                    judge=certificates.get("judge"))
+    identity = {
+        key: seed.get(key)
+        for key in (
+            "from",
+            "from_digest",
+            "stripped",
+            "graded_source_sha256",
+            "carry",
+            "run",
+            "guidance_addendum",
+        )
+    }
+    identity.update(policy=policy, evidence_sha256=(evidence or {}).get("sha256"), judge=certificates.get("judge"))
     pins = [selected["review"]]
     if seed.get("guidance_addendum"):
         actual = _pin(seed["guidance_addendum"]["path"])

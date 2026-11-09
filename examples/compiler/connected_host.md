@@ -36,7 +36,7 @@ runtime is synchronous; overlapping device stages require a separate lifetime
 and completion contract. Flat byte-addressable hosts with 8-bit bytes and
 pointer widths at most 64 bits are supported.
 
-The focused native tests in `merlin/tests/infra/test_connected_host.py` compile
+The focused native tests in `tests/infra/test_connected_host.py` compile
 the emitted wrapper with counted dense loops and exact pointwise images in an
 independent neutral byte runtime. They compare all outputs, exercise relocation,
 repeated invocations, mixed input/accumulator widths, refusal before launch and

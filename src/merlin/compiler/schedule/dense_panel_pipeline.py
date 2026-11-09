@@ -132,7 +132,7 @@ class DensePanelPipelineResult:
         if (
             self.kernel.digest() != self.checked_kernel_sha256
             or _digest(asdict(self.admission)) != self.checked_admission_sha256
-            or tuple(sorted(shared_library_sources(version=26).items())) != self.checked_library_sources
+            or tuple(sorted(shared_library_sources(version=27).items())) != self.checked_library_sources
             or self.source_module is not None
             and ir_digest(self.source_module) != self.source_identity
             or _digest(
@@ -249,7 +249,7 @@ def schedule_dense_panel_pipeline(
         raise ValueError("panel pipeline service requires an explicit schedule.panel_pipeline decision")
     if decision.pipeline_kind == "retained_lhs_segmented_k":
         raise ValueError("segmented decisions require the separate combined-capability scheduling service")
-    sources = tuple(sorted(shared_library_sources(version=26).items()))
+    sources = tuple(sorted(shared_library_sources(version=27).items()))
     retained = decision.pipeline_kind == "retained_full_k"
     kernel = (
         emit_compact_dense(

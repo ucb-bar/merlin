@@ -172,7 +172,7 @@ fits the selected DTS, and one saved rank-4 capture passed Spike, but this does
 not qualify Rocket RTL/FireSim execution or every declared host operation.
 A deterministic native-host diagnostic can
 be generated for a saved capture with
-`python -m merlin_experiments.model_qualification --bundle "$CAPTURE_ROOT/residual_cnn" --out "$QUALIFICATION_ROOT/residual_cnn" --native-host-only --atol 0 --rtol 0`.
+`python -m merlin.experiments.model_qualification --bundle "$CAPTURE_ROOT/residual_cnn" --out "$QUALIFICATION_ROOT/residual_cnn" --native-host-only --atol 0 --rtol 0`.
 The generated `qualification.json` binds the input bytes, compiler route and
 numerical result. It proves that saved whole program on the CPU, not independent
 per-operation support, Rocket execution, or Gemmini execution; Phase 0 keeps the
@@ -463,7 +463,7 @@ The fire-aligned EL4 release is prepared from one checked-in file,
 Lean toolchain and Phase 1 policy descriptor (each with its SHA256), the host
 index width and the seal statement. The
 [Phase 1 launch config](../phase1/launch/el4-fire-aligned.yaml) names it;
-`python -m merlin_experiments.phase1.launch_config render` writes its exact
+`python -m merlin.experiments.phase1.launch_config render` writes its exact
 `release.prepare(...)` arguments to `release-prepare.json`, and `verify` compares
 an existing release's `private/preparation.json` and seal against it. A new release
 always takes a new version (`--var RELEASE_VERSION=N`); sealed releases are never

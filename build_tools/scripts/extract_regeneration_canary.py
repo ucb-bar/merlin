@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Copy a small, value-free slice of a sealed Phase 0 generation into a regeneration-canary fixture.
 
-The canary (``merlin/tests/<target>/test_phase0_regeneration_canary.py``) replays one sealed model
+The canary (``tests/<target>/test_phase0_regeneration_canary.py``) replays one sealed model
 capsule's device groups through today's grouping, group writer and software admission, and fails
 when today's code would refuse a group the sealed corpus contains. It must not read live evidence
 at test time, so this script copies exactly what that replay reads -- and nothing numerical beyond
@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
 
-    from merlin_experiments.phase0.evidence import load_exported_evidence
+    from merlin.experiments.phase0.evidence import load_exported_evidence
 
     phase0 = args.run.resolve() / "phase0"
     evidence = load_exported_evidence(phase0)

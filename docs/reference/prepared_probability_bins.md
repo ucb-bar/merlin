@@ -8,7 +8,7 @@ related: [ordered_fma_certificates, quantized_host_optimizations]
 code_refs:
   - src/merlin/llvmlower/source_attention_frontier.py
   - src/merlin/llvmlower/probability_point_spans.py
-  - merlin/runtime/c/prepared_bf16_interval.h
+  - src/merlin/runtime/native/c/prepared_bf16_interval.h
 ---
 
 # Prepared probability bins

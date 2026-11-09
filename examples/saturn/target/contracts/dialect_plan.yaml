@@ -1,4 +1,4 @@
-# Saturn dialect plan (validates against merlin/schemas/dialect_plan.schema.yaml).
+# Saturn dialect plan (validates against src/merlin/resources/schemas/dialect_plan.schema.yaml).
 target: saturn
 dialect_name: saturn
 ops:

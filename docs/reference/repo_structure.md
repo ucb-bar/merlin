@@ -12,10 +12,12 @@ code_refs: [pyproject.toml, src/merlin, packages, experiments/catalog.yaml]
 
 For ordinary compilation, start at `src/merlin/api.py`. For an agent experiment,
 start at `experiments/catalog.yaml`. All Merlin Python implementation
-ships in one `merlin` distribution from `src/`. Shared compiler, trusted evaluation and research
-workflows retain distinct logical owners; dependency extras enable optional engines rather than
-installing additional copies of the code. The old `merlin/python/merlin` directory is a compatibility
-symlink, not the place to add new modules.
+ships in one `merlin` package at `src/merlin/`. Shared compiler, trusted evaluation
+and research workflows retain distinct logical owners; dependency extras enable
+optional engines rather than installing additional copies of the code. There is
+no root `merlin/` tree or separate `merlin_experiments` / `merlin_dse` source package.
+The src layout makes a successful import depend on the selected installation,
+instead of accidentally finding another package in the caller's working directory.
 
 This map describes the current checkout. Compiler ownership is clearer than the
 retained legacy areas, and some active modules still need responsibility-based
@@ -52,7 +54,16 @@ src/merlin/
   runtime/               execute artifacts or prepare/collect external execution
   verification/          independent references, proofs and artifact checks
   target/spec/           reviewed numerical, instruction and effect declarations
-  development/           experiment definition validation and command selection
+  experiments/
+    definition.py        experiment definition validation and command selection
+    phase0/              coverage derivation and conformance inputs
+    phase1/              compiler authoring, brokers and independent grading
+    phase2/              retained-compiler optimization and measurement
+  analysis/dse/
+    search/              hardware/interface design-space search
+    pressure/            workload-derived interface pressure
+    guidance/            evidence-tagged design guidance
+  resources/             installed public schemas, contracts, prompts and benchmark definitions
 ```
 
 To understand a single transform, open its implementation in `transforms/` or
@@ -65,9 +76,13 @@ OOT lowering begins at the provider invocation in `compiler/invocation.py`:
 `provider.compile` or the admitted `provider.compile_selected` hook. The actual
 target dialect lowering, encoder and device implementation live in the selected
 OOT package. Its products may be LLVM, objects, device binaries or commands.
-The scalar provider starts in `compiler/backend/scalar.py`, reusing scalar and
-LLVM lowering. The pass library spans source transforms and counted scheduling;
-`passes/` supplies the contracts and invocation machinery, not every algorithm.
+The scalar provider starts in `compiler/backend/scalar.py`, reusing
+`compiler/lower/scalar/` and terminal LLVM lowering. RVV implementation belongs
+in `rvv-mlir`, with its selected provider reusing admitted shared infrastructure.
+The pass library spans source transforms and counted scheduling; `passes/`
+supplies the contracts and invocation machinery, not every algorithm. Backends
+provide resource descriptions, command effects and encoders so generic tiling,
+operand retention, transfer merging and command ordering can remain in Merlin.
 
 `llvmlower/`, `targetgen/`, `sched/` and `transforms/` outside `compiler/` still
 contain active implementation and research interfaces. Some older modules under
@@ -84,48 +99,53 @@ small forwarding modules alone do not improve readability.
 ## Repository roots
 
 Read-only resource identity is independent of writable output roots.
-`merlin.common.paths.data_path` selects this implementation's actual source
-checkout, an explicit `MERLIN_REPO_ROOT`, or the installed core's bundled
-`merlin/_data` files. An incidental caller CWD or `MERLIN_WORK_DIR` containing
-another `merlin/runtime`, contract or schema tree cannot shadow installed data.
+`merlin.common.paths.data_path` selects this implementation's installed package
+or the explicitly selected `MERLIN_REPO_ROOT`. Public data lives at
+`merlin/resources/` within the package; native C/header inputs live at
+`merlin/runtime/native/`. Editable installations use those same physical owners
+under `src/`. An incidental caller CWD or `MERLIN_WORK_DIR` cannot shadow them.
 Resource-specific overrides such as `MERLIN_RUNTIME_DIR` remain explicit
 selections. Compilation recipes should pin the actual C/header files they use
 as well as the Python package; Python import isolation alone does not identify
 the compiled runtime.
 
-```
-src/
-  merlin/             compiler, runtime, verification and logical research/evaluation owners
-  merlin_experiments/ phase orchestration, agent tooling, trusted grading and certification
-  merlin_dse/         typed design-space exploration interfaces
-packages/
-  merlin-timing/     independent measurement package and dependency environment
-  other directories retain historical metadata and inputs, not a second active test suite
+```text
+src/merlin/               one installed Python namespace; see compiler map above
+  runtime/native/        reusable C runtime sources, ABI and bare-metal substrate
+  resources/
+    contracts/           shared reviewed semantics, interfaces and policy records
+    schemas/             public record schemas
+    prompts/             shared runtime-loaded prompt templates
+    benchmarks/          selected public workload definitions
+tests/                   compact regression suite and its actual fixtures
+examples/
+  quickstart/            tiny real MLIR -> C compile and optional native execution
+  <target>/              target walkthroughs, definitions and public target inputs
 experiments/
-  catalog.yaml       experiment discovery: merlin experiment list
-  definitions/       versioned phase definitions and explicitly non-runnable templates
-  reference-data/    retained, read-only analysis inputs; never a new output destination
-build_tools/   build/dev tooling + measurement/analysis/sweep runners + repo linters (scripts/, cmake, docker)
-docs/          this documentation (incl. generated cli.md = CLI surface)
-examples/      runnable end-to-end examples; examples/triton/run.sh needs no toolchain
-third_party/   hard build/test deps only (no analysis repos)
-out/           the SINGLE generated-output root (gitignored except the skeletons + curated
-               .gitignore negations named below)   ── see CLAUDE.md "Generated-output convention"
-  runs/        aet experiment runs
-  artifacts/   all other generated products; artifacts/targets/ = codegen packages
-               (replaces retired generated_targets/; tracked baselines/champions via .gitignore negations)
-  build/       generated build outputs + buildable OOT codegen repos (build/generated/)
-merlin/
-  python/merlin -> ../../src/merlin (legacy path compatibility only)
-  contract/    the benchmark contract: capsule corpus, interface grammar, hardware pins
-  prompts/     prompt templates loaded at runtime (product data, bundled into the wheel)
-  runtime/     target-independent C runtime substrate (c/ + baremetal/ + abi/)
-  targets/     reference target resources retained pending qualified OOT extraction
-  schemas/     cross-workstream coordination contract
-  benchmarks/  shared workload descriptions
-  experiments/ retained native phase engines and experiment resources (not the catalog)
-  tests/       compact compiler/runtime, verification and contract cases with shared fixtures/data
+  catalog.yaml           experiment discovery: merlin experiment list
+  definitions/           versioned study definitions
+  templates/             explicitly selected templates, not ready-made results
+  studies/               retained study drivers and research resources
+  benchmarks/            unbundled captures and executable benchmark inputs
+  corpora/               retained corpus inputs, not the active pytest suite
+  reference-data/        frozen/public reproduction inputs and target-inputs/
+packages/
+  merlin-timing/         independent measurement distribution and environment
+  <other>/               historical project metadata/inputs, not active Merlin packages
+docs/                    durable guides, references and design rationale
+build_tools/             build, release, repository and source-access checks
+third_party/             opt-in pinned upstream dependencies
+out/
+  runs/                  generated execution state
+  artifacts/             generated corpora, reports and exported compiler products
+  build/                 generated native/package/toolchain builds
 ```
+
+Shipped non-Python data is selected by `build_tools/package_resources.json`.
+Tests, target examples, study drivers, captures, retained
+corpora and reproduction inputs are not bundled merely because they appear in
+this checkout. Installed research workflows require their explicit input roots;
+missing inputs remain unavailable rather than being replaced with fixtures.
 
 ## Find the owner before changing code
 
@@ -137,9 +157,9 @@ target-specific. Shared scheduling representations and checks remain in core.
 
 | Paper concept | Implementation home | Execution and migration status |
 | --- | --- | --- |
-| Phase 0 — Hardware-Guided Test Generation | `src/merlin_experiments/phase0/` | Installed phase-0 engine; no native controller required |
-| Phase 1 — Functional Compiler Generation | `src/merlin_experiments/phase1/` | Installed `python -m merlin_experiments.phase1`; native baseline launcher delegates to the same controller; catalog/treatment migration remains in progress |
-| Phase 2 — Performance Optimization | `src/merlin_experiments/phase2/` | Reusable authoring, campaign and frozen-suite controllers live in `src/merlin_experiments/phase2/`; native compatibility launchers and target-specific study drivers retain their explicit checkout inputs |
+| Phase 0 — Hardware-Guided Test Generation | `src/merlin/experiments/phase0/` | Installed phase-0 engine; no native controller required |
+| Phase 1 — Functional Compiler Generation | `src/merlin/experiments/phase1/` | Installed `python -m merlin.experiments.phase1`; native baseline launcher delegates to the same controller; catalog/treatment migration remains in progress |
+| Phase 2 — Performance Optimization | `src/merlin/experiments/phase2/` | Reusable authoring, campaign and frozen-suite controllers live in `src/merlin/experiments/phase2/`; native compatibility launchers and target-specific study drivers retain their explicit checkout inputs |
 
 Within Phase 1, `tools/` holds public standalone clients, `providers/` runs agent
 transports, `brokers/` serves host-side tool requests, and `feedback/` owns trusted
@@ -147,7 +167,7 @@ grading, repair feedback and final freeze.
 Frozen model-capsule bundle construction lives in `targetgen/capsule_bundle.py`,
 with the existing `_capsule_bundle_worker.py` retaining its process boundary.
 Private completed-build admission lives in
-`merlin_experiments/phase1/feedback/private_model_completion.py`. These grader
+`merlin.experiments/phase1/feedback/private_model_completion.py`. These grader
 owners preserve asset, input/output, loader and receipt checks; they do not
 establish numerical execution, model accuracy or candidate-visible access.
 `controller.py` composes admission and authoring; `session.py` owns fresh/resumed
@@ -162,7 +182,7 @@ own measurement admission and interpretation. Whole-model authoring and post-fre
 measurement remain separate: an accepted edit is not a measured speedup.
 
 Reviewed corpus handoff spans phases, so it lives beside them in
-`merlin_experiments/corpus/`: `preparation.py` assembles inputs, `release.py` owns
+`merlin.experiments/corpus/`: `preparation.py` assembles inputs, `release.py` owns
 review/sealing, and `admission.py` owns evaluated coverage and cohort selection.
 It is distinct from Phase 0's generation engine and from core-only contracts.
 
@@ -179,7 +199,7 @@ and paper evaluation are consumers of phase results, not phase-engine code.
 
 | Task | Start here |
 | --- | --- |
-| Define or inspect phases 0, 1, 2 | `experiments/README.md`, then `src/merlin_experiments/` |
+| Define or inspect phases 0, 1, 2 | `experiments/README.md`, then `src/merlin/experiments/` |
 | Compile or run explicit inputs | `merlin.api.compile` / `merlin.api.run`, with an explicit backend / runner; [architecture](architecture.md) |
 | Change shared compiler or scheduling behavior | `src/merlin/compiler/{passes,transforms,schedule,lower}/`, `src/merlin/xdsl_dialects/`, `src/merlin/sched/`; historical `compile` imports retain compatibility aliases |
 | Change convolution geometry or transfer emission | `compiler/schedule/window_geometry.py`, `convolution_input_rows.py`, `convolution_transfer_laws.py`, `convolution_tiles.py`; `window_transfer.py` owns column and epoch coordination |
@@ -192,23 +212,24 @@ and paper evaluation are consumers of phase results, not phase-engine code.
 | Change original host/source model builds | `model.py`, `compiler/build/{saved,modeloptions,owned,siblings,spatial}.py`; execution lives in `runtime/model.py` |
 | Change mesh execution or independent checks | `compiler/selection/mesh.py`, `runtime/mesh*.py`; independent algorithms live in `verification/{mesh,mesh_reference,model,completed_model,scalar_host}.py` |
 | Change target discovery or OOT contracts | `src/merlin/targetgen/`, `build_tools/upstreams/target_support.json` |
-| Change agent execution, tool brokers or final grading | `src/merlin_experiments/phase1/` |
-| Change frozen performance-suite orchestration | `src/merlin_experiments/phase2/{suite,suite_runtime,source_layout}.py`; retained native scripts are compatibility identities |
+| Change agent execution, tool brokers or final grading | `src/merlin/experiments/phase1/` |
+| Change frozen performance-suite orchestration | `src/merlin/experiments/phase2/{suite,suite_runtime,source_layout}.py`; retained native scripts are compatibility identities |
 | Change independent compiler verification | `src/merlin/verification/`; SMT/Lean algorithms and `lean/Merlin` mathematical sources live beside their owners |
 | Change shared evaluator or sandbox implementations | `src/merlin/targetgen/` |
-| Change research analysis or search | The logical owner under `src/merlin/{agentreport,compare,dse,dse_guidance,mining,perf,plotting}/` or `src/merlin_dse/` |
-| Locate outputs or determine whether cleanup is safe | `merlin storage report`, `merlin/contract/storage.yaml`, [storage guide](../guides/storage.md) |
+| Change research analysis or search | `src/merlin/analysis/dse/{search,pressure,guidance}/`; other research consumers retain `agentreport/`, `compare/`, `mining/`, `perf/` and `plotting/` owners |
+| Locate outputs or determine whether cleanup is safe | `merlin storage report`, `src/merlin/resources/contracts/storage.yaml`, [storage guide](../guides/storage.md) |
 | Find a command's module and distribution | [Generated CLI reference](cli.md) |
-| Find active tests and the complete collection budget | `merlin/tests/<subsystem>/`, `merlin/tests/AGENT.md`, `build_tools/scripts/check_test_budget.py` |
+| Find active tests and the complete collection budget | `tests/<subsystem>/`, `tests/AGENT.md`, `build_tools/scripts/check_test_budget.py` |
 
 These are actual source owners, while the broader destination architecture remains
 a plan. Compatibility aliases under `src/merlin/compile/` do not duplicate their
 implementations. Source receipts bind the selected implementation and retained
 compatibility files; independent references and qualification keep their original
 authority. File relocation does not qualify a backend, simulator or platform.
-The scheduling source roster includes the actual split owners in SDK26;
-frozen SDK6–25 inventories and archives remain unchanged. Public imports keep
-their established lookup identities. The [generated module index](module_index.md)
+Fresh scheduling exports select SDK27 with shared-library schema v21 and
+common substrate V20. Frozen SDK6–26 inventories and archives remain unchanged
+and require their corresponding explicit source environments. Current imports
+name the actual owners. The [generated module index](module_index.md)
 lists packages; the owner rows above locate their implementation files.
 
 The permanent suite is capped at 150 collected pytest cases, counting every
@@ -217,7 +238,7 @@ contracts. Run the repository-wide budget guard before execution:
 
 ```sh
 python build_tools/scripts/check_test_budget.py --output out/build/python/ci/test-budget.json
-python -m pytest merlin/tests -q -ra
+python -m pytest tests -q -ra
 ```
 
 The guard discovers owned collectors through Git rather than relying only on
@@ -241,8 +262,8 @@ optimization segments point to their recorded latest output, not the original
 planned directory. These are navigation pointers, not new certification or checks
 that historical output bytes are still present and valid.
 
-One distribution supplies the preserved `merlin.*`, `merlin_experiments.*` and `merlin_dse.*`
-imports. Logical component ownership is recorded in `build_tools/logical_components.json`;
+One distribution supplies the `merlin.*` namespace, including `merlin.experiments`
+and `merlin.analysis.dse`. Logical component ownership is recorded in `build_tools/logical_components.json`;
 an import beginning with `merlin` does not imply shared compiler ownership or candidate access.
 Shared code must not acquire operational dependencies on research controllers or graders.
 Private references, grading, runtime masks and independent timing retain their existing authorities.

@@ -18,7 +18,7 @@ kernel executes on the block-scaled MX datapath AFTER the QK score matmul:
 
 Steps 1-5 are ported verbatim from the independent numpy model that is validated bit-exact (0 element
 mismatches) against the cyclotron RTL run for the fp8 flash capsules. The tracked golden generator
-(``merlin/contract/capsules/generate_corpus.py``) calls this, so the corpus it emits and the kernel the
+(``experiments/corpora/generate_corpus.py``) calls this, so the corpus it emits and the kernel the
 grader runs share ONE arithmetic definition — there is no separate "normalize then requant" order that
 could silently diverge from what the kernel computes.
 

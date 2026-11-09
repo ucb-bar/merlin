@@ -14,10 +14,10 @@ code_refs:
   - src/merlin/targetgen/rtl_backend.py
   - src/merlin/targetgen/rtl_check_compiler.py
   - src/merlin/targetgen/rtl_check_runner.py
-  - merlin/experiments/capsule_bench/harness/qa_check_rtlchecks.py
-  - merlin/experiments/capsule_bench/harness/isa_tools_broker.py
-  - merlin/experiments/capsule_bench/harness/simjob_broker.py
-  - merlin/experiments/capsule_bench/harness/agent_selfcheck.py
+  - experiments/studies/capsule_bench/harness/qa_check_rtlchecks.py
+  - experiments/studies/capsule_bench/harness/isa_tools_broker.py
+  - experiments/studies/capsule_bench/harness/simjob_broker.py
+  - experiments/studies/capsule_bench/harness/agent_selfcheck.py
   - src/merlin/targetgen/sandbox/bwrap.py
 ---
 

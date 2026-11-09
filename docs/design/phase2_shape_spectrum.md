@@ -6,12 +6,12 @@ owner: merlin-experiments
 last_verified: 2026-11-09
 related: [phase2_capacity_cohort, ../guides/phase2_test_justification, ../guides/shared_pass_phase2]
 code_refs:
-  - src/merlin_experiments/phase0/shape_spectrum.py
-  - src/merlin_experiments/phase0/component_coverage_inputs.py
-  - src/merlin_experiments/phase0/public_boundaries.py
-  - src/merlin_experiments/phase0/capacity_families.py
-  - src/merlin_experiments/phase0/development_envelopes.py
-  - src/merlin_experiments/phase0/development_cohort.py
+  - src/merlin/experiments/phase0/shape_spectrum.py
+  - src/merlin/experiments/phase0/component_coverage_inputs.py
+  - src/merlin/experiments/phase0/public_boundaries.py
+  - src/merlin/experiments/phase0/capacity_families.py
+  - src/merlin/experiments/phase0/development_envelopes.py
+  - src/merlin/experiments/phase0/development_cohort.py
 ---
 
 # Development shape spectra and reduced-depth compilation tests

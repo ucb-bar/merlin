@@ -285,7 +285,7 @@ def resolve_repo_name(target: str, *, config: str | Path | None = None, override
 def resolve_remote(target: str, *, config: str | Path | None = None, override: str | None = None) -> str:
     """Resolve the git remote for ``target``. Precedence: ``override`` (``--remote``) >
     env ``MERLIN_PUBLISH_REMOTE_<TARGET>`` (via :func:`merlin.common.paths.env`, honoring ``.env``)
-    > ``merlin/targets/publish.yaml``. Never hardcoded."""
+    > ``experiments/reference-data/target-inputs/publish.yaml``. Never hardcoded."""
     if override:
         return override
     env_val = paths.env(f"MERLIN_PUBLISH_REMOTE_{target.upper()}")

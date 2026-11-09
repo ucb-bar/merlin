@@ -10,13 +10,20 @@ changes; the same gates run in pre-commit and CI.
 
 ## Source ownership
 
-`src/` owns the single installed Merlin distribution: `merlin`, `merlin_experiments`, and
-`merlin_dse`. Research workflows preserve their historical imports while optional dependencies
-stay lazy. Logical compiler/research and protected-source boundaries remain independent of
-wheel ownership. `packages/` retains historical project metadata/inputs and the independent timing observer;
-do not duplicate active Merlin code there. `merlin/python/merlin` is only a compatibility symlink.
-Experiment definitions start at `experiments/catalog.yaml`; retained research inputs live under
-`experiments/reference-data/`, not generated `out/`. See `docs/reference/repo_structure.md`.
+`src/merlin/` owns the single installed package. Experiment engines live in
+`merlin.experiments`; design-space analysis lives in `merlin.analysis.dse`.
+The root `merlin/` tree and separate project-named source packages are gone.
+The src layout keeps imports bound to the installed distribution rather than an
+incidental checkout directory. Optional dependencies stay lazy, and wheel membership
+does not grant candidate access to graders, independent references or hidden inputs.
+
+`src/merlin/resources/` holds installed public contracts, schemas, prompts and benchmark
+definitions; `src/merlin/runtime/native/` holds reusable native runtime sources.
+`tests/` owns the compact permanent suite. `examples/` owns walkthroughs and public target
+inputs. Experiment definitions start at `experiments/catalog.yaml`; unbundled captures,
+corpora and reproduction inputs stay under `experiments/`, separate from generated `out/`.
+`packages/` retains historical metadata/inputs and the independent timing observer;
+do not duplicate active Merlin code there. See `docs/reference/repo_structure.md`.
 
 ## Compiler and OOT ownership rule
 
@@ -106,7 +113,7 @@ outer-product unit while the revision named for the tapeout does not contain tha
 in the artifact recorded which one the numbers belonged to. A result attributed to the wrong device is
 worse than no result, because it gets cited.
 
-- **One registry**: `merlin/contract/hardware_pins.yaml` — tracked and reviewed, full quoted 40-char shas.
+- **One registry**: `src/merlin/resources/contracts/hardware_pins.yaml` — tracked and reviewed, full quoted 40-char shas.
   Each pin carries `requires_paths` (what the work needs present) and may carry `forbids_paths` (whose
   *absence* is the point). Verify by CONTENT, not by branch name: branches move and forks share them.
 - **API**: `merlin.common.provenance` — `verify()` (declared vs actual), `record()` (the block to embed),
@@ -152,7 +159,7 @@ Root names come from `merlin.common.paths` — `out_dir()` / `runs_dir()` / `art
   `probes/` (one-off diagnostics — a standing concern and an afternoon's debugging should not be
   neighbours at the same level).
 
-  **The roster is data, not prose.** `merlin/contract/storage.yaml` declares the three roots, every
+  **The roster is data, not prose.** `src/merlin/resources/contracts/storage.yaml` declares the three roots, every
   concern with what it holds, and where a directory that predates the roster belongs; this section is
   a restatement of it and a test holds the two together. A concern list that lived in code drifted to
   52 undeclared directories against 16 declared ones before anyone noticed, so adding a concern is a
@@ -206,7 +213,7 @@ Escape hatch for a genuine one-off: `export MERLIN_ALLOW_ARTIFACT_WRITE=1` or ad
 
 # Test layout — one suite, organized by subsystem
 
-Cross-subsystem tests live in **`merlin/tests/`** (the root project's pytest `testpaths`), organized
+Cross-subsystem tests live in **`tests/`** (the root project's pytest `testpaths`), organized
 into **subsystem buckets**: `kernels/ rvv/ dse/ gemmini/ targetgen/ ir/ runtime/ infra/`.
 The permanent suite is capped at 150 collected cases across owned project roots,
 including parameterization. Retired workflow tests remain in Git/frozen inputs;
@@ -215,16 +222,16 @@ timing observer retains its own project configuration.
 Rules for the cross-subsystem suite (enforced by
 `build_tools/scripts/check_structure.py` "test layout"; see `.claude/skills/test-layout`):
 
-- A test file is `merlin/tests/<bucket>/test_<area>.py` — **never at the `merlin/tests/` root**, and
+- A test file is `tests/<bucket>/test_<area>.py` — **never at the `tests/` root**, and
   `<bucket>` must be one of the eight above. Place a new test in the subsystem it exercises.
-- Shared inputs live in `merlin/tests/fixtures/` and `merlin/tests/data/`.
+- Shared inputs live in `tests/fixtures/` and `tests/data/`.
 - Resolve repo paths via `merlin.common.paths.repo_root()` / `merlin_dir()` — **never** `Path(__file__).parents[N]`
   (so tests are location-independent and survive moves).
 - Run `build_tools/scripts/check_test_budget.py --output out/build/python/ci/test-budget.json`
-  before `.venv/bin/python -m pytest merlin/tests`. Install the selected
+  before `.venv/bin/python -m pytest tests`. Install the selected
   optional dependency extras; a base Merlin installation need not include research engines.
   Historical replay retains its recorded source/distribution selection and test inputs.
-- Apply the strict behavioral review bar in `merlin/tests/AGENT.md` to the
+- Apply the strict behavioral review bar in `tests/AGENT.md` to the
   permanent suite. Keep distinct core and
   acceptance obligations; consolidate redundant snapshots and implementation
   trivia rather than requiring a test for every helper or option.
@@ -262,13 +269,13 @@ underneath it, but it does not run the post-freeze public+hidden grade, returns 
 formal verdict was reachable.
 
 Three properties are **gated, not documented-and-hoped-for**
-(`merlin/tests/infra/test_continuous_is_the_default.py`, `test_promotion_wiring.py`):
+(`tests/infra/test_continuous_is_the_default.py`, `test_promotion_wiring.py`):
 
 1. **No round barrier** — a background grader re-grades a *snapshot copy* every `--grade-interval`
    seconds and refreshes `qa/verdict.json`, so feedback reaches the agent while it works.
 2. **Per-capsule tiering, never a batch** — `capsule_runner` walks each capsule cheapest-first, so a
    capsule clearing the loop tier (L2) continues to the cert tier (L3) *in the same grade*; and
-   `merlin_experiments.phase1.feedback.promotion.promote` enqueues a cert job the moment a loop verdict
+   `merlin.experiments.phase1.feedback.promotion.promote` enqueues a cert job the moment a loop verdict
    lands, so **capsule 2's L3 starts while the agent is still on capsule 1's L2**.
 3. **The certificate is kept** — the same module's `record_cert` resolves the `pending` entry against the
    digest of the bytes that earned it (never re-hashed, so a cert is not re-attributed to bytes edited

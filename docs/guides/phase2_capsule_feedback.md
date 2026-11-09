@@ -6,9 +6,9 @@ owner: experiments
 last_verified: 2026-11-09
 related: [phase2_corpus_search, normal_search_feedback, spike_timing]
 code_refs:
-  - src/merlin_experiments/phase2/ordinary_capsule_feedback.py
-  - src/merlin_experiments/phase1/feedback/candidate_execution_products.py
-  - src/merlin_experiments/phase1/feedback/compiler_profile_emission.py
+  - src/merlin/experiments/phase2/ordinary_capsule_feedback.py
+  - src/merlin/experiments/phase1/feedback/candidate_execution_products.py
+  - src/merlin/experiments/phase1/feedback/compiler_profile_emission.py
   - src/merlin/perf/capsule_roofline.py
   - src/merlin/perf/candidate_diagnostics.py
   - packages/merlin-timing/src/merlin_timing/observations.py
@@ -16,7 +16,7 @@ code_refs:
 
 # Ordinary per-capsule feedback
 
-`merlin_experiments.phase2.ordinary_capsule_feedback.join_capsule_feedback` joins
+`merlin.experiments.phase2.ordinary_capsule_feedback.join_capsule_feedback` joins
 already observed public data for exploration. It runs no compiler or simulator,
 reads no files and issues no qualification. The ordinary owner must reopen the
 original source, candidate, numerical and count products before calling it.

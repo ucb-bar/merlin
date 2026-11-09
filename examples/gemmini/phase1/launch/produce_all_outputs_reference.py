@@ -40,7 +40,7 @@ def save(path, value):
 
 
 def selected(args):
-    from merlin_experiments.phase1 import launch_config as L
+    from merlin.experiments.phase1 import launch_config as L
 
     config = Path(args.config).resolve()
     launch = L.build(L.load(config), task_root=args.task_root, prep=args.prep, run_id=args.run_id)

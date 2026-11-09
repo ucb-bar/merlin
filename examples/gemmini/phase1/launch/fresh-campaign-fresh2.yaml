@@ -174,7 +174,7 @@ plan:
   - ${PYTHON}
   - -B
   - -m
-  - merlin_experiments.phase1
+  - merlin.experiments.phase1
   - --descriptor
   - ${RELEASE}/payload/experiment/target_experiment.yaml
   - --repo

@@ -112,7 +112,7 @@ is not an approximation of ``math.absf``, it is its specification, written in op
 (``vand.vx`` on RVV) instead of ops that call libm. The mask is DERIVED from the float type being
 rewritten (``(1 << (width - 1)) - 1`` over that type's own width), so an f16 or f64 body gets its own
 mask and no width is written down. Verified exhaustively -- every one of the 4,294,967,296 f32 bit
-patterns, quiet and signalling NaNs included -- by ``merlin/tests/rvv/test_reduce_vec.py``.
+patterns, quiet and signalling NaNs included -- by ``tests/rvv/test_reduce_vec.py``.
 
 REJECTED, deliberately: ``arith.maximumf(x, arith.negf x)``, which `act_poly._ap_absf` uses and which
 is two ops rather than three. It is exact for every FINITE input and for the infinities and both

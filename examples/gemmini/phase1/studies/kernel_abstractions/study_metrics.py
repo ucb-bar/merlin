@@ -44,12 +44,15 @@ def _number(value):
 
 
 def _at(value):
-    from merlin_experiments.phase1.telemetry.timeline import _stamp
+    from merlin.experiments.phase1.telemetry.timeline import _stamp
+
     return float(value) if _number(value) else _stamp(value)
 
 
 def _digest(value):
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    ).hexdigest()
 
 
 def _pin(path):
@@ -78,17 +81,23 @@ def _lines(path):
 
 
 def _distribution(values):
-    from merlin_experiments.phase1.telemetry.timeline import _percentile
+    from merlin.experiments.phase1.telemetry.timeline import _percentile
+
     values = [float(v) for v in values if _number(v) and v >= 0]
-    return dict(n=len(values), p50=_percentile(values, .5), p95=_percentile(values, .95),
-                total_s=sum(values) if values else None)
+    return dict(
+        n=len(values),
+        p50=_percentile(values, 0.5),
+        p95=_percentile(values, 0.95),
+        total_s=sum(values) if values else None,
+    )
 
 
 def _usage_events(run_dir, decomposition):
     """Reuse native OWN-record and token arithmetic owners; do not parse forked provider history twice."""
     if "provider_usage_events" in decomposition:
         return decomposition["provider_usage_events"]
-    from merlin_experiments.phase1.telemetry import author_agents
+    from merlin.experiments.phase1.telemetry import author_agents
+
     found = author_agents.threads(Path(run_dir), codex_homes=decomposition.get("codex_homes", ()))
     rows, seen = [], set()
     for thread, record in found["records"].items():
@@ -101,8 +110,14 @@ def _usage_events(run_dir, decomposition):
             if response is None or key in seen:
                 continue
             seen.add(key)
-            rows.append(dict(thread_id=thread, response_id=str(response), at=raw.get("timestamp"),
-                             tokens=author_agents._tokens([payload["usage"]], None)))
+            rows.append(
+                dict(
+                    thread_id=thread,
+                    response_id=str(response),
+                    at=raw.get("timestamp"),
+                    tokens=author_agents._tokens([payload["usage"]], None),
+                )
+            )
     return rows
 
 
@@ -110,12 +125,21 @@ def _token_summary(decomposition, usage):
     agents = decomposition.get("author_agents") or {}
     totals = agents.get("totals") or {}
     known_agents = agents.get("agents") or []
-    complete = (agents.get("available") is True and agents.get("complete") is True
-                and decomposition.get("telemetry_integrity", {}).get("complete") is True
-                and bool(known_agents) and all(row.get("tokens", {}).get("available") is True for row in known_agents))
-    result = dict(provider_usage_complete=complete, observed_totals_are_lower_bounds=not complete,
-                  threads=totals.get("threads"), helper_threads=totals.get("subagents"),
-                  missing_leads=agents.get("missing_leads"), missing_helpers=agents.get("missing_subagents"))
+    complete = (
+        agents.get("available") is True
+        and agents.get("complete") is True
+        and decomposition.get("telemetry_integrity", {}).get("complete") is True
+        and bool(known_agents)
+        and all(row.get("tokens", {}).get("available") is True for row in known_agents)
+    )
+    result = dict(
+        provider_usage_complete=complete,
+        observed_totals_are_lower_bounds=not complete,
+        threads=totals.get("threads"),
+        helper_threads=totals.get("subagents"),
+        missing_leads=agents.get("missing_leads"),
+        missing_helpers=agents.get("missing_subagents"),
+    )
     for label, key in (("all_agents", "tokens_all"), ("lead", "tokens_lead"), ("helpers", "tokens_subagents")):
         bucket = totals.get(key) or {}
         result[label] = {key: bucket.get(key) if bucket.get("available") else None for key in TOKEN_KEYS}
@@ -136,15 +160,29 @@ def _token_summary(decomposition, usage):
 
 def _milestone(event, context, usage, tokens):
     if event is None:
-        return dict(at=None, elapsed_s=None, case=None, source_sha256=None,
-                    completed_response_tokens=None, token_count_is_lower_bound=True)
+        return dict(
+            at=None,
+            elapsed_s=None,
+            case=None,
+            source_sha256=None,
+            completed_response_tokens=None,
+            token_count_is_lower_bound=True,
+        )
     at, start = _at(event.get("at")), _at(context.get("started_at"))
     prior = [row for row in usage if at is not None and _at(row["at"]) <= at]
-    return dict(at=event.get("at"), elapsed_s=at - start if at is not None and start is not None and at >= start else None,
-        case=event.get("case"), source_sha256=event.get("source_sha256"), elf_sha256=event.get("elf_sha256"),
-        completed_response_tokens={key: sum(row["tokens"][key] for row in prior) for key in TOKEN_KEYS} if prior else None,
-        token_count_is_lower_bound=True, provider_usage_complete=tokens["provider_usage_complete"],
-        response_chronology_complete=tokens["response_chronology_complete"])
+    return dict(
+        at=event.get("at"),
+        elapsed_s=at - start if at is not None and start is not None and at >= start else None,
+        case=event.get("case"),
+        source_sha256=event.get("source_sha256"),
+        elf_sha256=event.get("elf_sha256"),
+        completed_response_tokens={key: sum(row["tokens"][key] for row in prior) for key in TOKEN_KEYS}
+        if prior
+        else None,
+        token_count_is_lower_bound=True,
+        provider_usage_complete=tokens["provider_usage_complete"],
+        response_chronology_complete=tokens["response_chronology_complete"],
+    )
 
 
 def _public(event, context):
@@ -153,8 +191,11 @@ def _public(event, context):
 
 
 def _passed(event):
-    return (event.get("numeric_status") == "pass" or event.get("numeric_pass") is True) and not any(
-        event.get(key) == "fail" for key in ("static_status", "ordering_status")) and _failure(event) is None
+    return (
+        (event.get("numeric_status") == "pass" or event.get("numeric_pass") is True)
+        and not any(event.get(key) == "fail" for key in ("static_status", "ordering_status"))
+        and _failure(event) is None
+    )
 
 
 def _failure(event):
@@ -195,9 +236,21 @@ def _repairs(attempts):
     for event in attempts:
         case, failure = event["case"], _failure(event)
         if failure:
-            signature = _digest([failure, event.get("failure_plane"), event.get("failure_category"), event.get("failure_tier")])
-            episode = active.setdefault(case, dict(case=case, started_at=event.get("at"), attempts=0,
-                repeated_failures=0, signatures=[], first_source=event["source_sha256"], last_source=None))
+            signature = _digest(
+                [failure, event.get("failure_plane"), event.get("failure_category"), event.get("failure_tier")]
+            )
+            episode = active.setdefault(
+                case,
+                dict(
+                    case=case,
+                    started_at=event.get("at"),
+                    attempts=0,
+                    repeated_failures=0,
+                    signatures=[],
+                    first_source=event["source_sha256"],
+                    last_source=None,
+                ),
+            )
             if signature in episode["signatures"]:
                 episode["repeated_failures"] += 1
                 repeated += 1
@@ -208,30 +261,64 @@ def _repairs(attempts):
             episode = active.pop(case)
             changed = event["source_sha256"] != episode["last_source"]
             begin, end = _at(episode["started_at"]), _at(event.get("at"))
-            episodes.append({**episode, "closed_at": event.get("at"), "changed_source_repair": changed,
-                             "elapsed_s": end - begin if begin is not None and end is not None and end >= begin else None})
-    return dict(closed=len(episodes), open=len(active), repeated_failures=repeated,
-                changed_source_repairs=sum(row["changed_source_repair"] for row in episodes),
-                episodes=episodes, open_episodes=list(active.values()))
+            episodes.append(
+                {
+                    **episode,
+                    "closed_at": event.get("at"),
+                    "changed_source_repair": changed,
+                    "elapsed_s": end - begin if begin is not None and end is not None and end >= begin else None,
+                }
+            )
+    return dict(
+        closed=len(episodes),
+        open=len(active),
+        repeated_failures=repeated,
+        changed_source_repairs=sum(row["changed_source_repair"] for row in episodes),
+        episodes=episodes,
+        open_episodes=list(active.values()),
+    )
 
 
 def _milestones(attempts, context, usage, tokens):
-    from merlin_experiments.phase1.feedback.joint_performance_report import compare
+    from merlin.experiments.phase1.feedback.joint_performance_report import compare
+
     initial, elves = context.get("initial_source_sha256"), context.get("initial_case_elf_sha256") or {}
-    correct = next((row for row in attempts if isinstance(initial, str) and initial
-        and row["source_sha256"] != initial and _passed(row)
-        and isinstance(elves.get(row["case"]), str) and elves[row["case"]]
-        and isinstance(row.get("elf_sha256"), str) and row["elf_sha256"]
-        and row["elf_sha256"] != elves[row["case"]]), None)
+    correct = next(
+        (
+            row
+            for row in attempts
+            if isinstance(initial, str)
+            and initial
+            and row["source_sha256"] != initial
+            and _passed(row)
+            and isinstance(elves.get(row["case"]), str)
+            and elves[row["case"]]
+            and isinstance(row.get("elf_sha256"), str)
+            and row["elf_sha256"]
+            and row["elf_sha256"] != elves[row["case"]]
+        ),
+        None,
+    )
     baselines, improvements = {}, {"five_percent": None, "ten_percent": None}
+
     def model_join(row):
         value = row.get("performance")
-        return (isinstance(value, dict) and isinstance(row.get("elf_sha256"), str)
-                and bool(row["elf_sha256"]) and value.get("elf_sha256") == row["elf_sha256"])
+        return (
+            isinstance(value, dict)
+            and isinstance(row.get("elf_sha256"), str)
+            and bool(row["elf_sha256"])
+            and value.get("elf_sha256") == row["elf_sha256"]
+        )
+
     # A separately measured, source-bound time-zero baseline may precede author startup.
     for row in context.get("initial_model_observations") or []:
-        if (initial and row.get("source_sha256") == initial and _public(row, context) and _passed(row)
-            and model_join(row)):
+        if (
+            initial
+            and row.get("source_sha256") == initial
+            and _public(row, context)
+            and _passed(row)
+            and model_join(row)
+        ):
             baselines.setdefault(row["case"], row["performance"])
     for event in attempts:
         performance = event.get("performance")
@@ -246,25 +333,42 @@ def _milestones(attempts, context, usage, tokens):
         ratio = result.get("candidate_to_baseline_ratio")
         if result.get("status") != "PROVISIONAL" or not _number(ratio):
             continue
-        for label, limit in (("five_percent", .95), ("ten_percent", .90)):
+        for label, limit in (("five_percent", 0.95), ("ten_percent", 0.90)):
             if improvements[label] is None and ratio <= limit:
                 improvements[label] = {**event, "ratio": ratio}
+
     def executed(row):
         tier = (row.get("tiers") or {}).get("L2")
         status = tier.get("status") if isinstance(tier, dict) else tier
         return row.get("numerical_execution_passed") is True or status == "pass"
-    scratch = next((row for row in attempts
-        if context.get("backend_origin") == "scratch" and isinstance(initial, str) and initial
-        and row["source_sha256"] != initial and _passed(row) and executed(row)), None)
+
+    scratch = next(
+        (
+            row
+            for row in attempts
+            if context.get("backend_origin") == "scratch"
+            and isinstance(initial, str)
+            and initial
+            and row["source_sha256"] != initial
+            and _passed(row)
+            and executed(row)
+        ),
+        None,
+    )
     result = {
-        "first_correct_from_scratch": {**_milestone(scratch, context, usage, tokens),
-            "qualification": "source-bound public numerical and L2 execution observation; no physical qualification"},
+        "first_correct_from_scratch": {
+            **_milestone(scratch, context, usage, tokens),
+            "qualification": "source-bound public numerical and L2 execution observation; no physical qualification",
+        },
         "first_correct_changed_kernel": _milestone(correct, context, usage, tokens),
     }
     for key, event in improvements.items():
-        result["first_model_improvement_" + key] = {**_milestone(event, context, usage, tokens),
+        result["first_model_improvement_" + key] = {
+            **_milestone(event, context, usage, tokens),
             "candidate_to_baseline_ratio": event.get("ratio") if event else None,
-            "timing_qualified": False, "qualification": "provisional model comparison only"}
+            "timing_qualified": False,
+            "qualification": "provisional model comparison only",
+        }
     result["initial_source_known"] = bool(initial)
     result["initial_case_elfs_known"] = bool(elves)
     return result
@@ -273,10 +377,18 @@ def _milestones(attempts, context, usage, tokens):
 def _coverage(events, context):
     roster = context.get("public_case_ids")
     start, end = _at(context.get("started_at")), _at(context.get("observation_end_at"))
-    result = dict(public_cases=len(roster) if isinstance(roster, list) else None, snapshots=[], rejected_snapshots=0,
-                  auc_fraction_seconds=None, mean_published_coverage=None, window_s=None,
-                  unobserved_prefix_s=None, observed_window_s=None, observed_auc_fraction_seconds=None,
-                  mean_observed_published_coverage=None)
+    result = dict(
+        public_cases=len(roster) if isinstance(roster, list) else None,
+        snapshots=[],
+        rejected_snapshots=0,
+        auc_fraction_seconds=None,
+        mean_published_coverage=None,
+        window_s=None,
+        unobserved_prefix_s=None,
+        observed_window_s=None,
+        observed_auc_fraction_seconds=None,
+        mean_observed_published_coverage=None,
+    )
     if not roster or len(set(roster)) != len(roster) or start is None or end is None or end <= start:
         return result
     seen = set()
@@ -287,9 +399,14 @@ def _coverage(events, context):
         rows = [row for row in event.get("rows", []) if row.get("case") in roster]
         if not rows:
             continue  # a hidden-only or unrelated grade cannot replace public coverage
-        if (not source or at is None or not start <= at <= end or event.get("coherent") is False
+        if (
+            not source
+            or at is None
+            or not start <= at <= end
+            or event.get("coherent") is False
             or len({r["case"] for r in rows}) != len(rows)
-            or any(r.get("source_sha256", source) != source for r in rows)):
+            or any(r.get("source_sha256", source) != source for r in rows)
+        ):
             result["rejected_snapshots"] += 1
             continue
         key = (source, at, event.get("snapshot_id"))
@@ -306,10 +423,15 @@ def _coverage(events, context):
             at, value = point["at"], point["fraction"]
         auc += value * (end - at)
         observed = end - points[0]["at"]
-        result.update(auc_fraction_seconds=auc, mean_published_coverage=auc / (end - start), window_s=end - start,
-                      unobserved_prefix_s=points[0]["at"] - start, observed_window_s=observed,
-                      observed_auc_fraction_seconds=auc,
-                      mean_observed_published_coverage=auc / observed if observed else None)
+        result.update(
+            auc_fraction_seconds=auc,
+            mean_published_coverage=auc / (end - start),
+            window_s=end - start,
+            unobserved_prefix_s=points[0]["at"] - start,
+            observed_window_s=observed,
+            observed_auc_fraction_seconds=auc,
+            mean_observed_published_coverage=auc / observed if observed else None,
+        )
     return result
 
 
@@ -328,20 +450,26 @@ def progress_observations(progress_path, *, run_config):
     rows = [row for row in document.get("reports", []) if row.get("config") == selected]
     if len(rows) != 1:
         raise ValueError("progress report must select exactly this run configuration")
-    row, = rows
+    (row,) = rows
     config = _read(run_config)
     start = row.get("started_unix")
     duration = config.get("wall_s")
     end = start + duration if _number(start) and _number(duration) and duration > 0 else None
     baseline = _tree(Path(config["workspace"]) / "baseline")
-    context = dict(workspace=config["workspace"], started_at=start, observation_end_at=end,
-                   author_s=duration, public_case_ids=config["training_cases"],
-                   initial_source_sha256=baseline["sha256"], initial_case_elf_sha256={},
-                   backend_origin="seeded" if config.get("seed_continuation") or config.get("source_seed") else "UNKNOWN",
-                   seed_history=copy.deepcopy(config.get("seed_continuation")),
-                   seed_history_scope="historical provenance only; not current public-case coverage or author-time grades",
-                   observation_window_kind="declared author clock; post-author results excluded from milestones",
-                   provider_milestone_tokens="UNKNOWN unless supplied by native response chronology")
+    context = dict(
+        workspace=config["workspace"],
+        started_at=start,
+        observation_end_at=end,
+        author_s=duration,
+        public_case_ids=config["training_cases"],
+        initial_source_sha256=baseline["sha256"],
+        initial_case_elf_sha256={},
+        backend_origin="seeded" if config.get("seed_continuation") or config.get("source_seed") else "UNKNOWN",
+        seed_history=copy.deepcopy(config.get("seed_continuation")),
+        seed_history_scope="historical provenance only; not current public-case coverage or author-time grades",
+        observation_window_kind="declared author clock; post-author results excluded from milestones",
+        provider_milestone_tokens="UNKNOWN unless supplied by native response chronology",
+    )
     events, issues = [], []
     for request in row.get("requests", []):
         rid, files = request.get("request_id"), request.get("files", {})
@@ -352,14 +480,29 @@ def progress_observations(progress_path, *, run_config):
             at = response.get("graded_at_unix_ns")
             at = at / 1e9 if type(at) is int and at > 0 else None
             began, asked = response.get("grade_started_at_unix_ns"), response.get("requested_at_unix_ns")
-            events.append(dict(kind="request_timing", request_id=rid,
-                queue_s=(began - asked) / 1e9 if type(began) is int and type(asked) is int and began >= asked else None,
-                latency_s=at - asked / 1e9 if at is not None and type(asked) is int and at >= asked / 1e9 else None))
+            events.append(
+                dict(
+                    kind="request_timing",
+                    request_id=rid,
+                    queue_s=(began - asked) / 1e9
+                    if type(began) is int and type(asked) is int and began >= asked
+                    else None,
+                    latency_s=at - asked / 1e9 if at is not None and type(asked) is int and at >= asked / 1e9 else None,
+                )
+            )
             if request.get("action") == "reference-analysis":
                 original = _read(files["request"]["path"])
-                events.append(dict(kind="tool_observation", request_id=rid, at=at, tool="reference-analysis",
-                    operation=(original.get("reference_analysis") or {}).get("operation"),
-                    status=response.get("status"), reason=response.get("reason") or response.get("error")))
+                events.append(
+                    dict(
+                        kind="tool_observation",
+                        request_id=rid,
+                        at=at,
+                        tool="reference-analysis",
+                        operation=(original.get("reference_analysis") or {}).get("operation"),
+                        status=response.get("status"),
+                        reason=response.get("reason") or response.get("error"),
+                    )
+                )
             if request.get("status") != "verified_private_result":
                 continue
             if not {"request", "response", "done", "result"} <= set(files):
@@ -372,26 +515,57 @@ def progress_observations(progress_path, *, run_config):
             published = []
             for case in cases:
                 failure, numeric = case.get("failure") or {}, case.get("numeric") or {}
-                event = dict(kind="case_result", attempt_id=rid, source_sha256=source["sha256"], at=at,
-                    case=case["case"], status=case.get("status"),
-                    numeric_status="pass" if case.get("numeric_pass") is True else
-                        "fail" if numeric.get("passed") is False else None,
-                    failure_plane=failure.get("plane"), failure_category=failure.get("category"),
-                    performance=case.get("performance"), elf_sha256=(case.get("performance") or {}).get("elf_sha256"))
+                event = dict(
+                    kind="case_result",
+                    attempt_id=rid,
+                    source_sha256=source["sha256"],
+                    at=at,
+                    case=case["case"],
+                    status=case.get("status"),
+                    numeric_status="pass"
+                    if case.get("numeric_pass") is True
+                    else "fail"
+                    if numeric.get("passed") is False
+                    else None,
+                    failure_plane=failure.get("plane"),
+                    failure_category=failure.get("category"),
+                    performance=case.get("performance"),
+                    elf_sha256=(case.get("performance") or {}).get("elf_sha256"),
+                )
                 events.append(event)
                 published.append(event)
                 if source["sha256"] == baseline["sha256"] and event["numeric_status"] == "pass":
                     context["initial_case_elf_sha256"][case["case"]] = event["elf_sha256"]
-            events.append(dict(kind="grade_snapshot", snapshot_id=rid, source_sha256=source["sha256"],
-                               at=at, coherent=True, rows=published))
+            events.append(
+                dict(
+                    kind="grade_snapshot",
+                    snapshot_id=rid,
+                    source_sha256=source["sha256"],
+                    at=at,
+                    coherent=True,
+                    rows=published,
+                )
+            )
         except (OSError, ValueError, KeyError, TypeError) as exc:
             issues.append(dict(request_id=rid, error=str(exc)))
-    context["initial_model_observations"] = [event for event in events if event.get("kind") == "case_result"
-        and event.get("source_sha256") == baseline["sha256"] and _passed(event)
-        and _at(event.get("at")) is not None and start is not None and end is not None
-        and start <= _at(event["at"]) <= end]
-    return dict(context=context, observations=events, issues=issues,
-                sources=[_pin(progress_path), selected], qualification_issued=False)
+    context["initial_model_observations"] = [
+        event
+        for event in events
+        if event.get("kind") == "case_result"
+        and event.get("source_sha256") == baseline["sha256"]
+        and _passed(event)
+        and _at(event.get("at")) is not None
+        and start is not None
+        and end is not None
+        and start <= _at(event["at"]) <= end
+    ]
+    return dict(
+        context=context,
+        observations=events,
+        issues=issues,
+        sources=[_pin(progress_path), selected],
+        qualification_issued=False,
+    )
 
 
 def _checkpoints(context):
@@ -405,8 +579,9 @@ def _checkpoints(context):
         try:
             source = _pin(index)
             document = _read(index)
-            if (document.get("schema") != "merlin.study.snapshots.v1"
-                    or document.get("started_at_epoch") != context.get("started_at")):
+            if document.get("schema") != "merlin.study.snapshots.v1" or document.get("started_at_epoch") != context.get(
+                "started_at"
+            ):
                 raise ValueError("snapshot index does not bind this author clock")
             records = document.get("snapshots", [])
         except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -415,8 +590,12 @@ def _checkpoints(context):
     result = []
     for offset in (0, 1800, 3600, 7200, 14400):
         found = [row for row in records if row.get("offset_s") == offset]
-        row = dict(offset_s=offset, status="not_applicable" if _number(duration) and offset > duration else "UNKNOWN",
-                   source=None, observed_elapsed_s=None)
+        row = dict(
+            offset_s=offset,
+            status="not_applicable" if _number(duration) and offset > duration else "UNKNOWN",
+            source=None,
+            observed_elapsed_s=None,
+        )
         if row["status"] == "not_applicable":
             result.append(row)
             continue
@@ -426,18 +605,25 @@ def _checkpoints(context):
                 if original.get("status") != "frozen":
                     raise ValueError(original.get("reason", "snapshot unavailable"))
                 if original.get("digest_basis") == "graded_source_hash":
-                    from merlin_experiments.phase1.run_inputs import graded_source_hash
+                    from merlin.experiments.phase1.run_inputs import graded_source_hash
+
                     if graded_source_hash(Path(original["source"])) != original["compiler_sha256"]:
                         raise ValueError("retained source changed")
-                    pinned = dict(path=original["source"], sha256=original["compiler_sha256"],
-                                  digest_basis="graded_source_hash")
+                    pinned = dict(
+                        path=original["source"], sha256=original["compiler_sha256"], digest_basis="graded_source_hash"
+                    )
                 else:
                     pinned = original["source"]
                     _reopen(pinned, tree=True)
                 observed = original.get("observed_elapsed_s")
-                row.update(status="retained", source=pinned, observed_elapsed_s=observed,
-                           state_kind=original.get("state_kind"), collected_at=original.get("collected_at"),
-                           exact_offset_observation=_number(observed) and observed == offset)
+                row.update(
+                    status="retained",
+                    source=pinned,
+                    observed_elapsed_s=observed,
+                    state_kind=original.get("state_kind"),
+                    collected_at=original.get("collected_at"),
+                    exact_offset_observation=_number(observed) and observed == offset,
+                )
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 row.update(status="UNKNOWN", reason=str(exc))
         elif found:
@@ -456,10 +642,18 @@ def _mechanisms(events, context):
             if _pin(artifact["path"]) != artifact or _pin(proof_pin["path"]) != proof_pin:
                 raise ValueError("receipt bytes changed")
             proof = _read(proof_pin["path"])
-            required = {"schema": "merlin.study.emitted_mechanism_proof.v1", "checked": True,
-                "source_sha256": event["source_sha256"], "case": event["case"],
-                "artifact_sha256": artifact["sha256"], "mechanism": event["mechanism"]}
-            if any(proof.get(k) != v for k, v in required.items()) or proof.get("observation") not in {"emitted_reuse", "executed_fallback"}:
+            required = {
+                "schema": "merlin.study.emitted_mechanism_proof.v1",
+                "checked": True,
+                "source_sha256": event["source_sha256"],
+                "case": event["case"],
+                "artifact_sha256": artifact["sha256"],
+                "mechanism": event["mechanism"],
+            }
+            if any(proof.get(k) != v for k, v in required.items()) or proof.get("observation") not in {
+                "emitted_reuse",
+                "executed_fallback",
+            }:
                 raise ValueError("no exact emitted receipt join")
             key = event["source_sha256"], event["case"], artifact["sha256"], proof_pin["sha256"]
             if key in seen:
@@ -469,40 +663,67 @@ def _mechanisms(events, context):
             accepted.append({key: event[key] for key in ("source_sha256", "case", "mechanism", "artifact", "proof")})
         except (OSError, ValueError, KeyError, TypeError):
             rejected.append(event.get("event_id"))
-    return dict(emitted_reuse_receipts=counts["emitted_reuse"] if accepted or rejected else None,
-                executed_fallback_receipts=counts["executed_fallback"] if accepted or rejected else None,
-                accepted=accepted, rejected_events=rejected, independent_reverification=False)
+    return dict(
+        emitted_reuse_receipts=counts["emitted_reuse"] if accepted or rejected else None,
+        executed_fallback_receipts=counts["executed_fallback"] if accepted or rejected else None,
+        accepted=accepted,
+        rejected_events=rejected,
+        independent_reverification=False,
+    )
 
 
 def _row_event(row, *, attempt, source, at):
     performance = row.get("performance") or {}
     origin = row.get("graded") or {}
-    return dict(kind="case_result", attempt_id=attempt, source_sha256=origin.get("graded_source_sha256") or source,
-        case=row.get("capsule"), at=origin.get("graded_at") or at, status=row.get("status"),
+    return dict(
+        kind="case_result",
+        attempt_id=attempt,
+        source_sha256=origin.get("graded_source_sha256") or source,
+        case=row.get("capsule"),
+        at=origin.get("graded_at") or at,
+        status=row.get("status"),
         numeric_status=row.get("numeric_status") or ("pass" if row.get("pass") is True else None),
-        ordering_status=row.get("trace_status"), failure_plane=row.get("failure_plane"),
-        failure_category=row.get("failure_category"), failure_tier=row.get("failure_tier"),
-        elf_sha256=row.get("elf_sha256") or performance.get("elf_sha256"), performance=performance,
-        tiers=row.get("tiers") or {}, numerical_execution_passed=row.get("numerical_execution_passed"),
-        execution_digest=row.get("execution_digest"))
+        ordering_status=row.get("trace_status"),
+        failure_plane=row.get("failure_plane"),
+        failure_category=row.get("failure_category"),
+        failure_tier=row.get("failure_tier"),
+        elf_sha256=row.get("elf_sha256") or performance.get("elf_sha256"),
+        performance=performance,
+        tiers=row.get("tiers") or {},
+        numerical_execution_passed=row.get("numerical_execution_passed"),
+        execution_digest=row.get("execution_digest"),
+    )
 
 
 def _native_events(run_dir, context):
     """Read grade archives and native redacted channels, never latest-completed mosaic views."""
-    from merlin_experiments.phase1.feedback.result_details import hydrate
-    from merlin_experiments.phase1.telemetry import agent_requests, author_agents
+    from merlin.experiments.phase1.feedback.result_details import hydrate
+    from merlin.experiments.phase1.telemetry import agent_requests, author_agents
+
     run_dir = Path(run_dir)
     workspace = context.get("workspace") or author_agents._environment(run_dir).get("workspace_path")
     events, pins, issues = [], [], []
     for path in sorted((run_dir / "qa_history").glob("verdict*.json")):
         try:
-            doc = hydrate(_read(path), workspace=Path(workspace)) if workspace else hydrate(_read(path), document_path=path)
+            doc = (
+                hydrate(_read(path), workspace=Path(workspace))
+                if workspace
+                else hydrate(_read(path), document_path=path)
+            )
             source, at = doc.get("graded_source_sha256"), doc.get("graded_at")
             attempt = doc.get("graded_request_sha256") or path.stem
             rows = [_row_event(row, attempt=attempt, source=source, at=at) for row in doc.get("per_capsule", [])]
             events.extend(rows)
-            events.append(dict(kind="grade_snapshot", source_sha256=source, at=at, snapshot_id=attempt, rows=rows,
-                               coherent=doc.get("count_scope") in (None, "immutable_snapshot")))
+            events.append(
+                dict(
+                    kind="grade_snapshot",
+                    source_sha256=source,
+                    at=at,
+                    snapshot_id=attempt,
+                    rows=rows,
+                    coherent=doc.get("count_scope") in (None, "immutable_snapshot"),
+                )
+            )
             pins.append(_pin(path))
         except (OSError, ValueError, KeyError, TypeError) as exc:
             issues.append(dict(path=str(path), error=type(exc).__name__))
@@ -511,26 +732,45 @@ def _native_events(run_dir, context):
         native = agent_requests._request_record(request_id, entry)
         response = entry.get("response") or {}
         try:
-            response = hydrate(response, workspace=Path(workspace) if workspace else run_dir / "agent_evidence_snapshot")
+            response = hydrate(
+                response, workspace=Path(workspace) if workspace else run_dir / "agent_evidence_snapshot"
+            )
         except (OSError, ValueError, KeyError, TypeError) as exc:
             issues.append(dict(request_id=request_id, error=type(exc).__name__))
             response = {}
-        events.append(dict(kind="request_timing", request_id=request_id,
-                           queue_s=native.get("queue_s"), latency_s=native.get("latency_s")))
+        events.append(
+            dict(
+                kind="request_timing",
+                request_id=request_id,
+                queue_s=native.get("queue_s"),
+                latency_s=native.get("latency_s"),
+            )
+        )
         for row in response.get("per_capsule") or []:
-            events.append(_row_event(row, attempt=request_id, source=response.get("submission_sha256"),
-                                     at=native.get("graded_at")))
+            events.append(
+                _row_event(
+                    row, attempt=request_id, source=response.get("submission_sha256"), at=native.get("graded_at")
+                )
+            )
     for path in sorted((run_dir / "_qa_work").rglob("host_stage_timings.jsonl")):
         for row in _lines(path):
-            events.append(dict(kind="stage_timing", event_id=_digest(row), stage=row.get("stage"), wall_s=row.get("wall_s")))
+            events.append(
+                dict(kind="stage_timing", event_id=_digest(row), stage=row.get("stage"), wall_s=row.get("wall_s"))
+            )
     for path in sorted((run_dir / "_qa_work").glob("**/setup-timing/*.json")):
         try:
             doc = _read(path)
             for row in doc.get("stages", []):
                 if row.get("status") not in {"returned", "raised"}:
                     continue
-                events.append(dict(kind="stage_timing", event_id=f"{doc.get('timeline_id')}:{row.get('stage_id')}",
-                                   stage=row.get("stage"), wall_s=row.get("elapsed_s")))
+                events.append(
+                    dict(
+                        kind="stage_timing",
+                        event_id=f"{doc.get('timeline_id')}:{row.get('stage_id')}",
+                        stage=row.get("stage"),
+                        wall_s=row.get("elapsed_s"),
+                    )
+                )
         except (OSError, ValueError, TypeError):
             issues.append(dict(path=str(path), error="setup_timing_unreadable"))
     return events, pins, issues
@@ -552,10 +792,17 @@ def _timings(events, decomposition):
                 continue
             seen.add(key)
             stages[row["stage"]].append(row.get("wall_s"))
-    waits = [row.get("timing", {}).get("oracle_wait_s") for row in decomposition.get("oracle", {}).get("per_invocation", [])
-             if isinstance(row.get("timing"), dict)]
-    return dict(request_queue_s=_distribution(queues), request_latency_s=_distribution(latency),
-                oracle_wait_s=_distribution(waits), host_stages={key: _distribution(values) for key, values in sorted(stages.items())})
+    waits = [
+        row.get("timing", {}).get("oracle_wait_s")
+        for row in decomposition.get("oracle", {}).get("per_invocation", [])
+        if isinstance(row.get("timing"), dict)
+    ]
+    return dict(
+        request_queue_s=_distribution(queues),
+        request_latency_s=_distribution(latency),
+        oracle_wait_s=_distribution(waits),
+        host_stages={key: _distribution(values) for key, values in sorted(stages.items())},
+    )
 
 
 def _tool_usage(events, context):
@@ -569,11 +816,15 @@ def _tool_usage(events, context):
             continue
         seen.add(row["request_id"])
         rows.append(row)
-    return dict(observations=rows, count=len(rows) if rows else None,
-                operations=dict(Counter(row.get("operation") for row in rows)) if rows else None,
-                statuses=dict(Counter(row.get("status") for row in rows)) if rows else None,
-                failure_reasons=dict(Counter(row["reason"] for row in rows if row.get("reason"))) if rows else None,
-                emitted_mechanism_admission=False, operator_subagents_included=False)
+    return dict(
+        observations=rows,
+        count=len(rows) if rows else None,
+        operations=dict(Counter(row.get("operation") for row in rows)) if rows else None,
+        statuses=dict(Counter(row.get("status") for row in rows)) if rows else None,
+        failure_reasons=dict(Counter(row["reason"] for row in rows if row.get("reason"))) if rows else None,
+        emitted_mechanism_admission=False,
+        operator_subagents_included=False,
+    )
 
 
 def _source_progress(attempts, context):
@@ -590,31 +841,64 @@ def _source_progress(attempts, context):
         elif not event.get("elf_sha256") or not elves.get(event["case"]):
             change = "changed_source_emitted_change_UNKNOWN"
         else:
-            change = "changed_source_changed_elf" if event["elf_sha256"] != elves[event["case"]] else "changed_source_same_elf"
-        rows.append(dict(case=event["case"], attempt_id=event["attempt_id"], source_sha256=event["source_sha256"],
-                         elf_sha256=event.get("elf_sha256"), observation=change, at=event.get("at")))
-    return dict(passing_observations=rows, counts=dict(Counter(row["observation"] for row in rows)),
-                inherited_coverage_reconstructed=False, emitted_mechanism_admission=False)
+            change = (
+                "changed_source_changed_elf"
+                if event["elf_sha256"] != elves[event["case"]]
+                else "changed_source_same_elf"
+            )
+        rows.append(
+            dict(
+                case=event["case"],
+                attempt_id=event["attempt_id"],
+                source_sha256=event["source_sha256"],
+                elf_sha256=event.get("elf_sha256"),
+                observation=change,
+                at=event.get("at"),
+            )
+        )
+    return dict(
+        passing_observations=rows,
+        counts=dict(Counter(row["observation"] for row in rows)),
+        inherited_coverage_reconstructed=False,
+        emitted_mechanism_admission=False,
+    )
 
 
 def _panel(path):
     if path is None:
         return None
     document = _read(path)
-    result = dict(source=_pin(path), schema=document.get("schema"), cells=None,
-                  physical_timing_qualified=document.get("physical_timing_qualified"), scope="final frozen panel only; excluded from author milestone times")
+    result = dict(
+        source=_pin(path),
+        schema=document.get("schema"),
+        cells=None,
+        physical_timing_qualified=document.get("physical_timing_qualified"),
+        scope="final frozen panel only; excluded from author milestone times",
+    )
     if document.get("schema") == "private.kernel_abstractions.evaluation_collection.v1":
         rows = document.get("cells") or []
         names = sorted({row["case"] for row in rows if isinstance(row.get("case"), str)})
-        result.update(cells=len(rows), states=dict(Counter(row.get("state") for row in rows)),
-                      cases=len(names), case_ids=names,
-                      physical_measurements_imported=document.get("physical_measurements_imported"),
-                      summaries=copy.deepcopy(document.get("summaries")))
+        result.update(
+            cells=len(rows),
+            states=dict(Counter(row.get("state") for row in rows)),
+            cases=len(names),
+            case_ids=names,
+            physical_measurements_imported=document.get("physical_measurements_imported"),
+            summaries=copy.deepcopy(document.get("summaries")),
+        )
     return result
 
 
-def extract_metrics(run_dir, *, output=None, panel_results=None, mechanism_events=None, decomposition=None,
-                    context=None, observations=None):
+def extract_metrics(
+    run_dir,
+    *,
+    output=None,
+    panel_results=None,
+    mechanism_events=None,
+    decomposition=None,
+    context=None,
+    observations=None,
+):
     """Pure extraction, apart from explicitly selected operator-side JSON/CSV output.
 
     `decomposition` accepts report.decompose_run output. Tests/callers may add
@@ -623,7 +907,8 @@ def extract_metrics(run_dir, *, output=None, panel_results=None, mechanism_event
     observations use kind case_result, grade_snapshot, request_timing or stage_timing;
     optional mechanism receipts are independently pinned, never inferred from imports.
     """
-    from merlin_experiments.phase1.telemetry.report import decompose_run
+    from merlin.experiments.phase1.telemetry.report import decompose_run
+
     run_dir = Path(run_dir).resolve(strict=True)
     sources, issues = [], []
     if context is None:
@@ -657,36 +942,64 @@ def extract_metrics(run_dir, *, output=None, panel_results=None, mechanism_event
     attempts = _attempts(events, context)
     outcome_present = bool(attempts)
     failures = Counter(value for row in attempts if (value := _failure(row)))
-    result = dict(schema=SCHEMA, run_dir=str(run_dir), operator_only=True, definitions=DEFINITIONS,
-        context=context, tokens=tokens, milestones=_milestones(attempts, context, usage, tokens),
-        invalid_attempts={key: failures[key] if outcome_present else None for key in ("static", "numeric", "ordering", "other")},
+    result = dict(
+        schema=SCHEMA,
+        run_dir=str(run_dir),
+        operator_only=True,
+        definitions=DEFINITIONS,
+        context=context,
+        tokens=tokens,
+        milestones=_milestones(attempts, context, usage, tokens),
+        invalid_attempts={
+            key: failures[key] if outcome_present else None for key in ("static", "numeric", "ordering", "other")
+        },
         attempts_observed=len(attempts) if outcome_present else None,
         repairs=_repairs(attempts) if outcome_present else None,
-        public_coverage=_coverage(events, context), checkpoints=_checkpoints(context),
-        changed_source_public_coverage=_coverage([event for event in events
-            if context.get("initial_source_sha256") and event.get("source_sha256") != context["initial_source_sha256"]], context),
+        public_coverage=_coverage(events, context),
+        checkpoints=_checkpoints(context),
+        changed_source_public_coverage=_coverage(
+            [
+                event
+                for event in events
+                if context.get("initial_source_sha256")
+                and event.get("source_sha256") != context["initial_source_sha256"]
+            ],
+            context,
+        ),
         source_progress=_source_progress(attempts, context),
-        mechanisms=_mechanisms(events, context), tool_usage=_tool_usage(events, context),
-        timings=_timings(events, decomposition), frozen_panel=_panel(panel_results), sources=sources,
-        extraction_issues=issues, qualification_issued=False)
+        mechanisms=_mechanisms(events, context),
+        tool_usage=_tool_usage(events, context),
+        timings=_timings(events, decomposition),
+        frozen_panel=_panel(panel_results),
+        sources=sources,
+        extraction_issues=issues,
+        qualification_issued=False,
+    )
     if output is not None:
         destination = Path(output).resolve()
         workspace = Path(context["workspace"]).resolve() if context.get("workspace") else None
-        if (destination == run_dir or run_dir in destination.parents
-            or (workspace is not None and (destination == workspace or workspace in destination.parents))):
+        if (
+            destination == run_dir
+            or run_dir in destination.parents
+            or (workspace is not None and (destination == workspace or workspace in destination.parents))
+        ):
             raise ValueError("metrics output must stay outside the author run")
         destination.mkdir(parents=True, exist_ok=False)
         (destination / "metrics.json").write_text(json.dumps(result, sort_keys=True, indent=2, allow_nan=False) + "\n")
         with (destination / "metrics.csv").open("w", newline="") as stream:
             writer = csv.writer(stream)
             writer.writerow(["metric", "value"])
+
             def visit(value, prefix=""):
                 if isinstance(value, dict):
                     for key, child in value.items():
                         visit(child, f"{prefix}.{key}" if prefix else key)
                 elif not isinstance(value, list):
                     writer.writerow([prefix, "" if value is None else value])
-            visit({k: v for k, v in result.items() if k not in {"definitions", "context", "sources", "extraction_issues"}})
+
+            visit(
+                {k: v for k, v in result.items() if k not in {"definitions", "context", "sources", "extraction_issues"}}
+            )
     return result
 
 
@@ -699,10 +1012,17 @@ def main(argv=None):
     parser.add_argument("--context", type=Path)
     parser.add_argument("--decomposition", type=Path)
     args = parser.parse_args(argv)
-    record = extract_metrics(args.run_dir, output=args.output, panel_results=args.panel_results,
-        mechanism_events=args.mechanism_events, context=_read(args.context) if args.context else None,
-        decomposition=_read(args.decomposition) if args.decomposition else None)
-    print(json.dumps({"schema": record["schema"], "output": str(args.output), "issues": len(record["extraction_issues"])}))
+    record = extract_metrics(
+        args.run_dir,
+        output=args.output,
+        panel_results=args.panel_results,
+        mechanism_events=args.mechanism_events,
+        context=_read(args.context) if args.context else None,
+        decomposition=_read(args.decomposition) if args.decomposition else None,
+    )
+    print(
+        json.dumps({"schema": record["schema"], "output": str(args.output), "issues": len(record["extraction_issues"])})
+    )
     return 0
 
 

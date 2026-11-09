@@ -97,7 +97,7 @@ def rtl_facts_path(target: str, *, explicit: str | Path | None = None) -> Path:
     """Resolve the RTL facts artifact PATH (pure — no I/O, no regeneration): explicit >
     ``$MERLIN_RTL_FACTS`` > the purgeable cache ``out/artifacts/cache/rtl_introspect/<t>/facts.json``.
 
-    This resolves to the GENERATED artifact's location; it never points at ``merlin/targets/<t>``.
+    This resolves to the GENERATED artifact's location; it never points at ``experiments/reference-data/target-inputs/<t>``.
     Use :func:`ensure_facts` / :func:`load_facts` when you need the file to actually exist (they
     regenerate the cache when it is cold)."""
     if explicit:
@@ -127,7 +127,7 @@ def _committed_facts_candidates(target: str):
     1. Where the target's OWN DESCRIPTOR says its contracts live (``backend_package_dir`` ->
        :attr:`~merlin.targetgen.target_experiment.TargetExperiment.rtl_facts_pin`). This is the same
        string the BUNDLE GENERATOR grants, so the accessor looks exactly where the sandbox mounts.
-    2. The naming convention ``merlin/targets/<target>/contracts/rtl_facts/`` — true whenever the
+    2. The naming convention ``experiments/reference-data/target-inputs/<target>/contracts/rtl_facts/`` — true whenever the
        experiment target and the package that serves it share a name.
     3. The package the TARGET REGISTRY resolves (an out-of-tree package's ``contracts/rtl_facts/``),
        the same "the manifest says WHAT, the registry says WHERE" split
@@ -634,7 +634,7 @@ def _resolve_facts(target: str, *, explicit: str | Path | None, regenerate: bool
     # Cache cold: prefer the COMMITTED, reviewed artifact before regenerating from RTL.
     #
     # `rtl_facts_path` points at a PURGEABLE cache under out/artifacts/cache/. The agent sandbox grants
-    # the committed pin (merlin/targets/<t>/contracts/rtl_facts/) but not that cache, and /scratch is
+    # the committed pin (experiments/reference-data/target-inputs/<t>/contracts/rtl_facts/) but not that cache, and /scratch is
     # tmpfs-masked -- so inside the box the cache always misses and every arm-4 RTL tool fell through to
     # a live CIRCT extraction that needs the external chipyard checkout, which the sandbox deliberately
     # does not expose. Net effect: `gen_isa_module` and friends were granted to arm-4 and could not run,

@@ -1029,7 +1029,7 @@ def execute_candidate_model(
             raise NativeModelExecutionError("requested simulator is not the selected RTL oracle")
         facts = selected_firrtl(rtl_facts, target=target, config=board_config)
         if memory_console:
-            from merlin_experiments.phase1.feedback.native_memory_readback import execute_memory_elf
+            from merlin.experiments.phase1.feedback.native_memory_readback import execute_memory_elf
 
             def memory_run(selected_backend, engine_name, revalidate_engine):
                 def after_run():
@@ -1226,7 +1226,7 @@ def execute_candidate_model(
             numeric=comparison,
             status="numeric_match_diagnostic" if comparison["status"] == "pass" else "numeric_mismatch_diagnostic",
         )
-        from merlin_experiments.phase2.gsim_workload import OUTPUT_ENCODING, encode_declared_outputs
+        from merlin.experiments.phase2.gsim_workload import OUTPUT_ENCODING, encode_declared_outputs
 
         output_sha, output_tensors = encode_declared_outputs(observed, cb)
         record["output_observation"] = {"sha256": output_sha, "encoding": OUTPUT_ENCODING, "tensors": output_tensors}

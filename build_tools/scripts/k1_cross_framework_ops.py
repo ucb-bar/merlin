@@ -268,8 +268,8 @@ def _build_run_ours(
 ) -> dict:
     """Lower OUR model.o for `bundle`, link the given OURS driver, scp+run reps, keep min."""
     cc = _cc()
-    rt = REPO / "merlin/runtime/c"
-    abi = REPO / "merlin/runtime/abi"
+    rt = REPO / "src/merlin/runtime/native/c"
+    abi = REPO / "src/merlin/runtime/native/abi"
     with tempfile.TemporaryDirectory(prefix="k1_ours_") as tmp:
         work = Path(tmp) / "work"
         work.mkdir(parents=True, exist_ok=True)

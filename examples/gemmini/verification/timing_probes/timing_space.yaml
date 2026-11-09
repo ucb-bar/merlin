@@ -1,5 +1,5 @@
 # How the annotated-Spike Gemmini timing provider decodes a RoCC stream into its price classes, as
-# data for merlin_experiments.timing_probes. Operator-private calibration input: never granted to an
+# data for merlin.experiments.timing_probes. Operator-private calibration input: never granted to an
 # author, never staged into a release, never graded.
 #
 # Nothing here states a bit position, funct code or capacity. Instructions are named by the RTL

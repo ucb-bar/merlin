@@ -57,7 +57,7 @@ from pathlib import Path
 # to leave implicit: a worktree sharing a venv with another clone imports `merlin` from the OTHER
 # clone by default, so a caller holding the library and this script at once can be looking at two
 # different trees while both report green. `--tree` publishes which one this run read, and
-# `merlin/tests/infra/test_capability_backing.py` asserts the two match rather than assuming it.
+# `tests/infra/test_capability_backing.py` asserts the two match rather than assuming it.
 _HERE = Path(__file__).resolve()
 for _p in (_HERE.parents[2] / "src",):
     if str(_p) not in sys.path:

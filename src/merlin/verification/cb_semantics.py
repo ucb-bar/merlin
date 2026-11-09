@@ -13,7 +13,7 @@ free via ``emit_command_buffer``.
 **This module mirrors** :func:`merlin.runtime.simulator.simulate`. That is the whole contract: where
 the two disagree, a CORRECT backend gets refuted, which is worse than not checking at all. Every
 method here names the reference line it mirrors, and the differential test in
-``merlin/tests/ir/test_cb_semantics.py`` runs both engines on concrete inputs and requires them to
+``tests/ir/test_cb_semantics.py`` runs both engines on concrete inputs and requires them to
 agree before any refutation is trusted.
 
 **Fail closed, in the idiom already established by** :mod:`merlin.runtime.reference`: an opcode with

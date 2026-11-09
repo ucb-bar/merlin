@@ -5,16 +5,16 @@ status: current
 owner: merlin-experiments
 last_verified: 2026-11-09
 code_refs:
-  - src/merlin_experiments/phase1/component_qualification.py
-  - src/merlin_experiments/phase1/component_witness.py
-  - src/merlin_experiments/phase1/component_source_applicability.py
-  - src/merlin_experiments/phase1/component_package_execution.py
-  - src/merlin_experiments/phase2/component_launch.py
-  - src/merlin_experiments/phase2/component_launch_inputs.py
-  - src/merlin_experiments/phase2/component_runtime.py
-  - src/merlin_experiments/phase2/authoring_cli.py
-  - src/merlin_experiments/phase2/broker.py
-  - src/merlin_experiments/phase2/component_runtime_authority.py
+  - src/merlin/experiments/phase1/component_qualification.py
+  - src/merlin/experiments/phase1/component_witness.py
+  - src/merlin/experiments/phase1/component_source_applicability.py
+  - src/merlin/experiments/phase1/component_package_execution.py
+  - src/merlin/experiments/phase2/component_launch.py
+  - src/merlin/experiments/phase2/component_launch_inputs.py
+  - src/merlin/experiments/phase2/component_runtime.py
+  - src/merlin/experiments/phase2/authoring_cli.py
+  - src/merlin/experiments/phase2/broker.py
+  - src/merlin/experiments/phase2/component_runtime_authority.py
 ---
 
 # Component launch qualification
@@ -48,7 +48,7 @@ coverage declarations, handwritten baselines, history or final graphs into it.
 Inventory reviewed trusted executables and explicitly needed resource files:
 
 ```sh
-python -m merlin_experiments.phase2.component_runtime \
+python -m merlin.experiments.phase2.component_runtime \
   --executable /usr/bin/bwrap=/usr/bin/bwrap \
   --executable /usr/bin/python3=/usr/bin/python3 \
   --executable /usr/bin/dash=/bin/sh \
@@ -134,7 +134,7 @@ live reachable host TCP listener, and calls the ordinary broker over Unix IPC.
 It does not invoke a paid model:
 
 ```sh
-python -m merlin_experiments.phase2.authoring_cli \
+python -m merlin.experiments.phase2.authoring_cli \
   --workflow component-only-v1 \
   --component-launch-inputs /absolute/private/launch.json \
   --qualification-only --model SELECTED_MODEL --effort high

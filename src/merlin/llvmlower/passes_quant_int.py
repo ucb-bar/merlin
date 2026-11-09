@@ -1067,7 +1067,7 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
     fire must not be indistinguishable from one that had nothing to do, so it now COUNTS what it
     scanned into ``report_out`` (``generics_scanned``, ``compound_map_generics``, ``conv_prov_ops``,
     ``lowered``) and prints one ``INERT`` line when a module full of convolution provenance yields
-    zero candidates. ``merlin/tests/ir/test_quantize_before_gather.py`` asserts that on a real bundle,
+    zero candidates. ``tests/ir/test_quantize_before_gather.py`` asserts that on a real bundle,
     so the deadness is a gated fact instead of a comment."""
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd

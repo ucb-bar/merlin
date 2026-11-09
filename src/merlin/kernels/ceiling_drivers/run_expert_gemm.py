@@ -89,7 +89,7 @@ def harness_config() -> bench_ceiling.BenchConfig:
     config = bench_ceiling.bench_config_for_source()
     if config is None:
         raise bench_ceiling.BenchConfigMissing(
-            "no standalone-benchmark corpus with an owning target is registered (merlin/contract/corpora.yaml)"
+            "no standalone-benchmark corpus with an owning target is registered (src/merlin/resources/contracts/corpora.yaml)"
         )
     return config
 
@@ -102,7 +102,7 @@ def _build(driver: Path, incs: list[Path], out: Path, *, timeout: int = 300) -> 
     config = harness_config()
     sat = config.benchmarks_dir()
     if sat is None:
-        return "no standalone-benchmark corpus registered (merlin/contract/corpora.yaml)"
+        return "no standalone-benchmark corpus registered (src/merlin/resources/contracts/corpora.yaml)"
     enc = config.encoding_include_dir()
     if enc is None:
         return "encoding.h not found (set MERLIN_CHIPYARD)"

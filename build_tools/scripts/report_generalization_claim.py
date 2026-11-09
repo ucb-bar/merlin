@@ -31,7 +31,7 @@ from merlin.common.paths import artifacts_dir, repo_root  # noqa: E402
 from merlin.targetgen import aten_coverage as AC  # noqa: E402
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
 
-_TARGETS = "merlin/experiments/capsule_bench/targets"
+_TARGETS = "experiments/studies/capsule_bench/targets"
 
 
 def _captures() -> dict[str, Path]:

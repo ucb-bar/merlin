@@ -1,6 +1,6 @@
 """The SourceManifest: a record of what TargetGen was pointed at for a target.
 
-Validates against ``merlin/schemas/target_source_manifest.schema.yaml``. Source URLs are
+Validates against ``src/merlin/resources/schemas/target_source_manifest.schema.yaml``. Source URLs are
 recorded but not fetched; only local directories/files are read downstream.
 """
 

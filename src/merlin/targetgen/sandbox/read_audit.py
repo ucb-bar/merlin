@@ -44,10 +44,9 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from merlin_experiments.phase1.providers import codex_agent as _codex
-
 from merlin.common.access import audit_token_in
 from merlin.common.paths import repo_root
+from merlin.experiments.phase1.providers import codex_agent as _codex
 from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces, audit_hit_is_violation, audit_tokens
 from merlin.targetgen.target_experiment import TargetExperiment
 
@@ -385,7 +384,7 @@ class _Withheld:
         """A withheld token named by ``text``, or None — matched by SHAPE, not by bare substring.
 
         A token carrying a ``/`` or a ``.`` is specific enough to match anywhere in a word
-        (``golden.yaml``, ``capsules/hidden``, ``merlin/runtime/reference``). A BARE STEM is not: the
+        (``golden.yaml``, ``capsules/hidden``, ``src/merlin/runtime/native/reference``). A BARE STEM is not: the
         grader registry contributes stems like ``decode`` and ``trace_check``, and substring-matching
         those against arbitrary shell text flags every ``jq`` filter that mentions a ``decoded`` field.
         Measured on the archived transcripts, that single rule produced 30 of 34 accusations, all of

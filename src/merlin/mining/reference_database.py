@@ -126,7 +126,7 @@ def stage_inputs(spec, root):
 
 
 def build(spec_path, root):
-    from merlin_experiments.phase1.feedback import reference_analysis as analysis
+    from merlin.experiments.phase1.feedback import reference_analysis as analysis
 
     from .reference_database_analysis import ADVICE_KEYS, machine_regions, source_regions
     from .reference_database_aot import attach_debug_lines, compile_declared, symbol_correspondence
@@ -278,7 +278,7 @@ def build(spec_path, root):
     owners = []
     for name, module in sorted(sys.modules.copy().items()):
         path = getattr(module, "__file__", None)
-        if path and name.startswith(("merlin.", "merlin_experiments.")) and Path(path).is_file():
+        if path and name.startswith(("merlin.", "merlin.experiments.")) and Path(path).is_file():
             owners.append(dict(module=name, path=str(Path(path).absolute()), sha256=digest(path)))
     write_json(
         root / "analysis-inputs" / "implementation.json",

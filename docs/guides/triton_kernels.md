@@ -159,8 +159,8 @@ These are named-stage observations, not every internal compiler pass. See
 ## Verify it yourself
 
 ```bash
-.venv/bin/python -m pytest merlin/tests/ir/test_triton_bridge.py \
-    merlin/tests/ir/test_triton_host_e2e.py merlin/tests/ir/test_triton_convergence.py -q
-.venv/bin/python -m pytest merlin/tests/rvv/test_triton_rvv_e2e.py -q          # spike
-.venv/bin/python -m pytest merlin/tests/gemmini/test_triton_gemmini_c0.py -q   # spike + verilator
+.venv/bin/python -m pytest tests/ir/test_triton_bridge.py \
+    tests/ir/test_triton_host_e2e.py tests/ir/test_triton_convergence.py -q
+.venv/bin/python -m pytest tests/rvv/test_triton_rvv_e2e.py -q          # spike
+.venv/bin/python -m pytest tests/gemmini/test_triton_gemmini_c0.py -q   # spike + verilator
 ```

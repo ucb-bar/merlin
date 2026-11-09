@@ -6,4 +6,4 @@
 # reachable off-box uses the inline `# public-port-ok: <rationale>` marker instead, so the
 # claim sits on the line it excuses.
 
-merlin/tests/infra/test_no_public_port_bindings.py  # the gate's own fixtures ARE violations
+tests/infra/test_no_public_port_bindings.py  # the gate's own fixtures ARE violations

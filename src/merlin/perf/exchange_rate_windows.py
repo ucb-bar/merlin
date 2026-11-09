@@ -68,9 +68,9 @@ def load_plan(*, body: Mapping[str, Any] | None = None) -> dict[str, Any]:
     if body is None:
         import yaml
 
-        from ..common.paths import merlin_dir
+        from ..common.paths import data_path
 
-        path = merlin_dir().joinpath(*_PLAN)
+        path = data_path(*_PLAN)
         if not path.is_file():
             raise WindowPlanError(f"no window plan at {path}; a sweep design is declared, never assumed")
         body = yaml.safe_load(path.read_text(encoding="utf-8")) or {}

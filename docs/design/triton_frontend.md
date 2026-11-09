@@ -80,7 +80,7 @@ decisions — i.e. everything that makes Merlin a compiler rather than a code em
 
 ## Invariants
 
-These are asserted by `merlin/tests/infra/test_triton_target_independence.py`, not merely documented.
+These are asserted by `tests/infra/test_triton_target_independence.py`, not merely documented.
 
 ```
 INV-1  zero Triton-specific LLM calls / prompts per target
@@ -162,7 +162,7 @@ candidates.
 
 ## Conventions this work must respect
 
-- **Tests** go in the bucket of the subsystem they exercise; `merlin/tests/triton/` is not a legal
+- **Tests** go in the bucket of the subsystem they exercise; `tests/triton/` is not a legal
   bucket (`check_structure.py` fixes the set). Bridge/IR tests → `ir/`, guards → `infra/`, the RVV
   arm → `rvv/`, Gemmini → `gemmini/`, generated-target descent → `targetgen/`.
 - **Artifacts** go through `artifacts.new_product("triton-kernel", target=…, version=0)` and

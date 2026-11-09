@@ -12,8 +12,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from merlin_experiments.phase1 import launch_config as L
-
+from merlin.experiments.phase1 import launch_config as L
 from merlin.model_check import bundle as B
 from merlin.model_check import seal as S
 
@@ -79,18 +78,17 @@ def configured_environment(launch: L.Launch):
 
 def prepare(launch: L.Launch, prep: Path, *, qualification_only: bool = False) -> dict:
     with configured_environment(launch):
-        return (_prepare(launch, prep, qualification_only=True) if qualification_only
-                else _prepare(launch, prep))
+        return _prepare(launch, prep, qualification_only=True) if qualification_only else _prepare(launch, prep)
 
 
 def _source_preflight_inputs(launch):
     """Reopen the gate's selected source inputs and compiler-owned index premise."""
     import yaml
-    from merlin_experiments.phase1.feedback import private_control_support as control
-    from merlin_experiments.phase1.feedback import private_full_model_execution as execution
-    from merlin_experiments.phase1.feedback import private_full_models as models
 
     from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
+    from merlin.experiments.phase1.feedback import private_control_support as control
+    from merlin.experiments.phase1.feedback import private_full_model_execution as execution
+    from merlin.experiments.phase1.feedback import private_full_models as models
 
     spec = launch.path(launch.document["inputs"]["private_full_model_spec"])
     descriptor = launch.path(launch.document["inputs"]["descriptor"])
@@ -165,11 +163,10 @@ def source_preparation(launch, prep: Path) -> dict:
     """Reuse only this preparation's exact source-only check, never candidate credit."""
     import hashlib
 
-    from merlin_experiments.phase1.feedback import private_full_models as models
-    from merlin_experiments.phase1.feedback import private_source_freeze as freeze
-    from merlin_experiments.phase1.feedback import private_source_preflight_parallel as preflight
-
     from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
+    from merlin.experiments.phase1.feedback import private_full_models as models
+    from merlin.experiments.phase1.feedback import private_source_freeze as freeze
+    from merlin.experiments.phase1.feedback import private_source_preflight_parallel as preflight
 
     identity, native = _source_preflight_inputs(launch)
     key = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -224,8 +221,13 @@ def source_preparation(launch, prep: Path) -> dict:
         or not freeze.valid_binding(report.get("authored_source_freeze"), identity["spec_sha256"])
     ):
         raise ValueError(f"compiler-independent private source preflight refused; see {report_path}")
-    return {"source_preflight_passed": True, "candidate_qualified": False, "reused": reused,
-            "report": {"path": str(report_path), "sha256": file_sha256(report_path)}, "identity_sha256": key}
+    return {
+        "source_preflight_passed": True,
+        "candidate_qualified": False,
+        "reused": reused,
+        "report": {"path": str(report_path), "sha256": file_sha256(report_path)},
+        "identity_sha256": key,
+    }
 
 
 def source_preparation_for(launch, prep, private_spec, *, qualification_only=False):
@@ -233,20 +235,28 @@ def source_preparation_for(launch, prep, private_spec, *, qualification_only=Fal
     if launch is not None and launch.document.get("validation_scope", "full") == "capsules":
         if qualification_only:
             raise ValueError("external qualification requires validation_scope full")
-        return {"status": "deferred_to_external_validation", "source_preflight_passed": False,
-                "candidate_qualified": False, "author_allowed": True,
-                "scope": "Capsule-only authoring; full source/offload/instruction/model obligations remain external."}
+        return {
+            "status": "deferred_to_external_validation",
+            "source_preflight_passed": False,
+            "candidate_qualified": False,
+            "author_allowed": True,
+            "scope": "Capsule-only authoring; full source/offload/instruction/model obligations remain external.",
+        }
     if not qualification_only:
         return source_preparation(launch, prep)
-    from merlin_experiments.phase1.feedback import private_numerical_selection
+    from merlin.experiments.phase1.feedback import private_numerical_selection
 
     if private_numerical_selection.read(private_spec) is None:
         raise ValueError("source delegation requires the selected canonical native full-chain criterion")
     return {
-        "status": "delegated_to_canonical_native_static_gate", "source_preflight_passed": False,
-        "candidate_qualified": False, "author_allowed": False,
-        "scope": ("No duplicate source-only precheck; actual native model builds and final certification "
-                  "still require current complete source admission."),
+        "status": "delegated_to_canonical_native_static_gate",
+        "source_preflight_passed": False,
+        "candidate_qualified": False,
+        "author_allowed": False,
+        "scope": (
+            "No duplicate source-only precheck; actual native model builds and final certification "
+            "still require current complete source admission."
+        ),
     }
 
 
@@ -333,8 +343,10 @@ def _prepare(launch: L.Launch, prep: Path, *, qualification_only: bool = False) 
     # pinned metadata for public host selection, deferring model payload checks.
     capsule_scope = doc.get("validation_scope", "full") == "capsules"
     if capsule_scope:
-        verified = {"status": "deferred_to_external_validation",
-                    "scope": "Bundle/spec metadata and pinned manifest bytes checked; no model payload credit."}
+        verified = {
+            "status": "deferred_to_external_validation",
+            "scope": "Bundle/spec metadata and pinned manifest bytes checked; no model payload credit.",
+        }
     else:
         verified = S.verify(B.Bundle(selected), jobs=min(8, len(launch.manager_cpus)))
         if verified["status"] != "pass":
@@ -354,9 +366,13 @@ def _prepare(launch: L.Launch, prep: Path, *, qualification_only: bool = False) 
         "full_model_readiness": readiness,
         "validation_scope": doc.get("validation_scope", "full"),
         "readiness_scope": (
-            "capsule_runtime_preflight" if capsule_scope else "infrastructure_preflight"
+            "capsule_runtime_preflight"
+            if capsule_scope
+            else "infrastructure_preflight"
             if readiness and readiness.get("schema") == "merlin.phase1.infrastructure_readiness.v2"
-            else "retained_full_model_qualification" if readiness else "launch_configuration"
+            else "retained_full_model_qualification"
+            if readiness
+            else "launch_configuration"
         ),
         "phase1_complete": False,
     }
@@ -393,8 +409,18 @@ def main() -> int:
         args.prep.mkdir(parents=True, exist_ok=True)
         ready = prepare(launch, args.prep)
         save(args.prep / "launch-readiness.json", ready)
-        print(json.dumps({"status": "ready", "readiness_scope": ready["readiness_scope"], "phase1_complete": False,
-                          "config": str(launch.config.path), "run_id": args.run_id}), flush=True)
+        print(
+            json.dumps(
+                {
+                    "status": "ready",
+                    "readiness_scope": ready["readiness_scope"],
+                    "phase1_complete": False,
+                    "config": str(launch.config.path),
+                    "run_id": args.run_id,
+                }
+            ),
+            flush=True,
+        )
         return run(launch, args.prep, started) if args.run else 0
     except (ValueError, OSError, B.BundleError, RuntimeError) as error:
         print(json.dumps({"status": "refused", "error": str(error)}), flush=True)

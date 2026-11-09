@@ -140,7 +140,10 @@ def _shared_allow(te: TargetExperiment, variant: str) -> list[dict]:
         "target_dialect_contract.yaml",
         "schemas/",
     )
-    out = [{"path": f"merlin/contract/{name}", "mode": "ro", "note": "frozen public ABI"} for name in public_contract]
+    out = [
+        {"path": f"src/merlin/resources/contracts/{name}", "mode": "ro", "note": "frozen public ABI"}
+        for name in public_contract
+    ]
     out.append({"path": te.corpus_rel(), "mode": "ro", "note": "capsule corpus"})
     out += [{"path": s, "mode": "ro"} for s in te.corpus_siblings()]
     out += [{"path": h, "mode": "ro", "note": "ISA header (shared hardware spec)"} for h in te.isa_headers]
@@ -211,7 +214,7 @@ def _arm_manifest(
     ``add_tools`` / ``drop_tools`` express an ABLATION CELL — this rung plus or minus named tools. With
     neither (the default) the output is exactly the ladder's, byte for byte.
 
-    A dropped tool is moved to ``denied``, never merely omitted: the shared ``merlin/contract`` and
+    A dropped tool is moved to ``denied``, never merely omitted: the shared ``src/merlin/resources/contracts`` and
     toolchain grants can re-expose a path that is simply absent from the allow list, and a cell that
     still reaches the tool it claims to have removed is a silently void measurement.
     """

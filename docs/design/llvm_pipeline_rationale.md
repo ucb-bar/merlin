@@ -105,7 +105,7 @@ alloc's own block, and the liveness pass then moves those direct frees to their 
 Whole-model bufferization may instead form one aggregate ``bufferization.dealloc`` for
 hundreds of allocations. The opt-in fresh-local split handles that separate case.
 
-ORDER IS LOAD-BEARING and is asserted by ``merlin/tests/ir/test_dealloc_sinking.py``:
+ORDER IS LOAD-BEARING and is asserted by ``tests/ir/test_dealloc_sinking.py``:
 ``bufferization-lower-deallocations`` → ``canonicalize`` → ``optimize-allocation-liveness``.
 Placed before the lowering, or after it without the canonicalize, the pass silently moves nothing
 — which is exactly how this was mis-diagnosed the first time.

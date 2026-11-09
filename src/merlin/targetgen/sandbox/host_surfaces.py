@@ -39,24 +39,30 @@ def _final_answer_policy(
     Only internal policy composition consumes the roster; no unmasked policy
     object is created. Explicit selected-input surfaces supplement live discovery.
     """
+    from merlin.experiments.phase1.feedback import setup_timing as timing
     from merlin.targetgen.sandbox import bwrap as BW
-
-    from merlin_experiments.phase1.feedback import setup_timing as timing
 
     with timing.stage("package_policy.private_alias_discovery"):
         private = host_input_surfaces(
-            argv, ws, bundle, repo=repo, _policy_test_live_inputs=_policy_test_live_inputs,
-            inventory=None if capsules is None else capsules.inventory)
+            argv,
+            ws,
+            bundle,
+            repo=repo,
+            _policy_test_live_inputs=_policy_test_live_inputs,
+            inventory=None if capsules is None else capsules.inventory,
+        )
     with timing.stage("package_policy.answer_discovery"):
         answers = BW.answer_surfaces(te) if capsules is None else BW.answer_surfaces(te, capsules=capsules)
     with timing.stage("package_policy.frozen_support"):
         frozen_support = (
-            [] if _policy_test_live_inputs or not bundle
+            []
+            if _policy_test_live_inputs or not bundle
             else BW._frozen_support_surfaces(ws, bundle, answers, repo.absolute())
         )
     with timing.stage("package_policy.frozen_answers"):
         frozen_answers = (
-            [] if _policy_test_live_inputs or not bundle
+            []
+            if _policy_test_live_inputs or not bundle
             else BW._frozen_answer_surfaces(ws, bundle, te, answers, repo.absolute(), capsules)
         )
     with timing.stage("package_policy.apply_masks"):
@@ -66,7 +72,7 @@ def _final_answer_policy(
             raise RuntimeError("selected support package remains exposed after final masking")
 
     if bundle.get("author_profile") is not None:
-        from merlin_experiments.phase1.author_profiles import runtime_masks
+        from merlin.experiments.phase1.author_profiles import runtime_masks
 
         result = runtime_masks(result, bundle, target=te)
     return [*result, "--unsetenv", "MERLIN_FROZEN_PYTHON_CONTEXT"], tuple(answers)
@@ -150,7 +156,7 @@ def _private_hardlink_inodes(records: list[tuple[str, Path, Path]], *, inventory
         if facts is not None:
             inodes.update(facts.linked_inodes)
             members.update(str(path) for _, path, _, _ in facts.members)
-            directories.update(str(path) for _, path, kind, _ in facts.members if kind == 'directory')
+            directories.update(str(path) for _, path, kind, _ in facts.members if kind == "directory")
             directories.add(name)
             continue
         pending = [name]
@@ -192,8 +198,11 @@ def _host_hardlink_surfaces(
     are exempt; arbitrary runtime aliases do not inherit a public grant.
     """
     try:
-        private_inodes = (_private_hardlink_inodes(records) if inventory is None else
-                          _private_hardlink_inodes(records, inventory=inventory))
+        private_inodes = (
+            _private_hardlink_inodes(records)
+            if inventory is None
+            else _private_hardlink_inodes(records, inventory=inventory)
+        )
     except OSError as exc:
         raise RuntimeError("private input hardlink identities cannot be verified") from exc
     if not private_inodes:
@@ -216,14 +225,12 @@ def _host_hardlink_surfaces(
             return hits
         # Preserve the fallback's device pruning; a disjoint root may contain
         # relevant nested mounts, which the original traversal handles below.
-        facts = (inventory.tree_nofollow(root)
-                 if inventory is not None and info.st_dev in devices else None)
+        facts = inventory.tree_nofollow(root) if inventory is not None and info.st_dev in devices else None
         if facts is not None:
             # Exact inode membership remains current under file/dir watches.
             # Symlink referents are skipped exactly as in the fallback; watched
             # parents invalidate replacements, including new hardlink aliases.
-            hits.extend(path.relative_to(root) for path, identity in facts.linked_members
-                        if identity in private_inodes)
+            hits.extend(path.relative_to(root) for path, identity in facts.linked_members if identity in private_inodes)
             return hits
         pending = [root]
         scanned: set[Path] = set()

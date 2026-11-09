@@ -91,7 +91,7 @@ def run_dir(target: str, run_id: str) -> Path:
 
 
 def workspace(target: str, run_id: str) -> Path:
-    return ROOT / "merlin/experiments/capsule_bench/targets" / target / "_qa_ws" / run_id / "workspace"
+    return ROOT / "experiments/studies/capsule_bench/targets" / target / "_qa_ws" / run_id / "workspace"
 
 
 def capsule_index(ws: Path) -> dict[str, Path]:

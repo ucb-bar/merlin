@@ -105,7 +105,7 @@ the exact steps:
 
 **Gemmini readout.** Sources: [`target/contracts/target_contract.yaml`](../target/contracts/target_contract.yaml) (`scaling`,
 `epilogue_capability`, `stage_routes`, `scalar_abi`, `operand_sum`, which cite `gemmini_params.h`),
-[`merlin/contract/command_buffer_abi.yaml`](../../../merlin/contract/command_buffer_abi.yaml), and the
+[`src/merlin/resources/contracts/command_buffer_abi.yaml`](../../../src/merlin/resources/contracts/command_buffer_abi.yaml), and the
 RTL facts of the Phase 1 release payload, whose readout section matches.
 
 - An int8 × int8 product accumulates into an int32 accumulator.

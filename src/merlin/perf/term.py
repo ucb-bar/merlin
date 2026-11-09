@@ -25,7 +25,7 @@ indistinguishable from "nobody looked", and the two demand different follow-up w
 
 Evidence vocabulary
 -------------------
-The evidence kinds are :mod:`merlin.dse_guidance.evidence`'s, imported rather than restated --
+The evidence kinds are :mod:`merlin.analysis.dse.guidance.evidence`'s, imported rather than restated --
 ``measured / trace_derived / calibrated / structural_bound / analytical / assumed``, strongest to
 weakest -- so a term's confidence weight and a DSE axis's confidence weight are the same scale, and a
 term composed from several inputs is only as strong as its softest one (:func:`combine_kinds`).
@@ -182,7 +182,7 @@ def known_or_raise(value: Any, what: str = "value") -> float:
 def combine_kinds(kinds: Sequence[str]) -> str:
     """The evidence kind of something derived from several inputs: the weakest of them.
 
-    Thin wrapper over :func:`merlin.dse_guidance.evidence.weakest_evidence` so the perf layer never
+    Thin wrapper over :func:`merlin.analysis.dse.guidance.evidence.weakest_evidence` so the perf layer never
     grows a second combination rule.
     """
     return weakest_evidence(list(kinds))
@@ -221,7 +221,7 @@ class Provenance:
         if self.kind not in EVIDENCE_TYPES:
             raise ValueError(
                 f"unknown evidence kind {self.kind!r}; the vocabulary is "
-                f"{list(EVIDENCE_TYPES)} (merlin.dse_guidance.evidence)"
+                f"{list(EVIDENCE_TYPES)} (merlin.analysis.dse.guidance.evidence)"
             )
         ev = tuple(str(e) for e in self.evidence)
         if not ev or any(not e.strip() for e in ev):

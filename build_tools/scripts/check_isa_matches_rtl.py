@@ -123,9 +123,9 @@ def _errata_yaml(rep, undeclared: dict) -> str:
 
 
 def _targets() -> list[str]:
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import repo_root
 
-    base = merlin_dir() / "experiments" / "capsule_bench" / "targets"
+    base = repo_root() / "experiments" / "studies" / "capsule_bench" / "targets"
     return sorted(p.parent.name for p in base.glob("*/target_experiment.yaml"))
 
 

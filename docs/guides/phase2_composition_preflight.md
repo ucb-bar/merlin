@@ -6,7 +6,7 @@ owner: experiments
 last_verified: 2026-11-09
 related: [phase2_source_roles, phase2_development_sources, phase2_test_justification]
 code_refs:
-  - src/merlin_experiments/phase0/development_composition_preflight.py
+  - src/merlin/experiments/phase0/development_composition_preflight.py
   - src/merlin/targetgen/oot_starterkit/plan.py
   - src/merlin/targetgen/bundle_pack.py
 ---
@@ -33,7 +33,7 @@ The CLI acquires an original shared CPU leaf. Select all ceilings and the row
 granule from the applicable original build and compiler/resource contracts:
 
 ```bash
-python -m merlin_experiments.phase0.development_composition_preflight \
+python -m merlin.experiments.phase0.development_composition_preflight \
   --source "$SOURCE" --command-buffer "$COMMAND_BUFFER" --lowered "$LLVM" \
   --weight-manifest "$WEIGHT_MANIFEST" --weights "$WEIGHTS" \
   --row-pitch-elements "$ROW_GRANULE" \

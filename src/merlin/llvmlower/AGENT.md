@@ -581,7 +581,7 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
   input plus each completed rewrite. Inspection must preserve pass order, statistics and
   executable serialization; failures keep only the completed prefix. The textual repair
   path is not re-parsed merely to create diagnostic views.
-- `torchao_affine.py` — decompose the two torchao activation-quant ops a dynamic-activation capture leaves as opaque `func.call`s to body-less externs (`choose_qparams_affine`, `quantize_affine`) into linalg. Bit-exact against torchao's own implementation (`merlin/tests/ir/test_torchao_affine.py`); the block layout comes from the call's types and the quant range/eps from the scheme the bundle records in `prov.quantization`, and anything underivable raises rather than defaulting. Runs first in BOTH `dispatch_runtime.run_model` and `zephyr_model._prepare_model_mlir`.
+- `torchao_affine.py` — decompose the two torchao activation-quant ops a dynamic-activation capture leaves as opaque `func.call`s to body-less externs (`choose_qparams_affine`, `quantize_affine`) into linalg. Bit-exact against torchao's own implementation (`tests/ir/test_torchao_affine.py`); the block layout comes from the call's types and the quant range/eps from the scheme the bundle records in `prov.quantization`, and anything underivable raises rather than defaulting. Runs first in BOTH `dispatch_runtime.run_model` and `zephyr_model._prepare_model_mlir`.
 - `pipeline.py` — upstream pass pipeline + `translate_module_to_llvmir` (in the model2MLIR venv).
 - `op_profile_structural.py` reads typed top-level function operations for the
   existing optional profiler. Normal model backends cover effect-only calls and
@@ -936,7 +936,7 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 
 ## What does not belong here
 
-- Hand-written kernels (`merlin/runtime/baremetal/spike/`), command-buffer pipeline (`xdsl_dialects/lowering/`), model capture (model2MLIR).
+- Hand-written kernels (`src/merlin/runtime/native/baremetal/spike/`), command-buffer pipeline (`xdsl_dialects/lowering/`), model capture (model2MLIR).
 
 ## Invariants
 
@@ -1157,7 +1157,7 @@ All mutable state resides in one caller-owned workspace. Query the actual
 compiled byte/alignment requirements, accept a larger reusable capacity, prove
 input/output/workspace ownership and lifetime, and retain original source
 fallback for refusal. Only success publishes the public destination. Tests:
-`merlin/tests/runtime/test_source_attention_frontier.py` covers original-order
+`tests/runtime/test_source_attention_frontier.py` covers original-order
 replay, dirty repeated calls, strided inputs, masked rows, callback refusal,
 nonfinite inputs, invalid shape/stride/alignment/capacity, and numeric-plan bounds.
 

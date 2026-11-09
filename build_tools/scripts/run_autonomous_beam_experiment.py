@@ -50,9 +50,9 @@ from merlin.compare.executorch_column import (  # noqa: E402
 
 # expert objdump fixture per dtype (the CCA target); f16 carries the native-accumulate caveat.
 _EXPERT_OBJDUMP = {
-    "fp32": "merlin/tests/data/cca_asm/xnnpack_f32_gemm_rvv.objdump",
-    "int8": "merlin/tests/data/cca_asm/xnnpack_qd8_gemm_rvv.objdump",
-    "fp16": "merlin/tests/data/cca_asm/xnnpack_f16_gemm_rvv.objdump",
+    "fp32": "experiments/reference-data/cca-asm/xnnpack_f32_gemm_rvv.objdump",
+    "int8": "experiments/reference-data/cca-asm/xnnpack_qd8_gemm_rvv.objdump",
+    "fp16": "experiments/reference-data/cca-asm/xnnpack_f16_gemm_rvv.objdump",
 }
 
 

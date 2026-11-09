@@ -177,9 +177,8 @@ def probe(
 
     out = DeclineBracket(target=target, dtype=dtype)
     try:
-        from merlin_experiments.phase0 import profiles, writer
-        from merlin_experiments.phase0.declarations import for_target
-
+        from merlin.experiments.phase0 import profiles, writer
+        from merlin.experiments.phase0.declarations import for_target
         from merlin.targetgen import capsule_runner as CR  # noqa: PLC0415
         from merlin.targetgen import corpus_spec
         from merlin.targetgen.target_experiment import load_target_experiment

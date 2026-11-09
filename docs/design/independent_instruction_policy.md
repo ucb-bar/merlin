@@ -7,10 +7,10 @@ last_verified: 2026-11-09
 related: [fresh_compiler_origin, component_compiler_convergence]
 code_refs:
   - src/merlin/targetgen/contract/elf_admission.py
-  - src/merlin_experiments/phase2/component_instruction_policy.py
-  - src/merlin_experiments/phase2/component_instruction_audit.py
-  - src/merlin_experiments/phase2/component_runtime_instruction_control.py
-  - src/merlin_experiments/phase2/component_runtime_fixture.py
+  - src/merlin/experiments/phase2/component_instruction_policy.py
+  - src/merlin/experiments/phase2/component_instruction_audit.py
+  - src/merlin/experiments/phase2/component_runtime_instruction_control.py
+  - src/merlin/experiments/phase2/component_runtime_fixture.py
 ---
 
 # Independent linked instruction policy

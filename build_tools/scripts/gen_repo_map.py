@@ -30,12 +30,11 @@ MAP = ROOT / "docs" / "reference" / "repo_map.md"
 DEEP = (
     "src",
     "src/merlin",
+    "experiments",
     "packages",
-    "merlin/python",
-    "merlin/python/merlin",
-    "merlin/experiments",
-    "merlin/targets",
-    "merlin/tests",
+    "experiments/studies",
+    "experiments/reference-data/target-inputs",
+    "tests",
 )
 
 #: Vendored upstream; its size says nothing about this repo and its AGENT.md files are ours.
@@ -106,7 +105,7 @@ def _purpose(rel: str) -> str:
 
 
 def _status(rel: str) -> str:
-    """An experiment declares `Status: active|blocked|frozen|reference` in its AGENT.md (merlin/experiments)."""
+    """An experiment declares `Status: active|blocked|frozen|reference` in its AGENT.md (experiments/studies)."""
     agent = ROOT / rel / "AGENT.md"
     if not agent.is_file():
         return ""
@@ -132,7 +131,15 @@ def _rows(files: list[str]) -> list[tuple[str, int, str, str]]:
             continue
         if len(parts) == 1:
             wanted.append(d)
-        elif len(parts) == 2 and parts[0] in ("merlin", "src", "packages", "build_tools", "docs", ".claude", ".github"):
+        elif len(parts) == 2 and parts[0] in (
+            "src",
+            "packages",
+            "experiments",
+            "build_tools",
+            "docs",
+            ".claude",
+            ".github",
+        ):
             wanted.append(d)
         elif d.rsplit("/", 1)[0] in DEEP:
             wanted.append(d)

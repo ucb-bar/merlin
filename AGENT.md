@@ -8,14 +8,23 @@ historical Phase 0/1/2 names remain in the module layout and separate workflows.
 
 - `src/merlin/`: canonical Python source. Keep shared compiler, scheduling, capture,
   target/toolchain and verification primitives independent of research orchestration.
-- `src/merlin_experiments/` and `src/merlin_dse/`: research workflows in the same Merlin distribution;
-  optional dependencies stay lazy and logical compiler/research access boundaries remain explicit.
+- `src/merlin/experiments/` and `src/merlin/analysis/dse/`: experiment orchestration
+  and design-space analysis in the same namespace; optional dependencies stay lazy
+  and compiler/research access boundaries remain explicit.
+- `src/merlin/resources/` and `src/merlin/runtime/native/`: installed public data
+  and target-independent native runtime sources, respectively.
 - `packages/`: historical project metadata/inputs and the independent `merlin-timing` observer distribution.
-- `experiments/`: the experiment catalog and versioned definitions; start here to run a study.
-- `merlin/`: schemas, tests, native runtime, and legacy engines/resources during migration.
-  `merlin/python/merlin` is a compatibility symlink, not another source tree.
+- `examples/`: small walkthroughs and target-owned public inputs.
+- `experiments/`: the catalog, study definitions and unbundled reproduction inputs;
+  start here to select a study. These inputs are separate from installed engines.
+- `tests/`: the permanent suite, capped at 150 collected cases including parametrization.
 - `build_tools/`, `docs/`, `third_party/`: build/gates, durable docs, and opt-in upstream dependencies.
 - `out/{runs,artifacts,build}/`: generated state. Required source/reference fixtures belong elsewhere.
+
+There is one installed package at `src/merlin/`; the root `merlin/` tree is gone.
+The src layout prevents the working directory from supplying an accidental second
+package. See `docs/reference/repo_structure.md` for actual implementation owners
+and retained compatibility modules.
 
 ## Invariants
 

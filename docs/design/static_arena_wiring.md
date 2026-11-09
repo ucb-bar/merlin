@@ -47,7 +47,7 @@ argument is written out and tested rather than asserted:
 
 Anything that fails a condition stays a `malloc`/`free` pair and is counted as a refusal with a
 reason. The placement is re-checked against the offsets actually emitted, and
-`merlin/tests/runtime/test_arena_bind.py` proves that check can fail by mutating the conflict
+`tests/runtime/test_arena_bind.py` proves that check can fail by mutating the conflict
 relation — a guard that cannot fail is evidence of nothing.
 
 The one fold that makes the analysis non-vacuous: the ownership passes emit every dealloc behind
@@ -93,12 +93,12 @@ and `runtime.dispatch_runtime` (a host-Python executor over per-kernel `.so`s). 
 deployable binary, and the three things that lane still needs are unchanged:
 
 1. **A per-kernel emission path.** `c_runtime.generate` unrolls a single `_mlir_ciface_forward` call.
-2. **The replay engine.** `merlin/runtime/c/merlin_program.c` does not exist in the tree.
+2. **The replay engine.** `src/merlin/runtime/native/c/merlin_program.c` does not exist in the tree.
    (`merlin_bump_linux.c`, behind `MERLIN_BUMP_MALLOC`, is a measurement proxy: one bump arena,
    `free` is a no-op. It measures the allocator's share of wall; it plans nothing.)
 3. **A static-shape precondition**, surfaced as a build diagnostic rather than an exception.
 
-`merlin/runtime/c/merlin_hal.h` and `hal_linux.c` are still referenced by nothing. The binder does
+`src/merlin/runtime/native/c/merlin_hal.h` and `hal_linux.c` are still referenced by nothing. The binder does
 not use them: it emits the arena as an `internal global` in `model.ll`, which keeps the change
 link-neutral. Routing it through `merlin_hal_arena_base()` instead would let a board place the arena
 outside `.bss` — worth doing when a target needs it, at the cost of a link change in `mining/k1.py`
@@ -121,7 +121,7 @@ comes back slower, and the fix would be emitting `!alias.scope`/`!noalias` metad
 ## What is already fixed
 
 Two defects that would have made a wired `plan_arena` produce silently wrong offsets are closed, with
-tests in `merlin/tests/runtime/test_dispatch_program_regions.py`:
+tests in `tests/runtime/test_dispatch_program_regions.py`:
 
 - **Region-captured reads are recorded.** `op.operands` on an `scf.for` covers lb/ub/step/iter_args
   only, so a tensor the loop body read from the enclosing scope appeared in no node's `inputs`,

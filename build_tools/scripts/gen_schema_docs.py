@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Living schema reference: generate docs/reference/schemas.md from merlin/schemas/*.schema.yaml.
+"""Living schema reference: generate docs/reference/schemas.md from src/merlin/resources/schemas/*.schema.yaml.
 
 The schemas are the cross-workstream contract; this emits one row per schema -> its title +
 purpose (the single source of truth is the schema file's own `title`/`purpose`). Mirrors
@@ -7,7 +7,7 @@ gen_cli_docs.py / gen_package_docs.py: generate, and `--check` fails if stale.
 
 Usage:
   gen_schema_docs.py            # (re)write docs/reference/schemas.md
-  gen_schema_docs.py --check    # exit 1 if stale vs merlin/schemas/
+  gen_schema_docs.py --check    # exit 1 if stale vs src/merlin/resources/schemas/
 """
 
 from __future__ import annotations
@@ -16,12 +16,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCHEMAS = ROOT / "merlin" / "schemas"
+SCHEMAS = ROOT / "src/merlin/resources/schemas"
 OUT = ROOT / "docs" / "reference" / "schemas.md"
 
 HEADER = (
     "# Schema reference\n\n"
-    "_Generated from `merlin/schemas/*.schema.yaml` by `build_tools/scripts/gen_schema_docs.py` — "
+    "_Generated from `src/merlin/resources/schemas/*.schema.yaml` by `build_tools/scripts/gen_schema_docs.py` — "
     "do not edit by hand; run the generator._\n\n"
     "The schemas are the cross-workstream coordination contract (see "
     "[Contracts](contracts.md)). Each is the source of truth for one artifact type.\n\n"

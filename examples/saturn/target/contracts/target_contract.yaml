@@ -1,4 +1,4 @@
-# Saturn target contract (validates against merlin/schemas/target_contract.schema.yaml).
+# Saturn target contract (validates against src/merlin/resources/schemas/target_contract.schema.yaml).
 #
 # Curated reference contract for the Saturn RVV vector unit modeled as a multicore
 # RV64GCV CPU on spike (chipyard toolchain). Vector parameters below describe the
@@ -50,7 +50,7 @@ vector:
 #
 # Neither unit below is a new claim. The lane engine is this contract's own `vector:` block restated in
 # the shared vocabulary (rv64gcv_zfh_zvfh, e8m1 loads widened into e32m4 accumulators); the array is the
-# one merlin/contract/matrix_units.yaml already declares, with the same pin.
+# one src/merlin/resources/contracts/matrix_units.yaml already declares, with the same pin.
 compute_units:
   - name: rvv_lanes
     kind: vector
@@ -87,7 +87,7 @@ compute_units:
     semantic_capabilities:
       - {family: contraction, dtypes: [int8]}
     notes: >-
-      Declared by merlin/contract/matrix_units.yaml (unit saturn_opu, pin saturn_opu_int8): four
+      Declared by src/merlin/resources/contracts/matrix_units.yaml (unit saturn_opu, pin saturn_opu_int8): four
       instructions in reserved even funct6 slots of the vector opcode, an int8 datapath accumulating in
       int32, and a tile whose edge is the vector unit's VLMAX at e8/m1. Tile geometry is deliberately
       not restated here -- it is an RTL-derived fact.
@@ -126,5 +126,5 @@ requires_human_review: false
 notes: >-
   Curated by hand for the spike-modeled multicore RVV CPU (Merlin's first real-ISA
   backend). The RVV kernel is hand-written assembly
-  (merlin/runtime/baremetal/spike/rvv_matmul_i8.S); VCS replay is gated on
+  (src/merlin/runtime/native/baremetal/spike/rvv_matmul_i8.S); VCS replay is gated on
   MERLIN_SATURN_SIMV.

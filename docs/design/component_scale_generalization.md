@@ -6,10 +6,10 @@ owner: merlin-experiments
 last_verified: 2026-10-08
 related: [component_compiler_convergence, fresh_compiler_origin, component_phase2_workflow, component_final_evaluation]
 code_refs:
-  - src/merlin_experiments/phase0/component_coverage_plan.py
-  - src/merlin_experiments/phase0/component_coverage_inputs.py
-  - src/merlin_experiments/phase0/resource_boundaries.py
-  - src/merlin_experiments/phase1/component_qualification.py
+  - src/merlin/experiments/phase0/component_coverage_plan.py
+  - src/merlin/experiments/phase0/component_coverage_inputs.py
+  - src/merlin/experiments/phase0/resource_boundaries.py
+  - src/merlin/experiments/phase1/component_qualification.py
   - src/merlin/targetgen/component_program.py
 ---
 

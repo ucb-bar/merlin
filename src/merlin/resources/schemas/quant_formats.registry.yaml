@@ -1,0 +1,283 @@
+# Canonical quantization/numeric FORMAT registry — the single, target-agnostic source of truth.
+#
+# Each entry validates against src/merlin/resources/schemas/quant_format.schema.yaml and is loaded by
+# merlin.common.quant_formats. A format describes WHAT the numbers are (element encoding, packing,
+# scale); it never states WHICH hardware runs it — that datatype -> compute-unit mapping lives in a
+# target contract's `compute_units`. To add a format, add an entry here (or point
+# MERLIN_QUANT_FORMATS at an overlay file); no code change is required.
+#
+# `quant_ext_type` names the model2MLIR quant_ext metadata type that represents the format in IR
+# (affine_tensor | packed_int_tensor | mx_tensor | nvfp4_tensor). `torchao_scheme` / `ggml_type`
+# cross-reference the producing source so the frontend adapters can map source -> canonical format.
+version: 1
+formats:
+  # --- Regular IEEE-ish floats ("base weights"; RVV-native) --------------------------------------
+  fp32:
+    kind: float_ieee
+    element_bits: 32
+    exp_bits: 8
+    mant_bits: 23
+    signed: true
+    scale: {kind: none}
+    aliases: [f32, float32]
+    notes: IEEE-754 single. The correctness-oracle baseline.
+  fp16:
+    kind: float_ieee
+    element_bits: 16
+    exp_bits: 5
+    mant_bits: 10
+    signed: true
+    scale: {kind: none}
+    aliases: [f16, half, float16]
+    notes: IEEE-754 half (E5M10). Tight precision, reduced range.
+  fp64:
+    kind: float_ieee
+    element_bits: 64
+    exp_bits: 11
+    mant_bits: 52
+    signed: true
+    scale: {kind: none}
+    aliases: [f64, double, float64]
+    notes: >-
+      IEEE-754 double. Registered rather than parsed as a machine width because the `fp` spellings are
+      deliberately registry names here (`machine_bits("fp16")` returns None on purpose, so a width is
+      never guessed from a prefix) — and without an entry the same type was known as `f64` and unknown
+      as `fp64`, which made the address map refuse an ordinary double under one of its two names.
+  bf16:
+    kind: float_ieee
+    element_bits: 16
+    exp_bits: 8
+    mant_bits: 7
+    signed: true
+    scale: {kind: none}
+    aliases: [bfloat16]
+    notes: bfloat16 (E8M7). FP32 exponent range; overflow-resistant.
+
+  # --- Integer affine ----------------------------------------------------------------------------
+  int8:
+    kind: int_affine
+    element_bits: 8
+    signed: true
+    scale: {kind: per_channel}
+    granularity: per_channel
+    aliases: [i8, qint8]
+    torchao_scheme: int8_weight_only
+    quant_ext_type: affine_tensor
+    notes: Symmetric per-channel int8 (W8A8 when activations are also int8). RVV vwmacc datapath.
+  int16:
+    kind: int_affine
+    element_bits: 16
+    signed: true
+    scale: {kind: per_channel}
+    granularity: per_channel
+    aliases: [i16, qint16]
+    quant_ext_type: affine_tensor
+    notes: >-
+      Symmetric per-channel int16. Registered for the same reason `fp64` is: it is a real storage
+      element a general-purpose datapath computes on (RVV `vwmacc` widens int8 -> int16 -> int32 and
+      the SEW=16 element group is a first-class vector type), and without an entry a target contract
+      that declares its honest integer widths could not load at all -- the datatype -> compute-unit
+      binding fails closed on a token the registry does not know. That is not a theoretical gap: it
+      took a whole CPU target's capability manifest down, and because the raise was swallowed one
+      layer up, the target was silently extracted by the wrong fact extractor instead.
+  int32:
+    kind: int_affine
+    element_bits: 32
+    signed: true
+    scale: {kind: per_channel}
+    granularity: per_channel
+    aliases: [i32, qint32]
+    quant_ext_type: affine_tensor
+    notes: >-
+      Symmetric per-channel int32. The int8xint8 accumulator width every integer contraction in this
+      repo reduces into, and a legal STORAGE element in its own right (bias planes, requant inputs,
+      an un-requantized activation handed back to the host). Note the deliberate asymmetry with
+      `AccumRule.acc`: that field carries a raw MLIR type token (`i32`) because an accumulator is not
+      a storage format, whereas a unit's `dtypes` name registry entries -- so a datapath that keeps
+      int32 TENSORS in memory needs this entry, and one that merely accumulates into an i32 does not.
+  int64:
+    kind: int_affine
+    element_bits: 64
+    signed: true
+    scale: {kind: none}
+    aliases: [i64]
+    notes: >-
+      Plain signed 64-bit storage. This declaration supplies element encoding only;
+      it grants no quantization scheme, arithmetic policy or hardware capability.
+  int4:
+    kind: int_affine
+    element_bits: 4
+    signed: true
+    pack: {bits: 4, dim: -1}
+    scale: {kind: per_group, block: 128}
+    granularity: per_group
+    aliases: [i4]
+    torchao_scheme: int4_weight_only
+    quant_ext_type: packed_int_tensor
+    notes: Per-group int4, two per byte. torchao TinyGEMM.
+
+  # --- OCP floats (element-only; used bare or as the element of an mx_block) ----------------------
+  fp8_e4m3:
+    kind: fp_ocp
+    element_bits: 8
+    exp_bits: 4
+    mant_bits: 3
+    signed: true
+    scale: {kind: per_tensor}
+    aliases: [e4m3, float8_e4m3fn, f8E4M3FN]
+    torchao_scheme: float8_weight_only_e4m3
+    notes: OCP FP8 E4M3 (pmax 448).
+  fp8_e5m2:
+    kind: fp_ocp
+    element_bits: 8
+    exp_bits: 5
+    mant_bits: 2
+    signed: true
+    scale: {kind: per_tensor}
+    aliases: [e5m2, float8_e5m2, f8E5M2]
+    torchao_scheme: float8_weight_only_e5m2
+    notes: OCP FP8 E5M2 (wider range, less precision).
+  fp6_e3m2:
+    kind: fp_ocp
+    element_bits: 6
+    exp_bits: 3
+    mant_bits: 2
+    signed: true
+    pack: {bits: 6, dim: -1}
+    scale: {kind: none}
+    aliases: [e3m2, f6E3M2FN]
+    quant_ext_type: packed_int_tensor
+    notes: OCP FP6 E3M2 (the request's FP6 spec). Sub-byte.
+  fp6_e2m3:
+    kind: fp_ocp
+    element_bits: 6
+    exp_bits: 2
+    mant_bits: 3
+    signed: true
+    pack: {bits: 6, dim: -1}
+    scale: {kind: none}
+    aliases: [e2m3, f6E2M3FN]
+    quant_ext_type: packed_int_tensor
+    notes: OCP FP6 E2M3 variant (gemmini-mx fp6_0). Sub-byte.
+  fp4_e2m1:
+    kind: fp_ocp
+    element_bits: 4
+    exp_bits: 2
+    mant_bits: 1
+    signed: true
+    pack: {bits: 4, dim: -1}
+    scale: {kind: none}
+    aliases: [e2m1, f4E2M1FN]
+    quant_ext_type: packed_int_tensor
+    notes: OCP FP4 E2M1 (the request's FP4 spec). Two per byte.
+
+  # --- MX (OCP microscaling): block-scaled floats with a shared E8M0 block exponent ---------------
+  mxfp4:
+    kind: mx_block
+    element_bits: 4
+    exp_bits: 2
+    mant_bits: 1
+    signed: true
+    pack: {bits: 4, dim: -1}
+    scale: {kind: block_e8m0, block: 32}
+    granularity: per_block
+    torchao_scheme: mx_dyn_act_mx_weight_mx4
+    ggml_type: MXFP4
+    quant_ext_type: mx_tensor
+    notes: OCP MXFP4 — E2M1 elements, per-32 E8M0 block scale.
+  mxfp6:
+    kind: mx_block
+    element_bits: 6
+    exp_bits: 3
+    mant_bits: 2
+    signed: true
+    pack: {bits: 6, dim: -1}
+    scale: {kind: block_e8m0, block: 32}
+    granularity: per_block
+    torchao_scheme: mx_dyn_act_mx_weight_mx6
+    quant_ext_type: mx_tensor
+    notes: OCP MXFP6 — E3M2 elements, per-32 E8M0 block scale. True FP6 microscaling.
+  # The MX block SCALE type, not an operand format: mxfp4/6/8 each carry one of these per 32-element
+  # block (see their `scale: {kind: block_e8m0}`). It is registered because capsules declare scale
+  # planes as tensors with this dtype, and a dtype the registry does not know has its width written
+  # down somewhere else instead. Unsigned and mantissa-less: all 8 bits are exponent.
+  e8m0:
+    kind: fp_ocp
+    element_bits: 8
+    exp_bits: 8
+    mant_bits: 0
+    signed: false
+    scale: {kind: none}
+    aliases: [f8E8M0FNU, float8_e8m0fnu]
+    notes: OCP E8M0 block-scale exponent (power-of-two scale for the MX formats).
+  mxfp8:
+    kind: mx_block
+    element_bits: 8
+    exp_bits: 4
+    mant_bits: 3
+    signed: true
+    scale: {kind: block_e8m0, block: 32}
+    granularity: per_block
+    torchao_scheme: mx_dyn_act_mx_weight_mx9
+    quant_ext_type: mx_tensor
+    notes: OCP MXFP8 (torchao "mx9") — E4M3 elements, per-32 E8M0 block scale.
+  mxint8:
+    kind: int_affine
+    element_bits: 8
+    signed: true
+    scale: {kind: block_e8m0, block: 32}
+    granularity: per_block
+    quant_ext_type: mx_tensor
+    notes: >-
+      OCP MXINT8 — int8 elements under a per-32 E8M0 block scale. `int_affine` rather than
+      `mx_block`, because the element is an integer: `mx_block` is validated as a self-describing
+      FLOAT element (1 + exp_bits + mant_bits must fill the width), which an int8 element has no
+      exponent to satisfy. The MX part of it is the scale, and that is what `scale` records.
+      Registered because the DRAM address map sizes every operand through this registry and fails
+      closed on an unknown token, so a capsule declaring mxint8 could not be placed at all.
+
+  # --- NVIDIA NVFP4 ------------------------------------------------------------------------------
+  nvfp4:
+    kind: nvfp4
+    element_bits: 4
+    exp_bits: 2
+    mant_bits: 1
+    signed: true
+    pack: {bits: 4, dim: -1}
+    scale: {kind: nvfp4_block, block: 16, dtype: f32}
+    granularity: per_block
+    torchao_scheme: nvfp4_weight_only
+    ggml_type: NVFP4
+    quant_ext_type: nvfp4_tensor
+    notes: NVIDIA block-scaled FP4 — E2M1 elements, per-16 FP32/BF16 block scale.
+
+  # --- GGUF-sourced formats (ingested from .gguf; cross-referenced to their GGML type) ------------
+  gguf_q8_0:
+    kind: int_affine
+    element_bits: 8
+    signed: true
+    scale: {kind: block_affine, block: 32, dtype: f16}
+    granularity: per_block
+    ggml_type: Q8_0
+    quant_ext_type: affine_tensor
+    notes: GGUF Q8_0 — int8 with a per-32-block f16 scale (INT8 source in the download table).
+  gguf_q6_k:
+    kind: packed_sub_byte
+    element_bits: 6
+    signed: true
+    pack: {bits: 6, dim: -1}
+    scale: {kind: kquant_superblock, block: 256}
+    granularity: per_block
+    ggml_type: Q6_K
+    quant_ext_type: packed_int_tensor
+    notes: GGUF Q6_K — 6-bit K-quant super-block (256), hierarchical scales. FP6-analogous storage.
+  gguf_q4_k:
+    kind: packed_sub_byte
+    element_bits: 4
+    signed: true
+    pack: {bits: 4, dim: -1}
+    scale: {kind: kquant_superblock, block: 256}
+    granularity: per_block
+    ggml_type: Q4_K
+    quant_ext_type: packed_int_tensor
+    notes: GGUF Q4_K — 4-bit K-quant super-block (256), hierarchical scales. FP4-analogous storage.

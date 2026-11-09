@@ -19,7 +19,7 @@ from pathlib import Path, PurePosixPath
 
 @dataclass(frozen=True)
 class PythonSourceRoot:
-    """One explicitly supported checkout location for an import namespace."""
+    """One current or historical source location used to discover withheld code."""
 
     namespace: str
     path: str
@@ -100,6 +100,7 @@ AUTHOR_WITHHELD_PREFIXES = (
     "merlin.runtime.reference",
     "merlin.runtime.simulator",
     "merlin_experiments",
+    "merlin.experiments",
     # Migrated orchestration has the same author-private role as its legacy package.
     "merlin.development",
     # Operator-only consumers of the withheld packages above. Each needs a mined schedule package, the
@@ -179,7 +180,13 @@ def _module(module: str, origin: str, *, directory: bool = False, aliases: tuple
         for name in modules
         if name.startswith("merlin.targetgen.")
     )
-    return ModuleAccess(module, origin, modules, directory)
+    # Retain every archived spelling while denying the same relocated implementation.
+    modules += tuple(
+        name.replace("merlin_experiments", "merlin.experiments", 1)
+        for name in modules
+        if module_matches(name, "merlin_experiments")
+    )
+    return ModuleAccess(module, origin, tuple(dict.fromkeys(modules)), directory)
 
 
 module_access = _module
@@ -623,6 +630,8 @@ def legacy_module_paths(origin: str, *, items: tuple[ModuleAccess, ...] = MODULE
 # Resource ownership and physical layout are distinct. These aliases are consulted together during
 # staged moves so a stale duplicate answer file cannot survive merely because the new copy was found.
 CONTRACT_RESOURCE_ROOTS = (
+    "src/merlin/resources/contracts",
+    "experiments/corpora",
     "merlin/contract",
     "src/merlin/_data/contract",
     "src/merlin_experiments/_data/contract",
@@ -631,7 +640,18 @@ CONTRACT_RESOURCE_ROOTS = (
 
 
 def contract_resource_roots(root: Path, *parts: str) -> tuple[Path, ...]:
-    paths = [root.joinpath(rel, *parts) for rel in CONTRACT_RESOURCE_ROOTS]
+    # Capsules moved out of the installed contract tree. Preserve that logical
+    # child while enumerating both current and historical answer locations.
+    paths = [root.joinpath(rel, *parts) for rel in CONTRACT_RESOURCE_ROOTS if rel != "experiments/corpora"]
+    if not parts:
+        paths.append(root / "experiments/corpora")
+    elif parts[0] == "capsules":
+        paths.append(root.joinpath("experiments/corpora", *parts[1:]))
+    paths.extend(
+        package.joinpath("resources/contracts", *parts)
+        for namespace, package in runtime_package_roots(root)
+        if namespace == "merlin"
+    )
     paths.extend(
         package.joinpath("_data/contract", *parts)
         for namespace, package in runtime_package_roots(root)

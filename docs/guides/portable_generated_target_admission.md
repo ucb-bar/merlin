@@ -14,16 +14,16 @@ code_refs:
   - src/merlin/compiler/planning/model.py
   - src/merlin/transforms/dense_ir.py
   - src/merlin/targetgen/model_coverage.py
-  - merlin/tests/gemmini/packing_execution_inputs.py
-  - merlin/tests/gemmini/parameter_chain_execution_inputs.py
-  - merlin/tests/gemmini/parameter_chain_reference.py
-  - merlin/tests/ir/destination_forwarding_connected.mlir
-  - src/merlin_experiments/phase0/rtl_intake.py
-  - src/merlin_experiments/phase0/accessor_intake.py
-  - src/merlin_experiments/phase1/feedback/private_instruction_declaration.py
-  - src/merlin_experiments/phase1/feedback/private_instruction_coordinator.py
-  - src/merlin_experiments/phase1/feedback/instruction_admission_preparation.py
-  - src/merlin_experiments/phase1/feedback/instruction_admission_facts.py
+  - tests/gemmini/packing_execution_inputs.py
+  - tests/gemmini/parameter_chain_execution_inputs.py
+  - tests/gemmini/parameter_chain_reference.py
+  - tests/ir/destination_forwarding_connected.mlir
+  - src/merlin/experiments/phase0/rtl_intake.py
+  - src/merlin/experiments/phase0/accessor_intake.py
+  - src/merlin/experiments/phase1/feedback/private_instruction_declaration.py
+  - src/merlin/experiments/phase1/feedback/private_instruction_coordinator.py
+  - src/merlin/experiments/phase1/feedback/instruction_admission_preparation.py
+  - src/merlin/experiments/phase1/feedback/instruction_admission_facts.py
   - src/merlin/runtime/modelinputs.py
 ---
 
@@ -144,7 +144,7 @@ instead of removing it to accommodate an incompatible driver:
 ```sh
 MERLIN_TEST_GEMMINI_PARAMETER_CHAIN_SELECTION="$PARAMETER_CHAIN_SELECTION_JSON" \
 python -B -m pytest -q \
-  merlin/tests/gemmini/test_public_parameter_chain_execution.py::test_original_public_parameter_chain_baseline \
+  tests/gemmini/test_public_parameter_chain_execution.py::test_original_public_parameter_chain_baseline \
   -p no:cacheprovider -o tmp_path_retention_policy=all \
   --basetemp "$TMPDIR/public-parameter-chain" \
   --junitxml "$TMPDIR/public-parameter-chain.xml"
@@ -222,7 +222,7 @@ Those require their original independently selected contracts and owners.
 ### Reproduce connected packing with the public compiler
 
 The opt-in regression
-`merlin/tests/gemmini/test_public_packing_execution.py` uses the fixed public
+`tests/gemmini/test_public_packing_execution.py` uses the fixed public
 `producer_packing_connected.mlir` source and its independent ordered integer
 reference. It builds baseline and candidate copies of the same original
 16-file compiler through `plan_before_build` and `compile_saved_model` with
@@ -291,7 +291,7 @@ and the reviewed LLVM and RISC-V tools available. Retain the temporary outputs:
 ```sh
 MERLIN_TEST_GEMMINI_PACKING_SELECTION="$SELECTION_JSON" \
 python -B -m pytest -q \
-  merlin/tests/gemmini/test_public_packing_execution.py::test_original_public_compiler_executes_connected_packing_pair \
+  tests/gemmini/test_public_packing_execution.py::test_original_public_compiler_executes_connected_packing_pair \
   -p no:cacheprovider -o tmp_path_retention_policy=all \
   --basetemp "$TMPDIR/public-packing-pair" \
   --junitxml "$TMPDIR/public-packing-pair.xml"
@@ -354,7 +354,7 @@ selection and fresh runtime/admission provisioning:
 MERLIN_TEST_GEMMINI_PACKING_SELECTION="$SELECTION_JSON" \
 python -B -m pytest -q \
   -p "$ORIGINAL_EFFECTS_PLUGIN" \
-  merlin/tests/gemmini/test_public_destination_execution.py::test_original_public_compiler_executes_destination_forwarding_pair \
+  tests/gemmini/test_public_destination_execution.py::test_original_public_compiler_executes_destination_forwarding_pair \
   -p no:cacheprovider -o tmp_path_retention_policy=all \
   --basetemp "$TMPDIR/public-destination-pair" \
   --junitxml "$TMPDIR/public-destination-pair.xml"
@@ -575,7 +575,7 @@ For an embedding build, bind its actual public and input facts in the same live
 preparation lifetime:
 
 ```python
-from merlin_experiments.phase1.feedback.instruction_admission_facts import (
+from merlin.experiments.phase1.feedback.instruction_admission_facts import (
     InstructionFactsSelection, prepare_for_facts,
 )
 
@@ -605,8 +605,8 @@ With the receiving environment selected, invoke the fixed original coordinator:
 
 ```python
 from pathlib import Path
-from merlin_experiments.phase1.feedback import private_instruction_declaration as D
-from merlin_experiments.phase1.feedback import private_instruction_coordinator as C
+from merlin.experiments.phase1.feedback import private_instruction_declaration as D
+from merlin.experiments.phase1.feedback import private_instruction_coordinator as C
 
 prepared = C.prepare(
     D.read(Path(REVIEWED_DECLARATION), target="gemmini"),

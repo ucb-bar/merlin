@@ -15,22 +15,16 @@ def _print(value) -> None:
 
 def compile_main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    # Existing whole-model invocations retain their argument parser and behavior.
-    if argv not in (["--help"], ["-h"]) and not any(arg == "--backend" or arg.startswith("--backend=") for arg in argv):
-        from merlin.compile_cli import main
-
-        return main(argv)
     from merlin.api import CompileOptions, SavedExport, Source, StagedProgram, compile
 
     parser = argparse.ArgumentParser(
         prog="merlin compile",
-        description="Compile explicit source using one installed backend",
-        epilog="Existing --workload/--target model commands remain supported without --backend. "
-        "Use --workload NAME --help for those options.",
+        description="Compile explicit source using one selected backend and the public Python service",
+        epilog="For the retained workload/operator workflow, use merlin-compile --help.",
     )
-    parser.add_argument("source", type=Path)
-    parser.add_argument("--backend", required=True)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("source", type=Path, help="MLIR file, saved .pt2 export, or compiler-stage directory")
+    parser.add_argument("--backend", required=True, help="installed provider name; see merlin inspect --backends")
+    parser.add_argument("--output", required=True, type=Path, help="fresh compilation output directory")
     parser.add_argument(
         "--input-kind",
         help="compiler-stage selects a compiler-only directory; "
@@ -39,15 +33,21 @@ def compile_main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--capture-output", type=Path, help="fresh export evidence workspace; defaults to OUTPUT.capture"
     )
-    parser.add_argument("--system")
-    parser.add_argument("--platform")
-    parser.add_argument("--harts", type=int)
+    parser.add_argument("--system", help="hardware system selection admitted by the provider")
+    parser.add_argument("--platform", help="image environment admitted by the provider, such as zephyr or baremetal")
+    parser.add_argument("--harts", type=int, help="target hart count admitted by the provider")
     parser.add_argument(
         "--freeze-readonly-buffers",
         action="store_true",
         help="explicitly snapshot observed readonly BUFFER state in compiler-stage input",
     )
-    parser.add_argument("--option", action="append", default=[], metavar="NAMESPACE.KEY=JSON")
+    parser.add_argument(
+        "--option",
+        action="append",
+        default=[],
+        metavar="NAMESPACE.KEY=JSON",
+        help="provider-admitted pass or optimization option with a JSON value; repeat as needed",
+    )
     args = parser.parse_args(argv)
     parameters = {}
     for item in args.option:
@@ -94,8 +94,13 @@ def run_main(argv: list[str] | None = None) -> int:
         prog="merlin run", description="Execute an existing admitted ELF, or prepare external execution"
     )
     parser.add_argument("artifact", type=Path)
-    parser.add_argument("--runner", required=True)
-    parser.add_argument("--mode", choices=("execute", "prepare"), default="execute")
+    parser.add_argument("--runner", required=True, help="runtime provider, such as merlin.linux or firesim")
+    parser.add_argument(
+        "--mode",
+        choices=("execute", "prepare"),
+        default="execute",
+        help="execute with the selected runner, or prepare external execution files; FireSim requires prepare",
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--role", default="executable")
     parser.add_argument("--entry", help="relative ELF path for an external handoff with multiple images")
@@ -105,10 +110,10 @@ def run_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--input", action="append", default=[], metavar="RELATIVE_NAME=PATH")
     parser.add_argument("--harts", type=int, help="Linux initial affinity CPU count, or selected target hart count")
     parser.add_argument("--timeout", type=float, default=300)
-    parser.add_argument("--system")
-    parser.add_argument("--platform")
-    parser.add_argument("--isa")
-    parser.add_argument("--abi")
+    parser.add_argument("--system", help="hardware system for an ELF without a deployment manifest")
+    parser.add_argument("--platform", help="image environment, such as linux, zephyr or baremetal")
+    parser.add_argument("--isa", help="selected instruction-set contract")
+    parser.add_argument("--abi", help="selected binary calling convention")
     parser.add_argument("--dram-base", type=lambda x: int(x, 0))
     parser.add_argument("--memory-bytes", type=lambda x: int(x, 0))
     args = parser.parse_args(argv)

@@ -1,6 +1,6 @@
 # Diagnostic task windows
 
-`merlin_experiments.phase2.task_window_profile.instrument_task_windows(text, cb,
+`merlin.experiments.phase2.task_window_profile.instrument_task_windows(text, cb,
 symbol_prefix="profile_case0")` returns `lowered_mlir_text`, `c_support`,
 `completion_statement`, `dump_statement` and a manifest. Compile the returned
 LLVM through the ordinary object path, link its C support against the existing

@@ -8,10 +8,10 @@
 # are variables, never literals. Render the operator inputs, then verify them
 # (and later the live controller) against this file:
 #
-#   python -m merlin_experiments.phase1.launch_config render \
+#   python -m merlin.experiments.phase1.launch_config render \
 #       --config examples/gemmini/phase1/launch/el4-fire-aligned.yaml \
 #       --task-root "$TASK_ROOT" --prep "$PREP" [--run-id RUN_ID] [--out DIR]
-#   python -m merlin_experiments.phase1.launch_config verify \
+#   python -m merlin.experiments.phase1.launch_config verify \
 #       --config examples/gemmini/phase1/launch/el4-fire-aligned.yaml \
 #       --task-root "$TASK_ROOT" --prep "$PREP" [--controller-pid PID]
 #
@@ -20,7 +20,7 @@
 # exclusion. It selects; it does not qualify a compiler or start a run.
 #
 # Never granted to an author sandbox or copied into a release payload
-# (merlin/tests/infra/test_launch_config_not_author_visible.py). The author sees
+# (tests/infra/test_launch_config_not_author_visible.py). The author sees
 # the errata text only through the harness's archived and re-verified ERRATA copy.
 schema: merlin.phase1.launch_config.v1
 id: gemmini-el4-fire-aligned
@@ -63,7 +63,7 @@ identity:
 
 launcher:
   python: ${PYTHON}
-  module: merlin_experiments.phase1
+  module: merlin.experiments.phase1
   cwd: ${REPO}
   run_id_placeholder: <set by supervisor>
   # Operator files the supervisor reads; render writes them under --out (default ${PREP}).

@@ -9,8 +9,8 @@ code_refs:
   - src/merlin/targetgen/frozen_placement.py
   - src/merlin/targetgen/owned_host_model_selection.py
   - src/merlin/targetgen/owned_host_model_execution.py
-  - src/merlin_experiments/phase0/program_admission.py
-  - src/merlin_experiments/corpus/publication.py
+  - src/merlin/experiments/phase0/program_admission.py
+  - src/merlin/experiments/corpus/publication.py
   - src/merlin/compiler/build/owned.py
   - src/merlin/targetgen/owned_host_selections.py
 ---

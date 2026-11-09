@@ -6,16 +6,16 @@ owner: merlin-experiments
 last_verified: 2026-11-09
 related: [docs/design/component_compiler_convergence.md]
 code_refs:
-  - src/merlin_experiments/phase0/rtl_intake.py
-  - src/merlin_experiments/phase0/command_intake.py
-  - src/merlin_experiments/phase0/accessor_intake.py
-  - src/merlin_experiments/phase0/source_predicate_intake.py
-  - src/merlin_experiments/phase0/software_intake.py
-  - src/merlin_experiments/phase0/component_generation.py
-  - src/merlin_experiments/phase0/component_coverage.py
+  - src/merlin/experiments/phase0/rtl_intake.py
+  - src/merlin/experiments/phase0/command_intake.py
+  - src/merlin/experiments/phase0/accessor_intake.py
+  - src/merlin/experiments/phase0/source_predicate_intake.py
+  - src/merlin/experiments/phase0/software_intake.py
+  - src/merlin/experiments/phase0/component_generation.py
+  - src/merlin/experiments/phase0/component_coverage.py
   - src/merlin/targetgen/rtl/source_selection.py
   - src/merlin/targetgen/rtl/introspect.py
-  - src/merlin_experiments/phase0/minimal_software.py
+  - src/merlin/experiments/phase0/minimal_software.py
 ---
 
 # Independent RTL intake for fresh compiler authoring

@@ -6,13 +6,13 @@ owner: merlin-experiments
 last_verified: 2026-11-09
 related: [phase2_public_diagnostic_launch, phase2_component_search]
 code_refs:
-  - src/merlin_experiments/phase2/capsule_ordinary_scope.py
-  - src/merlin_experiments/phase2/authoring.py
-  - src/merlin_experiments/phase2/authoring_cli.py
-  - src/merlin_experiments/phase2/broker_file_channel.py
-  - src/merlin_experiments/phase2/ordinary_search_policy.py
-  - src/merlin_experiments/phase2/capsule_iteration.py
-  - src/merlin_experiments/phase2/capsule_source_development.py
+  - src/merlin/experiments/phase2/capsule_ordinary_scope.py
+  - src/merlin/experiments/phase2/authoring.py
+  - src/merlin/experiments/phase2/authoring_cli.py
+  - src/merlin/experiments/phase2/broker_file_channel.py
+  - src/merlin/experiments/phase2/ordinary_search_policy.py
+  - src/merlin/experiments/phase2/capsule_iteration.py
+  - src/merlin/experiments/phase2/capsule_source_development.py
 ---
 
 # Capsule-qualified ordinary source development
@@ -42,7 +42,7 @@ cannot replace a historical profile in that proof.
 
 ```python
 from pathlib import Path
-from merlin_experiments.phase2 import authoring, capsule_iteration
+from merlin.experiments.phase2 import authoring, capsule_iteration
 
 phase1 = capsule_iteration.FrozenQualifiedCapsulePhase1(
     Path(original_run), Path(original_descriptor), original_compiler_sha256,
@@ -120,8 +120,8 @@ receipt's descriptor. A development descriptor may change `capsule_corpus` only;
 all other hardware, software, ISA and numerical declaration fields must match.
 
 ```python
-from merlin_experiments.phase1.feedback import capsule_qualification_replay as Q
-from merlin_experiments.phase2.capsule_source_development import CapsuleSourceDevelopment
+from merlin.experiments.phase1.feedback import capsule_qualification_replay as Q
+from merlin.experiments.phase2.capsule_source_development import CapsuleSourceDevelopment
 
 verification = {"snapshot": str(historical_verifier_snapshot),
                 "seal_sha256": historical_verifier_seal_sha256,

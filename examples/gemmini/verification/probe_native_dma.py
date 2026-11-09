@@ -63,7 +63,7 @@ def replay(bundle: Path) -> int:
 def main() -> int:
     if len(sys.argv) == 3 and sys.argv[1] == "--replay-bundle":
         return replay(Path(sys.argv[2]))
-    from merlin_experiments.phase2.native_engine_observation import seal, verify
+    from merlin.experiments.phase2.native_engine_observation import seal, verify
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--selection", type=Path, required=True)

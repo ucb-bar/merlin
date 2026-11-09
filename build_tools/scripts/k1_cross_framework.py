@@ -221,8 +221,8 @@ def measure_ours_k1(run_id: str, features: list[str], *, M: int, N: int, K: int,
         cgen = work / "cgen"
         c_runtime.generate(md, cgen, md / "inputs.npz")
 
-        rt = REPO / "merlin/runtime/c"
-        abi = REPO / "merlin/runtime/abi"
+        rt = REPO / "src/merlin/runtime/native/c"
+        abi = REPO / "src/merlin/runtime/native/abi"
         binp = Path(tmp) / "ours_gemm"
         incs = [K1H, HERE, cgen, rt]
         inc_flags = []

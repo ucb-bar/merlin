@@ -1,4 +1,4 @@
-# ToyNPU target contract (validates against merlin/schemas/target_contract.schema.yaml).
+# ToyNPU target contract (validates against src/merlin/resources/schemas/target_contract.schema.yaml).
 name: toy_npu
 # This pedagogical target may be used as the checkout's implicit demo only; installed Merlin
 # has no target default and requires an explicitly selected provider.

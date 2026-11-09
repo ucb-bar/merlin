@@ -39,7 +39,7 @@ def _running_phase(trace: tuple[tuple[str, str], ...]) -> list[str | None]:
 
 # The queue daemon's own phase/command interleaving, in the order it prints it, as observed
 # byte-identically in jobs 535 and 610 (/scratch/firesim_queue/jobs/<id>/stdout.log; the phase
-# and command lines are vendored verbatim in merlin/tests/data/firesim_queue/).  A "phase" entry
+# and command lines are vendored verbatim in tests/data/firesim_queue/).  A "phase" entry
 # is a `=== [firesim-queue] phase=<NAME> job_id=<id> ===` banner; a "command" entry is the FireSim
 # manager's `Running: <subcommand>` line.  Note the daemon opens an INFRASETUP banner covering the
 # whole kill+infrasetup group and then re-banners each half, so INFRASETUP appears twice and the

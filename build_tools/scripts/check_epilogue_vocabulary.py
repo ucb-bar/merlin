@@ -4,7 +4,7 @@
 The definition is :data:`merlin.runtime.commandbuffer.EPILOGUE_STAGES`. Six representations derive from
 it and are checked here:
 
-  1. the strict JSON validator's ``epilogue`` enum (``merlin/contract/schemas/command_buffer.schema.json``)
+  1. the strict JSON validator's ``epilogue`` enum (``src/merlin/resources/contracts/schemas/command_buffer.schema.json``)
      — must equal the tuple, IN ORDER (``--write`` regenerates it);
   2/3. the two prose ABI documents' COMMIT ``epilogue`` line — must name the same set;
   4/5. the two in-tree dialect verifiers' ``KNOWN_EPILOGUE`` — must be the same object;
@@ -25,6 +25,7 @@ Usage::
     python build_tools/scripts/check_epilogue_vocabulary.py            # check (exit 1 on drift)
     python build_tools/scripts/check_epilogue_vocabulary.py --write    # regenerate the JSON enum
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,10 +39,12 @@ sys.path.insert(0, str(_ROOT / "merlin" / "python"))
 
 from merlin.runtime.commandbuffer import EPILOGUE_STAGES  # noqa: E402
 
-_SCHEMA = _ROOT / "merlin" / "contract" / "schemas" / "command_buffer.schema.json"
+_SCHEMA = _ROOT / "src/merlin/resources/contracts" / "schemas" / "command_buffer.schema.json"
 #: The prose ABI documents, and which opcode's epilogue line in each carries the FULL vocabulary.
-_ABI_DOCS = ((_ROOT / "merlin" / "contract" / "command_buffer_abi.yaml", "COMMIT"),
-             (_ROOT / "merlin" / "contract" / "interface_dialect_contract.yaml", "merlin_iface.commit"))
+_ABI_DOCS = (
+    (_ROOT / "src/merlin/resources/contracts" / "command_buffer_abi.yaml", "COMMIT"),
+    (_ROOT / "src/merlin/resources/contracts" / "interface_dialect_contract.yaml", "merlin_iface.commit"),
+)
 _MARKER = "ordered subset of ["
 
 
@@ -49,8 +52,7 @@ def schema_enum(doc: dict) -> list[str] | None:
     """The validator's epilogue enum, or None when the schema does not define one (fail closed: the
     caller reports 'could not be located', never 'matches')."""
     node = doc
-    for key in ("properties", "commands", "items", "properties", "attributes",
-                "properties", "epilogue", "items"):
+    for key in ("properties", "commands", "items", "properties", "attributes", "properties", "epilogue", "items"):
         if not isinstance(node, dict):
             return None
         node = node.get(key)
@@ -99,8 +101,10 @@ def check(write: bool = False) -> list[str]:
     doc = json.loads(_SCHEMA.read_text(encoding="utf-8"))
     enum = schema_enum(doc)
     if enum is None:
-        problems.append(f"{_SCHEMA.name}: the epilogue enum could not be located — the schema shape "
-                        f"changed; this gate cannot certify it and does NOT report success")
+        problems.append(
+            f"{_SCHEMA.name}: the epilogue enum could not be located — the schema shape "
+            f"changed; this gate cannot certify it and does NOT report success"
+        )
     elif list(enum) != canon:
         if write:
             node = doc["properties"]["commands"]["items"]["properties"]["attributes"]["properties"]
@@ -108,33 +112,39 @@ def check(write: bool = False) -> list[str]:
             _SCHEMA.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
             print(f"rewrote {_SCHEMA} epilogue enum -> {canon}")
         else:
-            problems.append(f"{_SCHEMA.name}: epilogue enum {list(enum)} != EPILOGUE_STAGES {canon} "
-                            f"(regenerate with --write)")
+            problems.append(
+                f"{_SCHEMA.name}: epilogue enum {list(enum)} != EPILOGUE_STAGES {canon} (regenerate with --write)"
+            )
 
     # 2/3. the prose ABI documents
     import yaml
+
     for path, full_key in _ABI_DOCS:
         lines = abi_epilogue_lines(yaml.safe_load(path.read_text(encoding="utf-8")))
         if not lines:
-            problems.append(f"{path.name}: no '{_MARKER}…]' epilogue line found — the document shape "
-                            f"changed; this gate cannot certify it and does NOT report success")
+            problems.append(
+                f"{path.name}: no '{_MARKER}…]' epilogue line found — the document shape "
+                f"changed; this gate cannot certify it and does NOT report success"
+            )
             continue
         full = [names for keys, names in lines if full_key in keys]
         if not full:
             problems.append(f"{path.name}: no epilogue line under {full_key!r} — cannot certify")
         for names in full:
             if set(names) != set(canon):
-                problems.append(f"{path.name}: {full_key} epilogue documents {names}, "
-                                f"EPILOGUE_STAGES is {canon}")
+                problems.append(f"{path.name}: {full_key} epilogue documents {names}, EPILOGUE_STAGES is {canon}")
         for keys, names in lines:
             extra = sorted(set(names) - set(canon))
             if extra:
-                problems.append(f"{path.name}: {'/'.join(keys)} documents stage(s) {extra} that are not "
-                                f"in EPILOGUE_STAGES — a per-opcode list may only be a SUBSET")
+                problems.append(
+                    f"{path.name}: {'/'.join(keys)} documents stage(s) {extra} that are not "
+                    f"in EPILOGUE_STAGES — a per-opcode list may only be a SUBSET"
+                )
 
     # 4/5. the in-tree dialect verifiers
     from merlin.xdsl_dialects import interface as IFACE
     from merlin.xdsl_dialects.targets import factory as FACTORY
+
     for mod in (IFACE, FACTORY):
         got = set(getattr(mod, "KNOWN_EPILOGUE"))
         if got != set(canon):
@@ -142,13 +152,21 @@ def check(write: bool = False) -> list[str]:
 
     # 6. the emitted target-dialect template
     from merlin.targetgen.generate import xdsl as GEN
-    arts = GEN.generate({"dialect_name": "t", "ops": [{"name": o} for o in sorted(GEN.KNOWN_OPS)],
-                         "types": [{"name": t} for t in sorted(GEN.KNOWN_TYPES)]})
+
+    arts = GEN.generate(
+        {
+            "dialect_name": "t",
+            "ops": [{"name": o} for o in sorted(GEN.KNOWN_OPS)],
+            "types": [{"name": t} for t in sorted(GEN.KNOWN_TYPES)],
+        }
+    )
     src = next((a.content for a in arts if a.relpath.endswith("_dialect.py")), "")
     marker = "_KNOWN_EPILOGUE = "
     if marker not in src:
-        problems.append("generate.xdsl: the emitted dialect no longer defines _KNOWN_EPILOGUE — "
-                        "this gate cannot certify it and does NOT report success")
+        problems.append(
+            "generate.xdsl: the emitted dialect no longer defines _KNOWN_EPILOGUE — "
+            "this gate cannot certify it and does NOT report success"
+        )
     else:
         rendered = src.split(marker, 1)[1].split("\n", 1)[0]
         if set(eval(rendered, {"__builtins__": {}}, {})) != set(canon):  # noqa: S307 - our own literal
@@ -158,8 +176,7 @@ def check(write: bool = False) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--write", action="store_true",
-                    help="regenerate the JSON validator's enum from EPILOGUE_STAGES")
+    ap.add_argument("--write", action="store_true", help="regenerate the JSON validator's enum from EPILOGUE_STAGES")
     ap.add_argument("--staged", action="store_true", help="accepted for pre-commit symmetry (no-op)")
     a = ap.parse_args(argv)
     problems = check(write=a.write)

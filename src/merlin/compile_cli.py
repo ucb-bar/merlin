@@ -1,7 +1,8 @@
-"""``merlin-compile`` — one command to compile (and optionally build/run/verify) a workload.
+"""``merlin-compile`` — retained workload/operator compilation adapter.
 
-The single front door over the compile pipeline. You name a workload + target and it handles the rest
-in the background:
+New explicit-source callers use ``merlin compile SOURCE --backend PROVIDER`` or
+``merlin.api.compile``. This compatibility command preserves workload/target,
+build, execution and verification options used by existing operator workflows:
 
   merlin-compile --workload bitvla --dtype int8 --target rvv --run k1 --verify
 
@@ -29,14 +30,16 @@ from pathlib import Path
 from typing import Any
 
 from merlin.compiler.backend.host import HOST_PRECISIONS as _RVV_DTYPES
-from merlin.compiler.frontend.preflight import preflight_model  # noqa: F401 -- re-exported
+from merlin.compiler.frontend.preflight import (
+    preflight_model,  # noqa: F401 -- re-exported
+)
 from merlin.compiler.planning.model import plan_before_build
 
 # The exact helpers historically extracted from this facade remain re-exported here, so
 # `merlin.compile_cli.<name>` keeps resolving for callers. New module APIs do not
 # export their private implementation through this facade. A re-export is a second binding: patching it
 # does not reach callers in the defining module, so tests patch a name where it is DEFINED
-# (enforced by merlin/tests/infra/test_compile_cli_patch_targets.py).
+# (enforced by tests/infra/test_compile_cli_patch_targets.py).
 from .compiler.frontend.bundle import (  # noqa: F401 -- re-exported
     _IR_ELEMENT_ORDER,
     _IR_ELEMENT_SPELLING,
@@ -1174,6 +1177,7 @@ def main(argv: list[str] | None = None) -> int:
     from .compiler import inspect as debug
 
     ap = command.parser(_RVV_DTYPES, _RUNS, "k1", ("k1", "zephyr", "spike", "verilator"))
+    ap.description = "Retained workload/operator adapter; explicit-source compilation uses merlin compile."
     a = ap.parse_args(argv)
     if a.list_passes:
         return command.list_passes(a)

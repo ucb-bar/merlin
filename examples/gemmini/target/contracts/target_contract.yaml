@@ -441,7 +441,7 @@ compute_units:
       # contract forbade its use. Three other targets already ship batched capsules (atlas
       # AF12, mx_gemmini MF5, radiance RP10/R11); gemmini shipped none because of this line.
       # Declaring a narrower rank set than the target can execute is the same denominator loss the
-      # mx_gemmini rank bug was (see merlin/python/merlin/targetgen/eligibility.py).
+      # mx_gemmini rank bug was (see src/merlin/targetgen/eligibility.py).
       - {family: contraction, dtypes: [int8], ranks: [2, 3, 4]}
       # STANDALONE, by operator decision 2026-10-01 via coordinating session, approving standalone
       # elementwise_map from RTL evidence (the LocalAddr accumulate bit on a plain load). The review:
@@ -615,7 +615,7 @@ harness_abi:
     - gemmini_isa.h
   cycle_window_metric: cycle_window_gemmini_region
 
-# Registry pins (merlin/contract/hardware_pins.yaml) this target's results depend on. Read by
+# Registry pins (src/merlin/resources/contracts/hardware_pins.yaml) this target's results depend on. Read by
 # merlin.targetgen.provenance.toolchain_shas so a run record says which hardware revision it belongs to.
 hardware_pins:
   - gemmini_rtl

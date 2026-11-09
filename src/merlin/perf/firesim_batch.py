@@ -5,7 +5,7 @@ lifecycle from the daemon's own trace: ``kill -> infrasetup -> runworkload -> ki
 ``runworkload`` per :data:`~merlin.perf.execution_policy.FIRESIM_QUEUE_OPERATION` job, and
 :class:`~merlin.perf.execution_policy.FireSimQueuePreflight` refuses a submission with a nested
 direct ``firesim`` command.  So "hold one session and replay N ELFs" is inadmissible by
-construction -- it is what ``merlin/experiments/gemmini_perf_bench/scripts/firesim_bundle.sh``
+construction -- it is what ``experiments/studies/gemmini_perf_bench/scripts/firesim_bundle.sh``
 does today, shelling ``firesim kill``/``infrasetup``/``runworkload`` in a loop, and no receipt can
 ever be sealed from it.  The admissible shape is ONE bootbinary containing N measured windows: one
 ``runworkload-full``, N ``METRIC cycles`` lines, N per-window correctness blocks.
@@ -39,7 +39,7 @@ job is an operator action, not a library one.
 THE UART FRAME IS OBSERVED.  It was proposed here before anything printed it; FireSim queue job 734
 ran it on hardware -- 13 windows of GEMM measurement in one ``runworkload-full``, every window
 admitted on its own digest, the order-effect control 26 ppm from window 0 -- and its log is pinned
-at ``merlin/tests/data/firesim_queue/job734_gemm_batch_uart_skeleton.log``.  The per-window frame
+at ``tests/data/firesim_queue/job734_gemm_batch_uart_skeleton.log``.  The per-window frame
 markers (``MERLIN_BATCH``/``MERLIN_WINDOW``) are this module's; everything INSIDE a frame reuses
 lines the harness already prints (``MERLIN_PROFILE``, ``METRIC cycles N``, and the workload's own
 correctness lines, whose spelling this module reads from the policy rather than knowing).  The
@@ -119,7 +119,7 @@ def _key_values(tokens: Sequence[str]) -> dict[str, str]:
     the one place the two helpers still differ and deliberately so: the receipt's helper is handed
     tokens off an already-identified queue-protocol line, while this one is handed tokens off a
     protocol line found in a log that also carries boot noise -- and both of those spellings occur
-    in the vendored logs under ``merlin/tests/data/firesim_queue/``.
+    in the vendored logs under ``tests/data/firesim_queue/``.
     """
     values: dict[str, str] = {}
     for token in tokens:

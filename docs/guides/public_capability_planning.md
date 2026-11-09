@@ -6,14 +6,14 @@ owner: experiments
 last_verified: 2026-11-09
 related: [conditional_compiler_pipelines, ../reference/compiler_optimization_workflow, artifact_evaluation]
 code_refs:
-  - src/merlin_experiments/phase1/capability_inventory.py
-  - src/merlin_experiments/phase1/capability_source.py
-  - src/merlin_experiments/phase1/capability_query.py
-  - src/merlin_experiments/phase1/session.py
-  - src/merlin_experiments/phase1/run_inputs.py
-  - src/merlin_experiments/phase1/generated_isa_library.py
-  - src/merlin_experiments/phase1/compiler_library.py
-  - src/merlin_experiments/phase1/prepare_author_library.py
+  - src/merlin/experiments/phase1/capability_inventory.py
+  - src/merlin/experiments/phase1/capability_source.py
+  - src/merlin/experiments/phase1/capability_query.py
+  - src/merlin/experiments/phase1/session.py
+  - src/merlin/experiments/phase1/run_inputs.py
+  - src/merlin/experiments/phase1/generated_isa_library.py
+  - src/merlin/experiments/phase1/compiler_library.py
+  - src/merlin/experiments/phase1/prepare_author_library.py
   - examples/gemmini/phase1/launch/prepare_source_release.py
   - examples/gemmini/phase1/launch/prepare_author_launch.py
   - examples/gemmini/phase1/launch/resource_reservation.py
@@ -29,7 +29,7 @@ Shared library preparation uses a target-independent package CLI. The remaining
 operator examples in `examples/gemmini/phase1/launch/` assemble prospective inputs;
 none launches an author or reserves CPUs:
 
-1. The current `python -m merlin_experiments.phase1.prepare_author_library` route refreshes the existing explicit reviewed source
+1. The current `python -m merlin.experiments.phase1.prepare_author_library` route refreshes the existing explicit reviewed source
    membership from a committed compiler revision. It retains the editable generic
    compiler grant, closes imports, and refuses newly discovered SDK leaves without
    a separate review. Both generic-only and optional scaffold selections are
@@ -88,7 +88,7 @@ reference backends are not selected.
 After reviewing public declaration/facts identities and the generated manifest:
 
 ```python
-from merlin_experiments.phase1.generated_isa_library import prepare_library
+from merlin.experiments.phase1.generated_isa_library import prepare_library
 
 selection = prepare_library(
     reviewed_base_selection, generated_package, fresh_library_directory,

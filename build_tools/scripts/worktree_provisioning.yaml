@@ -16,7 +16,7 @@
 #
 # Add an entry when you find another. Do not delete one without saying what now provides it.
 #
-# It lives beside the tool that reads it, OUTSIDE merlin/contract/: that tree is granted read-only to
+# It lives beside the tool that reads it, OUTSIDE src/merlin/resources/contracts/: that tree is granted read-only to
 # authoring agents, and this roster names the holdout store's path, which the answer-surface checks
 # treat as an answer key in any granted file.
 
@@ -35,7 +35,7 @@ artifacts:
       that read as harness bugs (7 of 10 stop-hook gate failures vanished when it was linked). AND THE
       TRAP IT CREATES: this venv has merlin installed in DEVELOPMENT mode against whichever checkout
       last ran the editable install, so a script or child process here imports THAT library, not this
-      worktree's `src/`. The test suite pins its own checkout (merlin/tests/conftest.py); nothing else
+      worktree's `src/`. The test suite pins its own checkout (tests/conftest.py); nothing else
       does. Measured: a 30-minute sweep against the wrong library, and a phase-1 run launched from a
       pinned worktree that imported its library from the source tree for its whole life. The tool
       reports the library each worktree resolves and the PYTHONPATH that corrects it.
@@ -63,7 +63,7 @@ artifacts:
       on another reads as a regression that never happened -- exactly one phantom regression in a
       base-vs-branch comparison on 2026-09-23.
 
-  - path: merlin/contract/capsules
+  - path: experiments/corpora
     kind: dir
     merge: per_file
     files_glob: "**/golden.yaml"
@@ -76,7 +76,7 @@ artifacts:
       reduce_sum / depthwise_conv2d), which reads as an unimplemented reference rather than an absent
       file. Hard-linked: the answer keys already exist on the same filesystem.
 
-  - path: merlin/contract/capsules/model
+  - path: experiments/corpora/model
     kind: dir
     merge: per_file
     files_glob: "*/capsule.weights.safetensors*"
@@ -88,7 +88,7 @@ artifacts:
       missing or a symlink", which reads as a model-path defect. The loader refuses a SYMLINK as well
       as an absent file, so these are hard-linked.
 
-  - path: merlin/contract/capsules/model
+  - path: experiments/corpora/model
     kind: dir
     merge: per_file
     files_glob: "*/capsule.extra.npz"
@@ -99,7 +99,7 @@ artifacts:
       model's forward arguments and the whole-model gate for that model fails at build -- for every
       package, which reads as a package defect.
 
-  - path_glob: "merlin/contract/capsules/**/hidden"
+  - path_glob: "experiments/corpora/**/hidden"
     kind: dir
     # FILE BY FILE: the goldens entry above already hard-links every `hidden/*/golden.yaml`, so by the
     # time this entry runs a hidden directory EXISTS holding goldens and nothing else, and a

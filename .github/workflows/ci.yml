@@ -191,7 +191,7 @@ jobs:
         run: |
           uv run --no-sync python build_tools/scripts/check_conformance_coverage.py \
             --target gemmini \
-            --spec merlin/contract/capsules/conformance/gemmini.yaml \
+            --spec experiments/corpora/conformance/gemmini.yaml \
             --ratchet build_tools/scripts/conformance_ratchet.txt \
             --fail-on-uncovered --allow-unresolved
       # THE CIRCULARITY GUARD. A requirement cell derived from a model the experiment then claims to
@@ -221,7 +221,7 @@ jobs:
           --output out/build/python/ci/test-budget.json
       - name: compact behavioral suite
         run: >-
-          uv run --no-sync pytest merlin/tests -q -ra
+          uv run --no-sync pytest tests -q -ra
           --junitxml=out/build/python/ci/core.xml
       - name: retain exact collection and test outcomes
         if: ${{ always() }}

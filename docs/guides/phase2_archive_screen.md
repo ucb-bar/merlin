@@ -6,13 +6,13 @@ owner: experiments
 last_verified: 2026-11-09
 related: [phase2_corpus_search, spike_timing, phase2_capsule_feedback]
 code_refs:
-  - src/merlin_experiments/phase2/archive_screen_selection.py
-  - src/merlin_experiments/phase2/archive_screen_review.py
-  - src/merlin_experiments/phase2/archive_spike_runtime.py
-  - src/merlin_experiments/phase2/archive_count_observation.py
-  - src/merlin_experiments/phase2/ordinary_archive_screen.py
-  - src/merlin_experiments/phase2/ordinary_search_stage.py
-  - src/merlin_experiments/phase2/timing_domain_readiness.py
+  - src/merlin/experiments/phase2/archive_screen_selection.py
+  - src/merlin/experiments/phase2/archive_screen_review.py
+  - src/merlin/experiments/phase2/archive_spike_runtime.py
+  - src/merlin/experiments/phase2/archive_count_observation.py
+  - src/merlin/experiments/phase2/ordinary_archive_screen.py
+  - src/merlin/experiments/phase2/ordinary_search_stage.py
+  - src/merlin/experiments/phase2/timing_domain_readiness.py
 ---
 
 # Public archive screening
@@ -138,7 +138,7 @@ boundary, not every capacity, attention, state or overlap regime.
 ## Reopen a complete declared roster without launching measurements
 
 `merlin-phase2-timing-readiness` (also available as
-`python -m merlin_experiments.phase2.timing_domain_readiness`) reports source and
+`python -m merlin.experiments.phase2.timing_domain_readiness`) reports source and
 archive prerequisites. Its input schema is
 `merlin.phase2.public_timing_readiness_inputs.v1`, with a pinned `cohort` and an
 ordered `archives` list. Each archive entry pins `archive`, `binding` and

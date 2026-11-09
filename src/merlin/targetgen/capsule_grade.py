@@ -12,7 +12,7 @@ Usage:
     python -m merlin.targetgen.capsule_grade --package <pkg_dir> --target <target> \
         --runs-root <out> [--hidden] [--labels public,dev] [--score <out.json>] [--no-oracle]
 
-Do NOT pass ``--capsules merlin/contract/capsules``: that is the common parent of every target's corpus
+Do NOT pass ``--capsules experiments/corpora``: that is the common parent of every target's corpus
 and grades the package against all of them. Omit the flag and the target's own graded roots are used.
 """
 
@@ -613,7 +613,7 @@ def model_execution_check(
     ]
     # PHASE COMES FROM THE DECLARATION, not from a literal here. It was `PHASE_REPORT` written
     # inline, which made "this gate blocks nothing" a property of this line rather than a decision
-    # anyone could find or review; see merlin/contract/gate_phases.yaml.
+    # anyone could find or review; see src/merlin/resources/contracts/gate_phases.yaml.
     offload = _LOWERING_COVERAGE.offload_verdict(_offload_rows, phase=_GATE_PHASE.configured_phase("offload_verdict"))
 
     n_tiles = _count(tiles, "n_tiles", minimum=1)
@@ -786,8 +786,7 @@ def enforce_model_execution_check(result: dict, capsule: dict | None, *, target:
         # The scheduler never executed this model; retain its original deferral.
         return result
     if result.get("status") == "budget_exhausted" and not any(
-        isinstance(result.get(key), dict)
-        for key in ("owned_host_native_execution", "candidate_native_execution")
+        isinstance(result.get(key), dict) for key in ("owned_host_native_execution", "candidate_native_execution")
     ):
         # The parent terminated the budgeted child before it returned a receipt.
         # Auditing that absent receipt would overwrite the actual timeout with
@@ -838,8 +837,11 @@ def enforce_model_execution_check(result: dict, capsule: dict | None, *, target:
                 and ((audited.get(tier) or {}).get("selection") or {}).get("fidelity") == "elaborated_rtl",
                 "cycle_accurate": False,
                 "candidate_evidence": audited.get(tier) or {},
-                **{key: (audited.get(tier) or {})[key] for key in ("engine", "fidelity")
-                   if isinstance((audited.get(tier) or {}).get(key), str) and (audited.get(tier) or {})[key]},
+                **{
+                    key: (audited.get(tier) or {})[key]
+                    for key in ("engine", "fidelity")
+                    if isinstance((audited.get(tier) or {}).get(key), str) and (audited.get(tier) or {})[key]
+                },
             }
             for tier in required
         }
@@ -1171,9 +1173,8 @@ def _bounded_grade_workers(requested: int, oracle_adapters: dict | None) -> int:
     # Original process graders lease compilation separately from native execution.
     # Their shared CPU pool bounds preparation; the native GSIM slot lock still
     # enforces its smaller emulator cap at dispatch.
-    from merlin_experiments.phase1.feedback.operator_child import enabled
-
     from merlin.common.cpu_pool import grading_cpus, shared_compute_enabled
+    from merlin.experiments.phase1.feedback.operator_child import enabled
 
     if "gsim" in engines and enabled() and shared_compute_enabled():
         requested = min(requested, len(grading_cpus()))
@@ -1427,9 +1428,12 @@ def grade(
         score["failure"] = {"plane": cf.plane, "category": str(cf.category), "detail": cf.detail}
         if package_precheck_stage is not None:
             score["package_precheck_refusal"] = {
-                "schema": "merlin.package_precheck_refusal.v1", "scope": "selected_suite",
-                "stage": package_precheck_stage, "candidate_execution_started": False,
-                "suppression": "native_pre_fanout_package_gate", "reuse_authority": False,
+                "schema": "merlin.package_precheck_refusal.v1",
+                "scope": "selected_suite",
+                "stage": package_precheck_stage,
+                "candidate_execution_started": False,
+                "suppression": "native_pre_fanout_package_gate",
+                "reuse_authority": False,
             }
         return score
 
@@ -1616,7 +1620,7 @@ def grade(
     # arithmetic the host ran inside an accelerator group; this catches the readout the accelerator
     # was derived to apply and nothing asked it to -- the bias, the requantization, the activation and
     # the pool that are most of a model's wall clock. Applied here for the same reason, before
-    # anything is counted, and PHASED: its phase is declared in `merlin/contract/gate_phases.yaml`,
+    # anything is counted, and PHASED: its phase is declared in `src/merlin/resources/contracts/gate_phases.yaml`,
     # so at `report` it records both numbers and blocks nothing.
     from merlin.targetgen import epilogue_store_path as _store_path
 

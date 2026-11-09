@@ -3,7 +3,7 @@
 ``repeated_rhs_matmul``: for i in 0..R-1: Y_i = A_i @ W, with one immutable W. Each
 matmul is a real ``linalg.quantized_matmul`` (the standard MLIR idiom for
 i8 x i8 -> i32 accumulation; zero points are 0). Outputs stay i32 accumulations —
-the workload spec carries no epilogue (merlin/benchmarks/semantic_memory/
+the workload spec carries no epilogue (experiments/benchmarks/semantic_memory/
 repeated_rhs_matmul.yaml: op_sequence [matmul]).
 """
 

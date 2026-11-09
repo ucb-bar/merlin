@@ -9,10 +9,10 @@ code_refs:
   - src/merlin/targetgen/generalization_prompt.py
   - src/merlin/targetgen/generate_prompt.py
   - src/merlin/targetgen/tool_registry.py
-  - src/merlin_experiments/phase1/task_staging.py
-  - src/merlin_experiments/phase1/source_inputs.py
-  - src/merlin_experiments/phase1/component_origin.py
-  - src/merlin_experiments/phase2/stage_prompt.py
+  - src/merlin/experiments/phase1/task_staging.py
+  - src/merlin/experiments/phase1/source_inputs.py
+  - src/merlin/experiments/phase1/component_origin.py
+  - src/merlin/experiments/phase2/stage_prompt.py
 ---
 
 # Shared authoring plan

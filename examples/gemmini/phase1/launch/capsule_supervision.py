@@ -24,7 +24,7 @@ def save(path: Path, value: object) -> None:
 
 
 def verify_handoff(run_dir: Path, descriptor: Path) -> dict:
-    from merlin_experiments.phase1.feedback import capsule_certification
+    from merlin.experiments.phase1.feedback import capsule_certification
 
     return capsule_certification.verify_phase2_handoff(run_dir, descriptor=descriptor)
 
@@ -34,9 +34,11 @@ def run(launch, prep: Path, preparation_started: float, *, memory, processes_fac
     if document.get("validation_scope") != "capsules":
         raise ValueError("capsule supervisor requires explicit capsule scope")
     external = document["external_validation"]
-    if (external.get("start_after") != "capsule_owner_terminal"
-            or external.get("submission") != "verified_frozen_capsule_handoff"
-            or external.get("budget_s", 0) <= 0):
+    if (
+        external.get("start_after") != "capsule_owner_terminal"
+        or external.get("submission") != "verified_frozen_capsule_handoff"
+        or external.get("budget_s", 0) <= 0
+    ):
         raise ValueError("invalid independent external-validation policy")
     total = document["budgets"]["supervisor_backstop_s"]
     limit = int(launch.variables["SUPERVISOR_PSS_MAX_BYTES"])
@@ -44,10 +46,14 @@ def run(launch, prep: Path, preparation_started: float, *, memory, processes_fac
     processes = processes_factory()
     run_dir = Path(launch.variables["RUN"])
     state = {
-        "schema": "merlin.phase1.capsule_supervision.v1", "validation_scope": "capsules",
-        "status": "native_controller_starting", "capsule_complete": False,
-        "external_full_models_complete": False, "phase1_complete": False,
-        "external_validation": {**external, "status": "not_started"}, "models": {},
+        "schema": "merlin.phase1.capsule_supervision.v1",
+        "validation_scope": "capsules",
+        "status": "native_controller_starting",
+        "capsule_complete": False,
+        "external_full_models_complete": False,
+        "phase1_complete": False,
+        "external_validation": {**external, "status": "not_started"},
+        "models": {},
     }
 
     def publish(message, **fields):
@@ -67,7 +73,8 @@ def run(launch, prep: Path, preparation_started: float, *, memory, processes_fac
     old_timer = signal.getitimer(signal.ITIMER_REAL)
     started = time.monotonic()
     state.update(
-        preparation_wall_s=round(started - preparation_started, 3), capsule_budget_s=total,
+        preparation_wall_s=round(started - preparation_started, 3),
+        capsule_budget_s=total,
         capsule_started_at=dt.datetime.now(dt.UTC).isoformat(),
         absolute_deadline=(dt.datetime.now(dt.UTC) + dt.timedelta(seconds=total)).isoformat(),
     )
@@ -77,15 +84,23 @@ def run(launch, prep: Path, preparation_started: float, *, memory, processes_fac
     try:
         repo = launch.path(document["inputs"]["repo"])
         native = processes.start(
-            launch.argv, prep / "phase1-native.log", role="native",
-            cwd=Path(launch.expand(document["launcher"].get("cwd", str(repo)))), env=env,
+            launch.argv,
+            prep / "phase1-native.log",
+            role="native",
+            cwd=Path(launch.expand(document["launcher"].get("cwd", str(repo)))),
+            env=env,
             cpus=set(launch.manager_cpus),
         )["process"]
-        save(prep / "controller.json", {
-            "pid": native.pid, "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
-            "start_ticks": processes.known.get(native.pid, (None, None))[0],
-            "started_at": state["capsule_started_at"], "capsule_budget_s": total,
-        })
+        save(
+            prep / "controller.json",
+            {
+                "pid": native.pid,
+                "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
+                "start_ticks": processes.known.get(native.pid, (None, None))[0],
+                "started_at": state["capsule_started_at"],
+                "capsule_budget_s": total,
+            },
+        )
         publish("Fresh capsule controller started", status="authoring_or_capsule_grading", controller_pid=native.pid)
         last_update = 0
         while True:
@@ -93,8 +108,17 @@ def run(launch, prep: Path, preparation_started: float, *, memory, processes_fac
             records = processes.owned()
             charged, available = memory(records)
             with (prep / "memory.jsonl").open("a") as stream:
-                stream.write(json.dumps({"elapsed_s": round(elapsed, 1), "pss_bytes": charged,
-                                         "host_available_bytes": available, "processes": len(records)}) + "\n")
+                stream.write(
+                    json.dumps(
+                        {
+                            "elapsed_s": round(elapsed, 1),
+                            "pss_bytes": charged,
+                            "host_available_bytes": available,
+                            "processes": len(records),
+                        }
+                    )
+                    + "\n"
+                )
             if elapsed >= total or charged > limit or available < headroom:
                 raise CapsuleStopped("capsule_deadline" if elapsed >= total else "capsule_memory_guard")
             code = native.poll()
@@ -109,16 +133,25 @@ def run(launch, prep: Path, preparation_started: float, *, memory, processes_fac
                 publish("Capsule controller finished", status="capsules_complete" if result == 0 else "capsules_failed")
                 break
             if elapsed - last_update >= 30:
-                publish("Capsule progress", elapsed_s=round(elapsed), remaining_s=max(0, round(total - elapsed)),
-                        pss_bytes=charged, host_available_bytes=available)
+                publish(
+                    "Capsule progress",
+                    elapsed_s=round(elapsed),
+                    remaining_s=max(0, round(total - elapsed)),
+                    pss_bytes=charged,
+                    host_available_bytes=available,
+                )
                 last_update = elapsed
             time.sleep(poll_s)
     except CapsuleStopped as error:
         result = 2
         publish("Capsule owner stopped", status="stopped_incomplete", termination_reason=str(error))
     except BaseException as error:
-        publish("Capsule owner failed", status="stopped_incomplete", termination_reason=type(error).__name__,
-                error=str(error))
+        publish(
+            "Capsule owner failed",
+            status="stopped_incomplete",
+            termination_reason=type(error).__name__,
+            error=str(error),
+        )
         raise
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
@@ -135,10 +168,16 @@ def run(launch, prep: Path, preparation_started: float, *, memory, processes_fac
                 signal.setitimer(signal.ITIMER_REAL, remaining, old_timer[1])
             state.update(elapsed_s=round(time.monotonic() - started, 3), native_running=False, running_models=[])
             save(prep / "status.json", state)
-            save(prep / "controller-result.json", {
-                "exit_code": None if native is None else native.poll(), "status": state["status"],
-                "capsule_complete": state["capsule_complete"], "external_full_models_complete": False,
-                "phase1_complete": False, "capsule_elapsed_s": state["elapsed_s"],
-                "preparation_wall_s": state["preparation_wall_s"],
-            })
+            save(
+                prep / "controller-result.json",
+                {
+                    "exit_code": None if native is None else native.poll(),
+                    "status": state["status"],
+                    "capsule_complete": state["capsule_complete"],
+                    "external_full_models_complete": False,
+                    "phase1_complete": False,
+                    "capsule_elapsed_s": state["elapsed_s"],
+                    "preparation_wall_s": state["preparation_wall_s"],
+                },
+            )
     return result

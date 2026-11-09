@@ -117,7 +117,7 @@ _CYCLE_ACCURATE_SIMULATORS = frozenset({"gsim", "verilator", "vcs"})
 _SUBMISSION_PREFIXES = ("./submission/", "submission/")
 
 # Reference/oracle-ACCESS markers forbidden in a non-exempt package's tool sources (integrity scan; see
-# merlin/contract/integrity_policy.md). These are specific dotted paths — matched as substrings across
+# src/merlin/resources/contracts/integrity_policy.md). These are specific dotted paths — matched as substrings across
 # ALL languages because they name the actual reference/oracle surface, not a common word.
 _FORBIDDEN = (
     "merlin.runtime.reference",
@@ -374,7 +374,7 @@ class Package:
 
 
 #: The gate name this loader's capability check ships under. Its phase is declared in
-#: ``merlin/contract/gate_phases.yaml``, never as a literal here -- this is the LIVE certification
+#: ``src/merlin/resources/contracts/gate_phases.yaml``, never as a literal here -- this is the LIVE certification
 #: path, and a new refusal that lands blocking is indistinguishable from a regression to every agent
 #: session already in flight.
 CAPABILITY_GATE = "package_capability"

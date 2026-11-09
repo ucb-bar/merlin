@@ -10,7 +10,7 @@
 # standaloneMxFPConfig or matching simulator binary; they are not qualification.
 # Spike/Verilator remain required L2/L3 oracles for Phase 0 admission.
 target: mx_gemmini
-resources_root: merlin/experiments/capsule_bench/targets/mx_gemmini
+resources_root: experiments/studies/capsule_bench/targets/mx_gemmini
 numeric_profile: examples/mx_gemmini/phase0/recipe.yaml
 
 rtl:
@@ -28,7 +28,7 @@ hardware_spec:
   hwbringup_set: examples/mx_gemmini/phase1/contracts/hwbringup_mx_v0
 
 # Retained corpus path is historical input, not a derived or qualified Phase 0 run.
-capsule_corpus: merlin/contract/capsules/mx_gemmini/isa
+capsule_corpus: experiments/corpora/mx_gemmini/isa
 
 # mx-gemmini elaborates through chipyard like gemmini; its RTL oracle is the chipyard sim.
 toolchain:
@@ -56,7 +56,7 @@ answer_surfaces:
 # what the host lane does cannot reason about where the boundary should fall), and the surface that
 # would let it be CHANGED is denied to every arm.
 #
-# VERIFIED BY CONTENT, NOT BY BRANCH NAME — the same discipline as merlin/contract/hardware_pins.yaml.
+# VERIFIED BY CONTENT, NOT BY BRANCH NAME — the same discipline as src/merlin/resources/contracts/hardware_pins.yaml.
 # `branch` is informational: branches move, and the same branch name on a fork and on upstream are
 # different histories. `requires_paths` names the files whose PRESENCE is what the lane actually is, so
 # a checkout that is the right repo on a plausible branch and missing the schedule is caught.
@@ -81,7 +81,7 @@ host_lane:
   repo_canonical: https://github.com/ucb-bar/rvv-mlir.git
   branch: stable/rvv_tuned_v1_d1_vfmacc_outerproduct
   # UNKNOWN, and recorded as UNKNOWN rather than defaulted: this repo publishes TO that remote (see
-  # merlin/targets/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
+  # experiments/reference-data/target-inputs/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
   # is readable here. The pin is therefore carried by `package` + `requires_paths` below, which is a
   # CONTENT check over the bytes this experiment actually reads. Fill the sha in the moment a checkout
   # exists; never invent one.

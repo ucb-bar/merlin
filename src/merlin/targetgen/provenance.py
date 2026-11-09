@@ -205,8 +205,14 @@ def repo_provenance() -> dict[str, Any]:
         if revision is None:
             return {"available": False, "reason": f"unreadable source record: {root / SOURCE_RECORD}"}
         # `git archive` of a committed tree; the exporter refuses uncommitted edits.
-        return {"available": True, "path": str(root), "head": revision, "branch": None, "dirty": False,
-                "source": SOURCE_RECORD}
+        return {
+            "available": True,
+            "path": str(root),
+            "head": revision,
+            "branch": None,
+            "dirty": False,
+            "source": SOURCE_RECORD,
+        }
     if not _own_checkout(root):
         return {"available": False, "reason": f"not a git checkout of its own and no {SOURCE_RECORD}: {root}"}
     rec = git_provenance(root)
@@ -380,7 +386,7 @@ def record(
 
 
 # --- which registry pins a target's results depend on ----------------------------------------------
-#: The target-contract key naming the `merlin/contract/hardware_pins.yaml` entries a target's results
+#: The target-contract key naming the `src/merlin/resources/contracts/hardware_pins.yaml` entries a target's results
 #: rest on. A target with no external RTL dependency legitimately declares none.
 PINS_CONTRACT_KEY = "hardware_pins"
 

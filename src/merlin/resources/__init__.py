@@ -1,0 +1,1 @@
+"""Reviewed public package resources."""

@@ -5,9 +5,9 @@ status: current
 owner: merlin-experiments
 last_verified: 2026-11-09
 code_refs:
-  - src/merlin_experiments/phase0/component_integer_bounds.py
-  - src/merlin_experiments/phase0/component_numerics.py
-  - src/merlin_experiments/phase0/writer.py
+  - src/merlin/experiments/phase0/component_integer_bounds.py
+  - src/merlin/experiments/phase0/component_numerics.py
+  - src/merlin/experiments/phase0/writer.py
 ---
 
 # Integer DAG arithmetic admission

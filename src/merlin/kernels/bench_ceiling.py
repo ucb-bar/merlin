@@ -10,7 +10,7 @@ emit; > 1.0 == we beat the expert). The ceiling is *measured*, never modeled.
 Which corpus, and how it builds
 -------------------------------
 The ceiling is measured on a *standalone-benchmark* corpus (registry layout
-``standalone_benchmarks`` in ``merlin/contract/corpora.yaml``): each benchmark ships its own
+``standalone_benchmarks`` in ``src/merlin/resources/contracts/corpora.yaml``): each benchmark ships its own
 ``main`` + golden data + an htif printf path, builds to a single ``.riscv`` ELF, and runs
 under ``spike`` printing a cycle count per kernel invocation. No bare-metal main is
 generated; the bench already is one. ``VOPACC`` benches are excluded per the mining
@@ -868,7 +868,7 @@ def main(argv: list[str] | None = None) -> int:
     if config is None:
         print(
             f"kernel-bench: corpus {args.source!r} is not a standalone-benchmark corpus with an "
-            f"owning target (merlin/contract/corpora.yaml); no bench config to measure with."
+            f"owning target (src/merlin/resources/contracts/corpora.yaml); no bench config to measure with."
         )
         return 2
     if not corpus_available(config):

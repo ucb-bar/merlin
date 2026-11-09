@@ -8,7 +8,7 @@ The five plans are the synchronized outputs of TargetGen synthesis:
   zephyr_plan.yaml           the Zephyr backend scaffold to generate
   llvm_extension_plan.yaml   whether/how LLVM changes are needed
 
-Each maps to a schema of the same stem under ``merlin/schemas/``.
+Each maps to a schema of the same stem under ``src/merlin/resources/schemas/``.
 """
 
 from __future__ import annotations

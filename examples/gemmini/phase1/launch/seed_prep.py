@@ -7,7 +7,7 @@
 
 Reads the seed run's records by default (seconds); ``--measure`` re-times on the Spike cycle
 model. Writes SEED_BASELINE.json/.md, SEED_STRUCTURE.md and, when a variant is promoted,
-promoted-compiler/ into --out. See ``merlin_experiments.phase1.seed_prep``. A from-scratch
+promoted-compiler/ into --out. See ``merlin.experiments.phase1.seed_prep``. A from-scratch
 (unseeded) launch never runs this.
 """
 
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import sys
 
-from merlin_experiments.phase1.seed_prep.__main__ import main
+from merlin.experiments.phase1.seed_prep.__main__ import main
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -10,7 +10,7 @@ the records that cite it, and nothing that deletes consulted them.
 This module reads those records and answers one question: would removing a path take bytes away
 from a record that will outlive the removal? The record roster -- which file names are citing
 records, which seal anchors protect a whole tree, which directories are not worth walking -- is
-data in ``merlin/contract/storage.yaml`` (``cited_evidence``), not names in code.
+data in ``src/merlin/resources/contracts/storage.yaml`` (``cited_evidence``), not names in code.
 
 What counts as a citation, read structurally from each record's JSON or YAML:
 
@@ -292,9 +292,9 @@ def registry(roots: Iterable[Path] | None = None, *, refresh: bool = False, max_
 
 def extra_roots() -> list[Path]:
     """Only the roots beyond out/: the contract's ``extra_roots`` and ``MERLIN_CITED_ROOTS``."""
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import repo_root
 
-    roots = [p for pattern in roster().get("extra_roots") or [] for p in sorted(merlin_dir().glob(str(pattern)))]
+    roots = [p for pattern in roster().get("extra_roots") or [] for p in sorted(repo_root().glob(str(pattern)))]
     roots += [Path(p) for p in os.environ.get(ROOTS_ENV, "").split(os.pathsep) if p.strip()]
     return [Path(os.path.abspath(p)) for p in roots if Path(p).is_dir()]
 

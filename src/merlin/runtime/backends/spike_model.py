@@ -90,7 +90,7 @@ RVV_CFLAGS = ["-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffree
 #: flag in ``RVV_CFLAGS`` rather than mis-compiling, which is at least loud, but it is a needless failure.
 CLANG_TARGET = "--target=riscv64-unknown-elf"
 
-# merlin/runtime/c/merlin_model.h uses int64_t for every memref offset, size and stride;
+# src/merlin/runtime/native/c/merlin_model.h uses int64_t for every memref offset, size and stride;
 # merlin_model.c additionally asserts that a pointer is one int64_t word. This is a
 # selected runtime ABI constraint, not a target-hardware index-width assumption.
 _C_DESCRIPTOR_INDEX_BITS = 64

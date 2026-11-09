@@ -12,12 +12,13 @@ import json
 from pathlib import Path
 
 import yaml
-from merlin_experiments.corpus import release
+
+from merlin.experiments.corpus import release
 
 
 def selected_public_references(scaffold, explicit, author_profile=None):
     """Explicit no-expert profiles must never inherit a previous release's bank."""
-    from merlin_experiments.phase1.author_profiles import resolve
+    from merlin.experiments.phase1.author_profiles import resolve
 
     profile = resolve(author_profile) if author_profile else None
     if profile is not None and not profile.raw_kernel_references:
@@ -105,14 +106,23 @@ def prepare(
         gsim_readback_transport="coherent_dump_v1",
         operand_protocol_selection=operand_protocol_selection,
         operand_protocol_revision=operand_protocol_revision,
-        public_supplement=Path(public_supplement) if public_supplement is not None
-            else Path(assembly["public_supplement"]["selection"]["path"]),
-        public_scalability=Path(public_scalability) if public_scalability is not None
-            else Path(scale["source"]["selection"]["path"]),
+        public_supplement=Path(public_supplement)
+        if public_supplement is not None
+        else Path(assembly["public_supplement"]["selection"]["path"]),
+        public_scalability=Path(public_scalability)
+        if public_scalability is not None
+        else Path(scale["source"]["selection"]["path"]),
         public_program_suite=Path(public_program_suite) if public_program_suite is not None else None,
         host_capability_selection=host_capability_selection,
-        **(dict(author_profile=author_profile, author_profile_sources=author_profile_sources,
-                author_profile_common_inputs=author_profile_common_inputs) if author_profile else {}),
+        **(
+            dict(
+                author_profile=author_profile,
+                author_profile_sources=author_profile_sources,
+                author_profile_common_inputs=author_profile_common_inputs,
+            )
+            if author_profile
+            else {}
+        ),
         public_reference_manifest=selected_public_references(scaffold, public_reference_manifest, author_profile),
         **({"cca_bank": cca_bank} if cca_bank is not None else {}),
     )
@@ -206,8 +216,9 @@ def main():
         ),
         help="explicit prospective source epoch; default preserves the existing V8 profile",
     )
-    p.add_argument("--host-capability-spec", type=Path,
-                   help="Exact reviewed support source for the existing host package")
+    p.add_argument(
+        "--host-capability-spec", type=Path, help="Exact reviewed support source for the existing host package"
+    )
     p.add_argument("--host-capability-spec-sha256", help="Digest of the explicitly selected host support source")
     p.add_argument("--public-program-suite", type=Path, help="Explicit reviewed complete-program roster")
     for name in ("operand-protocol-selection", "operand-protocol-revision"):

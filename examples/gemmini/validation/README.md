@@ -41,7 +41,7 @@ freeze record and the record's compiler-digest field. The workload contract is
 restate architecture, quantization, recurrence or tolerances.
 
 ```sh
-python -m merlin_experiments.post_freeze.firesim prepare \
+python -m merlin.experiments.post_freeze.firesim prepare \
   --selection /absolute/selected-firesim.yaml --out /absolute/request.json
 ```
 
@@ -127,7 +127,7 @@ metadata. Keep the original `get-command-invocation` JSON for the actual command
 Then import the result directory for one complete model:
 
 ```sh
-python -m merlin_experiments.post_freeze.firesim collect \
+python -m merlin.experiments.post_freeze.firesim collect \
   --request /absolute/request.json --result-dir /absolute/model-result \
   --ssm-invocation /absolute/ssm-invocation.json --out /absolute/observation.json
 ```

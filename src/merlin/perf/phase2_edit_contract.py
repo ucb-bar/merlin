@@ -29,7 +29,7 @@ bytes it covers goes stale on every edit and is then either corrected mechanical
 proves nothing -- or left wrong. The review of the tracked file is the authority; a test pins the
 digest as a literal so that changing the surface is a visible diff in two places rather than one.
 
-TARGET-NEUTRAL. Declarations live per target and per package under ``merlin/contract/phase2_edit_contracts/``.
+TARGET-NEUTRAL. Declarations live per target and per package under ``src/merlin/resources/contracts/phase2_edit_contracts/``.
 This module names no target and no package; both are parameters.
 """
 
@@ -63,9 +63,9 @@ class Phase2EditContractError(ValueError):
 
 def contract_path(target: str, package_id: str) -> Path:
     """Where the declaration for one package lives. The target is a directory, never a literal."""
-    from ..common.paths import merlin_dir
+    from ..common.paths import data_path
 
-    return merlin_dir().joinpath(*_CONTRACTS, target, f"{package_id}.yaml")
+    return data_path(*_CONTRACTS, target, f"{package_id}.yaml")
 
 
 def seal(body: Mapping[str, Any]) -> dict[str, Any]:

@@ -44,7 +44,7 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
 - Patch a name in the module that DEFINES it. A re-export (in `compile_cli`, or a sibling imported by
   name, e.g. `mesh` importing `capacity`'s helpers) is a separate binding the defining module's callers
   never read, so a patch there passes without testing anything.
-  `merlin/tests/infra/test_compile_cli_patch_targets.py` fails on such a patch.
+  `tests/infra/test_compile_cli_patch_targets.py` fails on such a patch.
 - Keep a patched helper in the same module as the callers a test drives through it: `mesh` holds
   `_default_oot_package` and `_mesh_tile_binding` because both `_mesh_verify` and `run_matmul_on_mesh`
   resolve them, and `run_matmul_on_mesh`/`_mesh_rows`/`_certify_tile_via_executor` call each other.

@@ -24,7 +24,7 @@ from pathlib import Path, PurePosixPath
 from merlin.common.access import MODULE_ACCESS, is_harness_module, module_matches
 
 SCHEMA = "merlin.compiler_library.v1"
-_FORBIDDEN_MODULES = ("merlin.runtime.reference", "merlin.runtime.simulator", "merlin_experiments")
+_FORBIDDEN_MODULES = ("merlin.runtime.reference", "merlin.runtime.simulator", "merlin.experiments")
 _EXCLUDED_PARTS = frozenset({".git", "out", "docs", "tests", "__pycache__"})
 _ACTIVE_LIBRARY = contextvars.ContextVar("selected_additional_compiler_library", default=None)
 _LIBRARY_VERIFICATION = contextvars.ContextVar("guarded_compiler_library_verification", default=None)
@@ -39,16 +39,24 @@ def _verify_public_reexports(payload: bytes, module: str, public_modules: tuple[
     for node in ast.parse(payload).body:
         if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
             continue
-        if (isinstance(node, ast.ImportFrom) and node.level == 1
-                and node.module in _PUBLIC_REEXPORTS[module]
-                and f"{module}.{node.module}" in public_modules
-                and all(alias.name != "*" and alias.asname is None for alias in node.names)):
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.level == 1
+            and node.module in _PUBLIC_REEXPORTS[module]
+            and f"{module}.{node.module}" in public_modules
+            and all(alias.name != "*" and alias.asname is None for alias in node.names)
+        ):
             imports.update(alias.name for alias in node.names)
             continue
-        if (isinstance(node, ast.Assign) and len(node.targets) == 1
-                and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "__all__"
-                and isinstance(node.value, (ast.List, ast.Tuple)) and declared is None
-                and all(isinstance(item, ast.Constant) and type(item.value) is str for item in node.value.elts)):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "__all__"
+            and isinstance(node.value, (ast.List, ast.Tuple))
+            and declared is None
+            and all(isinstance(item, ast.Constant) and type(item.value) is str for item in node.value.elts)
+        ):
             declared = [item.value for item in node.value.elts]
             continue
         raise CompilerLibraryError("public namespace must contain only reviewed static leaf re-exports")
@@ -189,8 +197,10 @@ class CompilerLibraryContract:
         ):
             raise CompilerLibraryError("public APIs must name exact reviewed module members")
         indexed = {member.module: member for member in self.members if member.module is not None}
-        if any(PurePosixPath(indexed[module].path).name == "__init__.py" and module not in _PUBLIC_REEXPORTS
-               for module in self.public_modules):
+        if any(
+            PurePosixPath(indexed[module].path).name == "__init__.py" and module not in _PUBLIC_REEXPORTS
+            for module in self.public_modules
+        ):
             raise CompilerLibraryError("public APIs must be leaf modules, not broad package grants")
 
     def permits(self, module: str) -> bool:
@@ -363,10 +373,21 @@ def active_compiler_library():
 
 
 def _library_policy_identity():
-    return (CompilerLibraryContract.verify, _read, _syntax_facts, _parse_syntax_facts,
-            _verify_public_reexports, _forbidden, is_harness_module, module_matches,
-            resolve_name, ast.parse, repr(MODULE_ACCESS), _FORBIDDEN_MODULES,
-            tuple(sorted((key, tuple(sorted(value))) for key, value in _PUBLIC_REEXPORTS.items())))
+    return (
+        CompilerLibraryContract.verify,
+        _read,
+        _syntax_facts,
+        _parse_syntax_facts,
+        _verify_public_reexports,
+        _forbidden,
+        is_harness_module,
+        module_matches,
+        resolve_name,
+        ast.parse,
+        repr(MODULE_ACCESS),
+        _FORBIDDEN_MODULES,
+        tuple(sorted((key, tuple(sorted(value))) for key, value in _PUBLIC_REEXPORTS.items())),
+    )
 
 
 def _library_guard_members(root, contract):
@@ -382,11 +403,11 @@ def _library_guard_members(root, contract):
     for path in sorted(paths):
         metadata = path.lstat()
         if stat.S_ISREG(metadata.st_mode):
-            kind, size = 'file', metadata.st_size
+            kind, size = "file", metadata.st_size
         elif stat.S_ISDIR(metadata.st_mode):
-            kind, size = 'directory', None
+            kind, size = "directory", None
         else:
-            raise CompilerLibraryError('guarded compiler library has an indirect or special member')
+            raise CompilerLibraryError("guarded compiler library has an indirect or special member")
         rows.append((path.relative_to(root).parts, path, kind, size))
     return rows
 
@@ -401,22 +422,32 @@ class _LibraryVerification:
         self.live = True
 
     def record(self, selection):
-        if (self not in _ISSUED_LIBRARY_VERIFICATIONS or not self.live
-                or self.process != os.getpid() or self.selection is not selection):
+        if (
+            self not in _ISSUED_LIBRARY_VERIFICATIONS
+            or not self.live
+            or self.process != os.getpid()
+            or self.selection is not selection
+        ):
             return None
         root, contract = selection.root, selection.contract
         # Recheck declaration and namespace identity, not every member's path.
         # Watched files/directories cover writes, outside hardlinks and changes
         # to reviewed leaves and their parents; root ancestors are checked afresh.
-        if (type(contract) is not CompilerLibraryContract or not isinstance(root, Path)
-                or not root.is_absolute() or root.resolve() != root
-                or any(path.is_symlink() for path in (root, *root.parents))):
-            raise CompilerLibraryError('guarded compiler library selection changed')
-        record = {'root': str(root), 'contract_sha256': contract.sha256, 'contract': contract.record()}
-        if (selection._binding != self.binding
-                or json.dumps(record, sort_keys=True, separators=(',', ':')).encode() != self.binding
-                or _library_policy_identity() != self.policy):
-            raise CompilerLibraryError('guarded compiler library declaration or verifier changed')
+        if (
+            type(contract) is not CompilerLibraryContract
+            or not isinstance(root, Path)
+            or not root.is_absolute()
+            or root.resolve() != root
+            or any(path.is_symlink() for path in (root, *root.parents))
+        ):
+            raise CompilerLibraryError("guarded compiler library selection changed")
+        record = {"root": str(root), "contract_sha256": contract.sha256, "contract": contract.record()}
+        if (
+            selection._binding != self.binding
+            or json.dumps(record, sort_keys=True, separators=(",", ":")).encode() != self.binding
+            or _library_policy_identity() != self.policy
+        ):
+            raise CompilerLibraryError("guarded compiler library declaration or verifier changed")
         if self.guard is not None and self.guard.unchanged():
             return record
         return None  # Invalid/unsupported watch retains the ordinary full read.
@@ -437,14 +468,14 @@ def guarded_compiler_library_verification(selection):
         yield
         return
     if type(selection) is not CompilerLibrarySelection:
-        raise CompilerLibraryError('guarded compiler library requires an exact host selection')
+        raise CompilerLibraryError("guarded compiler library requires an exact host selection")
     from merlin.common.bundle_snapshot import _RosterGuard
 
     scope = _LibraryVerification(selection)
     root, contract = selection.root, selection.contract
     # Canonical namespace checks precede all guard construction.
     if not root.is_absolute() or root.resolve() != root or any(path.is_symlink() for path in (root, *root.parents)):
-        raise CompilerLibraryError('compiler library selection requires a canonical unlinked root')
+        raise CompilerLibraryError("compiler library selection requires a canonical unlinked root")
     scanner = lambda actual: _library_guard_members(actual, contract)
     token = None
     try:
@@ -453,8 +484,8 @@ def guarded_compiler_library_verification(selection):
         except (OSError, RuntimeError):
             scope.guard = None
         initial = selected_library_record(contract, root)
-        if json.dumps(initial, sort_keys=True, separators=(',', ':')).encode() != scope.binding:
-            raise CompilerLibraryError('compiler library changed before guarded request')
+        if json.dumps(initial, sort_keys=True, separators=(",", ":")).encode() != scope.binding:
+            raise CompilerLibraryError("compiler library changed before guarded request")
         if scope.guard is not None and not scope.guard.unchanged():
             scope.guard.close()
             scope.guard = None
@@ -464,9 +495,11 @@ def guarded_compiler_library_verification(selection):
             yield
         finally:
             final = selected_library_record(selection.contract, selection.root)
-            if (json.dumps(final, sort_keys=True, separators=(',', ':')).encode() != scope.binding
-                    or _library_policy_identity() != scope.policy):
-                raise CompilerLibraryError('compiler library changed during guarded request')
+            if (
+                json.dumps(final, sort_keys=True, separators=(",", ":")).encode() != scope.binding
+                or _library_policy_identity() != scope.policy
+            ):
+                raise CompilerLibraryError("compiler library changed during guarded request")
     finally:
         scope.live = False
         _ISSUED_LIBRARY_VERIFICATIONS.discard(scope)

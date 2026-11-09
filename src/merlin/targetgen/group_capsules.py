@@ -62,8 +62,7 @@ def covering_subset(stated: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def _experiment(target: str, declaration=None):
-    from merlin_experiments.phase0.declarations import for_target
-
+    from merlin.experiments.phase0.declarations import for_target
     from merlin.targetgen.target_experiment import load_target_experiment
 
     selected = declaration if declaration is not None else for_target(target)
@@ -75,8 +74,7 @@ def _experiment(target: str, declaration=None):
 
 def promote(target: str, stated: Mapping[str, Any], *, declaration=None) -> dict[str, Any]:
     """Write the covering subset into the target's corpus, under the ungraded model-layer category."""
-    from merlin_experiments.phase0 import profiles
-
+    from merlin.experiments.phase0 import profiles
     from merlin.targetgen import corpus_spec
     from merlin.targetgen.phase_policy import _CYCLE_ACCURATE_TIERS  # noqa: PLC2701
     from merlin.targetgen.target_experiment import MODEL_LAYERS_CATEGORY
@@ -100,9 +98,8 @@ def promote(target: str, stated: Mapping[str, Any], *, declaration=None) -> dict
 
 def write(target: str, stated: Mapping[str, Any], out_root: Path, *, declaration=None) -> dict[str, Any]:
     """Build every entry with the corpus generator. A builder that refuses one is reported by name."""
-    from merlin_experiments.phase0 import profiles
-    from merlin_experiments.phase0.group_forms import write_group_capsule
-
+    from merlin.experiments.phase0 import profiles
+    from merlin.experiments.phase0.group_forms import write_group_capsule
     from merlin.targetgen.group_capsule_entries import group_binding
 
     experiment, selected = _experiment(target, declaration)
@@ -246,10 +243,9 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
 
 def run_from_args(args: argparse.Namespace) -> int:
     """Derive/build the requested corpus groups; never review or seal their outputs."""
-    from merlin_experiments.phase0.declarations import for_target, from_definition
-
     from merlin.common import mlir_query as mq
     from merlin.common.digest import sha256_file
+    from merlin.experiments.phase0.declarations import for_target, from_definition
     from merlin.targetgen.rtl.facts import facts_alias, find_facts, observed_facts, target_contract_path
     from merlin.targetgen.software_spec import software_spec_path_for_recipe
     from merlin.targetgen.target_registry import resolve

@@ -31,12 +31,12 @@ phases:
       # Private, operator-owned held-out sweeps (gitignored; never example content). Phase 0
       # regenerates the hidden cohort from it on every run, and the run refuses a hidden capsule
       # that repeats a public program.
-      hidden_profile: ../../merlin/contract/capsules/profiles/gemmini.hidden.yaml
+      hidden_profile: ../../experiments/corpora/profiles/gemmini.hidden.yaml
       descriptor: target/descriptor.yaml
   1:
     # The operator-supervised fire-aligned EL4 launch is pinned separately, argv and environment
     # included, by phase1/launch/el4-fire-aligned.yaml and its release config
-    # phase0/release/fire-aligned-v10.yaml (merlin_experiments.phase1.launch_config render/verify).
+    # phase0/release/fire-aligned-v10.yaml (merlin.experiments.phase1.launch_config render/verify).
     # Those are operator inputs, not catalog definitions.
     adapter: capsule_bench
     config:
@@ -46,9 +46,9 @@ phases:
       level: EL4
       # Regenerate/review this bundle for the selected corpus before execution.
       bundle: merlin_assisted_rtlchecks_public_v0
-      bundle_manifest: ../../merlin/experiments/capsule_bench/targets/gemmini/input_bundles/merlin_assisted_rtlchecks_public_v0/input_bundle_manifest.yaml
+      bundle_manifest: ../../experiments/studies/capsule_bench/targets/gemmini/input_bundles/merlin_assisted_rtlchecks_public_v0/input_bundle_manifest.yaml
       # Required operator-owned timing evidence; not supplied by this example.
-      oracle_timing: ../../merlin/experiments/capsule_bench/targets/gemmini/.oracle_timing.gemmini.json
+      oracle_timing: ../../experiments/studies/capsule_bench/targets/gemmini/.oracle_timing.gemmini.json
       model: claude-opus-4-8
       effort: high
       driver: claudecode

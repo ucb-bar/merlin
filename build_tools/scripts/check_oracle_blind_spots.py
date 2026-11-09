@@ -32,7 +32,7 @@ for _path in (ROOT / "merlin" / "python",):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
-DESCRIPTORS = ROOT / "merlin" / "experiments" / "capsule_bench" / "targets"
+DESCRIPTORS = ROOT / "experiments" / "studies" / "capsule_bench" / "targets"
 
 
 def _capsules(roots) -> list[dict]:

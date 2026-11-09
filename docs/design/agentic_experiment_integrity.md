@@ -9,16 +9,16 @@ code_refs:
   - src/merlin/targetgen/capsule_grade.py
   - src/merlin/targetgen/capsule_runner.py
   - src/merlin/verification/epilogue_applicability.py
-  - merlin/experiments/capsule_bench/harness/agg_agentic_results.py
-  - merlin/experiments/capsule_bench/harness/regrade_run_snapshot.py
-  - merlin/experiments/capsule_bench/harness/freeze_run.py
-  - src/merlin_experiments/phase1/feedback/promotion.py
-  - src/merlin_experiments/phase1/feedback/qa.py
-  - src/merlin_experiments/phase1/source_inputs.py
-  - merlin/experiments/capsule_bench/harness/conformance.py
-  - merlin/experiments/capsule_bench/harness/readiness_check.py
-  - merlin/experiments/capsule_bench/harness/verify_no_cheat.py
-  - src/merlin_experiments/phase1/providers/codex_agent.py
+  - experiments/studies/capsule_bench/harness/agg_agentic_results.py
+  - experiments/studies/capsule_bench/harness/regrade_run_snapshot.py
+  - experiments/studies/capsule_bench/harness/freeze_run.py
+  - src/merlin/experiments/phase1/feedback/promotion.py
+  - src/merlin/experiments/phase1/feedback/qa.py
+  - src/merlin/experiments/phase1/source_inputs.py
+  - experiments/studies/capsule_bench/harness/conformance.py
+  - experiments/studies/capsule_bench/harness/readiness_check.py
+  - experiments/studies/capsule_bench/harness/verify_no_cheat.py
+  - src/merlin/experiments/phase1/providers/codex_agent.py
   - build_tools/scripts/check_no_answer_keys.py
   - build_tools/scripts/check_provenance.py
   - build_tools/scripts/check_mutation_proofs.py
@@ -32,11 +32,11 @@ target, model and declared budget. Harness behavior, grading scope and accountin
 must remain controlled so that observed differences can be attributed to the
 treatment. The rules below state the required evidence and enforcement limits.
 
-Current functional feedback implementations live in `merlin_experiments.phase1.feedback`:
+Current functional feedback implementations live in `merlin.experiments.phase1.feedback`:
 `qa` owns grading and redaction, `promotion` owns per-capsule certification, and `snapshots`
 owns enqueue-time candidate copies. Native launchers call these owners; relocating them does
 not reattribute historical experiment evidence or qualify a complete installed controller.
-The newer implementation-source inventory in `merlin_experiments.phase1.source_inputs` binds
+The newer implementation-source inventory in `merlin.experiments.phase1.source_inputs` binds
 native and outer Phase-1 owners for freshly frozen runs, including the historical target-access
 policy, the selected target's capability contract, and the software specification named by the
 run's numeric profile. It does not retroactively establish ownership for legacy freezes that
@@ -104,7 +104,7 @@ Applying it uniformly is still a process rule.
 fails. A skipped tier is not a pass (`not_run_is_not_pass`).
 
 **Gate.** Mutation tests next to each gate. Examples: the promotion-wiring tests, and the holdout
-check that must fail when it is blind. See `merlin/tests/infra/`. `check_mutation_proofs.py` requires
+check that must fail when it is blind. See `tests/infra/`. `check_mutation_proofs.py` requires
 every `check_*` gate to name a runnable mutation that makes it fail (`gate_mutations.yaml`), and CI
 runs each recorded proof with `--prove`.
 

@@ -105,9 +105,9 @@ def check_lifts(
     elf=None,
     disassembly_symbol="fx_conv_27",
 ):
-    from merlin_experiments.phase1.feedback import reference_analysis as analysis
-    from merlin_experiments.phase1.feedback import reference_experiments as reference
-    from merlin_experiments.phase1.feedback.reference_views import source_view
+    from merlin.experiments.phase1.feedback import reference_analysis as analysis
+    from merlin.experiments.phase1.feedback import reference_experiments as reference
+    from merlin.experiments.phase1.feedback.reference_views import source_view
 
     workspace, output = Path(workspace), Path(output)
     output.mkdir(parents=True, exist_ok=False)

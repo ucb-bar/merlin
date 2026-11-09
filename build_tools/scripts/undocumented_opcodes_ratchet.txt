@@ -2,7 +2,7 @@
 # MAY ONLY SHRINK.
 #
 # Each line is `<mnemonic> <opcode>`. An entry means a capsule can legally contain that op while the
-# contract the graded agent reads (`merlin/contract/command_buffer_abi.yaml`, handed over by
+# contract the graded agent reads (`src/merlin/resources/contracts/command_buffer_abi.yaml`, handed over by
 # `generate_prompt`) states no operands, no attributes and no semantics for it. The agent then has to
 # GUESS the ABI -- and this repo has already measured what that produces: a target's arm invented an
 # instruction encoding because the prompt never named the shipped ISA files.

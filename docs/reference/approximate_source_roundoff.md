@@ -8,8 +8,8 @@ related: [independent_scalar_lanes, prepared_operand_owners]
 code_refs:
   - src/merlin/llvmlower/source_roundoff_policy.py
   - src/merlin/llvmlower/source_attention_frontier.py
-  - merlin/runtime/c/source_rms_roundoff_estimate.h
-  - merlin/runtime/c/source_rms_point_products.h
+  - src/merlin/runtime/native/c/source_rms_roundoff_estimate.h
+  - src/merlin/runtime/native/c/source_rms_point_products.h
 ---
 
 # Explicit approximate source roundoff

@@ -8,7 +8,7 @@ Their numerical contracts remain unreviewed, and parsed source, linked-image,
 offload and full-output checks remain separate obligations.
 
 Fresh Phase 0 selection automatically calls
-`HostLane.resolve_capabilities` in `merlin_experiments.phase0.evidence.select_evidence`.
+`HostLane.resolve_capabilities` in `merlin.experiments.phase0.evidence.select_evidence`.
 That observes the selected declaration and package bytes, and
 `evidence_artifacts` exports `software/host-capabilities.json`. A derivation using
 `--evidence-input` deliberately retains the old frozen view. To select this

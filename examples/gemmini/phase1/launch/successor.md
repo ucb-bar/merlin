@@ -64,7 +64,7 @@ ordinary API lets the operator retain the exact selected policies and pins:
 
 ```python
 from pathlib import Path
-from merlin_experiments.corpus import release
+from merlin.experiments.corpus import release
 
 release.prepare(
     Path(P0), Path(RELEASE), generated_only=True, capsule_scope="accelerator",
@@ -94,7 +94,7 @@ For prospective gSIM correspondence use the generic entry point with explicit
 target-owned selection data:
 
 ```sh
-"$PYTHON" -m merlin_experiments.phase1.gsim_alignment \
+"$PYTHON" -m merlin.experiments.phase1.gsim_alignment \
   --selection "$REPO/examples/gemmini/phase1/launch/gsim-alignment.yaml" \
   --contract "$TARGET_CONTRACT" --rtl-facts "$RTL_FACTS" \
   --chipyard-root "$CHIPYARD" --hardware-pins "$HARDWARE_PINS" \

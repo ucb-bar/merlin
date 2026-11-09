@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-10-18
 related: [normal_search_feedback, runtime_escape_audit, compile_debugging]
-code_refs: [src/merlin/llvmlower/op_profile.py, src/merlin/llvmlower/op_profile_structural.py, src/merlin/llvmlower/lower.py, src/merlin/runtime/backends/spike_model.py, src/merlin/runtime/operation_profile.py, src/merlin/compile/baremetal_model.py, src/merlin/model_check/full_build.py, merlin/runtime/c/merlin_op_prof.c, build_tools/scripts/k1_op_profile.py]
+code_refs: [src/merlin/llvmlower/op_profile.py, src/merlin/llvmlower/op_profile_structural.py, src/merlin/llvmlower/lower.py, src/merlin/runtime/backends/spike_model.py, src/merlin/runtime/operation_profile.py, src/merlin/compile/baremetal_model.py, src/merlin/model_check/full_build.py, src/merlin/runtime/native/c/merlin_op_prof.c, build_tools/scripts/k1_op_profile.py]
 ---
 
 # Whole-program operation profiling

@@ -34,7 +34,7 @@ def machine_header(machine: str, header: str | Path, header_sha256: str | None =
     it includes: two designs of one target can differ in a readout the header either declares or does
     not, and an ELF built against the wrong one runs and reads back zeros. So the header is never
     whatever sits in some checkout. ``machine`` names an entry of the hardware registry
-    (``merlin/contract/hardware_pins.yaml``); the ABI header digest it declares -- on itself or on an
+    (``src/merlin/resources/contracts/hardware_pins.yaml``); the ABI header digest it declares -- on itself or on an
     entry it is ``built_from`` -- is what ``header``'s bytes must hash to. A machine the registry
     declares no ABI header for is buildable only when the caller asserts one (``header_sha256``), and
     the record then says the assertion is the caller's, with the registry's own notes beside it.

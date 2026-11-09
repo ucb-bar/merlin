@@ -24,7 +24,7 @@ from merlin.targetgen import capsule_common, capsule_golden, numeric_falsifiabil
 
 
 def capsule_root() -> Path:
-    return repo_root() / "merlin/contract/capsules"
+    return repo_root() / "experiments/corpora"
 
 
 def _capsules(root: Path, *, tracked_only: bool) -> list[Path]:

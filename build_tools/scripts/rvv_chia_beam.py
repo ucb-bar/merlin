@@ -6,7 +6,7 @@ This is the CHIA orchestration layer over :func:`merlin.mining.beam_cli.run_inst
 under the CHIA venv (chia hard-pins ray/pydantic — see ``merlin.benchharness.chia_bridge``):
 
   build/chia-venv/bin/python build_tools/scripts/rvv_chia_beam.py \
-      --model-dir <workload> --expert-objdump merlin/tests/data/cca_asm/xnnpack_f32_gemm_rvv.objdump \
+      --model-dir <workload> --expert-objdump experiments/reference-data/cca-asm/xnnpack_f32_gemm_rvv.objdump \
       --k1-slots 1
 
 The beam engine (propose -> rank -> audit -> escalate, gen by gen) stays on the Ray driver holding the

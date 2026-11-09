@@ -157,7 +157,7 @@ def _shadow(repo: Path, sha: str, files: list[str], dest: Path, *, baseline: Pat
         raise ValueError("replay shadow destination must be empty")
     dest.mkdir(parents=True, exist_ok=True)
     # `_data` is EXCLUDED, and that is deliberate rather than an optimisation. It is the packaging
-    # mirror of `merlin/contract`, read only when merlin is installed as a wheel; the shadow runs from
+    # mirror of `src/merlin/resources/contracts`, read only when merlin is installed as a wheel; the shadow runs from
     # source with MERLIN_REPO_ROOT pinned at the real checkout, so nothing in it is reachable. It is
     # also the one volatile part of the tree -- a mirror of symlinks that another session can be
     # rebuilding while this copy walks it, which took two whole replay runs down with a bare
@@ -216,9 +216,9 @@ def _shadow(repo: Path, sha: str, files: list[str], dest: Path, *, baseline: Pat
 _PYTEST = ("-m", "pytest", "-x", "-q", "--no-header", "-p", "no:cacheprovider")
 
 LAYERS: dict[str, tuple[str, ...]] = {
-    "engines-agree": _PYTEST + ("merlin/tests/ir/test_readout_dtype_divergence.py",),
-    "cb-semantics": _PYTEST + ("merlin/tests/ir/test_cb_semantics.py",),
-    "compilation-validation": _PYTEST + ("merlin/tests/ir/test_compilation_validation.py",),
+    "engines-agree": _PYTEST + ("tests/ir/test_readout_dtype_divergence.py",),
+    "cb-semantics": _PYTEST + ("tests/ir/test_cb_semantics.py",),
+    "compilation-validation": _PYTEST + ("tests/ir/test_compilation_validation.py",),
     # The static layer: one pass, one module, assert what it did. This is where a lowering defect
     # shows, and it was missing from the first run.
     "lit-pass-tests": ("-m", "merlin.verify.replay_layers", "lit"),

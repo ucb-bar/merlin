@@ -19,11 +19,11 @@ code_refs:
   - examples/compiler/connected_composition.py
   - src/merlin/targetgen/compiler_library_fork.py
   - src/merlin/targetgen/isa_dialect_gen.py
-  - src/merlin_experiments/phase1/compiler_library.py
+  - src/merlin/experiments/phase1/compiler_library.py
   - build_tools/scripts/audit_compiler_integration.py
   - src/merlin/api.py
   - src/merlin/compiler/schedule/export.py
-  - src/merlin_experiments/phase1/prepare_author_library.py
+  - src/merlin/experiments/phase1/prepare_author_library.py
 ---
 
 # Compiler optimization surfaces and execution evidence

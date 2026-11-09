@@ -80,11 +80,41 @@ def module_alias(path: Path, root: Path) -> tuple[str, Path] | None:
 
 def policy_path(path: str) -> str:
     """Stable debt identity for the same merlin module, including shared-namespace distributions."""
+    # This issuer predates the later merlin_experiments namespace. Its recorded
+    # ceiling remains bound to the original shared-namespace implementation.
+    if path in {
+        "src/merlin/experiments/capture_execution/sealed_m2m.py",
+        "packages/merlin-experiments/src/merlin/experiments/capture_execution/sealed_m2m.py",
+    }:
+        return "packages/merlin-experiments/src/merlin/experiments/capture_execution/sealed_m2m.py"
+    # Historical ledgers used both physical spellings of this same research
+    # owner. Normalize their shared-namespace spelling before generic core paths.
+    historical = "packages/merlin-experiments/src/merlin/experiments"
+    if path == historical or path.startswith(historical + "/"):
+        return "packages/merlin-experiments/src/merlin_experiments" + path[len(historical) :]
     # Declaration/catalog orchestration moved intact from the research namespace.
     # Preserve its original policy identity, rather than granting compiler code
     # permission to read experiment definitions because it now shares a wheel.
-    if path == "src/merlin/development/definition.py":
+    if path in {"src/merlin/development/definition.py", "src/merlin/experiments/definition.py"}:
         return "packages/merlin-experiments/src/merlin_experiments/spec.py"
+    if path == "src/merlin/experiments" or path.startswith("src/merlin/experiments/"):
+        return "packages/merlin-experiments/src/merlin_experiments" + path[len("src/merlin/experiments") :]
+    for owner, historical in (("search", "dse"), ("pressure", "design_pressure"), ("guidance", "dse_guidance")):
+        prefix = "src/merlin/analysis/dse/" + owner
+        if path == prefix or path.startswith(prefix + "/"):
+            return "merlin/python/merlin/" + historical + path[len(prefix) :]
+    if path == "src/merlin/analysis/dse" or path.startswith("src/merlin/analysis/dse/"):
+        return "packages/merlin-dse/src/merlin_dse" + path[len("src/merlin/analysis/dse") :]
+    for canonical, former in (
+        ("experiments/benchmarks", "merlin/benchmarks"),
+        ("src/merlin/resources/benchmarks", "merlin/benchmarks"),
+        ("src/merlin/resources/contracts", "merlin/contract"),
+        ("src/merlin/resources/schemas", "merlin/schemas"),
+        ("src/merlin/resources/prompts", "merlin/prompts"),
+        ("src/merlin/runtime/native", "merlin/runtime"),
+    ):
+        if path == canonical or path.startswith(canonical + "/"):
+            return former + path[len(canonical) :]
     if path == "src/merlin" or path.startswith("src/merlin/"):
         return "merlin/python/merlin" + path[len("src/merlin") :]
     for component in ("experiments", "analysis", "dse", "mining"):

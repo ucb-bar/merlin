@@ -6,6 +6,7 @@ source intake/admission/public_scalability staging in a private directory;
 ``plan`` writes commands, never executes them. ``collect`` reopens the ordinary
 issuer and rich qualification through evaluate_panels' existing custody join.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,11 +33,10 @@ def _private(path):
 
 def stage(panel_path, descriptor_path, evidence_root, output):
     """Stage all new contracts once through the existing ordinary source owners."""
-    from merlin_experiments.corpus import public_scalability as S
-    from merlin_experiments.corpus import scalability_intake
-    from merlin_experiments.phase0.evidence import load_exported_evidence
-    from merlin_experiments.runner import fingerprint
-
+    from merlin.experiments.corpus import public_scalability as S
+    from merlin.experiments.corpus import scalability_intake
+    from merlin.experiments.phase0.evidence import load_exported_evidence
+    from merlin.experiments.runner import fingerprint
     from merlin.targetgen.target_experiment import load_target_experiment
 
     panel_pin = pin(panel_path)
@@ -48,8 +48,12 @@ def stage(panel_path, descriptor_path, evidence_root, output):
         reopen(case["capsule"])
         reopen(case["source"])
     selection = scalability_intake.prepare(
-        [Path(c["capsule"]["path"]).parent for c in panel["cases"]], output / "intake",
-        target=te.target, evidence=evidence, evidence_root=Path(evidence_root))
+        [Path(c["capsule"]["path"]).parent for c in panel["cases"]],
+        output / "intake",
+        target=te.target,
+        evidence=evidence,
+        evidence_root=Path(evidence_root),
+    )
     bound = S.stage(selection, output / "suite", te=te)
     experiment = output / "experiment"
     shutil.copytree(Path(descriptor_path).resolve().parent, experiment)
@@ -61,9 +65,17 @@ def stage(panel_path, descriptor_path, evidence_root, output):
     actual = S.selected(load_target_experiment(descriptor))
     if actual is None or set(actual[1]["cases"]) != {c["case"] for c in panel["cases"]}:
         raise ValueError("ordinary staged suite differs from the complete frozen panel")
-    result = {"schema": SCHEMA + ".suite", "panel": panel_pin, "descriptor": pin(descriptor),
-              "selection": pin(selection), "root": bound, "suite_sha256": fingerprint(output / "suite"),
-              "operator_only": True, "author_visible": False, "executed": False}
+    result = {
+        "schema": SCHEMA + ".suite",
+        "panel": panel_pin,
+        "descriptor": pin(descriptor),
+        "selection": pin(selection),
+        "root": bound,
+        "suite_sha256": fingerprint(output / "suite"),
+        "operator_only": True,
+        "author_visible": False,
+        "executed": False,
+    }
     write(output / "suite.json", result)
     return result
 
@@ -94,22 +106,30 @@ def freeze_subject(row):
         frozen = index["started_at_epoch"] + snapshot["observed_elapsed_s"]
     if hash_tree(Path(source))["sha256"] != digest:
         raise ValueError("native frozen source changed")
-    selected = _frozen_source({"path": source, "rules": row["rules"], "settings": row["settings"],
-                               "frozen_unix": frozen})
-    return {"id": row["id"], "role": row.get("role", "final_compiler"),
-            "replica": row.get("replica"), "treatment": row.get("treatment", row["id"]),
-            "baseline_subject": row.get("baseline_subject"), "native_authority": authority,
-            "snapshot": row.get("snapshot", "final"), **selected}
+    selected = _frozen_source(
+        {"path": source, "rules": row["rules"], "settings": row["settings"], "frozen_unix": frozen}
+    )
+    return {
+        "id": row["id"],
+        "role": row.get("role", "final_compiler"),
+        "replica": row.get("replica"),
+        "treatment": row.get("treatment", row["id"]),
+        "baseline_subject": row.get("baseline_subject"),
+        "native_authority": authority,
+        "snapshot": row.get("snapshot", "final"),
+        **selected,
+    }
 
 
 def plan(panel_path, subjects_path, artifacts_path, measurement_path, output):
     """Write explicit ordinary selfcheck jobs and a physical selection; do not run."""
-    from merlin_experiments.corpus import public_scalability as S
-    from merlin_experiments.runner import fingerprint
-
+    from merlin.experiments.corpus import public_scalability as S
+    from merlin.experiments.runner import fingerprint
     from merlin.targetgen.target_experiment import load_target_experiment
 
-    panel_pin, subjects_pin, artifacts_pin, measurement_pin = map(pin, (panel_path, subjects_path, artifacts_path, measurement_path))
+    panel_pin, subjects_pin, artifacts_pin, measurement_pin = map(
+        pin, (panel_path, subjects_path, artifacts_path, measurement_path)
+    )
     panel, requested, artifacts, measurement = map(read, (panel_pin, subjects_pin, artifacts_pin, measurement_pin))
     if panel.get("schema") != "merlin.study.transfer_panel.v1" or len(panel["cases"]) != 34:
         raise ValueError("native study requires the complete 34-case transfer panel")
@@ -140,7 +160,12 @@ def plan(panel_path, subjects_path, artifacts_path, measurement_path, output):
             raise ValueError("runtime descriptor must select exactly the frozen transfer panel")
         root, _ = selected
         workers = config["workers"]
-        if type(workers) is not int or not 1 <= workers <= 15 or type(config["timeout_s"]) is not int or config["timeout_s"] <= 0:
+        if (
+            type(workers) is not int
+            or not 1 <= workers <= 15
+            or type(config["timeout_s"]) is not int
+            or config["timeout_s"] <= 0
+        ):
             raise ValueError("evaluation requires explicit bounded workers and request timeout")
         directory = output / subject["id"]
         directory.mkdir(mode=0o700)
@@ -149,7 +174,7 @@ def plan(panel_path, subjects_path, artifacts_path, measurement_path, output):
         full = (native_environment.get("full_compiler_workspace") or {}).get("selection")
         full_env = environment.get("MERLIN_FULL_COMPILER_SELECTION")
         if full is not None:
-            from merlin_experiments.phase1.full_compiler_workspace import select
+            from merlin.experiments.phase1.full_compiler_workspace import select
 
             selected_full = select(**{key: full[key] for key in ("root", "manifest_path", "manifest_sha256")})
             selected_full.verify()
@@ -161,17 +186,41 @@ def plan(panel_path, subjects_path, artifacts_path, measurement_path, output):
         # This operator evaluation has no author or inherited campaign clock.
         # Deployment instruction/primitive audits remain separate mandatory gates.
         environment.pop("MERLIN_JOINT_CAMPAIGN_STATE", None)
-        environment["MERLIN_FROZEN_PUBLIC_SCALABILITY"] = json.dumps({"root": str(root), "descriptor_sha256": te.descriptor_sha256})
+        environment["MERLIN_FROZEN_PUBLIC_SCALABILITY"] = json.dumps(
+            {"root": str(root), "descriptor_sha256": te.descriptor_sha256}
+        )
         environment["TMPDIR"] = str(directory / "tmp")
         (directory / "tmp").mkdir()
         write(directory / "environment.json", environment)
         result_path = directory / "result.json"
-        command = [str(reopen(config["python"])), "-B", "-m", "merlin_experiments.phase1.feedback.selfcheck",
-                   "--descriptor", str(reopen(config["descriptor"])), "--repo", config["repo"],
-                   "--suite", "scalability", "--sim", "spike", "--tiers", "L0,L1,L2",
-                   "--capsules", ",".join(names), "--submission", subject["source"]["path"],
-                   "--workers", str(workers), "--timeout", str(config["timeout_s"]),
-                   "--rtl-facts", str(reopen(config["rtl_facts"])), "--out", str(result_path)]
+        command = [
+            str(reopen(config["python"])),
+            "-B",
+            "-m",
+            "merlin.experiments.phase1.feedback.selfcheck",
+            "--descriptor",
+            str(reopen(config["descriptor"])),
+            "--repo",
+            config["repo"],
+            "--suite",
+            "scalability",
+            "--sim",
+            "spike",
+            "--tiers",
+            "L0,L1,L2",
+            "--capsules",
+            ",".join(names),
+            "--submission",
+            subject["source"]["path"],
+            "--workers",
+            str(workers),
+            "--timeout",
+            str(config["timeout_s"]),
+            "--rtl-facts",
+            str(reopen(config["rtl_facts"])),
+            "--out",
+            str(result_path),
+        ]
         for flag, key in (("--contract", "contract"), ("--compiler-bundle-manifest", "compiler_bundle_manifest")):
             if config.get(key):
                 selected_path = Path(config[key]["path"])
@@ -184,7 +233,7 @@ def plan(panel_path, subjects_path, artifacts_path, measurement_path, output):
                 command.extend([flag, str(selected_path)])
         binding = native_environment.get("additional_compiler_library")
         if binding is not None:
-            from merlin_experiments.phase2.compiler_library_state import restore_selection, verify_binding
+            from merlin.experiments.phase2.compiler_library_state import restore_selection, verify_binding
 
             origin = restore_selection(binding["origin"])
             snapshot = verify_binding(binding, origin)
@@ -192,19 +241,43 @@ def plan(panel_path, subjects_path, artifacts_path, measurement_path, output):
             if contract_pin is None or read(contract_pin) != binding["snapshot"]["contract"]:
                 raise ValueError("native additional library requires its exact selected contract")
             runtime_pins.append(contract_pin)
-            command.extend(["--compiler-library-root", str(snapshot.root),
-                            "--compiler-library-contract", str(reopen(contract_pin)),
-                            "--compiler-library-contract-sha256", snapshot.contract.sha256])
+            command.extend(
+                [
+                    "--compiler-library-root",
+                    str(snapshot.root),
+                    "--compiler-library-contract",
+                    str(reopen(contract_pin)),
+                    "--compiler-library-contract-sha256",
+                    snapshot.contract.sha256,
+                ]
+            )
         subject["runtime_config"] = config_pin
         subject["effective_dependencies"] = config["dependency_selection"]
-        jobs.append({"subject": subject["id"], "source": subject["source"], "descriptor": config["descriptor"],
-                     "suite_sha256": fingerprint(root), "cases": names, "argv": command,
-                     "environment": pin(directory / "environment.json"), "cwd": str(directory), "result": str(result_path)})
-    evaluation = {"schema": SCHEMA, "panel": panel_pin, "subjects": subjects, "cases": cases,
-                  "inputs": [panel_pin, subjects_pin, artifacts_pin, measurement_pin, *runtime_pins],
-                  "jobs": jobs, "executed": False, "author_visible": False,
-                  "instruction_policy": "retain selected primitive/no-FSM binary audits before paid execution",
-                  "numerical_grader": "ordinary phase1.feedback.selfcheck/public_scalability only"}
+        jobs.append(
+            {
+                "subject": subject["id"],
+                "source": subject["source"],
+                "descriptor": config["descriptor"],
+                "suite_sha256": fingerprint(root),
+                "cases": names,
+                "argv": command,
+                "environment": pin(directory / "environment.json"),
+                "cwd": str(directory),
+                "result": str(result_path),
+            }
+        )
+    evaluation = {
+        "schema": SCHEMA,
+        "panel": panel_pin,
+        "subjects": subjects,
+        "cases": cases,
+        "inputs": [panel_pin, subjects_pin, artifacts_pin, measurement_pin, *runtime_pins],
+        "jobs": jobs,
+        "executed": False,
+        "author_visible": False,
+        "instruction_policy": "retain selected primitive/no-FSM binary audits before paid execution",
+        "numerical_grader": "ordinary phase1.feedback.selfcheck/public_scalability only",
+    }
     evaluation_path = output / "plan.json"
     write(evaluation_path, evaluation)
     selected_sources = {s["id"]: s["source"]["sha256"] for s in subjects}
@@ -216,10 +289,17 @@ def plan(panel_path, subjects_path, artifacts_path, measurement_path, output):
         if artifact.get("compiler_sha256") not in (None, selected_sources[key[0]]):
             raise ValueError("compiled cell names another frozen compiler")
         compiled.append({**artifact, "compiler_sha256": selected_sources[key[0]]})
-    physical = {"schema": "merlin.study.physical_panel.v1", "evaluation_plan": pin(evaluation_path),
-                "panel": panel_pin, "subjects": list(selected_sources), "snapshot": measurement["snapshot"],
-                "rounds": 3, "domain": measurement["domain"], "toolchain": measurement["toolchain"],
-                "compiled": compiled}
+    physical = {
+        "schema": "merlin.study.physical_panel.v1",
+        "evaluation_plan": pin(evaluation_path),
+        "panel": panel_pin,
+        "subjects": list(selected_sources),
+        "snapshot": measurement["snapshot"],
+        "rounds": 3,
+        "domain": measurement["domain"],
+        "toolchain": measurement["toolchain"],
+        "compiled": compiled,
+    }
     if measurement.get("cases"):
         physical["cases"] = measurement["cases"]
     write(output / "physical-selection.json", physical)
@@ -229,8 +309,9 @@ def plan(panel_path, subjects_path, artifacts_path, measurement_path, output):
 def collect(plan_path, *, physical_collections=()):
     """Project original issued results; unissued/missing observations remain unknown."""
     from evaluate_panels import _issued_qualification, _numeric_pass
-    from merlin_experiments.phase1.feedback.joint_performance_report import compare
     from physical_panel import apply_physical
+
+    from merlin.experiments.phase1.feedback.joint_performance_report import compare
 
     plan_pin = pin(plan_path)
     plan = read(plan_pin)
@@ -252,8 +333,9 @@ def collect(plan_path, *, physical_collections=()):
             try:
                 result_pin = pin(result_path)
                 result = read(result_pin)
-                rich, _, _ = _issued_qualification(result_path, result,
-                    source_sha256=subject["source"]["sha256"], suite_sha256=job["suite_sha256"])
+                rich, _, _ = _issued_qualification(
+                    result_path, result, source_sha256=subject["source"]["sha256"], suite_sha256=job["suite_sha256"]
+                )
                 observed = rich["observed"]
                 if not set(observed) <= set(job["cases"]):
                     raise ValueError("ordinary evaluator returned foreign cases")
@@ -261,27 +343,61 @@ def collect(plan_path, *, physical_collections=()):
                 observed, error = {}, f"unverified result: {type(exc).__name__}: {exc}"
         for name in job["cases"]:
             row = observed.get(name)
-            state = ("missing" if row is None else "pass" if _numeric_pass(row) else
-                     "fail" if row.get("status") == "fail" else "incomplete")
-            cells.append({"subject": subject["id"], "case": name, "split": cases[name].get("split", "heldout"),
-                          "family": cases[name]["family"], "role": subject["role"], "source": subject["source"],
-                          "baseline_subject": subject.get("baseline_subject"), "state": state,
-                          "numeric": (row or {}).get("numeric"), "performance": (row or {}).get("performance"),
-                          "failure": (row or {}).get("failure"), "diagnostic": error, "result": result_pin,
-                          "physical": {"status": "UNKNOWN", "cycles": None}})
+            state = (
+                "missing"
+                if row is None
+                else "pass"
+                if _numeric_pass(row)
+                else "fail"
+                if row.get("status") == "fail"
+                else "incomplete"
+            )
+            cells.append(
+                {
+                    "subject": subject["id"],
+                    "case": name,
+                    "split": cases[name].get("split", "heldout"),
+                    "family": cases[name]["family"],
+                    "role": subject["role"],
+                    "source": subject["source"],
+                    "baseline_subject": subject.get("baseline_subject"),
+                    "state": state,
+                    "numeric": (row or {}).get("numeric"),
+                    "performance": (row or {}).get("performance"),
+                    "failure": (row or {}).get("failure"),
+                    "diagnostic": error,
+                    "result": result_pin,
+                    "physical": {"status": "UNKNOWN", "cycles": None},
+                }
+            )
     lookup = {(c["subject"], c["case"]): c for c in cells}
     for cell in cells:
         other = lookup.get((cell.get("baseline_subject"), cell["case"]))
-        cell["model_comparison"] = (compare(other.get("performance") or {}, cell.get("performance") or {})
-             if other and other["state"] == cell["state"] == "pass" else
-             {"status": "UNKNOWN", "candidate_to_baseline_ratio": None})
+        cell["model_comparison"] = (
+            compare(other.get("performance") or {}, cell.get("performance") or {})
+            if other and other["state"] == cell["state"] == "pass"
+            else {"status": "UNKNOWN", "candidate_to_baseline_ratio": None}
+        )
     summaries = []
     for name in subjects:
         selected = [c for c in cells if c["subject"] == name]
-        summaries.append({"subject": name, "split": "heldout", "cells": len(selected),
-                          "states": dict(Counter(c["state"] for c in selected)), "physical_status": "UNKNOWN"})
-    collection = {"schema": "private.kernel_abstractions.evaluation_collection.v1", "native_plan": True,
-                  "plan": plan_pin, "cells": cells, "summaries": summaries, "physical_timing_qualified": False}
+        summaries.append(
+            {
+                "subject": name,
+                "split": "heldout",
+                "cells": len(selected),
+                "states": dict(Counter(c["state"] for c in selected)),
+                "physical_status": "UNKNOWN",
+            }
+        )
+    collection = {
+        "schema": "private.kernel_abstractions.evaluation_collection.v1",
+        "native_plan": True,
+        "plan": plan_pin,
+        "cells": cells,
+        "summaries": summaries,
+        "physical_timing_qualified": False,
+    }
     return apply_physical(collection, physical_collections) if physical_collections else collection
 
 

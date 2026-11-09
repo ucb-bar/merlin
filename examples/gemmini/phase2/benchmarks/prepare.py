@@ -184,7 +184,7 @@ def render(case, readout, *, seed):
 
 
 def prepare(profile, *, descriptor, base_roster, software_spec, output, readout=None, source_integer_proof=None):
-    from merlin_experiments.phase0 import public_programs, workload_roster
+    from merlin.experiments.phase0 import public_programs, workload_roster
 
     document = yaml.safe_load(Path(profile).read_bytes())
     if (
@@ -207,12 +207,11 @@ def prepare(profile, *, descriptor, base_roster, software_spec, output, readout=
         source_mode="native_integer_v1",
     )
     if source_integer_proof is not None:
-        from merlin_experiments.phase0.connected_integer_qualification import AFFINE_COPY_SELECTION
+        from merlin.experiments.phase0.connected_integer_qualification import AFFINE_COPY_SELECTION
 
         if source_integer_proof != AFFINE_COPY_SELECTION:
             raise ValueError("unsupported prospective public source arithmetic proof selection")
-        policy.update(schema=public_programs.AFFINE_INTEGER_POLICY_SCHEMA,
-                      source_integer_proof=source_integer_proof)
+        policy.update(schema=public_programs.AFFINE_INTEGER_POLICY_SCHEMA, source_integer_proof=source_integer_proof)
     public_programs.validate_selection(policy)
     if (
         not rows
@@ -295,7 +294,7 @@ def prepare(profile, *, descriptor, base_roster, software_spec, output, readout=
             "ordinary HW/SW derivation, writer and performance generation admission",
             "matched external baseline reference, timing boundary and hardware",
         ],
-        "capture_api": "merlin_experiments.phase0.capture_selection.select",
+        "capture_api": "merlin.experiments.phase0.capture_selection.select",
         "capture_kwargs": {"dtype": "int8", "recipe": None, "worker_options": {"source_mode": "native_integer_v1"}},
     }
     for row in rows:
@@ -320,7 +319,7 @@ def select_capture(
     bwrap_binary=None,
 ):
     """Opt-in stock preselection only; never issue a model/target execution."""
-    from merlin_experiments.phase0.capture_selection import select
+    from merlin.experiments.phase0.capture_selection import select
 
     def reopen():
         if pin(preparation)["sha256"] != expected_sha256:

@@ -56,7 +56,8 @@ for _p in (_REPO / "merlin" / "python",):
         sys.path.insert(0, str(_p))
 
 import yaml  # noqa: E402
-from merlin_experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
+
+from merlin.experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
 
 # --- what makes a POINT ---------------------------------------------------------------------------
 # Identity / provenance / bookkeeping: present on every entry, load-bearing for none of them. Dropping
@@ -187,7 +188,7 @@ def _generator():
     Reused, never reimplemented: a second expander would drift from the one that actually mints the
     capsules, and a disjointness proof about points nobody generates is worth nothing.
     """
-    from merlin_experiments.phase0 import sweeps
+    from merlin.experiments.phase0 import sweeps
 
     return sweeps
 

@@ -19,10 +19,9 @@ def pin(path):
 
 def prepare(*, plan_path, config, prep, output):
     """Ordinary selection only: no captures, references, compiler or target execution."""
-    from merlin_experiments.phase0.evidence import export_evidence, load_exported_evidence, select_evidence
-    from merlin_experiments.phase1 import launch_config as L
-    from merlin_experiments.phase1.feedback import private_full_models as F
-
+    from merlin.experiments.phase0.evidence import export_evidence, load_exported_evidence, select_evidence
+    from merlin.experiments.phase1 import launch_config as L
+    from merlin.experiments.phase1.feedback import private_full_models as F
     from merlin.targetgen.target_experiment import load_target_experiment
 
     producer_inputs = {str(Path(path).absolute()): pin(path) for path in (plan_path, config, __file__)}
@@ -112,7 +111,7 @@ def prepare(*, plan_path, config, prep, output):
     spec.write_text(yaml.safe_dump(successor, sort_keys=False))
     spec.chmod(0o600)
     if "numerical_qualification" in successor:
-        from merlin_experiments.phase1.feedback.private_numerical_selection import read
+        from merlin.experiments.phase1.feedback.private_numerical_selection import read
 
         read(spec)
     proofs = {}

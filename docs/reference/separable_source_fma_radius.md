@@ -7,8 +7,8 @@ last_verified: 2026-11-09
 related: [ordered_fma_certificates, quantized_host_optimizations]
 code_refs:
   - src/merlin/llvmlower/source_attention_frontier.py
-  - merlin/runtime/c/separable_fma_radius.h
-  - merlin/runtime/c/prepared_fma_product_bounds.h
+  - src/merlin/runtime/native/c/separable_fma_radius.h
+  - src/merlin/runtime/native/c/prepared_fma_product_bounds.h
 ---
 
 # Optional separable ordered-FMA radius

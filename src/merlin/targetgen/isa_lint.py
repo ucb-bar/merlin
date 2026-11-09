@@ -146,7 +146,7 @@ def _encoding_errata_findings(model: IsaModel, recs: list[Finding]) -> list[Find
                     f"({row.get('declared')}), but {against} decodes those bits as a "
                     f"different instruction ({ev}). This word will assemble, disassemble and "
                     "execute — as something else, with no error anywhere. Emit the "
-                    "hardware's encoding; see merlin/contract/isa_errata.yaml.",
+                    "hardware's encoding; see src/merlin/resources/contracts/isa_errata.yaml.",
                 }
             )
     return out

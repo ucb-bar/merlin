@@ -18,7 +18,7 @@ code_refs:
   - src/merlin/verification/lean_checker.py
   - src/merlin/targetgen/software_spec.py
   - src/merlin/compiler/quantization/admission.py
-  - src/merlin_experiments/phase0/source_requirement_ledger.py
+  - src/merlin/experiments/phase0/source_requirement_ledger.py
 ---
 
 # Start contributing to the compiler
@@ -31,14 +31,21 @@ API is not evidence that an authored compiler consumes it or improves performanc
 Local development can start without a full campaign or FPGA. Follow repository
 instructions and [development setup](getting_started.md), then choose a boundary:
 
+For a first concrete change, compile the [six-value layout example](../../examples/quickstart/README.md).
+Its public entry point is `merlin.api.compile`, its provider is
+`compiler/backend/layout.py`, and its algorithm is `compiler/lower/c/layout.py`.
+Read that algorithm locally before following its invocation through the driver.
+This example requires only the compiler extra; it does not stand in for device
+or full-model validation.
+
 | Work | Start in code | Reference and focused checks |
 | --- | --- | --- |
 | Pass selection and efficient generated code | [pipeline_policy.py](../../src/merlin/transforms/pipeline_policy.py): `evaluate_variants`; [dense_source.py](../../src/merlin/compiler/schedule/dense_source.py): `schedule_source_dense`; [explore.py](../../src/merlin/compiler/planning/explore.py): `realize_candidate` | [Shared passes](../reference/shared_compiler_passes.md), [conditional pipelines](conditional_compiler_pipelines.md); retained related cases in `test_schedule_pipeline.py`, `test_ordered_mnk_tiling.py`, `test_fusion_discovery.py` |
 | Graph and state preservation | [connected.py](../../src/merlin/compiler/lower/connected.py): `plan_connected_region`; [lean_checker.py](../../src/merlin/verification/lean_checker.py): `verify_pipeline_change`; [Lean sources](../../src/merlin/verification/lean/Merlin/) | [Verification boundaries](../design/compiler_verification.md), [toolchain integration](verified_compiler_tooling.md); retained related cases in `test_verification_borrowed_buffer_results_native.py`, `test_verification_lean_checked.py` |
-| Phase 0 coverage and quantization | [software_spec.py](../../src/merlin/targetgen/software_spec.py): `admit_operation`; [admission.py](../../src/merlin/compiler/quantization/admission.py): `build_quantization_contract`; [Phase 0](../../src/merlin_experiments/phase0/) | [Specification](phase0_specification.md), [quantization methodology](../design/target_quantization_methodology.md); retained related cases in `test_quantization_spec.py`, `test_precision_policy.py` |
+| Phase 0 coverage and quantization | [software_spec.py](../../src/merlin/targetgen/software_spec.py): `admit_operation`; [admission.py](../../src/merlin/compiler/quantization/admission.py): `build_quantization_contract`; [Phase 0](../../src/merlin/experiments/phase0/) | [Specification](phase0_specification.md), [quantization methodology](../design/target_quantization_methodology.md); retained related cases in `test_quantization_spec.py`, `test_precision_policy.py` |
 
-Test files are under `merlin/tests/ir/`, `merlin/tests/infra/` or
-`merlin/tests/targetgen/`; run the affected family, not a full campaign for every
+Test files are under `tests/ir/`, `tests/infra/` or
+`tests/targetgen/`; run the affected family, not a full campaign for every
 edit. These are related retained obligations, not a claim that every API in a row
 has a direct permanent test. Historical matrices belong to their recorded
 Git/frozen inputs. Lean execution additionally requires the explicitly selected toolchain.
@@ -62,7 +69,11 @@ Keep excluded reference implementations and scores outside automatic author inpu
 and describe reference-guided study treatments explicitly.
 
 Return one coherent change with a before/after example, applicability conditions,
-focused positive/negative checks and limits. Bind observations to exact compiler,
+focused positive/negative checks and limits. Reuse a maintained obligation when
+it covers the change; do not add a test for every helper or implementation detail.
+The permanent suite has a shared ceiling of 150 collected cases. Generated
+conformance and numerical verification are separate workflows, not reasons to
+expand that suite. Bind observations to exact compiler,
 input and runtime identities. Provisional model estimates are not physical gains;
 graph proofs do not discharge unmodeled arithmetic or target execution.
 

@@ -6,21 +6,21 @@ owner: targetgen
 last_verified: 2026-11-09
 related: [adding_a_target, phase0_phase1_setup, capsule_bench, integrations, phase0_specification]
 code_refs:
-  - src/merlin_experiments/phase0/__main__.py
-  - src/merlin_experiments/phase0/generation.py
-  - src/merlin_experiments/phase0/writer.py
-  - src/merlin_experiments/corpus/preparation.py
-  - src/merlin_experiments/corpus/release.py
-  - src/merlin_experiments/phase0/freeze.py
-  - src/merlin_experiments/runner.py
+  - src/merlin/experiments/phase0/__main__.py
+  - src/merlin/experiments/phase0/generation.py
+  - src/merlin/experiments/phase0/writer.py
+  - src/merlin/experiments/corpus/preparation.py
+  - src/merlin/experiments/corpus/release.py
+  - src/merlin/experiments/phase0/freeze.py
+  - src/merlin/experiments/runner.py
   - src/merlin/targetgen/corpus_spec.py
   - src/merlin/targetgen/group_capsule_entries.py
-  - src/merlin_experiments/phase0/model_forms.py
-  - src/merlin_experiments/phase0/form_perf.py
+  - src/merlin/experiments/phase0/model_forms.py
+  - src/merlin/experiments/phase0/form_perf.py
   - src/merlin/analysis/compute_endpoints.py
   - src/merlin/perf/isa_prohibition.py
-  - src/merlin_experiments/phase0/instruction_roles.py
-  - src/merlin_experiments/corpus/preparation_generation.py
+  - src/merlin/experiments/phase0/instruction_roles.py
+  - src/merlin/experiments/corpus/preparation_generation.py
 ---
 
 # Generating capsules for a target
@@ -65,7 +65,7 @@ also needs an explicit cheaper sibling; it does not certify an unrun simulator.
 | Selected SW inputs and generation gaps | `<run-dir>/phase0/software/` and `coverage/generation.json` |
 | Prepared grading release and review evidence | A fresh operator-selected artifact directory |
 
-The installed generator lives in `merlin_experiments.phase0`; shared derivation primitives
+The installed generator lives in `merlin.experiments.phase0`; shared derivation primitives
 remain in core. There is no need to copy generation scripts into `out/`. Generated capsules
 are artifacts, not new library code or files to sync into a wheel.
 
@@ -88,7 +88,7 @@ See [`materialize.py`](../../src/merlin/targetgen/contract/materialize.py) for
 the retained file roster. Capsule input selection never authorizes expected
 values, private paths or reference compiler code as feedback.
 
-The tracked `merlin/contract/capsules/` tree is retained historical benchmark input,
+The tracked `experiments/corpora/` tree is retained historical benchmark input,
 not the destination for a new Phase 0 run. Existing descriptors and frozen input
 bundles still name its exact paths; it is excluded from the installed core wheel.
 The generator rejects output or evidence destinations that overlap either this
@@ -132,7 +132,7 @@ member; the capture-shape sweeps then record why they were skipped. A named memb
 indirect, different or for another target refuses generation. Software-spec screening of each entry
 uses the numeric binding the writer selects for that entry, not the corpus default.
 
-For standalone invocation, `python -m merlin_experiments.phase0 --help` describes the
+For standalone invocation, `python -m merlin.experiments.phase0 --help` describes the
 installed generator's explicit inputs, including required `--output-root`. Do not use the
 legacy native command to regenerate every target.
 
@@ -168,7 +168,7 @@ read the iteration roster alone. The declared roster must be selected exactly; e
 `workload_role` in the scope.
 
 Both stages refuse held-out models by name (the descriptor's claim roster and the reviewed
-evaluation-only models in `merlin/contract/claim_models.yaml`). A group capsule reaches disk only
+evaluation-only models in `src/merlin/resources/contracts/claim_models.yaml`). A group capsule reaches disk only
 through `phase0.group_forms.write_group_capsule`, under `group_binding` -- the corpus binding with an
 accumulator the recipe, contract or RTL facts state, never a literal.
 

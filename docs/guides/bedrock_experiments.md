@@ -5,7 +5,7 @@ status: current
 owner: capsule-bench
 last_verified: 2026-09-04
 related: [adding_a_target, getting_started]
-code_refs: [merlin/experiments/capsule_bench/harness, src/merlin/targetgen/aet_bridge.py]
+code_refs: [experiments/studies/capsule_bench/harness, src/merlin/targetgen/aet_bridge.py]
 ---
 
 # Run capsule experiments with Bedrock
@@ -25,7 +25,7 @@ still wins); `bwrap` inherits `os.environ`, so the sandboxed `claude` sees it. N
 Sanity check (no full run):
 
 ```bash
-.venv/bin/python merlin/experiments/capsule_bench/harness/smoke_agent_check.py \
+.venv/bin/python experiments/studies/capsule_bench/harness/smoke_agent_check.py \
   --provider bedrock --model us.anthropic.claude-haiku-4-5-20251001-v1:0 --aws-region us-east-1
 # -> "bedrock verdict: reachable=True"
 ```
@@ -50,9 +50,9 @@ drive `claude --print` — reach them through Chia's `BedrockLLM` (Converse agen
 Debug the pipeline cheaply first (haiku, one round, oracle off), then run the real model:
 
 ```bash
-MERLIN_TARGET_EXPERIMENT=merlin/experiments/capsule_bench/targets/<target>/target_experiment.yaml \
+MERLIN_TARGET_EXPERIMENT=experiments/studies/capsule_bench/targets/<target>/target_experiment.yaml \
 MERLIN_AET_SINK=1 \
-.venv/bin/python merlin/experiments/capsule_bench/harness/run_rtlchecks_qa_loop.py \
+.venv/bin/python experiments/studies/capsule_bench/harness/run_rtlchecks_qa_loop.py \
   --run-id <id> --provider bedrock --aws-region us-east-1 \
   --model us.anthropic.claude-sonnet-4-6 \
   --max-rounds 1 --round-timeout 600 --sandbox bwrap

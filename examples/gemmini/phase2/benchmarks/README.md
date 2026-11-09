@@ -82,7 +82,7 @@ PYTHONDONTWRITEBYTECODE=1 python -B examples/gemmini/phase2/benchmarks/prepare.p
 Use `--readout raw_i32` only for an explicitly separate control preparation.
 Preparation renders the ten independent loaders, appends them to the copied
 `performance_applications`, and calls the existing
-`merlin_experiments.phase0.workload_roster.stage` with the copied descriptor.
+`merlin.experiments.phase0.workload_roster.stage` with the copied descriptor.
 Original application loaders/profiles are staged unchanged. The generated
 `recipe.yaml` selects the ordinary versioned `public_programs` native-integer
 path, with no default requantization shift or fake independent-V3 selection.
@@ -94,7 +94,7 @@ independently selected SHA256 of `preparation.json`, a benchmark ID, explicit
 `m2m_root`, `worker`, `venv`, `schemas_root`, fresh `run_dir` and `output_dir`,
 and a bounded `execution_timeout_seconds`. It reopens the preparation/staged
 source pins and calls the normal
-`merlin_experiments.phase0.capture_selection.select` with `dtype="int8"`,
+`merlin.experiments.phase0.capture_selection.select` with `dtype="int8"`,
 no numerical recipe, and `worker_options={"source_mode":"native_integer_v1"}`.
 This only preselects a capture; it does not issue one. Use the existing issue,
 independent replay and attestation owners afterward. Do not treat diagnostic

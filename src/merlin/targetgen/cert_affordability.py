@@ -152,7 +152,7 @@ def _seconds(rec) -> "float | None":
 def _record_roots(target: str, root=None, extra_roots=()):
     """The same two target-scoped bases ``cert_cost`` reads, for the same reason it scopes them: an
     unscoped runs root hands every target every other target's measurements."""
-    from merlin.common.paths import artifacts_dir, runs_dir
+    from merlin.common.paths import artifacts_dir, capsules_dir, runs_dir
 
     if root is not None:
         bases = [Path(root)]
@@ -224,7 +224,7 @@ def samples_for(target: str, *, corpus_roots=None, timing_root=None, extra_timin
     reported rather than dropped: a fit resting on 4 samples out of 800 must not look like a fit resting
     on 800.
     """
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import capsules_dir
     from merlin.targetgen import cert_cost as CC
 
     metric = CC.CostFit.__dataclass_fields__["metric"].default
@@ -233,7 +233,7 @@ def samples_for(target: str, *, corpus_roots=None, timing_root=None, extra_timin
         # Nothing measured: say so without walking the corpus. Sizing 27k capsules to answer "no
         # history" is minutes of work to reach a conclusion the timing records already gave.
         return {"by_engine": {}, "unattributed": 0, "unsized": 0, "metric": metric}
-    roots = list(corpus_roots) if corpus_roots else [merlin_dir() / "contract" / "capsules"]
+    roots = list(corpus_roots) if corpus_roots else [capsules_dir()]
     key = tuple(str(r) for r in roots)
     sizes = _SIZE_CACHE.get(key)
     if sizes is None:

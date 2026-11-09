@@ -6,13 +6,13 @@ owner: targetgen
 last_verified: 2026-11-09
 related: [phase0_specification, model2mlir, reproducibility]
 code_refs:
-  - src/merlin_experiments/phase0/capture_execution_attestation.py
-  - src/merlin_experiments/phase0/capture_selection.py
-  - src/merlin_experiments/phase0/sealed_generation.py
-  - src/merlin_experiments/capture_execution/sealed_static.py
-  - src/merlin_experiments/capture_execution/sealed_m2m.py
-  - src/merlin_experiments/capture_execution/sealed_python.py
-  - src/merlin_experiments/capture_execution/python_preflight.py
+  - src/merlin/experiments/phase0/capture_execution_attestation.py
+  - src/merlin/experiments/phase0/capture_selection.py
+  - src/merlin/experiments/phase0/sealed_generation.py
+  - src/merlin/experiments/capture_execution/sealed_static.py
+  - src/merlin/experiments/capture_execution/sealed_m2m.py
+  - src/merlin/experiments/capture_execution/sealed_python.py
+  - src/merlin/experiments/capture_execution/python_preflight.py
   - src/merlin/targetgen/application_inventory.py
   - src/merlin/targetgen/_m2m_capture_worker.py
 ---
@@ -86,7 +86,7 @@ substitute for preselected sealed execution.
 For a proposed Python capture, run the separate preflight with explicit paths:
 
 ```sh
-python -m merlin_experiments.capture_execution.python_preflight \
+python -m merlin.experiments.capture_execution.python_preflight \
   --worker /selected/merlin/src/merlin/targetgen/_m2m_capture_worker.py \
   --loader /selected/model2MLIR/workloads/model/loader.py \
   --m2m-root /selected/model2MLIR \

@@ -128,9 +128,9 @@ DEFAULT_SCAN_ROOTS = (*_source_layout.SOURCE_SCAN_ROOTS, "build_tools/scripts")
 DEFAULT_WITNESS_ROOTS = (
     *_source_layout.SOURCE_SCAN_ROOTS,
     "build_tools/scripts",
-    "merlin/contract",
-    "merlin/tests",
-    "merlin/schemas",
+    "src/merlin/resources/contracts",
+    "tests",
+    "src/merlin/resources/schemas",
     "examples",
     "experiments",
     "docs",

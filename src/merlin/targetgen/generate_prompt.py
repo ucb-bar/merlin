@@ -701,7 +701,7 @@ Use the granted `python -m merlin.targetgen.oot_starterkit.plan inventory --sour
 <capsule.interface.mlir>` before assigning indices. It pins the exact source bytes and enumerates
 every DIRECT operation in the unique source function's entry block except `func.return`, including constants, empty tensors,
 splats and fills (unlike the payload-only linalg reader); nested scalar-body operations are not
-counted. The typed `merlin/contract/schemas/mixed_program_plan.schema.json` documents the complete
+counted. The typed `src/merlin/resources/contracts/schemas/mixed_program_plan.schema.json` documents the complete
 plan record. After emission, run `python -m merlin.targetgen.oot_starterkit.plan validate --source
 <capsule.interface.mlir> --command-buffer <command_buffer.json> --lowered-mlir <lowered.mlir>`.
 This is a public structural preflight, not a qualification verdict.
@@ -991,7 +991,7 @@ def _enforced_workflow(
         "## MANDATORY development workflow (do ALL of these BEFORE the final status line — not optional)",
         "1. Your compiler backend lives under `submission/`; compute is COMPILER-GENERATED (never a hand kernel).",
         "2. Base every ISA / mesh / datapath / encoding decision on the **Target ISA facts** above + the",
-        "   capability contract under `merlin/contract/` — never guess or hardcode; derive any fact not given.",
+        "   capability contract under `src/merlin/resources/contracts/` — never guess or hardcode; derive any fact not given.",
         # THE COMMAND IS THE INSTRUCTION. The prose above this list already said cheapest-first, and the
         # recommended invocation still named no tier — so it inherited the certifying default, and one
         # measured run spent EVERY self-check on the slowest engine: 6 min, 7 min, 75 min, 96 min of

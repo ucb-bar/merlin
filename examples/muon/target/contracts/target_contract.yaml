@@ -1,4 +1,4 @@
-# Muon (SIMT) target contract (validates against merlin/schemas/target_contract.schema.yaml).
+# Muon (SIMT) target contract (validates against src/merlin/resources/schemas/target_contract.schema.yaml).
 #
 # Curated reference metadata for the Muon SIMT core (RadianceMuonConfig cluster).
 # Executable backend, introspection and oracle declarations belong to the explicitly

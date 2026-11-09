@@ -6,22 +6,22 @@ owner: experiments
 last_verified: 2026-11-09
 related: [phase0_phase1_setup, phase2_cpu_timing_study, normal_search_feedback, neutral_runtime_tooling]
 code_refs:
-  - src/merlin_experiments/phase1/feedback/candidate_observations.py
-  - src/merlin_experiments/phase1/feedback/candidate_census.py
-  - src/merlin_experiments/phase2/ordinary_search_policy.py
-  - src/merlin_experiments/phase2/ordinary_fast_feedback.py
-  - src/merlin_experiments/phase2/ordinary_queue_calibration.py
-  - src/merlin_experiments/phase2/queued_search_actions.py
-  - src/merlin_experiments/phase2/public_program_measurement.py
-  - src/merlin_experiments/phase2/search_configuration.py
-  - src/merlin_experiments/phase2/search_resource_launch.py
-  - src/merlin_experiments/phase2/evaluation_pool.py
-  - src/merlin_experiments/phase2/search_coordinator.py
-  - src/merlin_experiments/phase2/search_target.py
-  - src/merlin_experiments/phase2/search_guidance.py
-  - src/merlin_experiments/phase2/roofline_priority.py
-  - src/merlin_experiments/phase2/functional_guard_execution.py
-  - src/merlin_experiments/phase0/public_programs.py
+  - src/merlin/experiments/phase1/feedback/candidate_observations.py
+  - src/merlin/experiments/phase1/feedback/candidate_census.py
+  - src/merlin/experiments/phase2/ordinary_search_policy.py
+  - src/merlin/experiments/phase2/ordinary_fast_feedback.py
+  - src/merlin/experiments/phase2/ordinary_queue_calibration.py
+  - src/merlin/experiments/phase2/queued_search_actions.py
+  - src/merlin/experiments/phase2/public_program_measurement.py
+  - src/merlin/experiments/phase2/search_configuration.py
+  - src/merlin/experiments/phase2/search_resource_launch.py
+  - src/merlin/experiments/phase2/evaluation_pool.py
+  - src/merlin/experiments/phase2/search_coordinator.py
+  - src/merlin/experiments/phase2/search_target.py
+  - src/merlin/experiments/phase2/search_guidance.py
+  - src/merlin/experiments/phase2/roofline_priority.py
+  - src/merlin/experiments/phase2/functional_guard_execution.py
+  - src/merlin/experiments/phase0/public_programs.py
   - src/merlin/runtime/complete_call_timing.py
   - src/merlin/targetgen/public_program_timing.py
 ---
@@ -115,9 +115,9 @@ frozen corpus, functional fork, edit contract, facts, timing certificate and
 ordinary feedback services. Prepare selection data from that live policy:
 
 ```python
-from merlin_experiments.phase2.evaluation_pool import AssignedResources, JobResources
-from merlin_experiments.phase2.search_configuration import prepare_search_configuration
-from merlin_experiments.phase2.search_coordinator import SearchSettings
+from merlin.experiments.phase2.evaluation_pool import AssignedResources, JobResources
+from merlin.experiments.phase2.search_configuration import prepare_search_configuration
+from merlin.experiments.phase2.search_coordinator import SearchSettings
 
 # policy and boundary are live original owners on the allocated worker.
 selection = prepare_search_configuration(
@@ -203,7 +203,7 @@ For the example eight-hour hard budget above, launch the normal module on the
 allocated AWS worker:
 
 ```sh
-python -m merlin_experiments.phase2.authoring_cli \
+python -m merlin.experiments.phase2.authoring_cli \
   --functional-runs-root "$P1_RUNS" \
   --functional-run-id "$P1_RUN_ID" \
   --functional-submission-sha256 "$P1_COMPILER_SHA256" \

@@ -84,7 +84,7 @@ keeps its historical `<stem>.o`, colliding basenames are named by their link
 position, and caller-supplied objects are never overwritten. Only output names
 change; the link order and the recipe do not.
 
-The existing model C substrate in [`merlin/runtime/c/`](../../merlin/runtime/c)
+The existing model C substrate in [`src/merlin/runtime/native/c/`](../../src/merlin/runtime/native/c)
 builds MLIR memref descriptors and invokes a compiled whole-model function.
 Its `merlin_host_main.c` is a host verification driver. The same directory also
 holds optional, target-neutral header-only numerics (ordered-FMA and product-norm

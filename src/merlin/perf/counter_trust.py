@@ -9,7 +9,7 @@ wrong in a way that looked wrong; they looked like small measurements.
 
 So this module refuses rather than annotates. :func:`values_or_refusal` returns counter values only
 when the engine that produced them is DECLARED to wire them to hardware events, with the evidence
-cited in the engine's own sources (``merlin/contract/counter_trust.yaml``). An engine that is not
+cited in the engine's own sources (``src/merlin/resources/contracts/counter_trust.yaml``). An engine that is not
 declared is ``UNKNOWN`` and is refused too -- fail closed, because the whole failure mode is a
 plausible number arriving from an unexamined source.
 

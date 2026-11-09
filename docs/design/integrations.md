@@ -65,7 +65,7 @@ they check, even where algorithms appear similar.
 The original design reserved `merlin/integrations/<tool>/` (XNNPACK, Autocomp, Exo, Triton, xDSL,
 IREE, CUDA-Tile, Hexagon-MLIR, OpenBLAS) for lightweight **adapters** that parse/index/normalize an
 external project (passed by path/env, never vendored) and emit merlin schema artifacts
-(`kernel_record` / `abstraction_candidate` / `policy_rule`, per `merlin/schemas/`). Every dir was
+(`kernel_record` / `abstraction_candidate` / `policy_rule`, per `src/merlin/resources/schemas/`). Every dir was
 intent-only (`README.md` + `manifest.yaml` + `AGENT.md`, zero `.py`), so it was removed.
 
 **When implementing one:** use a `kernels/ingest/` source or a small `integrations`

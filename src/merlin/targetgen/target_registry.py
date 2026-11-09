@@ -2,7 +2,7 @@
 
 Target identity used to be smeared across three hardcoded maps (`pipeline.DEFAULT_BACKEND`,
 `target_lowering._specs()`/`LOWERING_TABLES`, `synthesize.dialect_plan.CURATED_TARGETS`) plus ~6
-ad-hoc `parents[N]/"merlin/targets/..."` path readers. This module resolves everything a target needs
+ad-hoc `parents[N]/"experiments/reference-data/target-inputs/..."` path readers. This module resolves everything a target needs
 from one place, reusing the path resolvers in `merlin.targetgen.rtl.facts`.
 
 Two kinds of target:
@@ -49,7 +49,7 @@ from .rtl.facts import rtl_facts_path
 #      by each provider's declared target; see :func:`in_repo_support`). Set to the EMPTY string, it
 #      selects nothing, which is how a caller asks for no executable support at all.
 #   2. physical-checkout ``examples/<name>/target/`` first, then legacy
-#      ``merlin/targets/<name>/`` compatibility links. MERLIN_TARGETS_DIR replaces this search.
+#      ``experiments/reference-data/target-inputs/<name>/`` compatibility links. MERLIN_TARGETS_DIR replaces this search.
 #   3. ``out/build/generated/<name>/``  — the FRESHLY-GENERATED OOT home (``write_oot_target`` /
 #      onboarding drop packages here), so a just-generated target resolves with ZERO env.
 #   4. ``out/artifacts/targets/<name>/``  — legacy generated location (fallback).
@@ -427,7 +427,7 @@ def _physical_reference_alias(base: Path, name: str) -> Path:
     """Resolve a checkout compatibility link only against an explicitly selected repo.
 
     Installed distributions do not discover arbitrary ``examples/`` under cwd.
-    An explicitly selected repository may, however, contain old ``merlin/targets``
+    An explicitly selected repository may, however, contain old ``experiments/reference-data/target-inputs``
     links to its own physical example packages.  Use the self-contained package
     for provider ownership; never accept a link to another root or target.
     """

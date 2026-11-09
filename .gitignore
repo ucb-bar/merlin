@@ -55,7 +55,7 @@ selfcheck_out/
 /out/artifacts/handoff/**
 
 # The generated OOT target packages under out/build/generated/ (minted by merlin.targetgen; the
-# hand-authored source of truth is merlin/targets/<target>/) are fully regenerable. Don't track their
+# hand-authored source of truth is experiments/reference-data/target-inputs/<target>/) are fully regenerable. Don't track their
 # empty doc-only skeletons — on a fresh clone they'd be a directory tree of AGENT.md/README.md
 # placeholders describing content that isn't there. out/build/generated/{AGENT,README}.md already
 # document the dir's purpose. Re-ignore the whole per-target subtree.
@@ -146,9 +146,9 @@ selfcheck_out/
 #     hard asserts and are re-included by name; a new fixture needs its own reviewed line. ---
 /out/artifacts/capsule-bench/*/*/**
 /out/artifacts/perf-bench/*/*/**
-# read by merlin/tests/targetgen/test_radiance_application_family_audit.py (coverage.json etc.)
+# read by tests/targetgen/test_radiance_application_family_audit.py (coverage.json etc.)
 !/out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/**
-# read by merlin/tests/runtime/test_gsim_result_page.py (only the verifier; the cases/ dumps stay out)
+# read by tests/runtime/test_gsim_result_page.py (only the verifier; the cases/ dumps stay out)
 !/out/artifacts/capsule-bench/radiance/l3_result_page_v2_20260908/verify.py
 # Both local rendered READMEs are generated reports; keep the technical receipts.
 /out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/README.md
@@ -163,7 +163,7 @@ selfcheck_out/
 /out/artifacts/dse-guidance/case_study/**/*.jpeg
 /out/artifacts/dse-guidance/case_study/**/*.html
 /out/artifacts/dse-guidance/case_study/**/*.log
-# regenerable FX-graph dumps (produced by merlin/benchmarks/dse_guidance/dump_exported_fx.py)
+# regenerable FX-graph dumps (produced by experiments/benchmarks/dse_guidance/dump_exported_fx.py)
 /out/artifacts/dse-guidance/case_study/**/exported_fx/*.txt
 
 # --- out/artifacts/targets/ : generated target packages (codegen products).
@@ -217,7 +217,7 @@ selfcheck_out/
 #     contracts/dialect_plan.yaml). The former per-target rtl_facts/ pin (facts.json + the arc/replay
 #     extras) is retired (untracked + ignored). The generated/ dir keeps its tracked AGENT.md/.gitkeep
 #     skeleton per the convention above. ---
-/merlin/targets/*/contracts/rtl_facts/
+/experiments/reference-data/target-inputs/*/contracts/rtl_facts/
 
 # --- output/ is DELETED/retired: recaptures now live in out/artifacts/recaptures/. Keep this
 #     ignore as a backstop so a stray re-created output/ is never committed. ---
@@ -236,10 +236,10 @@ selfcheck_out/
 /figures/
 
 # --- Per-target generated scaffolds ---
-/merlin/targets/*/generated/**
-!/merlin/targets/*/generated/
-!/merlin/targets/*/generated/AGENT.md
-!/merlin/targets/*/generated/.gitkeep
+/experiments/reference-data/target-inputs/*/generated/**
+!/experiments/reference-data/target-inputs/*/generated/
+!/experiments/reference-data/target-inputs/*/generated/AGENT.md
+!/experiments/reference-data/target-inputs/*/generated/.gitkeep
 
 # --- Local scratch (fully ignored; cross-session notes live here) ---
 /tmp/
@@ -286,19 +286,19 @@ compile_commands.json
 
 # P18 capture-level ablation: raw multi-level recaptures are regenerable (m2m flags); only the
 # small committed summary case_study/capture_level_ablation.csv is tracked.
-merlin/benchmarks/dse_guidance/recaptures_levels/*/*.mlir
+experiments/benchmarks/dse_guidance/recaptures_levels/*/*.mlir
 
 # P19 forensic audit: re-exported FX graph dumps are regenerable via dump_exported_fx.py
-merlin/benchmarks/dse_guidance/case_study/manual_validation/exported_fx/*.txt
-merlin/benchmarks/dse_guidance/case_study/manual_validation/exported_fx/*.FAILED.txt
+experiments/benchmarks/dse_guidance/case_study/manual_validation/exported_fx/*.txt
+experiments/benchmarks/dse_guidance/case_study/manual_validation/exported_fx/*.FAILED.txt
 
 # P20-S3 caveat-resolving variant recaptures (regenerable via variant_capture.py)
-merlin/benchmarks/dse_guidance/recaptures_decode/*/*.mlir
-merlin/benchmarks/dse_guidance/recaptures_decode/*/FAILED.txt
+experiments/benchmarks/dse_guidance/recaptures_decode/*/*.mlir
+experiments/benchmarks/dse_guidance/recaptures_decode/*/FAILED.txt
 
 # Experiment run outputs are generated: new runs route to runs/<target>/<suite>/ (see CLAUDE.md).
 # Any legacy per-experiment runs/ dir is regenerable and never tracked.
-merlin/experiments/**/runs/
+experiments/studies/**/runs/
 # Transient agentic-experiment workspaces: per-run bwrap workspaces full of absolute symlinks +
 # live-written state (never want these tracked; durable artifacts live in runs/ and reports/).
 **/_qa_ws/
@@ -335,7 +335,7 @@ tmp
 **/expected_instruction_coverage.yaml
 **/hidden/
 # Externalized capsule weights are large regenerable binaries AND, for a whole-model capsule, the
-# thing the golden was computed from. The rule existed only in merlin/contract/capsules/.gitignore,
+# thing the golden was computed from. The rule existed only in experiments/corpora/.gitignore,
 # so it protected nothing under artifacts/, out/, or harness/full_public_capsules/ — where 11 weight
 # blobs were surfacing as untracked. Make it global, like every other rule in this section.
 **/*.safetensors
@@ -344,9 +344,9 @@ tmp
 # targetgen_evals grading rubrics + the declared holdout. A `golden/` DIRECTORY is an answer surface
 # (check_no_answer_keys.py matches it as a path component, as it already did for `hidden/`); the two
 # files the method's own prompt hands it are re-included below as declared stimulus.
-/merlin/experiments/targetgen_evals/datasets/*/golden/**
-!/merlin/experiments/targetgen_evals/datasets/*/golden/expected_contract.yaml
-!/merlin/experiments/targetgen_evals/datasets/*/golden/expected_dialect_features.yaml
+/experiments/studies/targetgen_evals/datasets/*/golden/**
+!/experiments/studies/targetgen_evals/datasets/*/golden/expected_contract.yaml
+!/experiments/studies/targetgen_evals/datasets/*/golden/expected_dialect_features.yaml
 
 # dse-guidance case study: the generated tables are re-included by the negation above, but these two
 # subtrees are session working material (slide triage, positioning memos, one-off validation scripts)
@@ -359,16 +359,16 @@ tmp
 # llvm-lit writes a per-suite timing cache next to the tests on every run. It is scheduling state, not
 # a test input, and it reappears the moment anyone runs the suite -- so without this it shows up as an
 # untracked file in every session and eventually gets swept into someone's commit.
-merlin/tests/data/lit/.lit_test_times.txt
+tests/data/lit/.lit_test_times.txt
 
 # Voyager head-to-head: the comparative analysis stays internal. This repo is public, and these three
 # carry our positioning against another group's published work -- including a defect in their public
 # release and the paper claims we intend to make from it. The reproducible half of the experiment
 # (bridge, harnesses, concession register) stays tracked; only the analysis is held back. Copies live
 # under out/artifacts/presentation/merlin_retrospective_20260911/.
-/merlin/experiments/voyager_h2h/LESSONS.md
-/merlin/experiments/voyager_h2h/STATUS.md
-/merlin/experiments/voyager_h2h/PLANE_B.md
+/experiments/studies/voyager_h2h/LESSONS.md
+/experiments/studies/voyager_h2h/STATUS.md
+/experiments/studies/voyager_h2h/PLANE_B.md
 
 # Local generated results and retired deployment records are not source inputs.
 /out/**
@@ -377,18 +377,18 @@ merlin/tests/data/lit/.lit_test_times.txt
 /experiments/reference-data/readiness-execution-20261023/
 /experiments/reference-data/el4-artifact-release/READINESS.md
 /experiments/reference-data/el4-artifact-release/compiler-review.json
-/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/README.md
-/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/example_kernel/conv.c
-/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/example_kernel/matmul_ws.c
-/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/example_kernel/mvin_mvout.c
-/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/example_kernel/padded.c
-/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include
-/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/rtl
-/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_nokernel_v0/README.md
-/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_nokernel_v0/isa_include
-/merlin/experiments/capsule_bench/targets/gemmini/contracts/hwbringup_nokernel_v0/rtl
-/merlin/experiments/capsule_bench/targets/gemmini_g3arm97/_qa_ws
-/merlin/experiments/capsule_bench/targets/gemmini_universal/contracts/hwbringup_gemmini_universal_v0/isa_include
+/experiments/studies/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/README.md
+/experiments/studies/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/example_kernel/conv.c
+/experiments/studies/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/example_kernel/matmul_ws.c
+/experiments/studies/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/example_kernel/mvin_mvout.c
+/experiments/studies/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/example_kernel/padded.c
+/experiments/studies/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include
+/experiments/studies/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/rtl
+/experiments/studies/capsule_bench/targets/gemmini/contracts/hwbringup_nokernel_v0/README.md
+/experiments/studies/capsule_bench/targets/gemmini/contracts/hwbringup_nokernel_v0/isa_include
+/experiments/studies/capsule_bench/targets/gemmini/contracts/hwbringup_nokernel_v0/rtl
+/experiments/studies/capsule_bench/targets/gemmini_g3arm97/_qa_ws
+/experiments/studies/capsule_bench/targets/gemmini_universal/contracts/hwbringup_gemmini_universal_v0/isa_include
 
 # Local historical runtime experiments and continuation declarations.
 /examples/gemmini/phase2/el4_20261018/runtime_transport_experiment/

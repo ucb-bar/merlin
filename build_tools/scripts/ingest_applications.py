@@ -68,7 +68,7 @@ def report(target: str, captures: dict, *, budget_s: float | None = None) -> dic
 
     REFUSES A CLAIM MODEL, exactly as `check_conformance_coverage._applications` does. The application
     axis decides which capsules exist, so a claim model reaching it builds the corpus from the model it
-    is then said to generalize to -- the circularity `merlin/contract/claim_models.yaml` exists to
+    is then said to generalize to -- the circularity `src/merlin/resources/contracts/claim_models.yaml` exists to
     prevent. The sibling path guards this loudly; this one called `_application_axis` directly with a
     glob of `*_app` bundles and no filter at all, so the guard held on one route into the same function
     and not the other. A capture named `resnet50_..._app` would have derived the requirement with

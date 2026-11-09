@@ -14,7 +14,7 @@ job plan for all243 retained members; it executes no capture, compiler or target
 and grants no seal, role, private exclusion, realization or writer authority.
 
 ```sh
-python -m merlin_experiments.phase0.development_admission_plan \
+python -m merlin.experiments.phase0.development_admission_plan \
   --readiness-pins "$READINESS/final-pins.json" --sha256 "$EXPECTED_SHA256" \
   --output "$TASK_DIR/.tmp/development-admission-plan.json"
 ```

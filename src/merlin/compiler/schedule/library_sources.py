@@ -471,7 +471,12 @@ LIBRARY_MODULES_V26 = tuple(
 )
 
 
-def library_modules(version=26):
+# SDK27 binds the consolidated wheel layout; public algorithm membership is unchanged.
+CURRENT_SDK_VERSION = 27
+LIBRARY_MODULES_V27 = LIBRARY_MODULES_V26
+
+
+def library_modules(version=CURRENT_SDK_VERSION):
     """Select a closed reviewed inventory; this grants no import access."""
     if type(version) is not int or version not in (
         6,
@@ -495,8 +500,9 @@ def library_modules(version=26):
         24,
         25,
         26,
+        27,
     ):
-        raise ValueError("shared compiler inventory requires version 6 through 26")
+        raise ValueError("shared compiler inventory requires version 6 through 27")
     return {
         6: LIBRARY_MODULES_V6,
         7: LIBRARY_MODULES_V7,
@@ -519,10 +525,11 @@ def library_modules(version=26):
         24: LIBRARY_MODULES_V24,
         25: LIBRARY_MODULES_V25,
         26: LIBRARY_MODULES_V26,
+        27: LIBRARY_MODULES_V27,
     }[version]
 
 
-def shared_library_sources(*, version=26):
+def shared_library_sources(*, version=CURRENT_SDK_VERSION):
     """Current source identities, equal for every treatment of one library."""
     return {
         name: hashlib.sha256(Path(importlib.import_module(name).__file__).read_bytes()).hexdigest()

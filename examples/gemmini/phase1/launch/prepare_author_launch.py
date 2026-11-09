@@ -15,8 +15,8 @@ import stat
 import subprocess
 from pathlib import Path
 
-from merlin_experiments.phase1.joint_control import policy as load_policy
-from merlin_experiments.phase2.compiler_library_state import restore_selection
+from merlin.experiments.phase1.joint_control import policy as load_policy
+from merlin.experiments.phase2.compiler_library_state import restore_selection
 
 
 def prepare(*, template, release, library_selection, repo, output, policy, run_id):
@@ -76,10 +76,15 @@ def prepare(*, template, release, library_selection, repo, output, policy, run_i
         argv.append("--author-token-admission")
     if int(argv[argv.index("--max-wall-s") + 1]) != selected_policy["duration_s"]:
         raise ValueError("native author clock differs from selected joint policy")
-    env = relocate_environment(old["environment"], (
-        (str(previous_release), str(release)), (str(previous_repo), str(repo)),
-        (str(previous_repo.parent / ".tmp"), str(task / ".tmp")), (previous_run_id, run_id),
-    ))
+    env = relocate_environment(
+        old["environment"],
+        (
+            (str(previous_release), str(release)),
+            (str(previous_repo), str(repo)),
+            (str(previous_repo.parent / ".tmp"), str(task / ".tmp")),
+            (previous_run_id, run_id),
+        ),
+    )
     for key in (
         "MERLIN_JOINT_CAMPAIGN_STATE",
         "MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION",

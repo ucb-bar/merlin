@@ -13,7 +13,7 @@ one with ``--var ARTIFACTS=...`` beside a prepared launch), the plan's certifica
    (``joint_seed.stage``, the full-compiler fill and the joint campaign state, as the session does),
    then an inventory of what the author will find, as a pass/fail table;
 3. **zero-edit grade**: the seed compiler, unchanged, graded over ``--cases`` of the PLANNED run's
-   sealed release (core and scalability, staged as the session stages them) by the self-check evaluator (``merlin_experiments.phase1.feedback.selfcheck``) in the
+   sealed release (core and scalability, staged as the session stages them) by the self-check evaluator (``merlin.experiments.phase1.feedback.selfcheck``) in the
    campaign runtime with the plan's environment. Every case the seed proved should come back carried
    (``carried from <seed run>``) with model cycles attached and no Spike timing observation;
 4. **unseeded comparison** (``--unseeded N``): the same evaluator on N of those cases without any seed
@@ -70,8 +70,9 @@ def _call(command, *, env, cwd, log: Path) -> int:
     with open(log, "ab") as handle:
         handle.write(f"\n$ {' '.join(map(str, command))}\n".encode())
         handle.flush()
-        return subprocess.run(list(map(str, command)), env=env, cwd=cwd, stdout=handle,
-                              stderr=subprocess.STDOUT).returncode
+        return subprocess.run(
+            list(map(str, command)), env=env, cwd=cwd, stdout=handle, stderr=subprocess.STDOUT
+        ).returncode
 
 
 def _in_runtime(plan: dict, out: Path, step: str, *rest, extra=None) -> dict:
@@ -83,8 +84,12 @@ def _in_runtime(plan: dict, out: Path, step: str, *rest, extra=None) -> dict:
     if step == "_grade":  # each grade's operator work trees apart, so its raw results can be read back
         (out / f"tmp-{rest[0]}").mkdir(exist_ok=True)
         extra = dict(extra or {}, TMPDIR=str(out / f"tmp-{rest[0]}"))
-    code = _call([_python(plan), "-B", script, step, str(out), *rest, "--result", result],
-                 env=_runtime_env(plan, extra), cwd=plan["cwd"], log=out / "rehearsal.log")
+    code = _call(
+        [_python(plan), "-B", script, step, str(out), *rest, "--result", result],
+        env=_runtime_env(plan, extra),
+        cwd=plan["cwd"],
+        log=out / "rehearsal.log",
+    )
     if code or not result.is_file():
         raise SystemExit(f"{step} failed (rc={code}); see {out / 'rehearsal.log'}")
     return json.loads(result.read_text())
@@ -117,36 +122,68 @@ def inventory(stage: dict, out: Path, plan: dict) -> list[dict]:
 
     rows = [
         ("SEED_INDEX.md", nonempty(ws / "SEED_INDEX.md"), "workspace root index of everything carried"),
-        ("SEED_VARIANTS", nonempty(ws / "SEED_VARIANTS"),
-         f"{sum(1 for p in (ws / 'SEED_VARIANTS').glob('*') if p.is_dir())} variant trees"),
+        (
+            "SEED_VARIANTS",
+            nonempty(ws / "SEED_VARIANTS"),
+            f"{sum(1 for p in (ws / 'SEED_VARIANTS').glob('*') if p.is_dir())} variant trees",
+        ),
         ("variant outcomes", nonempty(ws / "SEED_VARIANTS" / "OUTCOMES.json"), "SEED_VARIANTS/OUTCOMES.json"),
-        ("perf history", nonempty(ws / "SEED_PERFORMANCE" / "perf_history.jsonl"), "SEED_PERFORMANCE/perf_history.jsonl"),
-        ("baseline cycles", cycles(ws / "SEED_PERFORMANCE" / "baseline.json") > 0,
-         f"{cycles(ws / 'SEED_PERFORMANCE' / 'baseline.json')} cases with seed cycles"),
+        (
+            "perf history",
+            nonempty(ws / "SEED_PERFORMANCE" / "perf_history.jsonl"),
+            "SEED_PERFORMANCE/perf_history.jsonl",
+        ),
+        (
+            "baseline cycles",
+            cycles(ws / "SEED_PERFORMANCE" / "baseline.json") > 0,
+            f"{cycles(ws / 'SEED_PERFORMANCE' / 'baseline.json')} cases with seed cycles",
+        ),
         ("OPTIMIZATION_RULES", nonempty(ws / "OPTIMIZATION_RULES.json"), "OPTIMIZATION_RULES.json"),
         ("PREVIOUS_SESSION", nonempty(ws / "PREVIOUS_SESSION.md"), "PREVIOUS_SESSION.md"),
         ("A/B + evidence records", nonempty(ws / "SEED_EXPERIMENTS"), "SEED_EXPERIMENTS/"),
-        ("seed tools and notes", nonempty(ws / "SEED_TOOLS") or nonempty(ws / "SEED_NOTES"), "SEED_TOOLS/, SEED_NOTES/"),
-        ("calibration", pairs(run / "joint_fast_estimate_pairs.json") >= 12,
-         f"{pairs(run / 'joint_fast_estimate_pairs.json')} fast-estimate pairs in the run directory"),
-        ("carried timing", nonempty(run / "seed_timing"),
-         f"{sum(1 for _ in (run / 'seed_timing').glob('*.json'))} executables with seed model cycles"),
-        ("carried verdicts", bool(stage.get("certificate_carry_over")) and bool((plan.get("seed") or {}).get(
-            "certificates", {}).get("carried")), f"{((plan.get('seed') or {}).get('certificates') or {}).get('carried')} "
-         "verdicts re-keyed onto this judge"),
-        ("guidance addendum", bool(guidance and addendum.is_file()
-                                   and addendum.read_text().strip()[:200] in guidance.read_text()),
-         "seed addendum inside the run's guidance"),
-        ("seeded grade order", plan["environment"].get("MERLIN_CAPSULE_ORDER") in (None, "", "seeded")
-         and bool(plan["environment"].get("MERLIN_SEEDED_GRADE")), "MERLIN_SEEDED_GRADE set, order seeded"),
+        (
+            "seed tools and notes",
+            nonempty(ws / "SEED_TOOLS") or nonempty(ws / "SEED_NOTES"),
+            "SEED_TOOLS/, SEED_NOTES/",
+        ),
+        (
+            "calibration",
+            pairs(run / "joint_fast_estimate_pairs.json") >= 12,
+            f"{pairs(run / 'joint_fast_estimate_pairs.json')} fast-estimate pairs in the run directory",
+        ),
+        (
+            "carried timing",
+            nonempty(run / "seed_timing"),
+            f"{sum(1 for _ in (run / 'seed_timing').glob('*.json'))} executables with seed model cycles",
+        ),
+        (
+            "carried verdicts",
+            bool(stage.get("certificate_carry_over"))
+            and bool((plan.get("seed") or {}).get("certificates", {}).get("carried")),
+            f"{((plan.get('seed') or {}).get('certificates') or {}).get('carried')} verdicts re-keyed onto this judge",
+        ),
+        (
+            "guidance addendum",
+            bool(guidance and addendum.is_file() and addendum.read_text().strip()[:200] in guidance.read_text()),
+            "seed addendum inside the run's guidance",
+        ),
+        (
+            "seeded grade order",
+            plan["environment"].get("MERLIN_CAPSULE_ORDER") in (None, "", "seeded")
+            and bool(plan["environment"].get("MERLIN_SEEDED_GRADE")),
+            "MERLIN_SEEDED_GRADE set, order seeded",
+        ),
     ]
     return [{"item": a, "pass": bool(b), "detail": c} for a, b, c in rows]
 
 
 def _cases(spec: str, corpus: Path) -> dict:
     core = sorted(p.name for p in (corpus / "public").iterdir() if p.is_dir())
-    scal = sorted(p.name for p in (corpus / "scalability" / "cases").iterdir() if p.is_dir()) if (
-        corpus / "scalability" / "cases").is_dir() else []
+    scal = (
+        sorted(p.name for p in (corpus / "scalability" / "cases").iterdir() if p.is_dir())
+        if (corpus / "scalability" / "cases").is_dir()
+        else []
+    )
     if spec == "all":
         wanted = set(core) | set(scal)
     elif spec.startswith("@"):
@@ -165,10 +202,15 @@ def _summary(grade: dict, proven: set) -> dict:
     timed = sorted(n for n, r in rows.items() if r.get("timing_observed"))
     seed_timed = sorted(n for n, r in rows.items() if r.get("timing_carried"))
     return {
-        "cases": len(rows), "passed": sum(1 for r in rows.values() if r.get("status") == "pass"),
-        "carried": len(carried), "executed": len(executed), "proven_not_carried": missed,
-        "carried_with_model_cycles": len(with_cycles), "spike_timing_observations": len(timed),
-        "timing_carried_from_seed": len(seed_timed), "wall_s": grade.get("wall_s"),
+        "cases": len(rows),
+        "passed": sum(1 for r in rows.values() if r.get("status") == "pass"),
+        "carried": len(carried),
+        "executed": len(executed),
+        "proven_not_carried": missed,
+        "carried_with_model_cycles": len(with_cycles),
+        "spike_timing_observations": len(timed),
+        "timing_carried_from_seed": len(seed_timed),
+        "wall_s": grade.get("wall_s"),
         "executed_cases": executed[:40],
     }
 
@@ -177,8 +219,13 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--spec", required=True)
     ap.add_argument("--export-id")
-    ap.add_argument("--var", action="append", default=[], metavar="NAME=VALUE",
-                    help="spec variable override, e.g. ARTIFACTS=<scratch> to keep a real launch plan untouched")
+    ap.add_argument(
+        "--var",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="spec variable override, e.g. ARTIFACTS=<scratch> to keep a real launch plan untouched",
+    )
     ap.add_argument("--cases", default="all")
     ap.add_argument("--out")
     ap.add_argument("--edit", help="executable run inside a copy of the staged submission")
@@ -186,8 +233,12 @@ def main(argv=None) -> int:
     ap.add_argument("--unseeded", type=int, default=0, help="unseeded comparison sample size (0: skip)")
     ap.add_argument("--workers", type=int, default=16)
     ap.add_argument("--skip-plan", action="store_true")
-    ap.add_argument("--start-grade", metavar="OUT", type=Path,
-                    help="write SEED_START_GRADE.json/.md (the zero-edit grade per test case) into OUT")
+    ap.add_argument(
+        "--start-grade",
+        metavar="OUT",
+        type=Path,
+        help="write SEED_START_GRADE.json/.md (the zero-edit grade per test case) into OUT",
+    )
     args = ap.parse_args(argv)
     ctx = _context(args)
     artifacts = ctx.path("${ARTIFACTS}")
@@ -200,14 +251,21 @@ def main(argv=None) -> int:
     report: dict = {"spec": str(Path(args.spec).resolve()), "export": str(framework), "timings_s": {}}
     started = time.monotonic()
     if not args.skip_plan:
-        env = dict(os.environ, PYTHONPATH=":".join(str(framework / p) for p in (
-            "src", "packages/merlin-experiments/src", "packages/merlin-timing/src")))
+        env = dict(
+            os.environ,
+            PYTHONPATH=":".join(
+                str(framework / p) for p in ("src", "packages/merlin-experiments/src", "packages/merlin-timing/src")
+            ),
+        )
         launcher = framework / "examples/gemmini/phase1/launch/fresh_campaign.py"
         for step in ("ordering", "plan"):
             forwarded = [item for name in args.var for item in ("--var", name)]
-            code = _call([python, "-B", launcher, step, "--spec", args.spec, "--export-id", ctx.lookup("EXPORT_ID"),
-                          *forwarded],
-                         env=env, cwd=framework, log=out / "rehearsal.log")
+            code = _call(
+                [python, "-B", launcher, step, "--spec", args.spec, "--export-id", ctx.lookup("EXPORT_ID"), *forwarded],
+                env=env,
+                cwd=framework,
+                log=out / "rehearsal.log",
+            )
             if code:
                 raise SystemExit(f"fresh_campaign.py {step} failed; see {out / 'rehearsal.log'}")
     report["timings_s"]["plan"] = round(time.monotonic() - started, 1)
@@ -228,8 +286,16 @@ def main(argv=None) -> int:
     proven = set(stage.get("proven") or ())
     grades = {}
     t = time.monotonic()
-    grades["zero_edit"] = _in_runtime(plan, out, "_grade", "zero_edit", str(out / "workspace" / "submission"),
-                                      json.dumps(cases), str(args.workers), extra=extra)
+    grades["zero_edit"] = _in_runtime(
+        plan,
+        out,
+        "_grade",
+        "zero_edit",
+        str(out / "workspace" / "submission"),
+        json.dumps(cases),
+        str(args.workers),
+        extra=extra,
+    )
     report["timings_s"]["zero_edit_grade"] = round(time.monotonic() - t, 1)
     report["zero_edit"] = _summary(grades["zero_edit"], proven & set(cases["core"] + cases["scalability"]))
     if args.start_grade is not None:
@@ -239,17 +305,34 @@ def main(argv=None) -> int:
         # An even spread over each suite (every k-th case), not its alphabetical head.
         step = max(1, -(-sum(map(len, cases.values())) // args.unseeded))
         sample = {k: v[::step] for k, v in cases.items()}
-        unseeded = dict(extra, MERLIN_TIER_CERT_CACHE=str(out / "unseeded-store"), MERLIN_SEEDED_GRADE="",
-                        MERLIN_TIER_CERT_PORTABLE="", MERLIN_SEED_TIMING="0")
-        grades["unseeded"] = _in_runtime(plan, out, "_grade", "unseeded", str(out / "workspace" / "submission"),
-                                         json.dumps(sample), str(args.workers), extra=unseeded)
+        unseeded = dict(
+            extra,
+            MERLIN_TIER_CERT_CACHE=str(out / "unseeded-store"),
+            MERLIN_SEEDED_GRADE="",
+            MERLIN_TIER_CERT_PORTABLE="",
+            MERLIN_SEED_TIMING="0",
+        )
+        grades["unseeded"] = _in_runtime(
+            plan,
+            out,
+            "_grade",
+            "unseeded",
+            str(out / "workspace" / "submission"),
+            json.dumps(sample),
+            str(args.workers),
+            extra=unseeded,
+        )
         per_case = [r["wall_s"] for r in grades["unseeded"]["cases"].values() if r.get("wall_s")]
-        report["unseeded"] = dict(_summary(grades["unseeded"], set()), sample=sum(map(len, sample.values())),
-                                  per_case_median_s=statistics.median(per_case) if per_case else None)
+        report["unseeded"] = dict(
+            _summary(grades["unseeded"], set()),
+            sample=sum(map(len, sample.values())),
+            per_case_median_s=statistics.median(per_case) if per_case else None,
+        )
         sampled = max(1, report["unseeded"]["sample"])
         # Scaled by case count at the same worker count: an estimate, not a measurement.
         report["unseeded"]["estimated_all_cases_s"] = round(
-            grades["unseeded"]["wall_s"] * sum(map(len, cases.values())) / sampled, 1)
+            grades["unseeded"]["wall_s"] * sum(map(len, cases.values())) / sampled, 1
+        )
     if args.edit:
         edited = out / "edited-submission"
         shutil.copytree(out / "workspace" / "submission", edited)
@@ -258,8 +341,9 @@ def main(argv=None) -> int:
             raise SystemExit(f"--edit failed with rc={code}")
         chosen = _cases(args.edit_cases or args.cases, corpus)
         t = time.monotonic()
-        grades["edited"] = _in_runtime(plan, out, "_grade", "edited", str(edited), json.dumps(chosen),
-                                       str(args.workers), extra=extra)
+        grades["edited"] = _in_runtime(
+            plan, out, "_grade", "edited", str(edited), json.dumps(chosen), str(args.workers), extra=extra
+        )
         report["timings_s"]["edited_grade"] = round(time.monotonic() - t, 1)
         report["edited"] = _summary(grades["edited"], proven & set(chosen["core"] + chosen["scalability"]))
     report["brief"] = grades["zero_edit"].get("brief")
@@ -281,7 +365,14 @@ def render(report: dict) -> str:
         if block:
             lines += ["", f"## {name}", "", "```", json.dumps(block, indent=1), "```"]
     if report.get("brief") is not None:
-        lines += ["", "## performance brief (first grade)", "", "```", json.dumps(report["brief"], indent=1)[:4000], "```"]
+        lines += [
+            "",
+            "## performance brief (first grade)",
+            "",
+            "```",
+            json.dumps(report["brief"], indent=1)[:4000],
+            "```",
+        ]
     lines += ["", f"timings (s): {json.dumps(report['timings_s'])}"]
     return "\n".join(lines) + "\n"
 
@@ -292,8 +383,9 @@ def render(report: dict) -> str:
 def _stage(out: Path, proposed: str, result: Path) -> None:
     """Stage the seed exactly as the session does, into ``out/workspace`` and ``out/run``."""
     import fresh_seed
-    from merlin_experiments.phase1 import fresh_backend, joint_control, joint_seed
-    from merlin_experiments.phase1 import full_compiler_workspace as FCW
+
+    from merlin.experiments.phase1 import fresh_backend, joint_control, joint_seed
+    from merlin.experiments.phase1 import full_compiler_workspace as FCW
 
     plan = json.loads(Path(proposed).read_text())
     options = fresh_seed.options_from_argv(plan["argv"])
@@ -303,8 +395,9 @@ def _stage(out: Path, proposed: str, result: Path) -> None:
     (workspace / "submission").mkdir(parents=True)
     run_dir.mkdir()
     staged = joint_seed.stage(options, workspace, run_dir)
-    selection = FCW.select(options.full_compiler_root, options.full_compiler_manifest,
-                           options.full_compiler_manifest_sha256)
+    selection = FCW.select(
+        options.full_compiler_root, options.full_compiler_manifest, options.full_compiler_manifest_sha256
+    )
     FCW.stage(selection, workspace / "submission")
     joint_control.configure(options, run_dir)
     joint_control.start()  # the session starts the clock before authoring; grades read it
@@ -313,23 +406,36 @@ def _stage(out: Path, proposed: str, result: Path) -> None:
     planning_inventory(corpus, workspace, run_dir)
     from merlin.targetgen import seeded_grade
 
-    environment = {FCW.ENV: json.dumps({"root": options.full_compiler_root,
-                                        "manifest_path": options.full_compiler_manifest,
-                                        "manifest_sha256": options.full_compiler_manifest_sha256})}
+    environment = {
+        FCW.ENV: json.dumps(
+            {
+                "root": options.full_compiler_root,
+                "manifest_path": options.full_compiler_manifest,
+                "manifest_sha256": options.full_compiler_manifest_sha256,
+            }
+        )
+    }
     owned = Path(seed_run["run_dir"]) / "public_owned_host_build_selection.json"
     if owned.is_file():
         import hashlib
 
         environment["MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION"] = json.dumps(
-            {"path": str(owned), "sha256": hashlib.sha256(owned.read_bytes()).hexdigest()})
-    result.write_text(json.dumps({
-        "certificate_carry_over": (staged.get("certificate_carry_over") or {}).get("enabled"),
-        "seed_evidence": staged.get("seed_evidence"),
-        "previous_session": bool(staged.get("previous_session")),
-        "corpus": str(corpus),
-        "proven": sorted(seeded_grade.proven()),
-        "environment": environment,
-    }, indent=2, default=str))
+            {"path": str(owned), "sha256": hashlib.sha256(owned.read_bytes()).hexdigest()}
+        )
+    result.write_text(
+        json.dumps(
+            {
+                "certificate_carry_over": (staged.get("certificate_carry_over") or {}).get("enabled"),
+                "seed_evidence": staged.get("seed_evidence"),
+                "previous_session": bool(staged.get("previous_session")),
+                "corpus": str(corpus),
+                "proven": sorted(seeded_grade.proven()),
+                "environment": environment,
+            },
+            indent=2,
+            default=str,
+        )
+    )
 
 
 def planned_corpus(plan: dict, run_dir: Path, corpus: Path) -> Path:
@@ -339,8 +445,9 @@ def planned_corpus(plan: dict, run_dir: Path, corpus: Path) -> Path:
     seed run on another release), and its frozen scalability snapshot then fails the planned
     descriptor's pin. The minute-0 starting grade must be the planned run's."""
     import yaml
+
+    from merlin.experiments.phase1 import corpus_inputs
     from merlin.targetgen.target_experiment import load_target_experiment
-    from merlin_experiments.phase1 import corpus_inputs
 
     argv = plan["argv"]
 
@@ -349,8 +456,12 @@ def planned_corpus(plan: dict, run_dir: Path, corpus: Path) -> Path:
 
     repo = Path(value("--repo")) if "--repo" in argv else Path(plan["cwd"])
     bundle = yaml.safe_load(Path(value("--bundle-manifest")).read_text())
-    corpus_inputs.stage(run_dir, load_target_experiment(Path(value("--descriptor"))), bundle,
-                        contract=repo / "merlin/contract")
+    corpus_inputs.stage(
+        run_dir,
+        load_target_experiment(Path(value("--descriptor"))),
+        bundle,
+        contract=repo / "src/merlin/resources/contracts",
+    )
     staged = run_dir / "private_corpus_input"
     # The session seals its copy read-only; this one is the rehearsal's to grade from and remove.
     for path in [staged, *staged.rglob("*")]:
@@ -361,13 +472,16 @@ def planned_corpus(plan: dict, run_dir: Path, corpus: Path) -> Path:
 
 def planning_inventory(corpus: Path, workspace: Path, run_dir: Path) -> None:
     """The planned corpus's public planning inventory (workload roles), as the session stages it."""
+    from merlin.experiments.phase1 import capability_inventory, joint_control
     from merlin.targetgen.capsule_common import discover_capsules
-    from merlin_experiments.phase1 import capability_inventory, joint_control
 
     contract = corpus / "contract"
     native = discover_capsules(corpus / "public", labels={"public", "dev"}, contract=contract)
-    scale = (discover_capsules(corpus / "scalability" / "cases", labels={"public", "dev"}, contract=contract)
-             if (corpus / "scalability" / "cases").is_dir() else [])
+    scale = (
+        discover_capsules(corpus / "scalability" / "cases", labels={"public", "dev"}, contract=contract)
+        if (corpus / "scalability" / "cases").is_dir()
+        else []
+    )
     inventory = capability_inventory.build(native, scalability=scale, policy=joint_control.selected()["policy"])
     data = json.dumps(inventory, sort_keys=True, indent=2, allow_nan=False) + "\n"
     for root in (workspace, run_dir):
@@ -376,24 +490,40 @@ def planning_inventory(corpus: Path, workspace: Path, run_dir: Path) -> None:
 
 def start_grade(grade: dict, out: Path) -> dict:
     """``SEED_START_GRADE.json``/``.md``: the unchanged seed on the planned run's grader and corpus."""
-    rows = {name: {key: row.get(key) for key in ("status", "carried_from", "cycles", "cycles_evidence", "suite")}
-            for name, row in (grade.get("cases") or {}).items()}
+    rows = {
+        name: {key: row.get(key) for key in ("status", "carried_from", "cycles", "cycles_evidence", "suite")}
+        for name, row in (grade.get("cases") or {}).items()
+    }
     passed = sorted(name for name, row in rows.items() if row["status"] == "pass")
     carried = sorted(name for name in passed if rows[name]["carried_from"])
-    document = {"schema": "merlin.seed_start_grade.v1",
-                "what": "the seed compiler, unchanged, graded on this run's grader and corpus before launch",
-                "cases": len(rows), "passed": len(passed), "carried": len(carried), "wall_s": grade.get("wall_s"),
-                "per_case": rows}
+    document = {
+        "schema": "merlin.seed_start_grade.v1",
+        "what": "the seed compiler, unchanged, graded on this run's grader and corpus before launch",
+        "cases": len(rows),
+        "passed": len(passed),
+        "carried": len(carried),
+        "wall_s": grade.get("wall_s"),
+        "per_case": rows,
+    }
     out.mkdir(parents=True, exist_ok=True)
     (out / "SEED_START_GRADE.json").write_text(json.dumps(document, indent=1, sort_keys=True) + "\n")
-    lines = ["# Seed starting grade", "",
-             f"The seed compiler, unchanged, graded on this run's grader before launch: **{len(passed)} of "
-             f"{len(rows)} test cases pass**, {len(carried)} of them carried from the seed run (no re-execution).",
-             "", "This is your starting point. After your edits, a test case that passed here and fails now is a "
-             "regression your change introduced; the grade feedback names the error.", "",
-             "| test case | suite | status | cycles |", "|---|---|---|---|"]
-    lines += [f"| {name} | {row['suite'] or ''} | {row['status']}{' (carried)' if row['carried_from'] else ''} | "
-              f"{row['cycles'] if row['cycles'] is not None else ''} |" for name, row in sorted(rows.items())]
+    lines = [
+        "# Seed starting grade",
+        "",
+        f"The seed compiler, unchanged, graded on this run's grader before launch: **{len(passed)} of "
+        f"{len(rows)} test cases pass**, {len(carried)} of them carried from the seed run (no re-execution).",
+        "",
+        "This is your starting point. After your edits, a test case that passed here and fails now is a "
+        "regression your change introduced; the grade feedback names the error.",
+        "",
+        "| test case | suite | status | cycles |",
+        "|---|---|---|---|",
+    ]
+    lines += [
+        f"| {name} | {row['suite'] or ''} | {row['status']}{' (carried)' if row['carried_from'] else ''} | "
+        f"{row['cycles'] if row['cycles'] is not None else ''} |"
+        for name, row in sorted(rows.items())
+    ]
     (out / "SEED_START_GRADE.md").write_text("\n".join(lines) + "\n")
     return {key: document[key] for key in ("cases", "passed", "carried", "wall_s")}
 
@@ -407,16 +537,27 @@ def _row(compact: dict, detail: dict, raw: dict) -> dict:
     complete = performance.get("status") in ("PROVISIONAL", "QUALIFIED")
     fast = performance.get("fast_estimate") if isinstance(performance.get("fast_estimate"), dict) else {}
     return {
-        "status": "pass" if compact.get("pass") is True or compact.get("status") == "pass" else (
-            raw.get("status") or compact.get("status") or "unknown"),
+        "status": "pass"
+        if compact.get("pass") is True or compact.get("status") == "pass"
+        else (raw.get("status") or compact.get("status") or "unknown"),
         "carried_from": reuse.get("carried_from") or compact.get("carried_from"),
         # A whole-model case keeps no tier_reuse block: the certificate cache never covers it.
-        "executed_tiers": [t for t in (reuse.get("executed") if reuse else tiers) or () if (tiers.get(t) or {}).get("status") not in (
-            "skipped", "unavailable", None)],
+        "executed_tiers": [
+            t
+            for t in (reuse.get("executed") if reuse else tiers) or ()
+            if (tiers.get(t) or {}).get("status") not in ("skipped", "unavailable", None)
+        ],
         "carried_tiers": list(reuse.get("carried") or ()),
         "cycles": performance.get("estimated_whole_soc_cycles") if complete else fast.get("cycles"),
-        "cycles_evidence": ("carried from seed" if carried_timing else "timing model" if complete
-                            else "fast estimate" if fast.get("cycles") else None),
+        "cycles_evidence": (
+            "carried from seed"
+            if carried_timing
+            else "timing model"
+            if complete
+            else "fast estimate"
+            if fast.get("cycles")
+            else None
+        ),
         "timing_carried": carried_timing,
         "timing_observed": complete and not carried_timing,
         "timing_reason": performance.get("reason"),
@@ -438,10 +579,10 @@ def _raw_results(root: Path) -> dict:
 
 def _grade(out: Path, label: str, submission: str, cases_json: str, workers: str, result: Path) -> None:
     """Grade ``submission`` over the cases with the self-check evaluator; per-case carry and timing."""
+    from merlin.experiments.phase1.context import load_context
+    from merlin.experiments.phase1.feedback.public_scalability import install
+    from merlin.experiments.phase1.feedback.selfcheck import main as selfcheck
     from merlin.targetgen.target_experiment import load_target_experiment
-    from merlin_experiments.phase1.context import load_context
-    from merlin_experiments.phase1.feedback.public_scalability import install
-    from merlin_experiments.phase1.feedback.selfcheck import main as selfcheck
 
     descriptor = Path(os.environ["MERLIN_TARGET_EXPERIMENT"])
     context = load_context(descriptor, repo=Path(os.environ["MERLIN_REPO_ROOT"]))
@@ -456,8 +597,22 @@ def _grade(out: Path, label: str, submission: str, cases_json: str, workers: str
         if not cases.get(suite):
             continue
         output = out / f"{label}-{suite}.json"
-        argv = ["--suite", suite, "--sim", "spike", "--submission", submission, "--capsules", ",".join(cases[suite]),
-                "--workers", workers, "--timeout", "7200", "--out", str(output)]
+        argv = [
+            "--suite",
+            suite,
+            "--sim",
+            "spike",
+            "--submission",
+            submission,
+            "--capsules",
+            ",".join(cases[suite]),
+            "--workers",
+            workers,
+            "--timeout",
+            "7200",
+            "--out",
+            str(output),
+        ]
         if suite == "core":
             argv += ["--capsules-root", str(corpus / "public"), "--contract", str(corpus / "contract")]
         else:
@@ -477,9 +632,16 @@ def _grade(out: Path, label: str, submission: str, cases_json: str, workers: str
             if not isinstance(name, str):
                 continue
             detail_path = (compact.get("detail") or {}).get("path")
-            detail = json.loads((work / detail_path).read_text()) if detail_path and (work / detail_path).is_file() else compact
-            rows[name] = dict(_row(compact, detail, raw.get(name) or {}), suite=suite,
-                              wall_s=round(wall[suite] / max(1, len(cases[suite])), 2))
+            detail = (
+                json.loads((work / detail_path).read_text())
+                if detail_path and (work / detail_path).is_file()
+                else compact
+            )
+            rows[name] = dict(
+                _row(compact, detail, raw.get(name) or {}),
+                suite=suite,
+                wall_s=round(wall[suite] / max(1, len(cases[suite])), 2),
+            )
         if isinstance(document.get("performance_brief"), dict):
             briefs.append(document["performance_brief"])
     if (work / "qa").is_dir():
@@ -491,20 +653,33 @@ def _grade(out: Path, label: str, submission: str, cases_json: str, workers: str
             "entries": len(entries),
             "with_seed_cycles": sum(1 for e in entries if e.get("seed_cycles")),
             "with_vs_seed": sum(1 for e in entries if e.get("vs_seed") is not None),
-            "sample": [{k: e.get(k) for k in ("test_case", "cycles", "evidence", "seed_cycles", "vs_seed")}
-                       for e in entries[:6]],
+            "sample": [
+                {k: e.get(k) for k in ("test_case", "cycles", "evidence", "seed_cycles", "vs_seed")}
+                for e in entries[:6]
+            ],
             "vs_seed": document.get("vs_seed"),
         }
         break
-    result.write_text(json.dumps({"label": label, "wall_s": round(time.monotonic() - started, 1), "cases": rows,
-                                  "order": list(rows), "brief": brief}, indent=2, default=str))
+    result.write_text(
+        json.dumps(
+            {
+                "label": label,
+                "wall_s": round(time.monotonic() - started, 1),
+                "cases": rows,
+                "order": list(rows),
+                "brief": brief,
+            },
+            indent=2,
+            default=str,
+        )
+    )
 
 
 def _runtime_main(argv) -> int:
     step, out, *rest = argv
     index = rest.index("--result")
     result = Path(rest[index + 1])
-    rest = rest[:index] + rest[index + 2:]
+    rest = rest[:index] + rest[index + 2 :]
     sys.path.insert(0, str(HERE))
     if step == "_stage":
         _stage(Path(out), rest[0], result)

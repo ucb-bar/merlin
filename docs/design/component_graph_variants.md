@@ -6,9 +6,9 @@ owner: merlin-experiments
 last_verified: 2026-11-09
 related: [component_execution_budget, component_integer_bounds, component_scale_generalization]
 code_refs:
-  - src/merlin_experiments/phase0/component_graph_variants.py
-  - src/merlin_experiments/phase0/component_graph_relations.py
-  - src/merlin_experiments/phase0/component_coverage_inputs.py
+  - src/merlin/experiments/phase0/component_graph_variants.py
+  - src/merlin/experiments/phase0/component_graph_relations.py
+  - src/merlin/experiments/phase0/component_coverage_inputs.py
 ---
 
 # Graph interaction coverage

@@ -5,7 +5,7 @@ This repo's principle is that facts are *compiled/derived from structure*, not s
 pattern-matching. This check enforces that regex does not silently return to the in-scope trees:
 
   * ``merlin/python/merlin/**``
-  * ``merlin/contract/**``
+  * ``src/merlin/resources/contracts/**``
   * ``build_tools/scripts/**``
 
 A regex *call site* is any call to the ``re`` module (``re.compile``/``search``/``sub``/…) — reached
@@ -43,7 +43,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from merlin.common.regex_scan import scan_source  # noqa: E402
 
 ALLOW_FILE = ROOT / "build_tools" / "scripts" / "regex_allowlist.txt"
-SCAN_ROOTS = (*_source_layout.SOURCE_SCAN_ROOTS, "merlin/contract", "build_tools/scripts")
+SCAN_ROOTS = (*_source_layout.SOURCE_SCAN_ROOTS, "src/merlin/resources/contracts", "build_tools/scripts")
 # Path fragments that mark BUILD-GENERATED (gitignored) trees, not source — never scanned. `_data`
 # is the read-only data bundle setup.py copies into the package at wheel-build time.
 EXCLUDE_FRAGMENTS = ("/_data/",)

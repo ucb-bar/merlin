@@ -217,7 +217,7 @@ def _shipped_spec_docs(target: str):
     facts bundle can still be READ rather than assumed."""
     from pathlib import Path
 
-    from merlin.common.paths import merlin_dir, repo_root
+    from merlin.common.paths import resolve_grant
     from merlin.targetgen.dram_facts import _descriptor_for
     from merlin.targetgen.target_experiment import load_target_experiment
 
@@ -228,11 +228,9 @@ def _shipped_spec_docs(target: str):
     for h in load_target_experiment(desc).isa_headers:
         if not str(h).endswith(".md"):
             continue
-        for base in (merlin_dir(), repo_root()):
-            p = Path(base) / str(h)
-            if p.is_file():
-                out.append(p)
-                break
+        p = resolve_grant(str(h))
+        if p.is_file():
+            out.append(p)
     return out
 
 

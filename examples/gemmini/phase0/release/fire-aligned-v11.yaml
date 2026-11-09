@@ -1,12 +1,12 @@
 # Operator-only release preparation for the fire-aligned EL4 Phase 1 launch.
 #
 # This is the single source of the arguments passed to
-# merlin_experiments.corpus.release.prepare(...) and of the seal statement for
+# merlin.experiments.corpus.release.prepare(...) and of the seal statement for
 # the reviewed Phase 0 release that the Phase 1 launch config
 # (../../phase1/launch/el4-fire-aligned.yaml) consumes. It selects inputs; it
 # does not review a corpus, qualify numerics or replace the release's own seal.
 #
-#   python -m merlin_experiments.phase1.launch_config render \
+#   python -m merlin.experiments.phase1.launch_config render \
 #       --config examples/gemmini/phase1/launch/el4-fire-aligned.yaml \
 #       --task-root "$TASK_ROOT" --prep "$PREP" --out "$PREP"
 #
@@ -15,7 +15,7 @@
 # private/preparation.json and seal against this file.
 #
 # Never granted to an author sandbox or copied into a release payload
-# (merlin/tests/infra/test_launch_config_not_author_visible.py).
+# (tests/infra/test_launch_config_not_author_visible.py).
 schema: merlin.phase0.release_config.v1
 id: gemmini-fire-aligned-v11
 target: gemmini

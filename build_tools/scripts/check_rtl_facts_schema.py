@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: every RTL-facts artifact in the tree declares a family and matches that family's shape.
 
-`merlin/contract/schemas/rtl_facts.schema.json` describes what a facts artifact is. A schema nothing
+`src/merlin/resources/contracts/schemas/rtl_facts.schema.json` describes what a facts artifact is. A schema nothing
 runs describes nothing: it validates in a test someone wrote once, drifts from the artifacts it claims
 to cover, and reads as coverage. This is the caller.
 
@@ -36,9 +36,9 @@ _GATE = "rtl-facts-schema"
 #: Where facts artifacts live. The cache is purgeable and usually absent; the fixtures are tracked and
 #: are what makes this gate non-vacuous where there is no RTL.
 SEARCH = (
-    "merlin/targets/*/contracts/rtl_facts/facts.json",
-    "merlin/tests/fixtures/**/contracts/rtl_facts/facts.json",
-    "merlin/tests/data/**/*facts*.json",
+    "experiments/reference-data/target-inputs/*/contracts/rtl_facts/facts.json",
+    "tests/fixtures/**/contracts/rtl_facts/facts.json",
+    "tests/data/**/*facts*.json",
     "out/artifacts/cache/rtl_introspect/*/facts.json",
     "out/artifacts/targets/*/contracts/rtl_facts/facts.json",
 )
@@ -100,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
 
-    schema = ROOT / "merlin" / "contract" / "schemas" / "rtl_facts.schema.json"
+    schema = ROOT / "src/merlin/resources/contracts" / "schemas" / "rtl_facts.schema.json"
     if not schema.is_file():
         return _unexaminable(f"no schema at {schema}", stop_hook=args.stop_hook)
 

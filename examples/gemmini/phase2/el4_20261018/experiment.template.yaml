@@ -21,7 +21,7 @@ phases:
       measurement_root: operator-output/measurements
       holdout_catalog: operator-inputs/holdout-catalog.yaml
       core_package_root: ../../../../src/merlin
-      experiments_package_root: ../../../../packages/merlin-experiments/src/merlin_experiments
+      experiments_package_root: ../../../../packages/merlin-experiments/src/experiments/studies
       experiments_namespace_root: ../../../../packages/merlin-experiments/src/merlin
       managed_native_endpoint: operator-inputs/supervisor.sock
       suite: gemmini-el4-fire-aligned-phase2-20261018

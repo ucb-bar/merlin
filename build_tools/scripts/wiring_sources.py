@@ -37,12 +37,172 @@ def _strings(tree: ast.AST, name: str) -> tuple[str, ...]:
     return ()
 
 
+def _staged_rtl_sources(root: Path, tree: ast.AST) -> set[str]:
+    """Source use through the existing arm-selected RTL tool staging flow.
+
+    A registry path alone is inert. Require its selection by the live producer,
+    the original source enumeration and the actual byte-copy consumer. Frozen
+    fresh10 payload pins retain their separate exact-byte interpretation.
+    """
+    loader = _function(tree, "_tool_sources")
+    prepare = _function(tree, "prepare_shared_source_release")
+    if loader is None or prepare is None:
+        return set()
+    loader_forms = {ast.unparse(node) for node in ast.walk(loader)}
+    prepare_forms = {ast.unparse(node) for node in ast.walk(prepare)}
+    if (
+        not {
+            "prefix = 'merlin/python/'",
+            "spec(name).bundle_paths",
+            "logical.removeprefix(prefix).rstrip('/')",
+            "path = root / selected_source",
+            "path.rglob('*') if path.is_dir() else (path,)",
+            "original = source.relative_to(root).as_posix()",
+            "staged = (Path(destination) / source.relative_to(path)).as_posix() if path.is_dir() else destination",
+            "selected[staged] = original",
+            "author_inaccessible(staged_module(p))",
+        }
+        <= loader_forms
+        or not {
+            "tool_sources = _tool_sources(root, tools, withhold=withhold)",
+            "sources.update(tool_sources)",
+            "before = {relative: _read(root, relative) for relative in dict.fromkeys(sources.values())}",
+            "payload = before[selected_source]",
+            "destination.write_bytes(payload)",
+        }
+        <= prepare_forms
+    ):
+        return set()
+    imports = {
+        (node.level, node.module, alias.name, alias.asname)
+        for node in ast.walk(loader)
+        if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+    }
+    if not {(1, "tool_registry", "spec", None), (0, "merlin.common.access", "author_inaccessible", None)} <= imports:
+        return set()
+    producer = root / "src/merlin/experiments/corpus/preparation.py"
+    registry = root / "src/merlin/targetgen/tool_registry.py"
+    policy = root / "src/merlin/common/access.py"
+    if not all(path.is_file() for path in (producer, registry, policy)):
+        return set()
+    scaffold = _function(ast.parse(producer.read_text(encoding="utf-8")), "scaffold")
+    if scaffold is None or not _calls(scaffold, "prepare_shared_source_release"):
+        return set()
+    forms = {ast.unparse(node) for node in ast.walk(scaffold)}
+    if not {"tool_registry.ARM_TOOLS[arm]", "tools=tools"} <= forms:
+        # Keywords are AST nodes too; the selected producer must pass its tools.
+        return set()
+    declared = ast.parse(registry.read_text(encoding="utf-8"))
+    assignments = {
+        node.target.id: node.value
+        for node in declared.body
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+    }
+    tools, arms = assignments.get("TOOLS"), assignments.get("ARM_TOOLS")
+    if not isinstance(tools, ast.Dict) or not isinstance(arms, ast.Dict):
+        return set()
+    if not any(
+        isinstance(node, ast.Constant) and node.value == "rtl_generators"
+        for value in arms.values
+        for node in ast.walk(value)
+    ):
+        return set()
+    tool = next(
+        (
+            value
+            for key, value in zip(tools.keys, tools.values)
+            if isinstance(key, ast.Constant) and key.value == "rtl_generators"
+        ),
+        None,
+    )
+    if not isinstance(tool, ast.Call) or ast.unparse(tool.func) != "ToolSpec":
+        return set()
+    paths = next((keyword.value for keyword in tool.keywords if keyword.arg == "bundle_paths"), None)
+    prefix = next(
+        (
+            node.value.value
+            for node in declared.body
+            if isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Constant)
+            and any(isinstance(target, ast.Name) and target.id == "_PY" for target in node.targets)
+        ),
+        None,
+    )
+    if prefix != "merlin/python/merlin/" or not isinstance(paths, ast.Tuple):
+        return set()
+    directories = []
+    for value in paths.elts:
+        if not (
+            isinstance(value, ast.JoinedStr)
+            and len(value.values) == 2
+            and isinstance(value.values[0], ast.FormattedValue)
+            and isinstance(value.values[0].value, ast.Name)
+            and value.values[0].value.id == "_PY"
+            and value.values[0].conversion == -1
+            and value.values[0].format_spec is None
+            and isinstance(value.values[1], ast.Constant)
+            and isinstance(value.values[1].value, str)
+        ):
+            return set()
+        relative = Path("merlin") / value.values[1].value
+        if relative.is_absolute() or ".." in relative.parts:
+            return set()
+        directories.append(root / "src" / relative)
+    # Interpret only the existing literal access declarations, without importing
+    # compiler/evaluator code. These source edges cannot expose withheld bodies.
+    access = ast.parse(policy.read_text(encoding="utf-8"))
+    withheld = _strings(access, "AUTHOR_WITHHELD_PREFIXES")
+    records = next(
+        (
+            node.value
+            for node in access.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "MODULE_ACCESS" for target in node.targets)
+        ),
+        None,
+    )
+    if not withheld or not isinstance(records, ast.Tuple):
+        return set()
+    denied = []
+    for item in records.elts:
+        if not isinstance(item, ast.Call) or ast.unparse(item.func) != "_module":
+            return set()
+        try:
+            module = ast.literal_eval(item.args[0])
+            options = {keyword.arg: ast.literal_eval(keyword.value) for keyword in item.keywords}
+        except (ValueError, TypeError):
+            return set()
+        # _module's declared optional directory flag is false when omitted.
+        recursive = "directory" in options and options["directory"]
+        denied.extend((name, recursive) for name in (module, *options.get("aliases", ())))
+    selected = set()
+    for directory in directories:
+        if not directory.is_dir() or any(path.is_symlink() for path in (directory, *directory.parents)):
+            return set()
+        for source in directory.rglob("*.py"):
+            if "__pycache__" in source.parts or source.is_symlink() or not source.is_file():
+                continue
+            parts = list(source.relative_to(root / "src").with_suffix("").parts)
+            if parts[-1] == "__init__":
+                parts.pop()
+            module = ".".join(parts)
+            if any(module == prefix or module.startswith(prefix + ".") for prefix in withheld):
+                continue
+            if any(module == name or (recursive and module.startswith(name + ".")) for name, recursive in denied):
+                continue
+            selected.add(module)
+    return selected
+
+
 def closed_source_imports(path: Path, root: Path, tree: ast.AST) -> set[str]:
     """Follow three existing finite source loaders, without importing them."""
     try:
         relative = path.relative_to(root).as_posix()
     except ValueError:
         return set()
+    if relative == "src/merlin/targetgen/tool_profile_shared.py":
+        return _staged_rtl_sources(root, tree)
     if relative == "src/merlin/compiler/quantization/torchao/portable.py":
         helper, prepare = _function(tree, "helper"), _function(tree, "prepare_helpers")
         if helper is None or prepare is None:
@@ -77,8 +237,8 @@ def closed_source_imports(path: Path, root: Path, tree: ast.AST) -> set[str]:
             return set()
         return {"merlin.targetgen." + name for name in _strings(tree, "DEPENDENCIES")}
     if relative not in {
-        "src/merlin_experiments/phase1/full_compiler_workspace.py",
-        "src/merlin_experiments/phase1/raw_interface_sources.py",
+        "src/merlin/experiments/phase1/full_compiler_workspace.py",
+        "src/merlin/experiments/phase1/raw_interface_sources.py",
     }:
         return set()
     prepare = _function(tree, "prepare")
@@ -107,7 +267,7 @@ def published_source_modules(root: Path) -> set[str]:
     boundary as literal module_source_path reads. It grants no new source and
     does not claim any exported function executed or any result was verified.
     """
-    base = root / "src/merlin_experiments/phase1"
+    base = root / "src/merlin/experiments/phase1"
     producer, staging = base / "fresh10_sources.py", base / "full_compiler_workspace.py"
     inventory = base / "fresh10_profile_data.json"
     if not all(p.is_file() for p in (producer, staging, inventory)):
@@ -162,8 +322,9 @@ def compiler_source_inputs(root: Path) -> set[str]:
     """Current closed source-copy rosters plus admitted versioned sources."""
     names = published_source_modules(root)
     for relative in (
-        "src/merlin_experiments/phase1/full_compiler_workspace.py",
-        "src/merlin_experiments/phase1/raw_interface_sources.py",
+        "src/merlin/targetgen/tool_profile_shared.py",
+        "src/merlin/experiments/phase1/full_compiler_workspace.py",
+        "src/merlin/experiments/phase1/raw_interface_sources.py",
     ):
         path = root / relative
         if path.is_file():

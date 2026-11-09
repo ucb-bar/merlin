@@ -271,7 +271,7 @@ def _copy_candidate(candidate: Path, dest: Path) -> Path:
             continue
         mode = path.stat().st_mode
         path.chmod(mode | (0o700 if path.is_dir() else 0o600))
-    from merlin_experiments.phase1 import run_inputs
+    from merlin.experiments.phase1 import run_inputs
 
     run_inputs.strip_build_state(dest)
     return dest
@@ -453,8 +453,8 @@ def cmd_grade(args: argparse.Namespace) -> int:
     from merlin.common.tree_hash import hash_tree
 
     repo = repo_root()
-    corpus = Path(args.corpus_root).resolve() if args.corpus_root else repo / "merlin" / "contract" / "capsules"
-    contract = repo / "merlin" / "contract"
+    corpus = Path(args.corpus_root).resolve() if args.corpus_root else repo / "experiments" / "corpora"
+    contract = repo / "src/merlin/resources/contracts"
     target = _candidate_target(candidate_src, args.target)
     categories = [c.strip() for c in args.categories.split(",") if c.strip()]
     selected = _select_capsules(corpus, categories, args.capsules)
@@ -467,8 +467,7 @@ def cmd_grade(args: argparse.Namespace) -> int:
     staged = _stage_cohort(selected, cohort, tiers, drop_tier_cap=args.drop_tier_cap)
     runs_root = work / "runs"
 
-    from merlin_experiments.phase1.feedback import qa as QA
-
+    from merlin.experiments.phase1.feedback import qa as QA
     from merlin.targetgen import capsule_grade as CG
     from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen import rtl_check_runner as RUN
@@ -902,7 +901,7 @@ def main(argv: list[str] | None = None) -> int:
         default=",".join(_DEFAULT_CATEGORIES),
         help=f"corpus sub-directories to draw capsules from (default {','.join(_DEFAULT_CATEGORIES)})",
     )
-    g.add_argument("--corpus-root", default=None, help="capsule corpus root (default <repo>/merlin/contract/capsules)")
+    g.add_argument("--corpus-root", default=None, help="capsule corpus root (default <repo>/experiments/corpora)")
     g.add_argument("--target", default=None, help="target name (default: the candidate manifest's target)")
     g.add_argument("--rtl-facts", default=None, help="RTL facts artifact (sets MERLIN_RTL_FACTS)")
     g.add_argument("--filecheck", default=None, help="explicit FileCheck binary")

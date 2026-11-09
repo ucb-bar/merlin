@@ -501,7 +501,7 @@ def _calibration_private_capsule(row: dict[str, Any], *, nonce: bytes, phase: st
 
 def _calibration_k1_state_gates():
     """Use the exact source-sealed grader gate functions; do not duplicate their policy."""
-    path = (repo_root() / "merlin/experiments/cpu_host_compiler_v0/grader.py").resolve()
+    path = (repo_root() / "experiments/studies/cpu_host_compiler_v0/grader.py").resolve()
     spec = importlib.util.spec_from_file_location("merlin_calibration_state_gates", path)
     if spec is None or spec.loader is None:
         raise RuntimeError("cannot load source-sealed K1 environment gates")
@@ -520,7 +520,7 @@ def _calibration_space_problem(recorded: Any) -> str | None:
     caller-supplied source map, because a noise authority deliberately omits ``search_space``
     from its own executable source seal.
     """
-    expected = (repo_root() / "merlin/experiments/cpu_host_compiler_v0/optimization_space_v1.yaml").resolve()
+    expected = (repo_root() / "experiments/studies/cpu_host_compiler_v0/optimization_space_v1.yaml").resolve()
     try:
         if not expected.is_file():
             return "the frozen optimization space is absent from this tree"
@@ -1897,7 +1897,7 @@ class HostExperimentSpec:
             "corpus_materializer": str(module_source_path("merlin.mining.corpus")),
             "corpus_partition_policy": str(module_source_path("merlin.mining.campaign")),
             "k1_measurement_adapter": str(module_source_path("merlin.mining.k1")),
-            "experiment_schema": str(repo_root() / "merlin/schemas/cpu_host_experiment.schema.yaml"),
+            "experiment_schema": str(repo_root() / "src/merlin/resources/schemas/cpu_host_experiment.schema.yaml"),
             "frozen_environment_contract": str(module_source_path("merlin.compare.frozen_environment")),
             "target_contract": self.target_contract,
             "dialect_plan": self.dialect_plan,

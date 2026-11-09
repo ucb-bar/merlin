@@ -1,6 +1,6 @@
 """Host side of the ``out_digest_v1`` readback: XXH64 (seed 0) over an output's container bytes.
 
-The trusted harness (``merlin/runtime/baremetal/out_digest.h``) prints one line per output,
+The trusted harness (``src/merlin/runtime/native/baremetal/out_digest.h``) prints one line per output,
 ``OUT_DIGEST <name> <nbytes> <16 hex digits>``, over the buffer the candidate wrote. The host packs
 the values it expects into the same little-endian container words and compares digests. The digest
 detects any accidental difference; the full values of the SAME ELF read back on a cheap engine are

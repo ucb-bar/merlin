@@ -1,4 +1,4 @@
-# ToyNPU dialect plan (validates against merlin/schemas/dialect_plan.schema.yaml).
+# ToyNPU dialect plan (validates against src/merlin/resources/schemas/dialect_plan.schema.yaml).
 target: toy_npu
 dialect_name: toynpu
 # Generic xDSL factory knobs and runtime mapping; this target owns the choices.

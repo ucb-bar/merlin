@@ -6,37 +6,37 @@ owner: experiments
 last_verified: 2026-11-09
 related: [experiment_dashboard]
 code_refs:
-  - src/merlin_experiments/tracking/console/cli.py
-  - src/merlin_experiments/tracking/console/discovery.py
-  - src/merlin_experiments/tracking/console/serve.py
-  - src/merlin_experiments/tracking/console/diagnose.py
-  - src/merlin_experiments/tracking/console/placement.py
-  - src/merlin_experiments/tracking/console/launch.py
-  - src/merlin_experiments/tracking/console/plain.py
-  - src/merlin_experiments/tracking/console/sources/__init__.py
-  - src/merlin_experiments/tracking/console/sources/timeline.py
-  - src/merlin_experiments/tracking/console/sources/machine.py
-  - src/merlin_experiments/tracking/console/sources/lifecycle.py
-  - src/merlin_experiments/tracking/console/sources/activity.py
-  - src/merlin_experiments/tracking/console/sources/insight_common.py
-  - src/merlin_experiments/tracking/console/sources/performance.py
-  - src/merlin_experiments/tracking/console/sources/cases.py
-  - src/merlin_experiments/tracking/console/sources/case_history.py
-  - src/merlin_experiments/phase1/feedback/perf_history.py
-  - src/merlin_experiments/tracking/console/sources/tools.py
-  - src/merlin_experiments/tracking/console/sources/grader.py
-  - src/merlin_experiments/tracking/console/sources/integrity.py
-  - src/merlin_experiments/tracking/console/sources/attempts.py
-  - src/merlin_experiments/tracking/console/sources/certification.py
-  - src/merlin_experiments/tracking/console/sources/focus.py
-  - src/merlin_experiments/tracking/console/sources/cost.py
-  - src/merlin_experiments/tracking/console/sources/library.py
+  - src/merlin/experiments/tracking/console/cli.py
+  - src/merlin/experiments/tracking/console/discovery.py
+  - src/merlin/experiments/tracking/console/serve.py
+  - src/merlin/experiments/tracking/console/diagnose.py
+  - src/merlin/experiments/tracking/console/placement.py
+  - src/merlin/experiments/tracking/console/launch.py
+  - src/merlin/experiments/tracking/console/plain.py
+  - src/merlin/experiments/tracking/console/sources/__init__.py
+  - src/merlin/experiments/tracking/console/sources/timeline.py
+  - src/merlin/experiments/tracking/console/sources/machine.py
+  - src/merlin/experiments/tracking/console/sources/lifecycle.py
+  - src/merlin/experiments/tracking/console/sources/activity.py
+  - src/merlin/experiments/tracking/console/sources/insight_common.py
+  - src/merlin/experiments/tracking/console/sources/performance.py
+  - src/merlin/experiments/tracking/console/sources/cases.py
+  - src/merlin/experiments/tracking/console/sources/case_history.py
+  - src/merlin/experiments/phase1/feedback/perf_history.py
+  - src/merlin/experiments/tracking/console/sources/tools.py
+  - src/merlin/experiments/tracking/console/sources/grader.py
+  - src/merlin/experiments/tracking/console/sources/integrity.py
+  - src/merlin/experiments/tracking/console/sources/attempts.py
+  - src/merlin/experiments/tracking/console/sources/certification.py
+  - src/merlin/experiments/tracking/console/sources/focus.py
+  - src/merlin/experiments/tracking/console/sources/cost.py
+  - src/merlin/experiments/tracking/console/sources/library.py
   - packages/merlin-experiments/console/internal/ui/insights.go
   - packages/merlin-experiments/console/internal/ui/story.go
   - packages/merlin-experiments/console/internal/ui/model.go
   - packages/merlin-experiments/console/internal/ui/views.go
-  - src/merlin_experiments/cli.py
-  - src/merlin_experiments/phase1/telemetry/startup.py
+  - src/merlin/experiments/cli.py
+  - src/merlin/experiments/phase1/telemetry/startup.py
   - packages/merlin-experiments/console/go.mod
 ---
 
@@ -407,6 +407,6 @@ operator diagnostics, does not change checks, and is not yet a dedicated UI pane
 
 The frontend source remains `packages/merlin-experiments/console/`; its Go
 module owns the minimum language/toolchain declaration. Python record readers
-live in `src/merlin_experiments/tracking/console/` within Merlin's current wheel.
+live in `src/merlin/experiments/tracking/console/` within Merlin's current wheel.
 A console-rendered certificate or modeled cost summarizes its cited producer
 record; the view does not issue an independent acceptance or timing verdict.

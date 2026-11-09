@@ -3,15 +3,15 @@ title: "Source-attention bound strategies that were tried and not kept"
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [ordered_fma_certificates, exact-integer-radix-reconstruction, prepared_operand_owners, verified_compiler_roadmap]
 code_refs:
   - src/merlin/llvmlower/source_attention_frontier.py
   - src/merlin/llvmlower/radix_integer_reconstruct.py
   - src/merlin/llvmlower/radius_stage_schedule.py
-  - merlin/runtime/c/ordered_fma_bounds.h
-  - merlin/runtime/c/fma_product_norms.h
-  - merlin/runtime/c/separable_fma_radius.h
+  - src/merlin/runtime/native/c/ordered_fma_bounds.h
+  - src/merlin/runtime/native/c/fma_product_norms.h
+  - src/merlin/runtime/native/c/separable_fma_radius.h
 ---
 
 # Source-attention bound strategies that were tried and not kept

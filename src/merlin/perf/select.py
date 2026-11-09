@@ -15,7 +15,7 @@ than a candidate list built on a guessed granule. Manufacturing a plausible desc
 nothing is how a selection loop spends a real budget exploring a fictional space.
 
 **What this is composed from, and what it deliberately is not.** There is no new search method here.
-Enumeration inside each axis is :func:`merlin.dse.search.grid.grid_search` -- an explicit sweep over a
+Enumeration inside each axis is :func:`merlin.analysis.dse.search.search.grid.grid_search` -- an explicit sweep over a
 small space, scored at every point, which is the sanctioned method whose semantics actually match the
 problem. Budget accounting is :mod:`merlin.perf.budget` over
 :mod:`merlin.targetgen.tier_policy`'s ledger. Re-evaluation is suppressed by content-addressing a

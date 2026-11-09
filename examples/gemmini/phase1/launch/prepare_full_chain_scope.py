@@ -14,7 +14,8 @@ import json
 from pathlib import Path
 
 import yaml
-from merlin_experiments.phase1.feedback.private_numerical_selection import MODE, POLICY
+
+from merlin.experiments.phase1.feedback.private_numerical_selection import MODE, POLICY
 
 
 def pin(path):
@@ -114,8 +115,7 @@ def prepare(private_spec):
                 "numerical_chain": numerical["chain"],
                 "numerical_programs": numerical["programs"],
                 "required_output_scope": (
-                    "Every declared output of every executed program at every session step, "
-                    "including recurrent state."
+                    "Every declared output of every executed program at every session step, including recurrent state."
                 ),
             }
         )

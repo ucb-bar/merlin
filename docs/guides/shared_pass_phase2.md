@@ -20,29 +20,29 @@ code_refs:
   - src/merlin/llvmlower/source_dense.py
   - src/merlin/llvmlower/source_choices.py
   - src/merlin/targetgen/capsule_common.py
-  - src/merlin_experiments/phase2/source_choices_workflow.py
-  - src/merlin_experiments/phase2/ordinary_search_stage.py
+  - src/merlin/experiments/phase2/source_choices_workflow.py
+  - src/merlin/experiments/phase2/ordinary_search_stage.py
   - src/merlin/targetgen/compiler_library.py
   - src/merlin/targetgen/compiler_source_optimizations.py
-  - src/merlin_experiments/phase1/feedback/private_source_optimizations.py
-  - src/merlin_experiments/phase1/compiler_library.py
-  - src/merlin_experiments/phase1/controller.py
-  - src/merlin_experiments/phase2/compiler_libraries.py
-  - src/merlin_experiments/phase2/compiler_library_state.py
-  - src/merlin_experiments/phase2/compiler_library_guidance.py
+  - src/merlin/experiments/phase1/feedback/private_source_optimizations.py
+  - src/merlin/experiments/phase1/compiler_library.py
+  - src/merlin/experiments/phase1/controller.py
+  - src/merlin/experiments/phase2/compiler_libraries.py
+  - src/merlin/experiments/phase2/compiler_library_state.py
+  - src/merlin/experiments/phase2/compiler_library_guidance.py
 ---
 
 # Shared passes in ordinary compiler authoring
 
-Fresh compiler authoring uses **SDK26**, with
-`merlin.common_compiler_substrate.v26` and canonical `merlin.compiler` source
+Fresh compiler authoring uses **SDK27**, with
+`merlin.common_compiler_substrate.v20` and canonical `merlin.compiler` source
 owners. `compiler/schedule/export.py:export_shared_scheduling` writes that
 inventory; `targetgen/tool_profile_shared.py:prepare_shared_source_release`
 stages it for initial authoring. Exporting or staging alone grants no access.
 
 Earlier profiles remain frozen reproduction inputs. Their manifests, source
 bytes, legacy module names and grants retain their original meanings; current
-code cannot mint a replacement V6–V25 release by selecting an older number.
+code cannot mint a replacement V6–V26 release by selecting an older number.
 The APIs below use current canonical names. For an inherited older profile,
 consume its recorded release and interpreter instead of rewriting its sources.
 
@@ -56,7 +56,7 @@ must receive the same selected shared algorithms. Selecting a library does not
 complete an outstanding resource certificate or supply execution admission.
 
 Version 8 introduced the expanded scheduling inventory. Fresh exports now select
-version 26, including its explicitly declared current source closure.
+version 27, including its explicitly declared current source closure.
 
 An explicit source-binding release adds two narrow public compiler APIs:
 `merlin.compiler.schedule.direct_source.bind_direct_source_contraction` and
@@ -71,15 +71,15 @@ source/effect checkers rebind the actual emitted program independently.
 Create this separate export in a fresh operator-owned directory with:
 
 ```sh
-python -m merlin.compiler.schedule.export --shared-library --library-version 26 --source-binding \
+python -m merlin.compiler.schedule.export --shared-library --library-version 27 --source-binding \
   --output-dir "$NEW_LIBRARY" --license-directory "$MERLIN_SOURCE"
 ```
 
-For SDK26 the manifest is `merlin.shared_scheduling_library.v20`, with
-`inventory_version: 26`. The explicit flag retains
+For SDK27 the manifest is `merlin.shared_scheduling_library.v21`, with
+`inventory_version: 27`. The explicit flag retains
 `source_binding_protocol=merlin.shared_source_binding.v1` and adds the two
 canonical public source-binding leaves named above.
-`tool_profile_shared.prepare_shared_source_release(..., version=26, source_binding=True)`
+`tool_profile_shared.prepare_shared_source_release(..., version=27, source_binding=True)`
 uses that same inventory. Neither operation modifies a historical profile.
 
 Review the new manifest with the existing `freeze_compiler_library`, including
@@ -494,8 +494,8 @@ the current managed task's `TMPDIR`; retain a release needed by an active run.
 python -m merlin.targetgen.tool_profile_shared \
   --python-source-root "$MERLIN_SOURCE_ROOT" \
   --license-directory "$MERLIN_LICENSE_ROOT" \
-  --library-version 26 \
-  --output-dir "$TMPDIR/common-v26"
+  --library-version 27 \
+  --output-dir "$TMPDIR/sdk27"
 ```
 
 This stages the selected shared SDK and its declared compiler support source
@@ -515,8 +515,8 @@ containing staged host checker files is never itself a candidate grant.
 Use the normal bundle generator with:
 
 ```text
---common-substrate merlin.common_compiler_substrate.v26
---python-source-root <the prepared common-v26 root>
+--common-substrate merlin.common_compiler_substrate.v20
+--python-source-root <the prepared SDK27 root>
 ```
 
 Keep the usual descriptor, public corpus, numerical policy, RTL/software input
@@ -534,7 +534,7 @@ For a new experiment, the original host may also select an existing reviewed
 three explicit selection arguments to the installed initial launcher:
 
 ```sh
-python -m merlin_experiments.phase1 \
+python -m merlin.experiments.phase1 \
   --descriptor "$DESCRIPTOR" --repo "$RESOURCE_ROOT" \
   --bundle-manifest "$BUNDLE_MANIFEST" --bundle "$BUNDLE_ID" \
   --oracle-timing "$ORACLE_TIMING" --run-id "$NEW_RUN_ID" --sandbox bwrap \
@@ -572,7 +572,7 @@ make a formal source-pass service available.
 
 ### Replay an older inventory
 
-The current preparer accepts version 26 only. A retained V6–V25 release must
+The current preparer accepts version 27 only. A retained V6–V26 release must
 come from its exact reviewed frozen directory and original profile environment.
 For example, copying an already frozen V7 export uses the current export CLI:
 
@@ -585,9 +585,9 @@ python -m merlin.compiler.schedule.export --shared-library --library-version 7 \
 This copies and rechecks the release's own manifest and member bytes; it does
 not rebuild old algorithms from today's checkout. A V8 release carrying source
 binding likewise requires its matching frozen directory and `--source-binding`.
-An unavailable release cannot be reconstructed by relabeling SDK26 or regenerating
+An unavailable release cannot be reconstructed by relabeling SDK27 or regenerating
 its hashes. Keep the old substrate selection with its recorded source root,
-interpreter, dependencies and grants; fresh initial preparation uses v26 above.
+interpreter, dependencies and grants; fresh initial preparation uses SDK27 and common substrate v20 above.
 
 V6 and V7 retain separate closed inventories and their original v1/v2 manifest
 schemas. The exact archived manifest determines membership, including whether
@@ -833,8 +833,8 @@ explicit original capability selection and independent execution qualification:
    demonstrate held-out transfer separately from library availability.
 
 The source-spill and source-row ordinary-model regressions live in
-`merlin/tests/infra/test_spilled_pointwise_model.py` and
-`merlin/tests/infra/test_source_row_model.py`; the shared export and frozen V6
+`tests/infra/test_spilled_pointwise_model.py` and
+`tests/infra/test_source_row_model.py`; the shared export and frozen V6
 profile tests cover source closure and identical authoring access. Use the
 reproduction commands in [the pass reference](../reference/shared_compiler_passes.md).
 Local temporary reports and model binaries are not part of a Git checkout;
@@ -849,7 +849,7 @@ provider interfaces in [shared source lowering](shared_source_lowering.md) and
 qualified generated-target adapter, change the original numerical contracts, or
 enable hardware mechanisms from facts alone. Frozen releases retain their exact
 recorded source inventories. Staged-dense first appeared in V7 and remains in the current explicitly selected
-SDK26 inventory; it does not enlarge V6 or an inherited historical profile. Selecting
+SDK27 inventory; it does not enlarge V6 or an inherited historical profile. Selecting
 updated exported code requires an explicit reviewed release shared by both
 treatments.
 
@@ -940,10 +940,10 @@ connecting it to agent search still requires the original launcher, generated
 revision adapter and qualification contracts.
 
 Reproduce the shared mechanism with
-`merlin/tests/infra/test_source_choice_broker_model.py`: real broker requests,
+`tests/infra/test_source_choice_broker_model.py`: real broker requests,
 ordinary compilation and complete native recurrent execution under two neutral
 resource models. These tests establish no Gemmini execution qualification.
-`merlin/tests/infra/test_source_choice_dense_caps_model.py` exercises blocking
+`tests/infra/test_source_choice_dense_caps_model.py` exercises blocking
 choices through the same broker and compares complete native outputs, carried
 state, actual primitive requests and unchanged host packing. Requested-byte
 reductions in that test establish no accelerator timing result.

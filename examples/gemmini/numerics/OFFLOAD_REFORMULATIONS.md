@@ -327,7 +327,7 @@ That changes the scale by at most `1/(2m)`, which is small because `s_A ≪ s_r`
 |---|---|---|
 | Recipe `quant_recipe_v1` | `families`; a digest over everything but `why`; opt-in families such as `activation_contraction` change it | `src/merlin/targetgen/quant_recipe.py:51-65,156-159,336-376` |
 | Recipe additions | `software_admission` and `software_numerical_engine`, added before the digest | `src/merlin/targetgen/quantization_spec.py:340-362` |
-| Software spec `merlin.software_spec.v1` | [software-spec.yaml](../target/software-spec.yaml); validated in code, with no file in `merlin/schemas/`; unknown top-level keys are ignored | `src/merlin/targetgen/software_spec.py:169-314` |
+| Software spec `merlin.software_spec.v1` | [software-spec.yaml](../target/software-spec.yaml); validated in code, with no file in `src/merlin/resources/schemas/`; unknown top-level keys are ignored | `src/merlin/targetgen/software_spec.py:169-314` |
 | Numerical contracts | only `operand_sum_exhaustive_i8_v1`, a witness with `bound_lsb` and `max_error_lsb` | `software_spec.py:21,214-218,522-551` |
 | Spec identity | the file's sha256, carried by Phase 0 evidence and the release corpus manifest | `software_spec.py:346-354` |
 | Phase 2 exactness contract | `mode: exact` or `bounded` with `max_abs_lsb`; `forms: []` | [exactness.yaml](../phase2/exactness.yaml) |

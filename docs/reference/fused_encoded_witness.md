@@ -8,7 +8,7 @@ related: [ordered_fma_certificates, quantized_host_optimizations]
 code_refs:
   - src/merlin/llvmlower/fused_encoded_witness.py
   - src/merlin/llvmlower/source_attention_frontier.py
-  - merlin/runtime/c/bf16_radix_pack.h
+  - src/merlin/runtime/native/c/bf16_radix_pack.h
 ---
 
 # Fused canonical encoder witness

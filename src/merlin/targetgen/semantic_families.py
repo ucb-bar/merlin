@@ -20,7 +20,7 @@ Two layers:
   may declare a composite directly (it fuses the pattern) or be judged on the primitives it covers.
 
 The mapping FROM the capture's ``prov.family`` / ``prov.op`` tags (see
-:mod:`merlin.dse_guidance.attribution` ``OPC_*``) and FROM routing ``OpDemand.op`` names lives here so
+:mod:`merlin.analysis.dse.guidance.attribution` ``OPC_*``) and FROM routing ``OpDemand.op`` names lives here so
 callers never re-derive it. No target literals, no regex — a structural dict lookup.
 """
 
@@ -81,7 +81,7 @@ def operation_form(op: str | None, *, carrier_op: str | None = None) -> str | No
 
 # --- capture prov.family -> canonical family ---------------------------------------------------
 # The capture tags each op with a coarse prov.family; this pins each to a canonical family. Keys are
-# the strings emitted by model2MLIR (mirrored by merlin.dse_guidance.attribution).
+# the strings emitted by model2MLIR (mirrored by merlin.analysis.dse.guidance.attribution).
 _PROV_FAMILY: dict[str, str] = {
     "contraction": "contraction",
     "conv": "contraction",
@@ -103,7 +103,7 @@ _PROV_FAMILY: dict[str, str] = {
     # "nobody named it", reported identically. Measured on a captured ResNet-50: 100 of 116 host regions
     # the compiler refused were refused under a family word neither table could turn into a capability.
     #
-    # Derived rather than re-typed: `merlin/tests/targetgen/test_residual_seam.py` holds this table
+    # Derived rather than re-typed: `tests/targetgen/test_residual_seam.py` holds this table
     # against `FAMILY_CATEGORY`, so the next tag a capture emits cannot resolve in one and not the other.
     "quantize": "elementwise_map",
     "cast": "elementwise_map",

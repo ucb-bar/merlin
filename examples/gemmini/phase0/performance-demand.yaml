@@ -1,5 +1,5 @@
 # Declared policy of the Phase 0 performance-demand stage
-# (merlin_experiments.phase0.performance_demand): which contraction shapes of the captured
+# (merlin.experiments.phase0.performance_demand): which contraction shapes of the captured
 # performance programs become performance test cases. Every knob is a reviewed choice.
 schema: merlin.phase0.performance_demand_policy.v1
 # Fraction of each program's contraction MACs that public cases must cover, by exact shape or by the

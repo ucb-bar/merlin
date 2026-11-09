@@ -332,7 +332,7 @@ REQUIRED_KEYS = ("abi_version", "target", "commands")
 #: Opcodes whose readout NARROWS the i32 accumulator into a declared container. Kept beside the
 #: engines that do the narrowing (``simulator``/``reference`` both route these through
 #: ``_narrow_int_readout``; the golden routes them through ``_apply_epilogue``), and asserted equal to
-#: that set by ``merlin/tests/ir/test_readout_dtype_divergence.py`` so the list cannot drift away from
+#: that set by ``tests/ir/test_readout_dtype_divergence.py`` so the list cannot drift away from
 #: the engines it describes.
 NARROWING_OPCODES = frozenset({"COMMIT", "CONV2D", "BIAS_ADD", "RESIDUAL_ADD", "ATTENTION_QK", "ATTENTION_PV"})
 

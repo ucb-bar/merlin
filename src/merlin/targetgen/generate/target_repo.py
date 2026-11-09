@@ -143,7 +143,7 @@ def _root_agent_md(target: str) -> str:
         ],
         interfaces=[
             "Consumes the Merlin runtime ABI, command-buffer schema, and metrics schema.",
-            "contracts/*.yaml validate against merlin/schemas/*.schema.yaml.",
+            "contracts/*.yaml validate against src/merlin/resources/schemas/*.schema.yaml.",
         ],
         invariants=[
             "Targets implement adapters; they never invent runtime models.",

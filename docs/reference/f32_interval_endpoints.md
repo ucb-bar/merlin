@@ -5,9 +5,9 @@ status: draft
 owner: core
 last_verified: 2026-10-05
 code_refs:
-  - merlin/runtime/c/f32_interval_endpoint.h
-  - merlin/runtime/c/prepared_bit_polynomial.h
-  - merlin/runtime/c/prepared_dot_norms.h
+  - src/merlin/runtime/native/c/f32_interval_endpoint.h
+  - src/merlin/runtime/native/c/prepared_bit_polynomial.h
+  - src/merlin/runtime/native/c/prepared_dot_norms.h
 ---
 
 # Source-rounded interval endpoints

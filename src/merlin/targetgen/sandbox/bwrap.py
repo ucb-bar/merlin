@@ -30,44 +30,40 @@ from merlin.common.paths import repo_root
 from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, CapsuleMetadata
 from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces as answer_surfaces
 from merlin.targetgen.target_experiment import TargetExperiment
+
+from .answer_surfaces import _bind_alias as _bind_alias
+from .answer_surfaces import _support_bind_surfaces as _support_bind_surfaces
+from .mount_paths import (
+    _CallPathResolution as _CallPathResolution,
+)
+from .mount_paths import (
+    _MountPathIndex as _MountPathIndex,
+)
+from .mount_paths import _resolved_bind_mounts as _resolved_bind_mounts
 from .mount_visibility import _DEVNULL as _DEVNULL
 from .mount_visibility import _EXPOSE_OPS as _EXPOSE_OPS
 from .mount_visibility import _HIDE_DEST_OPS as _HIDE_DEST_OPS
 from .mount_visibility import _mounts as _mounts
-from .mount_visibility import path_kind as path_kind
 from .mount_visibility import _MountVisibility as _MountVisibilityBase
-
-from .mount_paths import (
-    _MountPathIndex as _MountPathIndex,
-    _CallPathResolution as _CallPathResolution,
-    _resolved_bind_mounts as _resolved_bind_mounts,
-)
+from .mount_visibility import path_kind as path_kind
 
 _SNAPSHOT_DIR = "bundle_inputs"
 _SNAPSHOT_COMPLETE = "snapshot.json"
 
 
 def resolve_grant(rel: str, repo: Path | None = None) -> Path:
-    """Where a bundle's ``allowed``/``denied`` path actually lives on disk.
+    """Use the selected source owner's layout, then its target-registry redirect.
 
-    Bundle-convention grants are repo-root-relative, with a documented shorthand: an
-    ``experiments/...`` grant "resolves under merlin/". Prefer ``<repo>/<rel>``, fall back to
-    ``<repo>/merlin/<rel>``, so a path that only exists under ``merlin/`` is found rather than
-    silently dropped. Returns the un-prefixed candidate when neither exists, so the caller can
-    report the path as the manifest declared it.
-
-    Every manifest consumer, including sandbox and lock writers, must use this resolver so mounted
-    shorthand grants and hashed input identities agree.
+    Sandbox and manifest writers share the same physical source resolution. A
+    generated target's declared contracts may still live outside that source tree.
     """
-    repo = repo or repo_root()
-    p = repo / rel
-    if path_kind(p) != "missing":
-        return p
-    q = repo / "merlin" / rel
-    if path_kind(q) != "missing":
-        return q
+    from merlin.common.paths import resolve_grant as source_grant
+
+    selected = source_grant(rel, root=repo)
+    if path_kind(selected) != "missing":
+        return selected
     derived = _resolve_target_package_grant(rel)
-    return derived if derived is not None else p
+    return derived if derived is not None else selected
 
 
 #: The tail of a per-target grant whose home the TARGET REGISTRY owns, not the manifest.
@@ -75,14 +71,14 @@ _REGISTRY_OWNED_GRANT_TAILS = ("contracts/rtl_facts", "contracts")
 
 
 def _resolve_target_package_grant(rel: str) -> Path | None:
-    """A ``merlin/targets/<t>/contracts/...`` grant resolved through the target registry, or ``None``.
+    """A ``experiments/reference-data/target-inputs/<t>/contracts/...`` grant resolved through the target registry, or ``None``.
 
-    A TARGET'S PACKAGE DOES NOT ALWAYS LIVE UNDER ``merlin/targets/``. One target's contracts and RTL
+    A TARGET'S PACKAGE DOES NOT ALWAYS LIVE UNDER ``experiments/reference-data/target-inputs/``. One target's contracts and RTL
     facts are curated in-tree; another's are GENERATED, and the registry is what knows which -- it
     resolves each target to its own ``contract_path``/``facts_path``, which for a generated package sit
     under the build root. A manifest that spells the in-tree location for such a target names a
     directory that does not exist, and the grant then fails closed: measured, five atlas bundles
-    granted ``merlin/targets/atlas/contracts/rtl_facts/`` and the sandbox could not be assembled at
+    granted ``experiments/reference-data/target-inputs/atlas/contracts/rtl_facts/`` and the sandbox could not be assembled at
     all, so the arm that is SUPPOSED to read RTL facts could not have read them.
 
     Resolving through the registry keeps the manifest saying WHAT it wants (this target's RTL facts)
@@ -91,7 +87,9 @@ def _resolve_target_package_grant(rel: str) -> Path | None:
     exactly as the manifest declared it, which is what makes the failure legible.
     """
     parts = Path(rel).as_posix().strip("/").split("/")
-    if len(parts) < 4 or parts[0] != "merlin" or parts[1] != "targets":
+    if parts[:3] == ["experiments", "reference-data", "target-inputs"]:
+        parts = ["merlin", "targets", *parts[3:]]
+    if len(parts) < 4 or parts[:2] != ["merlin", "targets"]:
         return None
     target, tail = parts[2], "/".join(parts[3:])
     if tail not in _REGISTRY_OWNED_GRANT_TAILS:
@@ -396,8 +394,12 @@ def _validate_host_locations(ws: Path, hosts: list[tuple[str, Path]]) -> None:
     # These bounds are invariant during this validation call, even for a
     # toolchain declared as thousands of individual host-only files.
     resolution = _CallPathResolution()
-    bounds = {ws.absolute(), resolution.resolve(ws), bundle_snapshot_root(ws).absolute(),
-              resolution.resolve(bundle_snapshot_root(ws))}
+    bounds = {
+        ws.absolute(),
+        resolution.resolve(ws),
+        bundle_snapshot_root(ws).absolute(),
+        resolution.resolve(bundle_snapshot_root(ws)),
+    }
     bound_parts = tuple(bound.parts for bound in bounds)
     for _, source in hosts:
         for private in {source.absolute(), resolution.resolve(source)}:
@@ -447,8 +449,11 @@ def _snapshot_grants(ws: Path, bundle: dict, repo: Path) -> tuple[dict, list[tup
 
     # Legacy grant resolution consults live fallback paths; those readers are
     # intentionally outside the immutable projection boundary.
-    grants = (guarded_projection(ws, bundle, repo, ["sandbox.frozen_grants.v1", manifest], frozen_grants)
-              if manifest["version"] == 4 else frozen_grants())
+    grants = (
+        guarded_projection(ws, bundle, repo, ["sandbox.frozen_grants.v1", manifest], frozen_grants)
+        if manifest["version"] == 4
+        else frozen_grants()
+    )
     hosts = _snapshot_host_inputs(ws, bundle, repo, manifest)
     _validate_host_locations(ws, [(path, destination) for path, destination, _ in hosts])
     private_index = LexicalPathIndex.from_paths(private for _, private, _ in hosts)
@@ -469,7 +474,10 @@ def _snapshot_host_inputs(ws: Path, bundle: dict, repo: Path, manifest: dict) ->
     from merlin.common.bundle_snapshot import guarded_projection
 
     return guarded_projection(
-        ws, bundle, repo, ["sandbox.frozen_host_records.v1", expected, manifest.get("host_records")],
+        ws,
+        bundle,
+        repo,
+        ["sandbox.frozen_host_records.v1", expected, manifest.get("host_records")],
         lambda: _snapshot_records(ws, repo, expected, manifest.get("host_records"), canonical=True),
     )
 
@@ -858,7 +866,7 @@ def _bundle_mount_args(
     bwrap applies mount operations in argv order, so whichever declaration is emitted LAST decides
     what a path shows. Emitting every allow and then every deny made a deny win over an allow it
     merely CONTAINED, which is not what a manifest means. An arm that grants the shared hardware
-    spec at ``merlin/experiments/.../isa_include/`` and separately denies ``merlin/`` ("internals")
+    spec at ``experiments/studies/.../isa_include/`` and separately denies ``merlin/`` ("internals")
     had all three ISA grants tmpfs-wiped by that broad deny: inside the box the workspace's
     ``isa_definition.py`` / ``atlas_isa_green_card.md`` / ``atlas`` symlinks dangled, and the agent
     -- told by its own task file to "derive EVERY instruction's exact encoding from these files,
@@ -867,9 +875,9 @@ def _bundle_mount_args(
 
     Order by destination DEPTH instead, deny last on a tie. That is longest-prefix-wins, the rule
     the manifests were already written against:
-      * allow ``merlin/contract/`` + deny ``merlin/contract/capsules/<t>/hidden/`` -- the deny is
+      * allow ``src/merlin/resources/contracts/`` + deny ``experiments/corpora/<t>/hidden/`` -- the deny is
         DEEPER, so goldens stay masked (the property "deny wins" existed to protect);
-      * allow ``merlin/experiments/.../isa_definition.py`` + deny ``merlin/`` -- the allow is
+      * allow ``experiments/studies/.../isa_definition.py`` + deny ``merlin/`` -- the allow is
         deeper, so the granted spec survives the broad deny.
     A deny and an allow naming the SAME path still fails closed.
     """
@@ -991,7 +999,7 @@ def reapply_bundle_snapshot(argv: list[str], ws: Path, bundle: dict, *, repo: Pa
 
     The workspace bind is re-asserted LAST. A deny is normally a subpath of a grant, but an arm may deny
     a whole tree that happens to CONTAIN the workspace (an arm withheld from ``merlin/`` while its
-    workspace lives at ``merlin/experiments/.../_qa_ws/<run>/workspace``). ``base_argv`` already binds the
+    workspace lives at ``experiments/studies/.../_qa_ws/<run>/workspace``). ``base_argv`` already binds the
     workspace after the deny layer for exactly that reason; re-appending the deny layer here without
     re-appending the bind put the tmpfs back on top, and bwrap died with "Can't chdir to
     <ws>: No such file or directory" before the agent ran a single turn -- every round, scoring an empty
@@ -1175,74 +1183,14 @@ def apply_answer_masks(argv: list[str], surfaces: list[AnswerSurface]) -> list[s
     return out
 
 
-def _bind_alias(private: Path, kind: str, source: Path, destination: Path) -> tuple[Path, str] | None:
-    """Translate one private path through the existing mount parser's bind record."""
-    if private == source or source in private.parents:
-        return destination / private.relative_to(source), kind
-    if private in source.parents:
-        return destination, path_kind(source)
-    return None
-
-
-def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[AnswerSurface]) -> list[AnswerSurface]:
-    """Project answer denials through every bind, including deeper re-exposures.
-
-    Only explicit binds sourced within a surface-declared public subtree are
-    exempt. A broad support bind does not grant its contracts implicitly. Both
-    source and destination matter: a frozen copy can be bound over a live private
-    location, and a live private subtree can be bound somewhere unrelated.
-    This is mount-plan reasoning, not a filesystem-race or OS isolation proof.
-
-    The caller's surfaces come back unchanged and in order (one row per query), followed by the
-    projected denials that name a path no caller surface already names.
-    """
-    if not surfaces:
-        return []
-    resolution = _CallPathResolution()
-    exposed = _resolved_bind_mounts(mounts, resolution)
-    source_index = _MountPathIndex(spellings for _, _, spellings in exposed)
-    destination_index = _MountPathIndex((destination,) for _, destination, _ in exposed)
-    known = {surface.path for surface in surfaces}
-    result: dict[Path, AnswerSurface] = {}
-
-    def project(path: Path, surface: AnswerSurface) -> None:
-        if path not in known:
-            result.setdefault(path, surface)
-
-    for surface in surfaces:
-        for private in {surface.path.absolute(), resolution.resolve(surface.path)}:
-            exemptions = tuple(private / sub for sub in surface.grantable)
-            project(private, AnswerSurface(surface.label, private, surface.kind, surface.origin, surface.grantable))
-            candidates = source_index.related(private) | destination_index.descendants(private)
-            for mount_id in sorted(candidates):
-                source, destination, spellings = exposed[mount_id]
-                aliases = []
-                for resolved in spellings:
-                    if any(resolved == public or public in resolved.parents for public in exemptions):
-                        continue
-                    translated = _bind_alias(private, surface.kind, resolved, destination)
-                    if translated is not None:
-                        aliases.append(translated)
-                if (destination == private or private in destination.parents) and not any(
-                    destination == public or public in destination.parents for public in exemptions
-                ):
-                    aliases.append((destination, path_kind(source)))
-                for alias, kind in aliases:
-                    if kind == "missing":
-                        continue  # absent bind sources expose no content (including *-try binds)
-                    # Projected entries are concrete denials, not new authorities
-                    # which could recursively declare a public subtree.
-                    project(alias, AnswerSurface("support package bind", alias, kind, "hidden"))
-    return [*surfaces, *result.values()]
-
-
 def _frozen_support_surfaces(ws: Path, bundle: dict, surfaces: list[AnswerSurface], repo: Path) -> list[AnswerSurface]:
     """Use copy-time ownership even when live providers/aliases disappear or change."""
     manifest, _ = _snapshot_grants(ws, bundle, repo)
     from merlin.common.bundle_snapshot import guarded_projection
 
-    return guarded_projection(ws, bundle, repo, ["sandbox.frozen_support.v1", manifest],
-                              lambda: snapshot_support_surfaces(ws, manifest))
+    return guarded_projection(
+        ws, bundle, repo, ["sandbox.frozen_support.v1", manifest], lambda: snapshot_support_surfaces(ws, manifest)
+    )
 
 
 def _frozen_answer_surfaces(
@@ -1263,15 +1211,34 @@ def _frozen_answer_surfaces(
         frozen_root = bundle_snapshot_root(ws)
         declaration_facts = capsules.inventory.tree(frozen_root)
         manifest, grants = _snapshot_grants(ws, bundle, repo)
-        key = ('frozen_answers', repo, te.capsule_corpus, tuple(te.corpus_siblings()),
-               tuple(contract_resource_roots(repo, 'capsules')),
-               tuple(contract_resource_roots(repo, 'examples')), tuple(live),
-               tuple(grants), manifest['content_sha256'])
-        return capsules.derived(key, (bundle_snapshot_root(ws),),
-                                lambda: _classify_frozen_answer_surfaces(
-                                    ws, bundle, te, live, repo, capsules,
-                                    grants=(grants if declaration_facts is not None
-                                            and capsules.inventory.tree(frozen_root) is declaration_facts else None)))
+        key = (
+            "frozen_answers",
+            repo,
+            te.capsule_corpus,
+            tuple(te.corpus_siblings()),
+            tuple(contract_resource_roots(repo, "capsules")),
+            tuple(contract_resource_roots(repo, "examples")),
+            tuple(live),
+            tuple(grants),
+            manifest["content_sha256"],
+        )
+        return capsules.derived(
+            key,
+            (bundle_snapshot_root(ws),),
+            lambda: _classify_frozen_answer_surfaces(
+                ws,
+                bundle,
+                te,
+                live,
+                repo,
+                capsules,
+                grants=(
+                    grants
+                    if declaration_facts is not None and capsules.inventory.tree(frozen_root) is declaration_facts
+                    else None
+                ),
+            ),
+        )
     return _classify_frozen_answer_surfaces(ws, bundle, te, live, repo, capsules)
 
 
@@ -1293,7 +1260,7 @@ def _classify_frozen_answer_surfaces(ws, bundle, te, live, repo, capsules, *, gr
     if te.capsule_corpus is not None:
         corpus_roots.extend((te.capsule_corpus.parent, te.capsule_corpus))
     corpus_roots.extend(repo / rel.rstrip("/") for rel in te.corpus_siblings())
-    example_roots = [*contract_resource_roots(repo, "examples"), repo / "merlin/tests"]
+    example_roots = [*contract_resource_roots(repo, "examples"), repo / "tests"]
     result: dict[Path, AnswerSurface] = {}
 
     def add(path: Path, kind: str, origin: str, grantable: tuple[str, ...] = ()) -> None:
@@ -1396,8 +1363,8 @@ def full_argv(
     """The complete isolation argv for one target+arm: deny-by-default base + claude runtime (never the
     operator's Claude state; no caller runs the CLI) + toolchain binds + derived answer masks. ``bundle``
     may be ``{}``/None for a descriptor-only target — the masks are then driven purely by the descriptor."""
+    from merlin.experiments.phase1 import author_toolchain
     from merlin.targetgen.sandbox import claude_home as CH  # local: avoid a heavy import at module load
-    from merlin_experiments.phase1 import author_toolchain
 
     bundle = bundle or {}
     argv = (
@@ -1446,7 +1413,7 @@ def wrap(
     this returns stays short however large the corpus grows. Below the threshold the inline form is
     kept, so nothing changes for a small corpus and the two forms can be compared.
     """
-    from merlin_experiments.phase1 import author_toolchain
+    from merlin.experiments.phase1 import author_toolchain
 
     argv = full_argv(te, ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs)
     if argv_guard is not None:

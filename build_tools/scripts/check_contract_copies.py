@@ -1,28 +1,14 @@
 #!/usr/bin/env python3
-"""Gate: the two copies of the frozen contract must agree, because only one of them is READ.
+"""Gate: staged contract resources must match their reviewed source authority.
 
-The experiment ABI ships twice, and WHICH COPY IS AUTHORITATIVE DEPENDS ON WHERE YOU RUN.
-``merlin.common.paths.data_path`` prefers the in-repo tree when a checkout exists and falls back to the
-wheel-bundled ``merlin/_data/`` only when it does not. So ``merlin/contract/`` is what every developer,
-linter and CI run reads, and ``merlin/python/merlin/_data/contract/`` is what an installed
-``pip install merlin`` reads — with nothing keeping the two the same.
+Current manifest-v2 builds keep contracts under ``src/merlin/resources/contracts``
+and stage them at ``out/build/python/lib/merlin/resources/contracts``. The shared
+resource audit owns selection and detects stale extras as well as changed bytes.
+Editable and installed code use this same package-relative resource layout.
 
-A divergence therefore does not show up where the work happens. Every test passes in the checkout while
-the shipped package enforces a different grammar, opcode table or schema, and the frozen ABI is the worst
-place for that: a submission is graded against whichever copy its environment happened to resolve.
-
-Nothing checked this. Both copies were edited by hand today when the interface grammar gained ops, and
-they happened to stay in sync; nothing would have reported it if they had not.
-
-A NOTE ON HOW THIS CHECK IS WRITTEN. The obvious implementation — resolve one side with
-``data_path("contract")`` — compares the checkout tree to ITSELF and passes unconditionally. That was the
-first version of this file, and it reported 35 files identical after a deliberate divergence was injected
-into the packaged copy. Both paths are therefore spelled out literally, and the test suite injects a
-divergence to prove the gate can fail.
-
-``capsules/`` is excluded: the corpora under the two roots are deliberately different (the packaged one
-carries a curated subset, and the goldens/holdouts must never ship), so requiring equality there would
-demand exactly the answer-key leak the no-answer-keys gate forbids.
+Explicit archived version-1 manifests and older source layouts keep their
+original ``merlin/contract`` and ``_data/contract`` comparison, exemptions, and
+diagnostics. Missing staging remains unknown rather than a successful comparison.
 """
 
 from __future__ import annotations
@@ -34,7 +20,7 @@ import sys
 from pathlib import Path
 
 _HERE = Path(__file__).resolve()
-for _p in (_HERE.parents[2] / "merlin" / "python",):
+for _p in (_HERE.parents[2] / "src",):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
@@ -59,7 +45,7 @@ def _digest(p: Path) -> str:
 #: never code"); this is a second copy of that fact, and `_build_excluded_suffixes` below asserts the
 #: two agree instead of letting them drift.
 #:
-#: ⚠️ WITHOUT THIS THE GATE COULD NEVER GO GREEN. `merlin/contract/external/gsim/cxxwrap.sh` is a
+#: ⚠️ WITHOUT THIS THE GATE COULD NEVER GO GREEN. `src/merlin/resources/contracts/external/gsim/cxxwrap.sh` is a
 #: shell script under the contract tree; the build will never ship it, so a plain tree comparison
 #: reports it as missing on every run, forever. A check that cannot pass is as useless as one that
 #: cannot fail, and it trains readers to ignore the output -- which is the same failure this repo has
@@ -136,16 +122,23 @@ def audit(root: Path | None = None) -> dict:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         report = module.audit(base)
+        manifest = json.loads((base / "build_tools/package_resources.json").read_text(encoding="utf-8"))
+        current = manifest.get("version") == 2
+        contract_kind = "resources/contracts" if current else "contract"
         result = {
-            "source": str(base / "merlin/contract"),
-            "packaged": str(base / "out/build/python/lib/merlin/_data/contract"),
+            "source": str(base / ("src/merlin/resources/contracts" if current else "merlin/contract")),
+            "packaged": str(base / "out/build/python/lib/merlin" / contract_kind)
+            if current
+            else str(base / "out/build/python/lib/merlin/_data/contract"),
             "authority": "reviewed public-resource manifest",
-            "n_compared": report.get("trees", {}).get("contract", {}).get("compared", 0),
+            "n_compared": report.get("trees", {}).get(contract_kind, {}).get("compared", 0),
             "exempt": {},
         }
         for key in ("only_in_source", "only_in_packaged", "differing", "unreadable"):
             result[key] = [
-                name.removeprefix("contract/") for name in report.get(key, []) if name.startswith("contract/")
+                name.removeprefix(contract_kind + "/")
+                for name in report.get(key, [])
+                if name.startswith(contract_kind + "/")
             ]
         if report["status"] != "compared":
             result["missing_packaged_tree"] = True

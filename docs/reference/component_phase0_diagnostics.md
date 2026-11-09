@@ -6,10 +6,10 @@ owner: experiments
 last_verified: 2026-11-09
 related: [phase0_specification, component_compiler_convergence, phase0_phase1_setup]
 code_refs:
-  - src/merlin_experiments/phase0/declared_run.py
-  - src/merlin_experiments/phase0/component_coverage.py
-  - src/merlin_experiments/phase0/component_automatic.py
-  - src/merlin_experiments/phase0/source_requirement_ledger.py
+  - src/merlin/experiments/phase0/declared_run.py
+  - src/merlin/experiments/phase0/component_coverage.py
+  - src/merlin/experiments/phase0/component_automatic.py
+  - src/merlin/experiments/phase0/source_requirement_ledger.py
 ---
 
 # Component Phase 0 diagnostic API
@@ -27,7 +27,7 @@ identify semantic and interaction classes; their dimensions, frequencies and
 model identities must not select generated cases or performance objectives.
 
 The installed command
-`python -m merlin_experiments.phase0.declared_run --request <request.json> --output <fresh-owner>`
+`python -m merlin.experiments.phase0.declared_run --request <request.json> --output <fresh-owner>`
 executes the existing RTL, software, native operator-schema, arithmetic and packing
 issuers, followed by the ordinary complete mandatory generator. Its closed request
 uses `merlin.independent_phase0_run.v1`: exact input paths and SHA256s, explicit

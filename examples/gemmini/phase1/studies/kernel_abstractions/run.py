@@ -54,11 +54,10 @@ def boot(config, *, context_setup=True):
         os.environ["MERLIN_REFERENCE_MAP"] = json.dumps(C["reference_map"])
     if C["reference_guidance"] == "on" and C.get("cca_lifting"):
         os.environ["MERLIN_REFERENCE_CAPTURE_SELECTION"] = json.dumps(C["cca_lifting"], sort_keys=True)
-    from merlin_experiments.phase1.brokers.selfcheck import _decorate_response
-    from merlin_experiments.phase1.brokers.selfcheck_sources import pinned_source, request_label
-    from merlin_experiments.phase1.feedback import reference_analysis, reference_experiments
-    from merlin_experiments.phase1.providers.codex_agent import build_cmd, build_resume_cmd, prepare_codex_home
-
+    from merlin.experiments.phase1.brokers.selfcheck import _decorate_response
+    from merlin.experiments.phase1.brokers.selfcheck_sources import pinned_source, request_label
+    from merlin.experiments.phase1.feedback import reference_analysis, reference_experiments
+    from merlin.experiments.phase1.providers.codex_agent import build_cmd, build_resume_cmd, prepare_codex_home
     from merlin.targetgen.sandbox.bwrap import base_argv
 
     spec = importlib.util.spec_from_file_location("study_selfcheck_shim", WS / "agent_selfcheck.py")
@@ -152,7 +151,7 @@ def seed_selection():
     """A private copy of the starting compiler, verified against the prepared initial digest."""
     if not abstraction_feedback().get("seed_fallback"):
         return None
-    from merlin_experiments.phase1.feedback import abstraction_feedback as AF
+    from merlin.experiments.phase1.feedback import abstraction_feedback as AF
 
     root = PRIVATE / "seed-emission"
     source = root / "source"
@@ -160,8 +159,12 @@ def seed_selection():
         staging = root / "source.next"
         shutil.rmtree(staging, ignore_errors=True)
         root.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(WS / "baseline", staging, symlinks=True,
-                        ignore=shutil.ignore_patterns("__pycache__", ".git", "build", "selfcheck_out"))
+        shutil.copytree(
+            WS / "baseline",
+            staging,
+            symlinks=True,
+            ignore=shutil.ignore_patterns("__pycache__", ".git", "build", "selfcheck_out"),
+        )
         if any(p.is_symlink() for p in staging.rglob("*")):
             raise ValueError("seed source links are not accepted")
         if shim._submission_digest(staging) != C["initial_submission_sha256"]:
@@ -174,7 +177,7 @@ def seed_selection():
 
 def sweep_request(request):
     """Validate an author-named coverage sweep against the prepared selection and training cases."""
-    from merlin_experiments.phase1.feedback.abstraction_feedback import parse_shapes
+    from merlin.experiments.phase1.feedback.abstraction_feedback import parse_shapes
 
     selected = abstraction_feedback().get("coverage_sweep")
     if not selected:
@@ -201,24 +204,33 @@ def resize_case(cb, shape):
     if "MATMUL_RESIDENT" in opcodes and set(shape) <= {"m", "k", "n"}:
         products = [c for c in cb["commands"] if c["opcode"] == "MATMUL_RESIDENT"]
         n = shape.get("n")
-        return resize_dense(cb, m=shape.get("m", cb["tensors"][products[0]["operands"]["lhs"]]["shape"][0]),
-                            k=shape.get("k"), ns=None if n is None else [n] * len(products))
+        return resize_dense(
+            cb,
+            m=shape.get("m", cb["tensors"][products[0]["operands"]["lhs"]]["shape"][0]),
+            k=shape.get("k"),
+            ns=None if n is None else [n] * len(products),
+        )
     if "CONV2D" in opcodes and set(shape) <= {"batch", "spatial", "ci", "co"}:
         conv = next(c for c in cb["commands"] if c["opcode"] == "CONV2D")
         ifm = cb["tensors"][conv["operands"]["ifm"]]["shape"]
         kernel, padding = conv["attributes"]["kernel"], conv["attributes"].get("padding") or [0, 0, 0, 0]
         spatial = ifm[1] - kernel[0] + 1 + padding[0] + padding[1]
-        return same_conv_case(cb, batch=shape.get("batch", ifm[0]), spatial=shape.get("spatial", spatial),
-                              input_channels=shape.get("ci", kernel[2]), output_channels=shape.get("co", kernel[3]))
+        return same_conv_case(
+            cb,
+            batch=shape.get("batch", ifm[0]),
+            spatial=shape.get("spatial", spatial),
+            input_channels=shape.get("ci", kernel[2]),
+            output_channels=shape.get("co", kernel[3]),
+        )
     raise ValueError("this template family accepts m/k/n (dense) or batch/spatial/ci/co (SAME K3 convolution)")
 
 
 def sweep(config, submission, template, shapes, output, timeout, *, numerical=False):
     """Compile author-named shapes of one public template's family with the original package path."""
     boot(config, context_setup=False)
-    from merlin_experiments.phase1 import full_compiler_workspace as full
-    from merlin_experiments.phase1.context import load_context
-    from merlin_experiments.phase1.feedback import abstraction_feedback as AF
+    from merlin.experiments.phase1 import full_compiler_workspace as full
+    from merlin.experiments.phase1.context import load_context
+    from merlin.experiments.phase1.feedback import abstraction_feedback as AF
 
     ctx = load_context(C["descriptor"], repo=C["framework"])
     owner = full.select(**C["full_compiler"]) if C.get("full_compiler") else None
@@ -226,9 +238,17 @@ def sweep(config, submission, template, shapes, output, timeout, *, numerical=Fa
     selected = abstraction_feedback().get("coverage_sweep") or {}
     with full.scoped_full_compiler(owner), AF.seeded(seed):
         result = AF.coverage_sweep(
-            submission=Path(submission), public_cases=Path(C["suite"]) / "cases", allowed_templates=CASES,
-            template=template, shapes=json.loads(shapes), resize=resize_case, output=Path(output).with_suffix(".sweep"),
-            contract=ctx.repo / "merlin/contract", context=ctx, timeout=timeout, numerical=numerical,
+            submission=Path(submission),
+            public_cases=Path(C["suite"]) / "cases",
+            allowed_templates=CASES,
+            template=template,
+            shapes=json.loads(shapes),
+            resize=resize_case,
+            output=Path(output).with_suffix(".sweep"),
+            contract=ctx.repo / "src/merlin/resources/contracts",
+            context=ctx,
+            timeout=timeout,
+            numerical=numerical,
             max_shapes=int(selected.get("max_shapes", 6)),
         )
     write(Path(output), result)
@@ -237,18 +257,21 @@ def sweep(config, submission, template, shapes, output, timeout, *, numerical=Fa
 
 def evaluation_request(request):
     """Keep source diagnostics distinct from ordinary numerical checks."""
-    from merlin_experiments.phase1.brokers.selfcheck import FORWARDED_PROBES
-    from merlin_experiments.phase1.feedback.public_scalability import request_policy
-    from merlin_experiments.phase1.feedback.public_scalability_inspection import requested
+    from merlin.experiments.phase1.brokers.selfcheck import FORWARDED_PROBES
+    from merlin.experiments.phase1.feedback.public_scalability import request_policy
+    from merlin.experiments.phase1.feedback.public_scalability_inspection import requested
 
     if request.get("suite") != "scalability" or request.get("sim") not in (None, "spike"):
         raise ValueError("offline checks use --suite scalability --sim spike")
     mode = requested(request)
     if mode == "compile_only":
-        raise ValueError("offline compile-only requires an original native compiler-bundle owner; "
-                         "no numerical check was substituted")
-    other_probes = bool(request.get("caller_layout") or any(
-        request.get(key) for key in FORWARDED_PROBES if key != "candidate_diagnostics"))
+        raise ValueError(
+            "offline compile-only requires an original native compiler-bundle owner; no numerical check was substituted"
+        )
+    other_probes = bool(
+        request.get("caller_layout")
+        or any(request.get(key) for key in FORWARDED_PROBES if key != "candidate_diagnostics")
+    )
     _, tiers = request_policy(request.get("sim"), request.get("tiers", ""), inspection=other_probes)
     return tiers, ["--candidate-diagnostics"] if mode == "candidate_diagnostics" else []
 
@@ -256,11 +279,10 @@ def evaluation_request(request):
 def evaluate(config, submission, capsules, output, timeout, tiers="L0,L1,L2", *, candidate_diagnostics=False):
     """The original evaluator CLI, with one worker and the selected original runtime."""
     boot(config, context_setup=False)
-    from merlin_experiments.phase1 import full_compiler_workspace as full
-    from merlin_experiments.phase1.context import load_context
-    from merlin_experiments.phase1.feedback.public_scalability import install
-    from merlin_experiments.phase1.feedback.selfcheck import main as selfcheck
-
+    from merlin.experiments.phase1 import full_compiler_workspace as full
+    from merlin.experiments.phase1.context import load_context
+    from merlin.experiments.phase1.feedback.public_scalability import install
+    from merlin.experiments.phase1.feedback.selfcheck import main as selfcheck
     from merlin.targetgen.target_experiment import load_target_experiment
 
     if type(candidate_diagnostics) is not bool:
@@ -298,7 +320,7 @@ def evaluate(config, submission, capsules, output, timeout, tiers="L0,L1,L2", *,
             C["library_sha"],
         ]
     owner = full.select(**C["full_compiler"]) if C.get("full_compiler") else None
-    from merlin_experiments.phase1.feedback.abstraction_feedback import seeded
+    from merlin.experiments.phase1.feedback.abstraction_feedback import seeded
 
     try:
         seed = seed_selection()
@@ -384,9 +406,22 @@ def serve(path, *, timeout=900):
                         raise ValueError("private source snapshot differs")
                     output = job / "sweep.json"
                     argv = [
-                        C["python"], "-B", str(Path(__file__).resolve()), "sweep", "--config", C["config"],
-                        "--submission", str(job / "submission"), "--capsules", template,
-                        "--shapes", json.dumps(shapes), "--out", str(output), "--timeout", str(timeout),
+                        C["python"],
+                        "-B",
+                        str(Path(__file__).resolve()),
+                        "sweep",
+                        "--config",
+                        C["config"],
+                        "--submission",
+                        str(job / "submission"),
+                        "--capsules",
+                        template,
+                        "--shapes",
+                        json.dumps(shapes),
+                        "--out",
+                        str(output),
+                        "--timeout",
+                        str(timeout),
                     ] + (["--numerical"] if numerical else [])
                     with (job / "worker.log").open("wb") as log:
                         process = subprocess.Popen(
@@ -426,7 +461,7 @@ def serve(path, *, timeout=900):
                             raise ValueError("source changed during private snapshot; retry")
                     if shim._submission_digest(job / "submission") != source_sha:
                         raise ValueError("private source snapshot differs")
-                    from merlin_experiments.phase1.brokers import selfcheck_tuning
+                    from merlin.experiments.phase1.brokers import selfcheck_tuning
 
                     req = selfcheck_tuning.apply_request(job / "submission", req, digest=shim._submission_digest)
                     output = job / "result.json"
@@ -485,7 +520,7 @@ def serve(path, *, timeout=900):
 
 def deployment_paths():
     """Resolve operator-selected tools without embedding an account or install root."""
-    from merlin_experiments.phase1.providers.codex_agent import real_codex_home
+    from merlin.experiments.phase1.providers.codex_agent import real_codex_home
 
     def executable(key, variable, name):
         value = C.get(key) or os.environ.get(variable) or shutil.which(name)
@@ -608,7 +643,9 @@ def sandbox(payload, home):
 def launch(*, preflight=False):
     global END
     paths = deployment_paths()
-    version = subprocess.run([str(paths["codex"]), "--version"], check=True, capture_output=True, text=True).stdout.strip()
+    version = subprocess.run(
+        [str(paths["codex"]), "--version"], check=True, capture_output=True, text=True
+    ).stdout.strip()
     expected_version = C.get("codex_version", "0.162.0")
     if version != "codex-cli " + expected_version:
         raise ValueError(f"selected Codex version {version!r} differs from {expected_version!r}")
@@ -784,11 +821,19 @@ def main():
     parser.add_argument("--numerical", action="store_true", help="sweep: also run the functional Spike check")
     args = parser.parse_args()
     if args.action == "sweep":
-        return sweep(args.config, args.submission, args.capsules, args.shapes, args.out, args.timeout,
-                     numerical=args.numerical)
+        return sweep(
+            args.config, args.submission, args.capsules, args.shapes, args.out, args.timeout, numerical=args.numerical
+        )
     if args.action == "evaluate":
-        return evaluate(args.config, args.submission, args.capsules, args.out, args.timeout, args.tiers,
-                        candidate_diagnostics=args.candidate_diagnostics)
+        return evaluate(
+            args.config,
+            args.submission,
+            args.capsules,
+            args.out,
+            args.timeout,
+            args.tiers,
+            candidate_diagnostics=args.candidate_diagnostics,
+        )
     boot(args.config)
     if set(os.sched_getaffinity(0)) != set(C["cpus"]):
         raise ValueError("launch/preflight must inherit selected CPUs; use prepared taskset argv and quota wrapper")

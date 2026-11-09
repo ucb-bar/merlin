@@ -219,7 +219,7 @@ def _latencies(
                     "latency",
                     "no schedule contract was supplied, so no per-instruction issue or result cost is "
                     "derived for any unit. The only schedule contract in this tree lives under "
-                    "merlin/experiments/, which library code may not read, so a caller that wants costs "
+                    "experiments/studies/, which library code may not read, so a caller that wants costs "
                     "must pass them",
                 ),
             ),

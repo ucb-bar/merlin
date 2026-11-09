@@ -2,19 +2,13 @@
 
 No library module should hardcode a corpus path; they call :func:`capsule_corpus_roots` /
 :func:`find_capsule` / :func:`kernel_corpus_root` instead. The locations themselves are DATA — the corpus
-registry ``merlin/contract/corpora.yaml`` — and this module is its one reader, so adding or moving a corpus
+registry ``src/merlin/resources/contracts/corpora.yaml`` — and this module is its one reader, so adding or moving a corpus
 is a registry edit. It is also the ONE sanctioned indirection to a corpus that still lives under
 ``experiments/`` (the boundary lint allowlists this module).
 
-Corpora:
-- capsule corpora (registry ``capsule_corpora``) — historical read-only diagnostics and the
-  perf-bench corpus. The latter is *library-consumed* (the RTL checks screen it), so by the
-  consumption-direction rule it is a benchmark input and its proper home is ``merlin/benchmarks/``.
-  Relocating it is DEFERRED: untracked, concurrently-edited perf-bench scripts still read it in place.
-  When they land, change its registry line (and repoint the perf harness) — every reader goes through here.
-- expert kernel corpora (registry ``kernel_corpora``) — the framework checkouts the kernel-mining layer
-  builds from, keyed by framework, each with the ``kernel.source`` spellings that name it, its layout and
-  where its checkout is found.
+Capsule inputs are historical read-only diagnostics, kept under ``experiments/``
+and excluded from installed distributions. Expert kernel corpora are external
+framework checkouts keyed by source spelling, layout, and selected owner.
 """
 
 from __future__ import annotations
@@ -23,7 +17,7 @@ import os
 from functools import cache
 from pathlib import Path
 
-from merlin.common.paths import data_path, merlin_dir
+from merlin.common.paths import checkout_root, data_path, repo_root, resolve_grant
 
 _REGISTRY = ("contract", "corpora.yaml")  # checkout resource or bundled core data
 
@@ -55,11 +49,15 @@ def capsule_corpus_roots(*, owner_root: Path | None = None) -> list[Path]:
     workspace. The registry remains mandatory and is read from that owner.
     """
     if owner_root is None:
-        root, registry = merlin_dir(), _registry()
+        registry = _registry()
+        selected = os.environ.get("MERLIN_REPO_ROOT") or checkout_root()
+        if selected is None:
+            return []
+        root = Path(selected)
     else:
-        root = Path(owner_root) / "merlin"
-        registry = _load_registry(root.joinpath(*_REGISTRY))
-    roots = [root / str(rel) for rel in registry.get("capsule_corpora") or []]
+        root = Path(owner_root)
+        registry = _load_registry(resolve_grant("merlin/contract/corpora.yaml", root=root))
+    roots = [resolve_grant(str(rel), root=root) for rel in registry.get("capsule_corpora") or []]
     return [r for r in roots if r.is_dir()]
 
 
@@ -97,9 +95,9 @@ def sched_corpora() -> dict[str, dict]:
 
 
 def sched_corpus_record(spec: dict) -> Path | None:
-    """The merlin/-relative eligibility record a ``sched_corpora`` spec declares, or None."""
+    """The project-relative eligibility record a ``sched_corpora`` spec declares, or None."""
     rel = str(spec.get("provenance_record") or "")
-    return merlin_dir() / rel if rel else None
+    return resolve_grant(rel) if rel else None
 
 
 def kernel_corpus_for_source(source: str | None) -> str | None:
@@ -170,8 +168,18 @@ def capsule_store_targets() -> list[str]:
     capability residual, which is a different (and differently-sized) population. Ordered, so a report
     built from it is stable across runs.
     """
-    root = merlin_dir() / "experiments" / "capsule_bench" / "targets"
+    root = repo_root() / "experiments" / "studies" / "capsule_bench" / "targets"
     return sorted(p.name for p in root.iterdir() if p.is_dir()) if root.is_dir() else []
+
+
+def descriptor_paths(target: str = "*") -> list[Path]:
+    """Retained experiment descriptors, in the same deterministic owner order."""
+    root = repo_root()
+    patterns = (
+        "experiments/studies/*/targets/{target}/target_experiment.yaml",
+        "experiments/reference-data/target-inputs/{target}/target_experiment.yaml",
+    )
+    return [path for pattern in patterns for path in sorted(root.glob(pattern.format(target=target))) if path.is_file()]
 
 
 def descriptor_path(target: str) -> Path:
@@ -197,7 +205,7 @@ def standard_descriptor_path(target: str) -> Path:
     """
     from merlin.common.paths import repo_root
 
-    return repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target / "target_experiment.yaml"
+    return repo_root() / "experiments" / "studies" / "capsule_bench" / "targets" / target / "target_experiment.yaml"
 
 
 def source_experiment_env(target: str | None = None, *, descriptor: str | Path | None = None) -> list[str]:
@@ -274,7 +282,7 @@ def graded_capsule_roots(target: str, *, hidden: bool = False) -> list[Path]:
     :func:`merlin.targetgen.capsule_common.discover_capsules`.
 
     Measured consequence of getting this wrong: grading the gemmini package against
-    ``merlin/contract/capsules`` pulled in 173 capsules from seven targets, marked 89 of them "outside
+    ``experiments/corpora`` pulled in 173 capsules from seven targets, marked 89 of them "outside
     this target's declared capability", and reported ``1/84`` -- a number that reads like a catastrophic
     regression and means nothing. The target's own suite is 36.
 

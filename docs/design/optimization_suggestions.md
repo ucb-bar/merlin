@@ -1,6 +1,6 @@
 # Selecting optimization suggestions
 
-`merlin_experiments.phase1.optimization_suggestions` intersects the optimization
+`merlin.experiments.phase1.optimization_suggestions` intersects the optimization
 catalog with explicit selected capabilities, actual public API access and parsed
 workload IR. This is advisory filtering, not a compiler legality check, pass order,
 performance ranking or import grant.

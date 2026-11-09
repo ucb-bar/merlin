@@ -4,7 +4,7 @@
 # run it on spike, read its console in three states). Everything specific to this corpus -- the
 # toolchain flags, the spike memory map, the bench tree layout and which bench measures what -- is
 # declared here, beside the target that owns it. The corpus itself is located through
-# merlin/contract/corpora.yaml (`kernel_corpora.<corpus>`), whose `target:` names this target.
+# src/merlin/resources/contracts/corpora.yaml (`kernel_corpora.<corpus>`), whose `target:` names this target.
 #
 # Every value below was lifted verbatim from the corpus's own benchmarks/Makefile and bench sources;
 # none is an RTL-derived fact.

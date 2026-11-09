@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-07-14
 related: [repo_structure, architecture]
-code_refs: [merlin/benchmarks, merlin/contract, merlin/experiments, merlin/prompts, merlin/runtime, merlin/schemas, merlin/targets]
+code_refs: [experiments/benchmarks, src/merlin/resources/contracts, experiments/studies, src/merlin/resources/prompts, src/merlin/runtime/native, src/merlin/resources/schemas, experiments/reference-data/target-inputs]
 ---
 
 # merlin/ layout — what goes where
@@ -20,7 +20,7 @@ is the local contract; this table is the map.
 | `python/merlin/` | the importable library (all reusable code) | — | everything |
 | `schemas/` | cross-workstream YAML data-model (`*.schema.yaml`) | — | `merlin.common.schemas`; pinned by `REQUIRED_SCHEMAS` |
 | `contract/` | experiment-ABI **data** + capsule corpus (gemmini reference) | results → `out/artifacts/` | `merlin.targetgen.contract` (`contract_dir()`), capsule-bench |
-| `benchmarks/` | workload corpus + measured data (DSE inputs) | oversized captures → `out/artifacts/recaptures/`; results → `out/artifacts/dse-guidance/` | `merlin.dse_guidance`, `merlin.kernels.validate` |
+| `benchmarks/` | workload corpus + measured data (DSE inputs) | oversized captures → `out/artifacts/recaptures/`; results → `out/artifacts/dse-guidance/` | `merlin.analysis.dse.guidance`, `merlin.kernels.validate` |
 | `runtime/` | target-independent C runtime substrate + one spike backend | compiled objects/ELFs → `out/build/` | `runtime.backends.*`, `rvvgen.k1`, `baselines.buddy` |
 | `targets/` | hand-authored reference target defs (toy_npu/gemmini/saturn) | codegen packages → `out/artifacts/targets/`; RTL scratch gitignored | `xdsl_dialects.targets.*`, lowering, `targetgen` |
 | `prompts/` | versioned RVV agent-instruction templates | — | `kernels.agent_mine`, `rvvgen.tuning_agent` |

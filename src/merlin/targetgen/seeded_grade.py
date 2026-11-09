@@ -3,7 +3,7 @@
 A seeded campaign starts from a finished run's compiler. Most of its test cases emit exactly the
 executables the seed run already proved, and re-proving them is not the focus of the run. The
 seeded plan (``examples/<target>/phase1/launch/fresh_seed.py``) re-keys the seed run's passing tier
-verdicts onto this export's judge (:mod:`merlin_experiments.phase1.seed_certificates`) and sets
+verdicts onto this export's judge (:mod:`merlin.experiments.phase1.seed_certificates`) and sets
 :data:`ENV` to the seed run's id. Nothing here acts without it, so a from-scratch run grades exactly
 as before.
 
@@ -61,7 +61,7 @@ def screen_carry(capsule_name: str, tier: str) -> bool:
     if seed_run() is None:
         return False
     try:
-        from merlin_experiments.phase1.feedback.rolling_model_gate import needs_original_execution
+        from merlin.experiments.phase1.feedback.rolling_model_gate import needs_original_execution
     except ImportError:
         return True
     return not needs_original_execution(capsule_name, tier)
@@ -193,8 +193,11 @@ def _passing(document: dict) -> bool:
         return True
     failure = document.get("failure") if isinstance(document.get("failure"), dict) else {}
     tiers = document.get("tiers") or {}
-    return (document.get("status") == "incomplete" and failure.get("plane") == "oracle_unavailable"
-            and not any(isinstance(r, dict) and r.get("status") in ("fail", "error") for r in tiers.values()))
+    return (
+        document.get("status") == "incomplete"
+        and failure.get("plane") == "oracle_unavailable"
+        and not any(isinstance(r, dict) and r.get("status") in ("fail", "error") for r in tiers.values())
+    )
 
 
 def label(document: dict, oracle_tiers=None) -> str | None:

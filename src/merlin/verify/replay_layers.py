@@ -4,7 +4,7 @@ Split out so `replay.py` invokes every layer the same way (a subprocess against 
 and so each layer can be run by hand to see what it says. Both distinguish "rejected the input" from
 "could not run": the replay scores only exit 1 as a detection, so an exception here must not exit 1.
 
-* `lit` — the static layer: llvm-lit over `merlin/tests/data/lit`, pointed at the shadow through
+* `lit` — the static layer: llvm-lit over `tests/data/lit`, pointed at the shadow through
   `MERLIN_LIT_PYTHONPATH`. Without that override the suite would test the CURRENT tree and report a
   clean pass for every historical defect.
 * `oracle` — the numeric layer: for each tracked capsule that lowers, compare the independent golden

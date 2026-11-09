@@ -77,7 +77,7 @@ checks every int8 input value at a non-power-of-two scale; each has one result b
 qualifier currently accepts one exact FP32 result ABI. Both exercise int8 inputs
 and the PyTorch `quantized_decomposed.dequantize_per_tensor` frontend path.
 Capture it with `--dtype int8 --already-quantized`; the saved MLIR and golden can
-then be checked through `merlin_experiments.model_qualification --native-host-only`.
+then be checked through `merlin.experiments.model_qualification --native-host-only`.
 That exact-input native-host result helps review a host fallback, but is not a
 generated Phase 1 capsule, a sealed source capture, or evidence of accelerator
 execution or every scale and input value.

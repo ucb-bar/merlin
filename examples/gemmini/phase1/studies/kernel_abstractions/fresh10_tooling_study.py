@@ -647,9 +647,9 @@ def observe(study_path, runtime_index, *, once=False, interval_s=1, now=None):
         or tuple(row.get("arm") for row in runtime.get("arms", [])) != ARMS
     ):
         raise ValueError("runtime index must bind the three native contexts and source revision")
-    from merlin_experiments.phase1 import study_protocol
+    from merlin.experiments.phase1 import study_protocol
 
-    owner = HERE.parents[4] / "packages/merlin-experiments/src/merlin_experiments/phase1/study_protocol.py"
+    owner = HERE.parents[4] / "packages/merlin-experiments/src/merlin/experiments/phase1/study_protocol.py"
     if Path(study_protocol.__file__).resolve() != owner:
         raise ValueError("checkpoint source owner must come from this frozen framework, not ambient PYTHONPATH")
     root = Path(study_path).resolve().parent / "operator-checkpoints"

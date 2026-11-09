@@ -649,7 +649,7 @@ artifact. And the iterative loop has twice corrected a *human* hypothesis with a
 | K-ladder certification | `mining/runner.py` |
 | Ranking / sweep | `mining/sweep.py` |
 | Evidence report / driver | `mining/report.py`, `mining/mine.py` |
-| Phase 1 agent authoring | `merlin_experiments/phase1/providers/` |
+| Phase 1 agent authoring | `merlin.experiments/phase1/providers/` |
 | Tests | `tests/test_decode_rvv.py`, `test_cca.py`, `test_action_catalog.py`, `test_impr_features.py`, `test_rvv_beam.py`, `test_tuning_agent.py`, `test_rvv_runner.py` |
 
 ---

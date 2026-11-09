@@ -81,7 +81,7 @@ package whose contract `name` matches. Precedence, highest first:
 | # | Source | `kind` | Use it for |
 | - | ------ | ------ | ---------- |
 | 1 | **`MERLIN_TARGET_PATH`** entries | `external` | **Explicit selection** — a specific versioned/named package, or a repo you cloned yourself. Always wins. **Unset**, the entries are the checkout's in-repo support providers (`examples/*/support`, see below). |
-| 2 | Reference metadata: checkout `examples/*/target/`, then `merlin/targets/` compatibility roots | `reference` | Inspect authored inputs; explicit `MERLIN_TARGETS_DIR` replaces this search. |
+| 2 | Reference metadata: checkout `examples/*/target/`, then `experiments/reference-data/target-inputs/` compatibility roots | `reference` | Inspect authored inputs; explicit `MERLIN_TARGETS_DIR` replaces this search. |
 | 3 | `out/build/generated/<name>/` | `external` | The **freshly generated** package — dropped here by onboarding / `write_oot_target`, so a just-generated target resolves with **zero env**. |
 | 4 | `out/artifacts/targets/<name>/` | `generated` | Legacy generated location (fallback). |
 
@@ -133,7 +133,7 @@ Merlin's trusted, agent-private support provider for a target is tracked beside 
   and source tree; only listed `normalized` files may differ, with each original blob ID recorded.
   A change to this form is a new re-vendoring from a recorded companion commit.
 
-`merlin/tests/infra/test_example_support.py` recomputes each tree from tracked members and checks
+`tests/infra/test_example_support.py` recomputes each tree from tracked members and checks
 its record against [`target_support.json`](../../build_tools/upstreams/target_support.json). Neither
 form is a compiler candidate or an authorization to show the support tree to an agent.
 Fresh compiler experiments additionally exclude handwritten support from the
@@ -158,7 +158,7 @@ loads each one's declared plugins. Plugin ownership is still process-immutable: 
 selection afterwards in the same process (for example a test that sets `MERLIN_TARGET_PATH` to one
 fixture) is refused for every loaded target. Select explicitly before the first query, or run in a
 fresh process, when only one provider should load. For that reason the test suites
-(`merlin/tests`, `packages/merlin-experiments/tests`) start with `MERLIN_TARGET_PATH=""` unless you
+(`tests`, `packages/merlin-experiments/tests`) start with `MERLIN_TARGET_PATH=""` unless you
 export a value. Support-dependent tests require an explicitly selected external
 provider. From-scratch experiments separately qualify its independent derivation;
 selecting a provider is not experimental admission.

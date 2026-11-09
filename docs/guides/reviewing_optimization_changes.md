@@ -10,8 +10,8 @@ code_refs:
   - src/merlin/llvmlower/optional_passes.py
   - src/merlin/transforms/pipeline_state.py
   - src/merlin/compiler/schedule/schedule_pipeline.py
-  - src/merlin_experiments/phase2/search_session.py
-  - src/merlin_experiments/phase2/search_target.py
+  - src/merlin/experiments/phase2/search_session.py
+  - src/merlin/experiments/phase2/search_target.py
 ---
 
 # Reviewing compiler optimization changes

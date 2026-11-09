@@ -1,4 +1,4 @@
-"""Common runtime metrics (matches merlin/schemas/metrics.schema.yaml).
+"""Common runtime metrics (matches src/merlin/resources/schemas/metrics.schema.yaml).
 
 A plain accumulator the simulator updates as it executes a command buffer. ``as_dict``
 emits the common metric vocabulary so results are comparable across targets/backends.

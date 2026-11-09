@@ -257,7 +257,7 @@ class IsolatedAnalysisWorker:
 
 def _load_analysis(analysis_source: Path) -> Any:
     """Execute fresh canonical analyzer source through the active source-verifying finder."""
-    fullname = "merlin_experiments.phase2.emission_analysis"
+    fullname = "merlin.experiments.phase2.emission_analysis"
     analysis_source = analysis_source.resolve()
     parent = importlib.import_module(fullname.rpartition(".")[0])
     spec = None
@@ -385,7 +385,7 @@ def _worker(request_path: Path) -> int:
         )
 
     try:
-        from merlin_experiments.phase2 import stage_inputs as INPUTS
+        from merlin.experiments.phase2 import stage_inputs as INPUTS
 
         kwargs = request["kwargs"]
         verifier_import = kwargs.pop("verifier_import", None)

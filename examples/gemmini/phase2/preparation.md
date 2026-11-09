@@ -43,7 +43,7 @@ cannot express the required interface. Keep accelerator-containing work only.
 First use the existing selector without running a simulator:
 
 ```sh
-python -m merlin_experiments.timing_probes select \
+python -m merlin.experiments.timing_probes select \
   --target-hardware gemmini --profile "$PROFILE" \
   --facts "$FACTS" --contract "$CONTRACT" \
   --labels "$ORIGINAL_PUBLIC_TIMING_ARCHIVE" \

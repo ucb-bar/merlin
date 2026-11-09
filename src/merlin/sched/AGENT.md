@@ -22,7 +22,7 @@ checkable before any simulator runs.
 ## Direction (user decision, 2026-09-14)
 
 No per-target recipes or hand-written legality rules. The current Gemmini binding
-(`merlin/targets/gemmini/backend/gemmini_sched.py`: a LOOP_WS matmul recipe and rules read off
+(`experiments/reference-data/target-inputs/gemmini/backend/gemmini_sched.py`: a LOOP_WS matmul recipe and rules read off
 `LoopMatmul.scala`) is measured ONCE to validate IR -> C -> harness -> GSIM, then replaced by:
 
 - recipes here, over abstract tile operations (load a tile into an operand store, multiply-accumulate
@@ -53,10 +53,10 @@ No per-target recipes or hand-written legality rules. The current Gemmini bindin
 - `check/placement.py`, `check/sync.py` — the two machine-aware checks. What a wait ORDERS is declared
   per instruction, and only `completion` discharges a dependence on a result.
 - `expressiveness.py` — measures whether an expert corpus and our own schedule AGREE on the capability
-  axes `merlin/contract/schedule_ir_coverage.yaml` declares, and reports the answer as a TRIPLE
+  axes `src/merlin/resources/contracts/schedule_ir_coverage.yaml` declares, and reports the answer as a TRIPLE
   (`expressed / denominator / unexercised`) rather than a ratio. Every field the comparator could not
   decide is charged to the denominator, so thin evidence reads as a wide interval; a corpus that does
   not resolve reports UNMEASURED naming the environment variable, path or audit it needs, never a zero
-  denominator. Corpora are declared in `merlin/contract/corpora.yaml` (`sched_corpora`) and located
+  denominator. Corpora are declared in `src/merlin/resources/contracts/corpora.yaml` (`sched_corpora`) and located
   through the hardware pin they name, so a result records which revision it came from. Run it with
   `build_tools/scripts/check_schedule_ir_coverage.py --measure --summary`.

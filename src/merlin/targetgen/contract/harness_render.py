@@ -4,7 +4,7 @@ A graded package emits a kernel FUNCTION; the runner owns the C caller that embe
 calls that function once per measured invocation, and prints the ``OUT``/``METRIC``/``DONE`` protocol
 the console parser reads. This module writes that caller for ANY target, from declared data only:
 
-* ``logical_kernel_abi`` in ``merlin/contract/mlir_oot_backend_contract.yaml`` -- the pointer order,
+* ``logical_kernel_abi`` in ``src/merlin/resources/contracts/mlir_oot_backend_contract.yaml`` -- the pointer order,
   the pointee layout (dense row-major LOGICAL tensors), the output poison, the readout format;
 * the target contract's ``harness_abi.entry_symbol`` / ``cycle_window_metric`` and its
   ``logical_harness`` block -- the host instructions that read the cycle counter and wait for
@@ -636,7 +636,7 @@ class _Readout:
             return []
         if self.digest:
             # One XXH64 of the output's dense bytes, computed by this grader-rendered harness over the
-            # buffer the candidate wrote (merlin/runtime/baremetal/out_digest.h).
+            # buffer the candidate wrote (src/merlin/runtime/native/baremetal/out_digest.h).
             if contiguous is None or not name.isascii() or not all(c.isalnum() or c == "_" for c in name):
                 raise HarnessRenderError("an output digest needs a dense, closed-identifier output buffer")
             nbytes = count * container.word_bytes

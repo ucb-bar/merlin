@@ -5,7 +5,7 @@ it should become a capsule the bench grades from then on. This module writes tho
 ENTRIES rather than as capsule directories, which is the difference between joining the corpus and
 sitting beside it.
 
-**Why a profile entry and not a directory.** ``merlin_experiments.phase0`` is what
+**Why a profile entry and not a directory.** ``merlin.experiments.phase0`` is what
 turns an entry into a capsule: it writes ``capsule.yaml``, ``capsule.interface.mlir`` and the README,
 computes and writes the untracked ``golden.yaml``, scrubs the directory, and records the capsule in
 ``MANIFEST.yaml`` as *generated*. An earlier version of this work wrote the directory itself and got

@@ -135,7 +135,7 @@ adds it to the output. Z3 checks whether any input makes them differ:
 ```sh
 merlin-verify split-reduction --k 72 --operand-width 8 --partial-width 20 \
   --output-width 32 --chunks 31,31,10
-python -m pytest -q merlin/tests/ir/test_split_reduction.py
+python -m pytest -q tests/ir/test_split_reduction.py
 ```
 
 The command prints the verdict, any counterexample, and the conservative
@@ -171,7 +171,7 @@ instruction produces a counterexample and changed target bytes invalidate
 an older receipt:
 
 ```sh
-python -m pytest -q merlin/tests/ir/test_scalar_ir.py
+python -m pytest -q tests/ir/test_scalar_ir.py
 ```
 
 This pilot accepts only pure, single-block scalar integer functions with
@@ -219,7 +219,7 @@ full-overwrite initialization and cloned producers. The test exercises one-
 and two-dispatch actual pass output and a type-correct, wrong operand rewiring:
 
 ```sh
-python -m pytest -q merlin/tests/ir/test_outline_ir.py
+python -m pytest -q tests/ir/test_outline_ir.py
 ```
 
 ## Qualification sequence

@@ -11,10 +11,10 @@ empty.
 An UNVALIDATED proxy is worse than no proxy. Measured on this tree: a block-DMA change scored a 23%
 WIN under the functional model and measured 2.8% to 12.8% WORSE on hardware. So every claim this
 module makes is checked against measured hardware points, the check is a test
-(``merlin/tests/dse/test_schedule_proxy.py``, over the measured points recorded with the target that
+(``tests/dse/test_schedule_proxy.py``, over the measured points recorded with the target that
 produced them), and the correlation it reaches is stated as a number rather than asserted as a property.
 :mod:`merlin.perf.group_headroom` prices a model group through :func:`schedule_cost`, and the
-``cost_proxy`` rung of ``merlin/contract/measurement_ladder.yaml`` names this module as its
+``cost_proxy`` rung of ``src/merlin/resources/contracts/measurement_ladder.yaml`` names this module as its
 implementation: a ranking signal, never a cycle count.
 
 THE ONE FACT THAT SHAPES THE DESIGN

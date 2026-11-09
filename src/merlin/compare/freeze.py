@@ -487,7 +487,7 @@ def freeze_study(
             {key: selected_formats[key] for key in required_formats}
         )
 
-    baseline_sources = root / "merlin" / "benchmarks" / "rvv_paper" / "baseline_sources.yaml"
+    baseline_sources = root / "src/merlin/resources/benchmarks/rvv_paper/baseline_sources.yaml"
     if not baseline_sources.is_file():
         raise ValueError("cannot freeze: exact RVV baseline source pins are absent")
     baseline_sources_digest = sha256_paths([baseline_sources])

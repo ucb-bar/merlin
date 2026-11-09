@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from merlin.common.jsonio import readable_json
-from merlin_experiments.phase1.feedback import setup_timing as _host_timing
+from merlin.experiments.phase1.feedback import setup_timing as _host_timing
 
 from .capsule_diagnostics import _absent_outputs as _absent_outputs
 from .capsule_diagnostics import _candidate_exception_diagnostic as _candidate_exception_diagnostic
@@ -493,7 +493,7 @@ def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, r
     run._merlin_with_readback_policy = lambda policy: simulator_adapter(
         sim, target, selection=selection, readback_policy=policy
     )
-    from merlin_experiments.phase1.feedback.operator_child import register_adapter
+    from merlin.experiments.phase1.feedback.operator_child import register_adapter
 
     register_adapter(run, engine=sim, target=target, selection=selection, readback_policy=readback_policy)
     return run
@@ -2333,7 +2333,7 @@ def _grade_model_capsule_unlocked(
             numeric_policy_identity=numeric_policy_identity,
         )
 
-    from merlin_experiments.phase1.feedback import compiler_profile_child as _child_profile
+    from merlin.experiments.phase1.feedback import compiler_profile_child as _child_profile
 
     with _tf.TemporaryDirectory(prefix="model_grade_", dir=_child_profile.model_child_temporary_root()) as _td:
         spec_p, out_p = Path(_td) / "spec.json", Path(_td) / "result.json"
@@ -2812,7 +2812,7 @@ def resolve_numeric_policy(
     if target is None:
         return None, None, None
     from merlin.common.paths import repo_root
-    from merlin_experiments.corpus.numeric_policy import load_declared_numeric_policy, numeric_profile_path
+    from merlin.experiments.corpus.numeric_policy import load_declared_numeric_policy, numeric_profile_path
 
     from .corpora import descriptor_path
     from .target_experiment import load_target_experiment
@@ -5642,7 +5642,7 @@ def run_capsule(
             # Capture original L2 custody after numerical comparison and before
             # a later engine can reuse mutable build paths. No observer means
             # no work; this grants only protected model scheduling evidence.
-            from merlin_experiments.phase1.feedback.rolling_model_gate import capture_tier
+            from merlin.experiments.phase1.feedback.rolling_model_gate import capture_tier
 
             capture_tier(name, tier, tiers[tier], generated=paths.generated, package_dir=package_dir, shas=_pin_shas())
             # THIS TIER WAS PAID FOR; write down what it bought, against the bytes and the instrument
@@ -6133,8 +6133,8 @@ def _candidate_boundary_readiness(capsules, pkg, *, oracle_adapters):
     """
     if set(oracle_adapters or {}) != {"L2"}:
         return None
-    from merlin_experiments.phase1 import joint_control
-    from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
+    from merlin.experiments.phase1 import joint_control
+    from merlin.experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
 
     from .capsule_scheduling import BoundaryReadiness
     from .expected_refusal import expects_refusal
@@ -6209,8 +6209,8 @@ def _run_suite(
     package_dir = str(Path(package_dir).resolve())
     if contract is not None and Path(contract).exists():
         contract = str(Path(contract).resolve())
-    from merlin_experiments.phase1.feedback import operator_child as _operator_child
-    from merlin_experiments.phase1.feedback import snapshot_execution
+    from merlin.experiments.phase1.feedback import operator_child as _operator_child
+    from merlin.experiments.phase1.feedback import snapshot_execution
 
     process_operators = (
         not snapshot_execution.selected()
@@ -6296,11 +6296,11 @@ def _run_suite(
             )
 
     def _one(cap: dict, workers: int = 1) -> dict:
-        from merlin_experiments.phase1.feedback import setup_timing
+        from merlin.experiments.phase1.feedback import setup_timing
 
         # Diagnostic identity only. This worker may execute multiple tiers;
         # selecting/requesting L2 does not make every setup stage an L2 event.
-        from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
+        from merlin.experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
 
         original = active_original_execution()
         source = None if original is None else original.source_sha256
@@ -6326,7 +6326,7 @@ def _run_suite(
         # FINISHED (it cites that sibling's published result), with one short calibration head on the
         # cheapest members while tiers are unpriced. No wave barrier, so one slow member never holds
         # the rest (merlin.targetgen.capsule_scheduling).
-        from merlin_experiments.phase1.feedback import snapshot_execution
+        from merlin.experiments.phase1.feedback import snapshot_execution
 
         from .capsule_scheduling import run_pipelined
 
@@ -6381,7 +6381,7 @@ def _run_suite(
             flush=True,
             file=sys.stderr,
         )
-    from merlin_experiments.phase1.feedback import snapshot_execution
+    from merlin.experiments.phase1.feedback import snapshot_execution
 
     if snapshot_execution.selected():
         # This experimental treatment lets the author choose when a model is
@@ -6552,11 +6552,11 @@ def main(argv: list[str] | None = None) -> int:
     # one result file out, so the parent can kill the process group without losing what it knows.
     _av = list(sys.argv[1:] if argv is None else argv)
     if "--operator-grade" in _av:
-        from merlin_experiments.phase1.feedback.operator_child import main as run_operator_grade
+        from merlin.experiments.phase1.feedback.operator_child import main as run_operator_grade
 
         return run_operator_grade(_av)
     if "--model-grade" in _av:
-        from merlin_experiments.phase1.feedback.compiler_profile_child import run_model_grade
+        from merlin.experiments.phase1.feedback.compiler_profile_child import run_model_grade
 
         return run_model_grade(_av)
 
@@ -6566,7 +6566,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--capsules-root", help="run every capsule under this root")
     ap.add_argument("--labels", default="public,dev", help="comma-separated label filter")
     ap.add_argument("--runs-root", default="out/runs/capsule_bench")
-    ap.add_argument("--contract", default="merlin/contract")
+    ap.add_argument("--contract", default="src/merlin/resources/contracts")
     ap.add_argument("--target", required=True, help="target to grade (its config/oracle are derived)")
     ap.add_argument("--timeout", type=int, default=600)
     a = ap.parse_args(argv)

@@ -14,18 +14,14 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Callable
 
-from merlin.common.paths import merlin_dir, repo_root
+from merlin.common.paths import resolve_grant
 
 
 def _resolve_path(value: str | Path) -> Path:
     path = Path(value)
     if path.is_absolute():
         return path
-    for root in (merlin_dir(), repo_root()):
-        candidate = root / path
-        if candidate.is_file():
-            return candidate
-    return repo_root() / path
+    return resolve_grant(str(path))
 
 
 def load_hook(reference: str) -> Callable:

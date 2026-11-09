@@ -12,7 +12,7 @@ statements about the same program:
 
 ``asked``
     read from the buffer's own commands -- the ``epilogue`` attribute on each store-path site, in
-    the ABI's own vocabulary (``merlin/contract/command_buffer_abi.yaml``).
+    the ABI's own vocabulary (``src/merlin/resources/contracts/command_buffer_abi.yaml``).
 ``admissible``
     derived, per site, by the capability-driven grouper that already exists in target-agnostic core
     (:mod:`~merlin.xdsl_dialects.lowering.compute_groups` closes a group only while the target's own

@@ -29,10 +29,7 @@ def checkout_root() -> Path | None:
     """Find this implementation's source project, never an enclosing wheel-install host."""
     module = Path(__file__).resolve()
     for parent in module.parents:
-        source_files = (
-            parent / "src/merlin/common/paths.py",
-            parent / "merlin/python/merlin/common/paths.py",
-        )
+        source_files = (parent / "src/merlin/common/paths.py",)
         if (
             (parent / "pyproject.toml").is_file()
             and (parent / "build_tools" / "package_resources.json").is_file()
@@ -104,124 +101,193 @@ def phase_runs_root(target: str, phase: int | str) -> Path:
     return runs_root(target, phase_suite(phase))
 
 
-def merlin_dir() -> Path:
-    """Return ``<repo>/merlin``."""
-    return repo_root() / "merlin"
+# Logical grant identities in archived protocols remain stable. Only a selected
+# current-layout source owner translates them to the new physical locations.
+_GRANT_PREFIXES = (
+    (
+        "merlin/experiments/reference-data/joint-public-plan-library",
+        "experiments/reference-data/joint-public-plan-library",
+    ),
+    ("merlin/tests/data/cca_asm", "experiments/reference-data/cca-asm"),
+    ("merlin/tests/data/opu_shapes", "experiments/reference-data/opu-shapes"),  # target-ok: archived path identity
+    ("merlin/contract/capsules", "experiments/corpora"),
+    ("contract/capsules", "experiments/corpora"),
+    ("merlin/contract", "src/merlin/resources/contracts"),
+    ("contract", "src/merlin/resources/contracts"),
+    ("merlin/schemas", "src/merlin/resources/schemas"),
+    ("schemas", "src/merlin/resources/schemas"),
+    ("merlin/prompts", "src/merlin/resources/prompts"),
+    ("prompts", "src/merlin/resources/prompts"),
+    ("merlin/runtime", "src/merlin/runtime/native"),
+    ("runtime", "src/merlin/runtime/native"),
+    ("merlin/targets", "experiments/reference-data/target-inputs"),
+    ("targets", "experiments/reference-data/target-inputs"),
+    ("merlin/tests", "tests"),
+    ("merlin/benchmarks", "experiments/benchmarks"),
+    ("benchmarks", "experiments/benchmarks"),
+    ("merlin/experiments", "experiments/studies"),
+    *(
+        ("experiments/" + name, "experiments/studies/" + name)
+        for name in (
+            "agent_bench",
+            "agent_recipe_select_v0",
+            "agentic_report",
+            "capsule_bench",
+            "cpu_host_compiler_v0",
+            "dataset_accuracy",
+            "gemmini_cert",  # target-ok: archived path identity
+            "gemmini_perf_bench",  # target-ok: archived path identity
+            "gsim_wholemodel",
+            "kernel_policy",
+            "llm_kernel_vs_compiler_v0",
+            "muon_perf_bench_v0",  # target-ok: archived path identity
+            "performance_contract",
+            "scheduled_backend_v0",
+            "targetgen_evals",
+            "voyager_h2h",
+        )
+    ),
+)
+
+
+def _layout_version(owner: Path) -> int | None:
+    """Read the selected owner's layout declaration, never infer it from path existence."""
+    import json
+
+    manifest = owner / "build_tools/package_resources.json"
+    if not manifest.is_file():
+        return None
+    return json.loads(manifest.read_text(encoding="utf-8")).get("version")
 
 
 def resolve_grant(rel: str, *, root: Path | None = None) -> Path:
-    """Resolve a bundle-convention grant path string to an absolute host path.
+    """Resolve a logical grant within its explicitly selected source owner.
 
-    Grant paths in target descriptors / bundle manifests are repo-root-relative by convention, with
-    one documented shorthand: a leading ``experiments/...`` (and other in-``merlin/`` trees) "resolves
-    under ``merlin/``" — i.e. the ``merlin/`` prefix may be elided. This resolver honors that: it prefers
-    ``<repo>/<rel>`` when that exists, else falls back to ``<repo>/merlin/<rel>`` when THAT exists, else
-    returns ``<repo>/<rel>`` (the caller's existence check then treats it as missing). Keeps the sandbox
-    binder (``bwrap``) and the workspace assembler in lockstep so a granted path is never silently
-    dropped by one but honored by the other.
-    Pass ``root`` to resolve within an explicitly selected or frozen input owner,
-    without switching to an ambient checkout.
+    Current owners declare layout version 2. Their old resource identities map
+    explicitly; current project-relative paths remain literal. Archived version-1
+    owners keep their original layout and documented shorthand. A missing path
+    never redirects a grant to another owner or changes its meaning.
     """
-    owner = root if root is not None else repo_root()
-    direct = owner / rel
-    if direct.exists():
-        return direct
-    under_merlin = owner / "merlin" / rel
-    if under_merlin.exists():
-        return under_merlin
-    return direct
+    owner = Path(root) if root is not None else repo_root()
+    logical = Path(rel).as_posix()
+    version = _layout_version(owner)
+    if version == 2:
+        # Public benchmark specs have one package-owned authority; captures and
+        # executable study inputs remain outside the installed package.
+        benchmark = next(
+            (logical[len(prefix) :] for prefix in ("merlin/benchmarks/", "benchmarks/") if logical.startswith(prefix)),
+            None,
+        )
+        if benchmark is not None:
+            import json
+
+            document = json.loads((owner / "build_tools/package_resources.json").read_text(encoding="utf-8"))
+            public = "src/merlin/resources/benchmarks/" + benchmark
+            if public in document["files"]:
+                return owner / public
+        for old, new in _GRANT_PREFIXES:
+            if logical == old or logical.startswith(old + "/"):
+                return owner / (new + logical[len(old) :])
+    elif version == 1 and logical.split("/", 1)[0] in {
+        "experiments",
+        "contract",
+        "schemas",
+        "prompts",
+        "runtime",
+        "targets",
+        "benchmarks",
+        "tests",
+    }:
+        return owner / "merlin" / logical
+    return owner / rel
+
+
+def _package_dir() -> Path:
+    """Resource owner selected by the implementation or an explicit project root."""
+    selected = os.environ.get("MERLIN_REPO_ROOT")
+    return Path(selected) / "src/merlin" if selected else Path(__file__).resolve().parents[1]
 
 
 def data_path(*parts: str) -> Path:
-    """Resolve bundled read-only package data (``schemas/``, ``prompts/``, …).
+    """Resolve read-only resources identically in editable and installed packages.
 
-    Prefers the canonical tree belonging to this implementation's checkout or an explicit
-    ``MERLIN_REPO_ROOT``. Installed code otherwise reads its bundled ``merlin/_data`` tree,
-    even when the caller's CWD or writable work directory contains another ``merlin`` tree.
-    Output/work roots do not select read-only compiler resources. Per-class env overrides
-    (e.g. ``MERLIN_SCHEMAS_DIR``) are applied by the wrappers below, not here.
+    The implementation's package owns data. Writable work/output directories and
+    the caller's CWD never select compiler resources. Optional experiment inputs
+    remain unbundled and use their separately named project helpers.
     """
     rel = Path(*parts)
-    source_owner = bool(os.environ.get("MERLIN_REPO_ROOT")) or checkout_root() is not None
-    cand = merlin_dir() / rel if source_owner else python_source_dir() / "merlin" / "_data" / rel
-    if source_owner and cand.exists():
-        return cand
-    try:
-        import importlib.resources as _ir
-
-        base = _ir.files("merlin").joinpath("_data", *rel.parts)
-        # normally-installed (unzipped) wheel -> a real filesystem path
-        return Path(str(base))
-    except (ModuleNotFoundError, FileNotFoundError, TypeError, NotADirectoryError):
-        return cand  # Selected owner path; callers report unavailable resources.
+    if rel.is_absolute() or ".." in rel.parts or not rel.parts:
+        raise ValueError(f"resource path must be package-relative: {rel}")
+    selected = os.environ.get("MERLIN_REPO_ROOT")
+    if selected and _layout_version(Path(selected)) == 1:
+        return Path(selected).joinpath("merlin", *parts)
+    kind, *tail = rel.parts
+    if kind == "runtime":
+        return _package_dir().joinpath("runtime", "native", *tail)
+    if kind in {"contract", "contracts"}:
+        if tail[:1] == ["capsules"]:
+            return capsules_dir().joinpath(*tail[1:])
+        return _package_dir().joinpath("resources", "contracts", *tail)
+    if kind == "targets":
+        return targets_dir().joinpath(*tail)
+    if kind == "experiments":
+        return repo_root().joinpath("experiments", "studies", *tail)
+    return _package_dir().joinpath("resources", kind, *tail)
 
 
 def schemas_dir() -> Path:
-    """Return the schemas dir (``<repo>/merlin/schemas`` in-repo, bundled ``_data/schemas`` in a
-    wheel). Honors ``MERLIN_SCHEMAS_DIR``."""
-    env = os.environ.get("MERLIN_SCHEMAS_DIR")
-    if env:
-        return Path(env)
-    return data_path("schemas")
+    """Reviewed schemas, honoring ``MERLIN_SCHEMAS_DIR``."""
+    return Path(os.environ["MERLIN_SCHEMAS_DIR"]) if os.environ.get("MERLIN_SCHEMAS_DIR") else data_path("schemas")
 
 
 def contract_dir() -> Path:
-    """Return the contract dir (``<repo>/merlin/contract`` in-repo, bundled ``_data/contract`` in a
-    wheel). Honors ``MERLIN_CONTRACT_DIR``.
-
-    Every reader of a contract file resolves through this, never through ``merlin_dir()``: a frozen
-    source snapshot installs the package as a wheel, where ``merlin_dir()/contract`` does not exist
-    and only ``MERLIN_CONTRACT_DIR`` names the contract the run was sealed against."""
-    env = os.environ.get("MERLIN_CONTRACT_DIR")
-    if env:
-        return Path(env)
-    return data_path("contract")
+    """Reviewed shared contracts, honoring the selected frozen ``MERLIN_CONTRACT_DIR``."""
+    return Path(os.environ["MERLIN_CONTRACT_DIR"]) if os.environ.get("MERLIN_CONTRACT_DIR") else data_path("contract")
 
 
 def prompts_dir() -> Path:
-    """Return the agent-prompt dir (``<repo>/merlin/prompts`` in-repo, bundled ``_data/prompts`` in a
-    wheel). Honors ``MERLIN_PROMPTS_DIR``."""
-    env = os.environ.get("MERLIN_PROMPTS_DIR")
-    if env:
-        return Path(env)
-    return data_path("prompts")
+    """Agent prompt resources, honoring ``MERLIN_PROMPTS_DIR``."""
+    return Path(os.environ["MERLIN_PROMPTS_DIR"]) if os.environ.get("MERLIN_PROMPTS_DIR") else data_path("prompts")
 
 
 def bench_dir() -> Path:
-    """Return the benchmarks corpus ROOT (``<repo>/merlin/benchmarks`` in-repo). Honors
-    ``MERLIN_BENCH_DIR`` (which is the benchmarks *root*, not a subdir). In an installed wheel this
-    resolves to the bundled ``_data/benchmarks`` — the LIGHT specs only (workload region YAMLs,
-    accuracy/cycle/dispatch tables, region maps); the heavy ``recaptures*`` capture corpora are NOT
-    bundled, so point ``MERLIN_BENCH_DIR`` at a checkout to reach them from a wheel."""
-    env = os.environ.get("MERLIN_BENCH_DIR")
-    if env:
-        return Path(env)
-    return data_path("benchmarks")
+    """Public benchmark specifications; ``MERLIN_BENCH_DIR`` selects an explicit owner."""
+    return Path(os.environ["MERLIN_BENCH_DIR"]) if os.environ.get("MERLIN_BENCH_DIR") else data_path("benchmarks")
+
+
+def study_inputs_dir() -> Path:
+    """Unbundled benchmark captures and programs, honoring ``MERLIN_BENCH_DIR``.
+
+    A wheel needs an explicit project root or benchmark override to access study
+    inputs. Public benchmark specifications continue to come from :func:`bench_dir`.
+    """
+    override = os.environ.get("MERLIN_BENCH_DIR")
+    if override:
+        return Path(override)
+    owner = os.environ.get("MERLIN_REPO_ROOT") or checkout_root()
+    if owner is None:
+        raise FileNotFoundError("benchmark study inputs require MERLIN_BENCH_DIR or MERLIN_REPO_ROOT")
+    return Path(owner) / "experiments/benchmarks"
+
+
+def capsules_dir() -> Path:
+    """Unbundled historical corpus inputs belonging to an explicitly selected project."""
+    owner = os.environ.get("MERLIN_REPO_ROOT") or checkout_root()
+    return Path(owner) / "experiments/corpora" if owner else _package_dir() / "resources/corpora"
 
 
 def targets_dir() -> Path:
-    """Return the optional target-input directory.
-
-    A checkout may retain legacy ``merlin/targets`` inputs, but the installed core does not
-    bundle target contracts or facts. Set ``MERLIN_TARGETS_DIR`` to a selected out-of-tree
-    target's directory when a caller needs those authored inputs.
-    """
-    env = os.environ.get("MERLIN_TARGETS_DIR")
-    if env:
-        return Path(env)
-    return data_path("targets")
+    """Optional target inputs, never bundled; honor ``MERLIN_TARGETS_DIR``."""
+    override = os.environ.get("MERLIN_TARGETS_DIR")
+    if override:
+        return Path(override)
+    owner = os.environ.get("MERLIN_REPO_ROOT") or checkout_root()
+    return Path(owner) / "experiments/reference-data/target-inputs" if owner else _package_dir() / "resources/targets"
 
 
 def runtime_dir() -> Path:
-    """Return the C runtime substrate dir (``<repo>/merlin/runtime`` in-repo, bundled
-    ``_data/runtime`` in a wheel) — the ``c/``, ``abi/``, ``baremetal/`` sources the whole-model
-    compile paths read at use time. Honors ``MERLIN_RUNTIME_DIR``. Compiling them still needs an
-    external toolchain (the ``[board]`` extra / ``MERLIN_*`` tools); bundling only makes the sources
-    resolve so the failure is the actionable 'toolchain unavailable', not 'source not found'."""
-    env = os.environ.get("MERLIN_RUNTIME_DIR")
-    if env:
-        return Path(env)
-    return data_path("runtime")
+    """Native runtime sources, honoring ``MERLIN_RUNTIME_DIR``; external tools compile them."""
+    return Path(os.environ["MERLIN_RUNTIME_DIR"]) if os.environ.get("MERLIN_RUNTIME_DIR") else data_path("runtime")
 
 
 # --- Generated-output roots. All generated products live under a single top-level ``out/`` with

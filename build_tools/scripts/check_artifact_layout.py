@@ -92,9 +92,9 @@ _STALE_LITERALS = ('"artifacts/', "'artifacts/", '"runs/', "'runs/", '"build/gen
 #   - the artifact-layout deny-test, which asserts the retired roots are rejected.
 # Keyed by "<relpath>:<substring that must be on the flagged line>".
 _STALE_LITERAL_ALLOW = {
-    "merlin/tests/infra/test_artifact_layout.py:artifacts/plots/foo.png",  # deny-test fixture
-    'merlin/experiments/capsule_bench/harness/gen_fullsuite_report.py:.glob("runs/',
-    "merlin/experiments/capsule_bench/harness/abc_watchdog.sh:runs/${",
+    "tests/infra/test_artifact_layout.py:artifacts/plots/foo.png",  # deny-test fixture
+    'experiments/studies/capsule_bench/harness/gen_fullsuite_report.py:.glob("runs/',
+    "experiments/studies/capsule_bench/harness/abc_watchdog.sh:runs/${",
     # These probes package an external ModeLIR checkout, whose own cache lives at
     # <modelir>/runs/ (not at Merlin's retired generated-artifact root).
     'examples/atlas/target/probe_native_program.py:args.modelir / "runs/circt-arc/',  # target-ok: target example path
@@ -190,7 +190,7 @@ def _product_versions(root: Path):
     come from the writer's declaration, not another list of special topic names.
     """
     art = root / "out/artifacts"
-    contract_path = root / "merlin/contract/storage.yaml"
+    contract_path = root / "src/merlin/resources/contracts/storage.yaml"
     declared = load_yaml(contract_path) if contract_path.is_file() else {}
     if not isinstance(declared, dict):
         raise ValueError(f"{contract_path}: storage declaration must be a mapping")

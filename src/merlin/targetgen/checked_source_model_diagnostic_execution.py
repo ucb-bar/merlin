@@ -8,9 +8,8 @@ import time
 from pathlib import Path
 from types import MethodType
 
-from merlin_experiments.phase0 import connected_integer_qualification as SOURCE
-
 from merlin.common.cpu_pool import shared_compute_pool
+from merlin.experiments.phase0 import connected_integer_qualification as SOURCE
 from merlin.targetgen import native_model_execution as NATIVE
 from merlin.targetgen.checked_source_model_diagnostic import (
     FAST_RESULT_SCHEMA,
@@ -82,23 +81,42 @@ def grade_from_context(runner, capsule, *, target, timeout, package_dir, context
     if runner is not original:
         raise ValueError("checked source diagnostic requires its original runner")
     selection = selection_from_context(
-        context["checked_source_diagnostic"], capsule=capsule, target=target, package_dir=package_dir)
+        context["checked_source_diagnostic"], capsule=capsule, target=target, package_dir=package_dir
+    )
     return runner._grade_public_program_capsule_inline(
-        capsule, target=target, timeout=timeout, package_dir=package_dir, context=context,
-        pkg=pkg, diagnostic_selection=selection)
+        capsule,
+        target=target,
+        timeout=timeout,
+        package_dir=package_dir,
+        context=context,
+        pkg=pkg,
+        diagnostic_selection=selection,
+    )
 
 
 def finish_unavailable(selection, result, capsule, *, target, deadline):
-    return finish(selection, result, capsule, target=target, native_result=None,
-                  work_root=None, remaining_s=max(0, deadline - time.monotonic()))
+    return finish(
+        selection,
+        result,
+        capsule,
+        target=target,
+        native_result=None,
+        work_root=None,
+        remaining_s=max(0, deadline - time.monotonic()),
+    )
 
 
 def execution_kwargs(selection, capsule, *, target):
     if type(selection) is not CheckedSourceModelDiagnostic:
         raise ValueError("checked source execution needs the actual original host selector")
     row = selection.verify_for(capsule, target=target)
-    return dict(simulator="spike", oracle_tier_ceiling="L2", complete_call_timing=False,
-                rtl_facts=row["rtl_facts"]["path"], board_config=row["board_config"])
+    return dict(
+        simulator="spike",
+        oracle_tier_ceiling="L2",
+        complete_call_timing=False,
+        rtl_facts=row["rtl_facts"]["path"],
+        board_config=row["board_config"],
+    )
 
 
 def _live_realization(owner):
@@ -118,12 +136,20 @@ def _audit_execution(selection, emission, certificate, native, *, target, entry_
         from .native_pointer_source_audit import audit_pointer_source_tiers
 
         return audit_pointer_source_tiers(
-            emission, native, target=target, entry_symbol=entry_symbol,
+            emission,
+            native,
+            target=target,
+            entry_symbol=entry_symbol,
             **options,
         )
     return NATIVE.audit_candidate_tiers(
-        emission, certificate, native, target=target, entry_symbol=entry_symbol,
-        completed_dispatch=None, oracle_tier_ceiling="L2",
+        emission,
+        certificate,
+        native,
+        target=target,
+        entry_symbol=entry_symbol,
+        completed_dispatch=None,
+        oracle_tier_ceiling="L2",
         **options,
     )
 
@@ -137,8 +163,9 @@ def reopen_numerical_counts_grade(selection, grade):
     if type(selection) is not CheckedSourceModelDiagnostic:
         raise ValueError("fast numerical reopening requires its original live selector")
     record = selection.record()
-    if (record.get("verification_protocol") != NUMERICAL_COUNTS_PROTOCOL
-            or not numerical_grade_matches_selection(record, grade)):
+    if record.get("verification_protocol") != NUMERICAL_COUNTS_PROTOCOL or not numerical_grade_matches_selection(
+        record, grade
+    ):
         raise ValueError("fast numerical reopening requires its exact explicit pending-effects receipt")
     native = grade.get("candidate_native_execution")
     emission = grade.get("candidate_emission")
@@ -158,24 +185,33 @@ def reopen_numerical_counts_grade(selection, grade):
     declaration = NATIVE._pinned_native_file(emission, "capsule_declaration")
     capsule = yaml.safe_load(declaration.read_bytes())
     certificate = NATIVE.independent_frozen_source_eligibility(
-        {**capsule, "__dir__": str(declaration.parent)}, target=record["target"])
-    if (certificate != grade.get("candidate_source_eligibility")
-            or type(certificate.get("n_eligible")) is not int or certificate["n_eligible"] <= 0):
+        {**capsule, "__dir__": str(declaration.parent)}, target=record["target"]
+    )
+    if (
+        certificate != grade.get("candidate_source_eligibility")
+        or type(certificate.get("n_eligible")) is not int
+        or certificate["n_eligible"] <= 0
+    ):
         raise ValueError("fast numerical reopening has different original source eligibility")
     from merlin.runtime.backends import base as backends
 
     entry = backends.harness_build_recipe(record["target"]).require_kernel_stack_frame().entry_symbol
     with shared_compute_pool():
-        tiers = _audit_execution(selection, emission, certificate, native,
-                                  target=record["target"], entry_symbol=entry)
-    if (tiers != grade.get("original_tier_audit") or tiers.get("tiers") != grade.get("tiers")
-            or any((tiers.get("tiers", {}).get(tier) or {}).get("status") != "pass"
-                   for tier in ("L0", "L1", "L2"))):
+        tiers = _audit_execution(selection, emission, certificate, native, target=record["target"], entry_symbol=entry)
+    if (
+        tiers != grade.get("original_tier_audit")
+        or tiers.get("tiers") != grade.get("tiers")
+        or any((tiers.get("tiers", {}).get(tier) or {}).get("status") != "pass" for tier in ("L0", "L1", "L2"))
+    ):
         raise ValueError("fast numerical reopening lacks original source/ISA/complete-output passes")
     if selection.record() != record or json.loads(native_path.read_bytes()) != native:
         raise ValueError("fast numerical reopening changed its original live source/native selection")
-    return dict(status="reopened_original_L0_L1_L2", source_effects="PENDING",
-                native_receipt=NATIVE._digest(native_path), tiers=tiers)
+    return dict(
+        status="reopened_original_L0_L1_L2",
+        source_effects="PENDING",
+        native_receipt=NATIVE._digest(native_path),
+        tiers=tiers,
+    )
 
 
 def finish(selection, result, capsule, *, target, native_result, work_root, remaining_s):
@@ -193,22 +229,42 @@ def finish(selection, result, capsule, *, target, native_result, work_root, rema
         raise ValueError("checked source completion requires the issued original selection")
     selection.verify_for(capsule, target=target)
     base = dict(result)
-    for key in ("complete_source_qualification", "checked_source_status", "checked_source_failure",
-                "original_tier_audit", "tiers", "verification_protocol", "source_effects",
-                "incumbent_authority", "roofline_convergence_authority", "numerical_native_receipt"):
+    for key in (
+        "complete_source_qualification",
+        "checked_source_status",
+        "checked_source_failure",
+        "original_tier_audit",
+        "tiers",
+        "verification_protocol",
+        "source_effects",
+        "incumbent_authority",
+        "roofline_convergence_authority",
+        "numerical_native_receipt",
+    ):
         base.pop(key, None)
-    base.update(status="incomplete", schema="merlin.checked_source_model_diagnostic_result.v1",
-                formal_admission=False, promotion_authority="NONE", timing_cycles=None,
-                checked_source_diagnostic=selection.record(),
-                diagnostic_scope="original complete source/compile/ISA/functional effects; no RTL or final grade")
+    base.update(
+        status="incomplete",
+        schema="merlin.checked_source_model_diagnostic_result.v1",
+        formal_admission=False,
+        promotion_authority="NONE",
+        timing_cycles=None,
+        checked_source_diagnostic=selection.record(),
+        diagnostic_scope="original complete source/compile/ISA/functional effects; no RTL or final grade",
+    )
     fast = base["checked_source_diagnostic"].get("verification_protocol") == NUMERICAL_COUNTS_PROTOCOL
     if fast:
-        base.update(schema=FAST_RESULT_SCHEMA, verification_protocol=NUMERICAL_COUNTS_PROTOCOL,
-                    source_effects=dict(status="PENDING", required_before="compiler acceptance",
-                        scope="full target source effects are outside this explicit numerical/counts-only selection"),
-                    incumbent_authority="NONE", roofline_convergence_authority="NONE",
-                    diagnostic_scope=("original sealed source/IR/ISA/roles and complete native numerics; "
-                                      "effects pending"))
+        base.update(
+            schema=FAST_RESULT_SCHEMA,
+            verification_protocol=NUMERICAL_COUNTS_PROTOCOL,
+            source_effects=dict(
+                status="PENDING",
+                required_before="compiler acceptance",
+                scope="full target source effects are outside this explicit numerical/counts-only selection",
+            ),
+            incumbent_authority="NONE",
+            roofline_convergence_authority="NONE",
+            diagnostic_scope=("original sealed source/IR/ISA/roles and complete native numerics; effects pending"),
+        )
     native = base.get("candidate_native_execution")
     if type(native) is not dict or type(base.get("candidate_emission")) is not dict:
         base["checked_source_failure"] = "original candidate emission or complete native result unavailable"
@@ -230,8 +286,12 @@ def finish(selection, result, capsule, *, target, native_result, work_root, rema
         costs["initial_audit_queue_seconds"] = time.monotonic() - tick
         tick = time.monotonic()
         tiers = _audit_execution(
-            selection, emission, base.get("candidate_source_eligibility"), native,
-            target=target, entry_symbol=entry_symbol,
+            selection,
+            emission,
+            base.get("candidate_source_eligibility"),
+            native,
+            target=target,
+            entry_symbol=entry_symbol,
         )
         costs["initial_audit_verification_seconds"] = time.monotonic() - tick
     base["tiers"] = tiers["tiers"]
@@ -247,19 +307,24 @@ def finish(selection, result, capsule, *, target, native_result, work_root, rema
             costs["final_audit_queue_seconds"] = time.monotonic() - tick
             tick = time.monotonic()
             final_tiers = _audit_execution(
-                selection, emission, base.get("candidate_source_eligibility"), native,
-                target=target, entry_symbol=entry_symbol,
+                selection,
+                emission,
+                base.get("candidate_source_eligibility"),
+                native,
+                target=target,
+                entry_symbol=entry_symbol,
             )
             costs["final_audit_verification_seconds"] = time.monotonic() - tick
         if final_tiers != tiers or json.loads(native_path.read_bytes()) != native:
             raise ValueError("checked source fast diagnostic original tiers or native products changed")
         selection.verify_for(capsule, target=target)
-        base.update(checked_source_status=FAST_STATUS,
-                    numerical_native_receipt=NATIVE._digest(native_path),
-                    native_execution_basis="exact original native record and independently rechecked complete products",
-                    diagnostic_verification_seconds=time.monotonic() - started,
-                    diagnostic_costs={**costs,
-                        "full_source_effects": "PENDING; not executed by explicit fast selection"})
+        base.update(
+            checked_source_status=FAST_STATUS,
+            numerical_native_receipt=NATIVE._digest(native_path),
+            native_execution_basis="exact original native record and independently rechecked complete products",
+            diagnostic_verification_seconds=time.monotonic() - started,
+            diagnostic_costs={**costs, "full_source_effects": "PENDING; not executed by explicit fast selection"},
+        )
         return base
     capability = selection.revalidate()
     tick = time.monotonic()
@@ -267,7 +332,8 @@ def finish(selection, result, capsule, *, target, native_result, work_root, rema
         native_result=native_path,
         command_buffer=NATIVE._pinned_native_file(emission, "command_buffer"),
         lowered=NATIVE._pinned_native_file(emission, "lowered_mlir"),
-        work_root=Path(work_root), remaining_s=max(0, deadline - time.monotonic()),
+        work_root=Path(work_root),
+        remaining_s=max(0, deadline - time.monotonic()),
     )
     costs["effect_owner_preparation_wall_seconds"] = time.monotonic() - tick
     costs["effect_owner_queue_seconds"] = costs["effect_trace_execution_seconds"] = None
@@ -275,8 +341,10 @@ def finish(selection, result, capsule, *, target, native_result, work_root, rema
     _live_realization(realization)
     selection.revalidate()
     tick = time.monotonic()
-    with (shared_compute_pool(timeout_s=max(0, deadline - time.monotonic())),
-          SOURCE.scoped_realization_owner(realization)):
+    with (
+        shared_compute_pool(timeout_s=max(0, deadline - time.monotonic())),
+        SOURCE.scoped_realization_owner(realization),
+    ):
         costs["source_verification_queue_seconds"] = time.monotonic() - tick
         tick = time.monotonic()
         # The live frozen public corpus pins this original writer declaration.
@@ -295,8 +363,12 @@ def finish(selection, result, capsule, *, target, native_result, work_root, rema
         costs["final_audit_queue_seconds"] = time.monotonic() - tick
         tick = time.monotonic()
         final_tiers = _audit_execution(
-            selection, emission, base.get("candidate_source_eligibility"), native,
-            target=target, entry_symbol=entry_symbol,
+            selection,
+            emission,
+            base.get("candidate_source_eligibility"),
+            native,
+            target=target,
+            entry_symbol=entry_symbol,
         )
         costs["final_audit_verification_seconds"] = time.monotonic() - tick
     if final_tiers != tiers or json.loads(native_path.read_bytes()) != native:
@@ -305,7 +377,8 @@ def finish(selection, result, capsule, *, target, native_result, work_root, rema
     base["complete_source_qualification"] = checked
     base["checked_source_status"] = "complete_source_L0_L1_L2_diagnostic_pass"
     base["native_execution_basis"] = (
-        "exact original candidate native record and independently rechecked process products")
+        "exact original candidate native record and independently rechecked process products"
+    )
     base["diagnostic_verification_seconds"] = time.monotonic() - started
     base["diagnostic_costs"] = costs
     base["timing_cycles"] = None

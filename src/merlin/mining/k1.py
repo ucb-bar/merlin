@@ -9,7 +9,7 @@ This module is intentionally fail-closed: when the toolchain or the board is una
 :func:`available` returns False and the runner records the K1 rung as ``not_run`` (NEVER a false
 pass). The cross-compile + deploy path (S2.4-S2.6) reuses the SAME portable artifacts as the spike
 build — the LLVM IR ``model.ll`` (``llvmlower.lower``) and the data-driven C runtime
-(``llvmlower.c_runtime`` + ``merlin/runtime/c/merlin_model.c``); only the harness differs:
+(``llvmlower.c_runtime`` + ``src/merlin/runtime/native/c/merlin_model.c``); only the harness differs:
 
   * spike/Zephyr — bare-metal: ``-mcmodel=medany -ffreestanding -nostdlib``, HTIF console, mcycle.
   * K1 — glibc Linux userspace: ``-march=rv64gcv -mabi=lp64d -O2`` (NO medany/freestanding),

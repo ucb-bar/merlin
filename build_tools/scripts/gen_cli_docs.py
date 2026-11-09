@@ -23,10 +23,10 @@ HEADER = (
     "# CLI reference\n\n"
     "_Generated from `pyproject.toml [project.scripts]` by "
     "`build_tools/scripts/gen_cli_docs.py` — do not edit by hand; run the generator._\n\n"
-    "Core console-scripts are installed with `pip install -e .` from the repo root. "
-    "Optional research distributions under `packages/` are installed separately; their commands "
-    "are listed below when declared. `src/merlin` is source, not an installable project. "
-    "Each command is a thin module entrypoint. Run any with `--help`.\n\n"
+    "Merlin commands are installed from the repository root with `pip install -e .`. "
+    "Optional extras select workflow dependencies within this single distribution. "
+    "The independent timing observer under `packages/` is installed separately. "
+    "Run any command with `--help`.\n\n"
     "| Command | Backing module |\n|---|---|\n"
 )
 

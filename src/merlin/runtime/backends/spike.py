@@ -2,7 +2,7 @@
 
 Pipeline: command buffer -> :mod:`rvv_codegen` C driver -> compile with the chipyard
 ``riscv64-unknown-elf-gcc`` against the Merlin bare-metal harness
-(``merlin/runtime/baremetal/spike/``) -> ``spike --isa=rv64gcv_zfh_zvfh -pN`` ->
+(``src/merlin/runtime/native/baremetal/spike/``) -> ``spike --isa=rv64gcv_zfh_zvfh -pN`` ->
 parse ``OUT``/``METRIC`` lines -> normalize into the common metrics schema.
 
 Correctness gate: the parsed outputs must equal

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: does every interface op the parser accepts have ABI semantics the agent can implement?
 
-`merlin/contract/command_buffer_abi.yaml` is handed to the graded agent as the command-buffer contract
+`src/merlin/resources/contracts/command_buffer_abi.yaml` is handed to the graded agent as the command-buffer contract
 (see `targetgen.generate_prompt`). The set of ops a capsule may legally contain is decided elsewhere --
 by `interface_emit._NAMED_OP_OPERAND_KEYS`, which `boundary.grammar_mnemonics` calls the parser's own
 tables and treats as authoritative. Nothing kept the two in step.
@@ -57,10 +57,10 @@ def audit() -> dict:
     """``{documented, undocumented, structural, status}`` -- mnemonic -> opcode, both directions."""
     import yaml
 
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import contract_dir
     from merlin.targetgen.contract import interface_emit as IE
 
-    abi_path = merlin_dir() / "contract" / "command_buffer_abi.yaml"
+    abi_path = contract_dir() / "command_buffer_abi.yaml"
     if not abi_path.is_file():
         return {"status": "unverifiable", "detail": f"no ABI contract at {abi_path}"}
     try:

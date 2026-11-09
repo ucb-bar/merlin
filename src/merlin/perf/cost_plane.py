@@ -31,7 +31,7 @@ which would make a missing identity read as a matching one; that is the flatteri
 A slack factor over the floor is what turns the floor into an "is this fast enough" verdict, and
 there is still no MEASURED one. Inventing one in this file would silently decide which submissions
 pass -- so it is not invented here, it is DECLARED: ``policies.cost_plane`` in
-``merlin/contract/gate_phases.yaml``, beside the phase this gate runs in, where changing it is a
+``src/merlin/resources/contracts/gate_phases.yaml``, beside the phase this gate runs in, where changing it is a
 one-line reviewable diff. :func:`declared_slack` reads it and never defaults; undeclared, the plane
 goes back to reporting the ratio and saying it cannot decide.
 
@@ -104,7 +104,7 @@ __all__ = [
     "apply_gate",
 ]
 
-#: The name this plane is declared under in ``merlin/contract/gate_phases.yaml`` -- both for its phase
+#: The name this plane is declared under in ``src/merlin/resources/contracts/gate_phases.yaml`` -- both for its phase
 #: (``gates``) and for the numbers it decides with (``policies``). One spelling, because a gate whose
 #: policy is filed under a different name than its phase is a gate with no policy and no error.
 GATE = "cost_plane"
@@ -157,7 +157,7 @@ def declared_slack() -> tuple[float | None, str]:
     for every capsule is a file read per row to answer a question whose answer cannot change inside one
     process -- the file is a tracked contract, not a live control.
 
-    Read from ``merlin/contract/gate_phases.yaml`` under ``policies.cost_plane``, beside the phase this
+    Read from ``src/merlin/resources/contracts/gate_phases.yaml`` under ``policies.cost_plane``, beside the phase this
     gate runs in, and never defaulted. The module docstring's own objection stands and this is the
     answer to it: a slack over the floor DOES decide which submissions pass, so it may not be invented
     at the point of use -- it lives in a tracked file where changing it is a one-line reviewable diff,

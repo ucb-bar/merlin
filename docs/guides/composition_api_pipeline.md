@@ -7,10 +7,10 @@ last_verified: 2026-11-09
 code_refs:
   - src/merlin/compiler/passes/composition.py
   - src/merlin/compiler/schedule/api_catalog.py
-  - src/merlin_experiments/phase1/prepare_author_library.py
-  - src/merlin_experiments/phase1/full_compiler_workspace.py
-  - src/merlin_experiments/phase1/author_skills/heavy-pass-recipes/scripts/composition_routes.py
-  - src/merlin_experiments/phase1/feedback/composition_next.py
+  - src/merlin/experiments/phase1/prepare_author_library.py
+  - src/merlin/experiments/phase1/full_compiler_workspace.py
+  - src/merlin/experiments/phase1/author_skills/heavy-pass-recipes/scripts/composition_routes.py
+  - src/merlin/experiments/phase1/feedback/composition_next.py
 ---
 
 # Compose shared compiler transformations in an authoring loop
@@ -23,7 +23,7 @@ the target emitter and the original independent checks.
 
 ## Select and discover sources
 
-Use `python -m merlin_experiments.phase1.prepare_author_library` with
+Use `python -m merlin.experiments.phase1.prepare_author_library` with
 `--library-version 26`, an exact source revision, the previous reviewed library
 selection and a fresh output directory. Additional generic leaves require explicit
 `--reviewed-module` selections. The normal preparation retains existing access
@@ -67,7 +67,7 @@ additional library or full compiler source export.
 For a fresh full compiler source snapshot, the ordinary operator preparation is:
 
 ```python
-from merlin_experiments.phase1.full_compiler_workspace import prepare
+from merlin.experiments.phase1.full_compiler_workspace import prepare
 
 selection = prepare(repo, fresh_output, review_id=review_identity)
 selection.verify()
@@ -87,7 +87,7 @@ or program, its interface IR) and lists the matching routes with their catalog r
 one `module:symbol`, whether `submission/` imports it and a recipe or contract command, plus the
 `source_composition.json` options described below. Self-check rows carry the same pointer as
 `optimization_next.composition` and `optimization_next.source_composition_request`
-(`merlin_experiments.phase1.feedback.composition_next`). These are pointers, not selections.
+(`merlin.experiments.phase1.feedback.composition_next`). These are pointers, not selections.
 
 ## Build a layered pipeline
 

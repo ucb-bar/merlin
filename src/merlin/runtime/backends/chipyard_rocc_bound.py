@@ -148,7 +148,7 @@ def _check_pin(pin, *, executable=False):
 def _resource(identifier, roster):
     # Do not honor runtime/repo overrides that could turn an ID into vendor code.
     owner = checkout_root()
-    root = owner / "merlin/runtime" if owner is not None else python_source_dir() / "merlin/_data/runtime"
+    root = owner / "src/merlin/runtime/native" if owner is not None else python_source_dir() / "merlin/_data/runtime"
     return root / "baremetal" / roster[identifier]
 
 

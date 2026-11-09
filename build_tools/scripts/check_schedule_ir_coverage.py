@@ -3,7 +3,7 @@
 
 "Our IR is more general than X" is the kind of claim this repo has learned it cannot check. Stated in
 prose it is an instrument that cannot fail: a capability that quietly stopped being expressible reads
-exactly like one that never was. `merlin/contract/schedule_ir_coverage.yaml` declares the claim one axis
+exactly like one that never was. `src/merlin/resources/contracts/schedule_ir_coverage.yaml` declares the claim one axis
 at a time; this gate re-derives each axis' STATUS from the live tree and refuses a register that has
 drifted from it in EITHER direction -- a primitive with no row, or a row naming a primitive that is gone.
 
@@ -64,7 +64,7 @@ def _load_strict(yaml, text: str):
     return yaml.load(text, Loader=_Strict)  # noqa: S506 - _Strict derives from SafeLoader
 
 
-REGISTER = ROOT / "merlin" / "contract" / "schedule_ir_coverage.yaml"
+REGISTER = ROOT / "src/merlin/resources/contracts" / "schedule_ir_coverage.yaml"
 RATCHET = Path(__file__).resolve().parent / "schedule_ir_coverage_ratchet.txt"
 _GATE = "schedule-ir-coverage"
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: the interface grammar spec states exactly what the parser and the dialect accept.
 
-``merlin/contract/interface_grammar.md`` is the spec of the ``merlin_iface`` input format, and it is in
+``src/merlin/resources/contracts/interface_grammar.md`` is the spec of the ``merlin_iface`` input format, and it is in
 the agent's bundle. Which ops a module may legally contain is decided elsewhere, by the reference
 parser's own tables (``interface_emit``), which the parser treats as authoritative and fails CLOSED on.
 Two more statements of the same grammar exist: the dialect contract (``interface_dialect_contract.yaml``,
@@ -51,7 +51,7 @@ for _package in reversed(_source_layout.source_packages(_REPO)):
     if str(_package.parent) not in sys.path:
         sys.path.insert(0, str(_package.parent))
 
-_CONTRACT = _REPO / "merlin" / "contract"
+_CONTRACT = _REPO / "src/merlin/resources/contracts"
 _SPEC = _CONTRACT / "interface_grammar.md"
 _DIALECT_CONTRACT = _CONTRACT / "interface_dialect_contract.yaml"
 _IRDL = _CONTRACT / "merlin_iface.irdl.mlir"

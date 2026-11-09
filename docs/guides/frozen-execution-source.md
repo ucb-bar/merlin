@@ -6,14 +6,14 @@ owner: experiments
 last_verified: 2026-11-09
 related: [phase2_preflight, phase2_public_diagnostic_launch, shared_pass_phase2]
 code_refs:
-  - src/merlin_experiments/source_snapshot.py
-  - src/merlin_experiments/frozen_python.py
+  - src/merlin/experiments/source_snapshot.py
+  - src/merlin/experiments/frozen_python.py
 ---
 
 # Freeze evaluator source before issuing execution owners
 
-Use the existing `merlin_experiments.source_snapshot.create` and
-`merlin_experiments.frozen_python.python_command` APIs to separate host evaluator
+Use the existing `merlin.experiments.source_snapshot.create` and
+`merlin.experiments.frozen_python.python_command` APIs to separate host evaluator
 source from subsequent compiler edits. A source snapshot supplies byte custody;
 it does not issue compiler, numerical, hardware, timing, or formal authority.
 
@@ -71,7 +71,7 @@ selectors and can delay the child's original parent-death guard. Any future
 transport migration needs its own exact selection and lifecycle controls.
 
 The current shared namespaces are `src/merlin`, `src/merlin_analysis` and
-`src/merlin_experiments`. Declare their actual selected source root once; add
+`src/merlin/experiments`. Declare their actual selected source root once; add
 separately distributed optional sources only when the snapshot explicitly
 contains them. Retained historical snapshots keep their original root layout,
 module identities and verifier rather than being rewritten to the current tree.

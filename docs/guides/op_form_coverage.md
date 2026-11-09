@@ -9,7 +9,7 @@ code_refs:
   - src/merlin/targetgen/opset_contract.py
   - src/merlin/targetgen/op_form_regimes.py
   - src/merlin/targetgen/opset_coverage_input.py
-  - src/merlin_experiments/phase0/op_cell_synth.py
+  - src/merlin/experiments/phase0/op_cell_synth.py
   - build_tools/scripts/check_opset_coverage.py
   - build_tools/scripts/synth_op_cell_capsules.py
 ---
@@ -87,6 +87,6 @@ redundant. Defaults and existing corpus generation remain unchanged.
 
 The current distribution is `merlin`; install the `experiments` extra for the
 optional generator dependencies. `targetgen.opset_coverage_input` reads the
-explicit metadata request, while `merlin_experiments.phase0.op_cell_synth` owns
+explicit metadata request, while `merlin.experiments.phase0.op_cell_synth` owns
 actual proposal construction. Namespace ownership remains distinct even though
 these sources share one wheel.

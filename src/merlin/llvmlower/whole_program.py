@@ -48,7 +48,7 @@ SCHEMA = "whole_program_v1"
 
 #: entry ``op`` -> the command-buffer opcode that states it. Both vocabularies are declared: the left
 #: is what :mod:`~merlin.xdsl_dialects.lowering.group_command` states a group as, the right is the
-#: enum ``merlin/contract/schemas/command_buffer.schema.json`` admits. An op in neither is refused by
+#: enum ``src/merlin/resources/contracts/schemas/command_buffer.schema.json`` admits. An op in neither is refused by
 #: name rather than mapped to the nearest thing, which would emit a command computing something else.
 _OPCODE_OF_OP = {
     "maxpool2d": "MAXPOOL2D",

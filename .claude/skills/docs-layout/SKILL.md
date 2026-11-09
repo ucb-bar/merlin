@@ -56,7 +56,7 @@ and self-freshening — fill them in.
 
 Generated docs have their own source of truth — regenerate, never hand-edit:
 `gen_cli_docs.py` (cli.md ← pyproject), `gen_package_docs.py` (module_index.md ← docstrings),
-`gen_schema_docs.py` (schemas.md ← merlin/schemas/).
+`gen_schema_docs.py` (schemas.md ← src/merlin/resources/schemas/).
 
 ## Enforcement (don't bypass)
 

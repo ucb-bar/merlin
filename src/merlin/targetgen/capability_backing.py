@@ -245,7 +245,7 @@ def _contract_bases() -> dict[str, Path]:
     """
     repo = _repo_root()
     out: dict[str, Path] = {}
-    for pattern in (f"examples/*/target/{_CONTRACTS}", f"merlin/targets/*/{_CONTRACTS}"):
+    for pattern in (f"examples/*/target/{_CONTRACTS}", f"experiments/reference-data/target-inputs/*/{_CONTRACTS}"):
         for contracts in sorted(repo.glob(pattern)):
             for document in _DOCUMENTS:
                 path = contracts / document

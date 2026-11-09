@@ -25,7 +25,7 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
 
 ## Interfaces
 
-Prototypes the five core dialects (contract/schedule/interface/runtime/dse) in Python. Consumes/produces `merlin/schemas/` artifacts. `lowering/emit_command_buffer.py` emits dicts conforming to `command_buffer.schema.yaml`, executed by the `merlin.runtime` Python engine.
+Prototypes the five core dialects (contract/schedule/interface/runtime/dse) in Python. Consumes/produces `src/merlin/resources/schemas/` artifacts. `lowering/emit_command_buffer.py` emits dicts conforming to `command_buffer.schema.yaml`, executed by the `merlin.runtime` Python engine.
 
 ## Invariants
 

@@ -23,7 +23,7 @@ from pathlib import Path
 from merlin.capture import models as _models
 from merlin.common.artifacts import recaptures_dir
 
-# Per-model correctness tolerances, mirroring merlin/tests/rvv/test_vla_models_rvv.py so a baseline
+# Per-model correctness tolerances, mirroring tests/rvv/test_vla_models_rvv.py so a baseline
 # is gated exactly as our own runtime is. (min_cos, max_rel). Unlisted models use _DEFAULT_TOL.
 _DEFAULT_TOL: tuple[float, float] = (0.9999, 1e-3)
 TOLERANCES: dict[str, tuple[float, float]] = {

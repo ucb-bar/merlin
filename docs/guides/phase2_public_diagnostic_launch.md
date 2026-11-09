@@ -6,16 +6,16 @@ owner: merlin-experiments
 last_verified: 2026-11-09
 related: [phase2_component_search, spike_timing]
 code_refs:
-  - src/merlin_experiments/phase2/public_diagnostic_launch.py
-  - src/merlin_experiments/phase2/public_source_diagnostic.py
-  - src/merlin_experiments/phase2/public_native_exploration.py
-  - src/merlin_experiments/phase2/ordinary_fast_feedback.py
+  - src/merlin/experiments/phase2/public_diagnostic_launch.py
+  - src/merlin/experiments/phase2/public_source_diagnostic.py
+  - src/merlin/experiments/phase2/public_native_exploration.py
+  - src/merlin/experiments/phase2/ordinary_fast_feedback.py
   - src/merlin/targetgen/checked_source_model_diagnostic_execution.py
 ---
 
 # Public diagnostic retained queue
 
-`merlin-phase2-public-diagnostic` (or `python -m merlin_experiments.phase2.public_diagnostic_launch`)
+`merlin-phase2-public-diagnostic` (or `python -m merlin.experiments.phase2.public_diagnostic_launch`)
 executes one same-revision public source pair through the original retained queue.
 This is an infrastructure diagnostic. It does not satisfy the formal Phase1 gate,
 issue a performance cohort, accept an incumbent, or qualify timing.

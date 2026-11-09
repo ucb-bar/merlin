@@ -38,55 +38,71 @@ def _qualifying_pointer_abi(command_buffer: dict, backend: Any) -> dict[str, Any
     declaration = command_buffer.get("compiler_pointer_abi")
     if not isinstance(declaration, dict):
         raise _runtime.CertFailure(
-            "pointer_abi", _runtime.FailureCategory.PROTOCOL_VIOLATION,
+            "pointer_abi",
+            _runtime.FailureCategory.PROTOCOL_VIOLATION,
             "compiler command buffer declares no compiler_pointer_abi; numerical accelerator "
             "qualification requires its exact ordered pointer arguments",
         )
     compiler_order = declaration.get("arguments")
-    if declaration.get("version") != 1 or not isinstance(compiler_order, list) or not compiler_order or any(
-        not isinstance(name, str) or not name for name in compiler_order
+    if (
+        declaration.get("version") != 1
+        or not isinstance(compiler_order, list)
+        or not compiler_order
+        or any(not isinstance(name, str) or not name for name in compiler_order)
     ):
         raise _runtime.CertFailure(
-            "pointer_abi", _runtime.FailureCategory.PROTOCOL_VIOLATION,
+            "pointer_abi",
+            _runtime.FailureCategory.PROTOCOL_VIOLATION,
             "compiler_pointer_abi must declare version 1 and nonempty ordered tensor names",
         )
     tensors = command_buffer.get("tensors")
     if not isinstance(tensors, dict) or any(name not in tensors for name in compiler_order):
         raise _runtime.CertFailure(
-            "pointer_abi", _runtime.FailureCategory.PROTOCOL_VIOLATION,
+            "pointer_abi",
+            _runtime.FailureCategory.PROTOCOL_VIOLATION,
             "compiler_pointer_abi names a tensor absent from the emitted command buffer",
         )
     resolver = getattr(backend, "kernel_abi_from_commands", None)
     if not callable(resolver):
         raise _runtime.CertFailure(
-            "pointer_abi", _runtime.FailureCategory.PROTOCOL_VIOLATION,
+            "pointer_abi",
+            _runtime.FailureCategory.PROTOCOL_VIOLATION,
             "selected runner provides no kernel_abi_from_commands pointer-order capability",
         )
     try:
         harness_abi = resolver(command_buffer)
     except Exception as exc:  # noqa: BLE001 -- an unresolvable ABI cannot qualify numerics
         raise _runtime.CertFailure(
-            "pointer_abi", _runtime.FailureCategory.PROTOCOL_VIOLATION,
+            "pointer_abi",
+            _runtime.FailureCategory.PROTOCOL_VIOLATION,
             f"selected runner could not derive its pointer order: {type(exc).__name__}: {exc}",
         ) from exc
     arguments = harness_abi.get("args") if isinstance(harness_abi, dict) else None
-    if not isinstance(arguments, list) or not arguments or any(
-        not isinstance(arg, dict) or not isinstance(arg.get("tensor"), str) or not arg["tensor"]
-        for arg in arguments
+    if (
+        not isinstance(arguments, list)
+        or not arguments
+        or any(
+            not isinstance(arg, dict) or not isinstance(arg.get("tensor"), str) or not arg["tensor"]
+            for arg in arguments
+        )
     ):
         raise _runtime.CertFailure(
-            "pointer_abi", _runtime.FailureCategory.PROTOCOL_VIOLATION,
+            "pointer_abi",
+            _runtime.FailureCategory.PROTOCOL_VIOLATION,
             "selected runner returned no explicit ordered kernel-ABI tensor arguments",
         )
     harness_order = [arg["tensor"] for arg in arguments]
     if compiler_order != harness_order:
         raise _runtime.CertFailure(
-            "pointer_abi", _runtime.FailureCategory.PROTOCOL_VIOLATION,
+            "pointer_abi",
+            _runtime.FailureCategory.PROTOCOL_VIOLATION,
             f"compiler pointer order {compiler_order} differs from selected runner harness order "
             f"{harness_order}; refuse numerical accelerator qualification before execution",
         )
     return {
-        "status": "pass", "version": 1, "arguments": list(compiler_order),
+        "status": "pass",
+        "version": 1,
+        "arguments": list(compiler_order),
         "scope": "declaration_agreement_only",
     }
 
@@ -220,8 +236,15 @@ def certify(
     def invoke(name: str, input_path: Path, output_path: Path | None = None):
         verify_inputs()
         try:
-            return _runtime.run_entrypoint(pkg, name, input_path, output_path, timeout=timeout, write_bytecode=False,
-                                           invocation_directory=paths.generated)
+            return _runtime.run_entrypoint(
+                pkg,
+                name,
+                input_path,
+                output_path,
+                timeout=timeout,
+                write_bytecode=False,
+                invocation_directory=paths.generated,
+            )
         finally:
             verify_inputs()
 
@@ -643,7 +666,7 @@ def _record(
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Out-of-tree target-backend package runner")
-    ap.add_argument("--contract", default="merlin/contract")
+    ap.add_argument("--contract", default="src/merlin/resources/contracts")
     ap.add_argument("--package", required=True)
     ap.add_argument("--input", required=True, help="path to an *.interface.mlir")
     ap.add_argument("--run-id", required=True)

@@ -4,7 +4,7 @@
 
 Shared, target-parametric benchmark-harness primitives.
 
-Public standalone clients live in `merlin_experiments.phase1.tools`, not here.
+Public standalone clients live in `merlin.experiments.phase1.tools`, not here.
 `merlin.targetgen.tool_registry` owns their exact module/staged-name mapping;
 resolve sources with `module_source_path()` and copy only declared client files.
 Never stage this package into candidate workspaces.

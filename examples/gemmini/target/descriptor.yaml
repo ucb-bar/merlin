@@ -1,7 +1,7 @@
 # Experiment resources and workload policy; hardware facts are extracted inputs.
 # See ../phase0/README.md for deterministic derivation and evidence selection.
 target: gemmini
-resources_root: merlin/experiments/capsule_bench/targets/gemmini
+resources_root: experiments/studies/capsule_bench/targets/gemmini
 task_root: examples/gemmini/phase1/task
 # Present but intentionally empty (see its README): no curated harness or ISA headers are granted,
 # and a declared root stops contract lookups from falling back to legacy capsule_bench contracts.
@@ -16,7 +16,7 @@ rtl:
 # No curated library kernels or handwritten backend headers are provided.
 hardware_spec: {}
 
-capsule_corpus: merlin/contract/capsules/isa
+capsule_corpus: experiments/corpora/isa
 
 grading:
   release_admission: derive_from_corpus_v1
@@ -64,7 +64,7 @@ phase1_gates:
       smolvla: [M2M_SMOLVLA_VLM_LAYERS, M2M_SMOLVLA_EXPERT_LAYERS, M2M_SMOLVLA_TAP]
       tiny_llama: [M2M_LLAMA_LAYERS]
   # Operator-side numerical execution of the SAME linked ELFs the static gate above verified
-  # (merlin_experiments.phase1.feedback.private_full_model_execution), run by the formal grade after
+  # (merlin.experiments.phase1.feedback.private_full_model_execution), run by the formal grade after
   # the freeze. Every program of the roster executes; each is linked with full readback (every
   # result printed whole) and its group calls bracketed with cycle counts.
   # Correctness is the QUANTIZED program's semantics, never the float model's:

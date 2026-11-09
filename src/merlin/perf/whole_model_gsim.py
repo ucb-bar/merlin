@@ -31,7 +31,7 @@ reason, and a refused verdict is never quotable.
 
 WHAT THE CYCLES ARE. The program's own ``rdcycle`` brackets: the whole measured window and one count
 per group. They come off an elaborated-RTL simulator, which the measurement ladder
-(``merlin/contract/measurement_ladder.yaml``) admits for ranking and output equivalence, not as a
+(``src/merlin/resources/contracts/measurement_ladder.yaml``) admits for ranking and output equivalence, not as a
 cycle authority; the verdict carries that adjudication beside the numbers.
 
 The UART spellings are the target's own (its ``whole_model_driver`` declares them); nothing here

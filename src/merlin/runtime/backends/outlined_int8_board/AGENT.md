@@ -14,5 +14,5 @@ whole-model lowering path.
 
 ## Testing expectations
 
-Run `merlin/tests/runtime/test_outlined_int8_board.py` after changing the binding
+Run `tests/runtime/test_outlined_int8_board.py` after changing the binding
 or kernel source.

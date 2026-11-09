@@ -10,6 +10,18 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.agentreport.campaign` | Campaign figure: one agentic compiler-construction campaign drawn as a single stitched run. |
 | `merlin.agentreport.phase1` | Post-hoc Phase 1 run, treatment and model reports with explicit artifact inputs. |
 | `merlin.analysis` | Public target-neutral IR, instruction and artifact observations. |
+| `merlin.analysis.dse` | Design-space analysis. |
+| `merlin.analysis.dse.guidance` | DSE guidance: turn a flat workload capture into grounded DSE-axis guidance. |
+| `merlin.analysis.dse.guidance.agent` | Agent slots for dse_guidance — LLM proposes, a deterministic gate disposes. |
+| `merlin.analysis.dse.pressure` | Design-pressure analysis: workload region -> cutpoints -> pressure metrics -> emitted reports. |
+| `merlin.analysis.dse.pressure.cutpoints` | Compiler cut points for analysis: the IR levels a workload region is observed at (graph, linalg, dispatch, bufferized, loop, trace), one module per cut point. |
+| `merlin.analysis.dse.pressure.emit` | Emit the schema-validated design-pressure artifacts: the design_pressure report, the candidate_contracts ladder (I0-I3) and interface candidates. |
+| `merlin.analysis.dse.pressure.ingest` | Ingest workload regions from external frontends (e.g. model2MLIR linalg-on-tensors). |
+| `merlin.analysis.dse.pressure.metrics` | Design-pressure metrics: per-axis pressures computed over a region's cut points -- compute/shapes, memory, layout, packing, reuse, lifetimes, dispatch and synchronization. |
+| `merlin.analysis.dse.pressure.workloads` | Synthetic, parameterized workload-region builders for design-pressure experiments. |
+| `merlin.analysis.dse.search` | Design-space exploration: search the hardware and interface space a design-pressure report opens. |
+| `merlin.analysis.dse.search.pipelines` | xDSL pass registry + pipeline builder. A compilation strategy's lowering_pipeline string is assembled here from named passes (MLIR --pass-pipeline style). |
+| `merlin.analysis.dse.search.search` | Search layer over candidate compiler artifacts. Three methods only: grid (explicit sweeps), evolutionary (improve a candidate), MAP-Elites (keep many good families). Orchestration/experiment logic —… |
 | `merlin.baselines` | External-baseline K1-RVV comparison harness. |
 | `merlin.baselines.exo_kernels` | EXO kernel sources for the K1-RVV whole-model baseline arm. |
 | `merlin.benchharness` | Shared, target-parametric benchmark-harness primitives. |
@@ -38,18 +50,26 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.compiler.schedule` | Shared scheduling algorithms over explicit semantics and derived resource geometry. |
 | `merlin.compiler.selection` | Local implementation selection and reusable feature constraints. |
 | `merlin.compiler.transforms` | Shared compiler transformations with explicit semantic and source contracts. |
-| `merlin.design_pressure` | Design-pressure analysis: workload region -> cutpoints -> pressure metrics -> emitted reports. |
-| `merlin.design_pressure.cutpoints` | Compiler cut points for analysis: the IR levels a workload region is observed at (graph, linalg, dispatch, bufferized, loop, trace), one module per cut point. |
-| `merlin.design_pressure.emit` | Emit the schema-validated design-pressure artifacts: the design_pressure report, the candidate_contracts ladder (I0-I3) and interface candidates. |
-| `merlin.design_pressure.ingest` | Ingest workload regions from external frontends (e.g. model2MLIR linalg-on-tensors). |
-| `merlin.design_pressure.metrics` | Design-pressure metrics: per-axis pressures computed over a region's cut points -- compute/shapes, memory, layout, packing, reuse, lifetimes, dispatch and synchronization. |
-| `merlin.design_pressure.workloads` | Synthetic, parameterized workload-region builders for design-pressure experiments. |
-| `merlin.development` | Host-owned experiment declarations; engines retain their existing lifecycle owners. |
-| `merlin.dse` | Design-space exploration: search the hardware and interface space a design-pressure report opens. |
-| `merlin.dse.pipelines` | xDSL pass registry + pipeline builder. A compilation strategy's lowering_pipeline string is assembled here from named passes (MLIR --pass-pipeline style). |
-| `merlin.dse.search` | Search layer over candidate compiler artifacts. Three methods only: grid (explicit sweeps), evolutionary (improve a candidate), MAP-Elites (keep many good families). Orchestration/experiment logic —… |
-| `merlin.dse_guidance` | DSE guidance: turn a flat workload capture into grounded DSE-axis guidance. |
-| `merlin.dse_guidance.agent` | Agent slots for dse_guidance — LLM proposes, a deterministic gate disposes. |
+| `merlin.experiments` | Experiment definitions over Merlin's existing phase engines. |
+| `merlin.experiments.capture_execution` | Fresh, isolated capture execution and replay verification. |
+| `merlin.experiments.corpus` | Cross-phase corpus preparation, evaluated admission and operator-reviewed releases. |
+| `merlin.experiments.execution` | Explicitly managed host execution; importing this package starts no service. |
+| `merlin.experiments.phase0` | Host-owned capsule derivation; profiles remain explicit external inputs. |
+| `merlin.experiments.phase1` | Explicit phase-1 invocation and run-input primitives; no implicit target selection. |
+| `merlin.experiments.phase1.brokers` | Host-only Phase-1 tool brokers; public clients remain in merlin.benchharness. |
+| `merlin.experiments.phase1.feedback` | Host-only functional feedback, independent grading and certificate promotion. |
+| `merlin.experiments.phase1.providers` | Host-only agent transports; import individual providers to observe their runtime defaults. |
+| `merlin.experiments.phase1.seed_prep` | (no module docstring — add one) |
+| `merlin.experiments.phase1.telemetry` | Host-owned phase-1 timeline analysis, retained evidence and timing reports. |
+| `merlin.experiments.phase1.tools` | Public standalone Phase 1 clients, copied individually into candidate workspaces. |
+| `merlin.experiments.phase2` | Performance experiment contracts and frozen functional admission. |
+| `merlin.experiments.phase2.claims` | Measured-claim decisions; frozen declaration identities are not Python import APIs. |
+| `merlin.experiments.phase2.whole_model_measured` | Phase 2 ``whole_model_measured`` mode: a candidate compiler measured as a WHOLE MODEL on hardware. |
+| `merlin.experiments.post_freeze` | Operator preparation and evidence intake after compiler freezing. |
+| `merlin.experiments.timing_probes` | Operator timing-calibration probes, derived from a target's own timing space and data. |
+| `merlin.experiments.tracking` | Experiment tracking views: a static HTML dashboard and a live terminal view, from records only. |
+| `merlin.experiments.tracking.console` | The experiment command console: discover, track, inspect and diagnose any experiment from its records. |
+| `merlin.experiments.tracking.console.sources` | Console sources: one bounded, read-only reader per concern, each ``read(ctx) -> section``. |
 | `merlin.frontends` | Merlin frontends: ingest external IR into the core-dialect pipeline. |
 | `merlin.frontends.adapters` | Frontend adapters — one module per ingestible source (see merlin.frontends.registry). |
 | `merlin.integrations` | Explicit adapters to independently versioned upstream tools; no eager framework imports. |
@@ -68,6 +88,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.perf.deps` | Dependence primitives: what an instruction defines and uses, what is live, and what that costs. |
 | `merlin.perf.layer_bench` | Per-layer RTL evidence: build one small layer program, run it on a cycle-accurate engine, keep the receipt. |
 | `merlin.plotting` | Shared plotting house style (palette + card/callout/style_ax helpers). |
+| `merlin.resources` | Reviewed public package resources. |
 | `merlin.runtime` | Merlin-owned runtime substrate (real, dependency-free). |
 | `merlin.runtime.backends` | Merlin runtime execution backends. |
 | `merlin.runtime.backends.openblas_board` | BOARD (RVV) OpenBLAS kernel backend: route the f32 ``linalg.matmul`` dispatches of a whole-model lowering to OpenBLAS's RVV 8x8 GEMM microkernel — the OpenBLAS analogue of the… |
@@ -110,25 +131,4 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.xdsl_dialects` | merlin's core dialects in xDSL (the default prototyping plane). |
 | `merlin.xdsl_dialects.lowering` | Staged lowering across the core dialects. |
 | `merlin.xdsl_dialects.targets` | Generic xDSL target-dialect construction. Target plans and implementations live in examples/OOT. |
-| `merlin_dse` | Separately installable DSE distribution; stable implementations use merlin.*. |
-| `merlin_experiments` | Experiment definitions over Merlin's existing phase engines. |
-| `merlin_experiments.capture_execution` | Fresh, isolated capture execution and replay verification. |
-| `merlin_experiments.corpus` | Cross-phase corpus preparation, evaluated admission and operator-reviewed releases. |
-| `merlin_experiments.execution` | Explicitly managed host execution; importing this package starts no service. |
-| `merlin_experiments.phase0` | Host-owned capsule derivation; profiles remain explicit external inputs. |
-| `merlin_experiments.phase1` | Explicit phase-1 invocation and run-input primitives; no implicit target selection. |
-| `merlin_experiments.phase1.brokers` | Host-only Phase-1 tool brokers; public clients remain in merlin.benchharness. |
-| `merlin_experiments.phase1.feedback` | Host-only functional feedback, independent grading and certificate promotion. |
-| `merlin_experiments.phase1.providers` | Host-only agent transports; import individual providers to observe their runtime defaults. |
-| `merlin_experiments.phase1.seed_prep` | (no module docstring — add one) |
-| `merlin_experiments.phase1.telemetry` | Host-owned phase-1 timeline analysis, retained evidence and timing reports. |
-| `merlin_experiments.phase1.tools` | Public standalone Phase 1 clients, copied individually into candidate workspaces. |
-| `merlin_experiments.phase2` | Performance experiment contracts and frozen functional admission. |
-| `merlin_experiments.phase2.claims` | Measured-claim decisions; frozen declaration identities are not Python import APIs. |
-| `merlin_experiments.phase2.whole_model_measured` | Phase 2 ``whole_model_measured`` mode: a candidate compiler measured as a WHOLE MODEL on hardware. |
-| `merlin_experiments.post_freeze` | Operator preparation and evidence intake after compiler freezing. |
-| `merlin_experiments.timing_probes` | Operator timing-calibration probes, derived from a target's own timing space and data. |
-| `merlin_experiments.tracking` | Experiment tracking views: a static HTML dashboard and a live terminal view, from records only. |
-| `merlin_experiments.tracking.console` | The experiment command console: discover, track, inspect and diagnose any experiment from its records. |
-| `merlin_experiments.tracking.console.sources` | Console sources: one bounded, read-only reader per concern, each ``read(ctx) -> section``. |
 | `merlin_timing` | Portable timing calibration and validation without compiler dependencies. |

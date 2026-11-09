@@ -2,7 +2,7 @@
 """Gate: the version-1 kernel ABI's argument order has ONE definition, and no harness has drifted from it.
 
 The definition is ``kernel_abi.arg_order_by_command_shape`` in
-``merlin/contract/legacy/kernel_abi_v1.yaml`` — a row per COMMAND SHAPE, each carrying a token
+``src/merlin/resources/contracts/legacy/kernel_abi_v1.yaml`` — a row per COMMAND SHAPE, each carrying a token
 list that expands to the pointer arguments in order. This gate resolves those tokens against a probe
 command buffer of every declared shape, then renders every explicitly selected OOT backend's real runner-owned
 harness for the same buffer, parses the actual entry call out of the emitted C, and fails if the two
@@ -51,9 +51,9 @@ _HERE = Path(__file__).resolve()
 _ROOT = _HERE.parents[2]
 sys.path.insert(0, str(_ROOT / "merlin" / "python"))
 
-_CONTRACT = _ROOT / "merlin" / "contract" / "legacy" / "kernel_abi_v1.yaml"
+_CONTRACT = _ROOT / "src/merlin/resources/contracts" / "legacy" / "kernel_abi_v1.yaml"
 #: The candidate-facing OOT backend contract, which declares ``logical_kernel_abi`` (version 2).
-_LOGICAL_CONTRACT = _ROOT / "merlin" / "contract" / "mlir_oot_backend_contract.yaml"
+_LOGICAL_CONTRACT = _ROOT / "src/merlin/resources/contracts" / "mlir_oot_backend_contract.yaml"
 
 #: The external tensor roles that become pointer arguments on the whole-op shape. Named here because
 #: the token's own definition in the contract names them, and the two are compared below.

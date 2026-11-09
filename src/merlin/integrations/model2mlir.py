@@ -63,7 +63,7 @@ def capture_python(*, checkout: Path | None = None) -> Path:
     return selected
 
 
-#: The software pin (``merlin/contract/software_pins.yaml``) every capture is verified against.
+#: The software pin (``src/merlin/resources/contracts/software_pins.yaml``) every capture is verified against.
 CAPTURE_PIN = "model2mlir_capture"
 
 

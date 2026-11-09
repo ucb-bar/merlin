@@ -6,11 +6,11 @@ owner: core
 last_verified: 2026-11-09
 related: [fresh_compiler_origin]
 code_refs:
-  - merlin/experiments/agent_recipe_select_v0/scripts/_track.py
-  - merlin/experiments/agent_recipe_select_v0/scripts/run_census_campaign.py
-  - merlin/experiments/agent_recipe_select_v0/scripts/census_workloads.py
-  - merlin/experiments/agent_recipe_select_v0/scripts/compare_arms.py
-  - merlin/experiments/agent_recipe_select_v0/scripts/agent_compile.py
+  - experiments/studies/agent_recipe_select_v0/scripts/_track.py
+  - experiments/studies/agent_recipe_select_v0/scripts/run_census_campaign.py
+  - experiments/studies/agent_recipe_select_v0/scripts/census_workloads.py
+  - experiments/studies/agent_recipe_select_v0/scripts/compare_arms.py
+  - experiments/studies/agent_recipe_select_v0/scripts/agent_compile.py
 ---
 
 # Running the recipe-select agent campaigns
@@ -44,8 +44,8 @@ experiment; they do not certify a different OOT backend or a new model invocatio
   `SHA256SUMS` must hash to the manifest digest pinned in `_track.py`, and every file it lists is
   re-hashed. Without it, every script that guards the champion (`assert_frozen_intact`), including
   the AutoComp arm's driver, refuses to start. Check a copy with
-  `.venv/bin/python merlin/experiments/agent_recipe_select_v0/scripts/_track.py`, and reconstruct the
-  recipe arm's fork from it as `merlin/experiments/agent_recipe_select_v0/compiler/AGENT.md`
+  `.venv/bin/python experiments/studies/agent_recipe_select_v0/scripts/_track.py`, and reconstruct the
+  recipe arm's fork from it as `experiments/studies/agent_recipe_select_v0/compiler/AGENT.md`
   describes. A similarly named package or a newer OOT backend is not a substitute; if the pinned
   bytes cannot be obtained, the campaign stays historical rather than reproducible.
 * A codex seat (`auth_mode: chatgpt`). Runs are billed as `subscription_notional`; `billed_usd` stays
@@ -59,7 +59,7 @@ experiment; they do not certify a different OOT backend or a new model invocatio
 ## 1. Build the workloads
 
 ```bash
-.venv/bin/python merlin/experiments/agent_recipe_select_v0/scripts/census_workloads.py \
+.venv/bin/python experiments/studies/agent_recipe_select_v0/scripts/census_workloads.py \
     --emit-workloads out/build/recipe_select_workloads
 ```
 
@@ -72,7 +72,7 @@ one-tile floor would round them *up*, which is a different workload, not a small
 
 ```bash
 # recipe arm
-.venv/bin/python merlin/experiments/agent_recipe_select_v0/scripts/run_census_campaign.py \
+.venv/bin/python experiments/studies/agent_recipe_select_v0/scripts/run_census_campaign.py \
     --workloads out/build/recipe_select_workloads --arm recipe \
     --budget 16 --slots 6 --exclude .interface. \
     --log-dir out/runs/gemmini/recipe-select/campaign_recipe_$(date -u +%Y%m%dT%H%M%SZ)
@@ -101,8 +101,8 @@ A shape whose driver died mid-flight has no manifest row and is correctly re-run
 ## 3. Compare the arms
 
 ```bash
-.venv/bin/python merlin/experiments/agent_recipe_select_v0/scripts/compare_arms.py
-.venv/bin/python merlin/experiments/agent_recipe_select_v0/scripts/compare_arms.py --json --all
+.venv/bin/python experiments/studies/agent_recipe_select_v0/scripts/compare_arms.py
+.venv/bin/python experiments/studies/agent_recipe_select_v0/scripts/compare_arms.py --json --all
 ```
 
 By default it prints only shapes **both** arms have finished. The `recipe vs ac` column is computed

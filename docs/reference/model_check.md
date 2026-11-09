@@ -10,7 +10,7 @@ code_refs:
   - src/merlin/model_check/report.py
   - src/merlin/model_check/references.py
   - src/merlin/runtime/linalg_numpy.py
-  - merlin/schemas/model_check_report.schema.yaml
+  - src/merlin/resources/schemas/model_check_report.schema.yaml
   - examples/gemmini/numerics/models.yaml
   - src/merlin/model_check/__init__.py
   - src/merlin/model_check/metrics.py
@@ -530,7 +530,7 @@ Expected results are the interface program evaluated exactly. Variants and the s
 
 ## 9. Report
 
-Schema: `merlin/schemas/model_check_report.schema.yaml` (`merlin.model_check.report.v1`). Top level:
+Schema: `src/merlin/resources/schemas/model_check_report.schema.yaml` (`merlin.model_check.report.v1`). Top level:
 `schema`, `command`, `status` (`pass|fail|error`), `exit_code`, `tool`, `submission`, `model`, `split`,
 `agent_view`, `bundle`, `binding`, `gates` (name → `{status, partial, detail}`), `programs[]`,
 `model_metrics`, `failures[]`, `timing`. A gate's status is `pass` or `fail`, or `pending` for a gate the

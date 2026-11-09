@@ -30,7 +30,7 @@ A champion is the standalone publish layout (payload bytes + `MERLIN_PUBLICATION
 `.merlin/{manifest.yaml,provenance.yaml,certification.yaml,CHAMPION}`) plus
 `.merlin/{provenance,certification,measurements,isa_prohibition}.json`, written only by
 `merlin.targetgen.champions.export_champion` and retention-pinned (`retention` in
-`merlin/contract/storage.yaml`). Never hand-edit a champion or `INDEX.yaml`; export a new champion or
+`src/merlin/resources/contracts/storage.yaml`). Never hand-edit a champion or `INDEX.yaml`; export a new champion or
 regenerate the index.
 
 `<package_id>` carries provenance: `<type>_<target>_v<N>_<ts>` plus a lineage `manifest.yaml`

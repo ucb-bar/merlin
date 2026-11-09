@@ -25,7 +25,7 @@ Two corpora, two difficulty tiers:
   are a deliberately-later task.
 
 Which corpora exist, which ``kernel.source`` spellings name them, their layout and where their checkouts
-live is data (``merlin/contract/corpora.yaml``, read via :mod:`merlin.targetgen.corpora`); this module
+live is data (``src/merlin/resources/contracts/corpora.yaml``, read via :mod:`merlin.targetgen.corpora`); this module
 holds only the per-layout build recipes.
 
 Toolchain
@@ -187,7 +187,7 @@ def _run(cmd: list[str], timeout: int) -> bool:
 
 
 # ------------------------------------------------------------------- registered corpora
-# Corpus layouts (the `layout` of a merlin/contract/corpora.yaml entry): a standalone-benchmark corpus
+# Corpus layouts (the `layout` of a src/merlin/resources/contracts/corpora.yaml entry): a standalone-benchmark corpus
 # builds and runs each benchmark as-is; a single-TU corpus is a framework whose kernel TU is compiled
 # best-effort against its declared include roots.
 STANDALONE_BENCHMARKS = "standalone_benchmarks"
@@ -299,7 +299,7 @@ def framework_kernel_asm(source: str, kernel_path: str | Path, *, timeout: int =
 # ------------------------------------------------------------------------------- routing
 def dossier_asm(nk, *, timeout: int = 120) -> str | None:
     """Route a :class:`~merlin.kernels.types.NormalizedKernel` to its build path by the LAYOUT of the
-    corpus its source names (registry ``merlin/contract/corpora.yaml``).
+    corpus its source names (registry ``src/merlin/resources/contracts/corpora.yaml``).
 
     standalone_benchmarks -> :func:`benchmark_asm` (the bench is the ``vec-*`` path component);
     single_tu -> :func:`framework_kernel_asm` (best-effort). A source naming no registered corpus, or an

@@ -393,7 +393,7 @@ def runtime_tensor_names(block_args, pack_sources) -> dict:
     minted by ``runtime_lowering.lower_to_runtime``'s naming pre-pass, two stages further down: a
     pack source is ``W``/``W1``.., every other tensor block argument is ``A0``.. in block order.
     This stage has to produce the SAME name, so the rule is stated here in the one form the two
-    stages can be compared in, and ``merlin/tests/ir/test_interface_bias_epilogue.py`` pins them
+    stages can be compared in, and ``tests/ir/test_interface_bias_epilogue.py`` pins them
     against each other by lowering all the way to the emitted buffer and reading the bias operand
     back out of it — a drift between the two turns that test red instead of producing a commit that
     names a tensor the engine has never heard of.

@@ -18,6 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from merlin.common.paths import python_source_dir
+
 from .cca_compare import Divergence
 
 
@@ -649,7 +651,7 @@ _RVV_ROUTES: list[_Route] = [
         # `perop_register_block` -- `fork_from_action` splits the seam and puts that string straight into
         # `compiler_features`, so a fork minted from this route died with "unknown impr feature" instead
         # of running. A dead seam string and a False flag are the same failure wearing two hats, and the
-        # honesty test in merlin/tests/kernels/test_action_catalog.py now fails the build on either.
+        # honesty test in tests/kernels/test_action_catalog.py now fails the build on either.
         forkable_now=True,
         expected_effect="every contraction is vectorized at its own legal width instead of the class "
         "being clamped by its smallest member — measured loss on whisper_tiny: its N=1 "
@@ -917,9 +919,7 @@ def seam_module(target_seam: str, *, package_root: "Path | None" = None) -> str 
         return None  # impr_features:/schedule:/cflag: are not modules
     if not token.endswith(".py"):
         return None  # a label, not a path
-    from ..common.paths import merlin_dir
-
-    root = _P(package_root) if package_root is not None else merlin_dir() / "python"
+    root = _P(package_root) if package_root is not None else python_source_dir()
     rel = _P("merlin") / token if not token.startswith("merlin/") else _P(token)
     if not (root / rel).is_file():
         return None

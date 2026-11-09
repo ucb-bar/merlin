@@ -18,5 +18,5 @@ phases:
       phase1_oot: ../operator-inputs/phase1-run/oot
       method: whole_model_measured
       profile: codex-gpt-6-sol
-      round_driver: merlin_experiments.phase2.whole_model_measured.rounds:round_driver
+      round_driver: merlin.experiments.phase2.whole_model_measured.rounds:round_driver
       why: OPERATOR_REASON

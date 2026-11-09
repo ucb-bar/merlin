@@ -59,9 +59,9 @@ for _p in (_REPO / "src",):
         sys.path.insert(0, str(_p))
 
 import yaml  # noqa: E402
-from merlin_experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
 
-from merlin.common.paths import merlin_dir  # noqa: E402
+from merlin.common.paths import capsules_dir
+from merlin.experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
 from merlin.targetgen import cert_affordability as CA  # noqa: E402
 from merlin.targetgen import cert_cost as CC  # noqa: E402
 
@@ -109,9 +109,9 @@ def _default_corpus_target() -> str:
     target. Needed because that target's capsules have one fewer path component than everyone else's,
     which is exactly what the label rule below has to get right.
     """
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import capsules_dir
 
-    root = merlin_dir() / "contract" / "capsules"
+    root = capsules_dir()
     names = [item.profile for item in all_declarations()]
     if not names:
         raise ValueError("cert-affordability requires a nonempty Phase 0 declaration inventory")
@@ -130,9 +130,10 @@ def _target_label_for(cy) -> str:
     name, which has no certification history at all. That target's 34 measured certifications have
     therefore never priced its own capsules; every one silently fell back to the global law.
     """
-    parts = cy.parts
-    i = parts.index("capsules") if "capsules" in parts else -1
-    rest = parts[i + 1 :] if i >= 0 else ()
+    try:
+        rest = cy.relative_to(capsules_dir()).parts
+    except ValueError:
+        rest = ()
     return rest[0] if len(rest) > 3 else _default_corpus_target()
 
 
@@ -223,7 +224,7 @@ def _cheaper_tier(label: str, cache: dict):
     """
     if label not in cache:
         try:
-            from merlin_experiments.corpus.admission import constructed_oracle_tiers
+            from merlin.experiments.corpus.admission import constructed_oracle_tiers
 
             tiers = [str(t) for t in (constructed_oracle_tiers(label) or ())]
             cache[label] = tiers[0] if len(tiers) > 1 else (None if tiers else _TIER_UNKNOWN)
@@ -256,7 +257,7 @@ def _remedies(row: dict, cheaper) -> list:
 def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
     if not all_declarations():
         raise ValueError("cert-affordability requires a nonempty Phase 0 declaration inventory")
-    root = merlin_dir() / "contract" / "capsules"
+    root = capsules_dir()
     rows, unpriceable, extends_rows = [], [], []
     fit_cache: dict = {}
     tier_cache: dict = {}
@@ -397,7 +398,7 @@ def audit(*, budget_s: float = _BUDGET, targets=()) -> dict:
         names = []
     # Plus every target capsule-bench has a descriptor for: a target can be benched (and certified)
     # without being in the compiler's own registry, and its measured history is exactly as real.
-    _descs = _REPO / "merlin" / "experiments" / "capsule_bench" / "targets"
+    _descs = _REPO / "experiments" / "studies" / "capsule_bench" / "targets"
     if _descs.is_dir():
         names += [_resolved_target(d.name) for d in _descs.iterdir() if (d / "target_experiment.yaml").is_file()]
     _seen = {_resolved_target(t): got for t, got in fit_cache.items()}

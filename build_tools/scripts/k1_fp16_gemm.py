@@ -91,8 +91,8 @@ def _run_ours(S: int, reps: int, tag: str, keep: Path, feats: list[str]) -> dict
     base.update(_emitted_facts(model_o, keep))
 
     cc = X._cc()
-    rt = REPO / "merlin/runtime/c"
-    abi = REPO / "merlin/runtime/abi"
+    rt = REPO / "src/merlin/runtime/native/c"
+    abi = REPO / "src/merlin/runtime/native/abi"
     inc = []
     for d in (X.K1H, X.HERE, cgen, rt):
         inc += ["-I", str(d)]

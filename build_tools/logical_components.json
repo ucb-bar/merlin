@@ -4,9 +4,8 @@
     "merlin-experiments": {
       "namespaces": [
         "merlin.benchharness",
-        "merlin.development",
         "merlin.targetgen.sandbox",
-        "merlin_experiments"
+        "merlin.experiments"
       ],
       "modules": [
         "merlin.perf.analysis_worker",
@@ -87,10 +86,7 @@
     },
     "merlin-dse": {
       "namespaces": [
-        "merlin.design_pressure",
-        "merlin.dse",
-        "merlin.dse_guidance",
-        "merlin_dse"
+        "merlin.analysis.dse"
       ],
       "modules": []
     },

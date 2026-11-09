@@ -107,7 +107,7 @@ def read_tool_spans(stage_dir: Path) -> tuple[SpanSet, int]:
         out.source = ""
         # A GLOBAL CAMPAIGN NEVER HAS THIS FILE, and the reason is worth stating rather than
         # leaving a reader to conclude the lane made no tool calls. `agent/tools.jsonl` is written
-        # by `merlin_experiments.phase2.telemetry.finalize`, which is called by the measured-claim
+        # by `merlin.experiments.phase2.telemetry.finalize`, which is called by the measured-claim
         # authoring stage; the global launcher never calls it. The raw driver stream IS on disk at
         # `agent/events.NN.raw.jsonl` -- but spans are NOT reconstructed from it here, because
         # arrival stamps are when an event reached the reader, not when the tool ran, and a

@@ -72,7 +72,7 @@ UNEXPRESSED_DTYPE = "unexpressed_dtype"
 UNCLASSIFIED = "UNCLASSIFIED"
 
 #: The gate whose phase governs the offload verdict this census now forms. Declared in
-#: ``merlin/contract/gate_phases.yaml``; read, never assumed, so a rollout stays a one-line diff on a
+#: ``src/merlin/resources/contracts/gate_phases.yaml``; read, never assumed, so a rollout stays a one-line diff on a
 #: tracked file rather than a literal buried here.
 OFFLOAD_GATE = "offload_verdict"
 

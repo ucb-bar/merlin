@@ -17,7 +17,7 @@ Palette note, deliberate: this figure uses ``paper_plot_style`` (the Okabe-Ito/s
 figures in this directory use) rather than the repo-wide ``merlin_plotstyle`` cream/navy identity,
 because it ships in the same paper as those figures and a second palette inside one paper is worse
 than reusing a plainer one. The DIAGRAM primitives below are adapted from
-``merlin/experiments/gemmini_perf_bench/scripts/gen_circt_diagram.py``; they take their colours as
+``experiments/studies/gemmini_perf_bench/scripts/gen_circt_diagram.py``; they take their colours as
 arguments, so they carry no palette of their own.
 
     python figures/gen_capsule_generation.py --derive     # rebuild the JSON from the corpus
@@ -90,7 +90,7 @@ AXES = (
 # =============================================================================================
 def _targets() -> list[str]:
     """Every target with a conformance spec. Discovered, so a new target needs no edit here."""
-    d = REPO / "merlin" / "contract" / "capsules" / "conformance"
+    d = REPO / "experiments" / "corpora" / "conformance"
     return sorted(p.stem for p in d.glob("*.yaml"))
 
 
@@ -111,7 +111,7 @@ def derive() -> dict:
     from merlin.targetgen import conformance as CF
     from merlin.targetgen.target_experiment import descriptor_for, load_target_experiment
 
-    manifest = yaml.safe_load((REPO / "merlin" / "contract" / "capsules" / "MANIFEST.yaml").read_text(encoding="utf-8"))
+    manifest = yaml.safe_load((REPO / "experiments" / "corpora" / "MANIFEST.yaml").read_text(encoding="utf-8"))
 
     per_target: dict[str, dict] = {}
     for target in _targets():

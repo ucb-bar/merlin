@@ -14,8 +14,8 @@ code_refs:
   - src/merlin/llvmlower/pipeline.py
   - src/merlin/perf/whole_model_build_cli.py
   - src/merlin/perf/whole_model_partial.py
-  - src/merlin_experiments/group_inspect.py
-  - src/merlin_experiments/group_probes.py
+  - src/merlin/experiments/group_inspect.py
+  - src/merlin/experiments/group_probes.py
   - src/merlin/perf/census_cli.py
   - src/merlin/service_cli.py
 ---
@@ -153,7 +153,7 @@ whole-model driver. The rebuild runs inside a trace that dumps every stage, and 
   come from the target's own counter header (the per-engine busy/overlap block, and every other
   duration counter it declares). Values are read from the `--time` run's console, or from
   `--counter-console FILE` printed by `--counter-engine E`, and are admitted only when that engine's
-  counters are declared real in `merlin/contract/counter_trust.yaml` and the console's counter schema
+  counters are declared real in `src/merlin/resources/contracts/counter_trust.yaml` and the console's counter schema
   (if it prints one) is the same header. A console with no readings, or an untrusted engine, leaves the
   values `UNKNOWN` or refused, never zero. The census counts every custom instruction in the linked
   one-group program by its derived role, split into the group's kernel and the program's own code.
@@ -161,7 +161,7 @@ whole-model driver. The rebuild runs inside a trace that dumps every stage, and 
 Each step uses a hook the target provides: its whole-model driver, and a functional-model machine.
 If the target or candidate lacks the hook, you get "not available for this target" and the reason.
 Inside a phase-1 sandbox, the equivalent instruction-level view of a capsule is
-`isa_tools.py debug … --run-to N` (`merlin_experiments.phase1.tools.isa`).
+`isa_tools.py debug … --run-to N` (`merlin.experiments.phase1.tools.isa`).
 
 ## Related switches
 

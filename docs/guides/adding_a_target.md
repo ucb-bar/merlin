@@ -10,10 +10,30 @@ code_refs: [src/merlin/targetgen, src/merlin/runtime/backends/chipyard_rocc.py, 
 
 # Adding a target
 
-Toy/reference targets live in-tree under `merlin/targets/`. Serious targets should become external
-repos or MLIR plugins.
+## Ordinary OOT compiler provider
 
-## Prerequisites
+Keep the compiler in its own repository and install its package in the same
+Python environment as Merlin. It registers a `merlin.backends` entry point;
+`merlin inspect --backends` lists the installed metadata, and
+`merlin.api.compile(..., backend=...)` / `merlin compile SOURCE --backend ...`
+select that provider explicitly. See [OOT installation and registration](../reference/architecture.md#making-oot-implementations-available)
+and the actual [service resolver](../../src/merlin/compiler/backend/service.py).
+The provider owns its target dialect, instruction selection and device encoding;
+its admitted output may be IR, objects, binaries or commands. It can reuse the
+[shared pass library](../reference/shared_compiler_passes.md).
+
+An ordinary handwritten or generated provider need not use the TargetGen scaffold
+below. Target-definition/support discovery through `MERLIN_TARGET_PATH` is a
+separate boundary, described in [target resolution](target_resolution.md).
+Installation or discovery alone establishes no independent compiler qualification.
+
+## Retained TargetGen scaffold workflow
+
+The following workflow describes contract-driven dialect generation. Existing
+toy/reference inputs live under `experiments/reference-data/target-inputs/`;
+that retained layout is not a requirement for an ordinary OOT compiler provider.
+
+### Prerequisites
 
 **Shared base + the `targetgen` extra.** Complete the base install in
 [Getting started](getting_started.md) (`uv sync --all-extras`, or `pip install -e '.[targetgen]'`). The
@@ -21,19 +41,19 @@ scaffold-generation steps below need **no** external toolchain. An RTL-grounded 
 needs the `circt_firtool` capability (`firtool`/`FileCheck` on PATH) to promote
 `contracts/rtl_facts/facts.json`; confirm it with `check_repro_env.py`.
 
-## Steps
+### Steps
 
-1. Create `merlin/targets/<name>/` following the canonical per-target shape: `contracts/` and
+1. Create `experiments/reference-data/target-inputs/<name>/` following the canonical per-target shape: `contracts/` and
    `generated/` are **required** (each with an `AGENT.md`; `generated/` is gitignored output). Add
    `docs/` / `examples/` only when you have real content — no empty stub dirs. The shared
-   `merlin_iface` dialect spec is NOT per-target (it lives in `merlin/contract/`). RTL-grounded
+   `merlin_iface` dialect spec is NOT per-target (it lives in `src/merlin/resources/contracts/`). RTL-grounded
    targets get a promoted `contracts/rtl_facts/facts.json` pin (see
    `merlin.targetgen.rtl.circt_introspect --promote`); scratch stays in `out/artifacts/cache/`.
 2. Write `contracts/target_contract.yaml` (validate against
-   `merlin/schemas/target_contract.schema.yaml`). If it advertises the tensor-resident interface
+   `src/merlin/resources/schemas/target_contract.schema.yaml`). If it advertises the tensor-resident interface
    (`features: [resident_packed_tensor|accumulator_commit, command_buffer]`, a `matmul` capability,
    and `ops`/`types`), the rest of the dialect is **data-driven**.
-3. **Dialect is generated, not hand-written.** `synthesize_dialect_plan` derives
+3. **This route generates a dialect.** `synthesize_dialect_plan` derives
    `contracts/dialect_plan.yaml` from the contract's `ops`/`types` (the interface→target lowering is
    canonical), and `xdsl_dialects.targets.factory.build_dialect(name, plan=...)` synthesizes the IRDL
    op/type classes from that plan — no per-target dialect module. The target registry
@@ -48,7 +68,7 @@ needs the `circt_firtool` capability (`firtool`/`FileCheck` on PATH) to promote
    for the host recipe and execution plan. Put the actual launch protocol and
    platform driver in the target package.
 5. Add target-specific conformance tests to the provider's `tests/`; shared interface
-   regressions belong in the relevant `merlin/tests/<subsystem>/` bucket.
+   regressions belong in the relevant `tests/<subsystem>/` bucket.
 
 **A data-only provider for a chipyard RoCC target.** When the target runs on chipyard's
 toolchain (spike extension, Verilator harness, Merlin's GSIM harness), the provider need not ship

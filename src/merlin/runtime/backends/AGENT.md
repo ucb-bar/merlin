@@ -13,7 +13,7 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
 ## What does not belong here
 
 - Target dialects or lowering (that is `xdsl_dialects/`).
-- The bare-metal harness C/asm (that is `merlin/runtime/baremetal/spike/`).
+- The bare-metal harness C/asm (that is `src/merlin/runtime/native/baremetal/spike/`).
 - RTL builds, vendored simulators, or anything that mutates the chipyard checkout.
 
 ## Interfaces
@@ -53,7 +53,7 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
 - **Correctness gate**: every backend run is compared against `reference_outputs(cb)`; `correct` must be True for a run to count. Residency/parallelization must never change results.
 - Generated epilogue C must match `tensor.py` semantics bit-exactly (rounding arithmetic shift, saturating i8).
 - Tests must auto-skip (not fail) when the toolchain is absent (`spike.available()`).
-- Keep the matmul kernel as hand-written `.S` — see `merlin/runtime/baremetal/spike/AGENT.md` for the GCC 13.2 intrinsics bug that forced this.
+- Keep the matmul kernel as hand-written `.S` — see `src/merlin/runtime/native/baremetal/spike/AGENT.md` for the GCC 13.2 intrinsics bug that forced this.
 
 ## Testing expectations
 

@@ -42,9 +42,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 
-from merlin_experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
-
-from merlin.common.paths import merlin_dir  # noqa: E402
+from merlin.common.paths import capsules_dir
+from merlin.experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
 from merlin.runtime.commandbuffer import EPILOGUE_STAGES  # noqa: E402
 
 
@@ -163,7 +162,7 @@ def main(argv=None) -> int:
     ap.add_argument("--strict", action="store_true", help="an unreachable defect class is a failure, not a note")
     args = ap.parse_args(argv)
 
-    root = merlin_dir() / "contract" / "capsules"
+    root = capsules_dir()
     targets = sorted(item.profile for item in all_declarations())
     if not targets:
         raise ValueError("defect-reach requires a nonempty Phase 0 declaration inventory")

@@ -26,7 +26,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-CORPUS = ROOT / "merlin" / "contract" / "capsules"
+CORPUS = ROOT / "experiments" / "corpora"
 LEDGER = ROOT / "build_tools" / "scripts" / "stage_parameter_ratchet.txt"
 #: stage -> the attribute that carries its parameter.
 PARAMETER_OF = {"acc_scale": "acc_scale", "requant": "requant_shift"}

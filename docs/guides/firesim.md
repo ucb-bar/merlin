@@ -70,7 +70,7 @@ not the target architectural clock or a replacement for the modeled DDR timings.
 
 ### Source revisions: F2 and the historical pins are different
 
-The [`gemmini_rocket_*` pins](../../merlin/contract/hardware_pins.yaml) describe
+The [`gemmini_rocket_*` pins](../../src/merlin/resources/contracts/hardware_pins.yaml) describe
 the older U250/source lineage. They must not be silently relabeled as the F2 build.
 
 | Component | Historical Rocket+Gemmini lineage | F2 build evidence |

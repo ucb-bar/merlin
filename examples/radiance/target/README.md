@@ -7,7 +7,7 @@ The template is documentation: Merlin never loads it automatically.
 For the descriptor's current `resources_root`, copy it from the repository root:
 
 ```sh
-cp -n examples/radiance/target/tooling.env.example merlin/experiments/capsule_bench/targets/radiance/experiment.env
+cp -n examples/radiance/target/tooling.env.example experiments/studies/capsule_bench/targets/radiance/experiment.env
 ```
 
 Edit the destination's placeholder paths before running. Existing process environment

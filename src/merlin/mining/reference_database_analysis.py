@@ -109,8 +109,10 @@ def unproved_call_returns(counted, summaries):
                 continue
             reason = summary.get("reason") or (
                 "callee return is not a known value under its entry state (it reads state the summary does not "
-                "prove, e.g. memory written before the call)" if summary.get("status") == "proved"
-                else "no callee summary")
+                "prove, e.g. memory written before the call)"
+                if summary.get("status") == "proved"
+                else "no callee summary"
+            )
             out[hex(target)] = dict(calls=calls, stepping=stepping, reason=reason)
     return out
 
@@ -121,9 +123,12 @@ def _note_unproved_returns(effects, record, context):
     if not unproved:
         return
     callers = ((context or {}).get("entry_context") or {}).get("callers")
-    note = ("the proved execution steps over calls to " + ", ".join(unproved) + " whose return values are not "
-            "proved; a local address computed from them stays unresolved (static callers of this region: "
-            + ("unknown" if callers is None else str(callers)) + ")")
+    note = (
+        "the proved execution steps over calls to " + ", ".join(unproved) + " whose return values are not "
+        "proved; a local address computed from them stays unresolved (static callers of this region: "
+        + ("unknown" if callers is None else str(callers))
+        + ")"
+    )
     for name in ("operand_buffering", "prefetch_distance"):
         fact = (effects.get("facts") or {}).get(name)
         if not isinstance(fact, dict):
@@ -132,8 +137,9 @@ def _note_unproved_returns(effects, record, context):
             fact["limits"] = [*(fact.get("limits") or ()), note]
 
 
-def proved_stream(body, decoder, context=None, *, max_steps=STREAM_MAX_STEPS, max_runs=STREAM_MAX_RUNS,
-                  max_entries=STREAM_MAX_ENTRIES):
+def proved_stream(
+    body, decoder, context=None, *, max_steps=STREAM_MAX_STEPS, max_runs=STREAM_MAX_RUNS, max_entries=STREAM_MAX_ENTRIES
+):
     """The decoded issue-order stream of one region whose scalar control proves.
 
     The region's agreed entry state is tried first, then each per-caller entry
@@ -153,16 +159,26 @@ def proved_stream(body, decoder, context=None, *, max_steps=STREAM_MAX_STEPS, ma
     if opcode is None:
         return None, None, False, dict(status="unknown", reason="selected ISA declares no extension opcode")
     tries = [("region", context.get("entry_state"))]
-    tries += [(row.get("context_id"), dict(context.get("entry_state") or {}, **(row.get("registers") or {})))
-              for row in context.get("contexts") or ()]
+    tries += [
+        (row.get("context_id"), dict(context.get("entry_state") or {}, **(row.get("registers") or {})))
+        for row in context.get("contexts") or ()
+    ]
     reasons = []
     for context_id, state in tries:
         try:
             summaries = {**(context.get("call_summaries") or {}), **(context.get("tail_summaries") or {})}
-            counted = finite_control_counts(body, custom_opcode=opcode, entry_state=state or None,
-                                            call_summaries=summaries or None, record_commands=True,
-                                            max_steps=max_steps, max_commands=max_steps, max_recorded=max_runs,
-                                            assume_returning_calls=True, symbolic_returns=True)
+            counted = finite_control_counts(
+                body,
+                custom_opcode=opcode,
+                entry_state=state or None,
+                call_summaries=summaries or None,
+                record_commands=True,
+                max_steps=max_steps,
+                max_commands=max_steps,
+                max_recorded=max_runs,
+                assume_returning_calls=True,
+                symbolic_returns=True,
+            )
         except (ValueError, TypeError) as error:
             reasons.append(dict(context_id=context_id, reason=f"entry state not applicable: {error}"))
             continue
@@ -171,37 +187,71 @@ def proved_stream(body, decoder, context=None, *, max_steps=STREAM_MAX_STEPS, ma
             arguments = {name: value for name, value in (state or {}).items() if type(value) is int}
             truncated = len(stream) < counted["command_stream_entries"]
             unproved = unproved_call_returns(counted, summaries)
-            return stream, arguments, truncated, dict(
-                **({"unproved_call_returns": unproved} if unproved else {}),
-                **({"symbolic_returns": len(counted["symbolic_returns"]),
-                    "symbolic_return_basis": "one fresh symbol per dynamic call instance; never assumed equal"}
-                   if counted.get("symbolic_returns") else {}),
-                status="proved", context_id=context_id, entries=counted["command_stream_entries"],
-                decoded_entries=len(stream), runs=len(counted["command_stream_runs"]), truncated=truncated,
-                commands=counted["commands"], fences=counted["fences"], steps=counted["steps"],
-                max_steps=max_steps, attempts=len(reasons) + 1,
-                basis="proved_scalar_control" if not counted.get("assumed_returning_calls")
-                else "proved_scalar_control_assuming_listed_calls_return",
-                **({"assumed_returning_calls": {hex(k): v for k, v in counted["assumed_returning_calls"].items()}}
-                   if counted.get("assumed_returning_calls") else {}))
-        reasons.append(dict(context_id=context_id, **(counted.get("command_stream_status") or
-                                                      dict(reason=counted.get("reason")))))
-    return None, None, False, dict(status="unknown", reason="no_proved_command_stream", max_steps=max_steps,
-                                   attempts=reasons[:8])
+            return (
+                stream,
+                arguments,
+                truncated,
+                dict(
+                    **({"unproved_call_returns": unproved} if unproved else {}),
+                    **(
+                        {
+                            "symbolic_returns": len(counted["symbolic_returns"]),
+                            "symbolic_return_basis": "one fresh symbol per dynamic call instance; never assumed equal",
+                        }
+                        if counted.get("symbolic_returns")
+                        else {}
+                    ),
+                    status="proved",
+                    context_id=context_id,
+                    entries=counted["command_stream_entries"],
+                    decoded_entries=len(stream),
+                    runs=len(counted["command_stream_runs"]),
+                    truncated=truncated,
+                    commands=counted["commands"],
+                    fences=counted["fences"],
+                    steps=counted["steps"],
+                    max_steps=max_steps,
+                    attempts=len(reasons) + 1,
+                    basis="proved_scalar_control"
+                    if not counted.get("assumed_returning_calls")
+                    else "proved_scalar_control_assuming_listed_calls_return",
+                    **(
+                        {"assumed_returning_calls": {hex(k): v for k, v in counted["assumed_returning_calls"].items()}}
+                        if counted.get("assumed_returning_calls")
+                        else {}
+                    ),
+                ),
+            )
+        reasons.append(
+            dict(context_id=context_id, **(counted.get("command_stream_status") or dict(reason=counted.get("reason"))))
+        )
+    return (
+        None,
+        None,
+        False,
+        dict(status="unknown", reason="no_proved_command_stream", max_steps=max_steps, attempts=reasons[:8]),
+    )
 
 
-def region_effects(report, body, decoder, structure, occurrence_id, context=None, *,
-                   stream_max_steps=STREAM_MAX_STEPS):
+def region_effects(report, body, decoder, structure, occurrence_id, context=None, *, stream_max_steps=STREAM_MAX_STEPS):
     """Pure addition: decoded-command effects for one accelerator span; CCA records are unchanged."""
     from merlin.kernels.decoded_effects import decoded_commands, derive_effects
 
     context = context or {}
-    commands = decoded_commands(body, decoder=decoder, entry_state=context.get("entry_state"),
-                                call_summaries=context.get("call_summaries"))
+    commands = decoded_commands(
+        body, decoder=decoder, entry_state=context.get("entry_state"), call_summaries=context.get("call_summaries")
+    )
     evidence_id = (report.get("evidence") or {}).get("evidence_id") or occurrence_id
     stream, arguments, truncated, record = proved_stream(body, decoder, context, max_steps=stream_max_steps)
-    effects = derive_effects(report, structure, commands=commands, evidence_id=evidence_id, stream=stream,
-                             arguments=arguments, stream_truncated=truncated)
+    effects = derive_effects(
+        report,
+        structure,
+        commands=commands,
+        evidence_id=evidence_id,
+        stream=stream,
+        arguments=arguments,
+        stream_truncated=truncated,
+    )
     effects["command_stream"] = record
     _note_unproved_returns(effects, record, context)
     return effects
@@ -319,8 +369,12 @@ def interprocedural_contexts(regions, edges, *, machine=None):
         key = (caller_id, _canonical(state))
         if key not in sites:
             try:
-                _, analysis = lifter_call(machine.register_facts, regions[caller_id][1], entry_state=state or None,
-                                          call_summaries=call_summaries(caller_id))
+                _, analysis = lifter_call(
+                    machine.register_facts,
+                    regions[caller_id][1],
+                    entry_state=state or None,
+                    call_summaries=call_summaries(caller_id),
+                )
             except (ValueError, TypeError):
                 if not state:
                     raise
@@ -354,10 +408,15 @@ def interprocedural_contexts(regions, edges, *, machine=None):
         scope = regions[occurrence_id][0]
         incoming = [edge for edge in entries if edge["callee_id"] == occurrence_id and edge["caller_id"] in regions]
         callers = sorted({edge["caller_id"] for edge in incoming})
-        witnesses = [dict(caller_id=edge["caller_id"], call_pc=edge["call_pc"], kind=edge["kind"])
-                     for edge in incoming[:16]]
-        record = dict(callers=len(callers), call_edges=len(incoming), call_site_witnesses=witnesses,
-                      basis="static_call_graph_and_caller_register_lift")
+        witnesses = [
+            dict(caller_id=edge["caller_id"], call_pc=edge["call_pc"], kind=edge["kind"]) for edge in incoming[:16]
+        ]
+        record = dict(
+            callers=len(callers),
+            call_edges=len(incoming),
+            call_site_witnesses=witnesses,
+            basis="static_call_graph_and_caller_register_lift",
+        )
         context = dict(call_summaries=call_summaries(occurrence_id))
         tails = {}
         if summarize is not None and scope.get("accelerator_sites"):
@@ -369,23 +428,30 @@ def interprocedural_contexts(regions, edges, *, machine=None):
         if tails:
             context["tail_summaries"] = tails
         if not incoming:
-            return dict(context, entry_context=dict(
-                record, status="unknown", reason="no static callers in the decomposed artifact"))
+            return dict(
+                context,
+                entry_context=dict(record, status="unknown", reason="no static callers in the decomposed artifact"),
+            )
         tuples, unresolved = [], 0
         for edge in incoming:
             for caller_context, caller_state in caller_states(edge["caller_id"]):
                 found = caller_sites(edge["caller_id"], caller_state)
                 if found is None:
-                    return dict(context, entry_context=dict(
-                        record, status="unknown", reason="register lifter reports no call-site argument states"))
+                    return dict(
+                        context,
+                        entry_context=dict(
+                            record, status="unknown", reason="register lifter reports no call-site argument states"
+                        ),
+                    )
                 state = (found.get(edge["call_pc"]) or {}).get("argument_state")
                 unresolved += not isinstance(state, dict)
                 state = state if isinstance(state, dict) else {}
                 site = dict(caller_id=edge["caller_id"], call_pc=edge["call_pc"])
                 if caller_context is not None:
                     site["caller_context"] = caller_context
-                tuples.append((site, {reg: state.get(reg) if _known(state.get(reg)) else None
-                                      for reg in ARGUMENT_REGISTERS}))
+                tuples.append(
+                    (site, {reg: state.get(reg) if _known(state.get(reg)) else None for reg in ARGUMENT_REGISTERS})
+                )
         agreed = {}
         for reg in ARGUMENT_REGISTERS:
             values = {_canonical(state[reg]) for _, state in tuples}
@@ -394,38 +460,48 @@ def interprocedural_contexts(regions, edges, *, machine=None):
         distinct = {}
         for site, state in tuples:
             distinct.setdefault(_canonical(state), (state, []))[1].append(site)
-        record.update(unresolved_call_sites=unresolved, distinct_argument_tuples=len(distinct),
-                      agreed_registers=agreed)
+        record.update(unresolved_call_sites=unresolved, distinct_argument_tuples=len(distinct), agreed_registers=agreed)
         if len(tuples) > len(incoming):
             record["caller_context_lifts"] = len(tuples)
         # Registers every caller agrees on are sound for the region's single lift.
         context["entry_state"] = agreed or None
         if len(distinct) == 1:
-            status = dict(status="all_callers_agree", registers=agreed) if agreed else dict(
-                status="unknown", reason="callers pass no known argument values")
+            status = (
+                dict(status="all_callers_agree", registers=agreed)
+                if agreed
+                else dict(status="unknown", reason="callers pass no known argument values")
+            )
         elif len(distinct) <= MAX_ENTRY_CONTEXTS:
             status = dict(status="per_caller_contexts", registers=agreed)
             context["contexts"] = [
-                dict(context_id="ctx-" + str(index),
-                     registers={reg: value for reg, value in state.items() if value is not None},
-                     call_sites=calls[:16], callers=len({row["caller_id"] for row in calls}))
+                dict(
+                    context_id="ctx-" + str(index),
+                    registers={reg: value for reg, value in state.items() if value is not None},
+                    call_sites=calls[:16],
+                    callers=len({row["caller_id"] for row in calls}),
+                )
                 for index, (state, calls) in enumerate(distinct.values())
             ]
         else:
-            status = dict(status="unknown", registers=agreed,
-                          reason=f"{len(distinct)} distinct caller argument tuples exceed {MAX_ENTRY_CONTEXTS}")
+            status = dict(
+                status="unknown",
+                registers=agreed,
+                reason=f"{len(distinct)} distinct caller argument tuples exceed {MAX_ENTRY_CONTEXTS}",
+            )
         context["entry_context"] = dict(record, **status)
         return context
 
-    return {scope["region_id"]: resolve(occurrence_id) for occurrence_id, (scope, _) in regions.items()
-            if scope.get("accelerator_sites")}
+    return {
+        scope["region_id"]: resolve(occurrence_id)
+        for occurrence_id, (scope, _) in regions.items()
+        if scope.get("accelerator_sites")
+    }
 
 
 def machine_regions(root, artifact, *, facts, decoder, structure=None, stream_max_steps=STREAM_MAX_STEPS):
-    from merlin_experiments.phase1.feedback import reference_analysis as analysis
-
     from merlin.compile.analysis.artifact_reader import PinnedELF, open_ordinary
     from merlin.compile.analysis.riscv_machine import region_index
+    from merlin.experiments.phase1.feedback import reference_analysis as analysis
     from merlin.perf.pc_instruction_listing import normalized_text
 
     path = Path(root) / artifact["path"]
@@ -451,7 +527,8 @@ def machine_regions(root, artifact, *, facts, decoder, structure=None, stream_ma
             edges.extend(transfer_edges(body, start, stop, occurrence_id))
         edges = resolve_callees(edges, spans)
         contexts = interprocedural_contexts(
-            {artifact["id"] + ":" + scope["region_id"]: (scope, body) for scope, body in indexed}, edges)
+            {artifact["id"] + ":" + scope["region_id"]: (scope, body) for scope, body in indexed}, edges
+        )
         # This existing owner lifts every accelerator span, without a first-page sample.
         typed_ccas = []
         lifted = analysis._lift(
@@ -496,9 +573,18 @@ def machine_regions(root, artifact, *, facts, decoder, structure=None, stream_ma
                     reason="no_selected_accelerator_sites; host computation semantics not reconstructed",
                 )
             if scope["accelerator_sites"] and structure is not None:
-                report = dict(report, derived_effects=region_effects(report, body, decoder, structure, occurrence_id,
-                                                                context=contexts.get(scope["region_id"]),
-                                                                stream_max_steps=stream_max_steps))
+                report = dict(
+                    report,
+                    derived_effects=region_effects(
+                        report,
+                        body,
+                        decoder,
+                        structure,
+                        occurrence_id,
+                        context=contexts.get(scope["region_id"]),
+                        stream_max_steps=stream_max_steps,
+                    ),
+                )
             report_path = directory / "analysis.json"
             write_json(Path(root) / report_path, observations_only(report))
             if report.get("cca"):
@@ -554,11 +640,15 @@ def machine_regions(root, artifact, *, facts, decoder, structure=None, stream_ma
                 complete_accelerator_site_coverage=True,
                 independent_site_census=independent,
                 tail_edges=sum(edge["kind"] == "tail" for edge in edges),
-                entry_contexts=dict(Counter(
-                    (context.get("entry_context") or {}).get("status", "unknown") for context in contexts.values())),
+                entry_contexts=dict(
+                    Counter(
+                        (context.get("entry_context") or {}).get("status", "unknown") for context in contexts.values()
+                    )
+                ),
                 context_observations=sum(len(context.get("contexts") or ()) for context in contexts.values()),
-                call_summaries=len({target for context in contexts.values()
-                                    for target in (context.get("call_summaries") or {})}),
+                call_summaries=len(
+                    {target for context in contexts.values() for target in (context.get("call_summaries") or {})}
+                ),
                 symbol_status=dict(Counter(row["symbol_status"] for row in outputs)),
                 decoder_isa=dict(elf.decoder_isa),
             ),

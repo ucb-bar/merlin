@@ -5,7 +5,7 @@ status: current
 owner: runtime
 last_verified: 2026-10-18
 related: [zephyr]
-code_refs: [src/merlin/runtime, merlin/runtime, src/merlin/llvmlower/c_runtime.py]
+code_refs: [src/merlin/runtime, src/merlin/runtime/native, src/merlin/llvmlower/c_runtime.py]
 ---
 
 # Runtime
@@ -21,7 +21,7 @@ Merlin's runtime spans two Merlin-owned planes:
   (`commandbuffer.py`, `program.py`), the event/cost **simulator** + reference oracle
   (`simulator.py`, `reference.py`) that drives DSE, the dispatch runtime (`dispatch_runtime.py`), and
   the `metrics`/`tensor` types — plus the concrete `backends/` registry (see [Backends](#backends)).
-- **`merlin/runtime/`** — the dependency-free C substrate that runs a compiled whole model via its
+- **`src/merlin/runtime/native/`** — the dependency-free C substrate that runs a compiled whole model via its
   MLIR C-runtime interface, identically on host and bare metal:
 
   ```

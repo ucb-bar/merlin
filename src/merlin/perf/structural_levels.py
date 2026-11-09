@@ -22,13 +22,21 @@ as findings with a level and a reason rather than as a score to optimise.
 A buffer this cannot read yields UNKNOWN and says why. An empty finding list means "none of the
 patterns below is present", never "this program is efficient".
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-__all__ = ["LEVELS", "COMMIT_OPCODES", "STAGE_OPCODES", "RELEASE_OPCODES", "EPILOGUE_ATTRIBUTE",
-           "findings", "level_summary"]
+__all__ = [
+    "LEVELS",
+    "COMMIT_OPCODES",
+    "STAGE_OPCODES",
+    "RELEASE_OPCODES",
+    "EPILOGUE_ATTRIBUTE",
+    "findings",
+    "level_summary",
+]
 
 #: The optimisation ladder, coarsest last. These are the level names the capsule corpus itself
 #: declares, so a finding can be joined to the family that would measure it -- where one exists.
@@ -38,14 +46,13 @@ __all__ = ["LEVELS", "COMMIT_OPCODES", "STAGE_OPCODES", "RELEASE_OPCODES", "EPIL
 #: :func:`level_summary` reported a ladder with a hole in it -- silently, because a rung that is never
 #: counted is indistinguishable from a rung with nothing on it, which is exactly the failure mode this
 #: module exists to argue against. The vocabulary is NOT imported from the generator that owns it
-#: (``merlin/contract/capsules/generate_corpus.py``): that is a contract script and this is library
+#: (``experiments/corpora/generate_corpus.py``): that is a contract script and this is library
 #: code, and a library reaching into a script to learn its own constants inverts the layering. It is
 #: pinned instead by a test that FAILS when the two lists differ
-#: (``merlin/tests/dse/test_structural_levels.py``) -- the same discipline as
+#: (``tests/dse/test_structural_levels.py``) -- the same discipline as
 #: :func:`merlin.perf.attribution.buckets_match_reference`, where a mirror is kept honest by a check
 #: that can fail rather than by a comment asking the next editor to remember.
-LEVELS = ("L1_tile", "L1_separation_floor", "L2_intra_layer", "L3_inter_layer", "L4_boundary",
-          "L5_fusion", "L6_global")
+LEVELS = ("L1_tile", "L1_separation_floor", "L2_intra_layer", "L3_inter_layer", "L4_boundary", "L5_fusion", "L6_global")
 
 #: ABI vocabulary. These are the emitted program's own opcode names, carried by the buffer rather
 #: than assumed about any device: a backend speaking this ABI emits them whatever its ISA.
@@ -87,8 +94,7 @@ def _produced(row: Mapping[str, Any]) -> tuple[str, ...]:
 
 def _consumed(row: Mapping[str, Any]) -> tuple[str, ...]:
     """Value names this command reads: every named operand that is not the destination."""
-    return tuple(str(v) for k, v in sorted(_operands(row).items())
-                 if k != "dst" and isinstance(v, str) and v)
+    return tuple(str(v) for k, v in sorted(_operands(row).items()) if k != "dst" and isinstance(v, str) and v)
 
 
 def findings(buffer: object) -> dict[str, Any]:
@@ -112,12 +118,19 @@ def findings(buffer: object) -> dict[str, Any]:
         if opcode in STAGE_OPCODES:
             for name in _consumed(row):
                 if name in released and name in staged:
-                    found.append({
-                        "level": "L2_intra_layer", "kind": "residency_restaged", "value": name,
-                        "at_command": index, "first_staged_at": staged[name],
-                        "detail": (f"{name!r} was staged for on-chip residency, released, and "
-                                   f"staged again; the program paid to place the same value twice"),
-                    })
+                    found.append(
+                        {
+                            "level": "L2_intra_layer",
+                            "kind": "residency_restaged",
+                            "value": name,
+                            "at_command": index,
+                            "first_staged_at": staged[name],
+                            "detail": (
+                                f"{name!r} was staged for on-chip residency, released, and "
+                                f"staged again; the program paid to place the same value twice"
+                            ),
+                        }
+                    )
                 staged.setdefault(name, index)
         if opcode in RELEASE_OPCODES:
             released.update(_consumed(row))
@@ -134,12 +147,19 @@ def findings(buffer: object) -> dict[str, Any]:
             continue
         for name in _consumed(row):
             if name in committed:
-                found.append({
-                    "level": "L3_inter_layer", "kind": "memory_round_trip", "value": name,
-                    "at_command": index, "committed_at": committed[name],
-                    "detail": (f"{name!r} was drained to memory and then read back by a later "
-                               f"command; the value made a round trip instead of staying resident"),
-                })
+                found.append(
+                    {
+                        "level": "L3_inter_layer",
+                        "kind": "memory_round_trip",
+                        "value": name,
+                        "at_command": index,
+                        "committed_at": committed[name],
+                        "detail": (
+                            f"{name!r} was drained to memory and then read back by a later "
+                            f"command; the value made a round trip instead of staying resident"
+                        ),
+                    }
+                )
 
     # ---- L5: a producer with an empty epilogue whose only consumer is the next command --------
     # An op that declares no epilogue and whose result is consumed immediately is the shape a fused
@@ -156,22 +176,35 @@ def findings(buffer: object) -> dict[str, Any]:
         for name in _produced(row):
             uses = consumers.get(name) or []
             if len(uses) == 1 and uses[0] == index + 1:
-                found.append({
-                    "level": "L5_fusion", "kind": "unfused_single_consumer", "value": name,
-                    "at_command": index, "consumed_at": uses[0],
-                    "detail": (f"command {index} declares an empty {EPILOGUE_ATTRIBUTE} and its "
-                               f"result {name!r} is read by exactly one command, the next one; "
-                               f"that is the shape a fused epilogue would collapse"),
-                })
+                found.append(
+                    {
+                        "level": "L5_fusion",
+                        "kind": "unfused_single_consumer",
+                        "value": name,
+                        "at_command": index,
+                        "consumed_at": uses[0],
+                        "detail": (
+                            f"command {index} declares an empty {EPILOGUE_ATTRIBUTE} and its "
+                            f"result {name!r} is read by exactly one command, the next one; "
+                            f"that is the shape a fused epilogue would collapse"
+                        ),
+                    }
+                )
 
     return {
-        "status": "read", "commands": len(rows), "findings": found,
+        "status": "read",
+        "commands": len(rows),
+        "findings": found,
         "by_level": level_summary(found),
-        "basis": ("structural patterns in the emitted command buffer; each names an inefficiency "
-                  "that is PRESENT, and none of them is a cycle count, an estimate, or a claim "
-                  "that removing it would be worth anything"),
-        "not_covered": ("nothing here inspects the host boundary or the choice of operand encoding, "
-                        "so a finding list without those levels is silence about them, not a pass"),
+        "basis": (
+            "structural patterns in the emitted command buffer; each names an inefficiency "
+            "that is PRESENT, and none of them is a cycle count, an estimate, or a claim "
+            "that removing it would be worth anything"
+        ),
+        "not_covered": (
+            "nothing here inspects the host boundary or the choice of operand encoding, "
+            "so a finding list without those levels is silence about them, not a pass"
+        ),
     }
 
 

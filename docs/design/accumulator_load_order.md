@@ -45,7 +45,7 @@ is this one mechanism and not some other wrong answer.
 ### On the board
 
 Board: the lean U250 FireSim bitstream (`gemmini_rocket_lean_u250_firesim_bitstream` in
-`merlin/contract/hardware_pins.yaml`, digest `9d66b956…`). Program: the full reproducer, ELF
+`src/merlin/resources/contracts/hardware_pins.yaml`, digest `9d66b956…`). Program: the full reproducer, ELF
 `deac1b50…`. Job 909 confirmed the staged binary was still intact after the run. Job 907 ran the same
 ELF and printed identical lines. But its staged binary had been replaced before the post-run check,
 so it is not counted.

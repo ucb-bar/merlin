@@ -5,7 +5,7 @@ status: current
 owner: ir
 last_verified: 2026-07-14
 related: [core_dialects]
-code_refs: [src/merlin/xdsl_dialects, merlin/schemas]
+code_refs: [src/merlin/xdsl_dialects, src/merlin/resources/schemas]
 ---
 
 # Contracts
@@ -18,8 +18,8 @@ hardware/runtime promises. Contracts are the legality/evidence layer.
 - Compiler obligations: what must be proven before a feature is legal.
 - Hardware/runtime promises: residency, accumulator commit, persistent handles.
 
-Schema: `merlin/schemas/target_contract.schema.yaml` (target side) and
-`merlin/schemas/workload_region.schema.yaml` (workload side). The eventual IR home is the
+Schema: `src/merlin/resources/schemas/target_contract.schema.yaml` (target side) and
+`src/merlin/resources/schemas/workload_region.schema.yaml` (workload side). The eventual IR home is the
 `contract` dialect (see `docs/dialects.md`); prototype it in
 `src/merlin/xdsl_dialects/contract.py`.
 

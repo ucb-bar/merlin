@@ -1,4 +1,4 @@
-# Declared policy of the Phase 0 chain-demand stage (merlin_experiments.phase0.chain_demand): which
+# Declared policy of the Phase 0 chain-demand stage (merlin.experiments.phase0.chain_demand): which
 # producer-to-consumer chains of the captured programs become connected test cases. Every knob is a
 # reviewed choice.
 schema: merlin.phase0.chain_demand_policy.v1

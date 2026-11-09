@@ -20,7 +20,7 @@ code_refs:
   - src/merlin/llvmlower/host_transform_chain.py
   - src/merlin/runtime/backends/spike_model.py
   - src/merlin/model.py
-  - src/merlin_experiments/phase1/feedback/compiler_profile_child.py
+  - src/merlin/experiments/phase1/feedback/compiler_profile_child.py
   - src/merlin/transforms/pipeline.py
   - src/merlin/transforms/analyses.py
   - src/merlin/transforms/resource_allocation.py
@@ -32,7 +32,7 @@ code_refs:
   - src/merlin/compiler/lower/scalar/pipeline.py
   - src/merlin/compiler/backend/scalar.py
   - src/merlin/verification/lean_cli.py
-  - src/merlin_experiments/phase1/brokers/common_transforms.py
+  - src/merlin/experiments/phase1/brokers/common_transforms.py
 ---
 
 # Shared transformations, ISA generation and Lean verification
@@ -645,12 +645,12 @@ those permissions or change the numerical admission thresholds.
 Validate the mechanism with:
 
 ```sh
-python -B -m pytest merlin/tests/ir/test_host_graph_optimizations.py \
-  merlin/tests/ir/test_host_layout_planning.py \
-  merlin/tests/ir/test_host_layout_realization.py \
-  merlin/tests/ir/test_host_layout_execution.py \
-  merlin/tests/ir/test_layout_propagation.py \
-  merlin/tests/infra/test_host_layout_model.py \
+python -B -m pytest tests/ir/test_host_graph_optimizations.py \
+  tests/ir/test_host_layout_planning.py \
+  tests/ir/test_host_layout_realization.py \
+  tests/ir/test_host_layout_execution.py \
+  tests/ir/test_layout_propagation.py \
+  tests/infra/test_host_layout_model.py \
   -p no:cacheprovider --basetemp "$TMPDIR/host-layout-check"
 ```
 
@@ -726,8 +726,8 @@ removed padding and every surviving operation's SSA, metadata, interfaces and
 effect order without consuming emitter decisions.
 
 ```sh
-python -B -m pytest -q merlin/tests/ir/test_im2col_padding.py \
-  merlin/tests/ir/test_im2col_padding_check.py \
+python -B -m pytest -q tests/ir/test_im2col_padding.py \
+  tests/ir/test_im2col_padding_check.py \
   -p no:cacheprovider --basetemp "$TMPDIR/padding-gather-checks"
 ```
 
@@ -740,7 +740,7 @@ Run in a fresh process and retain the complete outputs and original receipts:
 ```sh
 MERLIN_TEST_GEMMINI_PACKING_SELECTION="$SELECTION_JSON" \
 python -B -m pytest -q \
-  merlin/tests/gemmini/test_public_padding_execution.py::test_original_public_compiler_executes_padding_gather_pair \
+  tests/gemmini/test_public_padding_execution.py::test_original_public_compiler_executes_padding_gather_pair \
   -p no:cacheprovider -o tmp_path_retention_policy=all \
   --basetemp "$TMPDIR/public-padding-pair" \
   --junitxml "$TMPDIR/public-padding-pair.xml"
@@ -807,7 +807,7 @@ three-policy test checks complete outputs, carried state, input preservation
 and emitted LLVM allocation changes:
 
 ```sh
-python -B -m pytest -q merlin/tests/ir/test_source_optimization_selection.py \
+python -B -m pytest -q tests/ir/test_source_optimization_selection.py \
   -p no:cacheprovider -o tmp_path_retention_policy=all \
   --basetemp "$TMPDIR/source-choice-checks"
 ```
@@ -903,8 +903,8 @@ whole-model speedup. Such claims require an appropriate paired timing source.
 Check the selected mechanism and unchanged exported dependency closure with:
 
 ```sh
-python -B -m pytest merlin/tests/infra/test_copy_prefetch.py \
-  merlin/tests/infra/test_shared_scheduling_export.py \
+python -B -m pytest tests/infra/test_copy_prefetch.py \
+  tests/infra/test_shared_scheduling_export.py \
   -p no:cacheprovider --basetemp "$TMPDIR/copy-prefetch-check"
 ```
 
@@ -998,10 +998,10 @@ input widths, packed and borrowed descriptors, strides, alignment fallback,
 alias rejection and writes past the final one-byte output. Run these checks with:
 
 ```sh
-python -B -m pytest merlin/tests/infra/test_dense_integer_readout.py \
-  merlin/tests/infra/test_pointwise_constant_captures.py \
-  merlin/tests/infra/test_source_dense_readout_lowering.py \
-  merlin/tests/infra/test_logical_readout_execution.py \
+python -B -m pytest tests/infra/test_dense_integer_readout.py \
+  tests/infra/test_pointwise_constant_captures.py \
+  tests/infra/test_source_dense_readout_lowering.py \
+  tests/infra/test_logical_readout_execution.py \
   -p no:cacheprovider --basetemp "$TMPDIR/dense-integer-readout-check"
 ```
 
@@ -1031,7 +1031,7 @@ Reproduce the paired models with the selected native/RISC-V toolchain and
 functional simulator available:
 
 ```sh
-python -B -m pytest merlin/tests/infra/test_dense_readout_model.py \
+python -B -m pytest tests/infra/test_dense_readout_model.py \
   -p no:cacheprovider --basetemp "$TMPDIR/dense-readout-model-check" \
   -o tmp_path_retention_policy=all
 ```
@@ -1094,7 +1094,7 @@ rules; adding an export or roster entry alone does not grant authoring access.
 Run the neutral consumed-IR execution check with:
 
 ```sh
-python -B -m pytest merlin/tests/infra/test_target_configuration_native.py \
+python -B -m pytest tests/infra/test_target_configuration_native.py \
   -p no:cacheprovider --basetemp "$TMPDIR/target-configuration-native" \
   -o tmp_path_retention_policy=all
 ```
@@ -1135,7 +1135,7 @@ by this API: its public source/decode evidence does not establish the required
 persistent-state or redundant-setter effect laws. Those original qualifications
 and final target execution checks remain separate.
 
-`merlin/tests/ir/test_device_llvm_transform.py` exercises actual LLVM translation,
+`tests/ir/test_device_llvm_transform.py` exercises actual LLVM translation,
 object compilation and recurrent native execution under a neutral synthetic C
 ABI. The provider reuses shared configuration cleanup and independently checks
 actual emissions, preserving unknown-effect and control-flow barriers. The tests

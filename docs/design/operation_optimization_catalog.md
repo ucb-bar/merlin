@@ -8,11 +8,11 @@ related: [joint_optimization_catalog, optimization_suggestions, compiler_authori
 code_refs:
   - docs/design/operation_optimization_catalog.json
   - docs/design/operation_optimization_catalog.schema.json
-  - src/merlin_experiments/phase1/operation_optimizations.py
-  - src/merlin_experiments/phase1/capability_inventory.py
-  - src/merlin_experiments/phase1/feedback/performance_brief.py
-  - src/merlin_experiments/phase1/feedback/composition_next.py
-  - src/merlin_experiments/phase1/author_skills/heavy-pass-recipes/scripts/composition_routes.py
+  - src/merlin/experiments/phase1/operation_optimizations.py
+  - src/merlin/experiments/phase1/capability_inventory.py
+  - src/merlin/experiments/phase1/feedback/performance_brief.py
+  - src/merlin/experiments/phase1/feedback/composition_next.py
+  - src/merlin/experiments/phase1/author_skills/heavy-pass-recipes/scripts/composition_routes.py
   - src/merlin/analysis/instruction_roles.py
   - src/merlin/compiler/passes/composition.py
 ---
@@ -34,7 +34,7 @@ ids, author skills and recipe scripts. `operation_optimization_catalog.schema.js
 ## Families
 
 Families are derived from each case's own declaration by
-`merlin_experiments.phase1.operation_optimizations.families_of`, primary first, never from a case or
+`merlin.experiments.phase1.operation_optimizations.families_of`, primary first, never from a case or
 model name:
 
 | family | derived from |

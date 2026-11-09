@@ -65,7 +65,7 @@ first, then `check_repro_env.py` to see what is runnable here.
 
 - **Required — frozen baseline** at `out/artifacts/targets/rvv/hand_v0/` (tracked in-tree; the seed the
   beam forks from and asserts byte-unchanged).
-- **Required — expert CCA fixtures**: decoded objdumps under `merlin/tests/data/cca_asm/` (e.g.
+- **Required — expert CCA fixtures**: decoded objdumps under `experiments/reference-data/cca-asm/` (e.g.
   `xnnpack_f32_gemm_rvv.objdump`); whole-model cells also need capture bundles under
   `out/artifacts/recaptures/` (see [model2MLIR frontend](model2mlir.md)) and per-dtype expert fixtures.
 - **Required — a measurement substrate.** The board path (`k1_board`) needs the K1 reachable —
@@ -91,7 +91,7 @@ git -C /tmp/rvv-mlir.git branch --list        # -> baseline
 ### 2. Build the workload + lift the expert CCA
 
 The workload is any single-op bundle (`rvvgen.workloads.gen_matmul_f32` etc.). The expert CCA is
-lifted from a decoded objdump fixture under `merlin/tests/data/cca_asm/` — e.g.
+lifted from a decoded objdump fixture under `experiments/reference-data/cca-asm/` — e.g.
 `xnnpack_f32_gemm_rvv.objdump`. A tractable square regime (128³) keeps every fork's host→rv64
 compile bounded; `MERLIN_COMPILE_TIMEOUT_S` fails-closed any fork whose schedule makes clang spin.
 
@@ -100,7 +100,7 @@ compile bounded; `MERLIN_COMPILE_TIMEOUT_S` fails-closed any fork whose schedule
 ```bash
 MERLIN_COMPILE_TIMEOUT_S=90 .venv/bin/merlin-rvv-beam \
     --model-dir <workload-bundle> \
-    --expert-objdump merlin/tests/data/cca_asm/xnnpack_f32_gemm_rvv.objdump \
+    --expert-objdump experiments/reference-data/cca-asm/xnnpack_f32_gemm_rvv.objdump \
     --op matmul --targets k1 --width 3 --depth 2
 ```
 

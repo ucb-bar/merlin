@@ -99,7 +99,7 @@ after executing one:
 Knobs: `MERLIN_TIER_CERT_CACHE=0` switches it off, or set it to a directory to relocate the store
 (default `out/artifacts/cache/tier-certs/`); `MERLIN_TIER_CERT_LEDGER` names `qa/tier_state.json`
 promotion ledgers to consult as a second, strictly weaker source. Tests:
-`merlin/tests/targetgen/test_tier_certificate_cache.py` — every direction is a mutation of a state that
+`tests/targetgen/test_tier_certificate_cache.py` — every direction is a mutation of a state that
 hits.
 
 ## Invariants to preserve
@@ -136,4 +136,4 @@ hits.
 - `GP0`/`GP1`/`GP2` declare `epilogue: ['maxpool']`, which `command_buffer.schema.json` forbids; the
   interpreter pools via `pool_*` attributes on the store instead. `additionalProperties: True` lets a
   wrong carrier validate silently. Ratcheted in
-  `merlin/tests/targetgen/test_capsule_carrier_consistency.py`.
+  `tests/targetgen/test_capsule_carrier_consistency.py`.

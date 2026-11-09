@@ -21,10 +21,10 @@ code_refs:
   - examples/gemmini/phase1/launch/prepare_source_release.py
   - examples/gemmini/phase1/launch/resource_reservation.py
   - examples/gemmini/phase1/launch/run_watchdog.py
-  - src/merlin_experiments/phase1/full_compiler_workspace.py
-  - src/merlin_experiments/phase1/capability_facts.py
-  - src/merlin_experiments/phase1/feedback/reference_analysis.py
-  - src/merlin_experiments/phase1/feedback/reference_map.py
+  - src/merlin/experiments/phase1/full_compiler_workspace.py
+  - src/merlin/experiments/phase1/capability_facts.py
+  - src/merlin/experiments/phase1/feedback/reference_analysis.py
+  - src/merlin/experiments/phase1/feedback/reference_map.py
 ---
 
 # Launch a fresh open-compiler campaign from a reviewed spec

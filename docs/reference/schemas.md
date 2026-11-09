@@ -1,6 +1,6 @@
 # Schema reference
 
-_Generated from `merlin/schemas/*.schema.yaml` by `build_tools/scripts/gen_schema_docs.py` — do not edit by hand; run the generator._
+_Generated from `src/merlin/resources/schemas/*.schema.yaml` by `build_tools/scripts/gen_schema_docs.py` — do not edit by hand; run the generator._
 
 The schemas are the cross-workstream coordination contract (see [Contracts](contracts.md)). Each is the source of truth for one artifact type.
 

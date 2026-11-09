@@ -6,12 +6,12 @@ owner: experiments
 last_verified: 2026-11-09
 related: [component_phase2_workflow, phase2_test_justification]
 code_refs:
-  - src/merlin_experiments/phase2/evaluation_fidelity.py
-  - src/merlin_experiments/phase2/component_compiled_arms.py
-  - src/merlin_experiments/phase2/timing_study.py
-  - src/merlin_experiments/phase2/ordinary_timing_study.py
-  - src/merlin_experiments/phase2/ordinary_calibration.py
-  - src/merlin_experiments/phase2/ordinary_search_policy.py
+  - src/merlin/experiments/phase2/evaluation_fidelity.py
+  - src/merlin/experiments/phase2/component_compiled_arms.py
+  - src/merlin/experiments/phase2/timing_study.py
+  - src/merlin/experiments/phase2/ordinary_timing_study.py
+  - src/merlin/experiments/phase2/ordinary_calibration.py
+  - src/merlin/experiments/phase2/ordinary_search_policy.py
 ---
 
 # Phase 2 CPU fidelity and timing study
@@ -207,7 +207,7 @@ Run the installed command, or its fixed module equivalent:
 
 ```sh
 merlin-phase2-timing-study --request /assigned/study/request.json --output /assigned/study/plan.json
-python -m merlin_experiments.phase2.timing_study --request /assigned/study/request.json --output /assigned/study/plan.json
+python -m merlin.experiments.phase2.timing_study --request /assigned/study/request.json --output /assigned/study/plan.json
 ```
 
 Both commands only validate and write a fresh plan. They do not load a backend,

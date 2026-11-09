@@ -10,20 +10,25 @@ class SharedCompilerSource:
     Any event, unavailable watcher, or mount change reopens both trees. This
     object is host-owned and never selected by candidate metadata.
     """
+
     def __init__(self, source, results, *, expected_source_sha256=None):
         import os
         import shutil
         import threading
+
         from merlin.common.bundle_snapshot import _RosterGuard
         from merlin.common.tree_hash import hash_tree
-        from merlin_experiments.phase2.retained_revisions import source_inventory
+        from merlin.experiments.phase2.retained_revisions import source_inventory
 
         self.source, self.results = Path(source), Path(results)
         self.pid, self.closed = os.getpid(), False
         self.lock = threading.RLock()
         self.guards = []
-        if (self.results.resolve() != self.results or self.results.is_symlink()
-                or self.results.is_relative_to(self.source)):
+        if (
+            self.results.resolve() != self.results
+            or self.results.is_symlink()
+            or self.results.is_relative_to(self.source)
+        ):
             raise ValueError("retained compiler evidence must be outside its source")
         identity = source_inventory(self.source, max_bytes=128 << 20, max_files=16384, exclude_generated=True)
         if expected_source_sha256 is not None and identity["sha256"] != expected_source_sha256:
@@ -37,9 +42,12 @@ class SharedCompilerSource:
             raise ValueError("retained compiler evidence is indirect")
         try:
             if not self.destination.exists():
-                shutil.copytree(self.source, self.destination,
-                                ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
-            self.guards.append(_RosterGuard(self.destination, _source_members(self.destination), scanner=_source_members))
+                shutil.copytree(
+                    self.source, self.destination, ignore=shutil.ignore_patterns("build", "__pycache__", ".git")
+                )
+            self.guards.append(
+                _RosterGuard(self.destination, _source_members(self.destination), scanner=_source_members)
+            )
             self._verify_full()
         except BaseException:
             self.close()
@@ -47,7 +55,8 @@ class SharedCompilerSource:
 
     def _verify_full(self):
         from merlin.common.tree_hash import hash_tree
-        from merlin_experiments.phase2.retained_revisions import source_inventory
+        from merlin.experiments.phase2.retained_revisions import source_inventory
+
         for root in (self.source, self.destination):
             source_inventory(root, max_bytes=128 << 20, max_files=16384, exclude_generated=True)
             if hash_tree(root) != self.digest:
@@ -55,7 +64,9 @@ class SharedCompilerSource:
 
     def check(self):
         import os
+
         from merlin.common.bundle_snapshot import _RosterGuard
+
         # Forked workers may inherit a lock held by a vanished thread.
         if self.closed or os.getpid() != self.pid:
             raise ValueError("retained compiler evidence owner is not live")
@@ -79,8 +90,12 @@ class SharedCompilerSource:
 
     def capture(self):
         self.check()
-        return {"schema": "merlin.capsule_compiler_source.v2", "package": str(self.source),
-                "candidate_sha256": self.digest["sha256"], "snapshot": str(self.destination)}
+        return {
+            "schema": "merlin.capsule_compiler_source.v2",
+            "package": str(self.source),
+            "candidate_sha256": self.digest["sha256"],
+            "snapshot": str(self.destination),
+        }
 
     def close(self):
         with self.lock:
@@ -93,6 +108,7 @@ def _source_members(root):
     """No-follow source roster, with the same generated-directory exclusions."""
     import os
     import stat
+
     if root.resolve() != root or root.is_symlink():
         raise ValueError("compiler source is indirect")
     members, pending = [], [(root, ())]
@@ -117,7 +133,8 @@ def _source_members(root):
 
 
 def _shared_source(package=None):
-    from merlin_experiments.phase1.feedback.snapshot_execution import active_snapshot
+    from merlin.experiments.phase1.feedback.snapshot_execution import active_snapshot
+
     owner = active_snapshot()
     evidence = getattr(owner, "source_evidence", None)
     if evidence is not None and (package is None or Path(package).resolve() == evidence.source):
@@ -127,9 +144,8 @@ def _shared_source(package=None):
 
 def _capture_compiler_source(package_dir, generated):
     """Retain the actual compiler before lowering, without generated build state."""
-    from merlin_experiments.phase2.retained_revisions import source_inventory
-
     from merlin.common.tree_hash import hash_tree
+    from merlin.experiments.phase2.retained_revisions import source_inventory
 
     from . import executed_program
 
@@ -223,8 +239,10 @@ def _finish_compiler_source(captured, generated):
         except (OSError, ValueError, RuntimeError):
             stable = False
     else:
-        stable = (hash_tree(Path(captured["package"]))["sha256"] == expected
-                  and hash_tree(generated / captured["snapshot"])["sha256"] == expected)
+        stable = (
+            hash_tree(Path(captured["package"]))["sha256"] == expected
+            and hash_tree(generated / captured["snapshot"])["sha256"] == expected
+        )
     if not stable:
         return {
             "schema": schema,
@@ -291,8 +309,12 @@ def _pin_model_capsule(capsule: dict, destination: Path) -> dict:
         inputs.append(("source_interface", interface))
     for role, relative in inputs:
         original, consumed = source / relative, destination / relative
-        if (original.is_symlink() or original.resolve(strict=True) != original
-                or not original.is_file() or original.stat().st_size > 64 << 20):
+        if (
+            original.is_symlink()
+            or original.resolve(strict=True) != original
+            or not original.is_file()
+            or original.stat().st_size > 64 << 20
+        ):
             raise ValueError("model source input is indirect, missing or exceeds byte limit")
         before = original.stat()
         pin = _digest(original)
@@ -304,12 +326,18 @@ def _pin_model_capsule(capsule: dict, destination: Path) -> dict:
             copied = _digest(temporary)
             after = original.stat()
             stable = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
-            if (copied["sha256"] != pin["sha256"] or _digest(original) != pin
-                    or any(getattr(before, key) != getattr(after, key) for key in stable)):
+            if (
+                copied["sha256"] != pin["sha256"]
+                or _digest(original) != pin
+                or any(getattr(before, key) != getattr(after, key) for key in stable)
+            ):
                 raise ValueError("model source changed during private input transport")
             temporary.replace(consumed)
         finally:
             temporary.unlink(missing_ok=True)
         transport[role] = {"original": pin, "consumed": _digest(consumed)}
-    return {**capsule, "__dir__": str(destination), "__model_source_transport": {
-        "schema": "merlin.model_source_input_transport.v1", "inputs": transport}}
+    return {
+        **capsule,
+        "__dir__": str(destination),
+        "__model_source_transport": {"schema": "merlin.model_source_input_transport.v1", "inputs": transport},
+    }

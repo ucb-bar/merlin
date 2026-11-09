@@ -1,6 +1,6 @@
 """Gemmini timing-probe backend: turns a generic probe request into a RoCC command stream and C program.
 
-Target edge of ``merlin_experiments.timing_probes``. The selector decides WHAT to measure (a price
+Target edge of ``merlin.experiments.timing_probes``. The selector decides WHAT to measure (a price
 class with its state predicate, or a whole-call size regime); this module decides HOW a Gemmini
 program exercises it, with one parameterized tile pipeline (load, preload, compute, store) in the two
 protocols the RTL implements -- weight- and output-stationary, ordered as in the pinned gemmini.h
@@ -24,10 +24,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
-from merlin_experiments.timing_probes.decode import Command
-from merlin_experiments.timing_probes.selection import Realized, Unrealizable
 
 from merlin.common.facts_view import interface
+from merlin.experiments.timing_probes.decode import Command
+from merlin.experiments.timing_probes.selection import Realized, Unrealizable
 from merlin.targetgen.rocc.semantics import field_slot
 
 SHAPES = ("full", "partial")

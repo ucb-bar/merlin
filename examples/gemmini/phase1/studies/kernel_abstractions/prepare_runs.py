@@ -36,10 +36,10 @@ def ordinary(root):
 
 def phase1_sources(framework):
     """Use the selected checkout's layout; archived studies retain their source tree."""
-    current = Path(framework) / "src/merlin_experiments/phase1"
+    current = Path(framework) / "src/merlin/experiments/phase1"
     if current.is_dir():
         return current
-    return Path(framework) / "packages/merlin-experiments/src/merlin_experiments/phase1"
+    return Path(framework) / "packages/merlin-experiments/src/merlin/experiments/phase1"
 
 
 def copy_source(source, destination):
@@ -352,13 +352,13 @@ def prepare(
     full_record = full_compiler or base.get("full_compiler")
     full_owner = None
     if full_record:
-        from merlin_experiments.phase1 import full_compiler_workspace
+        from merlin.experiments.phase1 import full_compiler_workspace
 
         full_owner = full_compiler_workspace.select(**full_record)
     continuation, seed_owner = continuation_input(seed_continuation)
     inherited_owner = None
     if study is not None:
-        from merlin_experiments.phase1 import full_compiler_workspace
+        from merlin.experiments.phase1 import full_compiler_workspace
 
         if study not in STUDIES or continuation is None or treatments is not None or replicas != 1:
             raise ValueError("named study requires a seeded continuation and one matched replica")
@@ -467,7 +467,7 @@ def prepare(
                 if continuation:
                     seed_owner.copy_source(seed, workspace / name, ())
                     if name == "submission":
-                        from merlin_experiments.phase1 import continuation_handoff, joint_seed
+                        from merlin.experiments.phase1 import continuation_handoff, joint_seed
 
                         evidence = seed_owner.build_evidence(
                             continuation, seed, workspace / name, private / "submission-seed-evidence"

@@ -14,7 +14,7 @@ code_refs:
   - src/merlin/targetgen/rocc/semantics.py
   - src/merlin/targetgen/rtl_checks_generic.py
   - src/merlin/targetgen/build_cache.py
-  - src/merlin_experiments/capture_execution/sealed_inventory.py
+  - src/merlin/experiments/capture_execution/sealed_inventory.py
 ---
 
 # Neutral contract-driven runtime tooling

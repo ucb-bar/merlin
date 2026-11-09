@@ -50,13 +50,13 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve()
 _REPO = _HERE.parents[2]
-for _p in (_REPO / "merlin" / "python",):
+for _p in (_REPO / "src",):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
 import yaml  # noqa: E402
 
-from merlin.common.paths import merlin_dir  # noqa: E402
+from merlin.common.paths import capsules_dir
 
 #: Capsules written by hand are the reference the automation is being built to reproduce, so a
 #: weakening there is worth naming separately from one in a generated capsule.
@@ -72,7 +72,7 @@ def _operand_dtype(doc: dict) -> str | None:
     return None
 
 
-def _target_of(path: Path, target_dirs: frozenset[str] = frozenset()) -> str | None:
+def _target_of(path: Path, target_dirs: frozenset[str], *, corpus_root: Path) -> str | None:
     """The target a capsule belongs to, from its position under the corpus root.
 
     A capsule directly under a category (`isa/`, `layers/`, ...) belongs to the default target, which
@@ -91,12 +91,10 @@ def _target_of(path: Path, target_dirs: frozenset[str] = frozenset()) -> str | N
     is kept as the fallback for a target directory that has no descriptor yet, so an undeclared target
     is still read as a target rather than folded into the default.
     """
-    parts = path.parts
     try:
-        i = parts.index("capsules")
+        rest = path.relative_to(corpus_root).parts
     except ValueError:
         return None
-    rest = parts[i + 1 :]
     if not rest:
         return None
     if rest[0] in target_dirs:
@@ -107,9 +105,9 @@ def _target_of(path: Path, target_dirs: frozenset[str] = frozenset()) -> str | N
 def audit(targets=()) -> dict:
     from merlin.targetgen import conformance as CF
 
-    root = merlin_dir() / "contract" / "capsules"
+    root = capsules_dir()
     default_targets = []
-    tdir = _REPO / "merlin" / "experiments" / "capsule_bench" / "targets"
+    tdir = _REPO / "experiments" / "studies" / "capsule_bench" / "targets"
     if tdir.is_dir():
         for desc in sorted(tdir.glob("*/target_experiment.yaml")):
             try:
@@ -147,7 +145,7 @@ def audit(targets=()) -> dict:
         fam = sem.get("semantic_family")
         if not fam:
             continue
-        dir_target = _target_of(cy, target_dirs)
+        dir_target = _target_of(cy, target_dirs, corpus_root=root)
         declared = next((d for n, d in default_targets if n == dir_target), dir_target) or default
         if not declared:
             continue

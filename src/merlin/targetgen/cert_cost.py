@@ -512,7 +512,7 @@ def _timing_records(
     contributes NOTHING rather than its functional time -- a fit that absorbed those would read a
     near-zero cost for a capsule nobody certified.
     """
-    from merlin.common.paths import artifacts_dir, runs_dir
+    from merlin.common.paths import artifacts_dir, capsules_dir, runs_dir
 
     # ⚠️ BOTH BASES MUST BE TARGET-SCOPED. `runs_dir()` alone globs every target's runs, so every
     # target -- including one that does not exist -- got the same fit, and atlas capsules were priced
@@ -610,12 +610,12 @@ def fit_for(
     (:attr:`CostFit.mixed_engines`) instead of implied -- unattributed history stays usable, which
     matters because as of today NO record on disk carries an engine at all.
     """
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import capsules_dir
 
     timings = _timing_records(target, timing_root, extra_roots=extra_timing_roots or ())
     if not timings:
         return None
-    roots = list(corpus_roots) if corpus_roots else [merlin_dir() / "contract" / "capsules"]
+    roots = list(corpus_roots) if corpus_roots else [capsules_dir()]
     sizes = _capsule_sizes(roots)
 
     xs: list[int] = []
@@ -793,7 +793,7 @@ def _cycle_records(target: str, root: Path | None = None, extra_roots=()) -> "di
     cycle count is kept separately, as the cheap predictor, and never as the cost itself. Within one
     (capsule, engine) bucket the longest run wins, because that is the binding cost.
     """
-    from merlin.common.paths import artifacts_dir, runs_dir
+    from merlin.common.paths import artifacts_dir, capsules_dir, runs_dir
 
     # Target-scoped for the reason spelled out in `_timing_records`: an unscoped runs root hands
     # every target the same measurements.

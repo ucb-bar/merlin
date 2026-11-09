@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-07-22
 related: [getting_started, adding_a_target, targetgen, kernel_mining, beam_search, dse, dse_guidance, design_pressure, model2mlir, rvv_e2e, zephyr, phase0_phase1_setup, integrations, llvm_integration]
-code_refs: [merlin/python/merlin, build_tools/scripts]
+code_refs: [src/merlin, build_tools/scripts]
 ---
 
 # Reproducibility & core workflows — the master guide
@@ -98,8 +98,8 @@ the same API the detailed workflows use — see §4 (capture), §6 (gemmini), §
 
 ```bash
 merlin-targetgen build --target-name <name> \
-  --source-dir merlin/targets/<name>/docs \
-  --examples-dir merlin/targets/<name>/examples \
+  --source-dir experiments/reference-data/target-inputs/<name>/docs \
+  --examples-dir experiments/reference-data/target-inputs/<name>/examples \
   --out out/build/generated/merlin-target-<name> \
   --emit xdsl,mlir,zephyr,llvm-plan,runtime
 merlin-targetgen inspect --target out/build/generated/merlin-target-<name>
@@ -107,7 +107,7 @@ merlin-targetgen inspect --target out/build/generated/merlin-target-<name>
 
 **Outputs.** The generated OOT repo skeleton under `out/build/generated/merlin-target-<name>/`; the
 hand-authored contract that drives it lives in-tree at
-`merlin/targets/<name>/contracts/target_contract.yaml`. See [Adding a target](adding_a_target.md)
+`experiments/reference-data/target-inputs/<name>/contracts/target_contract.yaml`. See [Adding a target](adding_a_target.md)
 and [Target generation](targetgen.md).
 
 ## 2. Improve a dialect / compiler from expert kernels
@@ -172,7 +172,7 @@ against the manual `ours_best` and the XNNPACK expert. Architecture + rationale:
 
 Prereqs (board-gated; run on a QUIET board — the K1 noise floor is ≥1.9%, ≥4.3% under contention):
 - the K1 reachable (`MERLIN_K1_HOST`, key), whole-model bundles under `out/artifacts/recaptures/`,
-  per-dtype expert fixtures in `merlin/tests/data/cca_asm/`;
+  per-dtype expert fixtures in `experiments/reference-data/cca-asm/`;
 - the clean four-way baseline first, so `ours_best` (manual) and the XNNPACK expert walls exist:
 
 ```bash
@@ -184,7 +184,7 @@ MERLIN_COMPILE_TIMEOUT_S=3600 .venv/bin/python build_tools/scripts/k1_e2e_xnnpac
 # (b) one beam cell, from frozen hand_v0, whole-model objective, whole-model proposer
 MERLIN_COMPILE_TIMEOUT_S=3600 merlin-rvv-beam \
   --model-dir out/artifacts/recaptures/bitvla_fp32_consistent \
-  --expert-objdump merlin/tests/data/cca_asm/xnnpack_f32_gemm_rvv.objdump \
+  --expert-objdump experiments/reference-data/cca-asm/xnnpack_f32_gemm_rvv.objdump \
   --expert-wall-ns <xnnpack whole-model wall ns> \
   --proposer wholemodel --targets k1 --width 5 --depth 2
 
@@ -248,7 +248,7 @@ git init --bare /tmp/<target>-mlir.git    # verify against a LOCAL remote first 
 .venv/bin/python -m merlin.targetgen.publish publish --target <rvv|gemmini> \
   --remote file:///tmp/<target>-mlir.git --execute
 ```
-Remote from `merlin/targets/publish.yaml` (`ucb-bar/rvv-mlir`, `ucb-bar/gemmini-mlir`) or
+Remote from `experiments/reference-data/target-inputs/publish.yaml` (`ucb-bar/rvv-mlir`, `ucb-bar/gemmini-mlir`) or
 `MERLIN_PUBLISH_REMOTE_<TARGET>`. Gate: rvv = `spike_verified`/`rtl_certified`/`k1_verified`; gemmini
 (mlir_oot) = `rtl_certified` or an `oot_runner.certify` pass. Baseline → `baseline` branch; each champion
 → `stable/<package_id>` + `v<ver>-<pkg>` tag; idempotent by fingerprint. **A real GitHub push (drop the

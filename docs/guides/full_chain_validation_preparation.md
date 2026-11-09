@@ -7,7 +7,7 @@ last_verified: 2026-11-09
 code_refs:
   - examples/gemmini/phase1/launch/prepare_full_chain_scope.py
   - examples/gemmini/phase1/launch/external_validation.py
-  - src/merlin_experiments/phase1/feedback/private_numerical_selection.py
+  - src/merlin/experiments/phase1/feedback/private_numerical_selection.py
 ---
 
 # Prepare full-session validation after capsule authoring

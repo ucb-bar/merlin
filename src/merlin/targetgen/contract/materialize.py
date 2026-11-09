@@ -2,7 +2,7 @@
 
 The capsule-bench sandbox needs the *public* capsules (``label: public``) with their oracle-tier
 requirement capped to what the sandbox can actually reach — the bwrap sandbox has no VCS/FireSim, so
-tiers above L2 are unreachable. Everything else is byte-identical to ``merlin/contract/capsules/``.
+tiers above L2 are unreachable. Everything else is byte-identical to ``experiments/corpora/``.
 
 Deriving this view (instead of hand-maintaining a committed copy) keeps ONE source of truth: the
 committed sandbox copy at ``…/scripts/full_public_capsules/`` drifted from the contract (it had

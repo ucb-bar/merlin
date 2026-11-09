@@ -3,7 +3,7 @@
 The isolation sandbox is deny-by-default (see :mod:`merlin.targetgen.sandbox.bwrap`): all of
 ``/scratch*`` is tmpfs-masked and only the legit toolchain + the arm's declared inputs are bound back.
 But a few answer surfaces are RE-EXPOSED by a broad legit bind (the goldens/hidden sit under the
-allowed ``merlin/contract/`` tree; the experimenter memory sits under the bound ``~/.claude``), so they
+allowed ``src/merlin/resources/contracts/`` tree; the experimenter memory sits under the bound ``~/.claude``), so they
 must be explicitly re-masked on top. This module ENUMERATES that set from the target's declarative
 descriptor + a single DECLARED oracle/grader registry — never a per-target hand-list — so a new target
 gets a correct, complete mask from its ``target_experiment.yaml`` with zero copied policy.
@@ -45,13 +45,6 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from merlin_experiments.access_policy import (
-    MODULE_ACCESS,
-    declared_modules,
-    legacy_module_paths,
-    require_current_policy,
-)
-
 from merlin.common.access import (
     AUDIT_ADVISORY_KINDS as AUDIT_ADVISORY_KINDS,
 )
@@ -79,9 +72,18 @@ from merlin.common.access import (
     module_name_for as module_name_for,
 )
 from merlin.common.paths import artifacts_dir, repo_root
+from merlin.experiments.access_policy import (
+    MODULE_ACCESS,
+    declared_modules,
+    legacy_module_paths,
+    require_current_policy,
+)
 from merlin.targetgen import capsule_privacy
 from merlin.targetgen.capsule_privacy import capsule_answer_members
 from merlin.targetgen.target_experiment import TargetExperiment
+
+from .mount_paths import _CallPathResolution, _MountPathIndex, _resolved_bind_mounts
+from .mount_visibility import path_kind
 
 # --------------------------------------------------------------------------- the DECLARED registry
 # The oracle + grader modules are a PROPERTY OF THE HARNESS, not of any target — one declared constant,
@@ -162,6 +164,7 @@ class CapsuleMetadata:
         self._lock = threading.Lock()
         self.module_location_plan = None
         from .guarded_inventory import GuardedInventory
+
         self.inventory = GuardedInventory()
         self._derived = {}
         self._derived_lock = threading.RLock()
@@ -204,14 +207,21 @@ class CapsuleMetadata:
                 before = observe()  # Recheck after waiting for this key.
                 with self._derived_lock:
                     cached = self._derived.get(key)
-                if (before is not None and cached is not None and cached[0] == roots
-                        and all(a is b for a, b in zip(before, cached[1], strict=True))):
+                if (
+                    before is not None
+                    and cached is not None
+                    and cached[0] == roots
+                    and all(a is b for a, b in zip(before, cached[1], strict=True))
+                ):
                     return list(cached[2])
                 result = compute()
                 after = observe() if before is not None else None
                 with self._derived_lock:
-                    if (after is not None and all(a is b for a, b in zip(before, after, strict=True))
-                            and len(self._derived) < 64):
+                    if (
+                        after is not None
+                        and all(a is b for a, b in zip(before, after, strict=True))
+                        and len(self._derived) < 64
+                    ):
                         self._derived[key] = roots, after, tuple(result)
                     else:
                         self._derived.pop(key, None)
@@ -247,9 +257,9 @@ def _discovered(root, pattern, capsules):
     if members is None:
         return root.rglob(pattern)
     # Callers select only simple filename patterns; no recursive/path glob rules.
-    if pattern.startswith('*'):
+    if pattern.startswith("*"):
         return (p for p in members if p.name.endswith(pattern[1:]))
-    if pattern.endswith('*'):
+    if pattern.endswith("*"):
         return (p for p in members if p.name.startswith(pattern[:-1]))
     return (p for p in members if p.name == pattern)
 
@@ -263,12 +273,14 @@ def golden_files(te: TargetExperiment, *, capsules: CapsuleMetadata | None = Non
     ``answer_files()``."""
     if capsules is not None:
         root = repo_root()
-        roots = ([te.capsule_corpus.parent, te.capsule_corpus] if te.capsule_corpus else [])
-        roots += [root / rel.rstrip('/') for rel in te.corpus_siblings()]
-        roots += [*contract_resource_roots(root, 'capsules'),
-                  *contract_resource_roots(root, 'examples'), root / 'merlin/tests']
-        return capsules.derived(('golden', tuple(roots)), roots,
-                                lambda: _golden_files(te, capsules=capsules))
+        roots = [te.capsule_corpus.parent, te.capsule_corpus] if te.capsule_corpus else []
+        roots += [root / rel.rstrip("/") for rel in te.corpus_siblings()]
+        roots += [
+            *contract_resource_roots(root, "capsules"),
+            *contract_resource_roots(root, "examples"),
+            root / "tests",
+        ]
+        return capsules.derived(("golden", tuple(roots)), roots, lambda: _golden_files(te, capsules=capsules))
     return _golden_files(te)
 
 
@@ -301,7 +313,7 @@ def _golden_files(te, *, capsules=None):
             files += sorted(_discovered(corpus, "expected_instruction_coverage.yaml", capsules))
     # Every example expected-output and canonical test answer fixture. The checkout compatibility
     # link is masked too, but a broad bind could reach the fixture at its own path.
-    for ex_dir in (*contract_resource_roots(root, "examples"), root / "merlin/tests"):
+    for ex_dir in (*contract_resource_roots(root, "examples"), root / "tests"):
         if ex_dir.is_dir():
             files += sorted(_discovered(ex_dir, "expected_*", capsules))
     # de-dup while preserving order
@@ -324,11 +336,10 @@ def weight_files(te: TargetExperiment, *, capsules: CapsuleMetadata | None = Non
     Both the safetensors blob and an optional manifest are covered by suffix, with no per-model list.
     """
     if capsules is not None:
-        roots = list(contract_resource_roots(repo_root(), 'capsules'))
+        roots = list(contract_resource_roots(repo_root(), "capsules"))
         if te.capsule_corpus is not None:
             roots.append(te.capsule_corpus.parent)
-        return capsules.derived(('weight', tuple(roots)), roots,
-                                lambda: _weight_files(te, capsules=capsules))
+        return capsules.derived(("weight", tuple(roots)), roots, lambda: _weight_files(te, capsules=capsules))
     return _weight_files(te)
 
 
@@ -347,8 +358,11 @@ def _weight_files(te, *, capsules=None):
             # like Path.rglob, does not descend through child directory symlinks;
             # explicitly selected root symlinks and leaf-file aliases still work.
             for directory, _children, names in os.walk(caps_root, followlinks=False):
-                files.extend(Path(directory) / name for name in names
-                             if name.endswith((".safetensors", ".safetensors.manifest.json")))
+                files.extend(
+                    Path(directory) / name
+                    for name in names
+                    if name.endswith((".safetensors", ".safetensors.manifest.json"))
+                )
     return sorted({path for path in files if path.is_file()})
 
 
@@ -717,7 +731,7 @@ def answer_surfaces(te: TargetExperiment, *, capsules: CapsuleMetadata | None = 
         out.append(AnswerSurface(f"weight:{shown_path(weights)}", weights, "file", "weight"))
 
     # Mask EVERY hidden-capsule dir under the capsule tree, not only THIS target's declared one. The bundle
-    # grants the frozen ABI (``merlin/contract/``) broadly, which re-exposes the SHARED
+    # grants the frozen ABI (``src/merlin/resources/contracts/``) broadly, which re-exposes the SHARED
     # ``capsules/hidden`` set and any OTHER target's ``<t>/hidden`` — one target's run could otherwise read
     # the shared or another target's hidden capsules (a held-out answer surface; the ``CANARY_HIDDEN`` marker caught
     # exactly this). Mirrors :func:`golden_files`' whole-tree sweep that masks cross-target/nested goldens.
@@ -742,7 +756,7 @@ def answer_surfaces(te: TargetExperiment, *, capsules: CapsuleMetadata | None = 
 
     # The holdout SPECIFICATION, not just its directory. A capsule's op + dtype + exact shape is an
     # answer to the generalization question even when the golden values stay masked, and the spec used
-    # to live in the tracked ``profiles/<target>.yaml`` inside the same broad ``merlin/contract/`` grant.
+    # to live in the tracked ``profiles/<target>.yaml`` inside the same broad ``src/merlin/resources/contracts/`` grant.
     # It now lives in an untracked ``profiles/<target>.hidden.yaml`` sidecar; masking it here as well
     # means a checkout that still carries one (or a target that grows a new sidecar) is covered without
     # relying on .gitignore. Derived by glob, never a per-target hand-list.
@@ -881,7 +895,7 @@ def audit_tokens(te: TargetExperiment) -> dict[str, tuple[str, ...]]:
     # The target's whole codegen-package dir, matching the wholesale filesystem mask, plus the names the
     # descriptor happens to list. The token is the FULL repo-relative fragment ("out/artifacts/targets/
     # <target>") rather than "targets/<target>": the short form substring-matches the arm's own task tree
-    # (merlin/experiments/capsule_bench/targets/<target>/...), which would accuse every agent that reads
+    # (experiments/studies/capsule_bench/targets/<target>/...), which would accuse every agent that reads
     # the task it was given — the cry-wolf failure this token vocabulary is explicitly shaped to avoid.
     _pkg_root = artifacts_dir() / "targets" / te.target
     try:
@@ -933,3 +947,64 @@ def audit_tokens(te: TargetExperiment) -> dict[str, tuple[str, ...]]:
             if _child.name != PACKAGE_CONTRACT_SUBDIR:
                 answer.extend(f"{name}/{_child.name}" for name in _names)
     return {"answer": tuple(dict.fromkeys(answer)), "grader": grader, "oracle_subpath": ORACLE_CALLABLE_SUBPATHS}
+
+
+def _bind_alias(private: Path, kind: str, source: Path, destination: Path) -> tuple[Path, str] | None:
+    """Translate one private path through the existing mount parser's bind record."""
+    if private == source or source in private.parents:
+        return destination / private.relative_to(source), kind
+    if private in source.parents:
+        return destination, path_kind(source)
+    return None
+
+
+def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[AnswerSurface]) -> list[AnswerSurface]:
+    """Project answer denials through every bind, including deeper re-exposures.
+
+    Only explicit binds sourced within a surface-declared public subtree are
+    exempt. A broad support bind does not grant its contracts implicitly. Both
+    source and destination matter: a frozen copy can be bound over a live private
+    location, and a live private subtree can be bound somewhere unrelated.
+    This is mount-plan reasoning, not a filesystem-race or OS isolation proof.
+
+    The caller's surfaces come back unchanged and in order (one row per query), followed by the
+    projected denials that name a path no caller surface already names.
+    """
+    if not surfaces:
+        return []
+    resolution = _CallPathResolution()
+    exposed = _resolved_bind_mounts(mounts, resolution)
+    source_index = _MountPathIndex(spellings for _, _, spellings in exposed)
+    destination_index = _MountPathIndex((destination,) for _, destination, _ in exposed)
+    known = {surface.path for surface in surfaces}
+    result: dict[Path, AnswerSurface] = {}
+
+    def project(path: Path, surface: AnswerSurface) -> None:
+        if path not in known:
+            result.setdefault(path, surface)
+
+    for surface in surfaces:
+        for private in {surface.path.absolute(), resolution.resolve(surface.path)}:
+            exemptions = tuple(private / sub for sub in surface.grantable)
+            project(private, AnswerSurface(surface.label, private, surface.kind, surface.origin, surface.grantable))
+            candidates = source_index.related(private) | destination_index.descendants(private)
+            for mount_id in sorted(candidates):
+                source, destination, spellings = exposed[mount_id]
+                aliases = []
+                for resolved in spellings:
+                    if any(resolved == public or public in resolved.parents for public in exemptions):
+                        continue
+                    translated = _bind_alias(private, surface.kind, resolved, destination)
+                    if translated is not None:
+                        aliases.append(translated)
+                if (destination == private or private in destination.parents) and not any(
+                    destination == public or public in destination.parents for public in exemptions
+                ):
+                    aliases.append((destination, path_kind(source)))
+                for alias, kind in aliases:
+                    if kind == "missing":
+                        continue  # absent bind sources expose no content (including *-try binds)
+                    # Projected entries are concrete denials, not new authorities
+                    # which could recursively declare a public subtree.
+                    project(alias, AnswerSurface("support package bind", alias, kind, "hidden"))
+    return [*surfaces, *result.values()]

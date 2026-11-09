@@ -8,7 +8,7 @@ related: [architecture, shared_pass_phase2]
 code_refs:
   - src/merlin/compiler/schedule/copy_pipeline.py
   - src/merlin/compiler/schedule/schedule_pipeline.py
-  - merlin/tests/targetgen/test_shared_pass_pipeline_consumption.py
+  - tests/targetgen/test_shared_pass_pipeline_consumption.py
 ---
 
 # Qualified input-copy pipelines

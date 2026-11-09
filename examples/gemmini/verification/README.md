@@ -141,7 +141,7 @@ Inspect `characterization.json`, `cases.json`, `vectors.txt`, `cell.hw.mlir`,
 the shared producer, never hand-authored in the output folder. The receipt binds
 the original HW source, independent reference sources, vectors, tool binaries,
 emitted files and executed native binary. `verify_characterization` from
-`merlin_experiments.phase0.cell_probe` checks a saved or moved artifact's hashes
+`merlin.experiments.phase0.cell_probe` checks a saved or moved artifact's hashes
 and zero failed outputs without reopening live RTL. Selecting the receipt for a
 frozen run still requires separately pinning its bytes; it is not a compiler
 certificate or proof that the finite vector set covers every possible addend.
@@ -546,7 +546,7 @@ that make every fit parameter identifiable over that domain. Run it on operator
 inputs, never inside a Phase 1 run:
 
 ```sh
-python -m merlin_experiments.timing_probes run --target-hardware gemmini \
+python -m merlin.experiments.timing_probes run --target-hardware gemmini \
   --profile /selected/annotated-spike/fire_aligned_30mhz.json \
   --labels /run/capsule_timing.tar --domain /release/payload/corpus/phase2-deferred.json \
   --budget macs=16777216 --budget read_bytes=1048576 --budget write_bytes=262144 \

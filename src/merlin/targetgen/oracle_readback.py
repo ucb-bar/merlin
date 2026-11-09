@@ -4,7 +4,7 @@ An explicit policy is honoured as given. Without one, a serial-console engine us
 transport for the output (:func:`readback_policy.engine_readback`: a coherent memory dump or the binary
 frame). With ``MERLIN_GSIM_L3_READBACK=digest`` -- set by the Phase 2 functional regrade, not by
 default -- a gSIM run instead reads back one digest per output, tied to full values read on Spike from
-the same program (:mod:`merlin_experiments.phase2.gsim_digest_readback`). At gSIM speed, an export of a
+the same program (:mod:`merlin.experiments.phase2.gsim_digest_readback`). At gSIM speed, an export of a
 few hundred KB costs hours; a digest costs about 3.8 cycles per output byte. Any disagreement falls back
 to the full readback.
 
@@ -68,12 +68,11 @@ def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy, befor
     if before_execution is not None:
         kwargs["before_execution"] = before_execution
     if policy is not None and policy.transport in MEMORY_TRANSPORTS:
-        from merlin_experiments.phase1.feedback.native_memory_readback import (
+        from merlin.experiments.phase1.feedback.native_memory_readback import (
             NativeLogicalMemoryReadback,
             NativeMemoryReadback,
             select_memory_engine,
         )
-
         from merlin.targetgen.rtl.facts import rtl_facts_path
 
         facts_path = rtl_facts_path(target)
@@ -88,20 +87,23 @@ def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy, befor
         reader = NativeLogicalMemoryReadback if type(backend) is BoundRoCCBackend else NativeMemoryReadback
         kwargs["memory_readback"] = reader(facts_path=facts_path, policy=policy)
         kwargs["oracle_revalidate"] = revalidate_memory_engine
-    from . import executed_program
-
     from contextlib import ExitStack
-    from merlin_experiments.phase1.feedback import setup_timing
+
+    from merlin.experiments.phase1.feedback import setup_timing
+
+    from . import executed_program
 
     # The native callback is after ELF build/admission and before engine execution.
     # Keep its original observer first: a carried tier must not look simulated.
     with ExitStack() as stages:
         stages.enter_context(setup_timing.stage("oracle_compile_link_admit"))
+
         def before_timed_execution(elf):
             if before_execution is not None:
                 before_execution(elf)
             stages.close()
             stages.enter_context(setup_timing.stage("oracle_simulation_readback." + str(sim)))
+
         kwargs["before_execution"] = before_timed_execution
         res = oot_compile.run_on_oracle(
             cb, llvm_text, simulator=sim, target=target, workdir=workdir, timeout=timeout, **kwargs
@@ -113,6 +115,7 @@ def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy, befor
             workdir=workdir,
             compiler_artifacts={"command_buffer": cb, "lowered_mlir": llvm_text},
         )
+
 
 def run_with_readback(
     cb,
@@ -148,7 +151,7 @@ def run_with_readback(
         )
     if before_execution is not None:
         raise ValueError("prepared verdict reuse is unavailable for the separate digest corroboration path")
-    from merlin_experiments.phase2 import gsim_digest_readback as DIGEST
+    from merlin.experiments.phase2 import gsim_digest_readback as DIGEST
 
     def oracle(cb_, llvm_, *, simulator, target, workdir, timeout, readback_policy=None):
         return _run(

@@ -7,16 +7,16 @@
 # (DIM x int8) where the pinned gemmini revision's is 512 (DIM x int32), so THE MVOUT PATH CANNOT MOVE
 # AN INT32 ACCUMULATOR ROW. Everything unusual about the cohort below follows from that one fact.
 #
-# Nothing here reads or writes anything under merlin/targets/gemmini/ or
-# merlin/experiments/capsule_bench/targets/gemmini{,_g3arm97}/ except through the SHARED, genuinely
+# Nothing here reads or writes anything under experiments/reference-data/target-inputs/gemmini/ or
+# experiments/studies/capsule_bench/targets/gemmini{,_g3arm97}/ except through the SHARED, genuinely
 # target-independent files symlinked in `contracts/` and `scripts/` -- enumerated in
 # WHAT IS SHARED below.
 target: gemmini_universal
-resources_root: merlin/experiments/capsule_bench/targets/gemmini_universal
+resources_root: experiments/studies/capsule_bench/targets/gemmini_universal
 
 rtl:
   via: mlc            # RTL facts are DERIVED; the committed pin is
-                      # merlin/targets/gemmini_universal/contracts/rtl_facts/facts.json
+                      # experiments/reference-data/target-inputs/gemmini_universal/contracts/rtl_facts/facts.json
 
 # ---------------------------------------------------------------------------------------------------
 # WHAT IS SHARED WITH `gemmini`, AND WHY EACH SHARE IS SAFE. Symlinks, so the two cannot drift silently.
@@ -94,7 +94,7 @@ hardware_spec:
 # The same shared corpus `gemmini` grades against. Sharing the SOURCE POOL is the point of a parallel
 # track -- the two targets are compared on the same capsules -- and the cohort that is actually GRADED
 # diverges sharply below, because this device cannot execute most of it.
-capsule_corpus: merlin/contract/capsules/isa
+capsule_corpus: experiments/corpora/isa
 
 grading:
   # =================================================================================================

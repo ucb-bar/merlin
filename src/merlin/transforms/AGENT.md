@@ -56,7 +56,7 @@ the caller supplies independent artifact execution and timing ownership.
 
 Keep compilation space proportional to IR size and rank, rather than tensor elements or
 tile count. All covered changes must go through the host verification hook, except an
-explicitly unverified planning invocation. Tests belong in `merlin/tests/ir/`.
+explicitly unverified planning invocation. Tests belong in `tests/ir/`.
 
 V2 adds guarded upstream integer CSE/DCE and invariant motion, plus bounded
 ordered unrolling. Never infer numerical reassociation or totality from an op

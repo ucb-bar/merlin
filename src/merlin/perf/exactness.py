@@ -4,7 +4,7 @@ Exactness is a decision, not a default someone forgets to change.  A device requ
 half-to-even where the source rounds half-up is within one output LSB of the reference on every input
 and never bit-exact; demanding bit-exactness of it makes the optimization unreachable, and accepting
 "close" without saying how close makes every gate soft.  So the contract is REVIEWED DATA, declared per
-form by the target's example (``examples/<target>/...``) against ``merlin/schemas/exactness_contract.
+form by the target's example (``examples/<target>/...``) against ``src/merlin/resources/schemas/exactness_contract.
 schema.yaml``, and every gate that grades a group enforces exactly the bound the contract gives that
 group's form and records which contract it applied::
 

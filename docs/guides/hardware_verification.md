@@ -6,8 +6,8 @@ owner: verification
 last_verified: 2026-11-09
 related: [verification, phase0_specification, simulator_selection]
 code_refs:
-  - src/merlin_experiments/phase0/hardware_validation.py
-  - src/merlin_experiments/phase0/cell_probe.py
+  - src/merlin/experiments/phase0/hardware_validation.py
+  - src/merlin/experiments/phase0/cell_probe.py
   - examples/gemmini/verification/mac_unit_reference.mlir
 ---
 
@@ -36,7 +36,7 @@ Select the actual CIRCT HW source and exact tool binaries. The caller names the
 cell and reference modules; the shared runner contains no target arithmetic:
 
 ```python
-from merlin_experiments.phase0.hardware_validation import (
+from merlin.experiments.phase0.hardware_validation import (
     prove_combinational_property,
     verify_property_receipt,
 )

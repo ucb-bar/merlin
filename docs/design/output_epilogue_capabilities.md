@@ -16,8 +16,8 @@ code_refs:
   - src/merlin/llvmlower/source_compute_groups.py
   - src/merlin/targetgen/conformance.py
   - src/merlin/targetgen/corpus_synth.py
-  - src/merlin_experiments/phase1/feedback/private_full_models.py
-  - merlin/schemas/target_contract.schema.yaml
+  - src/merlin/experiments/phase1/feedback/private_full_models.py
+  - src/merlin/resources/schemas/target_contract.schema.yaml
 ---
 
 # Output-epilogue capabilities are derived, and fused only when exact
@@ -113,7 +113,7 @@ leaves the capability UNKNOWN, and the pass then refuses whatever needed it.
 `derive_manifest` writes the record and its `output_path`. A selected contract built some other way is
 declared with `python -m merlin.targetgen.rtl.output_epilogue --contract C --facts F --probe '{...}'
 --semantic-facts S --out NEW`, which writes a new file and never overwrites one.
-`merlin/tests/ir/test_output_fusion.py` drives the pass over synthetic paths: no activation,
+`tests/ir/test_output_fusion.py` drives the pass over synthetic paths: no activation,
 activation after the scale, per-channel scale, another mesh width, no preload, no accumulate, no
 pool, and other scale formats.
 

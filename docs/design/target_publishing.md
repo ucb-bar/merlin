@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-09-29
 related: [repo_structure, integrations, architecture]
-code_refs: [src/merlin/targetgen/publish.py, src/merlin/targetgen/oot_fetch.py, src/merlin/targetgen/package_records.py, src/merlin/targetgen/publication_verification.py, src/merlin/targetgen/providers.py, merlin/contract/schemas/result.schema.json]
+code_refs: [src/merlin/targetgen/publish.py, src/merlin/targetgen/oot_fetch.py, src/merlin/targetgen/package_records.py, src/merlin/targetgen/publication_verification.py, src/merlin/targetgen/providers.py, src/merlin/resources/contracts/schemas/result.schema.json]
 ---
 
 # Target publishing
@@ -133,7 +133,7 @@ Promotion changes external records, never payloads. Ordinary promotion/publicati
 requires bound source evidence; explicit `--no-gate` remains unverified and warns.
 
 Remotes resolve from override, target environment configuration, then
-`merlin/targets/publish.yaml`. Non-local pushes require explicit displayed
+`experiments/reference-data/target-inputs/publish.yaml`. Non-local pushes require explicit displayed
 fingerprint confirmation. Local tests use synthetic bare repositories only.
 
 Staging destinations must be fresh, disjoint and free of symlink components.

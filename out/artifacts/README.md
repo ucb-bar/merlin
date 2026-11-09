@@ -2,7 +2,7 @@
 
 Products are grouped by concern, then the axis that matters for that concern
 (target, model, workload or framework). The complete category list and legacy-path
-mappings live in [storage.yaml](../../merlin/contract/storage.yaml), not this index.
+mappings live in [storage.yaml](../../src/merlin/resources/contracts/storage.yaml), not this index.
 
 Common starting points:
 

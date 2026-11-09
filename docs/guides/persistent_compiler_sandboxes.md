@@ -6,9 +6,9 @@ owner: experiments
 last_verified: 2026-11-09
 related: [bubblewrap_argument_budget, fresh_campaign_launch]
 code_refs:
-  - src/merlin_experiments/phase1/feedback/sandbox_pool.py
-  - src/merlin_experiments/phase1/feedback/snapshot_execution.py
-  - src/merlin_experiments/phase1/options.py
+  - src/merlin/experiments/phase1/feedback/sandbox_pool.py
+  - src/merlin/experiments/phase1/feedback/snapshot_execution.py
+  - src/merlin/experiments/phase1/options.py
 ---
 
 # Reuse one compiler sandbox per grading worker

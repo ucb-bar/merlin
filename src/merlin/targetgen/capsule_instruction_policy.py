@@ -130,7 +130,7 @@ def executed_stream_roles(capsule: dict) -> tuple[str, ...]:
     :func:`graded_prohibited_roles` (the run's environment and the capsule's sealed arm) together with
     the selected joint campaign's policy (``prohibited_instruction_roles``), which every grader of the
     campaign reads from the run's stored state rather than from its environment."""
-    from merlin_experiments.phase1 import joint_control
+    from merlin.experiments.phase1 import joint_control
 
     return tuple(sorted(set(graded_prohibited_roles(capsule)) | set(joint_control.prohibited_instruction_roles())))
 

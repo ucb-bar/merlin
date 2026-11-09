@@ -5,7 +5,7 @@ status: current
 owner: dse
 last_verified: 2026-07-07
 related: [dse]
-code_refs: [src/merlin/dse/search]
+code_refs: [src/merlin/analysis/dse/search/search]
 ---
 
 # Search policy
@@ -73,4 +73,4 @@ This returns a portfolio, so Merlin does not prematurely converge on one abstrac
 ## Modules
 
 `src/merlin/search/{candidate,evaluator,archive,grid,evolutionary,map_elites,mutations,reports}.py`.
-Scoring delegates to `src/merlin/dse/harness.py`. See `docs/compilation_strategies.md`.
+Scoring delegates to `src/merlin/analysis/dse/search/harness.py`. See `docs/compilation_strategies.md`.

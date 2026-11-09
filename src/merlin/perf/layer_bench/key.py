@@ -22,7 +22,7 @@ def _is_sha256(value: str) -> bool:
 @dataclass(frozen=True)
 class LayerKey:
     target: str
-    #: Hardware-pin artifact name (``merlin/contract/hardware_pins.yaml``) of the modelled design.
+    #: Hardware-pin artifact name (``src/merlin/resources/contracts/hardware_pins.yaml``) of the modelled design.
     design_pin: str
     #: sha256 of the engine binary that produced the cycles.
     engine_sha256: str

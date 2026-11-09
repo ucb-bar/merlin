@@ -10,7 +10,7 @@ installed). See ``docs/reference/repo_structure.md``.
 Scope tracks the executed packaging phases: P0 (schemas + prompts), P1 (the light benchmark specs,
 asserting the heavy ``recaptures*`` corpora are NOT bundled), P2 (the shared contract, asserting
 target-specific contracts and ``rtl_facts`` cert data are NOT bundled), and P3 (the runtime-C substrate sources),
-via the ``merlin/_data`` bundle produced by setup.py's build_py hook.
+using the same package-owned resource paths as editable installations.
 
 Accepts an already built wheel through ``--wheel`` so CI checks the actual release
 artifact without rebuilding it. The default still builds with ``uv``. Optional
@@ -47,7 +47,7 @@ sys.meta_path.insert(0, NoOptionalEngines())
 import merlin
 from merlin.cli import main
 assert main(["--help"]) == 0
-assert not any(name == "merlin_experiments" or name.startswith("merlin_experiments.") for name in sys.modules)
+assert not any(name == "merlin.experiments" or name.startswith("merlin.experiments.") for name in sys.modules)
 print("standalone-cold-import: OK (root help without optional engines)")
 """
 
@@ -82,7 +82,10 @@ assert (rd / "c" / "merlin_model.c").is_file(), f"bundled runtime C source missi
 assert (rd / "abi" / "mlir_runtime.c").is_file(), "bundled runtime ABI source missing"
 # entry points registered (import-clean at least at the console-script level)
 from importlib.metadata import entry_points
-scripts = {e.name for e in entry_points(group="console_scripts") if e.value.startswith(("merlin.", "merlin_experiments.", "merlin_dse."))}
+console = tuple(entry_points(group="console_scripts"))
+assert not any(e.value.startswith(("merlin_dse.", "merlin_experiments.")) for e in console), \
+    "retired namespace remains in console entry points"
+scripts = {e.name for e in console if e.value.startswith("merlin.")}
 assert {"merlin", "merlin-compile", "kernel-index"} <= scripts, f"core entry points missing: {scripts}"
 assert {"merlin-dse-guidance", "merlin-compare", "merlin-experiment", "merlin-recovery"} <= scripts, scripts
 from importlib.metadata import PackageNotFoundError, distribution
@@ -97,11 +100,16 @@ for old in ("merlin-experiments", "merlin-analysis", "merlin-dse", "merlin-minin
 # Code ships once, regardless of the optional dependencies selected at installation.
 # Inspect RECORD rather than importing optional package parents and engines.
 payload = {str(item) for item in main.files or ()}
-for module in ("merlin.agentreport", "merlin_experiments.phase1.controller", "merlin.targetgen.aet_bridge",
+retired = sorted(name for name in payload
+                 if name.startswith(("merlin_dse/", "merlin_experiments/"))
+                 or name in {"merlin_dse.py", "merlin_experiments.py"})
+assert not retired, "retired namespace payload remains installed: " + repr(retired)
+for module in ("merlin.agentreport", "merlin.experiments.phase1.controller", "merlin.targetgen.aet_bridge",
                "merlin.targetgen.experiment_tokens", "merlin.targetgen.heavy_oracles",
                "merlin.mining.beam", "merlin.verify.plots", "merlin.perf.recovery",
-               "merlin.perf.source_program_pair_provider", "merlin.dse", "merlin_experiments",
-               "merlin_dse", "merlin.verify.replay", "merlin.verify.replay_layers",
+               "merlin.perf.source_program_pair_provider", "merlin.analysis.dse.search", "merlin.experiments",
+               "merlin.analysis.dse", "merlin.analysis.dse.pressure", "merlin.analysis.dse.guidance",
+               "merlin.verify.replay", "merlin.verify.replay_layers",
                "merlin.kernels.ceiling_drivers.run_expert_gemm",
                "merlin.kernels.ceiling_drivers.multishape_compare",
                "merlin.targetgen.group_capsules", "merlin.targetgen.store_probe",

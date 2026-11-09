@@ -9,9 +9,9 @@ import subprocess
 from pathlib import Path
 
 import yaml
-from merlin_experiments.phase1 import launch_config as L
 
 from merlin.common.digest import sha256_file
+from merlin.experiments.phase1 import launch_config as L
 
 
 def bind(

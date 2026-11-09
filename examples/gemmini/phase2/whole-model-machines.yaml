@@ -1,6 +1,6 @@
 # How a whole-model program is RUN on each machine this target measures on (the
 # whole_model_measured mode's machine registry). WHICH DEVICE each one is stays the pin
-# registry's (merlin/contract/hardware_pins.yaml), resolved by content before any cycle.
+# registry's (src/merlin/resources/contracts/hardware_pins.yaml), resolved by content before any cycle.
 # Host locations are environment references, never paths written here.
 schema: merlin.phase2.whole_model_measured.machines.v1
 target: gemmini

@@ -1,6 +1,6 @@
 """Generate the data-driven inputs the Merlin C runtime needs to drive a compiled model.
 
-The C runtime (`merlin/runtime/c/merlin_model.c`) is generic: it builds MLIR memref
+The C runtime (`src/merlin/runtime/native/c/merlin_model.c`) is generic: it builds MLIR memref
 descriptors from an **argument table** and invokes the model's C interface. This module
 emits, from the model's MLIR signature + safetensors manifest:
 

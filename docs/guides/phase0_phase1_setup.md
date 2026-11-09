@@ -9,13 +9,13 @@ code_refs:
   - src/merlin/runtime/backends/rocc_selection.py
   - src/merlin/runtime/backends/chipyard_rocc.py
   - src/merlin/targetgen/generalization_prompt.py
-  - src/merlin_experiments/cli.py
-  - src/merlin_experiments/corpus/preparation.py
-  - src/merlin_experiments/phase1/timing.py
-  - src/merlin_experiments/phase1/feedback/private_source_demand.py
-  - src/merlin_experiments/phase1/feedback/private_source_preflight.py
-  - src/merlin_experiments/corpus/preparation_generation.py
-  - src/merlin_experiments/corpus/release.py
+  - src/merlin/experiments/cli.py
+  - src/merlin/experiments/corpus/preparation.py
+  - src/merlin/experiments/phase1/timing.py
+  - src/merlin/experiments/phase1/feedback/private_source_demand.py
+  - src/merlin/experiments/phase1/feedback/private_source_preflight.py
+  - src/merlin/experiments/corpus/preparation_generation.py
+  - src/merlin/experiments/corpus/release.py
 ---
 
 # Set up Phase 0 and Phase 1
@@ -79,7 +79,7 @@ Review each of these required fields before preparing the contract:
 | Block | Required explicit selection |
 | --- | --- |
 | Contract identity | `name` matching the target and selected facts |
-| Capabilities | A nonempty reviewed `compute_units` block, derived dtypes/operation declarations, and `endpoint_kind: inline_asm_insn`; see the [contract schema](../../merlin/schemas/target_contract.schema.yaml) |
+| Capabilities | A nonempty reviewed `compute_units` block, derived dtypes/operation declarations, and `endpoint_kind: inline_asm_insn`; see the [contract schema](../../src/merlin/resources/schemas/target_contract.schema.yaml) |
 | Configuration | `runner.chipyard_rocc.config` matching the facts' source and consistency records |
 | Toolchain | `compiler` and `link_script` file pins; `runtime_units` and `headers` core IDs; `load_address`, `cflags`, `ldflags`, `kernel_stack_frame` |
 | Engine roster | Only the selected `spike`, `gsim` or `verilator` engines; each has `binary`, `argv`, `environment`, `cwd`, `max_timeout_s`, `max_console_bytes`, `failure_markers` |
@@ -238,7 +238,7 @@ Use the focused existing oracle check with explicit private probe selections:
 ```sh
 MERLIN_REPO_ROOT="$OPERATOR_ROOT" \
 MERLIN_TARGET_EXPERIMENT="$RELEASE/payload/experiment/target_experiment.yaml" \
-"$OPERATOR_PYTHON" "$OPERATOR_ROOT/merlin/experiments/capsule_bench/harness/readiness_check.py" \
+"$OPERATOR_PYTHON" "$OPERATOR_ROOT/experiments/studies/capsule_bench/harness/readiness_check.py" \
   --oracle-probe-only --reference-backend "$POSITIVE_PACKAGE" \
   --probe-capsules-root "$PROBE_ROOT" \
   --screen-probe "$SCREEN_NAME" --timing-probe "$TIMING_NAME" \
@@ -299,11 +299,11 @@ frozen board catalog. Before launch, run the operator alignment check on the
 FireSim source checkout selected for the pinned U250 bitstream:
 
 ```sh
-python -m merlin_experiments.phase1.spike_alignment \
+python -m merlin.experiments.phase1.spike_alignment \
   --contract "$PREPARED_CONTRACT" \
   --chipyard-root "$FIRESIM_CHIPYARD_ROOT" \
   --machines examples/gemmini/phase2/whole-model-machines.yaml \
-  --hardware-pins merlin/contract/hardware_pins.yaml \
+  --hardware-pins src/merlin/resources/contracts/hardware_pins.yaml \
   --board-catalog examples/gemmini/platform/board-catalog.yaml \
   --private-model-spec "$PRIVATE_MODEL_SPEC"
 ```
@@ -321,7 +321,7 @@ Use schema `merlin.phase1.capture_recipe_variant.v1`, `status: reviewed`,
 `reviewed_by`, `reason`, and both recipes' `base_file_sha256`,
 `base_recipe_sha256`, `selected_file_sha256`, and `selected_recipe_sha256`.
 The `changes` list must equal the complete diff returned by
-`merlin_experiments.phase1.feedback.private_recipe_variant.changes(base, selected)`.
+`merlin.experiments.phase1.feedback.private_recipe_variant.changes(base, selected)`.
 The gate still verifies the original derivation, software, RTL facts and host
 profile before checking the review. The review records a numerical choice;
 it grants no new hardware capability or numerical pass. Keep this review private.
@@ -343,7 +343,7 @@ operator-only diagnostics; a passing preflight is not a gate result.
 
 To retain kernel cycle measurements when preparing a new release from an
 existing Phase 0 corpus, pass `kernel_timing_selection=(contract_path, sha256)`
-to `merlin_experiments.corpus.release.prepare`. The selected contract may add
+to `merlin.experiments.corpus.release.prepare`. The selected contract may add
 only counter semantics and the `logical_harness` kernel timing fields. Staging
 reopens the pinned counter source, preserves the original contract, and records
 the selected timing identity in the release. Other contract changes are refused.
@@ -406,10 +406,10 @@ selection, derive facts, and bind the strict v3 native gSIM receipt. Before
 launch, check the complete chain:
 
 ```sh
-python -m merlin_experiments.phase1.gsim_alignment \
+python -m merlin.experiments.phase1.gsim_alignment \
   --contract "$PREPARED_CONTRACT" --rtl-facts "$PREPARED_FACTS" \
   --chipyard-root "$FIRESIM_CHIPYARD_ROOT" \
-  --hardware-pins merlin/contract/hardware_pins.yaml \
+  --hardware-pins src/merlin/resources/contracts/hardware_pins.yaml \
   --board-catalog examples/gemmini/platform/board-catalog.yaml \
   --gsim-dts "$GSIM_DTS"
 ```

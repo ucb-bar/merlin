@@ -23,7 +23,7 @@ Plus the **whole-model dialect plane** that brings real model2MLIR modules into 
 - Consumes contract and dialect-plan resources from the registry-selected support provider;
   an explicit OOT provider wins over same-name bundled resources. Missing or malformed
   selected contracts fail closed, without borrowing the neutral example's default.
-- Produces dicts conforming to `merlin/schemas/command_buffer.schema.yaml`, executed by `merlin.runtime.simulate` and checked against `reference_outputs`.
+- Produces dicts conforming to `src/merlin/resources/schemas/command_buffer.schema.yaml`, executed by `merlin.runtime.simulate` and checked against `reference_outputs`.
 
 ## Invariants
 
@@ -49,7 +49,7 @@ statement formats refuse without replacing the selected cut by a bare contractio
 
 ## Testing expectations
 
-`merlin/tests/ir/test_xdsl_lowering_e2e.py` (full descent + execution + metric assertions),
+`tests/ir/test_xdsl_lowering_e2e.py` (full descent + execution + metric assertions),
 `test_lowering_provider_selection.py` (selected-support ownership), and per-dialect analysis tests.
 
 ## Notes for future agents

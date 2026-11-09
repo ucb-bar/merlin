@@ -1,51 +1,21 @@
 #!/usr/bin/env python3
-"""Gate: every tree the wheel bundles must equal the tree it was bundled FROM.
+"""Gate: reviewed package resources must match their canonical source bytes.
 
-Six curated corpora live at the repo top level, outside the importable package root:
-``merlin/{schemas,prompts,benchmarks,contract,targets,runtime}``. setuptools can only ship data that
-sits INSIDE a package dir, so ``setup.py``'s ``build_py`` hook copies them into a gitignored
-``merlin/python/merlin/_data/`` which ``[tool.setuptools.package-data]`` puts in the wheel.
+Current builds use ``build_tools/package_resources.json`` version 2. Its closed
+file list selects data from ``src/merlin/resources/`` and native sources from
+``src/merlin/runtime/native/``. Build staging preserves those package paths under
+``out/build/python/lib/merlin/``; editable and installed readers use the same
+layout. Historical corpora and target inputs remain outside the wheel.
 
-``merlin.common.paths.data_path`` then resolves the SAME logical file to different bytes depending on
-where you stand: the top-level tree when a checkout exists, the bundled copy via
-``importlib.resources`` when it does not. A checkout and an installed wheel can therefore enforce
-different contracts, and nothing about the checkout shows it -- every test, linter and review reads
-the copy that is right.
+The audit compares the complete staged resource payload with that reviewed list,
+so missing files, stale extras, unreadable inputs, and changed bytes remain
+visible. An absent staging tree reports ``not-built``; ``--require-bundle`` makes
+that absence fail. ``--staged`` only decides whether the complete audit runs.
+``--sync`` rebuilds resource staging from its selected source authority.
 
-WHY A WHOLE-BUNDLE GATE AND NOT JUST THE CONTRACT ONE. ``check_contract_copies.py`` compares
-``merlin/contract`` only, and exempts ``capsules/`` wholesale. That exemption is what let a bundle
-sitting on disk carry 1192 ``golden.yaml`` / ``expected_instruction_coverage.yaml`` /
-``*.hidden.yaml`` answer surfaces that ``setup.py`` had since been taught to exclude: the narrow gate
-was structurally unable to look there. This gate instead applies the BUILD'S OWN exclusion rules --
-read structurally out of ``setup.py`` -- to the source side, and compares the packaged side plainly.
-A file the build would never ship but which is nevertheless sitting in the bundle shows up as
-"only in package", which is exactly how a stale answer key becomes visible.
-
-THE DECLARED DIVERGENCES. Some differences are intended, and they are declared in ONE place: the
-build's own ``_EXCLUDE`` / ``_EXCLUDE_SUFFIXES`` / ``_CODE_SUFFIXES`` (the heavy capture corpora, the
-per-target RTL-cert data, the answer surfaces, and code-not-data). This gate DERIVES those instead of
-restating them, so the two cannot drift. Anything intentionally different that a build exclusion
-cannot express goes in ``_INTENDED_DIVERGENCE`` below, with a reason per entry -- reviewed, not a
-blanket skip. It is currently empty, and a bare entry with no reason is refused.
-
-FAIL-CLOSED. If ``setup.py`` cannot be parsed, or does not carry the rule names this gate derives, the
-rules are UNKNOWN and the gate refuses rather than comparing under a guessed rule set. If the bundle
-has never been built in this checkout (no ``_data/`` at all -- the normal state of a fresh clone and of
-CI) the gate reports ``not-built`` and makes no claim; ``--require-bundle`` turns that into a failure
-for a context that should have one. A partial bundle -- ``_data/`` present but a tree missing under it
-whose source exists -- is a divergence, not an absence, and fails.
-
-PRE-COMMIT SCOPE. ``--staged`` narrows WHETHER the gate runs, never WHAT it compares: a commit that
-stages a file under a bundled corpus is the moment the two copies part company, so that commit gets
-the full comparison, and one that stages nothing there is told so explicitly. Several sessions share
-this working tree and the bundle is a build product, so a blanket per-commit comparison would fail on
-another session's edit and teach people to bypass the hook. A staged list that cannot be read runs
-everything -- a work list that could not be read must never shrink the work.
-
-The fix is never to hand-edit the bundle: rebuild it from the top-level trees. ``--sync`` does that
-here (the build's ``build_py`` hook does the same thing, but needs setuptools, which the repo venv
-does not carry); the copy rules come from ``setup.py`` either way, and re-running the check afterwards
-verifies the result.
+Archived version-1 manifests and older setup-rule layouts retain their original
+``merlin/*`` to ``_data`` comparison, exclusions, and diagnostics below. They do
+not describe the current package layout.
 """
 
 from __future__ import annotations
@@ -58,7 +28,7 @@ import sys
 from pathlib import Path
 
 _HERE = Path(__file__).resolve()
-for _p in (_HERE.parents[2] / "merlin" / "python",):
+for _p in (_HERE.parents[2] / "src",):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
@@ -96,8 +66,25 @@ def _setup_rules(base: Path) -> dict:
     manifest_path = base / "build_tools/package_resources.json"
     if manifest_path.exists():
         try:
-            manifest = json.loads(manifest_path.read_text())
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             files = manifest["files"]
+            if manifest.get("version") == 2:
+                if not isinstance(files, list) or not files or len(set(files)) != len(files):
+                    raise ValueError("unsupported or empty manifest")
+                for name in files:
+                    path = Path(name)
+                    if (
+                        path.is_absolute()
+                        or ".." in path.parts
+                        or "\\" in name
+                        or not name.startswith(("src/merlin/resources/", "src/merlin/runtime/native/"))
+                    ):
+                        raise ValueError(f"invalid manifest path: {name}")
+                return {
+                    "version": 2,
+                    "files": files,
+                    "kinds": tuple(sorted({"/".join(Path(name).parts[2:4]) for name in files})),
+                }
             if manifest.get("version") != 1 or not isinstance(files, list) or not files:
                 raise ValueError("unsupported or empty manifest")
             for name in files:
@@ -238,6 +225,56 @@ def _allowed(kind: str, rel: str) -> str | None:
     return None
 
 
+def _audit_current_resources(base: Path, rules: dict) -> dict:
+    """Compare the manifest-v2 resource payload without discovering Python packages."""
+    source = base / "src/merlin"
+    packaged = base / "out/build/python/lib/merlin"
+    report = {
+        "status": "compared",
+        "source": str(source),
+        "packaged": str(packaged),
+        "kinds": list(rules["kinds"]),
+        "trees": {},
+        "n_compared": 0,
+        "differing": [],
+        "only_in_source": [],
+        "only_in_packaged": [],
+        "unreadable": [],
+        "allowed": {},
+    }
+    if not packaged.is_dir():
+        report.update(
+            status="not-built",
+            reason=f"no bundle at {packaged} ? the build has never run in this checkout, "
+            "so there is nothing to compare (not a clean bill of health)",
+        )
+        return report
+    expected = {Path(name).relative_to("src/merlin").as_posix(): base / name for name in rules["files"]}
+    actual = set()
+    for prefix in ("resources", "runtime/native"):
+        for path in (packaged / prefix).rglob("*"):
+            if path.is_file():
+                relative = path.relative_to(packaged).as_posix()
+                if relative != "resources/__init__.py" and "__pycache__" not in path.parts:
+                    actual.add(relative)
+    expected_names = set(expected)
+    report["only_in_source"] = sorted(expected_names - actual)
+    report["only_in_packaged"] = sorted(actual - expected_names)
+    for name in sorted(expected_names & actual):
+        try:
+            if _digest(expected[name]) != _digest(packaged / name):
+                report["differing"].append(name)
+        except OSError:
+            report["unreadable"].append(name)
+    kinds = sorted(set(rules["kinds"]) | {"/".join(Path(name).parts[:2]) for name in actual})
+    for kind in kinds:
+        left = {name for name in expected_names if name.startswith(kind + "/")}
+        right = {name for name in actual if name.startswith(kind + "/")}
+        report["trees"][kind] = {"source": len(left), "packaged": len(right), "compared": len(left & right)}
+    report["n_compared"] = len(expected_names & actual)
+    return report
+
+
 def audit(root: Path | None = None) -> dict:
     """Compare every bundled tree against the tree it is bundled from.
 
@@ -274,6 +311,9 @@ def audit(root: Path | None = None) -> dict:
             "unreadable": [],
             "allowed": {},
         }
+
+    if rules.get("version") == 2:
+        return _audit_current_resources(base, rules)
 
     source_root = base.joinpath(*_SOURCE_REL)
     packaged_root = base / "out/build/python/lib/merlin/_data" if "files" in rules else base.joinpath(*_PACKAGED_REL)
@@ -388,7 +428,12 @@ def staged_touches_a_bundled_tree(kinds, base: Path | None = None) -> tuple[bool
         return True, f"the staged file list is unreadable ({exc}), which is not the same as clean"
     if proc.returncode != 0:
         return True, "git could not list the staged files, which is not the same as clean"
-    prefixes = tuple(f"merlin/{kind}/" for kind in kinds)
+    rules = _setup_rules(root)
+    prefixes = (
+        tuple("src/merlin/" + kind + "/" for kind in kinds)
+        if rules.get("version") == 2
+        else tuple(f"merlin/{kind}/" for kind in kinds)
+    )
     for line in proc.stdout.splitlines():
         path = line.strip()
         if path.startswith(prefixes) or path in {"setup.py", "MANIFEST.in", "build_tools/package_resources.json"}:
@@ -411,6 +456,22 @@ def sync(base: Path | None = None) -> dict:
     if "unknown" in rules:
         return {"status": "unknown", "reason": rules["unknown"], "synced": []}
     done: list[str] = []
+    if rules.get("version") == 2:
+        destination = root / "out/build/python/lib/merlin"
+        for prefix in ("resources", "runtime/native"):
+            tree = destination / prefix
+            if tree.is_symlink() or not tree.resolve().is_relative_to((root / "out/build").resolve()):
+                return {"status": "unknown", "reason": "refusing symlinked build staging directory", "synced": []}
+            if tree.exists():
+                shutil.rmtree(tree)
+        for name in rules["files"]:
+            target = destination / Path(name).relative_to("src/merlin")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(root / name, target)
+        initializer = root / "src/merlin/resources/__init__.py"
+        if initializer.is_file():
+            shutil.copyfile(initializer, destination / "resources/__init__.py")
+        return {"status": "synced", "synced": list(rules["kinds"])}
     if "files" in rules:
         destination = root / "out/build/python/lib/merlin/_data"
         if destination.is_symlink():

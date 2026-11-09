@@ -66,13 +66,13 @@ def scan_roots(extra: list[Path] | None = None) -> list[Path]:
     only that -- it was blind to 40 GB of completed closures and one 8.7 GB closure abandoned
     mid-copy, which is precisely the class it exists to find.
 
-    The extra roots come from ``merlin/contract/storage.yaml`` rather than from a literal here, for
+    The extra roots come from ``src/merlin/resources/contracts/storage.yaml`` rather than from a literal here, for
     the reason every other path in that directory is declared: no library module spells a checkout
     directory, so relocating a workspace is an edit to data. A pattern matching nothing is skipped.
     """
-    from merlin.common.paths import merlin_dir  # noqa: PLC0415
+    from merlin.common.paths import repo_root  # noqa: PLC0415
 
-    base = merlin_dir()
+    base = repo_root()
     roots = [out_dir()]
     patterns = contract().get("scan_roots") or []
     for pattern in patterns:
@@ -372,7 +372,7 @@ def _print_layout(report: dict, top: int) -> None:
         for row in undeclared[:top]:
             print(f"    {_human(row['bytes']):>10}  {row['units']:>5} units  {row['name']}")
         print(
-            "\n  Each needs one of: a fold in merlin/contract/storage.yaml, an entry in that\n"
+            "\n  Each needs one of: a fold in src/merlin/resources/contracts/storage.yaml, an entry in that\n"
             "  file's concern roster, or retirement. `merlin-storage organize` applies the folds."
         )
 

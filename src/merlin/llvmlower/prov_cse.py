@@ -50,7 +50,7 @@ that print is not parseable by the xDSL reader the preparation layer's own deriv
 raising. Run earlier, it took the observed contraction count 19 -> 0, emptied the per-op block table,
 silently dropped ``perop_register_block``, and left every contraction to ``convert-linalg-to-loops``:
 measured as ``vwmacc`` 152 -> 0 in the emitted ``forward``, with the build, the numerics and the gate
-all still passing. ``merlin/tests/rvv/test_prov_cse.py`` pins the order.
+all still passing. ``tests/rvv/test_prov_cse.py`` pins the order.
 
 WHAT IT COSTS. The stripped module can no longer be joined to the model graph, so a build with this
 feature is not a build you can PROFILE per-op (``op_profile``'s table falls back to the MLIR op name).

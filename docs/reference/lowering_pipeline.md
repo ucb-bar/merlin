@@ -301,7 +301,7 @@ Files: `llvmlower/codegen.py`, `runtime/abi/mlir_runtime.c`, `runtime/baremetal/
   them cannot be detected; callers must not alias those buffers with a staged
   output.
 - Python simulator (`merlin.runtime`) — the fast correctness oracle for the synthetic path.
-- **Merlin C runtime** (`merlin/runtime/c/`) — generic descriptor builder + arg table +
+- **Merlin C runtime** (`src/merlin/runtime/native/c/`) — generic descriptor builder + arg table +
   weights blob + bump allocator (`baremetal/spike/merlin_malloc.c`). Drives the whole
   compiled `forward()` on host and on **spike bare-metal RVV**.
 - `src/merlin/runtime/backends/spike_model.py` — build (lower → cgen → rv64gcv

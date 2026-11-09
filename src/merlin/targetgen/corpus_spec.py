@@ -10,7 +10,7 @@ lives in the descriptor + the profile.
 
 Golden VALUES are not computed here (the integer engine lives in :mod:`capsule_golden`; the float engine
 needs the external ``specir`` refmodel, available only at generation time) — the driver
-``merlin/contract/capsules/generate_corpus.py`` computes them and writes ``golden.yaml``.
+``experiments/corpora/generate_corpus.py`` computes them and writes ``golden.yaml``.
 """
 
 from __future__ import annotations

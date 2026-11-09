@@ -41,7 +41,7 @@ around that.
 
 THE RULE REGISTRY
 -----------------
-The second half of this module reads ``merlin/contract/perf_rules/*.yaml``: *detected trait ->
+The second half of this module reads ``src/merlin/resources/contracts/perf_rules/*.yaml``: *detected trait ->
 required model term -> optimization family -> experiment family*, as data. The registry is data
 because a rule expressed as code is a rule that gets a target baked into it; YAML also keeps the
 name gate's scan roots clean.
@@ -1441,7 +1441,7 @@ def _as_rule(raw: Mapping[str, Any], source: str) -> Rule:
 
 
 def load_registry(directory: "str | Path | None" = None) -> RuleRegistry:
-    """Load ``merlin/contract/perf_rules/*.yaml``. Data only: the directory holds no code."""
+    """Load ``src/merlin/resources/contracts/perf_rules/*.yaml``. Data only: the directory holds no code."""
     root = Path(directory) if directory is not None else registry_dir()
     if not root.is_dir():
         # An absent registry is not an empty one: every rule would silently stop firing.

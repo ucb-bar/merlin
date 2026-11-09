@@ -72,7 +72,7 @@ the scheduling dialect, and automatic gap repair, see
   reuse, and marker declarations are selected explicitly from the target owner; for example,
   `examples/gemmini/kernel-mining/feature-extraction.yaml`. The selected file's SHA-256 is recorded
   in the index, and extraction/audit requires the same bytes. Expert-corpus locations come
-  from `merlin/contract/corpora.yaml`.
+  from `src/merlin/resources/contracts/corpora.yaml`.
 - `features/` — pure `extract_*` functions, incl. `shape_regime.py` (working-set bytes,
   arithmetic intensity, regime labels) and `roles.py` (L2 memory roles, **measured** reuse).
 - `classify.py` / `evidence.py` — features → canonical motif set + evidence ids/markers.

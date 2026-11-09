@@ -26,8 +26,8 @@ submission/
 - `lower_target_to_llvm`: `{tool} --convert-iface-to-gemmini --convert-gemmini-to-llvm-rocc {input_mlir}` — emit `llvm.func @gemmini_kernel` of RoCC `.insn r 0x7b` instructions
 
 ## What you may read
-The frozen contract `merlin/contract/` (schemas, `interface_grammar.md`, `command_buffer_abi.yaml`,
-`integrity_policy.md`), the **public/dev capsules** under `merlin/contract/capsules/{isa,layers,
+The frozen contract `src/merlin/resources/contracts/` (schemas, `interface_grammar.md`, `command_buffer_abi.yaml`,
+`integrity_policy.md`), the **public/dev capsules** under `experiments/corpora/{isa,layers,
 model_slices}/` (each has `capsule.yaml` + `capsule.interface.mlir`),
 the hardware facts your bundle grants (for example RTL-derived facts or a target contract; no Gemmini
 C ISA headers are provided), and the LLVM/MLIR toolchain.

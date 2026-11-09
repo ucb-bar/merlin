@@ -7,7 +7,7 @@ last_verified: 2026-11-09
 related: [verified_compiler_roadmap, accumulator_load_order, performance_levers_per_archetype, macro_scheduling]
 code_refs:
   - examples/gemmini/verification/probe_load_placement.py
-  - merlin/contract/perf_reference_targets.yaml
+  - src/merlin/resources/contracts/perf_reference_targets.yaml
 ---
 
 # What open-coding the mesh stream costs, and which lever pays where
@@ -25,7 +25,7 @@ what the second costs on the same device and what closes the gap. The measuremen
 
 ## The whole-model price of leaving the sequencer
 
-These are three entries in `merlin/contract/perf_reference_targets.yaml`. All of them have program
+These are three entries in `src/merlin/resources/contracts/perf_reference_targets.yaml`. All of them have program
 identity `compute_group_standalone_image`, the same 71-group ResNet-50 image as job 728.
 
 | Job | Device | Kernel bodies | Whole-model cycles |

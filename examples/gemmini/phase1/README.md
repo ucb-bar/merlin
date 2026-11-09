@@ -205,7 +205,7 @@ only. Provision a genuine record or select an existing measured one; do not
 fabricate a placeholder or change it after freezing a run.
 
 ```sh
-MERLIN_CORPUS_SEAL="${CORPUS_SEAL:?}" python -m merlin_experiments.phase1 \
+MERLIN_CORPUS_SEAL="${CORPUS_SEAL:?}" python -m merlin.experiments.phase1 \
   --descriptor "${DESCRIPTOR:?}" --repo "${RESOURCE_ROOT:?}" \
   --bundle "${BUNDLE_ID:?}" --bundle-manifest "${BUNDLE_MANIFEST:?}" \
   --oracle-timing "${ORACLE_TIMING:?}" \
@@ -229,7 +229,7 @@ Qualification executes compiler builds and native simulators, but does not
 launch a paid author.
 
 ```sh
-MERLIN_CORPUS_SEAL="${CORPUS_SEAL:?}" python -m merlin_experiments.phase1 \
+MERLIN_CORPUS_SEAL="${CORPUS_SEAL:?}" python -m merlin.experiments.phase1 \
   --descriptor "${DESCRIPTOR:?}" --repo "${RESOURCE_ROOT:?}" \
   --bundle "${BUNDLE_ID:?}" --bundle-manifest "${BUNDLE_MANIFEST:?}" \
   --oracle-timing "${ORACLE_TIMING:?}" --run-id "${NEW_RUN_ID:?}" \
@@ -240,7 +240,7 @@ MERLIN_CORPUS_SEAL="${CORPUS_SEAL:?}" python -m merlin_experiments.phase1 \
 Provision FileCheck on the selected execution PATH, and supply required toolchain
 library paths and credentials explicitly. This installed route does not inherit
 the old launcher's LLVM/Chipyard FileCheck candidates or compatibility-library defaults.
-Use `python -m merlin_experiments.phase1 --help` for inspection only. The configured
+Use `python -m merlin.experiments.phase1 --help` for inspection only. The configured
 output root owns the run. Resume the same invocation with `--resume` only while
 its frozen inputs remain valid; changed inputs require a fresh run.
 
@@ -272,10 +272,10 @@ release and numerics versions are overridable defaults. Neither file is granted 
 the author sandbox or copied into a release payload.
 
 ```sh
-python -m merlin_experiments.phase1.launch_config render \
+python -m merlin.experiments.phase1.launch_config render \
   --config examples/gemmini/phase1/launch/el4-fire-aligned.yaml \
   --task-root "${TASK_ROOT:?}" --prep "${PREP:?}" --plan-template "${PLAN_TEMPLATE:?}"
-python -m merlin_experiments.phase1.launch_config verify \
+python -m merlin.experiments.phase1.launch_config verify \
   --config examples/gemmini/phase1/launch/el4-fire-aligned.yaml \
   --task-root "${TASK_ROOT:?}" --prep "${PREP:?}" [--run-id "${RUN_ID}" --controller-pid PID]
 ```

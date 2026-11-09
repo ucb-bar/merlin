@@ -176,7 +176,7 @@ class Sandbox:
         return bwrap.full_argv(self.te, self.ws, self.bundle, _policy_test_live_inputs=self._policy_test_live_inputs)
 
     def env(self) -> str:
-        from merlin_experiments.phase1 import author_toolchain
+        from merlin.experiments.phase1 import author_toolchain
 
         return author_toolchain.sandbox_env(self.te, self.ws, bundle=self.bundle)
 
@@ -219,7 +219,7 @@ def build_sandbox(
     """Build the sandbox for a target from its descriptor (path or loaded ``TargetExperiment``) + an
     optional arm bundle. This is the single seam the experiment scripts + the CI isolation test call."""
     te = descriptor if isinstance(descriptor, TargetExperiment) else load_target_experiment(descriptor)
-    from merlin_experiments.phase1 import author_toolchain
+    from merlin.experiments.phase1 import author_toolchain
 
     return Sandbox(
         te=te,

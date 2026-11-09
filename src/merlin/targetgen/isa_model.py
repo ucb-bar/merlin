@@ -264,7 +264,7 @@ def _confirmed_span(name: str, declared_word: int, declared_value: int) -> tuple
 
 
 def _reviewed_errata(target: str) -> dict[str, dict]:
-    """This target's REVIEWED encoding corrections from ``merlin/contract/isa_errata.yaml``.
+    """This target's REVIEWED encoding corrections from ``src/merlin/resources/contracts/isa_errata.yaml``.
 
     Absent file, unreadable file or no section for this target all mean "no corrections", never an
     error: a target whose spec agrees with its hardware must be unaffected by this path existing."""

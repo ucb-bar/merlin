@@ -480,7 +480,7 @@ def pipeline_graph() -> ArtifactGraph:
             "runtime_board_support",
             "parent",
             (),
-            (f"{_PY}/runtime/boards.py", "merlin/runtime/baremetal"),
+            (f"{_PY}/runtime/boards.py", "src/merlin/runtime/native/baremetal"),
             "board bring-up and the bare-metal harness",
         ),
         Node("elementwise_path", "parent", (), (f"{_PY}/runtime/tensor.py",), "the elementwise/epilogue path"),

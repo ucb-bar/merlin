@@ -160,7 +160,7 @@ Inspect the generated `characterization.json`, raw `cases.json`/`vectors.txt`,
 `cell.hw.mlir`, `verilog/`, `harness.cpp`, executed binary and stage logs. The
 shared producer generates every harness and records byte identities; nothing is
 manually written in an output directory. `verify_characterization` from
-`merlin_experiments.phase0.cell_probe` detects saved-artifact tampering and failed
+`merlin.experiments.phase0.cell_probe` detects saved-artifact tampering and failed
 native execution. Its finite cell scope does not establish mesh reduction order,
 block scaling, VPU semantics, host conversion, dispatch or full-model lowering.
 

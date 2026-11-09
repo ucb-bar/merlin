@@ -1,6 +1,6 @@
 """Bind the closed role vocabulary to each target's OWN derived encoding table.
 
-``merlin/contract/compute_endpoints.yaml`` says WHERE a target's encoding comes from and, for a target
+``src/merlin/resources/contracts/compute_endpoints.yaml`` says WHERE a target's encoding comes from and, for a target
 whose derived table uses its own names, which of those names carries which role. This module resolves
 that declaration against the live derivation and reports what it could not bind.
 

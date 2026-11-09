@@ -37,7 +37,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
 
-from merlin.common.paths import merlin_dir, repo_root, runs_dir  # noqa: E402
+from merlin.common.paths import capsules_dir, repo_root, runs_dir
 from merlin.runtime.route_partition import (  # noqa: E402
     ROUTE_ACCEPT,
     ROUTE_DECLINE,
@@ -79,11 +79,11 @@ def target_of(path: Path, targets: list[str]) -> str:
 def _holdout_names() -> frozenset[str]:
     """Held-out capsule names, DISCOVERED from the hidden corpora rather than listed.
 
-    Same source `check_no_holdout_names` reads: `merlin/contract/capsules/hidden` plus each target's
+    Same source `check_no_holdout_names` reads: `experiments/corpora/hidden` plus each target's
     own `<target>/hidden`. A target that grows a holdout corpus tomorrow is covered without an edit
     here, which is the only way a rule like this stays true.
     """
-    root = merlin_dir() / "contract" / "capsules"
+    root = capsules_dir()
     names: set[str] = set()
     for hidden in [root / "hidden", *sorted(root.glob("*/hidden"))]:
         if hidden.is_dir():

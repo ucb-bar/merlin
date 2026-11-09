@@ -55,7 +55,7 @@ def _corpus_dirs(target: str) -> list[Path]:
     A target that owns a subdirectory uses it; the one that predates that convention occupies the shared
     kind directories at the root. Deriving this keeps the rule "no target-name literals in tooling" --
     a table mapping a name to a layout is exactly the coupling that stops a new target working."""
-    caps = repo_root() / "merlin" / "contract" / "capsules"
+    caps = repo_root() / "experiments" / "corpora"
     own = caps / target
     if own.is_dir():
         return [own]
@@ -79,7 +79,7 @@ def _materializable_families() -> set[str]:
     """Families the generalization difftest can turn into a runnable capsule. A declared family with a
     probe and no materializer is an untested claim, so this is read from the runner rather than assumed."""
     try:
-        sys.path.insert(0, str(repo_root() / "merlin" / "experiments" / "capsule_bench" / "harness"))
+        sys.path.insert(0, str(repo_root() / "experiments" / "studies" / "capsule_bench" / "harness"))
         import generalization_difftest as gd
 
         return set(gd.FAMILY_MAT)
@@ -106,14 +106,14 @@ def _is_generated_product(target: str) -> bool:
 
 def _targets_with_profiles() -> list[str]:
     """Runtime targets with an explicitly declared derivation, never sidecar stems."""
-    from merlin_experiments.phase0.declarations import all_declarations
+    from merlin.experiments.phase0.declarations import all_declarations
 
     return sorted({declaration.target for declaration in all_declarations()})
 
 
 def audit(target: str) -> list[dict]:
     """Findings for one target. Empty list == this target is measurable."""
-    from merlin_experiments.phase0.declarations import for_target
+    from merlin.experiments.phase0.declarations import for_target
 
     declaration = for_target(target)
     target = declaration.target
@@ -323,7 +323,7 @@ def main() -> int:
     if a.target:
         # A one-target audit says nothing about other targets' debt. Without
         # this scope the gate reports their still-open findings as "resolved".
-        from merlin_experiments.phase0.declarations import for_target
+        from merlin.experiments.phase0.declarations import for_target
 
         selected = for_target(a.target).target
         known = {key for key in known if key.startswith(f"{selected}:")}

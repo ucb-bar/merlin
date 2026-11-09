@@ -91,7 +91,7 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common import provenance as _prov
-from merlin.common.paths import artifacts_dir, merlin_dir, repo_root, targets_dir
+from merlin.common.paths import artifacts_dir, repo_root, resolve_grant, targets_dir
 from merlin.targetgen import semantic_families as _sf
 
 __all__ = [
@@ -554,29 +554,17 @@ def parse_c_header(path: "str | Path") -> HeaderModel:
 _C_SUFFIXES = frozenset({".h", ".hpp", ".hh", ".c", ".inc"})
 
 
-#: How a target's descriptor is FOUND rather than typed: the invariant is the file NAME plus the
-#: ``targets/<target>/`` directory it sits in, not which tree that directory hangs off. Globbing for it
-#: keeps this module off any one experiment layout (and off the library-boundary rule that a core module
-#: must not name that tree), and it means a target whose descriptor moves is still discovered.
-_DESCRIPTOR_FILE = "target_experiment.yaml"
-_DESCRIPTOR_GLOBS = ("*/*/targets/{t}/{f}", "*/targets/{t}/{f}", "targets/{t}/{f}")
-
-
 def _experiment_descriptor(target: str) -> Path | None:
-    for pattern in _DESCRIPTOR_GLOBS:
-        for cand in sorted(merlin_dir().glob(pattern.format(t=target, f=_DESCRIPTOR_FILE))):
-            if cand.is_file():
-                return cand
-    return None
+    from .corpora import descriptor_paths
+
+    return next(iter(descriptor_paths(target)), None)
 
 
 def _descriptor_targets() -> set[str]:
     """Every target that ships a descriptor, found the same way."""
-    out: set[str] = set()
-    for pattern in _DESCRIPTOR_GLOBS:
-        for cand in merlin_dir().glob(pattern.format(t="*", f=_DESCRIPTOR_FILE)):
-            out.add(cand.parent.name)
-    return out
+    from .corpora import descriptor_paths
+
+    return {path.parent.name for path in descriptor_paths()}
 
 
 def _yaml(path: Path) -> dict[str, Any]:
@@ -618,10 +606,9 @@ def _resolve_declared_path(declared_path: str, pins: list[str]) -> tuple[Path | 
     (``include/...``) cannot capture the match. Nothing here is a typed path.
     """
     rel = declared_path.lstrip("/")
-    for base, how in ((repo_root(), "repo_root"), (merlin_dir(), "merlin_dir")):
-        cand = Path(base) / rel
-        if cand.is_file():
-            return cand, how, None
+    cand = resolve_grant(rel)
+    if cand.is_file():
+        return cand, "selected_source_owner", None
     parts = Path(rel).parts
     for pin_name in pins:
         try:

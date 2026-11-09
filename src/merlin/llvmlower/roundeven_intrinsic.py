@@ -58,7 +58,7 @@ EXACT_ROUNDING = {
 #: each paid one call per step and none of whose loops could vectorize. The rewrite spells the same
 #: promotion out before LLVM sees it: each bf16 operand widened (a 16-bit shift, exact), the op in
 #: f32, the result rounded to bf16 in integer arithmetic. That rounding is the runtime helper's own
-#: (``merlin/runtime/abi/mlir_runtime.c``): round half to even on the bits, infinity kept, a NaN's
+#: (``src/merlin/runtime/native/abi/mlir_runtime.c``): round half to even on the bits, infinity kept, a NaN's
 #: payload truncated with its quiet bit set -- independent of the floating-point rounding mode, as
 #: the helper is. Negation flips the sign bit, as LLVM's own bf16 negation does. Ops LLVM does not
 #: compute this way (remainder, transcendentals) keep their path.

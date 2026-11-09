@@ -55,5 +55,5 @@ zero plots as a finding; a refusal plots as a gap.
 - No target-name literals, no `import re` — this is gated library code.
 - Nothing here may read the experiment tree; the caller passes in what it needs.
 - Any new derived metric needs a **paired** test: one that proves it finds the thing, one that proves
-  it refuses when the thing is absent. See `merlin/tests/infra/test_agent_report_core.py`, whose
+  it refuses when the thing is absent. See `tests/infra/test_agent_report_core.py`, whose
   mutation coverage is checked by deliberately breaking each reader.

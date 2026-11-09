@@ -6,29 +6,29 @@ owner: experiments
 last_verified: 2026-11-09
 related: [phase2_corpus_search, phase0_phase1_setup]
 code_refs:
-  - src/merlin_experiments/phase0/development_sources.py
-  - src/merlin_experiments/phase0/workload_roster.py
+  - src/merlin/experiments/phase0/development_sources.py
+  - src/merlin/experiments/phase0/workload_roster.py
   - src/merlin/targetgen/capsule_source.py
-  - merlin/contract/schemas/capsule.schema.json
+  - src/merlin/resources/contracts/schemas/capsule.schema.json
   - src/merlin/targetgen/contract/schemas.py
   - src/merlin/targetgen/capsule_golden.py
   - src/merlin/targetgen/capsule_runner.py
-  - src/merlin_experiments/phase0/development_cohort.py
-  - src/merlin_experiments/phase0/development_capture.py
-  - src/merlin_experiments/phase0/development_capture_intake.py
-  - src/merlin_experiments/phase0/development_reference_supplement.py
-  - src/merlin_experiments/phase0/development_shape_supplement.py
-  - src/merlin_experiments/capture_execution/native_integer.py
-  - src/merlin_experiments/capture_execution/readonly_runtime.py
-  - src/merlin_experiments/phase0/operator_dense_projection.py
-  - src/merlin_experiments/phase0/operator_streaming_exclusion_issuer.py
-  - src/merlin_experiments/phase0/operator_mixed_exclusion.py
-  - src/merlin_experiments/phase0/operator_structured_exclusion.py
-  - src/merlin_experiments/phase0/operator_registered_exclusion.py
-  - src/merlin_experiments/phase0/operator_windowed_ir.py
-  - src/merlin_experiments/phase0/development_patterns.py
-  - src/merlin_experiments/phase0/development_controls.py
-  - src/merlin_experiments/phase0/development_attention.py
+  - src/merlin/experiments/phase0/development_cohort.py
+  - src/merlin/experiments/phase0/development_capture.py
+  - src/merlin/experiments/phase0/development_capture_intake.py
+  - src/merlin/experiments/phase0/development_reference_supplement.py
+  - src/merlin/experiments/phase0/development_shape_supplement.py
+  - src/merlin/experiments/capture_execution/native_integer.py
+  - src/merlin/experiments/capture_execution/readonly_runtime.py
+  - src/merlin/experiments/phase0/operator_dense_projection.py
+  - src/merlin/experiments/phase0/operator_streaming_exclusion_issuer.py
+  - src/merlin/experiments/phase0/operator_mixed_exclusion.py
+  - src/merlin/experiments/phase0/operator_structured_exclusion.py
+  - src/merlin/experiments/phase0/operator_registered_exclusion.py
+  - src/merlin/experiments/phase0/operator_windowed_ir.py
+  - src/merlin/experiments/phase0/development_patterns.py
+  - src/merlin/experiments/phase0/development_controls.py
+  - src/merlin/experiments/phase0/development_attention.py
 ---
 
 # Construct fresh connected public development sources
@@ -60,7 +60,7 @@ For a fresh destination with an existing parent:
 ```python
 import json
 from pathlib import Path
-from merlin_experiments.phase0 import development_sources
+from merlin.experiments.phase0 import development_sources
 
 declarations = json.loads(Path(public_roster).read_text())["declarations"]
 record = development_sources.stage(declarations, Path(fresh_destination))
@@ -100,15 +100,16 @@ issued by the factory, and no validation workload is executed.
 
 ## Tests and current limits
 
-Run `python -m pytest packages/merlin-experiments/tests/test_development_sources.py`.
-Torch is optional for source-only checks. The last test uses the explicitly
-selected Model2MLIR runtime when available; it starts no simulator.
+The retired `test_development_sources.py` matrix belongs to its frozen source
+environment under the former experiment package; it is not a command available
+in this checkout. That historical matrix used Torch only for selected cases and
+an explicitly selected Model2MLIR runtime for its capture check, without a simulator.
 
 A previously selected CPU Torch build returned incorrect native `_int_mm`
-results for the retained `head_dim=1` regression; its strict expected-failure
-control remains in the source test. That case remains an expected failure against
-the independent reference and is not numerically qualified. A new environment
-that fixes it produces a strict unexpected pass for review. No input padding,
+results for the historical `head_dim=1` regression; its strict expected-failure
+control remains in that frozen test environment. That observation is not numerical
+qualification. Replaying the exact matrix in a new environment that fixes it
+produces a strict unexpected pass for review. No input padding,
 golden substitution or tolerance change hides the failure.
 
 The V1 grouped-head factory retains its original four-call, 32-query-head limits.
@@ -139,7 +140,7 @@ does not weaken a frozen selected numerical contract or admit those sources.
 An explicit bounded command prepares sources and independent NumPy references:
 
 ```bash
-python -m merlin_experiments.phase0.development_cohort_cli \
+python -m merlin.experiments.phase0.development_cohort_cli \
   --public-architectures experiments/reference-data/phase0/public-architectures \
   --facts "$FACTS" --target "$TARGET" \
   --capacity-policy experiments/templates/phase0/performance.yaml \
@@ -168,7 +169,7 @@ Merlin host arithmetic must also be measured and reported separately.
 Selected bounded members connect to the ordinary capture and capsule writer:
 
 ```bash
-python -m merlin_experiments.phase0.development_capture \
+python -m merlin.experiments.phase0.development_capture \
   --sources "$FROZEN_SOURCES" --manifest-sha256 "$MANIFEST_SHA256" \
   --ordinals 0 1 --max-work 20000000 --max-elements 2000000 \
   --output "$FRESH_CAPTURE_OUTPUT"
@@ -247,11 +248,11 @@ physical MAC width or across-panel accumulator behavior. An independently checke
 correspondence to the selected executable arithmetic is still required before
 this source evidence can enter the original admission route.
 
-Run `python -m pytest packages/merlin-experiments/tests/test_public_development_cohort.py`
-for V2 eager/reference, refusal, resource-accounting and ordinary capture checks.
-The three installed-toolchain cases cover a padded/strided spatial transition,
-the connected vision/prefix/action chain and a shared-RHS sequence. No simulator
-or validation model runs in these tests.
+The retired `test_public_development_cohort.py` matrix checked V2 eager/reference,
+refusal, resource accounting and ordinary capture in its frozen source environment.
+Its three installed-toolchain cases covered a padded/strided spatial transition,
+the connected vision/prefix/action chain and a shared-RHS sequence, without a
+simulator or validation model. Those tests are not shipped in the current suite.
 
 ## Complete attention semantics and the remaining numeric gate
 
@@ -285,9 +286,10 @@ inputs, independent reference and floating-error observations in a
 `pending-capsule.json` closure. Exact carried integer state must match. It
 explicitly refuses the ordinary capsule writer while the floating policy is
 UNKNOWN; a small observed error cannot issue a tolerance or equivalence grant.
-Source tests cover an exact dyadic uniform-softmax case without a tolerance,
-future-token exclusion and independent GQA head-group effects. Run
-`python -m pytest packages/merlin-experiments/tests/test_development_attention.py`.
+The historical `test_development_attention.py` matrix covered an exact dyadic
+uniform-softmax case without a tolerance, future-token exclusion and independent
+GQA head-group effects. Replay requires that matrix's frozen source environment;
+the retired file is not a current pytest entrypoint.
 
 ## Supplement expensive exact references without changing the source cohort
 
@@ -298,7 +300,7 @@ untouched. Every old member remains in its index, including unselected and
 unsupported members. Select explicit original ordinals and a fresh destination:
 
 ```bash
-python -m merlin_experiments.phase0.development_reference_supplement \
+python -m merlin.experiments.phase0.development_reference_supplement \
   --sources "$FROZEN_SOURCES" --manifest-sha256 "$MANIFEST_SHA256" \
   --ordinals 24 25 110 84 --budgets "$SUPPLEMENT_BUDGETS" \
   --output "$FRESH_SUPPLEMENT"

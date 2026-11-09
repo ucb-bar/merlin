@@ -168,7 +168,7 @@ def _rhs_immutable_residency(target: str, facts: dict[str, Any], shape):
     check. Without it the sequence is satisfied by a program that evicts the resident weight and then
     keeps matmul-ing against it: a use-after-evict, which is the exact defect the obligation names.
     Measured 2026-09-04: the generated form lacking this line PASSED the ``evict_before_last_use``
-    mutation while the hand-written check in merlin/tests/data/lit/core/ caught it, i.e. the derived
+    mutation while the hand-written check in tests/data/lit/core/ caught it, i.e. the derived
     check was strictly weaker than the one it was modelled on.
     """
     return Check(

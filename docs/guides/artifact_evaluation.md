@@ -11,10 +11,10 @@ code_refs:
   - build_tools/scripts/package_worker_inputs.py
   - examples/gemmini/phase1/launch/launch_phase1.py
   - examples/gemmini/phase1/launch/prepare_author_launch.py
-  - src/merlin_experiments/phase1/prepare_author_library.py
+  - src/merlin/experiments/phase1/prepare_author_library.py
   - examples/gemmini/phase1/launch/resource_reservation.py
-  - src/merlin_experiments/tracking/terminal.py
-  - src/merlin_experiments/tracking/qualification_audit.py
+  - src/merlin/experiments/tracking/terminal.py
+  - src/merlin/experiments/tracking/qualification_audit.py
 ---
 
 # Joint compiler artifact evaluation
@@ -143,7 +143,7 @@ uv pip install -e '.[dev,xdsl,targetgen,experiments]'
 uv pip install -e packages/merlin-timing
 .venv/bin/merlin --help
 .venv/bin/merlin experiment list
-.venv/bin/python -m merlin_experiments.tracking.terminal --help
+.venv/bin/python -m merlin.experiments.tracking.terminal --help
 ```
 
 These commands establish a development installation, not a locked experiment.
@@ -296,7 +296,7 @@ lineage, capsule classes, L2/L3 progress and recorded performance feedback in on
 view. It does not launch tests:
 
 ```sh
-.venv/bin/python -m merlin_experiments.tracking.terminal \
+.venv/bin/python -m merlin.experiments.tracking.terminal \
   --task "${CAMPAIGN_TASK:?set the managed campaign task}" \
   --window 120 --width 160 --height 55
 ```

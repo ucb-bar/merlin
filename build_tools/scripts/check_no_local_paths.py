@@ -30,6 +30,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _source_layout  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
 RATCHET = ROOT / "build_tools" / "scripts" / "no_local_paths_ratchet.txt"
 
@@ -130,10 +133,10 @@ def _offending_segments(text: str) -> set[str]:
 
 
 def check(staged: bool) -> list[str]:
-    ratcheted = _ratcheted()
+    ratcheted = {_source_layout.policy_path(path) for path in _ratcheted()}
     violations: list[str] = []
     for rel in _tracked(staged):
-        if rel in ratcheted or rel.endswith(_SKIP_SUFFIXES):
+        if _source_layout.policy_path(rel) in ratcheted or rel.endswith(_SKIP_SUFFIXES):
             continue
         p = ROOT / rel
         if not p.is_file():
@@ -143,7 +146,10 @@ def check(staged: bool) -> list[str]:
         # owner, not to arbitrary links outside the checkout.
         if p.is_symlink():
             resolved = p.resolve(strict=False)
-            if resolved.is_relative_to(ROOT) and resolved.relative_to(ROOT).as_posix() in ratcheted:
+            if (
+                resolved.is_relative_to(ROOT)
+                and _source_layout.policy_path(resolved.relative_to(ROOT).as_posix()) in ratcheted
+            ):
                 continue
         try:
             text = p.read_text(encoding="utf-8")

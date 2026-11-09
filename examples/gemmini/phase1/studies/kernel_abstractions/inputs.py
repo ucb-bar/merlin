@@ -300,10 +300,17 @@ def same_conv_case(cb, *, batch, spatial, input_channels, output_channels):
         raise ValueError("SAME family requires one original convolution")
     command = convs[0]
     attrs, operands = command["attributes"], command["operands"]
-    if (attrs.get("kernel", [])[:2] != [3, 3] or attrs.get("stride") != [1, 1]
-        or attrs.get("dilation") != [1, 1] or attrs.get("layout") != "nhwc"
-        or attrs.get("epilogue") != ["bias_add"] or attrs.get("output_dtype") != "i8"
-        or not attrs.get("bias") or "acc_scale" in attrs or "acc_scale_by_column" in attrs):
+    if (
+        attrs.get("kernel", [])[:2] != [3, 3]
+        or attrs.get("stride") != [1, 1]
+        or attrs.get("dilation") != [1, 1]
+        or attrs.get("layout") != "nhwc"
+        or attrs.get("epilogue") != ["bias_add"]
+        or attrs.get("output_dtype") != "i8"
+        or not attrs.get("bias")
+        or "acc_scale" in attrs
+        or "acc_scale_by_column" in attrs
+    ):
         raise ValueError("SAME family requires the original uniform bias/i8 identity readout")
     if any(type(v) is not int or v <= 0 for v in (batch, spatial, input_channels, output_channels)):
         raise ValueError("SAME family requires positive static dimensions")
@@ -311,9 +318,11 @@ def same_conv_case(cb, *, batch, spatial, input_channels, output_channels):
     assert window.output_spatial == (spatial, spatial)
     tensors = result["tensors"]
     handles = {c["operands"]["dst"]: c["operands"]["src"] for c in result["commands"] if c["opcode"] == "RES_PACK"}
-    if (tensors[operands["ifm"]]["dtype"] != "i8"
+    if (
+        tensors[operands["ifm"]]["dtype"] != "i8"
         or tensors[handles[operands["weight"]]]["dtype"] != "i8"
-        or tensors[attrs["bias"]]["dtype"] != "i32"):
+        or tensors[attrs["bias"]]["dtype"] != "i32"
+    ):
         raise ValueError("SAME family requires signed-i8 operands and original i32 bias")
     tensors[operands["ifm"]]["shape"] = list(window.input_shape)
     tensors[handles[operands["weight"]]]["shape"] = [9 * input_channels, output_channels]
@@ -398,7 +407,7 @@ def prepare_inputs(
     raw_containers=(),
     profile="full",
 ):
-    from merlin_experiments.corpus.public_references import stage
+    from merlin.experiments.corpus.public_references import stage
 
     if profile not in ("full", "projection-core", "conv-composition", "conv-family-v2", "projection-family-v2"):
         raise ValueError("unknown study input profile")
@@ -483,14 +492,22 @@ def prepare_inputs(
                     conv = convs[0]
                     handles = {
                         c["operands"]["dst"]: c["operands"]["src"]
-                        for c in source_cb["commands"] if c["opcode"] == "RES_PACK"
+                        for c in source_cb["commands"]
+                        if c["opcode"] == "RES_PACK"
                     }
                     attrs, operands = conv["attributes"], conv["operands"]
-                    capsule["operation"] = {"op": "conv2d", "attributes": {
-                        **copy.deepcopy(attrs), "ifm": operands["ifm"],
-                        "weight": handles[operands["weight"]], "out": operands["dst"],
-                        "ci": attrs["kernel"][2], "kh": attrs["kernel"][0], "kw": attrs["kernel"][1],
-                    }}
+                    capsule["operation"] = {
+                        "op": "conv2d",
+                        "attributes": {
+                            **copy.deepcopy(attrs),
+                            "ifm": operands["ifm"],
+                            "weight": handles[operands["weight"]],
+                            "out": operands["dst"],
+                            "ci": attrs["kernel"][2],
+                            "kh": attrs["kernel"][0],
+                            "kw": attrs["kernel"][1],
+                        },
+                    }
                     capsule["numeric_policy"]["dtype"] = attrs["output_dtype"]
         cap_path = directory / "capsule.yaml"
         cap_path.write_text(yaml.safe_dump(capsule, sort_keys=False))
@@ -556,7 +573,8 @@ def prepare_inputs(
                         raise ValueError("conv-composition requires one NHWC bias INT8 convolution anchor")
                     conv = convs[0]
                     attrs, operands = conv["attributes"], conv["operands"]
-                    if (cb["tensors"][operands["ifm"]]["shape"] != [4, 30, 30, 128]
+                    if (
+                        cb["tensors"][operands["ifm"]]["shape"] != [4, 30, 30, 128]
                         or attrs.get("kernel") != [3, 3, 128, 128]
                         or attrs.get("stride") != [1, 1]
                         or attrs.get("padding") != [0, 0, 0, 0]
@@ -566,28 +584,46 @@ def prepare_inputs(
                         or attrs.get("epilogue") != ["bias_add"]
                         or not attrs.get("bias")
                         or cb["tensors"][attrs["bias"]] != {"shape": [128], "dtype": "i32", "role": "bias"}
-                        or cb["tensors"][operands["ifm"]]["dtype"] != "i8"):
+                        or cb["tensors"][operands["ifm"]]["dtype"] != "i8"
+                    ):
                         raise ValueError("conv-composition requires the original valid K3 NHWC bias INT8 anchor")
                 templates[name] = (source, cb, cap)
                 if profile not in ("conv-family-v2", "projection-family-v2"):
                     add(name, family, "train", text, source, cap)
     boundary = None
-    counts = ({"train": 3, "heldout": 15} if profile == "conv-family-v2" else
-              {"train": 3, "heldout": 14} if profile == "projection-family-v2" else
-              {"train": 1, "heldout": 3} if profile != "full" else {"train": 18, "heldout": 30})
+    counts = (
+        {"train": 3, "heldout": 15}
+        if profile == "conv-family-v2"
+        else {"train": 3, "heldout": 14}
+        if profile == "projection-family-v2"
+        else {"train": 1, "heldout": 3}
+        if profile != "full"
+        else {"train": 18, "heldout": 30}
+    )
     if profile == "conv-family-v2":
         source, cb, cap = templates[CONVS[1]]
         for split, shapes in (("train", CONV_FAMILY_TRAIN), ("heldout", CONV_FAMILY_HIDDEN)):
             for b, h, ci, co in shapes:
-                add(f"CV2_conv_b{b}_h{h}_ci{ci}_co{co}_same_i8", "convolution", split,
-                    emit_interface_mlir(same_conv_case(cb, batch=b, spatial=h,
-                        input_channels=ci, output_channels=co)), source, cap)
+                add(
+                    f"CV2_conv_b{b}_h{h}_ci{ci}_co{co}_same_i8",
+                    "convolution",
+                    split,
+                    emit_interface_mlir(same_conv_case(cb, batch=b, spatial=h, input_channels=ci, output_channels=co)),
+                    source,
+                    cap,
+                )
     elif profile == "projection-family-v2":
         source, cb, cap = templates[TINY[2]]
         for split, shapes in (("train", PROJECTION_FAMILY_TRAIN), ("heldout", PROJECTION_FAMILY_HIDDEN)):
             for m, k, n in shapes:
-                add(f"PF2_projection_m{m}k{k}n{n}", "projection", split,
-                    emit_interface_mlir(resize_dense(cb, m=m, k=k, ns=[n])), source, cap)
+                add(
+                    f"PF2_projection_m{m}k{k}n{n}",
+                    "projection",
+                    split,
+                    emit_interface_mlir(resize_dense(cb, m=m, k=k, ns=[n])),
+                    source,
+                    cap,
+                )
     elif profile == "projection-core":
         source, cb, cap = templates[TINY[2]]
         for m, k, n in [(32, 2048, 2048), (16, 1024, 2048), (16, 2048, 1024)]:
@@ -767,10 +803,9 @@ def prepare_suites(document, *, output, base_config, evidence_root):
     The held-out suite is a separate operator-owned evaluation root. Its public
     contract label is required by the existing suite reader, not an author grant.
     """
-    from merlin_experiments.corpus import public_scalability, scalability_intake
-    from merlin_experiments.phase0.evidence import load_exported_evidence
-    from merlin_experiments.runner import fingerprint
-
+    from merlin.experiments.corpus import public_scalability, scalability_intake
+    from merlin.experiments.phase0.evidence import load_exported_evidence
+    from merlin.experiments.runner import fingerprint
     from merlin.targetgen.target_experiment import load_target_experiment
 
     config = json.loads(Path(base_config).read_text())
@@ -809,8 +844,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for key in ("output", "corpus", "historical-kernels", "reference-manifest", "compiler-root", "oracle-study"):
         parser.add_argument("--" + key, required=True, type=Path)
-    parser.add_argument("--profile", choices=("full", "projection-core", "conv-composition",
-        "conv-family-v2", "projection-family-v2"), default="full")
+    parser.add_argument(
+        "--profile",
+        choices=("full", "projection-core", "conv-composition", "conv-family-v2", "projection-family-v2"),
+        default="full",
+    )
     parser.add_argument("--base-config", type=Path)
     parser.add_argument("--evidence-root", type=Path)
     parser.add_argument("--raw-containers", action="append", type=Path, default=[])

@@ -6,10 +6,10 @@ owner: merlin-experiments
 last_verified: 2026-11-09
 related: [component_compile_sources, component_scale_generalization, fresh_compiler_origin, component_launch_qualification, counted_copy_static_proof]
 code_refs:
-  - src/merlin_experiments/phase1/component_compile_admission.py
-  - src/merlin_experiments/phase1/component_compile_roles.py
-  - src/merlin_experiments/phase1/component_origin.py
-  - src/merlin_experiments/phase1/component_qualification.py
+  - src/merlin/experiments/phase1/component_compile_admission.py
+  - src/merlin/experiments/phase1/component_compile_roles.py
+  - src/merlin/experiments/phase1/component_origin.py
+  - src/merlin/experiments/phase1/component_qualification.py
   - src/merlin/targetgen/compile_only_execution.py
 ---
 

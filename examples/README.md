@@ -1,5 +1,10 @@
 # Examples
 
+Start with [quickstart](quickstart/README.md): a checked-in MLIR input, real
+compilation to scalar C, the equivalent Python call, and optional native Linux
+execution. It needs only Python 3.12+ and the compiler extra for compilation;
+the optional run additionally needs Linux x86-64 and a host C compiler.
+
 For target-independent frontend iteration, start with the small
 [workloads](workloads/README.md). The [native-host example](native-host/README.md)
 shows full capture, inspected LLVM lowering and numerical comparison without
@@ -86,13 +91,13 @@ a [Phase 2 handoff guide](gemmini/phase2/README.md), and a
 does not claim independently qualified accelerator deployment. The Atlas, Radiance
 and MX Gemmini maps now include their Phase 2 handoffs and whole-model entrypoints;
 they do not claim target-specific Phase 2 or whole-model qualification.
-Each target's Merlin support provider (backend, oracle, build support and tests) is
-vendored at `<example>/support/`, copied from the companion commit recorded in
-`<example>/SOURCE.yaml` (byte-identical except the files that record lists as normalized),
-and is the selected support when `MERLIN_TARGET_PATH` is unset
-(see [target resolution](../docs/guides/target_resolution.md)). It is experimenter-side:
-agent sandboxes and published candidates never see it. Compiler candidates stay in their
-own repositories; generated capsules,
+Target implementations and compiler-side support belong in explicitly selected
+OOT repositories. Historical support snapshots, where retained, have recorded
+companion provenance; their presence is not default provider selection or
+independent qualification. Fresh compiler evaluation uses its reviewed independent
+runtime and public inputs, without exposing reference compiler implementations
+to the candidate. See [target resolution](../docs/guides/target_resolution.md).
+Compiler candidates stay in their own repositories; generated capsules,
 weights and compiler artifacts stay under the configured output root. Do not copy
 private holdouts, goldens or credentials into examples.
 
@@ -156,7 +161,7 @@ from certifying it against RTL.
 
 | example | what it is |
 | --- | --- |
-| [`triton/`](triton/) | One stock `@triton.jit` kernel → an accelerator's command buffer → that accelerator's own RTL. The compiler-facing example: how a target is plugged in, how the route is chosen, and how the same kernel compiles for two different accelerators. **Needs only the repo and its venv** (RTL certification is optional). |
+| [`triton/`](triton/) | A stock `@triton.jit` kernel, target route selection and command emission. Requires the documented pinned Triton dependency and selected target inputs; RTL certification additionally needs its independent simulator. |
 
 The other two are the delivery story: compiling a PyTorch model to int8 multicore-RVV binaries for a
 **RISC-V tapeout you cannot attach to**, proving as much as possible in simulation, and packaging it so

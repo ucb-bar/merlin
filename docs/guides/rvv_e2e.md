@@ -95,8 +95,8 @@ The spike backend compiles each command buffer to a bare-metal HTIF ELF and runs
 `spike --isa=rv64gcv_zfh_zvfh`, gating the outputs against the Merlin reference:
 
 ```bash
-.venv/bin/python -m pytest merlin/tests/rvv/test_rvv_spike.py -q          # full pipeline on spike (multicore)
-.venv/bin/python -m pytest merlin/tests/runtime/test_saturn_vec.py -q -k spike
+.venv/bin/python -m pytest tests/rvv/test_rvv_spike.py -q          # full pipeline on spike (multicore)
+.venv/bin/python -m pytest tests/runtime/test_saturn_vec.py -q -k spike
 ```
 
 Verified (2026-07-16, `.env`-wired spike): `test_rvv_spike.py` = 6 passed; the saturn_vec rv64gcv cert
@@ -104,7 +104,7 @@ Verified (2026-07-16, `.env`-wired spike): `test_rvv_spike.py` = 6 passed; the s
 
 ```bash
 MERLIN_RUN_SLOW=1 .venv/bin/python -m pytest \
-  merlin/tests/rvv/test_smolvla_rvv.py merlin/tests/rvv/test_vla_models_rvv.py -q
+  tests/rvv/test_smolvla_rvv.py tests/rvv/test_vla_models_rvv.py -q
 ```
 
 Verified whole-model (2026-07-16): `test_smolvla_prefix_exact` — the smolvla vision+embed prefix lowered
@@ -123,7 +123,7 @@ board is reachable.
 
 ```bash
 MERLIN_K1_HOST=root@<board-ip> MERLIN_K1_SSH_KEY=/path/to/key \
-  .venv/bin/python -m pytest merlin/tests/rvv/test_k1.py -q
+  .venv/bin/python -m pytest tests/rvv/test_k1.py -q
 ```
 
 ## What each stage proves

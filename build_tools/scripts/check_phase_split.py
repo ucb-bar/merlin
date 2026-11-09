@@ -28,9 +28,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 
-from merlin_experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
-
-from merlin.common.paths import merlin_dir  # noqa: E402
+from merlin.common.paths import capsules_dir
+from merlin.experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
 from merlin.targetgen import cert_cost as CC  # noqa: E402
 from merlin.targetgen import phase_policy as PP  # noqa: E402
 
@@ -41,7 +40,7 @@ DEFAULT_BUDGET_S = 300.0
 
 
 def _corpus_root() -> Path:
-    return merlin_dir() / "contract" / "capsules"
+    return capsules_dir()
 
 
 def _targets(root: Path) -> list[str]:

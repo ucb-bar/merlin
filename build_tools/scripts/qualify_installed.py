@@ -43,7 +43,7 @@ _INPUT_SPEC.loader.exec_module(_INPUTS)
 SUITES = {
     "compact-current": {
         "include_experiments": False,
-        "tests_root": "merlin/tests/infra",
+        "tests_root": "tests/infra",
         "collect_selected_tests": True,
         "mandatory_test_report": "merlin.installed_mandatory_tests.v1",
         "native_test_files": ("test_public_services.py", "test_provider_contracts.py"),

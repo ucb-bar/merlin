@@ -1262,7 +1262,7 @@ def build(
     # THE MLIR RUNTIME IS BUILT BY THE COMPILER THAT BUILT THE MODEL. Its bf16 conversion helpers are
     # called by the lowered model, and the register a bf16 travels in is the CALLER's convention: the
     # clang-lowered model passes and returns it in a float register, a GCC build of the helper returns
-    # it in an integer one (merlin/runtime/abi/mlir_runtime.c says so), and every bf16 value the host
+    # it in an integer one (src/merlin/runtime/native/abi/mlir_runtime.c says so), and every bf16 value the host
     # code narrows then comes back as garbage. Measured: the text model's activations off by ~100 steps.
     runtime_object = program / "mlir_rt.o"
     system_includes = [flag for root in _c_include_dirs(recipe.compiler) for flag in ("-isystem", root)]

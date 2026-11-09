@@ -18,12 +18,12 @@ tools, generate certificates or approve spending.
 
 Deployment roots select where resources are owned and where new results go.
 `CORE_PACKAGE_ROOT` is the installed core `merlin` source directory;
-`EXPERIMENTS_PACKAGE_ROOT` is `merlin_experiments`;
+`EXPERIMENTS_PACKAGE_ROOT` is `merlin.experiments`;
 `EXPERIMENTS_NAMESPACE_ROOT` is the experiments-owned `merlin` namespace directory.
 They are source inventories, not arbitrary parent directories. `SOURCE_ROOT`
 resolves the declared target resources. The holdout catalog and Chia wrapper must
 be the actual reviewed files for this deployment. For the installed envelope,
-`CHIA_WRAPPER` is the installed `merlin_experiments.phase2.chia_envelope` source
+`CHIA_WRAPPER` is the installed `merlin.experiments.phase2.chia_envelope` source
 file, not the CLI module or a copied script; the catalog resolves it automatically.
 Output roots belong beneath
 the configured output tree; do not place private holdouts or run payloads here
@@ -32,7 +32,7 @@ under `examples/`.
 To inspect the three package roots in the same Python environment that runs Merlin:
 
 ```sh
-python -c 'from merlin.common.paths import module_source_path as p; print("core_package_root:", p("merlin").parent); print("experiments_package_root:", p("merlin_experiments").parent); print("experiments_namespace_root:", p("merlin.targetgen.capsule_runner").parent.parent)'
+python -c 'from merlin.common.paths import module_source_path as p; print("core_package_root:", p("merlin").parent); print("experiments_package_root:", p("merlin.experiments").parent); print("experiments_namespace_root:", p("merlin.targetgen.capsule_runner").parent.parent)'
 ```
 
 A wheel installation may share one `merlin` directory for core and extension
@@ -95,13 +95,13 @@ campaign=(
   --wall-budget-seconds 600 --rounds 1 --round-timeout-seconds 600
   --max-tool-calls 40 --tool-timeout-seconds 60
 )
-python -m merlin_experiments.phase2.checkpoint_cli \
+python -m merlin.experiments.phase2.checkpoint_cli \
   "${deployment[@]}" "${evidence[@]}" "${campaign[@]}" --dry-run
 ```
 
 Read the returned declaration and blockers. Dry-run does not execute the campaign
 and does not establish sandbox, simulator, Chia deployment or hardware readiness.
-Use `python -m merlin_experiments.phase2.checkpoint_cli --help` to inspect all flags.
+Use `python -m merlin.experiments.phase2.checkpoint_cli --help` to inspect all flags.
 
 ## Launch and resume only through admitted managed execution
 

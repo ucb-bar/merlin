@@ -7,8 +7,8 @@ last_verified: 2026-11-09
 related: [ordered_fma_certificates, quantized_host_optimizations]
 code_refs:
   - src/merlin/llvmlower/source_attention_frontier.py
-  - merlin/runtime/c/dot_norm_requirements.h
-  - merlin/runtime/c/prepared_dot_norms.h
+  - src/merlin/runtime/native/c/dot_norm_requirements.h
+  - src/merlin/runtime/native/c/prepared_dot_norms.h
 ---
 
 # Consumer-derived reconstruction norm requirements

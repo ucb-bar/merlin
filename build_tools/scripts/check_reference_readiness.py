@@ -12,8 +12,8 @@ from pathlib import Path
 
 
 def main(argv=None):
-    from merlin_experiments.phase1.feedback.reference_analysis import _analyze
-    from merlin_experiments.phase1.feedback.reference_readiness import assess
+    from merlin.experiments.phase1.feedback.reference_analysis import _analyze
+    from merlin.experiments.phase1.feedback.reference_readiness import assess
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, required=True)

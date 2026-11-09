@@ -94,7 +94,7 @@ unchanged selected model profile. The original dataset v1 interpretation is
 unchanged and still rejects Phase 2 training labels. Development validation
 never sets `public_feedback_eligible`, even when its statistical gates pass.
 
-`merlin_experiments.phase2.retained_public_measurement.intake` reopens retained
+`merlin.experiments.phase2.retained_public_measurement.intake` reopens retained
 public source/manifest, caller/object/ELF/input, counter-PC, console, simulator
 and complete-output artifacts before admitting historical label provenance.
 Explicit content-identical source successors establish historical byte custody
@@ -106,7 +106,7 @@ predictions or parameter selection. Appending historical development evidence
 does not expand a native model's source, mechanism or capacity domain.
 
 For an explicitly pinned batch, run
-`python -m merlin_experiments.phase2.retained_public_measurement --request requests.json --output "$TASK_DIR/out/artifacts/retained-intake"`.
+`python -m merlin.experiments.phase2.retained_public_measurement --request requests.json --output "$TASK_DIR/out/artifacts/retained-intake"`.
 The bounded request records are the keyword arguments to `intake`, including the
 original measurement path. The output must be fresh inside the explicit managed
 task. The command acquires one shared compute lease, retains unavailable rows,
@@ -258,7 +258,7 @@ payloads or simulation environments.
 ## Original Phase 1 capsule archives
 
 The archive intake accepts `merlin.phase1.capsule_timing_archive.v2` and `.v3`
-from `merlin_experiments.phase1.capsule_timing_archive`. A v2 archive prepares
+from `merlin.experiments.phase1.capsule_timing_archive`. A v2 archive prepares
 observations only when it is `timing_ready` (every passing gSIM record belongs
 to a passing capsule). A v3 archive, normally the run's
 `capsule_timing_training_<digest>.tar`, is judged per record: intake recomputes
@@ -496,9 +496,9 @@ documents, their source/tool identities, the empty-price model, reviewed counter
 scope bindings, and both raw consoles:
 
 ```sh
-python -m merlin_experiments.phase1.annotated_spike_evidence RUN \
+python -m merlin.experiments.phase1.annotated_spike_evidence RUN \
   --config OBSERVER_CONFIG --out RUN --jobs 1
-python -m merlin_experiments.phase1.capsule_timing_archive RUN --finalize
+python -m merlin.experiments.phase1.capsule_timing_archive RUN --finalize
 ```
 
 Run this auxiliary collection within the experiment's original deadline. Select the

@@ -17,9 +17,9 @@ are not selected by that derivation.
 
 The old SmolVLA-derived denoising loader was removed from Phase 0 inputs: it
 was based on a held-out validation capture and must not select Phase 0/1/2
-capsules. Its [historical capsule](../../../../merlin/contract/capsules/model/M4_smolvla_denoise_gemmini/README.md)
+capsules. Its [historical capsule](../../../../experiments/corpora/model/M4_smolvla_denoise_gemmini/README.md)
 remains available for archival inspection only.
 
-Historical capsule snapshots under `merlin/contract/capsules/model/` remain
+Historical capsule snapshots under `experiments/corpora/model/` remain
 inspectable, but verified runs select only the newly generated release bundle.
 Generated capsules should be read from the run artifact, not edited here.

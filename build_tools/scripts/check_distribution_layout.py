@@ -30,6 +30,9 @@ def audit(wheels: list[Path]) -> list[str]:
                         "merlin/_data/contract/capsules/",
                         "merlin/contract/capsules/",
                         "merlin_experiments/_data/contract/capsules/",
+                        "experiments/corpora/",
+                        "merlin/resources/contracts/capsules/",
+                        "merlin/resources/corpora/",
                     )
                 ):
                     errors.append(f"historical capsule corpus shipped in {distribution}: {name}")
@@ -133,7 +136,7 @@ def audit_sources(wheels: list[Path], root: Path) -> list[str]:
         *sorted((root / "examples").glob("*/pyproject.toml")),
     ]
     for project in projects:
-        metadata = tomllib.loads(project.read_text())
+        metadata = tomllib.loads(project.read_text(encoding="utf-8"))
         name = metadata["project"]["name"].replace("-", "_").lower()
         if name in owners:
             errors.append(f"duplicate source distribution: {name}")
@@ -176,22 +179,32 @@ def audit_resources(archive: zipfile.ZipFile, root: Path) -> list[str]:
     manifest = root / "build_tools/package_resources.json"
     if not manifest.is_file():
         return []  # Historical and synthetic source layouts have no curated data manifest.
-    document = json.loads(manifest.read_text())
+    document = json.loads(manifest.read_text(encoding="utf-8"))
     names = document.get("files")
-    if document.get("version") != 1 or not isinstance(names, list) or not names:
+    if document.get("version") != 2 or not isinstance(names, list) or not names:
         return ["public resource manifest is unsupported or empty"]
     expected = {}
     for name in names:
         if not isinstance(name, str):
             return ["public resource manifest contains a non-path member"]
         path = Path(name)
-        if path.is_absolute() or ".." in path.parts or "\\" in name or not name.startswith("merlin/"):
+        if (
+            path.is_absolute()
+            or ".." in path.parts
+            or "\\" in name
+            or not name.startswith(("src/merlin/resources/", "src/merlin/runtime/native/"))
+        ):
             return [f"public resource escapes its canonical owner: {name}"]
-        member = "merlin/_data/" + name.removeprefix("merlin/")
+        member = name.removeprefix("src/")
         if member in expected:
             return [f"duplicate public resource: {name}"]
         expected[member] = root / path
-    actual = {name for name in archive.namelist() if name.startswith("merlin/_data/") and not name.endswith("/")}
+    actual = {
+        name
+        for name in archive.namelist()
+        if name.startswith(("merlin/resources/", "merlin/runtime/native/", "merlin/_data/"))
+        and not name.endswith(("/", ".py", ".pyc"))
+    }
     errors = [f"required public resource missing: {name}" for name in sorted(expected.keys() - actual)]
     errors.extend(f"unreviewed public resource shipped: {name}" for name in sorted(actual - expected.keys()))
     for name in sorted(expected.keys() & actual):

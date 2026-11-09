@@ -21,7 +21,7 @@
 # tile geometry / MRF depth / int8+fp8 datapaths from the OuterProductUnit state manifest + hw.mlir, and
 # capability_manifests.derive_manifest grounds them onto the small residual (manifest_residual.yaml).
 target: saturn_opu_mxv256d128
-resources_root: merlin/experiments/capsule_bench/targets/saturn_opu
+resources_root: experiments/studies/capsule_bench/targets/saturn_opu
 numeric_profile: examples/saturn_opu/phase0/recipe.yaml
 
 rtl:
@@ -44,7 +44,7 @@ hardware_spec:
 # (CONFIG_EX / CONFIG_LD / CONFIG_ST / PRELOAD / COMPUTE_PRELOADED / MVIN / MVOUT / FLUSH) belonging to a
 # RoCC machine, and this one is a command buffer over one-hot op ports with no instruction decode at all
 # -- so no submission could satisfy them, however good. Readiness section H now fails on exactly that.
-capsule_corpus: merlin/contract/capsules/saturn_opu/isa
+capsule_corpus: experiments/corpora/saturn_opu/isa
 
 # The OPU's RTL oracle is the mlc arc OuterProductUnit cosim, NOT spike/verilator and not the systolic
 # arc MXU command-buffer model.
@@ -78,7 +78,7 @@ answer_surfaces:
 # what the host lane does cannot reason about where the boundary should fall), and the surface that
 # would let it be CHANGED is denied to every arm.
 #
-# VERIFIED BY CONTENT, NOT BY BRANCH NAME — the same discipline as merlin/contract/hardware_pins.yaml.
+# VERIFIED BY CONTENT, NOT BY BRANCH NAME — the same discipline as src/merlin/resources/contracts/hardware_pins.yaml.
 # `branch` is informational: branches move, and the same branch name on a fork and on upstream are
 # different histories. `requires_paths` names the files whose PRESENCE is what the lane actually is, so
 # a checkout that is the right repo on a plausible branch and missing the schedule is caught.
@@ -90,7 +90,7 @@ host_lane:
   repo_canonical: https://github.com/ucb-bar/rvv-mlir.git
   branch: stable/rvv_tuned_v1_d1_vfmacc_outerproduct
   # UNKNOWN, and recorded as UNKNOWN rather than defaulted: this repo publishes TO that remote (see
-  # merlin/targets/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
+  # experiments/reference-data/target-inputs/publish.yaml) and does not vendor a checkout of it, so no commit sha for the branch
   # is readable here. The pin is therefore carried by `package` + `requires_paths` below, which is a
   # CONTENT check over the bytes this experiment actually reads. Fill the sha in the moment a checkout
   # exists; never invent one.

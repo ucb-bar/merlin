@@ -218,7 +218,7 @@ def _controller_rows(root: Path) -> list[dict[str, Any]]:
     root = unresolved.resolve()
     from merlin.common.access import PYTHON_SOURCE_ROOTS
 
-    prefixes = [(Path("merlin/schemas"), False)]
+    prefixes = [(Path("src/merlin/resources/schemas"), False)]
     seen = set()
     for declared in PYTHON_SOURCE_ROOTS:
         source = root / declared.path

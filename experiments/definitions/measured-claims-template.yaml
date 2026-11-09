@@ -15,7 +15,7 @@ phases:
       measurement_root: ../operator-output/measurements
       holdout_catalog: ../operator-inputs/holdout-catalog.yaml
       core_package_root: ../operator-install/core/merlin
-      experiments_package_root: ../operator-install/merlin_experiments
+      experiments_package_root: ../operator-install/merlin.experiments
       experiments_namespace_root: ../operator-install/experiments/merlin
       managed_native_endpoint: ../operator-runtime/supervisor.sock
       suite: OPERATOR_SUITE

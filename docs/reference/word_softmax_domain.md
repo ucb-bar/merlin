@@ -7,8 +7,8 @@ last_verified: 2026-11-09
 related: [ordered_fma_certificates, quantized_host_optimizations]
 code_refs:
   - src/merlin/llvmlower/source_attention_frontier.py
-  - merlin/runtime/c/prepared_softmax_interval.h
-  - merlin/runtime/c/monotone_bit_polynomial.h
+  - src/merlin/runtime/native/c/prepared_softmax_interval.h
+  - src/merlin/runtime/native/c/monotone_bit_polynomial.h
 ---
 
 # Prepared word-space softmax interval domain

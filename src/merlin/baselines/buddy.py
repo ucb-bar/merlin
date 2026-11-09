@@ -16,7 +16,7 @@ Pipeline (per model, fp32 first)::
       -> off-board correctness: buddy-opt host lowering + mlir-runner JIT vs golden.npy
       -> on-board timing (board_lock): MERLIN_E2E/MERLIN_REGION -> profile   [fail-closed if down]
 
-Why reuse merlin's C runtime (``merlin/runtime/c`` + ``llvmlower.c_runtime``): both merlin and buddy
+Why reuse merlin's C runtime (``src/merlin/runtime/native/c`` + ``llvmlower.c_runtime``): both merlin and buddy
 lower through the *standard* MLIR LLVM conversion with ``-llvm-request-c-wrappers``, so buddy's object
 exports the SAME ``_mlir_ciface_forward(ptr, ptr, ...)`` bare-pointer/memref-descriptor ABI merlin's
 ``merlin_invoke`` calls. The ONLY thing that differs between the merlin K1 build and the buddy K1
@@ -40,13 +40,13 @@ from pathlib import Path
 
 from merlin.baselines import bundle as _bundle
 from merlin.baselines import k1_exec, k1_workload_policy, profile, rvv_audit
-from merlin.baselines.external_source import checkout, optional_checkout
 from merlin.baselines.buddy_harness import (
     _buddy_model_call_c,
     _m2m_harness_c,
     _native_harness_c,
 )  # noqa: F401 -- historical helper identities
 from merlin.baselines.contract import BaselineResult, RegionProfile, ScalarFallback
+from merlin.baselines.external_source import checkout, optional_checkout
 from merlin.common import artifacts
 from merlin.common import proc as _proc
 from merlin.common.paths import build_dir, python_import_roots, runtime_dir
@@ -61,6 +61,7 @@ _BUDDY_MMAP_WEIGHTS_THRESHOLD = 256 * 1024 * 1024
 
 # --- buddy-mlir build layout (gitignored; built by this arm) ------------------------------------
 _BUILD_ROOT = build_dir() / "baselines" / "buddy"
+
 
 def buddy_source_dir() -> Path:
     return checkout("buddy_mlir")
@@ -118,15 +119,21 @@ def buddy_available() -> bool:
     SAME LLVM fork's ``llc`` (not the repo's IREE clang-23, whose IR parser rejects the fork's
     ``float f0x…`` hex-float literals — a version-skew we sidestep by staying inside one build).
     """
-    return (optional_checkout("buddy_mlir") is not None and buddy_opt() is not None
-            and mlir_translate() is not None and llvm_llc() is not None)
+    return (
+        optional_checkout("buddy_mlir") is not None
+        and buddy_opt() is not None
+        and mlir_translate() is not None
+        and llvm_llc() is not None
+    )
 
 
 def buddy_commit() -> str:
     try:
         r = subprocess.run(
             ["git", "-C", str(buddy_source_dir()), "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         return r.stdout.strip() if r.returncode == 0 else ""
     except Exception:  # noqa: BLE001

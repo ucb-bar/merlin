@@ -55,7 +55,7 @@ def _element_bytes(dtype: object) -> int:
     except KeyError as exc:
         raise _context().OracleUnavailable(
             f"cannot size output dtype {dtype!r}: it is neither a format registered in "
-            f"merlin/schemas/quant_formats.registry.yaml nor a plain machine width, so how many bytes "
+            f"src/merlin/resources/schemas/quant_formats.registry.yaml nor a plain machine width, so how many bytes "
             f"one element occupies is UNKNOWN — register the format rather than assuming a width"
         ) from exc
     if bits % 8:

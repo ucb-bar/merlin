@@ -9,13 +9,13 @@ code_refs:
   - src/merlin/targetgen/gsim_emulator.py
   - src/merlin/runtime/backends/chipyard_rocc.py
   - build_tools/scripts/package_worker_inputs.py
-  - src/merlin_experiments/phase0/rtl_intake.py
-  - src/merlin_experiments/runner.py
-  - src/merlin_experiments/cli.py
-  - src/merlin_experiments/phase1/timing.py
-  - src/merlin_experiments/phase1/preflight.py
-  - src/merlin_experiments/phase1/canary.py
-  - src/merlin_experiments/phase1/providers/codex_runtime.py
+  - src/merlin/experiments/phase0/rtl_intake.py
+  - src/merlin/experiments/runner.py
+  - src/merlin/experiments/cli.py
+  - src/merlin/experiments/phase1/timing.py
+  - src/merlin/experiments/phase1/preflight.py
+  - src/merlin/experiments/phase1/canary.py
+  - src/merlin/experiments/phase1/providers/codex_runtime.py
   - src/merlin/runtime/backends/rocc_selection.py
 ---
 
@@ -251,7 +251,7 @@ To exercise ordinary startup on the worker and stop before authoring, invoke the
 installed continuation with the released descriptor, seal and regenerated bundle:
 
 ```sh
-python -m merlin_experiments.phase1 \
+python -m merlin.experiments.phase1 \
   --descriptor "$RELEASE/payload/experiment/target_experiment.yaml" \
   --repo "$OPERATOR_ROOT" --bundle "$BUNDLE" \
   --bundle-manifest "$RELEASE/payload/experiment/input_bundles/$BUNDLE/input_bundle_manifest.yaml" \

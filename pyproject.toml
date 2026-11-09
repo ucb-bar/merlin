@@ -116,7 +116,7 @@ merlin-surface = "merlin.kernels.cli_surface:main"
 # and were tested; nothing could RUN them, so the *_pretransposed bundles on disk had been
 # hand-driven from a REPL. See src/merlin/baselines/pretranspose_cli.py for the
 # decided precedence against the conflicting `fuse_transpose_b` schedule lever.
-merlin-compile = "merlin.service_cli:compile_main"
+merlin-compile = "merlin.compile_cli:main"
 merlin-liveness = "merlin.liveness.cli:main"
 # Post-run only: verify one queue-owned warm FireSim run from content-bound logs. This command
 # never submits work or invokes FireSim; target/workload adapters supply the correctness policy.
@@ -125,15 +125,15 @@ merlin-firesim-receipt = "merlin.perf.firesim_receipt:main"
 merlin-deployment-check = "merlin.perf.deployment_admissibility:main"
 merlin-compile-kernel = "merlin.triton.cli:main"
 
-merlin-phase2-public-diagnostic = "merlin_experiments.phase2.public_diagnostic_launch:main"
-merlin-experiment = "merlin_experiments.cli:main"
+merlin-phase2-public-diagnostic = "merlin.experiments.phase2.public_diagnostic_launch:main"
+merlin-experiment = "merlin.experiments.cli:main"
 merlin-evaluation-cohort = "merlin.targetgen.evaluation_cohort:main"
-merlin-phase2-timing-study = "merlin_experiments.phase2.timing_study:main"
-merlin-phase2-normal-timing-study = "merlin_experiments.phase2.ordinary_timing_study:main"
-merlin-phase2-timing-readiness = "merlin_experiments.phase2.timing_domain_readiness:main"
-merlin-dse = "merlin_dse.cli:search_main"
-merlin-design-pressure = "merlin_dse.cli:pressure_main"
-merlin-dse-guidance = "merlin_dse.cli:guidance_main"
+merlin-phase2-timing-study = "merlin.experiments.phase2.timing_study:main"
+merlin-phase2-normal-timing-study = "merlin.experiments.phase2.ordinary_timing_study:main"
+merlin-phase2-timing-readiness = "merlin.experiments.phase2.timing_domain_readiness:main"
+merlin-dse = "merlin.analysis.dse.search.cli:main"
+merlin-design-pressure = "merlin.analysis.dse.pressure.cli:main"
+merlin-dse-guidance = "merlin.analysis.dse.guidance.cli:main"
 merlin-kernel-reconstruct = "merlin.mining.reconstruction_cli:main"
 merlin-kernel-report = "merlin.mining.report:main"
 merlin-kernel-mine = "merlin.mining.mine:main"
@@ -159,7 +159,7 @@ merlin-recovery = "merlin.perf.recovery:main"
 "merlin.linux" = "merlin.runtime.linux"
 
 [project.entry-points."merlin.exact_offload_release"]
-reviewed_phase0 = "merlin_experiments.corpus.release:verify_exact_offload_binding"
+reviewed_phase0 = "merlin.experiments.corpus.release:verify_exact_offload_binding"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -167,13 +167,13 @@ include-package-data = false
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["merlin", "merlin.*", "merlin_experiments", "merlin_experiments.*", "merlin_dse", "merlin_dse.*"]
-exclude = ["merlin._data", "merlin._data.*"]
+include = ["merlin", "merlin.*"]
+# Resource subdirectories are data, never discovered Python packages. Their
+# reviewed files enter both archives only through package_resources.json.
+exclude = ["merlin._data", "merlin._data.*", "merlin.resources.*", "merlin.runtime.native", "merlin.runtime.native.*"]
 
-# Bundled read-only data (schemas + agent prompts) copied into merlin/_data at build time by the
-# build_py hook in setup.py, so `pip install merlin` resolves them via importlib.resources with no
-# checkout. The _data dir is gitignored (regenerated per build); in-repo, data_path() reads the
-# canonical merlin/{schemas,prompts} instead.
+# Native helpers and reviewed resources retain their package-owned source layout.
+# setup.py admits public resources through build_tools/package_resources.json.
 [tool.setuptools.package-data]
 merlin = [
     "perf/spike_command_recorder.cc",
@@ -241,13 +241,13 @@ merlin = [
     "runtime/backends/xnnpack_host/xnn_gemm_shim.c",
 ]
 
-"merlin_experiments" = ["resources/*.json", "phase1/fresh10_profile_data.json", "phase1/author_skills/*/SKILL.md", "phase1/author_skills/*/scripts/*.py", "phase1/author_skills/*/reference/*.md"]
-"merlin_experiments.execution" = ["container_guardian.c"]
+"merlin.experiments" = ["resources/*.json", "phase1/fresh10_profile_data.json", "phase1/author_skills/*/SKILL.md", "phase1/author_skills/*/scripts/*.py", "phase1/author_skills/*/reference/*.md"]
+"merlin.experiments.execution" = ["container_guardian.c"]
 "merlin.baselines" = ["executorch_spacemit_toolchain.cmake", "exo_kernels/autosched_bench.c", "exo_kernels/fgemm_nk.c", "exo_kernels/igemm_bench.c", "exo_kernels/igemm_nk.c", "exo_kernels/igemm_nk_bench.c", "exo_kernels/llama_glue.c", "exo_kernels/llama_glue_autosched.c", "exo_kernels/llama_glue_int8.c", "tvm_board/board_kernel_timer.cc", "tvm_board/board_runner.cc", "tvm_board/build_board_runner.sh"]
 "merlin.compare" = ["paper_k1_board_probe.c", "paper_model_abi_runner.c"]
 
 [tool.pytest.ini_options]
-testpaths = ["merlin/tests"]
+testpaths = ["tests"]
 # Developer gates are checkout-local modules; collection must not depend on
 # another test having added the repository root to sys.path first.
 pythonpath = ["."]
@@ -258,7 +258,7 @@ markers = [
 ]
 # Per-test wall-clock ceiling (pytest-timeout, in [dev]). A test that blocks in a subprocess
 # (compile/sim/board that never returns when its external toolchain is mis/unconfigured) FAILS at
-# this bound instead of hanging the whole run â€” so `pytest merlin/tests` always completes. `signal`
+# this bound instead of hanging the whole run â€” so `pytest tests` always completes. `signal`
 # fires SIGALRM in the main thread, which interrupts a blocked subprocess.wait(). Generous so real
 # heavy compiles (e.g. whole-model lowering) finish well within it; only true hangs trip it.
 timeout = 900
@@ -290,8 +290,8 @@ exclude = ["third_party", "out", ".venv"]
 # generate_corpus.py promises a re-run is byte-stable against the committed file -- so restyling one
 # changes the benchmark between arms and breaks the generator's own stability guarantee at once.
 extend-exclude = [
-    "merlin/contract/capsules/**/capsule.pytorch.py",
-    "merlin/contract/capsules/**/capsule.loader_deps/**",
+    "experiments/corpora/**/capsule.pytorch.py",
+    "experiments/corpora/**/capsule.loader_deps/**",
     # Vendored target support: byte-identical copies of companion commits, recorded (with their git
     # tree ids) in examples/<target>/SOURCE.yaml. Restyling one would make it a different tree from
     # the source it claims to be; its style belongs to the companion it was copied from.
@@ -319,9 +319,9 @@ exclude = [
     "build_tools/scripts/gen_saturn_opu_rvv_contract.py",
     "src/merlin/llvmlower/requant_fuse.py",
     # Its markers sit inside fixture STRINGS; pinning them would change what the test feeds the gate.
-    "merlin/tests/infra/test_overfit_gate_regression.py",
+    "tests/infra/test_overfit_gate_regression.py",
     # GSIM engine build scripts a sealed certificate was built with; kept byte-identical to that build.
-    "merlin/contract/external/gsim/model_build/**",
+    "src/merlin/resources/contracts/external/gsim/model_build/**",
     # Markdown carries its own gates (docs freshness, doc paths), and task text an agent reads is a
     # benchmark input, so a formatter does not get to restyle the code blocks inside it.
     "**/*.md",

@@ -68,7 +68,7 @@ instruction has been proved against RTL or executed on hardware.
 This extra input is intentionally separate from the minimal SW spec: an author writes
 software-visible behavior once, the OOT owner describes instruction behavior once,
 and Phase 0 binds both to exact hardware evidence. The schema is
-[`instruction_semantics.schema.yaml`](../../merlin/schemas/instruction_semantics.schema.yaml).
+[`instruction_semantics.schema.yaml`](../../src/merlin/resources/schemas/instruction_semantics.schema.yaml).
 
 The Atlas and Gemmini examples use directly named operations and transfers; authors
 do not need IDs, `signature` wrappers or duplicate copy endpoint constraints.

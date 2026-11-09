@@ -17,10 +17,10 @@ from pathlib import Path
 
 import launch_phase1 as P
 import yaml
-from merlin_experiments.phase1 import launch_config as L
-from merlin_experiments.phase1.feedback import capsule_certification as C
 
 from merlin.common.digest import sha256_file
+from merlin.experiments.phase1 import launch_config as L
+from merlin.experiments.phase1.feedback import capsule_certification as C
 
 
 def pin(path):
@@ -52,7 +52,7 @@ def prepare(args, *, started):
     descriptor = fresh.path(fresh.document["inputs"]["descriptor"])
     qualification = getattr(args, "capsule_qualification", None)
     if qualification is not None:
-        from merlin_experiments.phase1.feedback import capsule_qualification_handoff as Q
+        from merlin.experiments.phase1.feedback import capsule_qualification_handoff as Q
 
         technical = Q.verify(qualification, descriptor=descriptor)
         if technical.get("external_validation_ready") is not True:

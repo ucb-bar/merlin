@@ -12,13 +12,13 @@ runtime_adapter_plan, zephyr_plan, llvm_extension_plan.
 
 ## What does not belong here
 
-- File writing (that is `generate/`) or schema definitions (those are `merlin/schemas/`).
+- File writing (that is `generate/`) or schema definitions (those are `src/merlin/resources/schemas/`).
 - Over-claiming: real-target output must be flagged `confidence` + `requires_human_review`.
 
 ## Interfaces
 
 - Inputs: an `Evidence` object and (for plan synthesis) the synthesized target_contract.
-- Outputs validate against the matching `merlin/schemas/*.schema.yaml`.
+- Outputs validate against the matching `src/merlin/resources/schemas/*.schema.yaml`.
 
 ## Invariants
 

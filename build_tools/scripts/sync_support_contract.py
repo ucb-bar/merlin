@@ -3,7 +3,7 @@
 
 A support provider must carry its contract inside its own root (``providers.contained_resource``),
 and a data-only provider's contract is exactly the reviewed ``examples/<example>/target/contracts``
-file plus the provider-owned ``plugin`` block (``merlin/tests/gemmini/test_support_contract_agrees.py``
+file plus the provider-owned ``plugin`` block (``tests/gemmini/test_support_contract_agrees.py``
 holds that equality). This rewrites each provider copy as the reviewed bytes with the provider's
 CURRENT ``plugin`` block inserted after the reviewed ``family:`` line, so a reviewed-contract edit is
 propagated by running one command instead of by hand-copying YAML::

@@ -6,7 +6,7 @@ owner: merlin-experiments
 last_verified: 2026-11-09
 related: [phase2_public_diagnostic_launch, phase2_archive_screen]
 code_refs:
-  - src/merlin_experiments/phase2/exploratory_development_priority.py
+  - src/merlin/experiments/phase2/exploratory_development_priority.py
 ---
 
 # Exploratory next-parent guidance

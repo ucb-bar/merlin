@@ -6,13 +6,13 @@ owner: merlin-experiments
 last_verified: 2026-11-09
 related: [merlin_supplied_host_placement, spike_timing]
 code_refs:
-  - src/merlin_experiments/phase2/metric_scope.py
-  - src/merlin_experiments/phase2/public_program_measurement.py
-  - src/merlin_experiments/phase0/form_perf.py
-  - src/merlin_experiments/phase0/capacity_families.py
-  - src/merlin_experiments/phase2/claims/capacity.py
-  - src/merlin_experiments/phase2/roofline_priority.py
-  - src/merlin_experiments/phase2/calibration_validation.py
+  - src/merlin/experiments/phase2/metric_scope.py
+  - src/merlin/experiments/phase2/public_program_measurement.py
+  - src/merlin/experiments/phase0/form_perf.py
+  - src/merlin/experiments/phase0/capacity_families.py
+  - src/merlin/experiments/phase2/claims/capacity.py
+  - src/merlin/experiments/phase2/roofline_priority.py
+  - src/merlin/experiments/phase2/calibration_validation.py
   - src/merlin/perf/movement_peak.py
   - src/merlin/perf/staged_roofline.py
 ---

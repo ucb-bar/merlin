@@ -17,6 +17,7 @@ genuinely undeducible: nothing in a fact bundle says a kernel is called ``foo_ke
 refuses rather than guessing — a substituted default here produces a harness that compiles and then
 fails to link, with the error pointing at the linker instead of at the missing declaration.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -44,11 +45,9 @@ class HarnessAbi:
     #: Extra declarations the harness emits before ``main`` (e.g. an ``extern`` for the entry symbol).
     extern_decls: tuple[str, ...] = field(default_factory=tuple)
 
-    def declarations(self, *, entry_symbol: str | None = None,
-                     extern_decls: tuple[str, ...] | None = None) -> str:
+    def declarations(self, *, entry_symbol: str | None = None, extern_decls: tuple[str, ...] | None = None) -> str:
         """The include + extern preamble, optionally for a verified alternate entry."""
-        lines = [f'#include "{h}"' if not h.startswith("<") else f"#include {h}"
-                 for h in self.includes]
+        lines = [f'#include "{h}"' if not h.startswith("<") else f"#include {h}" for h in self.includes]
         symbol = entry_symbol or self.entry_symbol
         declarations = extern_decls
         if declarations is None:
@@ -72,9 +71,10 @@ class HarnessAbi:
         """
         if not self.fence_symbol:
             raise HarnessAbiError(
-                "a warm cycle profile requires the target harness ABI to declare "
-                "an explicit completion/fence symbol")
+                "a warm cycle profile requires the target harness ABI to declare an explicit completion/fence symbol"
+            )
         from merlin.perf.warm_profile_harness import TargetInvocationHooks
+
         symbol = entry_symbol or self.entry_symbol
         if not isinstance(symbol, str) or not symbol:
             raise HarnessAbiError("a warm cycle profile requires a nonempty entry symbol")
@@ -102,18 +102,22 @@ def from_contract(contract: dict[str, Any], *, target: str) -> HarnessAbi:
         raise HarnessAbiError(
             f"target {target!r} declares no `harness_abi` block in its target contract; the runner "
             f"cannot write a harness without the entry symbol it should call. Add the block (see "
-            f"merlin/schemas/target_contract.schema.yaml) rather than relying on a default.")
+            f"src/merlin/resources/schemas/target_contract.schema.yaml) rather than relying on a default."
+        )
     entry = block.get("entry_symbol")
     if not isinstance(entry, str) or not entry:
-        raise HarnessAbiError(f"target {target!r}: harness_abi.entry_symbol is required and must name "
-                              f"the symbol the package's lowered MLIR defines the kernel under")
+        raise HarnessAbiError(
+            f"target {target!r}: harness_abi.entry_symbol is required and must name "
+            f"the symbol the package's lowered MLIR defines the kernel under"
+        )
     fence = block.get("fence_symbol") or None
     metric = block.get("cycle_window_metric") or None
     for name, value in (("fence_symbol", fence), ("cycle_window_metric", metric)):
         if value is not None and not isinstance(value, str):
             raise HarnessAbiError(f"target {target!r}: harness_abi.{name} must be a string or absent")
     return HarnessAbi(
-        entry_symbol=entry, fence_symbol=fence,
+        entry_symbol=entry,
+        fence_symbol=fence,
         includes=tuple(block.get("includes") or ()),
         cycle_window_metric=metric,
         extern_decls=tuple(block.get("extern_decls") or ()),
@@ -131,11 +135,9 @@ def lowered_plan_abi(contract: dict[str, Any], *, target: str) -> dict:
         runner = contract.get("runner") or {}
         selected = runner.get(runner.get("backend"), {})
         flags = (selected.get("toolchain") or {}).get("cflags", ())
-        if any(isinstance(flag, str) and flag.startswith(("-march=rv32", "-march=rv64"))
-               for flag in flags):
+        if any(isinstance(flag, str) and flag.startswith(("-march=rv32", "-march=rv64")) for flag in flags):
             instruction = "fence"
-    return {"entry_symbol": abi.entry_symbol, "completion_symbol": abi.fence_symbol,
-            "completion_asm": instruction}
+    return {"entry_symbol": abi.entry_symbol, "completion_symbol": abi.fence_symbol, "completion_asm": instruction}
 
 
 def for_target(target: str) -> HarnessAbi:
@@ -148,7 +150,7 @@ def for_target(target: str) -> HarnessAbi:
 #: The kernel ABI a runner-owned caller uses unless the target contract selects another: the logical
 #: ABI (``logical_kernel_abi`` in the OOT backend contract), dense logical tensors in one pointer order.
 LOGICAL_KERNEL_ABI_VERSION = 2
-#: The version-1 resident ABI (``merlin/contract/legacy/kernel_abi_v1.yaml``). Only a support package
+#: The version-1 resident ABI (``src/merlin/resources/contracts/legacy/kernel_abi_v1.yaml``). Only a support package
 #: whose own harness implements it selects it, with ``harness_abi.kernel_abi_version: 1``.
 LEGACY_KERNEL_ABI_VERSION = 1
 

@@ -5,7 +5,7 @@ The interface grammar is the *frozen, versioned* input format the experiment ABI
 out-of-tree target-backend package. It is a small, regular MLIR module using a custom
 ``merlin_iface`` dialect — regular enough that a few-line Python regex parser reads it AND a
 registered C++ MLIR dialect parses it natively (``mlir-opt``). The canonical spec is
-``merlin/contract/interface_grammar.md``; this module is the reference Python implementation.
+``src/merlin/resources/contracts/interface_grammar.md``; this module is the reference Python implementation.
 
 Design constraints (see the plan / contract):
 - Decoupled from xDSL: emission is plain string templating; parsing is plain regex. No xDSL

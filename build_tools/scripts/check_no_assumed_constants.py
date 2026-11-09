@@ -21,7 +21,7 @@ loop bounds are legitimate. It flags the sharp, dangerous case only:
 Detected structurally with ``ast`` (no regex on itself). In-scope trees:
 
   * ``merlin/python/merlin/**``
-  * ``merlin/contract/**``
+  * ``src/merlin/resources/contracts/**``
   * ``build_tools/scripts/**``
 
 Allowed exceptions (checked in order):
@@ -53,7 +53,7 @@ import _source_layout  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 ALLOW_FILE = ROOT / "build_tools" / "scripts" / "assumed_constants_allowlist.txt"
-SCAN_ROOTS = (*_source_layout.SOURCE_SCAN_ROOTS, "merlin/contract", "build_tools/scripts")
+SCAN_ROOTS = (*_source_layout.SOURCE_SCAN_ROOTS, "src/merlin/resources/contracts", "build_tools/scripts")
 EXCLUDE_FRAGMENTS = ("/_data/",)
 INLINE_MARKER = "# derived-ok:"  # fmt: skip
 

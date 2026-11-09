@@ -12,9 +12,8 @@ import json
 import math
 from pathlib import Path
 
-from merlin_experiments.phase1.feedback.joint_performance_report import compare
-
 from merlin.common.tree_hash import hash_tree
+from merlin.experiments.phase1.feedback.joint_performance_report import compare
 
 PLAN = "private.kernel_abstractions.evaluation_plan.v1"
 FROZEN = "private.kernel_abstractions.frozen_sources.v1"
@@ -223,8 +222,7 @@ def plan(runs_path, panel_path, inputs_path, frozen_path, output, *, timeout_s=9
             )
         )
     # Reuse the ordinary descriptor/suite validator, including full source-tree hashes.
-    from merlin_experiments.corpus.public_scalability import selected as selected_suite
-
+    from merlin.experiments.corpus.public_scalability import selected as selected_suite
     from merlin.targetgen.target_experiment import load_target_experiment
 
     suites = {}
@@ -854,8 +852,13 @@ def main():
     finish = sub.add_parser("collect")
     finish.add_argument("--plan", type=Path, required=True)
     finish.add_argument("--out", type=Path, required=True)
-    finish.add_argument("--physical-collection", type=Path, action="append", default=[],
-                        help="private exact-custody physical collection; repeat for multiple images")
+    finish.add_argument(
+        "--physical-collection",
+        type=Path,
+        action="append",
+        default=[],
+        help="private exact-custody physical collection; repeat for multiple images",
+    )
     agent = sub.add_parser("progress")
     agent.add_argument("--runs", type=Path, required=True)
     agent.add_argument("--baseline-collection", type=Path)

@@ -8,7 +8,7 @@ related: []
 code_refs:
   - src/merlin/llvmlower/frontier_point_cells.py
   - src/merlin/llvmlower/source_attention_frontier.py
-  - merlin/runtime/c/bf16_quant_frontier.h
+  - src/merlin/runtime/native/c/bf16_quant_frontier.h
 ---
 
 # Finite point observations at the BF16 quantization frontier

@@ -7,7 +7,7 @@ import importlib
 
 _COMMANDS = {
     "experiment": (
-        "merlin_experiments.cli",
+        "merlin.experiments.cli",
         "merlin[experiments]",
         "derive tests, author compilers, optimize performance",
     ),

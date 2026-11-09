@@ -3,7 +3,7 @@
 The C++ OOT backend and the Merlin/xDSL infra must agree on ONE dialect spec. Rather than hand-write
 (and hand-sync) a C++ ODS dialect, this emits the canonical **IRDL** description of `merlin_iface` —
 which `mlir-opt --irdl-file=...` registers DYNAMICALLY. The same IRDL is the portable spec the
-xDSL side already mirrors (the contract grammar in `merlin/contract/interface_grammar.md`).
+xDSL side already mirrors (the contract grammar in `src/merlin/resources/contracts/interface_grammar.md`).
 
 WHAT THIS BUYS, AND WHAT IT DOES NOT (measured 2026-09-04, LLVM-23, 509 tracked capsules):
   * A dynamically-registered dialect has NO custom parser, so mlir-opt reads only the GENERIC form
@@ -39,7 +39,9 @@ or silently produces a constraint that cannot fail:
 
 Usage: python -m merlin.targetgen.rtl.gen_iface_irdl [--out <irdl.mlir>] [--verify]
 """
+
 from __future__ import annotations
+
 import argparse
 import hashlib
 import json
@@ -47,6 +49,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
 from merlin.common.paths import artifacts_dir, repo_root
 
 _REPO = repo_root()
@@ -54,9 +57,9 @@ _LLVM = _REPO / "third_party" / "llvm-install"
 _T2I = _LLVM / "bin" / "tblgen-to-irdl"
 _MLIROPT = _LLVM / "bin" / "mlir-opt"
 # merlin_iface is the SHARED contract dialect (not target-specific) — its pinned spec lives next to
-# interface_grammar.md in merlin/contract/, NOT under a per-target dir.
-_DEFAULT_OUT = _REPO / "merlin/contract/merlin_iface.irdl.mlir"
-_CAPSULES = _REPO / "merlin/contract" / "capsules"
+# interface_grammar.md in src/merlin/resources/contracts/, NOT under a per-target dir.
+_DEFAULT_OUT = _REPO / "src/merlin/resources/contracts/merlin_iface.irdl.mlir"
+_CAPSULES = _REPO / "src/merlin/resources/contracts" / "capsules"
 
 
 # tblgen-to-irdl renders every `StrAttr` constraint as
@@ -96,28 +99,31 @@ def _fix_string_base_sigil(raw: str) -> str:
 _CPRED_LOWERING: dict[str, tuple[str | None, str]] = {
     # ODS `AnyRankedTensor`. `builtin.tensor` IS RankedTensorType exactly: an unranked tensor has a
     # different base name (`builtin.unranked_tensor`), so rankedness survives the translation.
-    "(::llvm::isa<::mlir::RankedTensorType>($_self))":
-        ('irdl.base "!builtin.tensor"', "ranked-tensor-ness"),
+    "(::llvm::isa<::mlir::RankedTensorType>($_self))": ('irdl.base "!builtin.tensor"', "ranked-tensor-ness"),
     # ODS `ArrayAttr` -- the outer half of `StrArrayAttr` and `I64ArrayAttr`.
-    "(::llvm::isa<::mlir::ArrayAttr>($_self))":
-        ('irdl.base "#builtin.array"', "array-attribute-ness"),
+    "(::llvm::isa<::mlir::ArrayAttr>($_self))": ('irdl.base "#builtin.array"', "array-attribute-ness"),
     # The inner half of `StrArrayAttr`.
     "::llvm::all_of(::llvm::cast<::mlir::ArrayAttr>($_self), [&](::mlir::Attribute attr) "
-    "{ return attr && ((::llvm::isa<::mlir::StringAttr>(attr))); })":
-        (None, "each element of the array must be a string -- IRDL has no element-wise constraint "
-               "over a builtin ArrayAttr"),
+    "{ return attr && ((::llvm::isa<::mlir::StringAttr>(attr))); })": (
+        None,
+        "each element of the array must be a string -- IRDL has no element-wise constraint over a builtin ArrayAttr",
+    ),
     # The inner half of `I64ArrayAttr`.
     "::llvm::all_of(::llvm::cast<::mlir::ArrayAttr>($_self), [&](::mlir::Attribute attr) "
     "{ return attr && (((::llvm::isa<::mlir::IntegerAttr>(attr))) && "
-    "((::llvm::cast<::mlir::IntegerAttr>(attr).getType().isSignlessInteger(64)))); })":
-        (None, "each element of the array must be a signless i64 -- IRDL has no element-wise "
-               "constraint over a builtin ArrayAttr"),
+    "((::llvm::cast<::mlir::IntegerAttr>(attr).getType().isSignlessInteger(64)))); })": (
+        None,
+        "each element of the array must be a signless i64 -- IRDL has no element-wise "
+        "constraint over a builtin ArrayAttr",
+    ),
     # The element-type half of `RankedTensorOf<[AnyType]>`.
     "[](::mlir::Type elementType) { return !((::llvm::isa<::mlir::TokenType>(elementType))); }"
-    "(::llvm::cast<::mlir::ShapedType>($_self).getElementType())":
-        (None, "the tensor element type must not be a token -- `irdl.parametric` reaches the "
-               "parameters of IRDL-declared types only, not a builtin tensor's, and IRDL has no "
-               "negation"),
+    "(::llvm::cast<::mlir::ShapedType>($_self).getElementType())": (
+        None,
+        "the tensor element type must not be a token -- `irdl.parametric` reaches the "
+        "parameters of IRDL-declared types only, not a builtin tensor's, and IRDL has no "
+        "negation",
+    ),
 }
 
 _CPRED = " = irdl.c_pred "
@@ -172,8 +178,7 @@ def _rewrite_op_body(lines: list[str], op: str) -> tuple[list[str], list[tuple[s
     # scanned: an `%N = ...` definition mentions its own name, so scanning definitions would keep
     # every dropped constraint alive as a vacuous `irdl.any` -- the exact shape being removed.
     keep_as_any = {
-        name for line in lines if line.strip().startswith("irdl.")
-        for name in drop if name in _referenced(line.strip())
+        name for line in lines if line.strip().startswith("irdl.") for name in drop if name in _referenced(line.strip())
     }
 
     out: list[str] = []
@@ -184,9 +189,9 @@ def _rewrite_op_body(lines: list[str], op: str) -> tuple[list[str], list[tuple[s
         if body.startswith("%") and _CPRED in body:
             name = body.partition(" = ")[0]
             entry = _CPRED_LOWERING.get(_quoted(body))
-            if entry is None:                       # unrecognised: leave it, report it
+            if entry is None:  # unrecognised: leave it, report it
                 out.append(line)
-            elif entry[0] is not None:              # expressible: emit the IRDL-native form
+            elif entry[0] is not None:  # expressible: emit the IRDL-native form
                 out.append(f"{indent}{name} = {entry[0]}\n")
             else:
                 notes.append((op, entry[1]))
@@ -265,9 +270,11 @@ def _header(notes: list[tuple[str, str]], unknown: list[str]) -> str:
     if not by_reason:
         lines.append("//   (none)")
     if unknown:
-        lines += ["//",
-                  "// UNRECOGNISED predicates, left in place and therefore INERT -- teach",
-                  "// _CPRED_LOWERING about them:"]
+        lines += [
+            "//",
+            "// UNRECOGNISED predicates, left in place and therefore INERT -- teach",
+            "// _CPRED_LOWERING about them:",
+        ]
         lines += [f"//   ! {u}" for u in dict.fromkeys(unknown)]
     return "\n".join(lines) + "\n"
 
@@ -351,18 +358,21 @@ def _discover_ref_ods_inc() -> Path:
     if not cands:
         raise FileNotFoundError(
             f"no MerlinIface/MerlinIfaceOps.td found under {base}; build an OOT package first "
-            f"(merlin-targetgen) or pass --ref-ods <mlir_oot/include>.")
+            f"(merlin-targetgen) or pass --ref-ods <mlir_oot/include>."
+        )
     by_digest: dict[str, list[Path]] = {}
     for td in cands:
         by_digest.setdefault(_iface_spec_digest(td.parent), []).append(td)
     if len(by_digest) > 1:
         detail = "\n".join(
             f"  {d[:12]}: {len(tds)} package(s), e.g. {tds[0].relative_to(base)}"
-            for d, tds in sorted(by_digest.items()))
+            for d, tds in sorted(by_digest.items())
+        )
         raise RuntimeError(
             "the merlin_iface contract dialect DIVERGES across OOT packages, so no single one is "
             "the reference; regenerating from an arbitrary pick would silently change the contract."
-            f"\n{detail}\nRe-run naming the intended spec: --ref-ods <mlir_oot/include>")
+            f"\n{detail}\nRe-run naming the intended spec: --ref-ods <mlir_oot/include>"
+        )
     return cands[0].parent.parent
 
 
@@ -372,13 +382,26 @@ def generate(out: Path, ref_ods_inc: Path | None = None) -> Path:
     _REF_ODS_INC = ref_ods_inc
     td = _REF_ODS_INC / "MerlinIface" / "MerlinIfaceOps.td"
     raw = subprocess.run(
-        [str(_T2I), str(td), "-I", str(_REF_ODS_INC), "-I", str(_LLVM / "include"),
-         "--gen-dialect-irdl-defs", "--dialect=merlin_iface"],
-        capture_output=True, text=True, check=True).stdout
-    norm, notes, unknown = lower_c_preds(_restore_type_params(
-        _strip_type_sigil(_fix_string_base_sigil(raw)),
-        _ods_type_params(td, [_REF_ODS_INC, _LLVM / "include"]),
-    ))
+        [
+            str(_T2I),
+            str(td),
+            "-I",
+            str(_REF_ODS_INC),
+            "-I",
+            str(_LLVM / "include"),
+            "--gen-dialect-irdl-defs",
+            "--dialect=merlin_iface",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    norm, notes, unknown = lower_c_preds(
+        _restore_type_params(
+            _strip_type_sigil(_fix_string_base_sigil(raw)),
+            _ods_type_params(td, [_REF_ODS_INC, _LLVM / "include"]),
+        )
+    )
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(_header(notes, unknown) + norm)
     return out
@@ -398,7 +421,7 @@ def verify(irdl: Path) -> tuple[int, int, list[str], int]:
     an op the interface GRAMMAR defines but the reference ODS does not declare is a contract
     divergence, not a capsule defect.
     """
-    from merlin.targetgen.contract.interface_emit import to_generic_form, InterfaceGrammarError
+    from merlin.targetgen.contract.interface_emit import InterfaceGrammarError, to_generic_form
 
     # Scope the denominator: `capsule.interface.mlir` is also the filename for MODEL capsules, which
     # are linalg-on-tensors and contain no merlin_iface op at all. Counting those as failures blamed
@@ -417,8 +440,7 @@ def verify(irdl: Path) -> tuple[int, int, list[str], int]:
                 fails.append(f"{c.parent.name}: {e}"[:140])
                 continue
             # No --verify-diagnostics: it would mask a parse failure. rc==0 AND ops printed back.
-            r = subprocess.run([str(_MLIROPT), f"--irdl-file={irdl}", str(gen)],
-                               capture_output=True, text=True)
+            r = subprocess.run([str(_MLIROPT), f"--irdl-file={irdl}", str(gen)], capture_output=True, text=True)
             if r.returncode == 0 and "merlin_iface." in r.stdout:
                 ok += 1
                 continue
@@ -431,9 +453,12 @@ def verify(irdl: Path) -> tuple[int, int, list[str], int]:
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(_DEFAULT_OUT))
-    ap.add_argument("--ref-ods", default=None,
-                    help="reference merlin_iface ODS include dir (mlir_oot/include); "
-                         "auto-discovered from any OOT package under out/artifacts/targets if omitted")
+    ap.add_argument(
+        "--ref-ods",
+        default=None,
+        help="reference merlin_iface ODS include dir (mlir_oot/include); "
+        "auto-discovered from any OOT package under out/artifacts/targets if omitted",
+    )
     ap.add_argument("--verify", action="store_true", help="parse every capsule via the generated IRDL")
     a = ap.parse_args(argv)
     out = generate(Path(a.out), Path(a.ref_ods) if a.ref_ods else None)
@@ -441,14 +466,18 @@ def main(argv=None):
     print(f"wrote {out} ({out.read_text().count(chr(10))} lines, {nops} ops)")
     if a.verify:
         ok, n, fails, n_a = verify(out)
-        print(f"IRDL parse check: {ok}/{n} merlin_iface capsules parsed+verified via "
-              f"mlir-opt --irdl-file ({n_a} non-merlin_iface capsules out of scope)")
+        print(
+            f"IRDL parse check: {ok}/{n} merlin_iface capsules parsed+verified via "
+            f"mlir-opt --irdl-file ({n_a} non-merlin_iface capsules out of scope)"
+        )
         # An op the interface grammar defines but the reference ODS does not declare is a divergence
         # between the two halves of the contract, not a defect in the capsule that uses it.
         undeclared = sorted({f.split("'")[1] for f in fails if "unregistered operation" in f})
         if undeclared:
-            print(f"  {sum(1 for f in fails if 'unregistered operation' in f)}/{n} use grammar op(s) "
-                  f"the reference ODS does not declare: {', '.join(undeclared)}")
+            print(
+                f"  {sum(1 for f in fails if 'unregistered operation' in f)}/{n} use grammar op(s) "
+                f"the reference ODS does not declare: {', '.join(undeclared)}"
+            )
         for f in fails[:10]:
             print(f"  FAIL {f}")
         return 0 if ok == n and n > 0 else 1

@@ -18,6 +18,6 @@ activations. Goldens are generated under a contract, and grading compares the co
   `half_even` only because that schema is produced after the target's scale and rounding macros were
   matched against the round-half-to-even construction.
 - **The arithmetic is the C macro's, bit for bit**: one f32 multiply, `rint`, clamp, optional relu.
-  `merlin/tests/ir/test_sched_contract.py` holds it to `runtime.tensor.Tensor.requant_acc_scale`.
+  `tests/ir/test_sched_contract.py` holds it to `runtime.tensor.Tensor.requant_acc_scale`.
 - **Readout-level only.** Bias seeding, residual add and pooling are further stages composed by
   model-level contracts. They are not smuggled in here.

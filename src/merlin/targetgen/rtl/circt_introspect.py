@@ -36,7 +36,7 @@ from .feature_gates import extract_boolean_feature_gate
 from .port_geometry import _module_port_sig as _module_port_sig
 from .port_geometry import extract_accumulator, memories_from_port_geometry
 
-_REPO = repo_root()  # the repo root (contains merlin/)
+_REPO = repo_root()
 
 GENERATOR_VERSION = "rtl-introspect-v12-inherent-attribute-graph"
 # RISC-V ISA STANDARD custom-N major opcodes — fixed by the base ISA for EVERY RISC-V chip, NOT a
@@ -628,26 +628,22 @@ def _declared_isa_headers(target: str) -> list[Path]:
     or declares no headers (e.g. arc/cyclotron targets) — the caller then falls back to generic names.
 
     The descriptor is resolved through the corpus locator, the one module that owns the
-    ``experiments/`` layout. This used to glob ``merlin/experiments/*/target_experiment.yaml``, which
+    ``experiments/`` layout. This used to glob ``experiments/studies/*/target_experiment.yaml``, which
     the target-neutral layout (``capsule_bench/targets/<target>/``) stopped matching, so every target
     silently reported "declares no headers" and fell through to generic ``funct_<code>`` names."""
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import resolve_grant
 
     from .. import corpora
 
     te = corpora.experiment_for(target)
     if te is None:
         return []
-    # A bundle-convention string is guest-visible ("experiments/..."); in THIS tree it hangs off
-    # merlin/ or off the repo root, so try both (the idiom in isa_taxonomy/workload_gen) instead of
-    # assuming one and handing the reader a path that is not there.
+    # Preserve logical descriptor identities within the selected source owner.
     out: list[Path] = []
     for h in te.isa_headers:
-        for base in (merlin_dir(), _REPO):
-            p = base / str(h)
-            if p.is_file():
-                out.append(p)
-                break
+        p = resolve_grant(str(h), root=_REPO)
+        if p.is_file():
+            out.append(p)
     return out
 
 
@@ -1104,9 +1100,9 @@ def _build_facts(
     loud error, never a silent default-target fallback."""
     if target is None:
         raise ValueError("build_facts requires an explicit target (no default is assumed)")
+    from . import command_ordering, hw_graph, memory_roles, mlc_bridge, source_selection, timing, timing_structure
     from . import datapaths as datapath_reader
     from . import feature_gates as feature_reader
-    from . import command_ordering, hw_graph, memory_roles, mlc_bridge, source_selection, timing, timing_structure
     from .facts import target_contract_path
 
     readers = [

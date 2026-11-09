@@ -49,7 +49,7 @@ meaningful:
 - **Expert / kernel CCA** — lifted from an *expert's* assembly (`cca.lift_asm` over
   `decode.rvv.decode_text(objdump)`). This is the *target shape*: what a good kernel decided. It is
   deterministic — **no LLM authors a CCA**. Per-dtype expert fixtures live in
-  `merlin/tests/data/cca_asm/` (f32 / int8-qd8 / f16, the last carrying a native-accumulate caveat).
+  `experiments/reference-data/cca-asm/` (f32 / int8-qd8 / f16, the last carrying a native-accumulate caveat).
 - **Compiler CCA** — lifted the same way from *our own* emitted object (`generated/objdump.txt`,
   disassembled from the fork's `model.o`). This is what our compiler *actually* produced — read from
   the emitted code, never assumed from the schedule text. Different schedule selections can

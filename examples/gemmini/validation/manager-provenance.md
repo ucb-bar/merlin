@@ -14,7 +14,7 @@ document version and historical results unchanged.
 
 ## Code and deployment identity
 
-Workhorse staging is `merlin_experiments.post_freeze.elf_upload`. It uploads the
+Workhorse staging is `merlin.experiments.post_freeze.elf_upload`. It uploads the
 selected ELF and exact prepared request bytes under unique keys, requires
 non-null S3 versions, downloads those exact versions, and retains raw responses.
 It produces an **unsent** `SendCommand` plan. It starts no manager or FPGA.
@@ -25,7 +25,7 @@ with CLI 2.38.2). Keep the create-only guard and recheck the selected executable
 at staging. A successful local probe is not an S3 upload.
 
 ```sh
-python -m merlin_experiments.post_freeze.elf_upload /absolute/request.json \
+python -m merlin.experiments.post_freeze.elf_upload /absolute/request.json \
   --model MODEL --output /absolute/new-staging-directory --upload
 ```
 
@@ -36,7 +36,7 @@ prepared plan, retain the raw command response, enforce its elapsed deadline,
 and perform the existing lifecycle cleanup. A staging success is not deployment.
 
 The manager/runtime helpers are these three standard-library-only files in
-`packages/merlin-experiments/src/merlin_experiments/post_freeze/`:
+`packages/merlin-experiments/src/merlin/experiments/post_freeze/`:
 
 - `elf_custody.py`: versioned download; before/after observations on the runtime
   host holding the final boot operand. The same pinned observer runs both times.
@@ -67,7 +67,7 @@ prepared request embeds that verified contract definition so the manager can
 check it without resolving workhorse-local paths. Both observers and the
 publisher refuse helper bytes or boot operand selectors outside that contract.
 Use Python 3.10 or newer for these standalone helpers. Deploy them under
-`merlin_experiments/post_freeze/` with **empty** `__init__.py` files at both
+`merlin.experiments/post_freeze/` with **empty** `__init__.py` files at both
 namespace levels; put only that deployment root on the manager/runtime Python
 path. Do not copy the main experiment package initializer: it imports the
 experiment engine and requires a newer Python. The offline deployment test
@@ -160,13 +160,13 @@ All paths below are administrator-selected local paths. `SIMULATOR_ARGV` contain
 the concrete driver argv, not a shell string or a reconstructed planned command.
 
 ```sh
-python3 -m merlin_experiments.post_freeze.elf_custody download \
+python3 -m merlin.experiments.post_freeze.elf_custody download \
   --bucket "$BUCKET" --key "$ELF_KEY" --version "$ELF_VERSION" \
   --sha256 "$ELF_SHA256" --size "$ELF_BYTES" --region "$REGION" \
   --directory "$NEW_DOWNLOAD_DIRECTORY"
 
 # On the actual runtime host, immediately before its driver execution:
-python3 -m merlin_experiments.post_freeze.elf_custody before \
+python3 -m merlin.experiments.post_freeze.elf_custody before \
   --download-record "$DOWNLOAD_RECORD" --request "$REQUEST" \
   --request-sha256 "$REQUEST_SHA256" --model "$MODEL" \
   --argv-json "$SIMULATOR_ARGV" --cwd "$SIMULATOR_CWD" \
@@ -174,11 +174,11 @@ python3 -m merlin_experiments.post_freeze.elf_custody before \
   --out "$BEFORE_RECORD"
 
 # On that same runtime host, after exit and before deleting runtime files:
-python3 -m merlin_experiments.post_freeze.elf_custody after \
+python3 -m merlin.experiments.post_freeze.elf_custody after \
   --before-record "$BEFORE_RECORD" --out "$AFTER_RECORD"
 
 # On the manager, after authenticated result collection and lifecycle cleanup:
-python3 -m merlin_experiments.post_freeze.manager_result \
+python3 -m merlin.experiments.post_freeze.manager_result \
   --request "$REQUEST" --request-sha256 "$REQUEST_SHA256" --model "$MODEL" \
   --result-dir "$RESULT_DIRECTORY" --command-id "$ACTUAL_SSM_COMMAND_ID" \
   --entrypoint "${MERLIN_FIRESIM_MANAGER_ENTRYPOINT:?set the selected manager wrapper}"
@@ -192,7 +192,7 @@ remaining elapsed deadline, not a fresh budget after setup. Place the output in
 a unique directory and copy its three observation files back before teardown.
 
 ```sh
-python3 -m merlin_experiments.post_freeze.runtime_driver \
+python3 -m merlin.experiments.post_freeze.runtime_driver \
   --request "$REQUEST" --request-sha256 "$REQUEST_SHA256" --model "$MODEL" \
   --download-record "$DOWNLOAD_RECORD" --driver-script "$SIM_RUN_SCRIPT" \
   --cwd "$SIMULATOR_CWD" --output "$NEW_RUNTIME_OBSERVATIONS" \

@@ -16,7 +16,7 @@ the shared source configuration or 16 GiB address map.
 An optional later board timing target is the full Alveo U250 FireSim design named
 `FireSimGemminiRocketConfig`. The `full_u250_board` machine selects hardware
 config `alveo_u250_firesim_gemmini_rocket_30mhz`. Its pin is
-`firesim_gemmini_rocket_30mhz` in `merlin/contract/hardware_pins.yaml`, with
+`firesim_gemmini_rocket_30mhz` in `src/merlin/resources/contracts/hardware_pins.yaml`, with
 bitstream SHA256
 `0af6f26e1cbad1c03f9e5873217505a5100bf2d0d068205cfa486522b24fc603`.
 That pin records a FireSim generator revision distinct from the older
@@ -83,7 +83,7 @@ and full-board ABI, DTS and private program board selection against the Phase 2
 machine with:
 
 ```sh
-python -m merlin_experiments.phase1.spike_alignment \
+python -m merlin.experiments.phase1.spike_alignment \
   --contract CONTRACT --chipyard-root CHIPYARD --spike-runtime SPIKE_RUNTIME \
   --machines MACHINES --hardware-pins PINS \
   --board-catalog CATALOG --private-model-spec SPEC
@@ -96,7 +96,7 @@ with the explicit 16 GiB map at `0x80000000`; the Phase 1 contract must use
 -m0x80000000:0x400000000` before
 `{elf}` and select that runtime's library directory. Use the release-selected
 contract, `examples/gemmini/phase2/whole-model-machines.yaml`,
-`merlin/contract/hardware_pins.yaml`, the release-selected board catalog and
+`src/merlin/resources/contracts/hardware_pins.yaml`, the release-selected board catalog and
 private full-model specification. A passing report proves those selected Spike,
 ABI, board and DTS identities align; its `rtl_equivalence_proven: false` is deliberate.
 
@@ -104,7 +104,7 @@ Before launch, run the independent gSIM alignment check with the selected
 release contract and facts:
 
 ```sh
-python -m merlin_experiments.phase1.gsim_alignment \
+python -m merlin.experiments.phase1.gsim_alignment \
   --contract CONTRACT --rtl-facts FACTS \
   --chipyard-root CHIPYARD --hardware-pins PINS \
   --board-catalog CATALOG --gsim-dts GSIM_DTS

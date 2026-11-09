@@ -88,6 +88,8 @@ COMMON_SUBSTRATE_V16 = "merlin.common_compiler_substrate.v16"
 COMMON_SUBSTRATE_V17 = "merlin.common_compiler_substrate.v17"
 COMMON_SUBSTRATE_V18 = "merlin.common_compiler_substrate.v18"
 COMMON_SUBSTRATE_V19 = "merlin.common_compiler_substrate.v19"
+COMMON_SUBSTRATE_V20 = "merlin.common_compiler_substrate.v20"
+CURRENT_COMMON_SUBSTRATE = COMMON_SUBSTRATE_V20
 _SHARED_SUBSTRATES = {
     COMMON_SUBSTRATE_V6: 6,
     COMMON_SUBSTRATE_V7: 7,
@@ -103,6 +105,7 @@ _SHARED_SUBSTRATES = {
     COMMON_SUBSTRATE_V17: 24,
     COMMON_SUBSTRATE_V18: 25,
     COMMON_SUBSTRATE_V19: 26,
+    COMMON_SUBSTRATE_V20: 27,
 }
 _ISA_SUBSTRATES = frozenset(
     {
@@ -123,6 +126,7 @@ _ISA_SUBSTRATES = frozenset(
         COMMON_SUBSTRATE_V17,
         COMMON_SUBSTRATE_V18,
         COMMON_SUBSTRATE_V19,
+        COMMON_SUBSTRATE_V20,
     }
 )
 _PY = "merlin/python/merlin/"
@@ -237,11 +241,11 @@ def substrate_inventory(version: str) -> tuple[tuple[str, ...], tuple[str, ...],
             "merlin.targetgen.tool_profile_shared",
             (
                 "merlin.compiler.schedule.export"
-                if version == COMMON_SUBSTRATE_V19
+                if version in (COMMON_SUBSTRATE_V19, COMMON_SUBSTRATE_V20)
                 else "merlin.compile.scheduling.export"
             ),
         )
-        if version == COMMON_SUBSTRATE_V19:
+        if version in (COMMON_SUBSTRATE_V19, COMMON_SUBSTRATE_V20):
             from merlin.compiler.schedule.library_sources import canonical_module
 
             automatic = tuple(canonical_module(name) for name in automatic)
@@ -252,7 +256,7 @@ def substrate_inventory(version: str) -> tuple[tuple[str, ...], tuple[str, ...],
 def substrate_data(version: str) -> tuple[str, ...]:
     substrate_inventory(version)
     data = AUTOMATIC_CHECKER_DATA_V3 if version in _ISA_SUBSTRATES else AUTOMATIC_CHECKER_DATA
-    if version == COMMON_SUBSTRATE_V19:
+    if version in (COMMON_SUBSTRATE_V19, COMMON_SUBSTRATE_V20):
         return tuple(path.replace("verify/lean/", "verification/lean/", 1) for path in data)
     return data
 
@@ -279,6 +283,7 @@ def _policy_version(version: str) -> str:
         COMMON_SUBSTRATE_V17: "3",
         COMMON_SUBSTRATE_V18: "3",
         COMMON_SUBSTRATE_V19: "3",
+        COMMON_SUBSTRATE_V20: "3",
     }[version]
 
 
@@ -397,7 +402,9 @@ def common_tool_profile(
             {"module": None, "path": _PY + relative, "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}
         )
     policy_module = (
-        "merlin.verification.lean_contract" if version == COMMON_SUBSTRATE_V19 else "merlin.verify.lean_contract"
+        "merlin.verification.lean_contract"
+        if version in (COMMON_SUBSTRATE_V19, COMMON_SUBSTRATE_V20)
+        else "merlin.verify.lean_contract"
     )
     if (
         hashlib.sha256(Path(lean_contract.__file__).read_bytes()).hexdigest()
@@ -674,7 +681,7 @@ def attach_common_substrate(
                 if path != _logical("merlin.verify.lean_contract")
                 and not (version in _SHARED_SUBSTRATES and path in {_logical(module) for module in public})
             )
-    if version == COMMON_SUBSTRATE_V19:
+    if version in (COMMON_SUBSTRATE_V19, COMMON_SUBSTRATE_V20):
         if "lean_proof_authoring" in tools:
             cli = str(_source(python_source_root, "merlin.verification.lean_cli"))
             bundle["allowed"].append({"path": cli, "mode": "ro", "note": "existing Lean author CLI implementation"})
@@ -788,6 +795,7 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V17,
         COMMON_SUBSTRATE_V18,
         COMMON_SUBSTRATE_V19,
+        COMMON_SUBSTRATE_V20,
     }:
         lines.append(
             "Shared dense scheduling is available as `merlin.transforms.dense_planning`: "
@@ -813,6 +821,7 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V17,
         COMMON_SUBSTRATE_V18,
         COMMON_SUBSTRATE_V19,
+        COMMON_SUBSTRATE_V20,
     }:
         lines.append(
             "Shared `merlin.compile.scheduling.block_schedule` provides checked synchronous "
@@ -853,6 +862,7 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V17,
         COMMON_SUBSTRATE_V18,
         COMMON_SUBSTRATE_V19,
+        COMMON_SUBSTRATE_V20,
     ):
         catalog_call = (
             "scheduling_capabilities()"
@@ -885,6 +895,7 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V17,
         COMMON_SUBSTRATE_V18,
         COMMON_SUBSTRATE_V19,
+        COMMON_SUBSTRATE_V20,
     }:
         lines.append(
             "V19 additionally provides a source-checked final-K producer/readout frontier on the original "
@@ -898,6 +909,7 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V17,
         COMMON_SUBSTRATE_V18,
         COMMON_SUBSTRATE_V19,
+        COMMON_SUBSTRATE_V20,
     ):
         lines.append(
             "V22 keeps every V21 scheduling API, including loop-carried completion events and "
@@ -905,7 +917,12 @@ def tool_profile_prompt(bundle: dict) -> str:
             "grader/oracle modules are not part of this SDK; the CCA calls remain available "
             "through their staged broker clients."
         )
-    if profile["common_substrate"] in (COMMON_SUBSTRATE_V17, COMMON_SUBSTRATE_V18, COMMON_SUBSTRATE_V19):
+    if profile["common_substrate"] in (
+        COMMON_SUBSTRATE_V17,
+        COMMON_SUBSTRATE_V18,
+        COMMON_SUBSTRATE_V19,
+        COMMON_SUBSTRATE_V20,
+    ):
         lines.append(
             "V24 additionally exposes source-checked shared-RHS sibling products through "
             "the scheduling dialect and the ordinary registered-pass A/B route. Bind original "
@@ -919,9 +936,9 @@ def tool_profile_prompt(bundle: dict) -> str:
             "Earlier frozen releases retain their exact public and source inventories; selecting V25 "
             "does not change independent verification or hardware qualification requirements."
         )
-    if profile["common_substrate"] == COMMON_SUBSTRATE_V19:
+    if profile["common_substrate"] in (COMMON_SUBSTRATE_V19, COMMON_SUBSTRATE_V20):
         lines.append(
-            "V26 uses canonical compiler.schedule, compiler.ir and compiler.selection owners. "
+            f"V{_SHARED_SUBSTRATES[profile['common_substrate']]} uses canonical compiler.schedule, compiler.ir and compiler.selection owners. "
             "Earlier SDK source selections remain immutable and require their archived environment; "
             "this namespace migration grants no new target semantics or acceptance authority."
         )
@@ -929,7 +946,7 @@ def tool_profile_prompt(bundle: dict) -> str:
         if name in _OPTIONAL_TOOLS:
             lines.append(f"- `{name}`: {TR.spec(name).blurb}")
     result = "\n".join(lines) + "\n"
-    if profile["common_substrate"] == COMMON_SUBSTRATE_V19:
+    if profile["common_substrate"] in (COMMON_SUBSTRATE_V19, COMMON_SUBSTRATE_V20):
         result = result.replace("merlin.compile.scheduling.block_schedule", "merlin.compiler.schedule.blocks")
         result = result.replace("merlin.compile.scheduling", "merlin.compiler.schedule")
     return result

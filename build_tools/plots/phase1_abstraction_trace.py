@@ -19,7 +19,7 @@ import shlex
 from pathlib import Path
 from typing import Any
 
-from merlin_experiments.phase1 import conformance
+from merlin.experiments.phase1 import conformance
 
 
 def _isa_actions(call: conformance.ToolCall) -> set[str]:

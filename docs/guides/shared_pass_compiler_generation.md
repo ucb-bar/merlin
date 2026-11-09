@@ -13,10 +13,10 @@ code_refs:
   - src/merlin/targetgen/package_runtime.py
   - src/merlin/targetgen/capsule_common.py
   - src/merlin/llvmlower/target_schedule.py
-  - src/merlin_experiments/phase1/controller.py
-  - src/merlin_experiments/phase1/compiler_library.py
+  - src/merlin/experiments/phase1/controller.py
+  - src/merlin/experiments/phase1/compiler_library.py
   - src/merlin/compiler/schedule/schedule_pipeline.py
-  - src/merlin_experiments/phase1/prepare_author_library.py
+  - src/merlin/experiments/phase1/prepare_author_library.py
 ---
 
 # Generate compilers that consume shared passes
@@ -80,7 +80,7 @@ A frozen library exposing the legacy schedule owner uses:
 - `merlin.sched.ir.kernel`
 - `merlin.compile.scheduling.schedule_pipeline`
 
-A current SDK26 library instead uses the same first two APIs and
+A current SDK27 library instead uses the same first two APIs and
 `merlin.compiler.schedule.schedule_pipeline`.
 `generate_prompt.shared_pass_prompt_record` selects the cohort from the original
 library contract and requires each exact member in the observed tool grants.
@@ -425,8 +425,8 @@ fused operand or width, omit a wait, reuse a pending slot or exceed a queue
 bound must refuse or fail independently. Existing neutral checks demonstrate
 particular mechanisms; they do not qualify every family or a generated target.
 
-Fresh source preparation uses SDK26 through
-`merlin_experiments.phase1.prepare_author_library`; earlier inventories are
+Fresh source preparation uses SDK27 through
+`merlin.experiments.phase1.prepare_author_library`; earlier inventories are
 replayed only from their original frozen releases. Canonical prompt navigation
 does not widen those historical source memberships or change shared-pass v1
 semantics, target consumption requirements or independent acceptance checks.

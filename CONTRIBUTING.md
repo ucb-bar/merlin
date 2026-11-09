@@ -5,10 +5,12 @@ the conventions the tooling enforces so your PRs land smoothly.
 
 ## Setup
 
-merlin uses [uv](https://docs.astral.sh/uv/):
+Use Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). To try the
+compiler before contributing, start with the [small compilation example](examples/quickstart/README.md).
+The contributor environment adds the compact suite's dependencies:
 
 ```bash
-uv venv
+uv venv --python 3.12
 uv pip install -e '.[dev,verify,semantic-search,targetgen]'
 .venv/bin/python build_tools/scripts/install_git_hooks.py   # enable the pre-commit gate (per clone)
 ```
@@ -26,11 +28,12 @@ them via environment variables (copy `.env.example` → `.env` and edit). The re
 ## Where things go
 
 - **Code**: shared compiler machinery in `src/merlin`; research workflows in
-  `src/merlin_experiments` and the logical research owners under `src/merlin`.
-  Preserve the shared namespace initializers owned by core. Experiment definitions live in
+  `src/merlin/experiments` and analysis in `src/merlin/analysis`. There is one installed
+  `merlin` namespace; do not create another root package or project-named façade.
+  Experiment definitions live in
   `experiments/catalog.yaml`, not in ad-hoc launch scripts. See the
   [repository structure](docs/reference/repo_structure.md).
-- **Tests**: the compact suite in `merlin/tests/<bucket>/test_<area>.py` has a
+- **Tests**: the compact suite in `tests/<bucket>/test_<area>.py` has a
   repository-wide maximum of 150 collected cases, including parameterization.
   Another package or example directory cannot bypass that budget. Resolve paths via
   `merlin.common.paths`, never `Path(__file__).parents[N]`.
@@ -87,9 +90,9 @@ alias: `llvmlower` and `targetgen` still contain active implementations.
   .venv/bin/python build_tools/scripts/check_artifact_layout.py  # out/ layout
   .venv/bin/python build_tools/scripts/check_docs.py             # docs freshness / front-matter
   .venv/bin/python build_tools/scripts/check_test_budget.py --output out/build/python/ci/test-budget.json
-  .venv/bin/python -m pytest merlin/tests -q -ra
+  .venv/bin/python -m pytest tests -q -ra
   ```
-- Distinguish code regressions from unavailable inputs: the full suite includes private corpora,
+- Distinguish code regressions from unavailable inputs: selected workflows include private corpora,
   retained experiment records, compiler builds and hardware. Report the actual passing subset and
   missing prerequisites; do not manufacture fixtures or weaken grading to make a fresh clone green.
 - Match the surrounding code style. C/C++ follows `.clang-format`/`.clang-tidy`; Python follows the
