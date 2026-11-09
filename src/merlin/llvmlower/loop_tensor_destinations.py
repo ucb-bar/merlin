@@ -106,6 +106,16 @@ def _ltd_scalar_body(op, *, fresh_seed, private_atomics=False):
     # native bufferization still decides whether physical reuse is legal.
     for inner in _ltd_walk(op):
         name = inner.name
+        if name == 'memref.generic_atomic_rmw':
+            if (not private_atomics or not fresh_seed or not inner.operands
+                    or not _ltd_private_root(inner.operands[0])):
+                return False
+            try:
+                if _cas_match(inner) is None:
+                    return False
+            except (ValueError, KeyError, IndexError):
+                return False
+            continue
         if name == 'memref.atomic_rmw':
             if (not private_atomics or not fresh_seed or len(inner.operands) < 2 or inner.regions
                     or not _ltd_private_root(inner.operands[1]) or len(inner.results) != 1
@@ -137,7 +147,7 @@ def _ltd_scalar_body(op, *, fresh_seed, private_atomics=False):
                 if terminal.name != 'scf.yield' or tuple(v.type for v in terminal.operands) != tuple(v.type for v in inner.results):
                     return False
             continue
-        if name.split('.')[0] not in ('arith', 'math') and name not in ('linalg.yield', 'linalg.index', 'scf.yield', 'tensor.yield'):
+        if name.split('.')[0] not in ('arith', 'math') and name not in ('linalg.yield', 'linalg.index', 'scf.yield', 'tensor.yield', 'memref.atomic_yield'):
             return False
         if inner.regions or any(not _ltd_numeric(v.type) for v in (*inner.operands, *inner.results)):
             return False
@@ -214,7 +224,7 @@ def _ltd_atomic_snapshot(op):
     scalar = op.regions[0].blocks[0]
     segments = tuple(ir.DenseI32ArrayAttr(op.attributes['operandSegmentSizes']))
     return (segments == (len(op.operands) - 1, 1) and not list(scalar.arguments[-1].uses)
-            and any(inner.name == 'memref.atomic_rmw' for inner in _ltd_walk(op)))
+            and any(inner.name in ('memref.atomic_rmw', 'memref.generic_atomic_rmw') for inner in _ltd_walk(op)))
 
 
 def _ltd_copy_safe(value, incoming, inside, seen):
@@ -406,7 +416,8 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(), p
         raise ValueError('loop tensor destinations require one explicit pre-bufferization marker')
     head, _, tail = pipeline.partition(marker)
     head, tail = head.rstrip(','), tail.lstrip(',')
-    if not tail.startswith('one-shot-bufferize{') or 'one-shot-bufferize' in head:
+    seam = tail.removeprefix('__merlin_integer_compare_exchange__,')
+    if not seam.startswith('one-shot-bufferize{') or 'one-shot-bufferize' in head:
         raise ValueError('loop tensor destinations must immediately precede one-shot bufferization')
     if 'buffer-hoisting' in head or 'convert-scf-to' in head:
         raise ValueError('loop tensor destinations require the original tensor loop structure')

@@ -7,7 +7,9 @@ This checks allocation generations; it neither moves storage nor admits arena
 reuse for allocation cycles. The native runner and public checker share it.
 """
 
-RUNNER_PRELUDE = r"""
+from .atomic_compare_exchange import SUPPORT as _COMPARE_EXCHANGE_SUPPORT
+
+RUNNER_PRELUDE = _COMPARE_EXCHANGE_SUPPORT + r"""
 _OBL_CALL_ROSTER = ()
 _OBL_CALL_OUTPUT = None
 
@@ -182,6 +184,14 @@ def _obl_borrowed_calls(module):
             elif name in plural_calls:
                 violations.append('borrowed ABI: current plural call operand types differ')
     return (set(), set(), violations) if violations else (uses, supported, [])
+
+
+_OBL_PREVIOUS_BORROWED_CALLS = _obl_borrowed_calls
+
+
+def _obl_borrowed_calls(module):
+    calls, supported, problems = _OBL_PREVIOUS_BORROWED_CALLS(module)
+    return calls | _cas_checked_calls(module), supported, problems
 
 
 def _obl_known_use(op, calls):

@@ -28,6 +28,16 @@ Retain the complete event and boundary; never clone/move the atomic or retarget
 its output. External/unknown targets, shared seeds, extra effects and opaque
 calls grant no permission. Native alias/lifetime checks remain mandatory.
 
+`lower_integer_compare_exchange` is an explicit native legalization for closed
+i16/i32/i64 generic atomic comparison/select regions on rank-one identity-layout
+default-space buffers. Its private synchronous helper exposes the memref borrowing
+boundary and performs one LLVM cmpxchg with no escaping pointer or allocation.
+The actual helper body is retained while ownership sees its typed declaration,
+then restored with unchanged declaration attributes before liveness verification
+and final LLVM conversion. Never omit a helper or disable ownership/lifetime
+checks. Borrowing grants reconstruct the complete current private body and call
+types under direct root-function symbol scope; names/provenance grant nothing.
+
 Mixed borrowed composition retains distinct live ordinary descriptor and plural
 writer owners for one exact source epoch. Disjoint ABI rows, original effect
 objects/callbacks and every native observer remain required; either owner's

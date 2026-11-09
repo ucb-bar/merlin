@@ -73,6 +73,10 @@ mask, exactly-once boundary, ordering and control position remain intact; only
 the downstream pure value destination/copy changes. External or unknown atomic
 roots, shared seeds, extra effects and opaque calls remain outside this profile.
 Native alias and post-deallocation lifetime checks remain authoritative.
+Closed integer generic atomic compare/exchange regions also qualify as such
+snapshot dependencies. Their separate [native legalization](atomic_compare_exchange.md)
+runs after destination reuse and retains a complete checked borrowing boundary
+through ownership analysis, with every helper body restored before liveness.
 
 Original payload operations, inputs, attributes and arithmetic order remain.
 Direct retargeting changes only an unused destination. New copies use identity
