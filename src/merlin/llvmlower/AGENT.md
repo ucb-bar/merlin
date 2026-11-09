@@ -1,5 +1,12 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`reuse_loop_tensor_destinations` may expose complete after-region `scf.while`
+destinations only when `scf.condition` forwards every before-argument unchanged
+in position and type. Computed/permuted condition state grants no seed facts.
+The readonly-capture extension still requires an independently synthesized seed
+and actual readonly entry storage; native bufferization and lifetime checks
+remain authoritative. Preserve original conditions and zero-trip semantics.
+
 Mixed borrowed composition retains distinct live ordinary descriptor and plural
 writer owners for one exact source epoch. Disjoint ABI rows, original effect
 objects/callbacks and every native observer remain required; either owner's

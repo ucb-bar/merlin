@@ -96,16 +96,31 @@ def _ltd_scalar_body(op, *, fresh_seed):
     return True
 
 
+def _ltd_carried_edges(loop):
+    if loop.name == 'scf.for' and len(loop.regions) == 1 and len(loop.regions[0].blocks) == 1:
+        block = loop.regions[0].blocks[0]
+        terminal = tuple(block.operations)[-1].operation
+        if terminal.name == 'scf.yield':
+            return block, tuple(zip(tuple(loop.operands)[3:], tuple(block.arguments)[1:], terminal.operands))
+    if loop.name == 'scf.while' and len(loop.regions) == 2 and all(len(r.blocks) == 1 for r in loop.regions):
+        before, after = (r.blocks[0] for r in loop.regions)
+        condition = tuple(before.operations)[-1].operation
+        terminal = tuple(after.operations)[-1].operation
+        # Forward the complete before-state unchanged, including position and
+        # type. A computed/permuted condition state cannot inherit seed facts.
+        if (condition.name == 'scf.condition' and terminal.name == 'scf.yield'
+                and tuple(condition.operands)[1:] == tuple(before.arguments)
+                and len(loop.operands) == len(after.arguments) == len(terminal.operands)
+                and tuple(v.type for v in loop.operands) == tuple(v.type for v in after.arguments)):
+            return after, tuple(zip(loop.operands, after.arguments, terminal.operands))
+    return None, ()
+
+
 def _ltd_reuse(ctx, module):
     changed = 0
     for loop in tuple(_ltd_walk(module.operation)):
-        if loop.name != 'scf.for' or len(loop.regions) != 1 or len(loop.regions[0].blocks) != 1:
-            continue
-        block = loop.regions[0].blocks[0]
-        terminal = tuple(block.operations)[-1].operation
-        if terminal.name != 'scf.yield':
-            continue
-        for incoming, previous, result in zip(tuple(loop.operands)[3:], tuple(block.arguments)[1:], terminal.operands):
+        block, edges = _ltd_carried_edges(loop)
+        for incoming, previous, result in edges:
             if not isinstance(result, ir.OpResult) or not isinstance(result.type, ir.RankedTensorType):
                 continue
             op = result.owner.operation

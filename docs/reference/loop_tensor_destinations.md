@@ -32,6 +32,11 @@ an empty tensor, dense literal, scalar fill, or its complete pure generalized
 form. Tensor-fed seeds, CFG phi arguments, unknown memory roots, writes and
 opaque calls do not qualify for that read extension. Every nested branch and
 operation is checked; no capture, effect or arithmetic changes.
+Serial `scf.while` after-regions also qualify when the condition forwards every
+before-argument unchanged, in the same position and type. Computed, permuted or
+heterogeneous condition state remains unchanged because it cannot inherit the
+corresponding initial seed facts. The original condition, iteration order and
+zero-trip behavior stay executable; no iteration bound is invented.
 Dynamic/empty shapes, live init values and library calls stay
 unchanged. No operation is selected by provenance or workload identity.
 
@@ -51,3 +56,5 @@ Source-word pointer recurrences additionally exercise fused readonly gathers,
 changing runtime row counts, final pointer results and zero trips through one
 actual Merlin library. Destination reuse preserves that fusion while ordinary
 bufferization and post-deallocation lifetime verification remain mandatory.
+The same integration now also retains pointer/accumulator `while` state and
+final pointer observations over changing runtime counts, including zero.

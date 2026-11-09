@@ -69,7 +69,7 @@ def test_only_complete_unobserved_init_destinations_change(tmp_path, shape, init
     assert "scf.for" in text
 
 
-def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True, write=False, opaque=False, constant=False):
+def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True, write=False, opaque=False, constant=False, while_state=None):
     marker = "read_only" if readonly else ""
     seed = "%seed" if fresh else "%x"
     declaration = "func.func private @observe()" if opaque else ""
@@ -88,6 +88,20 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
           ins(%zero:f32) outs(%empty:tensor<4xf32>) {^bb0(%v:f32,%init:f32):linalg.yield %v:f32}->tensor<4xf32>"""
     if constant:
         fill = "%seed=arith.constant dense<0.0>:tensor<4xf32>"
+    header = f"%result=scf.for %iv=%c0 to %bound step %c1 iter_args(%old={seed})->tensor<4xf32> {{"
+    tail = "scf.yield %next:tensor<4xf32>"
+    returned = "%result"
+    if while_state is not None:
+        forwarded = {"identity": "%before,%other_before", "computed": "%x,%other_before",
+                     "permuted": "%other_before,%before"}[while_state]
+        header = f"""%other_seed=arith.constant dense<9.0>:tensor<4xf32>
+        %result:3=scf.while (%before={seed},%other_before=%other_seed,%iv_before=%c0)
+          :(tensor<4xf32>,tensor<4xf32>,index)->(tensor<4xf32>,tensor<4xf32>,index) {{
+          %continue=arith.cmpi slt,%iv_before,%bound:index
+          scf.condition(%continue) {forwarded},%iv_before:tensor<4xf32>,tensor<4xf32>,index
+        }} do {{ ^bb0(%old:tensor<4xf32>,%other:tensor<4xf32>,%iv:index):"""
+        tail = "%next_iv=arith.addi %iv,%c1:index\nscf.yield %next,%other,%next_iv:tensor<4xf32>,tensor<4xf32>,index"
+        returned = "%result#0"
     return f"""module {{ {declaration}
       func.func @forward(%x:tensor<4xf32>,%bound:index,%mutable:memref<4xf32>)->tensor<4xf32> {{
         %c0=arith.constant 0:index
@@ -98,7 +112,7 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
         %view=memref.cast %base:memref<4xf32> to memref<?xf32>
         %empty=tensor.empty():tensor<4xf32>
         {fill}
-        %result=scf.for %iv=%c0 to %bound step %c1 iter_args(%old={seed})->tensor<4xf32> {{
+        {header}
           %next=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
             ins(%old:tensor<4xf32>) outs(%empty:tensor<4xf32>) {{^bb0(%in:f32,%init:f32):
               %i=linalg.index 0:index
@@ -107,9 +121,9 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
               %sum=arith.addf %in,%v:f32
               linalg.yield %sum:f32
             }}->tensor<4xf32>
-          scf.yield %next:tensor<4xf32>
+          {tail}
         }}
-        return %result:tensor<4xf32>
+        return {returned}:tensor<4xf32>
       }}
     }}"""
 
@@ -123,6 +137,19 @@ def test_read_capture_requires_fresh_seed_and_closed_readonly_entry_origin(tmp_p
     assert "memref.load" in output and "scf.for" in output
     if options.get("conditional", True):
         assert "scf.if" in output
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("state,options,changed", [
+    ("identity", {}, 1), ("identity", {"generalize": True}, 1),
+    ("identity", {"constant": True}, 1), ("identity", {"fresh": False}, 0),
+    ("identity", {"readonly": False}, 0), ("identity", {"write": True}, 0),
+    ("identity", {"opaque": True}, 0), ("computed", {}, 0), ("permuted", {}, 0),
+])
+def test_while_destinations_require_unmodified_condition_state(tmp_path, state, options, changed):
+    stdout, output = rewrite(tmp_path, read_source(while_state=state, **options))
+    assert f"OK loop_tensor_destinations {changed}" in stdout
+    assert "scf.while" in output and "scf.condition" in output and "memref.load" in output
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
