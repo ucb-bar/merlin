@@ -8,8 +8,10 @@ related: [architecture]
 code_refs:
   - src/merlin/frontends/compile_inputs.py
   - src/merlin/frontends/derived_compile_inputs.py
+  - src/merlin/frontends/kernel_compile_inputs.py
   - src/merlin/xdsl_dialects/standard_tensor.py
   - merlin/tests/ir/test_derived_compile_inputs.py
+  - merlin/tests/ir/test_kernel_compile_inputs.py
 ---
 
 # Derived tensor compiler inputs
@@ -40,3 +42,19 @@ staging profile requires static tensor entry arguments/results. Runtime scalar/
 dynamic signature admission and explicit effectful dependencies need separate
 profiles. Staging establishes byte custody and declared lineage; it does not
 establish complete source closure, semantic equivalence or compiled correctness.
+
+Standalone `t2m.capture-receipt.v2` packages use the separate
+`standalone-tensor-kernel` source profile. This admits a static functional tensor
+ABI with read, fresh-write and readwrite buffers. Readwrite buffers retain their
+incoming value and return an updated tensor; this profile does not mutate caller
+storage. Argument/result types and ordering must agree with the declared spec,
+receipt counts and input manifest. The parameter container must be empty.
+
+The stager changes the single defined entry symbol to `forward` for the current
+native ABI and records both names in `merlin.kernel-source-correspondence.v1`.
+It retains exact original MLIR/TTIR/spec bytes and projects compiler provenance,
+including distinct original and normalized operation inventories. Numeric
+evaluation reports and reference data/digests are excluded from that projection.
+No FX trace or Torch capture identity is manufactured. The standalone and derived
+paths share compiler-only custody and borrowed-immutable input semantics; both
+still require separate consumer lowering and execution evidence.

@@ -14,6 +14,9 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   `derived_compile_inputs.py` keeps parent FX and normalized TTIR correspondence separate,
   checks receipt-bound compiler members, and excludes evaluator values and digests from its staged view.
   Staging grants byte custody only, never source equivalence or numeric admission.
+  `kernel_compile_inputs.py` separately stages standalone functional tensor kernels,
+  validates declared buffer/result order, projects compiler provenance and records
+  the entry-symbol adaptation to `forward` without inventing an FX capture.
 - `linalg_math_patterns.py` — source-only, closed unary f32 sine/cosine/exponential/roundeven
   scalar-region checks; each operation requires its own explicit declaration. No host admission,
   selected math implementation or numerical-equivalence claim follows. Scalar-literal power refuses.
