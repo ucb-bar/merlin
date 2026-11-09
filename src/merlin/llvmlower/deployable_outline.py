@@ -21,7 +21,10 @@ from merlin.xdsl_dialects.lowering.dispatch_program import (
 )
 from merlin.xdsl_dialects.lowering.outline import outline_dispatches
 
-_BYTES = {"i8": 1, "i16": 2, "i32": 4, "i64": 8, "f32": 4, "f64": 8}
+# Standard FP8 storage is byte-sized. This metadata does not provide a numeric
+# encoder or an executable kernel: an explicitly selected implementation still
+# binds the exact source format/semantics and its own execution qualification.
+_BYTES = {"i8": 1, "i16": 2, "i32": 4, "i64": 8, "f32": 4, "f64": 8, "f8E4M3FN": 1, "f8E5M2": 1}
 
 
 @dataclass(frozen=True)
