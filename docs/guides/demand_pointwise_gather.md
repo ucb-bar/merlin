@@ -53,6 +53,11 @@ preserving custom-form attributes that another parser could otherwise discard.
 It records source/output/tool hashes and accepted/refused observations. A caller
 can use the existing prepared-model transform seam:
 
+The selected stock roundtrip also binds the compatibility helper that represents
+MLIR's explicit default-none integer truncation property in the pinned xDSL
+schema. It retains cast operands, types and attributes; nondefault flags refuse.
+This is a local compatibility step, not a process-wide parser relaxation.
+
 ```python
 from merlin.llvmlower.demand_pointwise_gather import (
     DemandGatherEffects,

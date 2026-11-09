@@ -332,7 +332,7 @@ def transform_file(source: Path, output: Path, effects: DemandGatherEffects | No
     from merlin.common.proc import run_checked
     from merlin.frontends.linalg_mlir import parse_mlir_text
 
-    from . import toolchain
+    from . import stock_arith_compat, toolchain
     from .compilation_recipe import CompilationRecipe
     from .deployable_ir import checked_generic_text
 
@@ -346,23 +346,31 @@ def transform_file(source: Path, output: Path, effects: DemandGatherEffects | No
     snapshot.write_bytes(original)
     tool = toolchain.llvm_install() / "bin/mlir-opt"
     recipe = CompilationRecipe(output, producer=Path(__file__))
+    compatibility_source = Path(stock_arith_compat.__file__)
+    compatibility_sha256 = sha256_file(compatibility_source)
+    recipe.bind_preparation("stock_integer_compatibility", compatibility_source)
     recipe.run(
         [tool, snapshot, "--mlir-print-op-generic", "-o", normalized],
         runner=lambda args: run_checked(args, timeout=180),
         inputs=[snapshot],
         output=normalized,
     )
-    module, report = rewrite_module(parse_mlir_text(normalized.read_text()), effects, max_scalar_ops=max_scalar_ops)
+    parsed = parse_mlir_text(normalized.read_text())
+    compatibility = stock_arith_compat.unflagged_truncations(parsed)
+    module, report = rewrite_module(parsed, effects, max_scalar_ops=max_scalar_ops)
     result = output / "model.mlir"
-    result.write_text(checked_generic_text(module))
-    if source.read_bytes() != original or snapshot.read_bytes() != original:
+    if (source.read_bytes() != original or snapshot.read_bytes() != original
+            or sha256_file(compatibility_source) != compatibility_sha256):
         raise ValueError("source changed during pointwise gather fusion")
     effects.validate()
+    result.write_text(checked_generic_text(module))
     report.update(
         schema="merlin.demand_pointwise_gather.v1",
         source_sha256=sha256_file(source),
         output_sha256=sha256_file(result),
         normalizer_sha256=sha256_file(tool),
+        stock_integer_compatibility=compatibility,
+        stock_integer_compatibility_input_sha256={str(compatibility_source): compatibility_sha256},
     )
     write_pretty_json(output / "report.json", report)
     return result

@@ -1,5 +1,7 @@
 """Closed source/dataflow proofs; target/actual TorchAO checks are independent."""
 
+from pathlib import Path
+
 import pytest
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
@@ -62,6 +64,55 @@ def test_none_performs_no_io_and_leaves_owned_module_uncloned(tmp_path):
     m = parse_mlir_text(source())
     result, r = rewrite_module(m)
     assert result is m and r["selected"] is False
+
+
+@pytest.mark.parametrize("flag", ["", " overflow<nsw>"])
+def test_actual_stock_truncation_roundtrip_retains_unflagged_cast_only(tmp_path, flag):
+    import hashlib
+    import json
+
+    text = source().removesuffix("}") + (
+        "func.func @cast(%x:i32)->i8 { %y=arith.trunci %x" + flag
+        + ":i32 to i8 return %y:i8 }\n}"
+    )
+    original = tmp_path / "original.mlir"
+    original.write_text(text)
+    output = tmp_path / "selected"
+    if flag:
+        with pytest.raises(ValueError, match="default-none"):
+            transform_file(original, output, EFFECTS)
+        assert not (output / "model.mlir").exists()
+    else:
+        result = transform_file(original, output, EFFECTS)
+        module = parse_mlir_text(result.read_text())
+        module.verify()
+        assert sum(op.name == "arith.trunci" for op in module.walk()) == 1
+        report = json.loads((output / "report.json").read_text())
+        assert len(report["rewritten"]) == len(report["stock_integer_compatibility"]) == 1
+        for path, digest in report["stock_integer_compatibility_input_sha256"].items():
+            assert hashlib.sha256(Path(path).read_bytes()).hexdigest() == digest
+    assert original.read_text() == text
+
+
+def test_changed_compatibility_dependency_refuses_output(tmp_path, monkeypatch):
+    from merlin.llvmlower import stock_arith_compat
+
+    dependency = tmp_path / "bound_helper.py"
+    dependency.write_text("# original binding\n")
+    monkeypatch.setattr(stock_arith_compat, "__file__", str(dependency))
+    actual = stock_arith_compat.unflagged_truncations
+
+    def changed(module):
+        result = actual(module)
+        dependency.write_text("# changed binding\n")
+        return result
+
+    monkeypatch.setattr(stock_arith_compat, "unflagged_truncations", changed)
+    original = tmp_path / "source.mlir"
+    original.write_text(source())
+    with pytest.raises(ValueError, match="source changed"):
+        transform_file(original, tmp_path / "refused", EFFECTS)
+    assert not (tmp_path / "refused/model.mlir").exists()
 
 
 def test_original_arithmetic_attributes_and_indices_preserved():
