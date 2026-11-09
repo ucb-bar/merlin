@@ -127,12 +127,43 @@ program/control instructions and the same per-launch instruction limit, and
 records the changed arithmetic implementation. The prefill64 plain and qualified
 runs agree exactly on output words, launch counts, and executed instructions.
 
-Whole-model planning still refuses unqualified f32 contractions in rotary
-preparation and the widened head. The existing host BF16 head policy does not
-currently admit the widened-f32 source form; its product rounding is different.
-The shared host sine/cosine path requires an explicitly selected library, host,
-and numerical/effect contract. Those admissions remain open. The decoder checks
-above do not qualify complete end-to-end whole-model capture or execution.
+The source LM head now uses a closed host region admitted by the Atlas provider
+and emitted through Merlin's existing semantic host-linear path. Original BF16
+operands and their widened source graph types remain intact. The selected policy,
+`bf16-exact-product-f32-ltr-rne-bf16-rne-v1`, widens the operands exactly, uses a
+positive-zero f32 seed, and performs separately rounded binary32 multiplication
+and addition in ascending K order, without contraction or fast math. It rounds
+once to BF16 at the output; extreme products retain source binary32 underflow
+semantics. This is host arithmetic, with no device acceleration claim.
+
+The saved-head application independently matches all 2,048,000 raw BF16 logits
+against reference v2 at an authenticated generated final-norm boundary, using
+67,108,864 I/O bytes and 536,870,912 application bytes. This checks the head stage,
+not a new upstream whole-model execution. Full saved-head artifact replay still
+refuses the existing source-intake and arena-plan guards; no guard is disabled.
+The tiny host-only application separately passes compile, full API replay, and C
+execution at default limits. The declared ascending-K order does not claim
+bit-exact agreement with torch's summation order. Reference v1 and
+whole-model/cache results under the obsolete VPU head arithmetic are historical;
+the old policy is removed from shared emission and refused by the provider.
+
+Use fresh compiled output trees when switching head policy. Reuse checks require
+the current policy in precision metadata and matching recorded host numeric
+semantics; missing, historical, or inconsistent declarations refuse reuse. Keep
+old artifacts and their receipts as historical evidence.
+
+An optional live head-only capture still refuses `capture contains no native
+Atlas calls`: the external adapter's no-native-call exception currently requires
+a saved export. Keep that guard. Passing saved-head application execution does
+not establish live head-only capture or complete live whole-model execution.
+
+Rotary preparation is being qualified separately as host computation with a
+pinned correctly rounded sin/cos archive through Merlin's unary-math route. Chipyard
+newlib failed exhaustive BF16 comparison at one angle. The selected library,
+archive, and numerical/effect contract need their own qualification before the
+whole-model standard front door can be checked. Complete live capture of the
+embedding, all 22 layers, final norm, and head, generated cache continuity, and
+full-protocol quality remain separate end-to-end gates.
 
 The saved-boundary tools below are regeneration and regression aids. Their
 historical qualification does not qualify the live application path.
@@ -143,11 +174,11 @@ These scripts extract, compile, and execute the 22 decoder layers, final normali
 
 Run `extract_capsules.py --bundle BUNDLE --output REGIONS --whole-model --threads 2` in an environment with the original `atlas_fx_ops` registration and PyTorch export support. The extractor verifies bundle hashes, replays the source fixture, copies each region's authored FX nodes, checks lifted tensors against the source export, and records source boundary names and ordered producer links. The region manifest records any authored alias between final normalization and the head. Each new regional capture archives inherited capture identities and an authenticated source-node map in `source.json.parent_capture`, then starts a fresh local capture namespace.
 
-Run `whole_model.py --regions REGIONS --compiled COMPILED --execution EXECUTION --atlas-root ATLAS_ROOT --compiler-python COMPILER_PYTHON --model-python MODEL_PYTHON --model-root MODEL_ROOT --stop-after norm` with model2MLIR, Merlin, atlas-mlir's Python binding, and the custom op registration on the compiler import path. The model interpreter must be the unchanged pinned npu_model revision authenticated by `model_runtime.py`. A reference checkout can be added with `--reference-root`. Use `--stop-after head` to include the explicit generated host BF16 head policy.
+Run `whole_model.py --regions REGIONS --compiled COMPILED --execution EXECUTION --atlas-root ATLAS_ROOT --compiler-python COMPILER_PYTHON --model-python MODEL_PYTHON --model-root MODEL_ROOT --stop-after norm` with model2MLIR, Merlin, atlas-mlir's Python binding, and the custom op registration on the compiler import path. The model interpreter must be the unchanged pinned npu_model revision authenticated by `model_runtime.py`. A reference checkout can be added with `--reference-root`. Use `--stop-after head` to include the source-order generated host BF16 head policy; select an independent reference using the same declared arithmetic.
 
-Compilation uses existing `convert`, `AtlasApplicationAdapter`, external parameter capture and staging, and `compile_semantic_application` APIs. The driver reuses completed compilations only after checking their saved source model hashes. Every execution receives immutable source boundary fixtures plus explicit overrides from earlier generated outputs. The driver authenticates those outputs, passes their raw words, and checks the receiving stage's input hashes. A missing generated predecessor is an error. Later framework hidden-state fixtures are never used to replace generated activations.
+Compilation uses existing `convert`, `AtlasApplicationAdapter`, external parameter capture and staging, and `compile_semantic_application` APIs. The driver reuses completed compilations only after checking their saved source model hashes, selected policies, and recorded host-head numeric semantics. Use fresh output trees for a policy change. Every execution receives immutable source boundary fixtures plus explicit overrides from earlier generated outputs. The driver authenticates those outputs, passes their raw words, and checks the receiving stage's input hashes. A missing generated predecessor is an error. Later framework hidden-state fixtures are never used to replace generated activations.
 
-The source LM head has an ordinary BF16 weight matrix. The head explicitly selects the generated host BF16 linear policy from `merlin.compile.c_bf16_linear`, preserving those original words without FP8 recoding. Its placement is host execution, and it carries no device acceleration claim. Floating immutable contractions without that selected policy are refused before ordinary FP8 packing. Independent comparison and quality remain pending until their separate gates run.
+The source LM head has an ordinary BF16 weight matrix. It explicitly selects `SOURCE_POLICY` from `merlin.compile.c_bf16_linear`, preserving original words without FP8 recoding and using the declared ascending-K binary32 multiply/add order described above. Structurally closed widened source regions are admitted without changing source tensor types. Other unqualified floating immutable contractions are refused before ordinary FP8 packing. Independent comparison must use reference v2; historical VPU-policy head exactness does not qualify this arithmetic. Complete upstream execution and quality still require their own gates.
 
 Run `python test_whole_model.py` for focused continuity, corruption, and missing-predecessor checks. Execution receipts deliberately use `EXECUTED_UNCOMPARED`, and report pending independent comparison and quality. The runner supports `--compile-only` for intake checks without generated execution.
 
