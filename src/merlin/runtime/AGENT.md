@@ -79,3 +79,9 @@ the per-backend adapters under `backends/`.
   runtime == torch golden). `dispatch_runtime` raises on any view op it cannot evaluate —
   no silent skips.
 - Every subdirectory must also contain an AGENT.md.
+- `staged_dispatch` is an explicit single-controller/compute-only harness API.
+  Profile harts equal compute harts; the controller invokes no counter reader.
+  ARM precedes model initialization/preparation and final ACK follows finish.
+  Source segmentation, target completion/coherence/context safety and buffer
+  lifetime remain separate caller obligations; never relabel an integrated
+  monolithic build as a staged full-model role split.

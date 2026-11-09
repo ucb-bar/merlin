@@ -78,6 +78,11 @@ The **Merlin C runtime**: a generic, data-driven driver that executes a compiled
 - **Target-agnostic**: no ISA assumptions here; the only target-specific code is in `baremetal/`/codegen flags.
 - Row-major contiguous strides; weights referenced by byte offset into the blob (never copied).
 - Output emitted as exact f32 bit patterns so `spike == host` is checkable up to FP reassociation (different ISAs reassociate; gate on cos≈1 / rel<1e-4, not bit-equality).
+- `merlin_staged.{h,c}` dispatches one caller-owned synchronous stage through
+  explicit ARM/prepare/compute/finish/final-ACK publication. Hooks contain all
+  target ISA and counters; only compute workers read counters. No OpenMP,
+  allocator, implicit hart IDs, cancellation or asynchronous-completion claim.
+  Refuse team reuse and retain storage whenever quiescence was not established.
 
 ## Testing expectations
 
