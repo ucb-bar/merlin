@@ -58,11 +58,11 @@ def canonicalize_constant_splats(module) -> int:
         ):
             continue
         elem = result.element_type
-        if value.type != elem or not result.get_shape() or any(d <= 0 for d in result.get_shape()):
+        if value.type != elem or any(d <= 0 for d in result.get_shape()):
             continue
         literal = owner.properties["value"]
         admitted = (
-            isinstance(elem, IntegerType) and elem.width.data in (8, 16, 32, 64) and isinstance(literal, IntegerAttr)
+            isinstance(elem, IntegerType) and elem.width.data in (1, 8, 16, 32, 64) and isinstance(literal, IntegerAttr)
         ) or (isinstance(elem, (Float32Type, Float64Type)) and isinstance(literal, FloatAttr))
         if not admitted:
             continue
@@ -133,6 +133,10 @@ def static_permutation(function, node, specs):
         or tuple(function.function_type.inputs) != (source_type,)
         or tuple(function.function_type.outputs) != (output_type,)
     ):
+        return None
+    # Raw byte permutations do not establish the logical i1 storage contract.
+    # Keep this operation on the compiled compute worker instead.
+    if str(source_type.element_type) == "i1":
         return None
     permutation = tuple(int(x) for x in transpose.properties["permutation"].get_values())
     source = specs[node.inputs[0]]

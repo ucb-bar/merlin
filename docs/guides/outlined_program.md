@@ -189,13 +189,27 @@ No frequency, physical busy time or calibrated cycle accuracy is inferred.
 
 ## Initial admission limits
 
-The first path accepts positive static rank-1 through rank-8 tensors with
-`i8/i16/i32/i64/f32/f64` storage and exact dense shape/cast aliases or static
-in-bounds slice packing. Live scalar driver arithmetic, dynamic/control-flow
+The path accepts ordinary dense static rank-0 through rank-8 tensors with
+`i1/i8/i16/i32/i64/f32/f64` storage and exact dense shape/cast aliases or static
+in-bounds slice packing. Positive extents remain required for every existing
+dimension. A rank-zero tensor contains exactly one element: it is neither an
+empty tensor nor a C scalar argument. Its LP64 ranked descriptor contains only
+allocated pointer, aligned pointer and offset, without size/stride fields. Live scalar driver arithmetic, dynamic/control-flow
 drivers, unknown views, external calls, pre-bufferized/effectful kernels and
 plain scalar argument/results refuse. Numerical source semantics remain those
 of the captured/authored IR; this workflow neither quantizes a model nor repairs
 an incorrectly captured dtype.
+
+Boolean `i1` values use one logical bit in a one-byte container per element.
+The explicit ABI requires canonical bytes zero or one: every initial boolean
+input byte is checked before dispatch, and the assigned compute worker checks
+every produced boolean byte before publication. Noncanonical values refuse;
+upper padding bits are never assumed zero and no implicit boolean conversion
+changes input data. These checks add real validation work. Boolean transposes
+stay compiled worker operations rather than unqualified controller byte
+permutations; selected prepared-provider boolean kernels require a separate
+canonical-byte proof and currently refuse through this interface.
+
 Unknown parent-function or argument/result contracts also refuse: a changed
 kernel arity cannot silently inherit or discard those contracts. Module and
 kernel-operation attributes remain in the emitted source and cache identity.

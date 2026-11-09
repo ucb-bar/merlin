@@ -774,6 +774,11 @@ original FP32 quantization/scaling DAG and account for the added correction work
 - `deployable_outline` reuses the existing outliner and typed dispatch program.
   It admits only closed static tensor kernels and exact supported views, with
   immutable input/effect checks and unique whole-chain storage lifetimes.
+  Ordinary rank-zero tensors retain one element and rank-exact descriptors;
+  they never become C scalar controller arguments. Boolean i1 storage uses
+  canonical zero/one byte containers with complete boundary validation; unknown
+  encodings, unproved byte permutations and prepared-provider boolean storage
+  refuse. Boolean arithmetic remains in assigned compute kernels.
   `kernel_backend.compile_deployable_kernel` verifies compiler-owned LP64/index64
   ABI and refuses heap/LLVM-stack allocation or nested OpenMP in this first path.
   `deployable_ir.checked_generic_text` is the explicit lossless seam for keys,
