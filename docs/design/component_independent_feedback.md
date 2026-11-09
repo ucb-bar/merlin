@@ -6,24 +6,24 @@ owner: experiments
 last_verified: 2026-10-09
 related: [component_phase2_workflow, component_final_evaluation]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_baseline.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_runtime.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_runtime_authority.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_runtime_qualification.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_execution.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_variants.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_measurement_qualification.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_applicability.py
+  - src/merlin_experiments/phase2/component_baseline.py
+  - src/merlin_experiments/phase2/component_runtime.py
+  - src/merlin_experiments/phase2/component_runtime_authority.py
+  - src/merlin_experiments/phase2/component_runtime_qualification.py
+  - src/merlin_experiments/phase2/component_execution.py
+  - src/merlin_experiments/phase2/component_variants.py
+  - src/merlin_experiments/phase2/component_measurement_qualification.py
+  - src/merlin_experiments/phase2/component_applicability.py
   - src/merlin/perf/component_applicability.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_providers.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_launch_inputs.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_observer.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/rtl_engine_protocol.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/rtl_engine_probe.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/rtl_state_control.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/component_origin.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/component_tool_readiness.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_launch.py
+  - src/merlin_experiments/phase2/component_providers.py
+  - src/merlin_experiments/phase2/component_launch_inputs.py
+  - src/merlin_experiments/phase2/component_observer.py
+  - src/merlin_experiments/phase2/rtl_engine_protocol.py
+  - src/merlin_experiments/phase2/rtl_engine_probe.py
+  - src/merlin_experiments/phase2/rtl_state_control.py
+  - src/merlin_experiments/phase1/component_origin.py
+  - src/merlin_experiments/phase1/component_tool_readiness.py
+  - src/merlin_experiments/phase2/component_launch.py
   - build_tools/upstreams/native/circt-state-dependencies.patch
 ---
 

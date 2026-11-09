@@ -137,7 +137,7 @@ def parser(
         metavar="NAME",
         help="disable an optional lowering pass that is on by default (repeatable)",
     )
-    from .debug import add_arguments
+    from merlin.compiler.inspect import add_arguments
 
     add_arguments(ap)
     return ap

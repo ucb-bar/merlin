@@ -12,8 +12,9 @@ from uuid import uuid4
 import numpy as np
 import pytest
 
-from merlin.compile.connected_host import ConnectedCStage, emit_connected_host_c
-from merlin.compile.connected_regions import compile_connected_region
+from merlin.compiler.lower.connectedhost import ConnectedCStage
+from merlin.compiler.lower.connectedhost import emit_connected_host_c
+from merlin.compiler.lower.connected import compile_connected_region
 from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 
 from test_connected_mixed import fixture

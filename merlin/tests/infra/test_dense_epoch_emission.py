@@ -7,9 +7,9 @@ from test_dense_panel_readout import checked
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp
 
-from merlin.compile.scheduling.dense_panel_pipeline import DRAIN
-from merlin.compile.scheduling.dense_panel_readout import batch_dense_panel_readouts
-from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
+from merlin.compiler.schedule.dense_panel_readout import batch_dense_panel_readouts
+from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
 from merlin.llvmlower.host_builder import FnBuilder
 
 

@@ -3,12 +3,10 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.scheduling.tile_load_coalescing import (
-    TileStoreAddressLaw,
-    TileStoreMapping,
-    expand_tile_store_mapping,
-    propose_tile_store_coalescing,
-)
+from merlin.compiler.schedule.tile_load_coalescing import TileStoreAddressLaw
+from merlin.compiler.schedule.tile_load_coalescing import TileStoreMapping
+from merlin.compiler.schedule.tile_load_coalescing import expand_tile_store_mapping
+from merlin.compiler.schedule.tile_load_coalescing import propose_tile_store_coalescing
 from merlin.sched.ir import Call, Const, Kernel, Loop, Var, concretize, instances
 
 

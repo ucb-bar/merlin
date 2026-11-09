@@ -6,11 +6,11 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
 
 ## Modules
 
-- `bundles.py` — Capture bundles for the RVV whole-model lane, and the scalar datatype a bundle's IR carries.
+- `bundles.py` — Transitional exact module identity for the real intake owner `compiler.frontend.bundle`.
 - `capacity.py` — Operand and accumulator capacity of a target's matrix unit, and the tile that fits it.
 - `command.py` — The `merlin-compile` command line: its arguments, the combinations it refuses, and its report.
-- `debug.py` — Compile debugging options (`--list-stages`, `--dump-ir-after/-before`, `--stop-after`, `--trace-dir`), shared by `merlin-compile`, the whole-model builder CLI and launch configs.
-- `host_lane.py` — The RVV host lane: which package a compile uses for each datatype, and its provenance pin.
+- `debug.py` — Transitional exact module identity for `merlin.compiler.inspect`; active trace and stage-inspection callers use the compiler owner.
+- `host_lane.py` — Transitional exact identity for `compiler.selection.host`; shared ISA/DTS admission lives in `compiler.backend.isa`.
 - `host_optimizations.py` — Public source-exact tensor and explicitly selected LLVM host rewrites shared with compiler generators.
 - `host_optimization_export.py` — Export an additional source-only host library for explicit review and equal selection by both experiment arms; never alter frozen SDK profiles.
 - `mesh.py` — Execute and certify matmul layers on a target's accelerator mesh.
@@ -87,3 +87,16 @@ symbol admission and separate tool/input/output custody. It accepts no saved
 ELF or candidate host compiler. Normal capsule structural, stack, full-output
 numeric and selected-engine gates must still execute. This supplement route
 issues no six-model gate credit, physical effects or timing qualification.
+
+
+## Canonical saved-model owners
+
+The retained model/routing/source/qualification modules are exact compatibility
+identities. Actual input bindings live in `runtime.modelinputs` and
+`compiler.frontend.materialized`; readiness in `compiler.frontend.preflight`;
+source routing and coverage in `compiler.planning.{model,complete,coverage}`;
+interface publication in `compiler.partition.model`; original host/source builds
+in `compiler.build.{owned,siblings,spatial}`; independent completed-link and
+scalar-host checks in `verification.{completed_model,scalar_host}`. Active callers
+use those owners. Historical schemas and frozen SDK/source releases are unchanged.
+Source custody pins the actual code and retained compatibility leaves separately.

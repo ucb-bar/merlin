@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from test_selected_schedule_contracts import inputs
 
-from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection
 from merlin.llvmlower.device_build import (
     DeviceRouting,
     freeze_device_target_configuration,

@@ -8,7 +8,7 @@ import pytest
 from xdsl.dialects import func
 from xdsl.dialects.builtin import StringAttr
 
-from merlin.compile import fusion_workflow as F
+from merlin.compiler.planning import explore as F
 from merlin.transforms.certificates import ir_digest
 from test_multioutput_fusion import source_program
 from test_physical_fusion import fixture as physical_fixture
@@ -175,7 +175,8 @@ def test_resource_refusal_and_budget_exhaustion_do_not_poison_fallback():
 
 
 def test_alternatives_feed_normal_emission_actual_transformed_calls():
-    from merlin.compile.scheduling.schedule_pipeline import compile_schedule, ScheduleBudgets
+    from merlin.compiler.schedule.schedule_pipeline import compile_schedule
+    from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
     kernel, objects, banks, adapter, capability, encoding, limits, options = physical_fixture()
     seen = []
     def realize(source):

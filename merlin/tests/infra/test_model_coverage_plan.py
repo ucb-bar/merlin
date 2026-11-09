@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 from test_shared_input_schedule import source
 
-from merlin.compile.model_coverage import plan_model_coverage
+from merlin.compiler.planning.coverage import plan_model_coverage
 from merlin.xdsl_dialects.lowering.compute_groups import Group
 
 

@@ -6,9 +6,10 @@ import pytest
 from test_compact_dense import ADAPTER
 from test_dense_panel_pipeline import setup
 
-from merlin.compile.scheduling.dense_panel_pipeline import schedule_dense_panel_pipeline, verify_dense_panel_pipeline
-from merlin.compile.scheduling.dense_panel_readout import batch_dense_panel_readouts
-from merlin.compile.scheduling.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_panel_pipeline
+from merlin.compiler.schedule.dense_panel_pipeline import verify_dense_panel_pipeline
+from merlin.compiler.schedule.dense_panel_readout import batch_dense_panel_readouts
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
 from merlin.sched.ir import evaluate, instances
 
 
@@ -58,8 +59,9 @@ def test_batched_readouts_with_tail_bias_and_reversed_finite_queue_completion(bi
 @pytest.mark.parametrize('retained', [False, True])
 @pytest.mark.parametrize('uniform', [False, True])
 def test_uniform_original_tiled_coefficients_batch_without_changing_source_calls(retained, uniform):
-    from merlin.compile.scheduling.block_schedule import Store
-    from merlin.compile.scheduling.dense_contracts import DenseTiledIntegerReadout, TiledIntegerStore
+    from merlin.compiler.schedule.blocks import Store
+    from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout
+    from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
     from merlin.sched.ir import evaluate, instances
 
     if retained:

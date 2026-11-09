@@ -30,11 +30,12 @@ def prepare_integer_convolution_panels(source, *, max_packing_bytes, max_candida
     from xdsl.dialects.linalg.ops import FillOp
     from xdsl.rewriter import Rewriter
 
+    from merlin.compiler.transforms.dead import prune_dead_pure_tensor_ops
     from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.transforms.certificates import ir_text
+    from merlin.verification.convolution import verify_bounded_match
 
-    from .im2col_pack import bounded_source_identity, match_bounded_im2col, rewrite_bounded_match, verify_bounded_match
-    from .passes_xdsl import prune_dead_pure_tensor_ops
+    from .im2col_pack import bounded_source_identity, match_bounded_im2col, rewrite_bounded_match
 
     if any(type(v) is not int or v <= 0 for v in (max_packing_bytes, max_candidates)):
         raise ValueError("positive packing payload and candidate budgets required")
@@ -93,9 +94,12 @@ def prepare_integer_convolution_panels(source, *, max_packing_bytes, max_candida
 
 
 def implementation_paths():
+    from merlin.compiler.ir import convolution as convolution_ir
+    from merlin.verification import convolution
+
     from . import im2col_pack
 
-    return (Path(__file__), Path(im2col_pack.__file__))
+    return (Path(__file__), Path(im2col_pack.__file__), Path(convolution_ir.__file__), Path(convolution.__file__))
 
 
 def _digest(value):
@@ -143,7 +147,7 @@ def _padding_cost(value, element_bytes):
 
 
 def _legal_panel(match, width, selection):
-    from merlin.compile.scheduling.dense_contracts import DenseSchedulingUnavailable
+    from merlin.compiler.schedule.dense_contracts import DenseSchedulingUnavailable
     from merlin.transforms.dense_planning import dense_blocks
 
     dense = selection.selected_contracts.dense
@@ -207,14 +211,14 @@ class _GrowthBudgetExceeded(ValueError):
 
 def normalize_convolution_source(module, selection, validate):
     """Return a checked private source or its unchanged legal full route."""
-    from merlin.compile.scheduling.library_sources import shared_library_sources
-    from merlin.compile.scheduling.selected_contracts import _parse
+    from merlin.compiler.schedule.library_sources import shared_library_sources
+    from merlin.compiler.schedule.selected_contracts import _parse
+    from merlin.verification.convolution import verify_bounded_match
 
     from .im2col_pack import (
         bounded_source_identity,
         match_bounded_im2col,
         rewrite_bounded_match,
-        verify_bounded_match,
     )
     from .source_dense import SourceDenseLowering
 

@@ -19,11 +19,14 @@ from types import FunctionType, MethodType
 from merlin.common import mlir_query as mq
 from merlin.common.digest import sha256_file
 from merlin.common.jsonio import write_pretty_json
-from merlin.compile.scheduling.dense_source import DenseSourceUnavailable, read_dense_source, schedule_source_dense
-from merlin.compile.scheduling.fusion_semantics import UnsupportedElementwise
-from merlin.compile.scheduling.pointwise_source import compile_source_pointwise, read_pointwise_source
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
-from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
+from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
+from merlin.compiler.schedule.dense_source import read_dense_source
+from merlin.compiler.schedule.dense_source import schedule_source_dense
+from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
+from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
+from merlin.compiler.schedule.pointwise_source import read_pointwise_source
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
 from merlin.transforms.certificates import ir_digest, ir_text
 
 from .fresh_tensor_writer import FreshTensorWriterContract, rewrite_fresh_tensor_writers

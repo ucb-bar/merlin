@@ -5,7 +5,7 @@ from test_configured_pointwise import EXECUTOR, case
 from test_pointwise_source_provider import Provider
 from test_pointwise_source_whole_model import test_ordinary_recurrent_model_runs_source_bound_fusion as run_pair
 
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 
 
 class ConfiguredProvider(Provider):

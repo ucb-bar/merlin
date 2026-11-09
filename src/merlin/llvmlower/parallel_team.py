@@ -63,7 +63,7 @@ def team_width(cost: int, work_per_thread: int, max_team: int) -> int:
 
 
 def ensure_registered(work_per_thread: int) -> str:
-    from .impr_features import ImprFeature, known, register
+    from .shared_feature_registry import ImprFeature, known, register
 
     name = feature_name(work_per_thread)
     if name not in known():

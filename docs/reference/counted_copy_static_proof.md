@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-10-08
 related: [lowering_pipeline]
-code_refs: [src/merlin/targetgen/contract/pointer_storage.py, src/merlin/llvmlower/counted_copy_check.py, src/merlin/llvmlower/layout_observation.py, packages/merlin-experiments/src/merlin_experiments/phase1/component_copy_proof.py]
+code_refs: [src/merlin/targetgen/contract/pointer_storage.py, src/merlin/llvmlower/counted_copy_check.py, src/merlin/llvmlower/layout_observation.py, src/merlin_experiments/phase1/component_copy_proof.py]
 ---
 
 # Conditional counted-copy static proof

@@ -15,7 +15,7 @@ import recomputation_host_work as W
 from packing_execution_inputs import pin, recheck_artifacts
 
 from merlin.common.paths import repo_root
-from merlin.compile.materialized_model_inputs import MaterializedModelInputs
+from merlin.compiler.frontend.materialized import MaterializedModelInputs
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.transforms.certificates import ir_digest, ir_text
 

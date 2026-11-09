@@ -36,7 +36,7 @@ from matplotlib.path import Path as MPath  # noqa: E402
 from PIL import Image, ImageDraw  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
-STYLE_PATH = REPO / "packages/merlin-analysis/src/merlin/plotting/merlin_plotstyle.py"
+STYLE_PATH = REPO / "src/merlin/plotting/merlin_plotstyle.py"
 if not STYLE_PATH.is_file():
     STYLE_PATH = Path(__file__).with_name("merlin_plotstyle.py")
 spec = importlib.util.spec_from_file_location("merlin_plotstyle", STYLE_PATH)

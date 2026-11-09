@@ -6,11 +6,9 @@ import pytest
 from test_compact_dense import ADAPTER, fixture, schedule
 from xdsl.dialects.builtin import ArrayAttr, DenseArrayBase, IntegerAttr, StringAttr, i64
 
-from merlin.compile.scheduling.schedule_ir import (
-    dense_schedule_text,
-    make_dense_schedule_plan,
-    parse_dense_schedule_plan,
-)
+from merlin.compiler.schedule.schedule_ir import dense_schedule_text
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
 from merlin.sched.ir import evaluate, instances
 from merlin.xdsl_dialects.schedule import BindOp, HandleType
 
@@ -95,7 +93,7 @@ def test_original_binding_cannot_be_overridden(change):
         s = replace(s, lhs=replace(s.lhs, backing="different-allocation"))
     else:
         p = replace(p, bias=True)
-    from merlin.compile.scheduling.compact_dense import schedule_compact_dense
+    from merlin.compiler.schedule.compact_dense import schedule_compact_dense
 
     with pytest.raises(ValueError, match="binding"):
         schedule_compact_dense(
@@ -168,8 +166,8 @@ def test_prospective_export_is_separate_and_has_closed_dialect_dependencies(tmp_
     import subprocess
     import sys
 
-    from merlin.compile.scheduling.export import export_shared_scheduling
-    from merlin.compile.scheduling.library_sources import library_modules
+    from merlin.compiler.schedule.export import export_shared_scheduling
+    from merlin.compiler.schedule.library_sources import library_modules
 
     assert "merlin.compile.scheduling.schedule_ir" not in library_modules(11)
     assert library_modules(12)[: len(library_modules(11))] == library_modules(11)
@@ -217,7 +215,7 @@ def test_edited_plan_executes_original_arithmetic_with_tails(monkeypatch, loop_o
 
 
 def test_plan_is_no_authority_for_corrupted_actual_effects():
-    from merlin.compile.scheduling.compact_dense import schedule_compact_dense
+    from merlin.compiler.schedule.compact_dense import schedule_compact_dense
     from merlin.sched.ir import Const
 
     p, r, s = fixture()

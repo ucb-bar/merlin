@@ -32,8 +32,9 @@ running an image on Spike; building an image does not require Spike.
 **Workflow-specific prerequisites** (only for building/running the whole-model `build_app` path; the
 generic module-layout description below needs none):
 
-- **Required — Zephyr SW workspace + SDK 0.17.0**: `MERLIN_ZEPHYR_SW` (workspace root), `ZEPHYR_BASE`
-  (the zephyr tree), `ZEPHYR_SDK_INSTALL_DIR`.
+- **Required — selected Zephyr tree + SDK 0.17.0**: `ZEPHYR_BASE` (the zephyr tree)
+  and `ZEPHYR_SDK_INSTALL_DIR`. `MERLIN_ZEPHYR_SW` is only an optional shell
+  convenience for commands that navigate the containing workspace; Merlin does not read it.
 - **Required — RISC-V cross compiler** via `MERLIN_RISCV_GCC` or `MERLIN_CHIPYARD`
   for the image build. `zephyr_model.build_available()` checks build prerequisites.
 - **Spike only for a Spike run** via `MERLIN_CHIPYARD` or `MERLIN_SPIKE`.
@@ -41,7 +42,7 @@ generic module-layout description below needs none):
   `build_app` uses the build-only check.
 - **Optional — FireSim** (2-tile SMP) is board/FPGA-gated and **not fresh-machine reproducible** (see
   [Getting started §5](getting_started.md)). It also needs a separately installed,
-  explicitly selected [FireSim runner](firesim.md); **spike substitutes** for the functional whole-model run.
+  external operator through [FireSim prepare/collect](firesim.md); **spike substitutes** for the functional whole-model run.
 - **Required — board catalog and selection**: set `MERLIN_BOARD_CATALOG` to a
   target-owned YAML catalog and pass its board name to `build_app(board=...)` or
   `merlin-compile --board ...`. The [example catalog](../../examples/board-catalog.yaml)

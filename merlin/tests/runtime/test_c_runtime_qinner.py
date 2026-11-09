@@ -108,3 +108,25 @@ def test_a_tagged_tensor_absent_from_extra_is_refused(tmp_path):
     model = _bundle(tmp_path, with_scale=False)
     with pytest.raises(qinner.QinnerError, match="absent from extra.npz"):
         c_runtime.generate(model, tmp_path / "generated", model / "inputs.npz")
+
+
+def test_session_step_budget_truncates_streams_and_references_together(tmp_path):
+    model = _bundle(tmp_path, steps=8)
+    full = c_runtime.generate(model, tmp_path / "full", model / "inputs.npz")
+    capped = c_runtime.generate(model, tmp_path / "capped", model / "inputs.npz", max_session_steps=2)
+    assert "MERLIN_SESSION_STEPS 8" in (tmp_path / "full" / "model_gen.h").read_text()
+    assert "MERLIN_SESSION_STEPS 2" in (tmp_path / "capped" / "model_gen.h").read_text()
+    assert full["has_session_correctness"] and capped["has_session_correctness"]
+
+    def _literals(path, name):
+        line = next(ln for ln in path.read_text().splitlines() if name in ln)
+        return line.count(",") + 1
+
+    io_full = tmp_path / "full" / "model_io.h"
+    io_capped = tmp_path / "capped" / "model_io.h"
+    # streams AND the trajectory reference shrink by the same factor, so step k still meets
+    # reference k; a stream truncated on its own would grade against the wrong step.
+    assert _literals(io_full, "merlin_stream_0[]") == 32
+    assert _literals(io_capped, "merlin_stream_0[]") == 8
+    assert _literals(io_full, "merlin_correctness_golden[]") == 32
+    assert _literals(io_capped, "merlin_correctness_golden[]") == 8

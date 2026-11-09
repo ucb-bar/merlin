@@ -5,7 +5,7 @@ status: current
 owner: capsule-bench
 last_verified: 2026-09-04
 related: [adding_a_target, getting_started]
-code_refs: [merlin/experiments/capsule_bench/harness, packages/merlin-experiments/src/merlin/targetgen/aet_bridge.py]
+code_refs: [merlin/experiments/capsule_bench/harness, src/merlin/targetgen/aet_bridge.py]
 ---
 
 # Run capsule experiments with Bedrock

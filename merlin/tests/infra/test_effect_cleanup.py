@@ -2,8 +2,9 @@
 
 import pytest
 
-from merlin.compile.scheduling.effect_cleanup import Effect as E
-from merlin.compile.scheduling.effect_cleanup import cleanup_indices, verify_cleanup
+from merlin.compiler.schedule.effect_cleanup import Effect as E
+from merlin.compiler.schedule.effect_cleanup import cleanup_indices
+from merlin.compiler.schedule.effect_cleanup import verify_cleanup
 
 
 def test_distinct_states_and_pending_payload_completion():

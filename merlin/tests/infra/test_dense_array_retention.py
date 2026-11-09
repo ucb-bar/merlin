@@ -8,14 +8,15 @@ from test_compact_dense import encode as fresh_encode
 from test_compact_dense import project as fresh_project
 from test_dense_retained_reduction import chosen, inputs
 
-from merlin.compile.scheduling.block_schedule import Compute, Load, Preload, Store
-from merlin.compile.scheduling.dense_array_retention import (
-    DenseArrayRetentionAdmission,
-    propose_dense_array_retention,
-    verify_dense_array_retention,
-    verify_dense_array_tile_loads,
-)
-from merlin.compile.scheduling.dense_panel_pipeline import DRAIN
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.dense_array_retention import DenseArrayRetentionAdmission
+from merlin.compiler.schedule.dense_array_retention import propose_dense_array_retention
+from merlin.compiler.schedule.dense_array_retention import verify_dense_array_retention
+from merlin.compiler.schedule.dense_array_retention import verify_dense_array_tile_loads
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
 from merlin.sched.ir import Call, Const, Kernel, Loop, Var, instances
 from merlin.sched.ir.kernel import concretize
 
@@ -110,7 +111,7 @@ def test_actual_counted_first_and_remaining_preserve_tails_products_and_completi
         call.instr == DRAIN for call, _ in instances(original.kernel))
     from test_scf_commands import record
 
-    from merlin.compile.scheduling.scf_commands import materialize_scf_commands
+    from merlin.compiler.schedule.scf_commands import materialize_scf_commands
 
     actual = materialize_scf_commands(proposal.kernel)
     actual.verify()
@@ -121,7 +122,9 @@ def test_actual_counted_first_and_remaining_preserve_tails_products_and_completi
 
 
 def test_finite_block_scheduler_is_an_independent_resident_weight_oracle():
-    from merlin.compile.scheduling.block_schedule import Contraction, Geometry, schedule_contraction
+    from merlin.compiler.schedule.blocks import Contraction
+    from merlin.compiler.schedule.blocks import Geometry
+    from merlin.compiler.schedule.blocks import schedule_contraction
 
     p, _, _, _, _, original = setup((4, 6, 4), (2, 2, 2))
     proposal = propose_dense_array_retention(original.kernel, ADAPTER, LAW)
@@ -212,8 +215,9 @@ def test_actual_scf_to_llvm_consumes_stay_without_emitting_the_fresh_projection(
     from xdsl.dialects import llvm
     from xdsl.dialects.builtin import ModuleOp, i64
 
-    from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter
-    from merlin.compile.scheduling.scf_commands import emit_scf_commands, materialize_scf_commands
+    from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
+    from merlin.compiler.schedule.scf_commands import emit_scf_commands
+    from merlin.compiler.schedule.scf_commands import materialize_scf_commands
     from merlin.llvmlower.host_builder import PTR, FnBuilder
 
     p, r, s, b, a, original = setup()
@@ -277,12 +281,10 @@ def test_m_varying_weight_address_and_ignored_scalar_operands_cannot_be_erased()
 
 
 def wide_setup():
-    from merlin.compile.scheduling.tile_load_coalescing import (
-        TileLoadAddressLaw,
-        TileLoadMapping,
-        _linear,
-        propose_tile_load_coalescing,
-    )
+    from merlin.compiler.schedule.tile_load_coalescing import TileLoadAddressLaw
+    from merlin.compiler.schedule.tile_load_coalescing import TileLoadMapping
+    from merlin.compiler.schedule.tile_load_coalescing import _linear
+    from merlin.compiler.schedule.tile_load_coalescing import propose_tile_load_coalescing
 
     p, r, s, b, a, original = setup((8, 8, 8), (2, 2, 2))
     laws = {role: TileLoadAddressLaw(2, 2, 8, 1, pitch, 2, "independent-wide-array-test")
@@ -327,7 +329,7 @@ def test_final_wide_bands_and_array_retention_compose_without_emitting_either_ch
     assert report["expanded_actual_kernel_sha256"] != proposal.kernel.digest()
     assert report["array_retention"]["retained_pairs"] > 0
     assert execute(proposal.kernel, p) == execute(original.kernel, p)
-    from merlin.compile.scheduling.scf_commands import materialize_scf_commands
+    from merlin.compiler.schedule.scf_commands import materialize_scf_commands
 
     materialize_scf_commands(proposal.kernel).verify()
     with pytest.raises(ValueError):

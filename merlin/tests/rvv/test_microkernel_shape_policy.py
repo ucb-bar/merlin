@@ -24,6 +24,33 @@ from merlin.kernels.microkernel import (
 from merlin.kernels.shapes import contraction_shapes
 from merlin.mining.from_strategy import _rvv_best_block, _rvv_blocking_lowers
 
+
+@pytest.fixture(autouse=True)
+def selected_policy(monkeypatch):
+    from merlin.kernels import microkernel
+    from merlin.mining.from_strategy import _codegen
+
+    resolvers, shapes = dict(microkernel._RESOLVERS), dict(microkernel._SHAPE_POLICIES)
+    try:
+        try:
+            provider = _codegen()
+        except RuntimeError as exc:
+            if "requires its OOT package" not in str(exc):
+                raise
+            pytest.skip(str(exc))
+        provider.register_microkernel_resolver()
+        # These cases measure the target policy; compatibility selection and
+        # source custody are exercised by test_policy_owner separately.
+        policy = provider.blocking_cost_api()
+        monkeypatch.setitem(globals(), "_rvv_best_block", policy._rvv_best_block)
+        monkeypatch.setitem(globals(), "_rvv_blocking_lowers", policy._rvv_blocking_lowers)
+        yield
+    finally:
+        microkernel._RESOLVERS.clear()
+        microkernel._RESOLVERS.update(resolvers)
+        microkernel._SHAPE_POLICIES.clear()
+        microkernel._SHAPE_POLICIES.update(shapes)
+
 # (MR, NR, M, N, lowers) — measured cells of the int8 lowering grid.
 MEASURED_CELLS = [
     # the champion block: fine when both parallel dims divide ...

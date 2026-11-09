@@ -1,4 +1,4 @@
-"""Check the actual release wheels for overlapping ownership and research leakage."""
+"""Check release archives for duplicate ownership, source drift and private corpora."""
 
 from __future__ import annotations
 
@@ -24,62 +24,14 @@ def audit(wheels: list[Path]) -> list[str]:
                     continue
                 if ".dist-info/" not in name:
                     files[name].append(distribution)
-                if name.startswith(("merlin/_data/contract/capsules/", "merlin/contract/capsules/")):
+                if name.startswith(("merlin/_data/contract/capsules/", "merlin/contract/capsules/",
+                                    "merlin_experiments/_data/contract/capsules/")):
                     errors.append(f"historical capsule corpus shipped in {distribution}: {name}")
                 if name.endswith(".dist-info/entry_points.txt"):
                     parser = configparser.ConfigParser()
                     parser.read_string(archive.read(name).decode())
                     for command in parser["console_scripts"] if parser.has_section("console_scripts") else ():
                         commands[command].append(distribution)
-                if distribution == "merlin" and name.startswith(
-                    (
-                        "merlin/dse/",
-                        "merlin/dse_guidance/",
-                        "merlin/design_pressure/",
-                        "merlin/compare/",
-                        "merlin/plotting/",
-                        "merlin/agentreport/",
-                        "merlin/verify/plots.py",
-                        "merlin/verify/replay.py",
-                        "merlin/verify/replay_layers.py",
-                        "merlin/perf/recovery.py",
-                        "merlin/perf/source_program_pair_provider.py",
-                        "merlin/perf/isolated_probe_provider.py",
-                        "merlin/perf/controlled_context_provider.py",
-                        "merlin/perf/paired_context_provider.py",
-                        "merlin/perf/host_region_qualifier.py",
-                        "merlin/perf/host_physical_transition_qualifier.py",
-                        "merlin/perf/lane_migration_qualifier.py",
-                        "merlin/perf/source_contraction_preparation.py",
-                        "merlin/perf/source_convolution_preparation.py",
-                        "merlin/perf/source_program_pair.py",
-                        "merlin/perf/source_initializer_elision.py",
-                        "merlin/kernels/ceiling_drivers/run_expert_gemm.py",
-                        "merlin/kernels/ceiling_drivers/multishape_compare.py",
-                        "merlin_experiments/",
-                        "merlin/targetgen/sandbox/",
-                        "merlin/targetgen/agent/",
-                        "merlin/targetgen/aet_bridge.py",
-                        "merlin/targetgen/experiment_tokens.py",
-                        "merlin/targetgen/heavy_oracles.py",
-                        "merlin/targetgen/model_slice_export.py",
-                        "merlin/targetgen/group_capsules.py",
-                        "merlin/targetgen/store_probe.py",
-                        "merlin/targetgen/evaluation_cohort.py",
-                        "merlin/targetgen/numeric_falsifiability.py",
-                        "merlin/targetgen/rtl/gen_rocc_replay.py",
-                        "merlin/targetgen/package_certification.py",
-                        "merlin/targetgen/capsule_runner.py",
-                        "merlin/targetgen/capsule_grade.py",
-                        "merlin/targetgen/capsule_golden.py",
-                        "merlin/targetgen/trace_check.py",
-                        "merlin/targetgen/coverage_report.py",
-                        "merlin/targetgen/_capsule_bundle_worker.py",
-                        "merlin/targetgen/eval/",
-                        "merlin/benchharness/",
-                    )
-                ):
-                    errors.append(f"optional research shipped in core: {name}")
                 if distribution != "merlin" and name in {
                     "merlin/__init__.py",
                     "merlin/mining/__init__.py",
@@ -222,7 +174,7 @@ def main() -> int:
     for error in errors:
         print(error)
     if not errors:
-        print(f"{len(args.wheels)} wheels: unique file/CLI ownership; optional research excluded from core")
+        print(f"{len(args.wheels)} wheels: unique file/CLI ownership; source parity and corpus exclusions checked")
         if args.source_root is not None:
             print("packaged Python matches canonical source bytes")
     return int(bool(errors))

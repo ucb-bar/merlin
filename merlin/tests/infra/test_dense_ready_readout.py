@@ -11,18 +11,17 @@ from test_dense_readout_overlap import selected
 from xdsl.dialects import llvm, scf
 from xdsl.dialects.builtin import ModuleOp, i64
 
-from merlin.compile.scheduling.block_schedule import Compute, Load, Preload, Store
-from merlin.compile.scheduling.dense_panel_pipeline import (
-    DRAIN,
-    DenseReadoutConfigurationSnapshot,
-    DenseReadyReadoutAdmission,
-    _verify_dense_epochs,
-)
-from merlin.compile.scheduling.dense_ready_readout import (
-    DenseReadyReadoutCheckingProjection,
-    propose_dense_ready_readout,
-    schedule_dense_ready_readout,
-)
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
+from merlin.compiler.schedule.dense_panel_pipeline import DenseReadoutConfigurationSnapshot
+from merlin.compiler.schedule.dense_panel_pipeline import DenseReadyReadoutAdmission
+from merlin.compiler.schedule.dense_panel_pipeline import _verify_dense_epochs
+from merlin.compiler.schedule.dense_ready_readout import DenseReadyReadoutCheckingProjection
+from merlin.compiler.schedule.dense_ready_readout import propose_dense_ready_readout
+from merlin.compiler.schedule.dense_ready_readout import schedule_dense_ready_readout
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.sched.ir import Call, Const, Loop, evaluate, instances
 
@@ -40,7 +39,7 @@ def setup(shape=(3, 4, 25)):
 def retained_setup(shape=(9, 14, 25)):
     from test_dense_retained_reduction import chosen, inputs
 
-    from merlin.compile.scheduling.dense_panel_readout import batch_dense_panel_readouts
+    from merlin.compiler.schedule.dense_panel_readout import batch_dense_panel_readouts
 
     p, r, s, b, admission = inputs(shape)
     original = chosen(p, r, s, b, admission, role="weight", order=("n", "m"), compute_order=("k", "n", "m"))
@@ -126,7 +125,7 @@ def test_actual_scf_and_llvm_consume_frontier_not_conservative_source_projection
     ) and any(type(child) is scf.ForOp for child in op.body.block.ops) for op in module.walk())
     builder, declarations = FnBuilder([]), {}
     def lower(instruction, operands, metadata):
-        from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter
+        from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
 
         bridge = FnBuilderIndexAdapter(builder)
         declarations[instruction] = len(operands)
@@ -253,8 +252,8 @@ def test_input_pipeline_refuses_missing_conjunction_alias_and_escaped_slot():
 
 
 def test_single_pipeline_entry_consumes_input_slot_and_rejects_unused_routes():
-    from merlin.compile.scheduling.dense_ready_readout import schedule_dense_pipeline
-    from merlin.compile.scheduling.schedule_ir import parse_dense_schedule_plan
+    from merlin.compiler.schedule.dense_ready_readout import schedule_dense_pipeline
+    from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
 
     p, r, s, b, original, law = retained_setup((21, 14, 25))
     law = replace(law, disjoint_load_qualification_identity="TEST-ONLY-load-ready-conjunction")
@@ -276,9 +275,10 @@ def test_single_pipeline_entry_consumes_input_slot_and_rejects_unused_routes():
 def test_ready_input_selection_joins_live_footprints_before_explicit_plan(shape, limited_role, tmp_path):
     from test_dense_retained_reduction import chosen, inputs
 
-    from merlin.compile.scheduling.dense_panel_pipeline import dense_retained_choices
-    from merlin.compile.scheduling.dense_ready_readout import dense_ready_input_choices, schedule_dense_pipeline
-    from merlin.compile.scheduling.schedule_ir import parse_dense_schedule_plan
+    from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_choices
+    from merlin.compiler.schedule.dense_ready_readout import dense_ready_input_choices
+    from merlin.compiler.schedule.dense_ready_readout import schedule_dense_pipeline
+    from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
 
     p, r, s, _, admission = inputs(shape)
     if limited_role == "lhs_rows":
@@ -338,7 +338,7 @@ def _execute_emitted_ready_c(directory, result, p, storage):
     import shutil
     import subprocess
 
-    from merlin.compile.scheduling.dense_panel_pipeline import _calls
+    from merlin.compiler.schedule.dense_panel_pipeline import _calls
     from merlin.sched.codegen import emit_c_function
     from merlin.sched.isa import InstrDef, InstructionSet, Operand
 
@@ -424,10 +424,8 @@ static void do_{DRAIN}(void) {{}}
 
 
 def test_ready_input_placement_is_checked_against_actual_accesses_and_completion_law():
-    from merlin.compile.scheduling.dense_ready_readout import (
-        dense_ready_input_choices,
-        propose_dense_ready_input_pipeline,
-    )
+    from merlin.compiler.schedule.dense_ready_readout import dense_ready_input_choices
+    from merlin.compiler.schedule.dense_ready_readout import propose_dense_ready_input_pipeline
 
     p, r, s, b, original, law = retained_setup((24, 14, 24))
     placement = next(c for c in dense_ready_input_choices(p, r, s) if c.block == b)
@@ -449,8 +447,8 @@ def test_counted_final_k_prefix_keeps_array_runs_and_emits_only_fresh_final_stor
     from test_dense_array_retention import LAW
     from test_dense_array_retention import execute as array_execute
 
-    from merlin.compile.scheduling.dense_ready_readout import schedule_dense_pipeline
-    from merlin.compile.scheduling.schedule_ir import parse_dense_schedule_plan
+    from merlin.compiler.schedule.dense_ready_readout import schedule_dense_pipeline
+    from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
 
     p, r, s, b, original, law = retained_setup(shape)
     law = replace(law, disjoint_load_qualification_identity="TEST-ONLY-load-ready-conjunction")
@@ -507,18 +505,16 @@ def test_final_k_prefix_refuses_one_k_and_no_reusable_m_without_repair():
 @pytest.mark.parametrize("retained", [False, True])
 @pytest.mark.parametrize("external", [False, True])
 def test_final_wide_bands_keep_causal_order_original_source_and_strict_owner(retained, external):
-    from merlin.compile.scheduling.dense_ready_readout import admit_ready_readout_tile_loads
-    from merlin.compile.scheduling.panel_tile_loads import admit_panel_tile_loads
-    from merlin.compile.scheduling.tile_load_coalescing import (
-        TileLoadAddressLaw,
-        TileLoadMapping,
-        _linear,
-        propose_tile_load_coalescing,
-    )
+    from merlin.compiler.schedule.dense_ready_readout import admit_ready_readout_tile_loads
+    from merlin.compiler.schedule.panel_tile_loads import admit_panel_tile_loads
+    from merlin.compiler.schedule.tile_load_coalescing import TileLoadAddressLaw
+    from merlin.compiler.schedule.tile_load_coalescing import TileLoadMapping
+    from merlin.compiler.schedule.tile_load_coalescing import _linear
+    from merlin.compiler.schedule.tile_load_coalescing import propose_tile_load_coalescing
 
     p, r, s, b, original, law = retained_setup((4, 6, 24)) if retained else setup((4, 6, 24))
     ready = schedule_dense_ready_readout(original, p, b, r, s, ADAPTER, law)
-    from merlin.compile.scheduling.panel_transfers import AffineMatrixSource
+    from merlin.compiler.schedule.panel_transfers import AffineMatrixSource
 
     external_sources = ({"weight": AffineMatrixSource(
         "weight", (p.k, p.n), 1, 5, 3 * p.n, 1, 0, 5 + (p.k - 1) * 3 * p.n + p.n,
@@ -595,9 +591,10 @@ def test_retained_full_k_frontier_preserves_every_product_and_minimal_rhs_loads(
 def test_retained_tiled_readout_requires_original_coefficients_and_selected_snapshot(uniform, snapshot):
     from test_dense_retained_reduction import inputs
 
-    from merlin.compile.scheduling.dense_contracts import DenseTiledIntegerReadout, TiledIntegerStore
-    from merlin.compile.scheduling.dense_ready_readout import schedule_dense_pipeline
-    from merlin.compile.scheduling.schedule_ir import make_dense_schedule_plan
+    from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout
+    from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
+    from merlin.compiler.schedule.dense_ready_readout import schedule_dense_pipeline
+    from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
 
     p, r, s, b, admission = inputs()
     coefficients = [0.5] * p.n
@@ -667,7 +664,7 @@ def _execute_tiled_with_deferred_readouts(kernel, problem, adapter, readout):
     """
     import struct
 
-    from merlin.compile.scheduling.dense_contracts import TiledIntegerStore
+    from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
 
     lhs = (np.arange(problem.m * problem.k) % 7 - 3).reshape(problem.m, problem.k)
     rhs = (np.arange(problem.k * problem.n) % 5 - 2).reshape(problem.k, problem.n)

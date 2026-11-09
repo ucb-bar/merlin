@@ -16,7 +16,7 @@ from merlin_experiments.phase1.feedback import private_completed_build as C
 
 from merlin.common import bundle_snapshot as B
 from merlin.common import invocation_record as I
-from merlin.compile import baremetal_model as BM
+from merlin import model as BM
 from merlin.llvmlower.compilation_recipe import CompilationRecipe
 from merlin.targetgen.sandbox import bwrap
 
@@ -158,10 +158,33 @@ def test_completed_production_survives_later_checker_refusal_and_rechecks_curren
     assert invocation["outcome"] == "returned"
 
 
-@pytest.mark.parametrize("changed", ["source.c", "source.o", "model.elf", "compilation_recipe.json"])
+@pytest.mark.parametrize("changed", ["source.c", "source.o", "model.elf", "compilation_recipe.json", "builder_stage", "builder_isa"])
 def test_changed_consumed_product_or_recipe_refuses_hit(build, changed):
+    if changed in ("builder_stage", "builder_isa"):
+        snapshot = build.core.parents[3]
+        for relative in (
+            "src/merlin/model.py", "src/merlin/compiler/build/modeloptions.py",
+            "src/merlin/compiler/build/saved.py", "src/merlin/runtime/model.py",
+            "src/merlin/verification/model.py",
+            "src/merlin/compiler/backend/isa.py",
+        ):
+            selected = snapshot / relative
+            selected.parent.mkdir(parents=True, exist_ok=True)
+            selected.write_text("# explicit synthetic producer stage\n")
+            build.release["files"][relative] = sha(selected)
+        if changed == "builder_isa":
+            selected = snapshot / "src/merlin/model.py"
+            selected.write_text("from merlin.compiler.backend.isa import implementation_functions as unknown_layout\n")
+            build.release["files"]["src/merlin/model.py"] = sha(selected)
+            with pytest.raises(ValueError, match="unknown selected"):
+                C._builder_paths(snapshot, build.release)
+            selected.write_text("from merlin.compiler.backend.isa import implementation_functions as _host_isa_functions\n")
+            build.release["files"]["src/merlin/model.py"] = sha(selected)
+        assert len(C._builder_paths(snapshot, build.release)) == (6 if changed == "builder_isa" else 5)
     first = build.invoke("first")
-    path = Path(first["output"]["elf"]).parent / changed
+    path = (build.core.parents[3] / "src/merlin/compiler/backend/isa.py" if changed == "builder_isa" else
+            build.core.parents[3] / "src/merlin/compiler/build/saved.py" if changed == "builder_stage"
+            else Path(first["output"]["elf"]).parent / changed)
     old_stat = path.stat()
     path.write_bytes(path.read_bytes() + b"changed")
     import os
@@ -266,7 +289,7 @@ def test_sdk_alias_cannot_hide_additional_runtime_members(tmp_path):
 def test_exact_v26_style_route_is_accepted_but_unknown_hooks_refuse(tmp_path):
     from dataclasses import replace
 
-    from merlin.compile.complete_group_routing import select_complete_group
+    from merlin.compiler.planning.complete import select_complete_group
     from merlin.llvmlower.device_build import DeviceRouting
 
     device = DeviceRouting(

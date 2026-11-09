@@ -6,9 +6,9 @@ owner: merlin-experiments
 last_verified: 2026-10-20
 related: [phase2_corpus_search, phase2_component_search]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase2/search_coordinator.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/queued_search_actions.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/evaluation_pool.py
+  - src/merlin_experiments/phase2/search_coordinator.py
+  - src/merlin_experiments/phase2/queued_search_actions.py
+  - src/merlin_experiments/phase2/evaluation_pool.py
 ---
 
 # Queued evaluation deadlines

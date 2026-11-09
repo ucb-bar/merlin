@@ -144,7 +144,7 @@ def sibling_roots(module):
 def test_actual_sibling_outline_preserves_host_epilogue_and_results():
     import numpy as np
 
-    from merlin.compile.scheduling.shared_input_groups import find_shared_input_groups
+    from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups
     from merlin.llvmlower.source_region import outline_sibling_contractions
     from merlin.runtime.linalg_numpy import evaluate
 
@@ -244,7 +244,7 @@ def _source_owner_fixture(tmp_path, monkeypatch):
 
     import yaml
 
-    from merlin.compile import owned_shared_source as owner
+    from merlin.compiler.build import siblings as owner
     from merlin.llvmlower.borrowed_effects import BorrowedBufferEffects
     from merlin.llvmlower.source_region_host import prepare_sibling_source_host, tensor_abi
     from merlin.targetgen import frozen_source_eligibility, native_model_execution
@@ -306,7 +306,7 @@ def _source_owner_fixture(tmp_path, monkeypatch):
 
 
 def test_original_source_owner_rederives_private_core_and_keeps_public_abi(tmp_path, monkeypatch):
-    from merlin.compile import owned_shared_source as owner
+    from merlin.compiler.build import siblings as owner
 
     cap, _ = _source_owner_fixture(tmp_path, monkeypatch)
     path, validate = owner.compiler_input(cap, tmp_path / "generated", target="test")
@@ -326,7 +326,7 @@ def test_original_source_owner_rederives_private_core_and_keeps_public_abi(tmp_p
 
 
 def test_original_source_owner_refuses_different_fresh_census_and_capsule(tmp_path, monkeypatch):
-    from merlin.compile import owned_shared_source as owner
+    from merlin.compiler.build import siblings as owner
 
     cap, certificate = _source_owner_fixture(tmp_path, monkeypatch)
     certificate["n_eligible"] = 1

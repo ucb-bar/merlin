@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import module_source_path
 
 
 def test_static_pt2e_annotates_only_placed_operations() -> None:
@@ -18,7 +18,7 @@ def test_static_pt2e_annotates_only_placed_operations() -> None:
     )
     if not python or not Path(python).is_file():
         pytest.skip("TorchAO capture interpreter is not configured")
-    source = merlin_dir() / "python/merlin/targetgen/_recipe_quantizer.py"
+    source = module_source_path("merlin.targetgen._recipe_specs").with_name("_recipe_quantizer.py")
     script = r"""
 import importlib.util
 import json
@@ -100,7 +100,7 @@ def test_static_pt2e_places_closed_functional_sum_in_container(nested, inplace) 
     python = os.environ.get("MERLIN_M2M_PYTHON")
     if not python or not Path(python).is_file():
         pytest.skip("TorchAO capture interpreter is not configured")
-    source = merlin_dir() / "python/merlin/targetgen/_recipe_quantizer.py"
+    source = module_source_path("merlin.targetgen._recipe_specs").with_name("_recipe_quantizer.py")
     script = r"""
 import importlib.util
 import json

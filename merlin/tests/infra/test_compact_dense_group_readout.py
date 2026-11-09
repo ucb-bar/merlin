@@ -8,8 +8,8 @@ import yaml
 from test_compact_dense_group import run, schedule, selected_fixture
 from test_dense_integer_readout import QUALIFICATION, SCALAR_IR
 
-from merlin.compile.scheduling.block_schedule import Store
-from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
 from merlin.sched.ir import Ptr, as_expr
 
 
@@ -136,8 +136,8 @@ def test_readout_pointer_must_have_its_original_full_output_binding(tmp_path, mu
 
 
 def test_low_level_typed_effect_proof_does_not_grant_source_selection(tmp_path):
-    from merlin.compile.scheduling.compact_dense_group import emit_compact_dense_group
-    from merlin.compile.scheduling.compact_dense_group_check import verify_compact_dense_group
+    from merlin.compiler.schedule.compact_dense_group import emit_compact_dense_group
+    from merlin.compiler.schedule.compact_dense_group_check import verify_compact_dense_group
     from merlin.transforms.dense_planning import DenseResources
 
     contracts, model, readouts = mixed_fixture(tmp_path)

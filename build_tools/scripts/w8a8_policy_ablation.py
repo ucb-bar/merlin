@@ -73,8 +73,8 @@ def _attr_str(op, key: str) -> str | None:
 def _prepared_module(bundle: Path):
     """Parse + apply the same pre-quant normalization ``run_model`` does, so the ops offered to the
     quant passes here are the ops offered there."""
+    from merlin.compiler.transforms.matmul import collapse_overrank_matmul
     from merlin.frontends.linalg_mlir import parse_mlir_file
-    from merlin.llvmlower.passes_xdsl import collapse_overrank_matmul
     from merlin.llvmlower.torchao_affine import lower_torchao_affine_quant
     from merlin.runtime.dispatch_runtime import _propagate_quant_inner
 

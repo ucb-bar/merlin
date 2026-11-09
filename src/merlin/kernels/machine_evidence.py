@@ -13,8 +13,8 @@ import json
 import math
 from collections import Counter
 
-from merlin.compile.analysis.riscv_machine import BRANCHES, CALLS, decode_cpu, finite_control_counts, register_facts
-from merlin.compile.analysis.rocc_commands import fields_of
+from merlin.analysis.riscv_machine import BRANCHES, CALLS, decode_cpu, finite_control_counts, register_facts
+from merlin.analysis.rocc_commands import fields_of
 from merlin.kernels.instruction_comparison import OperandSummary
 from merlin.kernels.kernel_evidence import EvidenceFact, cca_projection
 

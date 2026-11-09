@@ -6,15 +6,15 @@ owner: verification
 last_verified: 2026-10-12
 related: [verification, lowering_pipeline, capture_execution_attestation, verified_compiler_tooling, verified_compiler_roadmap]
 code_refs:
-  - src/merlin/verify/receipts.py
+  - src/merlin/verification/receipts.py
   - src/merlin/verify/scalar_ir.py
   - src/merlin/verify/outline_ir.py
   - src/merlin/verify/split_reduction.py
-  - src/merlin/verify/cli.py
-  - src/merlin/verify/lean_checker.py
-  - src/merlin/verify/lean_export.py
-  - src/merlin/verify/lean_sat_runtime.py
-  - src/merlin/verify/lean/Merlin/Foundation.lean
+  - src/merlin/verification/cli.py
+  - src/merlin/verification/lean_checker.py
+  - src/merlin/verification/lean_export.py
+  - src/merlin/verification/lean_sat_runtime.py
+  - src/merlin/verification/lean/Merlin/Foundation.lean
   - src/merlin/transforms/pipeline.py
   - src/merlin/perf/whole_model_chunks.py
   - src/merlin/compile/mesh.py
@@ -77,7 +77,7 @@ Neither method proves that a final object implements a checked IR pair.
 | LLVM-dialect MLIR → LLVM IR → object | ABI, pointer/address-space and alignment semantics, instruction mapping, no new undefined behavior | MLIR verifier at every pass; source/target semantic checks for Merlin rewrites; Alive2 on supported LLVM-IR optimizations; disassembly/ISA and execution checks for machine code | IR and host/device differential checks; no end-to-end formal machine-code theorem |
 | Host/device runtime → model output | Transfer ownership, coherence, invocation order, output completeness and numerical acceptance | Compositional boundary receipts plus representative kernel and held-out model execution | Numerical/hardware gates exist; a successful model is a witness, not a theorem for arbitrary models |
 
-`src/merlin/verify/receipts.py` currently supports only `linalg_to_interface` and
+`src/merlin/verification/receipts.py` currently supports only `linalg_to_interface` and
 `interface_to_command_buffer`. It binds actual before/after hashes, typed
 signatures, semantics-encoder hash, `mlir-translate` hash, Z3 version and SMT
 query. `qualify_receipt` replays the obligation. The source encoder requires a
@@ -88,7 +88,7 @@ The saved OOT `merlin_iface` text bridge has the same narrow scope. An IR verifi
 checks syntax/types and is not a semantic proof.
 
 The existing `contract.prove` token verifies a matching requirement string, not
-the requirement's truth; `src/merlin/verify/proofs.py` correctly distinguishes
+the requirement's truth; `src/merlin/verification/proofs.py` correctly distinguishes
 `asserted` from `verified`. A pass invocation log proves reachability, not
 correctness. Likewise, a source-to-preprocessed result-type map checks type
 correspondence but not value preservation.

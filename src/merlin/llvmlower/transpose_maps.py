@@ -397,7 +397,7 @@ def run_source() -> str:
 
 
 def _feature():
-    from .impr_features import ImprFeature
+    from .shared_feature_registry import ImprFeature
 
     return ImprFeature(
         name=FEATURE,
@@ -424,7 +424,7 @@ def _feature():
 def ensure_registered() -> str:
     """Register the feature if it is not already. Idempotent, so importing from several entry
     points is safe. Returns the feature name."""
-    from .impr_features import known, register
+    from .shared_feature_registry import known, register
 
     if FEATURE not in known():
         register(_feature())

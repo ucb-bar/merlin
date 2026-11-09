@@ -21,6 +21,7 @@ target is covered without an edit.
 from __future__ import annotations
 
 import glob
+from pathlib import Path
 
 import external_sources
 import pytest

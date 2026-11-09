@@ -10,8 +10,8 @@ from xdsl.dialects import llvm
 from xdsl.dialects.builtin import IntegerAttr, i1, i8, i64
 from xdsl.ir import Block, SSAValue
 
-from merlin.compile.scheduling.block_schedule import SpatialMaxReadout
-from merlin.compile.scheduling.window_transfer import Window2D
+from merlin.compiler.schedule.blocks import SpatialMaxReadout
+from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.llvmlower.host_builder import PTR, FnBuilder
 
 

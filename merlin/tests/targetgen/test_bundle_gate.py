@@ -2262,3 +2262,13 @@ def test_a_declared_digest_is_asserted_and_an_undeclared_one_says_so() -> None:
     candidate = BH._gate_check(_margin_gate(), output_offset=0, output_ctype="float")
     assert "MERLIN_GATE_DIGEST asserted=0" in candidate
     assert "merlin_digest_ok" not in candidate
+
+
+def test_declared_public_gate_exports_name_the_supported_reference_and_comparison_kinds():
+    from typing import get_args
+
+    namespace = {}
+    exec("from merlin.targetgen.bundle_gate import *", namespace)
+    assert set(BG.__all__) <= namespace.keys()
+    assert set(get_args(namespace["ReferenceKind"])) == set(BG.REFERENCE_KINDS)
+    assert set(get_args(namespace["Comparison"])) == set(BG.COMPARISONS)

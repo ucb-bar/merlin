@@ -8,7 +8,8 @@ output. A successful bridge does not qualify the external primitive.
 
 from __future__ import annotations
 
-from merlin.compile.scheduling.batched_dense import BatchedDenseProblem, BatchMatrixView
+from merlin.compiler.schedule.batched_dense import BatchedDenseProblem
+from merlin.compiler.schedule.batched_dense import BatchMatrixView
 
 from .device_shim import ShimUnit, _memref_typedef
 from .logical_borrowed_abi import (

@@ -39,5 +39,5 @@ def __getattr__(name: str):
     except ModuleNotFoundError as exc:
         if exc.name != "merlin.baselines.contract":
             raise
-        raise ModuleNotFoundError("Baseline analysis requires the merlin-analysis distribution") from exc
+        raise ModuleNotFoundError("Merlin installation lacks baseline analysis; reinstall 'merlin[analysis]'") from exc
     return getattr(contract, name)

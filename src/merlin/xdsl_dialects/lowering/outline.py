@@ -42,7 +42,12 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from merlin.compiler.ir.boundary import free_values
+
 from .._common import HAS_XDSL
+
+# Historical branch helper; use the same canonical nested-capture algorithm.
+_free_values = free_values
 
 
 class OutlineError(RuntimeError):
@@ -94,6 +99,57 @@ class OutlineResult:
     @property
     def n_kernels(self) -> int:
         return len(self.dispatches)
+
+
+@dataclass(frozen=True)
+class ExternalizedDispatches:
+    """Outlined driver with selected kernel bodies replaced by typed declarations.
+
+    The caller must link an implementation for every selected symbol. This stage
+    makes no claim that the implementation preserves the removed body's semantics.
+    """
+
+    module: Any
+    symbols: tuple[str, ...]
+
+
+def externalize_dispatches(outlined: OutlineResult, symbols: Iterable[str]) -> ExternalizedDispatches:
+    """Expose exact outlined symbols to a separately compiled dispatch provider.
+
+    Selection is by the symbols emitted by :func:`outline_dispatches`, never by
+    a model name or by a guessed position in the module. The source module is
+    left intact so an independent host/reference build can use its bodies.
+    """
+    from xdsl.dialects import func
+
+    selected = tuple(symbols)
+    if any(not isinstance(symbol, str) or not symbol for symbol in selected):
+        raise OutlineError("external dispatch symbols must be nonempty strings")
+    if len(set(selected)) != len(selected):
+        raise OutlineError("external dispatch symbols must be unique")
+    known = {dispatch.symbol for dispatch in outlined.dispatches}
+    unknown = sorted(set(selected) - known)
+    if unknown:
+        raise OutlineError("not an outlined dispatch: " + ", ".join(f"@{symbol}" for symbol in unknown))
+
+    module = outlined.module.clone()
+    module.verify()
+    functions = {
+        op.sym_name.data: op for op in module.body.block.ops if isinstance(op, func.FuncOp)
+    }
+    for symbol in selected:
+        original = functions.get(symbol)
+        if original is None or not original.body.blocks or original.parent is not module.body.block:
+            raise OutlineError(f"outlined dispatch @{symbol} must have one top-level definition")
+        signature = original.function_type
+        declaration = func.FuncOp.external(symbol, list(signature.inputs.data), list(signature.outputs.data))
+        for key, value in original.attributes.items():
+            if key not in {"sym_name", "function_type", "sym_visibility"}:
+                declaration.attributes[key] = value
+        module.body.block.insert_op_before(declaration, original)
+        original.detach()
+    module.verify()
+    return ExternalizedDispatches(module=module, symbols=selected)
 
 
 def _prov(op) -> dict[str, str]:
@@ -184,47 +240,15 @@ def _producer_closure(root):
     for operand in root.operands:
         if _is_block_arg(operand):
             continue
-        if _cloneable(operand.owner):
+        if (_cloneable(operand.owner) or (
+            root.name in {"linalg.matmul", "linalg.generic"}
+            and hasattr(root, "outputs")
+            and operand in root.outputs
+            and operand.owner.name == "tensor.splat"
+        )):
             visit(operand.owner)
     ops.append(root)
     return ops
-
-
-def _free_values(kernel_ops):
-    """Ordered, de-duplicated values the kernel must receive as arguments.
-
-    A value is *free* (a parameter) when it is used anywhere in the kernel — including
-    deep inside an op's regions — but is defined outside it. This must recurse into
-    regions: model2MLIR ``linalg.generic`` bodies *capture* outer tensors (e.g. a
-    ``tensor.extract`` gather for RoPE/embeddings), and those captures are not visible
-    as top-level operands. Missing them yields an ``IsolatedFromAbove`` violation when
-    the op is cloned into the kernel func.
-
-    Values defined *inside* the kernel — results of any kernel op (or nested op) and the
-    block arguments of the ops' own regions (e.g. a generic's ``^bb0`` element args) —
-    are not parameters.
-    """
-    internal: set[int] = set()
-    all_ops: list = []
-    for op in kernel_ops:
-        for sub in op.walk():
-            all_ops.append(sub)
-            for res in sub.results:
-                internal.add(id(res))
-            for region in sub.regions:
-                for block in region.blocks:
-                    for arg in block.args:
-                        internal.add(id(arg))
-
-    params: list = []
-    seen: set[int] = set()
-    for sub in all_ops:
-        for operand in sub.operands:
-            if id(operand) in internal or id(operand) in seen:
-                continue
-            seen.add(id(operand))
-            params.append(operand)
-    return params
 
 
 def _group_closure(members):
@@ -358,7 +382,7 @@ def outline_dispatches(
         suffix = f"__r{_sanitize_symbol(rid)}" if rid else ""
         symbol = f"{fname}$kernel_{idx}{suffix}"
         kernel_ops = _producer_closure(op) if grp is None else _group_closure(members)
-        params = _free_values(kernel_ops)
+        params = free_values(kernel_ops)
         result_types = [r.type for r in op.results]
 
         kblock = Block(arg_types=[p.type for p in params])

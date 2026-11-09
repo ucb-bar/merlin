@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from merlin.compile.scheduling.window_transfer import Window2D
+from merlin.compiler.schedule.window_transfer import Window2D
 
 
 class Builder:

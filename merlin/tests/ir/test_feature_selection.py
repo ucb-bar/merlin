@@ -7,7 +7,9 @@ from merlin.llvmlower import impr_features as F
 
 @pytest.fixture
 def feature(monkeypatch):
-    monkeypatch.setattr(F, "_REGISTRY", dict(F._REGISTRY))
+    entries = dict(F._REGISTRY)
+    monkeypatch.setattr(F._FEATURES, "entries", entries)
+    monkeypatch.setattr(F, "_REGISTRY", entries)
 
     def add(name, **kwargs):
         return F.register(F.ImprFeature(name, "PASS", "selection test", **kwargs)).name

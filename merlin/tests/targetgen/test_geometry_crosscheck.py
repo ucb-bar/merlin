@@ -25,7 +25,7 @@ TARGETS = ("gemmini", "atlas", "muon", "toy_npu")
 
 def _derived(target: str):
     """The geometry a machine projects for ``target``, or ``None`` when none does."""
-    from merlin.compile.scheduling.derive import geometry_from_machine
+    from merlin.compiler.schedule.derive import geometry_from_machine
     from merlin.sched.mach.derive import derive
 
     try:

@@ -5,7 +5,7 @@ import hashlib
 import pytest
 import yaml
 
-from merlin.compile.owned_spatial_source import _local_document
+from merlin.compiler.build.spatial import _local_document
 from merlin.targetgen.contract.materialize import materialize_public_capsules
 
 

@@ -8,11 +8,11 @@ related: [joint_optimization_catalog, optimization_suggestions, compiler_authori
 code_refs:
   - docs/design/operation_optimization_catalog.json
   - docs/design/operation_optimization_catalog.schema.json
-  - packages/merlin-experiments/src/merlin_experiments/phase1/operation_optimizations.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/capability_inventory.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/performance_brief.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/composition_next.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/author_skills/heavy-pass-recipes/scripts/composition_routes.py
+  - src/merlin_experiments/phase1/operation_optimizations.py
+  - src/merlin_experiments/phase1/capability_inventory.py
+  - src/merlin_experiments/phase1/feedback/performance_brief.py
+  - src/merlin_experiments/phase1/feedback/composition_next.py
+  - src/merlin_experiments/phase1/author_skills/heavy-pass-recipes/scripts/composition_routes.py
   - packages/merlin-experiments/tests/test_operation_optimizations.py
 ---
 

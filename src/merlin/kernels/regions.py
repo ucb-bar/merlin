@@ -143,7 +143,16 @@ REGIONS: dict[str, Region] = {
             "Global optimization passes (backend-agnostic)",
             "The frozen baseline pass list + Merlin-authored xDSL passes; changed via default-off "
             "impr_features pipeline hooks.",
-            (_PIPE, "merlin/python/merlin/llvmlower/passes_xdsl.py"),
+            (
+                _PIPE,
+                "src/merlin/compiler/frontend/preprocess.py",
+                "src/merlin/compiler/frontend/repairs.py",
+                "src/merlin/compiler/ir/provenance.py",
+                "src/merlin/compiler/quantization/linalg.py",
+                "src/merlin/compiler/transforms/matmul.py",
+                "src/merlin/compiler/transforms/dead.py",
+                "src/merlin/compiler/lower/scalar/casts.py",
+            ),
             [
                 _ep(
                     "PASS",
@@ -480,7 +489,7 @@ REGIONS: dict[str, Region] = {
             "The CCA->lever router + escalation ladder; DSE candidate selection.",
             (
                 "merlin/python/merlin/kernels/action_catalog.py",
-                "packages/merlin-dse/src/merlin/dse_guidance/candidates.py",
+                "src/merlin/dse_guidance/candidates.py",
             ),
             [
                 _ep(
@@ -498,7 +507,7 @@ REGIONS: dict[str, Region] = {
             "The cost model + the datatype->compute-unit target-capability manifests (also the INPUT to "
             "agentic target-dialect generation).",
             (
-                "packages/merlin-dse/src/merlin/dse/cost_model.py",
+                "src/merlin/dse/cost_model.py",
                 "merlin/python/merlin/targetgen/capability_manifests.py",
             ),
             [
@@ -551,9 +560,29 @@ def region_for_axis(axis: str) -> Region | None:
     return None
 
 
-def all_edit_points() -> list[tuple[str, EditPoint]]:
-    """(region key, EditPoint) for every registrable edit-point across the compiler."""
-    return [(r.key, ep) for r in REGIONS.values() for ep in r.edit_points]
+def all_edit_points(*, codegen_provider=None, support_target=None) -> list[tuple[str, EditPoint]]:
+    """Return actual selected OOT schedule edit points when a provider is supplied.
+
+    Without selection, the compatibility selector remains navigable but is not
+    advertised as the editable implementation of vector schedule algorithms.
+    """
+    from dataclasses import replace
+
+    selected = None
+    if codegen_provider is not None or support_target is not None:
+        from merlin.mining.from_strategy import _codegen
+
+        provider = _codegen(codegen_provider, support_target=support_target)
+        selected = str(provider.microkernel_policy_api().__file__)
+    result = []
+    for region in REGIONS.values():
+        for point in region.edit_points:
+            if point.file == _FS and point.seam in {"schedule:op_match", "schedule:vector_sizes"}:
+                point = replace(point, file=selected or point.file, forkable_now=selected is not None,
+                                how_to_add=(point.how_to_add if selected else
+                                    "select an OOT codegen provider to locate its editable schedule policy"))
+            result.append((region.key, point))
+    return result
 
 
 def check_regions(backends=None) -> list[str]:

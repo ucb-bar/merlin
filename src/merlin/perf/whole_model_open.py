@@ -518,7 +518,7 @@ NORMALIZATION = (
 
 def normalize(module) -> dict[str, int]:
     """Apply :data:`NORMALIZATION` in order; returns what each pass rewrote."""
-    from merlin.llvmlower import passes_xdsl as PX
+    from merlin.compiler.frontend import preprocess as PX
     from merlin.llvmlower.torchao_affine import lower_torchao_affine_quant
 
     done: dict[str, int] = {}

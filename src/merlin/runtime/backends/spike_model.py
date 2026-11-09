@@ -582,7 +582,7 @@ def build(
     selected_vectorize = _select_host_vectorize(clang_cflags, rvv_schedule, host_vectorize)
     vectorize = host_vectorize is True
     if host_roundeven:
-        from merlin.compile.host_lane import require_host_isa
+        from merlin.compiler.backend.isa import require_host_isa
 
         marches = [flag.removeprefix("-march=") for flag in clang_cflags if flag.startswith("-march=")]
         abis = [flag.removeprefix("-mabi=") for flag in clang_cflags if flag.startswith("-mabi=")]
@@ -973,6 +973,8 @@ def build(
                 f"{len(matrix_sigs)} matrix-unit signature(s) were routed but no `matrix=` routing is "
                 "available to build them against; the image would not link"
             )
+        from merlin.compiler.backend.kernel import build_kwargs
+
         matrix_build = matrix.provider().build_object(
             matrix_sigs,
             work / "matrix",
@@ -981,6 +983,7 @@ def build(
             cc=clang,
             cflags=[CLANG_TARGET, *clang_cflags],
             scalar_tile=matrix_scalar_tile,
+            **build_kwargs(matrix, matrix_sigs),
         )
         supplemental_objects.append(matrix_build.object_path)
         print(

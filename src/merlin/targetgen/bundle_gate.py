@@ -29,7 +29,18 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
+
+ReferenceKind = Literal[
+    "fp32",
+    "weight_only_int8",
+    "w8a8_execution",
+    "w8a8_independent",
+    "pt2e_integer",
+    "eager_same_precision",
+    "eager_fp32",
+]
+Comparison = Literal["exact_elementwise", "tolerance_and_topk", "trajectory"]
 
 __all__ = [
     "ReferenceKind",

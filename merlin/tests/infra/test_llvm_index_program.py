@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.scheduling.llvm_program import emit_index_program
+from merlin.compiler.schedule.llvm_program import emit_index_program
 from merlin.sched.ir import Call, Const, Kernel, Loop, Var, select
 
 

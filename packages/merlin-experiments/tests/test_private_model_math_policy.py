@@ -92,7 +92,7 @@ def _select(fixture):
 )
 def test_selected_policy_forwards_to_actual_compile_api(tmp_path, monkeypatch, common, own, selected):
     selection = _select(_fixture(tmp_path, policy=common, own=own))
-    from merlin.compile import baremetal_model
+    from merlin import model as baremetal_model
 
     seen = {}
 

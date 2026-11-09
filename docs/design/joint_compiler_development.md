@@ -12,8 +12,8 @@ code_refs:
   - src/merlin/perf/fast_estimate_validation.py
   - src/merlin/perf/phase2_feature_calibration.py
   - src/merlin/perf/staged_roofline.py
-  - packages/merlin-experiments/src/merlin_experiments/model_observation.py
-  - packages/merlin-experiments/src/merlin_experiments/chain_observation.py
+  - src/merlin_experiments/model_observation.py
+  - src/merlin_experiments/chain_observation.py
 ---
 
 # Develop functional and performant compilers together

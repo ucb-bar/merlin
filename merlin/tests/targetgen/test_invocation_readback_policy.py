@@ -603,7 +603,7 @@ def test_qa_factories_carry_explicit_policy_without_changing_default(monkeypatch
 
 
 def test_native_postrun_build_mutation_cannot_retain_a_numerical_pass(monkeypatch, tmp_path):
-    from merlin.compile import model_execution_inputs
+    from merlin.runtime import modelinputs as model_execution_inputs
     from merlin.runtime import route_quality
     from merlin.runtime.backends import base as backends
     from merlin.targetgen import bundle_harness, capsule_golden, golden_store, native_model_execution, oracle_policy

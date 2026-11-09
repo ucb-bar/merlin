@@ -25,7 +25,7 @@ def cpu_softmax_row_numerics(*, backend_policy, assume_finite_inputs=False):
     This is source numerical data, not target support or qualification. The
     selected exp implementation must realize build_cpu_softmax_exp_nonpositive.
     """
-    from merlin.compile.scheduling.row_softmax import RowSoftmaxNumerics
+    from merlin.compiler.schedule.row_softmax import RowSoftmaxNumerics
 
     lanes, tree = cpu_softmax_sum_order(backend_policy)
     return RowSoftmaxNumerics(

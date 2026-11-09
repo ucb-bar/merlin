@@ -534,7 +534,7 @@ class BoundRoCCBackend:
         from merlin.runtime import complete_call_timing, direct_kernel_harness, harness_render, kernel_call_timing
         from merlin.runtime import storage_binding, prepack_authority, captured_constants
         from merlin.perf import storage_encoding
-        from merlin.compile.scheduling import tensor_storage
+        from merlin.compiler.schedule import tensor_storage
 
         # These files decide the emitted harness bytes. The counter's selected
         # Rocket/ISA source pins are verified by the timing selections and

@@ -272,7 +272,7 @@ class _Modules:
 def _instruction_names(target: str) -> dict[int, str]:
     """``{selector: name}`` from the target's derived decode table, or ``{}`` when it is not derivable."""
     # Imported outside the guard: a missing decoder is a broken install, not an absent fact.
-    from merlin.compile.analysis.rocc_commands import funct_table_for
+    from merlin.analysis.rocc_commands import funct_table_for
 
     try:
         names = funct_table_for(target).get("names") or {}
@@ -288,7 +288,7 @@ def _instruction_names(target: str) -> dict[int, str]:
 
 
 def _roles_by_name(target: str) -> dict[str, list[str]]:
-    from merlin.compile.analysis.compute_endpoints import endpoints_for
+    from merlin.analysis.compute_endpoints import endpoints_for
 
     try:
         endpoints = endpoints_for(target)

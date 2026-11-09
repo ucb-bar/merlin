@@ -12,8 +12,9 @@ from pathlib import Path
 import pytest
 
 from merlin.common.paths import repo_root
-from merlin.compile.scheduling.export import PUBLIC_MODULES, export_shared_scheduling
-from merlin.compile.scheduling.library_sources import LIBRARY_MODULES
+from merlin.compiler.schedule.export import PUBLIC_MODULES
+from merlin.compiler.schedule.export import export_shared_scheduling
+from merlin.compiler.schedule.library_sources import LIBRARY_MODULES
 from merlin.targetgen.compiler_library import CompilerLibraryError, freeze_compiler_library
 from merlin.targetgen.package_runtime import _py_imports_merlin
 
@@ -80,8 +81,8 @@ def test_export_is_deterministic_exact_and_import_closed(tmp_path):
     ("merlin.compile.scheduling.dense_panel_readout", 15),
 ])
 def test_compact_loaded_sum_is_available_only_in_prospective_reviewed_inventory(tmp_path, name, selected_version):
-    from merlin.compile.scheduling.export import public_modules
-    from merlin.compile.scheduling.library_sources import library_modules
+    from merlin.compiler.schedule.export import public_modules
+    from merlin.compiler.schedule.library_sources import library_modules
 
     for version in range(6, selected_version):
         assert name not in library_modules(version)
@@ -99,8 +100,8 @@ def test_compact_loaded_sum_is_available_only_in_prospective_reviewed_inventory(
 
 
 def test_historical_inventory_membership_is_unchanged_by_spatial_v10():
-    from merlin.compile.scheduling.export import public_modules
-    from merlin.compile.scheduling.library_sources import library_modules
+    from merlin.compiler.schedule.export import public_modules
+    from merlin.compiler.schedule.library_sources import library_modules
 
     # Public membership pinned before the spatial addition (ef421aaeb).
     owners = {
@@ -152,7 +153,7 @@ def test_existing_or_linked_export_destinations_refuse(tmp_path):
 
 
 def test_installed_style_sources_require_explicit_license_inputs(tmp_path, monkeypatch):
-    from merlin.compile.scheduling import export
+    from merlin.compiler.schedule import export
 
     installed = tmp_path / "site-packages"
     manifest = export_shared_scheduling(installed)

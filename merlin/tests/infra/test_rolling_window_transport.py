@@ -12,14 +12,12 @@ from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, i8
 from xdsl.printer import Printer
 
-from merlin.compile.scheduling.llvm_program import FnBuilderControlAdapter
-from merlin.compile.scheduling.program_limits import AddressWindow
-from merlin.compile.scheduling.rolling_window import (
-    emit_rolling_window_lookup,
-    materialize_rolling_window,
-    propose_rolling_window,
-)
-from merlin.compile.scheduling.window_transfer import Window2D
+from merlin.compiler.schedule.llvm_program import FnBuilderControlAdapter
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.rolling_window import emit_rolling_window_lookup
+from merlin.compiler.schedule.rolling_window import materialize_rolling_window
+from merlin.compiler.schedule.rolling_window import propose_rolling_window
+from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.llvmlower.host_builder import PTR, FnBuilder
 from merlin.llvmlower.rolling_window import emit_cached_spatial_row_panel, emit_host_rolling_window
 
@@ -141,11 +139,13 @@ def test_native_counted_initial_frontier_and_modulo_lookup_match_independent_ori
 
 @pytest.mark.parametrize("factor_channel_guards", [False, True])
 def test_native_cached_dense_panels_keep_original_k_order_and_pool_border_duplication(tmp_path, factor_channel_guards):
-    from merlin.compile.scheduling.block_schedule import SpatialMaxReadout
-    from merlin.compile.scheduling.rolling_spatial import RollingPackedSpatialPlan
-    from merlin.compile.scheduling.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
-    from merlin.compile.scheduling.spatial_readout import RoundedReadout, SpatialReadoutChain
-    from merlin.compile.scheduling.window_transfer import CountedConvolutionPlan
+    from merlin.compiler.schedule.blocks import SpatialMaxReadout
+    from merlin.compiler.schedule.rolling_spatial import RollingPackedSpatialPlan
+    from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan
+    from merlin.compiler.schedule.spatial_producer import SpatialProducerPlan
+    from merlin.compiler.schedule.spatial_readout import RoundedReadout
+    from merlin.compiler.schedule.spatial_readout import SpatialReadoutChain
+    from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
 
     tools = Path("/work/merlin/toolchains/llvm-a47bddcc/install/bin")
     if not all((tools / name).is_file() for name in ("mlir-translate", "clang")):
@@ -247,11 +247,13 @@ def test_factored_channel_run_actual_pointer_coverage_and_padding(channels, inva
     """Walk real emitted CFG; no shape declaration substitutes for its operands."""
     from collections import Counter
 
-    from merlin.compile.scheduling.block_schedule import SpatialMaxReadout
-    from merlin.compile.scheduling.rolling_spatial import RollingPackedSpatialPlan
-    from merlin.compile.scheduling.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
-    from merlin.compile.scheduling.spatial_readout import RoundedReadout, SpatialReadoutChain
-    from merlin.compile.scheduling.window_transfer import CountedConvolutionPlan
+    from merlin.compiler.schedule.blocks import SpatialMaxReadout
+    from merlin.compiler.schedule.rolling_spatial import RollingPackedSpatialPlan
+    from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan
+    from merlin.compiler.schedule.spatial_producer import SpatialProducerPlan
+    from merlin.compiler.schedule.spatial_readout import RoundedReadout
+    from merlin.compiler.schedule.spatial_readout import SpatialReadoutChain
+    from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
     from merlin.perf.finite_pointer_trace import ArgumentAddress, project_finite_pointer_trace
 
     window = Window2D((1, 5, 6, channels), (3, 2), dilation=(2, 1), padding=(2, 1, 2, 0))

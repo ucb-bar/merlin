@@ -19,7 +19,7 @@ cost of a binary nobody can reproduce.
 
 from __future__ import annotations
 
-import os
+from .optional_passes import child_environment
 
 #: Prefix that marks a variable as this project's. Everything set under it is captured.
 PREFIX = "MERLIN_"
@@ -38,13 +38,15 @@ def _redacted(name: str) -> bool:
 
 
 def snapshot(environ: dict[str, str] | None = None) -> dict[str, str]:
-    """Every ``MERLIN_*`` variable that is SET, with sensitive values redacted.
+    """Effective ``MERLIN_*`` controls, with sensitive values redacted.
 
+    With no argument, include the current compilation's optional-pass scope exactly as exported
+    to native children. An explicit mapping is inspected unchanged.
     Unset variables are omitted rather than recorded as empty: "not set" and "set to empty string"
     are different inputs to the compiler, and conflating them would make the record lie about which
     one produced the binary.
     """
-    env = os.environ if environ is None else environ
+    env = child_environment() if environ is None else environ
     out: dict[str, str] = {}
     for name in sorted(env):
         if not name.startswith(PREFIX):
@@ -79,7 +81,7 @@ def cache_digest(environ: dict[str, str] | None = None) -> str:
     import hashlib
     import json
 
-    env = os.environ if environ is None else environ
+    env = child_environment() if environ is None else environ
     controls = {name: value for name, value in env.items() if name.startswith(PREFIX)}
     payload = json.dumps(controls, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()

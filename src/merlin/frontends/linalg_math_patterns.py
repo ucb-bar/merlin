@@ -55,7 +55,9 @@ class StaticF32MathSource:
     ordinals: tuple[tuple[int, StaticF32MathPattern], ...]
 
 
-def recognize_static_f32_math_body(op) -> StaticF32MathPattern:
+def _recognize_static_f32_unary_math_body(
+    op, *, admitted: frozenset[str], operation_classes: tuple[type, ...], description: str,
+) -> StaticF32MathPattern:
     """Require one unflagged pure unary f32 math op and its direct yield.
 
     The common shell checks registered Linalg, static equal tensor shapes,
@@ -63,7 +65,7 @@ def recognize_static_f32_math_body(op) -> StaticF32MathPattern:
     This function additionally excludes init reads, captures, extra operations,
     effects and result substitution by checking the scalar SSA edges exactly.
     """
-    from xdsl.dialects import arith, math
+    from xdsl.dialects import arith
     from xdsl.dialects.linalg.ops import YieldOp
     from xdsl.traits import Pure
 
@@ -73,14 +75,8 @@ def recognize_static_f32_math_body(op) -> StaticF32MathPattern:
     if len(shell.body) != 2:
         raise InvalidLinalgPattern("math source requires exactly one scalar operation and yield")
     scalar, yld = shell.body
-    registered = {
-        "math.sin": math.SinOp,
-        "math.cos": math.CosOp,
-        "math.exp": math.ExpOp,
-        "math.roundeven": math.RoundEvenOp,
-    }
-    if scalar.name not in _UNARY_MATH or type(scalar) is not registered.get(scalar.name):
-        raise InvalidLinalgPattern("math source operation is not a registered unary f32 form")
+    if scalar.name not in admitted or type(scalar) not in operation_classes:
+        raise InvalidLinalgPattern(f"math source operation is not {description}")
     if not type(scalar).has_trait(Pure) or scalar.regions or scalar.successors:
         raise InvalidLinalgPattern("math source scalar operation is not pure and region-free")
     if scalar.attributes and any(not name.startswith("prov.") for name in scalar.attributes):
@@ -107,6 +103,29 @@ def recognize_static_f32_math_body(op) -> StaticF32MathPattern:
     except Exception as exc:  # noqa: BLE001 - xDSL verification is a fail-closed source boundary
         raise InvalidLinalgPattern(f"math source failed xDSL verification: {exc}") from exc
     return StaticF32MathPattern(scalar.name, shell.shape, shell.ordered_types)
+
+
+
+def recognize_static_f32_math_body(op) -> StaticF32MathPattern:
+    """Recognize the existing explicitly selected unary f32 vocabulary."""
+    from xdsl.dialects import math
+
+    return _recognize_static_f32_unary_math_body(
+        op, admitted=_UNARY_MATH,
+        operation_classes=(math.SinOp, math.CosOp, math.ExpOp, math.RoundEvenOp),
+        description="a registered unary f32 form",
+    )
+
+
+def recognize_static_f32_exp_rsqrt_body(op) -> StaticF32MathPattern:
+    """Recognize source exp/rsqrt without extending host math declarations."""
+    from xdsl.dialects import math
+
+    return _recognize_static_f32_unary_math_body(
+        op, admitted=frozenset({"math.exp", "math.rsqrt"}),
+        operation_classes=(math.ExpOp, math.RsqrtOp),
+        description="registered unary exp or rsqrt",
+    )
 
 
 def screen_static_f32_math_source(path: Path, ordinals: tuple[int, ...]) -> StaticF32MathSource:

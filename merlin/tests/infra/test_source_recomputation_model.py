@@ -87,7 +87,7 @@ def original_plan(case):
     )
     from merlin.targetgen.oot_starterkit import llvm_context
     from merlin.transforms import recomputation
-    from merlin.verify import host_call_alignment
+    from merlin.verification import host_call_alignment as host_call_alignment
     from merlin.xdsl_dialects.lowering import integer_constant_eval
 
     permissions = recomputation.RecomputationPermissions(

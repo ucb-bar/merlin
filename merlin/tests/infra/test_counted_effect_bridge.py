@@ -4,7 +4,8 @@ import pytest
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp
 
-from merlin.compile.scheduling.llvm_program import FnBuilderControlAdapter, emit_index_effect_program
+from merlin.compiler.schedule.llvm_program import FnBuilderControlAdapter
+from merlin.compiler.schedule.llvm_program import emit_index_effect_program
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.sched.ir import Call, Const, Kernel, Loop, Var
 

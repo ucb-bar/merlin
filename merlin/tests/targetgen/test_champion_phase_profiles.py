@@ -252,3 +252,87 @@ def test_a_phase1_champion_is_its_frozen_commit(phase1, out_root, tmp_path):
     evidence["measurements"]["package_digest"] = later.package_digest
     with pytest.raises(C.ChampionError, match="a phase-1 champion is its frozen commit"):
         _export(repo, evidence, "refused", phase=C.PHASE1, rev=O.BEST_TAG)
+
+
+def test_export_cli_preserves_declared_service_and_original_evidence(phase1, out_root, tmp_path, capsys):
+    from merlin_experiments.cli import main
+
+    run, _, _ = phase1
+    package = tmp_path / "workspace" / "pkg"
+    project = (
+        '[project]\nname = "fixture-compiler"\nversion = "0.1.0"\n'
+        '[project.entry-points."merlin.backends"]\nfixture = "unloaded_fixture_provider"\n'
+    )
+    (package / "pyproject.toml").write_text(project)
+    guard = 'raise AssertionError("export must not import compiler code")\n'
+    (package / "unloaded_fixture_provider.py").write_text(guard)
+    repo = O.init(run / "service-oot", sandbox_roots=[tmp_path / "workspace"])
+    frozen = O.commit_candidate(repo, package, label="declared service", when="20260929T120000Z", run_id=run.name)
+    O.tag(repo, O.FROZEN_TAG, frozen.commit)
+    evidence = _capsule_evidence(run, frozen)
+    arguments = ["export", "--target", TARGET, "--repo", str(repo), "--phase", "1",
+                 "--package-id", "cli_champion", "--run-dir", str(run),
+                 "--stage-root", str(run / "explicit-exports"), "--artifacts-root", str(out_root / "artifacts")]
+    files = {}
+    for name, document in evidence.items():
+        path = tmp_path / (name + ".json")
+        path.write_text(json.dumps(document))
+        files[path] = path.read_bytes()
+        arguments.extend(("--" + name.replace("_", "-"), str(path)))
+    assert main(arguments) == 0
+    report = json.loads(capsys.readouterr().out)
+    destination = C.champion_dir(TARGET, "cli_champion")
+    assert Path(report["directory"]) == destination
+    assert (destination / "pyproject.toml").read_bytes() == (package / "pyproject.toml").read_bytes()
+    assert (destination / "unloaded_fixture_provider.py").read_text() == guard
+    assert report["services"] == {
+        "scope": "preserved_project_metadata_only", "status": "declared", "compatibility": "not_checked",
+        "installed_by_export": False, "code_loaded_by_inspection": False,
+        "providers": [{"name": "fixture", "entry_point": "unloaded_fixture_provider"}],
+    }
+    assert O.tree_digest(repo, O.FROZEN_TAG) == frozen.package_digest
+    assert all(path.read_bytes() == payload for path, payload in files.items())
+
+    # The same public command retains the champion owner's original evidence refusal.
+    (tmp_path / "measurements.json").write_text(json.dumps({"package_digest": "0" * 64}))
+    arguments[arguments.index("cli_champion")] = "cli_refused"
+    with pytest.raises(SystemExit) as stopped:
+        main(arguments)
+    assert stopped.value.code == 2
+    assert "but the measurements are of" in capsys.readouterr().err
+    assert not C.champion_dir(TARGET, "cli_refused").exists()
+    for malformed in ("[]", "{", '{"package_digest": NaN}', '{"package_digest": "a", "package_digest": "b"}'):
+        (tmp_path / "measurements.json").write_text(malformed)
+        with pytest.raises(SystemExit) as stopped:
+            main(arguments)
+        assert stopped.value.code == 2
+        assert "error:" in capsys.readouterr().err
+        assert not C.champion_dir(TARGET, "cli_refused").exists()
+
+
+@pytest.mark.parametrize(
+    "project,status",
+    [
+        (None, "missing_metadata"),
+        ("[tool.custom]\nvalue = 1\n", "missing_project_metadata"),
+        ("[project]\nname = 'fixture'\n", "absent"),
+        ("[project]\ndynamic = ['entry-points']\n", "dynamic"),
+        ("[project\n", "invalid_metadata"),
+        ("project = 1\n", "invalid_metadata"),
+        ("[project]\ndynamic = 'entry-points'\n", "invalid_metadata"),
+        ("[project]\nentry-points = 1\n", "invalid_metadata"),
+        ("[project.entry-points]\n'merlin.backends' = 1\n", "invalid_metadata"),
+        ("[project.entry-points.'merlin.backends']\nfixture = 1\n", "invalid_metadata"),
+        ("[project]\ndynamic = ['entry-points']\n[project.entry-points]\n", "invalid_metadata"),
+    ],
+)
+def test_export_service_metadata_never_infers_an_installed_compiler(tmp_path, project, status):
+    from merlin_experiments.backend_export import service_declarations
+
+    if project is not None:
+        (tmp_path / "pyproject.toml").write_text(project)
+    report = service_declarations(tmp_path)
+    assert report["status"] == status
+    assert report["providers"] == []
+    assert report["compatibility"] == "not_checked"
+    assert report["installed_by_export"] is report["code_loaded_by_inspection"] is False

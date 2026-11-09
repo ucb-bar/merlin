@@ -37,7 +37,7 @@ def _sets(te, arm, add=(), drop=()):
 
 
 def test_every_registry_path_exists_on_disk():
-    """A grant naming a path that moved silently grants nothing — the arm loses the tool and nobody sees
+    """A grant naming a path that moved silently grants nothing â€” the arm loses the tool and nobody sees
     it. This is not hypothetical: the arm-4 generators were unusable for three live runs because one
     import was missing from the grant set."""
     missing = [p for t in TR.TOOLS.values() for p in t.bundle_paths if not (repo_root() / p).exists()]
@@ -66,7 +66,7 @@ def test_dropping_the_rtl_tools_from_arm4_reproduces_arm3(te):
 
 def test_adding_arm4s_tools_to_the_baseline_grants_exactly_those_paths(te):
     """The other direction: the baseline plus arm-4's tool set grants precisely arm-4's tool paths and
-    nothing else — no shared grant leaks in through the ablation path."""
+    nothing else â€” no shared grant leaks in through the ablation path."""
     a1, _, _ = _sets(te, "raw_baseline")
     a4, _, _ = _sets(te, "merlin_rtlchecks")
     a1p, _, _ = _sets(te, "raw_baseline", add=TR.ARM_TOOLS["merlin_rtlchecks"])
@@ -92,7 +92,7 @@ def test_an_added_tool_loses_the_denial_its_rung_wrote(te):
     assert rtl_paths & denied, "precondition: arm-3 denies the RTL generators"
     allowed2, denied2, _ = _sets(te, "merlin_assisted", add=("rtl_generators",))
     assert rtl_paths <= allowed2
-    assert not (rtl_paths & denied2), "granted path is still denied — the grant is inert"
+    assert not (rtl_paths & denied2), "granted path is still denied â€” the grant is inert"
 
 
 def test_default_generation_is_unchanged_by_the_ablation_machinery(te):
@@ -118,7 +118,7 @@ def test_a_cell_names_itself_in_its_bundle_id(te):
 
 def test_shared_infrastructure_cannot_be_ablated_alone(te):
     """merlin/common is imported by the granted tools themselves. Dropping it would not measure its
-    absence, it would disable several tools at once — which already happened once, unnoticed."""
+    absence, it would disable several tools at once â€” which already happened once, unnoticed."""
     assert not TR.TOOLS["merlin_infra"].ablatable
     with pytest.raises(ValueError, match="import"):
         _arm_manifest(te, "merlin_rtlchecks", "bid", drop_tools=("merlin_infra",))
@@ -141,16 +141,14 @@ def test_shared_infrastructure_closes_the_promised_authoring_imports(te):
         f"{py}targetgen/evidence/store.py",
         f"{py}runtime/commandbuffer.py",
         f"{py}runtime/tensor.py",
-        f"{py}kernels/endpoints.py",
-        f"{py}kernels/roles.py",
-        f"{py}compile/__init__.py",
-        f"{py}compile/analysis/__init__.py",
-        f"{py}compile/analysis/compute_endpoints.py",
-        f"{py}compile/analysis/instruction_roles.py",
+        f"{py}analysis/__init__.py",
+        f"{py}analysis/compute_endpoints.py",
+        f"{py}analysis/instruction_roles.py",
     }
     infra = set(TR.TOOLS["merlin_infra"].bundle_paths)
     assert expected <= infra
-    assert f"{py}targetgen/" not in infra and f"{py}kernels/" not in infra
+    assert not {f"{py}targetgen/", f"{py}kernels/", f"{py}analysis/"} & infra
+    assert not {f"{py}compile/analysis/compute_endpoints.py", f"{py}kernels/endpoints.py"} & infra
     arm4, _, _ = _sets(te, "merlin_rtlchecks")
     assert expected <= arm4
 
@@ -171,7 +169,7 @@ def test_adding_a_tool_the_arm_already_has_is_a_noop(te):
 
 
 def test_brokered_tools_grant_no_paths_and_gate_the_brokers():
-    """A brokered tool is staged into the workspace, never bound from the repo — so it must contribute
+    """A brokered tool is staged into the workspace, never bound from the repo â€” so it must contribute
     no grant, and the driver must learn about it from the tool set rather than from the arm's name."""
     for name in ("isa_tools", "cca_tools"):
         t = TR.spec(name)

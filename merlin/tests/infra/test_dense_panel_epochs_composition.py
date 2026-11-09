@@ -6,18 +6,20 @@ import pytest
 from test_compact_dense import ADAPTER, fixture
 from test_dense_panel_epochs import law, ordered_execution
 
-from merlin.compile.scheduling.compact_dense import _digest
-from merlin.compile.scheduling.dense_panel_epochs import (
-    STREAM_FLAGS, schedule_dense_panel_epochs,
-)
-from merlin.compile.scheduling.dense_panel_pipeline import (
-    DRAIN, DensePanelOverlapAdmission, DenseRetainedReductionAdmission,
-    _serial_projection, schedule_dense_panel_pipeline, verify_dense_panel_pipeline,
-)
-from merlin.compile.scheduling.dense_segmented_pipeline import (
-    DenseSegmentedAdmission, build_dense_segmented_pipeline, schedule_dense_segmented_pipeline,
-)
-from merlin.compile.scheduling.schedule_ir import dense_schedule_text, make_dense_schedule_plan
+from merlin.compiler.schedule.compact_dense import _digest
+from merlin.compiler.schedule.dense_panel_epochs import STREAM_FLAGS
+from merlin.compiler.schedule.dense_panel_epochs import schedule_dense_panel_epochs
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
+from merlin.compiler.schedule.dense_panel_pipeline import DensePanelOverlapAdmission
+from merlin.compiler.schedule.dense_panel_pipeline import DenseRetainedReductionAdmission
+from merlin.compiler.schedule.dense_panel_pipeline import _serial_projection
+from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_panel_pipeline
+from merlin.compiler.schedule.dense_panel_pipeline import verify_dense_panel_pipeline
+from merlin.compiler.schedule.dense_segmented_pipeline import DenseSegmentedAdmission
+from merlin.compiler.schedule.dense_segmented_pipeline import build_dense_segmented_pipeline
+from merlin.compiler.schedule.dense_segmented_pipeline import schedule_dense_segmented_pipeline
+from merlin.compiler.schedule.schedule_ir import dense_schedule_text
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
 from merlin.sched.ir import Call, Loop, instances
 from merlin.transforms.dense_planning import dense_blocks
 
@@ -108,7 +110,7 @@ def test_retained_owner_and_combined_segmented_large_rows_preserve_actual_effect
 def test_ragged_domains_keep_exact_source_and_real_completion_callback(shape):
     from xdsl.dialects import llvm
     from xdsl.dialects.builtin import ModuleOp
-    from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter
+    from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
     from merlin.llvmlower.host_builder import FnBuilder
     values = retained(shape, segment=2)
     result = run(values)
@@ -183,8 +185,9 @@ def test_combined_admission_uses_both_limits_and_missing_final_completion_refuse
 
 def test_explicit_cross_output_block_stream_is_rejected_without_mutating_source():
     import time
-    from merlin.compile.scheduling.block_schedule import Compute, Preload
-    from merlin.compile.scheduling.dense_panel_epochs import _prove_output_block
+    from merlin.compiler.schedule.blocks import Compute
+    from merlin.compiler.schedule.blocks import Preload
+    from merlin.compiler.schedule.dense_panel_epochs import _prove_output_block
     values = retained()
     b, original = values[3], values[5]
     before = (original.kernel.digest(), _digest(original.realization))

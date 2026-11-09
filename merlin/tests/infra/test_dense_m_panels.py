@@ -6,12 +6,11 @@ import pytest
 from test_compact_dense import ADAPTER
 from test_dense_array_retention import execute
 
-from merlin.compile.scheduling.compact_dense import DenseLoopStorage, DenseMemoryView
-from merlin.compile.scheduling.dense_panel_pipeline import (
-    DenseRetainedReductionAdmission,
-    dense_m_panel_capacity,
-    schedule_dense_m_panels,
-)
+from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+from merlin.compiler.schedule.compact_dense import DenseMemoryView
+from merlin.compiler.schedule.dense_panel_pipeline import DenseRetainedReductionAdmission
+from merlin.compiler.schedule.dense_panel_pipeline import dense_m_panel_capacity
+from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_m_panels
 from merlin.transforms.dense_planning import DenseProblem, DenseResources
 
 

@@ -6,7 +6,7 @@ owner: targetgen
 last_verified: 2026-09-08
 code_refs:
   - merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml
-  - packages/merlin-experiments/src/merlin/targetgen/evaluation_cohort.py
+  - src/merlin/targetgen/evaluation_cohort.py
 ---
 
 # Radiance staged evaluation

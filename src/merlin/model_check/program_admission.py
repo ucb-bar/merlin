@@ -14,9 +14,11 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from merlin.common.digest import sha256_bytes
-from merlin.compile.scheduling.library_sources import shared_library_sources
-from merlin.compile.scheduling.program_limits import ProgramDecoder, ProgramLimits, finalize_program
-from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
+from merlin.compiler.schedule.library_sources import shared_library_sources
+from merlin.compiler.schedule.program_limits import ProgramDecoder
+from merlin.compiler.schedule.program_limits import ProgramLimits
+from merlin.compiler.schedule.program_limits import finalize_program
+from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
 from merlin.targetgen.contract.build_service import file_digest
 from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 from merlin.targetgen.contract.execution_service import _callback_selection, _same_callback

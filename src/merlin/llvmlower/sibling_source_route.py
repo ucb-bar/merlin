@@ -155,8 +155,8 @@ def _command_buffer(core, target, *, readouts=None):
     """Restate every independently checked original product, in source order."""
     from xdsl.dialects import func
 
-    from merlin.compile.scheduling.projection_provenance import shared_projection_provenance
-    from merlin.compile.scheduling.shared_input_groups import find_shared_input_groups
+    from merlin.compiler.schedule.projection_provenance import shared_projection_provenance
+    from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups
 
     groups = find_shared_input_groups(core)
     if len(groups) != 1:

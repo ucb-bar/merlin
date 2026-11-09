@@ -7,9 +7,9 @@ last_verified: 2026-10-20
 related: [spike_timing, phase2_archive_screen]
 code_refs:
   - packages/merlin-timing/src/merlin_timing/archive.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/annotated_spike_evidence.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/_counter_symbol_aliases.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/archive_spike_runtime.py
+  - src/merlin_experiments/phase1/annotated_spike_evidence.py
+  - src/merlin_experiments/phase2/_counter_symbol_aliases.py
+  - src/merlin_experiments/phase2/archive_spike_runtime.py
 ---
 
 # Recover original archive counts

@@ -8,7 +8,7 @@ alias decisions to upstream bufferization rather than asserting physical noalias
 
 from __future__ import annotations
 
-from .host_tensor_rewrites import CONTRACTION_SOURCE
+from merlin.compiler.transforms.host_contraction import CONTRACTION_SOURCE
 
 FEATURE = "scalar_contraction_accumulator"
 MARKER = "__merlin_scalar_contraction_accumulator__"
@@ -98,7 +98,7 @@ def _edit_reduction_unroll(passes: list[str], *, count: int = 2) -> list[str]:
 
 
 def ensure_registered() -> str:
-    from .impr_features import ImprFeature, known, register
+    from .shared_feature_registry import ImprFeature, known, register
 
     if FEATURE not in known():
         register(

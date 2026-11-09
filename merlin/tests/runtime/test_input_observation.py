@@ -194,7 +194,7 @@ def test_custom_stream_path_and_actual_step_zero_bytes_are_bound(tmp_path):
 
 
 def test_whole_model_decoder_accepts_only_the_exact_selected_extra_frame_roster(tmp_path):
-    from merlin.compile.baremetal_model import read_full_outputs
+    from merlin.model import read_full_outputs
 
     capture, _output, info = generated(tmp_path)
     record = info["readonly_input_observation"]

@@ -36,7 +36,7 @@ def test_standalone_pool_is_one_input_logical_call(tmp_path, monkeypatch, paddin
     _write_capture(tmp_path / "capture", text, {})
     # Complete-model selection must use the closed integer pool datapath, not
     # the internal dequantized floating pool operands.
-    from merlin.compile import complete_group_routing
+    from merlin.compiler.planning import complete as complete_group_routing
 
     pairs = []
     monkeypatch.setattr(complete_group_routing, "_accum_from_facts",

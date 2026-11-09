@@ -49,7 +49,7 @@ def prepare_source_program(source, *, effects, target, entry_symbol="kernel_entr
     from xdsl.dialects import func
     from xdsl.dialects.builtin import UnitAttr
 
-    from merlin.compile.scheduling.dense_source import read_zero_seeded_integer_matmul
+    from merlin.compiler.schedule.dense_source import read_zero_seeded_integer_matmul
     from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.llvmlower.device_shim import LogicalBuffer, emit_logical_translation_unit
     from merlin.llvmlower.source_region_host import emit_ranked_source_entry, prepare_sibling_source_host, tensor_abi

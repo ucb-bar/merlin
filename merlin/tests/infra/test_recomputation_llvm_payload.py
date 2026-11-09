@@ -14,7 +14,7 @@ from xdsl.ir import Block, Region
 from merlin.common.digest import sha256_file
 from merlin.perf.host_cfg_activity import _real_name, analyze_host_cfg_activity
 from merlin.perf.host_cfg_index import prepare_host_cfg
-from merlin.verify.host_call_alignment import import_host_entry, revalidate_host_entry
+from merlin.verification.host_call_alignment import import_host_entry, revalidate_host_entry
 from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
 
 

@@ -92,7 +92,7 @@ def decode_stream(stream, *, decoder, limit=None):
         return None
     stream = list(stream)
     if stream and "count" in stream[0]:
-        from merlin.compile.analysis.riscv_machine import expand_command_stream
+        from merlin.analysis.riscv_machine import expand_command_stream
 
         stream = expand_command_stream(stream, limit=limit)
     elif limit is not None:

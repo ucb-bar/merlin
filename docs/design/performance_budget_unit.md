@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-10-12
 related: [capsule_phase_split, normal_search_feedback, phase2_cpu_timing_study]
-code_refs: [src/merlin/targetgen/phase_policy.py, src/merlin/targetgen/cert_cost.py, packages/merlin-experiments/src/merlin_experiments/phase2/search_priorities.py]
+code_refs: [src/merlin/targetgen/phase_policy.py, src/merlin/targetgen/cert_cost.py, src/merlin_experiments/phase2/search_priorities.py]
 ---
 
 # Performance objectives and evaluation costs

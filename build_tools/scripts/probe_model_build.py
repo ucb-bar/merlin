@@ -20,7 +20,7 @@ import numpy as np
 
 from merlin.common import owned_process
 from merlin.common.invocation_record import Invocation
-from merlin.compile.model_execution_inputs import strict_tree_sha256
+from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.llvmlower.compilation_recipe import verify_completed_recipe
 from merlin.model_check import full_build as FB
 from merlin.model_check import replay as RP

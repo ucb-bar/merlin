@@ -4,9 +4,9 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.scheduling.affine_gather_runs import plan_convolution_resident_panel
-from merlin.compile.scheduling.block_schedule import Geometry
-from merlin.compile.scheduling.convolution_output_groups import plan_convolution_output_group
+from merlin.compiler.schedule.affine_gather_runs import plan_convolution_resident_panel
+from merlin.compiler.schedule.blocks import Geometry
+from merlin.compiler.schedule.convolution_output_groups import plan_convolution_output_group
 
 
 @pytest.mark.parametrize("ci,co,pixels,expected", [(64, 64, 12544, 16), (128, 128, 3136, 8),

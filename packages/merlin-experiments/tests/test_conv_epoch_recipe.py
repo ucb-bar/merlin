@@ -241,15 +241,13 @@ def test_large_layer_counts_only(epochs, tmp_path):
 def test_readout_adapter_checks_actual_consumer_and_preserves_full_source(epochs, tmp_path):
     from dataclasses import replace
 
-    from merlin.compile.scheduling.convolution_exploration import (
-        ConvolutionRhsPhaseLaw,
-        ConvolutionRhsPhases,
-        ConvolutionScheduleChoice,
-        emit_convolution_schedule,
-        plan_convolution_rhs_phases,
-        plan_convolution_schedule,
-    )
-    from merlin.compile.scheduling.window_transfer import ConvolutionReadoutEpochLaw
+    from merlin.compiler.schedule.convolution_exploration import ConvolutionRhsPhaseLaw
+    from merlin.compiler.schedule.convolution_exploration import ConvolutionRhsPhases
+    from merlin.compiler.schedule.convolution_exploration import ConvolutionScheduleChoice
+    from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
+    from merlin.compiler.schedule.convolution_exploration import plan_convolution_rhs_phases
+    from merlin.compiler.schedule.convolution_exploration import plan_convolution_schedule
+    from merlin.compiler.schedule.window_transfer import ConvolutionReadoutEpochLaw
 
     S, W = epochs._load("recipe_support"), epochs._load("conv_window_recipe")
     facts = facts_file(tmp_path)
@@ -324,20 +322,16 @@ def test_readout_adapter_checks_actual_consumer_and_preserves_full_source(epochs
 def test_readout_adapter_forwards_and_verifies_optional_actual_consumers(epochs, tmp_path, mode):
     from dataclasses import replace
 
-    from merlin.compile.scheduling.convolution_exploration import (
-        ConvolutionRhsPhaseLaw,
-        ConvolutionScheduleChoice,
-        plan_convolution_rhs_phases,
-        plan_convolution_rhs_residency,
-        plan_convolution_schedule,
-    )
-    from merlin.compile.scheduling.convolution_output_groups import plan_rolling_convolution_output_group
-    from merlin.compile.scheduling.dense_array_retention import DenseArrayRetentionAdmission
-    from merlin.compile.scheduling.window_transfer import (
-        ConvolutionReadoutEpochLaw,
-        ConvolutionReadoutTransferLaw,
-        ConvolutionResidentInputRows,
-    )
+    from merlin.compiler.schedule.convolution_exploration import ConvolutionRhsPhaseLaw
+    from merlin.compiler.schedule.convolution_exploration import ConvolutionScheduleChoice
+    from merlin.compiler.schedule.convolution_exploration import plan_convolution_rhs_phases
+    from merlin.compiler.schedule.convolution_exploration import plan_convolution_rhs_residency
+    from merlin.compiler.schedule.convolution_exploration import plan_convolution_schedule
+    from merlin.compiler.schedule.convolution_output_groups import plan_rolling_convolution_output_group
+    from merlin.compiler.schedule.dense_array_retention import DenseArrayRetentionAdmission
+    from merlin.compiler.schedule.window_transfer import ConvolutionReadoutEpochLaw
+    from merlin.compiler.schedule.window_transfer import ConvolutionReadoutTransferLaw
+    from merlin.compiler.schedule.window_transfer import ConvolutionResidentInputRows
 
     S, W = epochs._load('recipe_support'), epochs._load('conv_window_recipe')
     facts = facts_file(tmp_path, operand_rows=1024, accumulator_rows=128)

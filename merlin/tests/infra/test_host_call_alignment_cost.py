@@ -3,7 +3,7 @@
 from xdsl.dialects.builtin import IntegerAttr, i64
 
 from merlin.targetgen.rocc.decode import _parse_module
-from merlin.verify import host_call_alignment as H
+from merlin.verification import host_call_alignment as H
 
 
 def _dag(depth, *, fibonacci=False):

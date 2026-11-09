@@ -33,9 +33,9 @@ Phase 1/Phase 2 names remain in the module layout and standalone workflows:
 
 | Work on | Code |
 | --- | --- |
-| Hardware-guided test generation (Phase 0) | [Test generation](packages/merlin-experiments/src/merlin_experiments/phase0/) |
-| Compiler authoring and joint evaluation (Phase 1 infrastructure) | [Compiler-generation workflow](packages/merlin-experiments/src/merlin_experiments/phase1/) |
-| Separate retained-compiler optimization workflow (Phase 2) | [Optimization workflow](packages/merlin-experiments/src/merlin_experiments/phase2/) |
+| Hardware-guided test generation (Phase 0) | [Test generation](src/merlin_experiments/phase0/) |
+| Compiler authoring and joint evaluation (Phase 1 infrastructure) | [Compiler-generation workflow](src/merlin_experiments/phase1/) |
+| Separate retained-compiler optimization workflow (Phase 2) | [Optimization workflow](src/merlin_experiments/phase2/) |
 | Shared compiler infrastructure | [Compiler core](src/merlin/) |
 
 The [catalog](experiments/catalog.yaml) indexes target definitions in
@@ -54,17 +54,18 @@ uv pip install -e '.[dev,xdsl,targetgen]'
 .venv/bin/merlin --help
 ```
 
-For phase definitions and experiment tooling, install the optional experiment distribution:
+For phase definitions and experiment tooling, select the experiment dependencies:
 
 ```bash
-uv pip install -e packages/merlin-experiments
+uv pip install -e '.[experiments]'
 .venv/bin/merlin experiment list
 ```
 
 Listing, inspection and preflight do not launch agents. Execution requires the definition's
 declared inputs, toolchains and budgets; phase-2 catalog entries are templates until those inputs
-are supplied. Use `.venv/bin/merlin` or `uv run --no-sync` after installing extensions so a
-root-only sync does not remove them. See [setup](docs/guides/getting_started.md) for other packages.
+are supplied. All Merlin workflows ship in the same package; extras select their dependencies.
+Use the same extras when syncing your environment. See [setup](docs/guides/getting_started.md)
+for toolchains and independently installed backends.
 
 (Without uv: `pip install -e '.[dev,xdsl,targetgen]'` — `targetgen` supplies `jsonschema`, which the contract-validation tests import, so `[dev,xdsl]` alone does not run the suite.)
 
@@ -84,7 +85,7 @@ independent external checkouts, selected with `MERLIN_EXT_*` paths; they are not
 `git submodule update --init --depth 1 third_party/llvm-project`.
 
 `merlin` groups experiment, compile, target, storage and verification entrypoints. Specialized
-console scripts remain available from their owning distributions; the generated
+console scripts remain available from the main distribution; the generated
 [CLI reference](docs/reference/cli.md) lists their modules and package ownership.
 
 ## Choose your path
@@ -115,9 +116,9 @@ Supporting workstreams coordinate through **shared schemas** (`merlin/schemas/`)
 1. **TargetGen / dialect generation** — ISA/docs/RTL → target contract → dialect plan → scaffold
    (`src/merlin/targetgen/`, `merlin/targets/`).
 2. **Kernel abstraction mining** — external kernels → kernel records → abstraction candidates →
-   policy rules (`src/merlin/kernels/`, `src/merlin/rvvgen/`, `packages/merlin-mining/`).
+   policy rules (`src/merlin/kernels/`, `src/merlin/rvvgen/`, `src/merlin/mining/`).
 3. **Design-pressure & DSE** — workloads → design-pressure reports → candidate contracts → variant
-   comparison (`packages/merlin-dse/src/merlin/`).
+   comparison (`src/merlin/dse/`).
 
 See [`docs/design/parallel_workstreams.md`](docs/design/parallel_workstreams.md).
 
@@ -133,7 +134,8 @@ kernel-derived policies stay as schemas/YAML/JSON.
 | Path | What's there |
 |---|---|
 | `src/merlin/` | Shared compiler IR, scheduling, capture contracts, target/toolchain resolution and runtime primitives |
-| `packages/` | Separately installable research distributions; phase orchestration starts in `merlin-experiments` |
+| `src/merlin_experiments/`, `src/merlin_dse/` | Research workflows in the main package, with explicit dependency and evaluator access boundaries |
+| `packages/` | Retained focused research tests and the independently packaged timing observer |
 | `examples/` | Target experiment definitions, authored `phase0/recipe.yaml` inputs and walkthroughs; not generated corpora or private answers |
 | `experiments/` | Single experiment catalog, generic templates, and curated reference inputs; retained synthesis inputs live in `reference-data/phase0/` |
 | `merlin/` | Schemas, tests, native runtime, and legacy engine/resource trees during migration; `python/merlin` is a compatibility symlink |

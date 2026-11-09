@@ -6,13 +6,13 @@ owner: merlin-experiments
 last_verified: 2026-10-09
 related: [component_compiler_convergence, component_phase2_workflow, component_final_evaluation]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase1/component_origin.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/component_generation_admission.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/component_lineage.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/component_qualification.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/component_qualification_evidence.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_runtime_support.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_runtime_controls.py
+  - src/merlin_experiments/phase1/component_origin.py
+  - src/merlin_experiments/phase1/component_generation_admission.py
+  - src/merlin_experiments/phase1/component_lineage.py
+  - src/merlin_experiments/phase1/component_qualification.py
+  - src/merlin_experiments/phase1/component_qualification_evidence.py
+  - src/merlin_experiments/phase2/component_runtime_support.py
+  - src/merlin_experiments/phase2/component_runtime_controls.py
   - packages/merlin-experiments/tests/test_component_origin.py
   - packages/merlin-experiments/tests/test_fresh_phase1_generation_budget.py
 ---

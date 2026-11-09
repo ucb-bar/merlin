@@ -7,13 +7,12 @@ from test_compact_dense import ADAPTER, fixture, schedule
 from test_loop_schedule import SOURCE, base, trace
 from test_scf_commands import record
 
-from merlin.compile.scheduling.loop_schedule import LoopTransform, partition_counted_loop
-from merlin.compile.scheduling.scf_commands import materialize_scf_commands
-from merlin.compile.scheduling.schedule_ir import (
-    dense_schedule_text,
-    make_dense_schedule_plan,
-    parse_dense_schedule_plan,
-)
+from merlin.compiler.schedule.loop_schedule import LoopTransform
+from merlin.compiler.schedule.loop_schedule import partition_counted_loop
+from merlin.compiler.schedule.scf_commands import materialize_scf_commands
+from merlin.compiler.schedule.schedule_ir import dense_schedule_text
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
 from merlin.sched.ir import Kernel, Var, call, loop, select
 from merlin.sched.primitives import NotApplicable
 

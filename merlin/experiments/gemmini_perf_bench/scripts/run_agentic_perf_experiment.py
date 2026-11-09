@@ -29,9 +29,9 @@ def _resolve_context(args, invocation: tuple[str, ...]) -> AD.ExecutionContext:
             catalog_path=args.holdout_catalog or source / "experiments/catalog.yaml",
             core_package_root=args.core_package_root or source / "src/merlin",
             experiments_package_root=args.experiments_package_root
-            or source / "packages/merlin-experiments/src/merlin_experiments",
+            or source / "src/merlin_experiments",
             experiments_namespace_root=args.experiments_namespace_root
-            or source / "packages/merlin-experiments/src/merlin",
+            or source / "src/merlin",
         ),
         chia_wrapper=args.chia_wrapper or Path(__file__).resolve().with_name("chia_agentic_perf_experiment.py"),
         invocation=invocation,

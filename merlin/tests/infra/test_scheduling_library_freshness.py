@@ -10,15 +10,15 @@ from test_program_limits import DECODER, LIMITS
 from test_schedule_pipeline import encoding, limits_for
 from test_selected_dense_contracts import inputs, schedule
 
-from merlin.compile.scheduling.program_limits import finalize_program
-from merlin.compile.scheduling.schedule_pipeline import compile_schedule
+from merlin.compiler.schedule.program_limits import finalize_program
+from merlin.compiler.schedule.schedule_pipeline import compile_schedule
 
 
 def test_selected_and_explicit_routes_use_one_verification_version():
-    from merlin.compile.scheduling.compact_dense import _dense_library_sources
-    from merlin.compile.scheduling.program_limits import _library_sources
-    from merlin.compile.scheduling.schedule_pipeline import shared_library_sources
-    from merlin.compile.scheduling.selected_contracts import _resolver_sources
+    from merlin.compiler.schedule.compact_dense import _dense_library_sources
+    from merlin.compiler.schedule.program_limits import _library_sources
+    from merlin.compiler.schedule.schedule_pipeline import shared_library_sources
+    from merlin.compiler.schedule.selected_contracts import _resolver_sources
 
     sources = shared_library_sources()
     assert sources == _dense_library_sources() == _library_sources() == dict(_resolver_sources())

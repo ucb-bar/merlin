@@ -28,11 +28,24 @@ def implementation_identity() -> dict:
         "merlin.targetgen.capsule_source",
         "merlin.targetgen.capture_cache",
         "merlin.targetgen._m2m_capture_worker",
+        "merlin.compiler.quantization.recipe",
+        "merlin.compiler.quantization.dynamic",
+        "merlin.compiler.frontend.torch.state",
         "merlin.targetgen._m2m_capture_artifacts",
         "merlin.targetgen._m2m_capture_deployment",
         "merlin.targetgen._capture_session_reference",
         "merlin.targetgen._aten_opset_worker",
         "merlin.targetgen._recipe_quantizer",
+        "merlin.compiler.quantization.torchao",
+        "merlin.compiler.quantization.torchao.application",
+        "merlin.compiler.quantization.torchao.eager",
+        "merlin.compiler.quantization.torchao.pt2e",
+        "merlin.compiler.quantization.torchao.annotation",
+        "merlin.compiler.quantization.torchao.graphs",
+        "merlin.compiler.quantization.torchao.effects",
+        "merlin.compiler.quantization.torchao.calibration",
+        "merlin.compiler.quantization.torchao.portable",
+        "merlin.targetgen._activation_contractions",
         "merlin.targetgen._recipe_specs",
         "merlin.targetgen._recipe_agreement",
         "merlin.targetgen._capture_integer_mm",
@@ -64,7 +77,18 @@ def implementation_identity() -> dict:
     )
     result = {}
     for owner in owners:
-        path = module_source_path(owner)
+        # Facade aliases deliberately retain object identity. Pin their real
+        # source owners and the physical portable entry independently of which
+        # spelling was imported first; find_spec would follow the live alias.
+        root = Path(__file__).resolve().parent.parent
+        if owner == "merlin.targetgen._recipe_quantizer":
+            path = root / "targetgen/_recipe_quantizer.py"
+        elif owner == "merlin.compiler.quantization.torchao":
+            path = root / "compiler/quantization/torchao/__init__.py"
+        elif owner.startswith("merlin.compiler.quantization.torchao."):
+            path = root / "compiler/quantization/torchao" / (owner.rsplit(".", 1)[1] + ".py")
+        else:
+            path = module_source_path(owner)
         result[owner] = {"path": str(path), "sha256": sha256_file(path)}
     return result
 

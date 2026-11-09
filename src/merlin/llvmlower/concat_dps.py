@@ -349,9 +349,9 @@ def ensure_registered() -> str:
     returns False -- an unregistered feature is not an error anyone sees, it is a feature that is
     silently never proposed.
     """
-    from .impr_features import _REGISTRY, ImprFeature, register
+    from .shared_feature_registry import ImprFeature, known, register
 
-    if FEATURE in _REGISTRY:
+    if FEATURE in known():
         return FEATURE
     from .selfcopy import FEATURE as _SELF_COPY_FEATURE
 

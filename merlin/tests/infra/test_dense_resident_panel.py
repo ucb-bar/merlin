@@ -2,7 +2,8 @@
 
 import pytest
 
-from merlin.compile.scheduling.dense_resident_panel import plan_dense_resident_panel, plan_dense_stationary_panel
+from merlin.compiler.schedule.dense_resident_panel import plan_dense_resident_panel
+from merlin.compiler.schedule.dense_resident_panel import plan_dense_stationary_panel
 
 
 def plan(m, k, n, **changes):
@@ -57,7 +58,7 @@ def test_stationary_planning_does_not_sacrifice_extra_lhs_replays_for_larger_row
 
 @pytest.mark.parametrize('shape', [(17, 17, 19), (3, 17, 1105), (512, 512, 512)])
 def test_output_panel_reserves_distinct_full_reduction_column_blocks(shape):
-    from merlin.compile.scheduling.dense_resident_panel import plan_dense_output_panel
+    from merlin.compiler.schedule.dense_resident_panel import plan_dense_output_panel
 
     selected = plan_dense_output_panel(*shape, block=16, operand_rows=16384,
                                       bank_rows=4096, accumulator_rows=1023)
@@ -70,7 +71,7 @@ def test_output_panel_reserves_distinct_full_reduction_column_blocks(shape):
 @pytest.mark.parametrize('shape', [(12544, 64, 256), (512, 512, 512), (64, 64, 256),
                                    (65, 17, 257), (17, 641, 33), (3, 17, 1105)])
 def test_joint_row_column_products_fit_all_live_storage(shape):
-    from merlin.compile.scheduling.dense_resident_panel import plan_dense_joint_panel
+    from merlin.compiler.schedule.dense_resident_panel import plan_dense_joint_panel
 
     selected = plan_dense_joint_panel(*shape, block=16, operand_rows=16384,
                                      bank_rows=4096, accumulator_rows=1024)
@@ -81,7 +82,7 @@ def test_joint_row_column_products_fit_all_live_storage(shape):
 
 
 def test_joint_plan_keeps_all_tall_columns_live_while_reusing_weights():
-    from merlin.compile.scheduling.dense_resident_panel import plan_dense_joint_panel
+    from merlin.compiler.schedule.dense_resident_panel import plan_dense_joint_panel
 
     selected = plan_dense_joint_panel(12544, 64, 256, block=16, operand_rows=16384,
                                      bank_rows=4096, accumulator_rows=1024)

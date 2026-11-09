@@ -13,6 +13,54 @@ from merlin.targetgen.quantization_spec import (
 )
 
 
+def test_quantization_owner_identity_and_framework_free_admission(tmp_path):
+    import inspect
+    import pickle
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import merlin
+    from merlin.compiler.quantization import admission
+    from merlin.compiler.quantization.torchao import recipes
+    from merlin.target.spec import quantization as declarations
+    from merlin.targetgen import quantization_spec as legacy
+
+    assert legacy is admission
+    assert legacy.capture_recipe_candidates is recipes.capture_recipe_candidates
+    assert legacy.validate_quantization_declarations is declarations.validate_quantization_declarations
+    assert "capture_recipe_candidates" in dir(admission)
+    for name in ("build_quantization_contract", "capture_recipe_candidates"):
+        original_lookup = b"cmerlin.targetgen.quantization_spec\n" + name.encode() + b"\n."
+        assert pickle.loads(original_lookup) is getattr(admission, name)
+    assert Path(inspect.getsourcefile(admission.build_quantization_contract)).name == "admission.py"
+    assert Path(inspect.getsourcefile(legacy.capture_recipe_candidates)).name == "recipes.py"
+
+    script = """
+import importlib.abc, sys
+sys.path.insert(0, sys.argv[1])
+class NoFramework(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):
+        if name.split('.')[0] in {'torch', 'torchao', 'aet'} or name.startswith(
+            'merlin.compiler.quantization.torchao'
+        ):
+            raise AssertionError('generic admission imported framework owner: ' + name)
+sys.meta_path.insert(0, NoFramework())
+from merlin.compiler.quantization import admission
+from merlin.targetgen import quantization_spec
+assert quantization_spec is admission
+result = admission.build_quantization_contract(None, {})
+assert result['status'] == 'not_configured'
+assert result['torchao_adapter']['status'] == 'not_evaluated'
+assert not any(name.split('.')[0] in {'torch', 'torchao', 'aet'} for name in sys.modules)
+"""
+    child = subprocess.run(
+        [sys.executable, "-I", "-c", script, str(Path(merlin.__file__).resolve().parent.parent)],
+        cwd=tmp_path, capture_output=True, text=True, timeout=30,
+    )
+    assert child.returncode == 0, child.stderr
+
+
 def test_mx_software_spec_keeps_three_formats_separate_and_epilogues_on_host():
     from merlin.common.paths import repo_root
 
@@ -170,7 +218,8 @@ def _accounting():
                 "id": "observed_model",
                 "signatures": [
                     {
-                        "operation": "linalg.matmul",
+                        "operation": "matmul",
+                        "mlir_operation": "linalg.matmul",
                         "count": 3,
                         "matching_declarations": ["matrix"],
                         "observed_admission_signature": {
@@ -198,6 +247,9 @@ def test_selected_recipe_and_observed_admission_do_not_license_host_or_framework
     assert row["id"] == "int8__int32"
     assert row["status"] == "candidate"
     assert [operation["status"] for operation in row["operation_eligibility"]] == ["candidate", "ineligible"]
+    admission = row["operation_eligibility"][0]["observed_signatures"][0]["software_admission"]
+    assert admission["declaration"] == "matrix"
+    assert admission["op"] == "matmul"
     assert row["hardware_matches"][0]["parameters"]["weight_granularity"]["value"] == "tensor"
     assert row["framework_route"] == "not_evaluated"
     assert row["operation_eligibility"][0]["layer_eligibility"] == "not_evaluated"
@@ -224,6 +276,43 @@ def test_selected_recipe_and_observed_admission_do_not_license_host_or_framework
         ]
         == "ineligible"
     )
+
+
+@pytest.mark.parametrize(
+    "case,status",
+    [
+        ("renamed_id", "candidate"),
+        ("misleading_id", "ineligible"),
+        ("carrier_only", "ineligible"),
+        ("different_named_op", "ineligible"),
+        ("unsupported_dtype", "ineligible"),
+        ("missing_dtype", "unknown"),
+    ],
+)
+def test_quantization_scope_keeps_declaration_identity_and_observed_spelling_separate(case, status):
+    spec, accounting = _spec(), _accounting()
+    declaration = spec["operations"][0]
+    observation = accounting["applications"][0]["signatures"][0]
+    if case in {"renamed_id", "misleading_id"}:
+        declaration["id"] = "arbitrary-declaration" if case == "renamed_id" else "matmul"
+        spec["quantization"]["formats"][0]["eligible_operations"][0] = declaration["id"]
+        observation["matching_declarations"] = [declaration["id"]]
+    if case == "misleading_id":
+        declaration["ops"] = ["conv2d"]  # Same family and misleading ID cannot widen an exact roster.
+    elif case == "carrier_only":
+        observation["operation"] = observation["mlir_operation"]
+    elif case == "different_named_op":
+        observation["operation"] = "conv2d"  # Family alone cannot substitute the admitted computation.
+    elif case == "unsupported_dtype":
+        observation["observed_admission_signature"]["operand_dtype"] = "fp8_e4m3"
+    elif case == "missing_dtype":
+        del observation["observed_admission_signature"]["operand_dtype"]
+    result = build_quantization_contract(spec, _hardware(), accounting)["formats"][0]["operation_eligibility"][0]
+    assert result["operation_id"] == declaration["id"]
+    assert result["status"] == status
+    admitted = result["observed_signatures"][0]["software_admission"]
+    assert admitted["op"] == observation["operation"]
+    assert result["layer_eligibility"] == "not_evaluated"
 
 
 def test_scale_encoding_alias_matches_selected_carrier_without_accepting_different_format():
@@ -484,3 +573,48 @@ def test_a_declared_methodology_derives_each_capture_recipe_over_the_selected_ou
     (tmp_path / index["recipes"][0]["path"]).write_text("{}")
     with pytest.raises(ValueError, match="bytes differ"):
         _selected_capture_recipe(tmp_path, target=spec["target"], operand_dtype="int8", accumulator_dtype="int32")
+
+
+def test_external_application_profile_is_explicit_source_bound_and_withholds_changed_capture_recipe():
+    from merlin.compiler.quantization.preparation import (
+        SCHEMA,
+        PreparationAlternativeRequired,
+        profile_from_mapping,
+    )
+
+    # Reuse the already admitted v1 consumer view while omitting its embedded
+    # methodology. The profile is an independent, explicitly selected input.
+    spec, hardware = _spec(), _hardware()
+    method = {
+        "scale_granularity": "per_tensor", "bias": "host_float", "epilogue": "integer_domain",
+        "rounding": "from_output_path", "clamp": "from_output_path",
+        "calibration": {"activation": "minmax", "weight": "minmax"},
+        "recovery": {"cross_layer_equalization": False, "bias_correction": False},
+        "float_island": {"dtype": "fp32", "ops": ["softmax"]},
+    }
+    path = {
+        "schema": "output_path_v1", "accumulator": {"dtype": "i32"},
+        "accumulator_stages": [],
+        "readout": [
+            {"kind": "convert", "to": "f32", "rounding": "half_even"},
+            {"kind": "scale", "dtype": "f32", "rounding": "half_even", "granularity": "per_tensor"},
+            {"kind": "requant", "to": "i8", "rounding": "half_even", "clamp": [-128, 127]},
+        ],
+        "exits": {"accumulator": True, "requant": True},
+    }
+    hardware["contract"]["output_epilogue"] = {"output_path": path}
+    profile = profile_from_mapping({"schema": SCHEMA, "id": "application", "methodology": method})
+    contract = build_quantization_contract(spec, hardware, preparation_profile=profile)
+    assert "methodology" not in contract
+    assert contract["preparation_profile"]["identity"] == profile.identity()
+    with pytest.raises(ValueError, match="explicitly selected"):
+        capture_recipe_candidates(spec, contract)
+    with pytest.raises(PreparationAlternativeRequired) as refused:
+        capture_recipe_candidates(spec, contract, preparation_profile=profile)
+    selected = capture_recipe_candidates(
+        spec, contract, preparation_profile=profile,
+        alternative_sha256=refused.value.proposal["alternative_sha256"],
+    )[0]["recipe"]
+    assert selected["status"] == quant_recipe.DERIVED
+    assert selected["preparation"]["profile"] == profile.identity()
+    assert selected["recipe_sha256"] == quant_recipe.digest(selected)

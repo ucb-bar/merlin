@@ -7,7 +7,7 @@ from dataclasses import replace
 import pytest
 from test_connected_spatial_host import fixture
 
-from merlin.compile.owned_spatial_source import _source_graph
+from merlin.compiler.build.spatial import _source_graph
 from merlin.targetgen.corpus_spec import CorpusBinding
 from merlin.xdsl_dialects._common import text
 

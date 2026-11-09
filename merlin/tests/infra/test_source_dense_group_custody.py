@@ -10,8 +10,9 @@ import pytest
 from test_compact_dense_group import fixture, selected_fixture
 from test_shared_lhs_source import CASES, source
 
-from merlin.compile.scheduling.compact_dense_group import implementation_paths
-from merlin.compile.scheduling.dense_source import DenseSourceUnavailable, read_source_dense
+from merlin.compiler.schedule.compact_dense_group import implementation_paths
+from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
+from merlin.compiler.schedule.dense_source import read_source_dense
 from merlin.llvmlower.source_dense_group import (
     SourceDenseGrouping,
     SourceDenseGroupResult,

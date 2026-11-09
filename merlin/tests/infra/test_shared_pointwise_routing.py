@@ -10,7 +10,7 @@ import pytest
 from test_pointwise_source import case, source_text
 from test_pointwise_source_provider import Provider, qualify
 
-from merlin.compile.scheduling.fusion_semantics import scalar_graph
+from merlin.compiler.schedule.fusion_semantics import scalar_graph
 from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.llvmlower.fresh_tensor_writer import FreshTensorWriterContract
 from merlin.llvmlower.prepared_model_transform import apply_prepared_model_transform

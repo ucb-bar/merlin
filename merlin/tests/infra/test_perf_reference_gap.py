@@ -14,6 +14,7 @@ from merlin.perf.target_reference import (
     ReferenceError,
     estimate_cycles,
     find_reference,
+    find_reference_for_capsule,
     load_references,
     score_against_reference,
     structural_gap,

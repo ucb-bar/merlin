@@ -10,6 +10,19 @@ must remain conservative. A structural witness is not a formal proof receipt.
 Exact integer row batching preserves the original typed module quantization
 annotation without interpreting it or granting any numerical transformation.
 
+`recomputation.py` is an exact compatibility module alias. The active algorithm
+and its source custody live in `merlin.compiler.transforms.recomputation`.
+`recomputation_check.py` retains the independent full-module checker during the
+separate verification ownership migration; do not move its authority into the
+candidate transform or grant additional authoring access to make imports pass.
+
+`row_normalization.py` is an exact alias of the shared compiler transform owner.
+Actual source-island matching and row projection live in
+`compiler/transforms/row_normalization_source.py`; materialization and ordinary
+pass orchestration live in `compiler/transforms/row_normalization.py`. The
+independent replay checker remains `row_normalization_check.py`. Preserve exact
+record identities and retain the actual implementation and alias observations.
+
 `dense_reduction_layout.rewrite_module` preserves trailing-channel storage for
 sole-use single-column signed integer contractions. It exchanges the operands
 and parallel axes while retaining the original reduction sequence and external

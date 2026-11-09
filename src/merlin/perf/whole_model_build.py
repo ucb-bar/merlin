@@ -673,7 +673,7 @@ def _kernel_objects(rows: list[dict[str, Any]], *, target: str, out: Path, jobs:
     from merlin.llvmlower import toolchain
     from merlin.targetgen.contract.compile import llvm_mlir_to_object
     from merlin.targetgen.contract.harness_abi import for_target
-    from merlin.verify.lean_emission_context import (
+    from merlin.verification.lean_emission_context import (
         artifact_cache_key,
         is_emitted_artifact,
         read_emitted_artifact,

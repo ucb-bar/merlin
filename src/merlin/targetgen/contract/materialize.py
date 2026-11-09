@@ -91,9 +91,9 @@ def _declared_owned_source_documents(directory: Path, capsule: dict) -> tuple[tu
     selected = capsule.get("owned_host_source")
     if selected is None:
         return ()
-    from merlin.compile.owned_spatial_source import _local_document, source_document_fields
+    from merlin.compiler.build.spatial import _local_document, source_document_fields
 
-    from merlin.compile import owned_shared_source
+    from merlin.compiler.build import siblings as owned_shared_source
     fields = owned_shared_source.source_document_fields(selected) if owned_shared_source.selected(capsule) else source_document_fields(selected)
     documents = tuple(_local_document(directory, selected[key]) for key in fields)
     names = [path.name for path, _ in documents]

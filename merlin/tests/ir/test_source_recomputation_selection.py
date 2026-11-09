@@ -6,6 +6,7 @@ from hashlib import sha256
 import pytest
 from test_recomputation import budgets, permissions, source
 
+from merlin.compiler.transforms.recomputation import plan_source_recomputation
 from merlin.llvmlower.lower import LowerResult
 from merlin.llvmlower.source_recomputation import (
     SourceRecomputationPreparation,
@@ -21,7 +22,6 @@ from merlin.perf.offload_profitability import compare_complete_offload_cost
 from merlin.perf.term import Bounds, PerformanceTerm, Provenance, Validity
 from merlin.transforms.certificates import ir_text
 from merlin.transforms.pipeline_state import PipelineContext
-from merlin.transforms.recomputation import plan_source_recomputation
 
 
 def digest(value):

@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 from test_weight_prepack import _bundle
 
-from merlin.compile.complete_group_routing import select_complete_group
+from merlin.compiler.planning.complete import select_complete_group
 from merlin.llvmlower import weight_prepack
 from merlin.llvmlower.device_build import DeviceRouting
 from merlin.llvmlower.prepacked_device_capture import rebind

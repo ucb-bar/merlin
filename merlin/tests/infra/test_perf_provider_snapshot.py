@@ -10,11 +10,11 @@ import sys
 from pathlib import Path
 
 import pytest
+
+from merlin.common.paths import module_source_path, repo_root
 from merlin_experiments import frozen_python
 from merlin_experiments import source_snapshot as SNAP
 from merlin_experiments.phase2 import portfolio_launch as PL
-
-from merlin.common.paths import module_source_path, repo_root
 
 VERIFIER = module_source_path("merlin_experiments.source_snapshot")
 
@@ -48,6 +48,9 @@ def selected(tmp_path):
     ):
         write(source, "src/merlin/" + name.replace(".", "/") + ".py", module_source_path("merlin." + name).read_text())
     write(source, "src/merlin/common/__init__.py", "")
+    write(source, "src/merlin/compiler/__init__.py", "")
+    write(source, "src/merlin/compiler/backend/__init__.py", "")
+    write(source, "src/merlin/compiler/backend/load.py", module_source_path("merlin.compiler.backend.load").read_text())
     write(source, "src/merlin/targetgen/rtl/__init__.py", "")
     write(source, "packages/merlin-experiments/src/merlin_experiments/__init__.py", "")
     write(

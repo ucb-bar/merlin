@@ -11,10 +11,14 @@ import pytest
 from test_private_copy_elimination import SPACES, command
 from test_selected_storage_contracts import native  # noqa: F401
 
-from merlin.compile.scheduling.dead_write_check import WriteDeletionLaw, verify_dead_writes
-from merlin.compile.scheduling.dead_writes import eliminate_dead_writes
-from merlin.compile.scheduling.program_limits import AddressWindow, EncodedAccess
-from merlin.compile.scheduling.temporary_storage import StorageAdapter, StorageEffects, TemporaryObject
+from merlin.compiler.schedule.dead_write_check import WriteDeletionLaw
+from merlin.compiler.schedule.dead_write_check import verify_dead_writes
+from merlin.compiler.schedule.dead_writes import eliminate_dead_writes
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import EncodedAccess
+from merlin.compiler.schedule.temporary_storage import StorageAdapter
+from merlin.compiler.schedule.temporary_storage import StorageEffects
+from merlin.compiler.schedule.temporary_storage import TemporaryObject
 from merlin.sched.ir import Const, Kernel, TensorArg, evaluate
 from merlin.semantic_compiler.allocation_types import StorageBank
 

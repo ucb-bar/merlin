@@ -210,6 +210,10 @@ TOOLS: dict[str, ToolSpec] = {
             # These readers carry identity only; no backend or oracle code.
             f"{_PY}targetgen/corpora.py",
             f"{_PY}targetgen/providers.py",
+            # Provider identity moved; grant only its answer-free source closure.
+            f"{_PY}compiler/__init__.py",
+            f"{_PY}compiler/backend/__init__.py",
+            f"{_PY}compiler/backend/load.py",
             f"{_PY}targetgen/target_registry.py",
             # ``interface_emit`` needs these only for a pooled COMMIT, which is why import-only smoke
             # missed them. They are pure command-buffer shape helpers; the oracle-bearing runtime
@@ -218,13 +222,11 @@ TOOLS: dict[str, ToolSpec] = {
             f"{_PY}runtime/tensor.py",
             # ``rtl_backend.derived_levers`` consults endpoint roles.  Again keep the closure exact:
             # the complete kernels tree contains unrelated implementation and benchmark surfaces.
-            f"{_PY}kernels/endpoints.py",
-            f"{_PY}kernels/roles.py",
-            # The two above are compatibility identities for these generic analyses.
-            f"{_PY}compile/__init__.py",
-            f"{_PY}compile/analysis/__init__.py",
-            f"{_PY}compile/analysis/compute_endpoints.py",
-            f"{_PY}compile/analysis/instruction_roles.py",
+            # Same public endpoint/role interfaces at their canonical owner;
+            # no expert-kernel or additional analysis namespace grant.
+            f"{_PY}analysis/__init__.py",
+            f"{_PY}analysis/compute_endpoints.py",
+            f"{_PY}analysis/instruction_roles.py",
         ),
         note="ALLOWED tool: xDSL kit / CCA spine",
         ablatable=False,

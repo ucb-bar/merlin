@@ -274,7 +274,7 @@ class ReadoutFacet:
 
     def capabilities(self) -> tuple[Any, ...]:
         """This unit's ``readouts`` as the rule module's objects, so one type states the declaration."""
-        from merlin.verify.epilogue_applicability import ReadoutCapability
+        from merlin.verification.epilogue_applicability import ReadoutCapability
 
         return tuple(
             ReadoutCapability(
@@ -300,7 +300,7 @@ class ReadoutFacet:
         discard this declaration exists to catch, and assuming the other way would report a hardware
         gap nobody established.
         """
-        from merlin.verify.epilogue_applicability import selectors_applying
+        from merlin.verification.epilogue_applicability import selectors_applying
 
         if stage in self.derived_stages:
             return True  # read from the design's own output path: stronger than any declaration
@@ -801,7 +801,7 @@ def validated_readouts(raw):
     """Parse supplied readout data without discovering an execution backend."""
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
         return []
-    from merlin.verify.epilogue_applicability import ReadoutCapability
+    from merlin.verification.epilogue_applicability import ReadoutCapability
 
     return [
         ReadoutCapability(
@@ -833,7 +833,7 @@ def validated_stage_routes(raw):
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
         return ()
     from merlin.runtime.commandbuffer import EPILOGUE_STAGE_SET
-    from merlin.verify.epilogue_applicability import StageRoute
+    from merlin.verification.epilogue_applicability import StageRoute
 
     routes = []
     for row in raw:
@@ -965,7 +965,7 @@ class TargetReadout:
         equivalence remain separate checks. Stages offered by different units
         or different readouts cannot be combined into an invented pipeline.
         """
-        from merlin.verify.epilogue_applicability import selectors_applying
+        from merlin.verification.epilogue_applicability import selectors_applying
 
         answers = []
         for facet in self.facets:
@@ -1072,7 +1072,7 @@ def epilogue_capability(facet: ReadoutFacet, *, name: str | None = None):
     Every limit is a derived one. A facet with an unknown in any field the capability needs
     produces no capability: a planner handed invented limits would plan against them.
     """
-    from merlin.perf.quantization_contract import QuantizedEpilogueCapability
+    from merlin.compiler.quantization.contract import QuantizedEpilogueCapability
     from merlin.runtime.commandbuffer import BIAS_STAGES
 
     needed = {

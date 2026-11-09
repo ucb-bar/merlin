@@ -15,7 +15,7 @@ from xdsl.dialects.builtin import ArrayAttr, StringAttr
 
 from merlin.common import mlir_query as mq
 from merlin.common.digest import sha256_file
-from merlin.compile.baremetal_model import compile_saved_model
+from merlin.model import compile_saved_model
 from merlin.llvmlower import toolchain
 from merlin.llvmlower.arena_bind import _call_target, _defines, _malloc_size
 from merlin.llvmlower.graph_optimizations import GraphOptimizationContract
@@ -387,7 +387,7 @@ def implementation_pins():
 
 def reviewed_preparation(options, root):
     from merlin.llvmlower.blob_weights import requested
-    from merlin.llvmlower.quant_scope import FEATURE
+    from merlin.compiler.quantization.scope import FEATURE
     from merlin.runtime.backends.zephyr_model import prepare_for_lowering
 
     directory = root / "reviewed_preparation"

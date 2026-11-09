@@ -150,9 +150,10 @@ def test_original_public_compiler_binds_missing_cost_after_outlining(tmp_path, m
     from merlin_experiments.phase1.feedback import private_instruction_coordinator as C
     from merlin_experiments.phase1.feedback import private_instruction_declaration as D
 
-    from merlin.compile.baremetal_model import compile_saved_model, read_full_outputs
-    from merlin.compile.model_execution_inputs import selected_execution_firrtl, strict_tree_sha256
-    from merlin.compile.route_before_build import plan_before_build
+    from merlin.model import compile_saved_model
+    from merlin.model import read_full_outputs
+    from merlin.runtime.modelinputs import selected_execution_firrtl, strict_tree_sha256
+    from merlin.compiler.planning.model import plan_before_build
     from merlin.llvmlower import optional_passes, toolchain
     from merlin.runtime.backends import spike
     from merlin.runtime.input_observation import revalidate_observation

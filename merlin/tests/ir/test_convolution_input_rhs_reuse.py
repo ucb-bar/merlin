@@ -8,9 +8,10 @@ import test_convolution_spatial_output_groups as spatial
 from test_convolution_input_reuse import fixture, law
 from test_counted_convolution import Integers
 
-from merlin.compile.scheduling.convolution_exploration import emit_convolution_schedule
-from merlin.compile.scheduling.convolution_input_reuse import InvariantConvolutionInput
-from merlin.compile.scheduling.rolling_lookahead import RollingRhsFrontier, RollingRhsFrontierAdmission
+from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
+from merlin.compiler.schedule.convolution_input_reuse import InvariantConvolutionInput
+from merlin.compiler.schedule.rolling_lookahead import RollingRhsFrontier
+from merlin.compiler.schedule.rolling_lookahead import RollingRhsFrontierAdmission
 
 
 def frontier_law():

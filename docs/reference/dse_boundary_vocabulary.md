@@ -5,7 +5,7 @@ status: current
 owner: dse
 last_verified: 2026-09-23
 related: [dse_guidance, contracts, design_pressure]
-code_refs: [packages/merlin-dse/src/merlin/dse_guidance/boundary_placement.py, packages/merlin-dse/src/merlin/dse_guidance/compiler_proof.py, packages/merlin-dse/src/merlin/dse_guidance/operator_geometry.py, packages/merlin-dse/src/merlin/dse_guidance/case_study.py]
+code_refs: [src/merlin/dse_guidance/boundary_placement.py, src/merlin/dse_guidance/compiler_proof.py, src/merlin/dse_guidance/operator_geometry.py, src/merlin/dse_guidance/case_study.py]
 ---
 
 # DSE boundary-placement vocabulary
@@ -17,7 +17,7 @@ chooses within it.
 
 This page is the reference definition of that vocabulary — the 27 abstractions in the catalog, the
 per-abstraction fields, and the level and status values that appear in the emitted artifacts. Source
-of truth is `packages/merlin-dse/src/merlin/dse_guidance/boundary_placement.py`.
+of truth is `src/merlin/dse_guidance/boundary_placement.py`.
 The separate DSE distribution owns the catalog, proof matrix, workload geometry and case-study
 emitters; this page describes their current emitted vocabulary, not a target-specific design choice.
 

@@ -1,8 +1,9 @@
 # FireSim ModelBlaster runner example
 
 This independently installable package is an out-of-tree FireSim execution
-adapter. It is not part of the Merlin core wheel and must be selected explicitly
-with `MERLIN_FIRESIM_RUNNER=modelblaster` or `runner_name="modelblaster"`.
+adapter retained for external operators and research reproduction. It is not
+part of the Merlin core wheel. Core prepares/collects and no longer loads the
+legacy runner entry point; operator invocation remains outside that API.
 
 Keep ModelBlaster checkout discovery, workload/project identity, queue policy,
 and simulator imports here. Do not put executable support in

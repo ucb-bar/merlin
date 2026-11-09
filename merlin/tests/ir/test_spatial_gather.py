@@ -1,8 +1,8 @@
 """Check generated gather indices against independent source pooling semantics."""
 import pytest
 
-from merlin.compile.scheduling.block_schedule import SpatialMaxReadout
-from merlin.compile.scheduling.spatial_gather import plan_gathered_spatial_max
+from merlin.compiler.schedule.blocks import SpatialMaxReadout
+from merlin.compiler.schedule.spatial_gather import plan_gathered_spatial_max
 from merlin.runtime.tensor import Tensor
 from merlin.sched.ir import evaluate, instances
 

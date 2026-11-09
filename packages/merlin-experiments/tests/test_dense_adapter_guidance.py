@@ -60,9 +60,12 @@ def test_checked_consumer_call_remains_evidence_gap_without_emission_or_target_l
     assert contract['target_law'] == 'unverified_by_source_discovery'
 
 
-def test_generic_adapter_presence_does_not_supply_wide_address_law_or_final_mapping(tmp_path):
+@pytest.mark.parametrize('prefix', ['merlin.compile.scheduling.', 'merlin.compiler.schedule.'])
+def test_generic_adapter_presence_does_not_supply_wide_address_law_or_final_mapping(tmp_path, prefix):
     _, found = selection(tmp_path)
-    observed = hints.opportunity(row(found, 'strided_tile_loads'), found)
+    selected = row(found, 'strided_tile_loads')
+    selected['api'] = prefix + 'tile_load_coalescing'
+    observed = hints.opportunity(selected, found)
     assert observed['opportunity_status'] == 'candidate'
     contract = observed['adapter_contract']
     assert contract['consumer_binding'] == 'not_observed' and contract['gap']['kind'] == 'adapter_gap'

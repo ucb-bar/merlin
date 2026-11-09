@@ -5,18 +5,24 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.scheduling.fusion import FusionCapability, plan_fusion, verify_fusion_step
-from merlin.compile.scheduling.fusion_semantics import ElementwiseSemantics, UnsupportedElementwise, scalar_graph
-from merlin.compile.scheduling.program_limits import (
-    AddressWindow,
-    DecodedInstruction,
-    EncodedAccess,
-    ProgramDecoder,
-    ProgramLimits,
-)
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, ScheduleEncoding, compile_schedule
-from merlin.compile.scheduling.spill_conformance import verify_storage_dataflow
-from merlin.compile.scheduling.temporary_storage import StorageAdapter, StorageEffects, TemporaryObject
+from merlin.compiler.schedule.fusion import FusionCapability
+from merlin.compiler.schedule.fusion import plan_fusion
+from merlin.compiler.schedule.fusion import verify_fusion_step
+from merlin.compiler.schedule.fusion_semantics import ElementwiseSemantics
+from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
+from merlin.compiler.schedule.fusion_semantics import scalar_graph
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import DecodedInstruction
+from merlin.compiler.schedule.program_limits import EncodedAccess
+from merlin.compiler.schedule.program_limits import ProgramDecoder
+from merlin.compiler.schedule.program_limits import ProgramLimits
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
+from merlin.compiler.schedule.schedule_pipeline import compile_schedule
+from merlin.compiler.schedule.spill_conformance import verify_storage_dataflow
+from merlin.compiler.schedule.temporary_storage import StorageAdapter
+from merlin.compiler.schedule.temporary_storage import StorageEffects
+from merlin.compiler.schedule.temporary_storage import TemporaryObject
 from merlin.sched.ir import Call, Const, Kernel, TensorArg, evaluate
 from merlin.semantic_compiler.allocation_types import Reservation, StorageBank
 from merlin.verify.epilogue_applicability import ReadoutCapability

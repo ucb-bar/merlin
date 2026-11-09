@@ -22,8 +22,9 @@ attention/batched generics); anything else is left for the f32 fallback (``lower
 
 from __future__ import annotations
 
+from merlin.compiler.quantization.scope import prequantized_source
+
 from .passes_quant_rsqrt import lower_rsqrt_int as lower_rsqrt_int
-from .quant_scope import prequantized_source
 
 
 def _carry_prov(src, **roles) -> None:

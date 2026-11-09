@@ -6,12 +6,12 @@ owner: experiments
 last_verified: 2026-10-20
 related: [phase2_corpus_search, spike_timing, phase2_capsule_feedback]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase2/archive_screen_selection.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/archive_screen_review.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/archive_spike_runtime.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/archive_count_observation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_archive_screen.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py
+  - src/merlin_experiments/phase2/archive_screen_selection.py
+  - src/merlin_experiments/phase2/archive_screen_review.py
+  - src/merlin_experiments/phase2/archive_spike_runtime.py
+  - src/merlin_experiments/phase2/archive_count_observation.py
+  - src/merlin_experiments/phase2/ordinary_archive_screen.py
+  - src/merlin_experiments/phase2/ordinary_search_stage.py
   - packages/merlin-experiments/tests/test_ordinary_archive_screen.py
 ---
 

@@ -203,7 +203,7 @@ def typed_static_integer_demands(source, in_fmt, weight_fmt=None, *, source_kind
     from xdsl.dialects.linalg.ops import GenericOp
 
     from merlin.common import mlir_query as mq
-    from merlin.compile.analysis import contraction_shapes as ks
+    from merlin.compiler.ir import contraction_shapes as ks
     from merlin.targetgen.capsule_source import ModelDemandIncomplete
     from merlin.targetgen.routing import OpDemand
     from merlin.transforms.dense_ir import static_zero_integer_matmul_geometry
@@ -427,7 +427,7 @@ def regions_from_module(module, *, precisions: dict[str, str] | None = None) -> 
     whatever a tag claims), then provenance tags as a fallback for the unnamed ``linalg.generic`` case.
     Unresolved stays None, so the caller counts it as unclassified instead of assuming a family.
     """
-    from merlin.compile.analysis.contraction_shapes import contraction_extents
+    from merlin.compiler.ir.contraction_shapes import contraction_extents
 
     out: list[RegionDescriptor] = []
     extents = contraction_extents(module)

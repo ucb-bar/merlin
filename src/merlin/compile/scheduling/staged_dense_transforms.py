@@ -1,5 +1,5 @@
-"""Repository compatibility import; frozen SDK API is staged_dense."""
+"""Transitional import; canonical implementation lives in merlin.compiler.schedule."""
+import sys
+from merlin.compiler.schedule import staged_dense_transforms as _owner
 
-from .staged_dense import order_output_tiles_n_before_m
-
-__all__ = ("order_output_tiles_n_before_m",)
+sys.modules[__name__] = _owner

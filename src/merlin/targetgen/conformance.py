@@ -962,7 +962,7 @@ def geometry_axis(captures: dict[str, str | Path], target: str) -> dict:
     sibling, and saying so here is what keeps the axis from demanding a cert nobody can run.
     """
     from merlin.capture import shape_taxonomy as ST
-    from merlin.compile.analysis import contraction_shapes as KS
+    from merlin.compiler.ir import contraction_shapes as KS
 
     by_class: dict[str, dict] = {}
     unreadable: dict[str, str] = {}
@@ -1290,7 +1290,7 @@ def _epilogue_axis(target: str) -> dict:
     # coarse source put a stage in the requirement that no application path performs, and the grade
     # refused that capsule hours later. Absent declarations leave the original sources deciding.
     from merlin.targetgen.readout_facet import ReadoutSupportError, epilogue_readouts, epilogue_stage_routes
-    from merlin.verify.epilogue_applicability import selectors_applying
+    from merlin.verification.epilogue_applicability import selectors_applying
 
     try:
         readouts = epilogue_readouts(target)

@@ -7,7 +7,7 @@ lifetimes; this pass adds no physical no-alias or floating reassociation facts.
 
 from __future__ import annotations
 
-from .host_tensor_rewrites import SQUARED_SUM_SOURCE
+from merlin.compiler.transforms.host_reduction import SQUARED_SUM_SOURCE
 
 FEATURE = "scalar_squared_sum_accumulator"
 MARKER = "__merlin_scalar_squared_sum_accumulator__"
@@ -22,7 +22,7 @@ def edit_pipeline(passes: list[str]) -> list[str]:
 
 
 def ensure_registered() -> str:
-    from .impr_features import ImprFeature, known, register
+    from .shared_feature_registry import ImprFeature, known, register
 
     if FEATURE not in known():
         register(

@@ -2,7 +2,8 @@
 # NPZ keys are out0..outN in the protocol's exact output order.
 schema: merlin.model_check.baseline_outputs.v1
 protocol: {path: null, sha256: null}  # The authored protocol/experiment.yaml.
-numerical_policy: {path: null, sha256: null}  # The protocol-linked numerics/models.yaml.
+numerical_policy: {path: null, sha256: null}  # The unchanged protocol-linked baseline policy.
+models_configuration: {path: null, sha256: null}  # The exported .models.yaml; exact geometry-only resolution.
 evaluation_inputs: {path: null, sha256: null}  # The protocol-linked numerics/MANIFEST.json.
 model: resnet50
 profile: functional_v1

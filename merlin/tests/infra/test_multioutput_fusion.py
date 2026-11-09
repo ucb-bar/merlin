@@ -1,9 +1,12 @@
 """Actual byte projection, one producer generation and complete fan-out outputs."""
 
 import hashlib
+import importlib
 import json
+import pickle
 import struct
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 import yaml
@@ -11,24 +14,24 @@ from xdsl.context import Context
 from xdsl.dialects import arith, builtin, func, linalg, tensor
 from xdsl.parser import Parser
 
-from merlin.compile.scheduling.fusion_semantics import ElementwiseSemantics, UnsupportedElementwise
-from merlin.compile.scheduling.multioutput_fusion import (
-    MultiOutputBindings,
-    MultiOutputCompositionLaw,
-    compile_source_multioutput,
-    read_source_multioutput,
-)
-from merlin.compile.scheduling.multioutput_fusion_check import _arguments, verify_multioutput_fusion
-from merlin.compile.scheduling.program_limits import (
-    AddressWindow,
-    DecodedInstruction,
-    EncodedAccess,
-    ProgramDecoder,
-    ProgramLimits,
-)
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, ScheduleEncoding
-from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
-from merlin.compile.scheduling.temporary_storage import StorageAdapter, TemporaryObject
+from merlin.compiler.schedule.fusion_semantics import ElementwiseSemantics
+from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
+from merlin.compiler.schedule.multioutput_fusion import MultiOutputBindings
+from merlin.compiler.schedule.multioutput_fusion import MultiOutputCompositionLaw
+from merlin.compiler.schedule.multioutput_fusion import compile_source_multioutput
+from merlin.compiler.schedule.multioutput_fusion import read_source_multioutput
+from merlin.compiler.schedule.multioutput_fusion_check import _arguments
+from merlin.compiler.schedule.multioutput_fusion_check import verify_multioutput_fusion
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import DecodedInstruction
+from merlin.compiler.schedule.program_limits import EncodedAccess
+from merlin.compiler.schedule.program_limits import ProgramDecoder
+from merlin.compiler.schedule.program_limits import ProgramLimits
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
+from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
+from merlin.compiler.schedule.temporary_storage import StorageAdapter
+from merlin.compiler.schedule.temporary_storage import TemporaryObject
 from merlin.sched.ir import Call, Const, Kernel, evaluate
 from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction
 
@@ -134,7 +137,7 @@ def model(tmp_path, width=16, shape=(3, 5), unified=False, capacity=512):
             positions["r1"] = accesses[1].start
         return replace(call, args=tuple((key, Const(positions.get(key, value.value))) for key, value in call.args))
 
-    from merlin.compile.scheduling.temporary_storage import StorageEffects
+    from merlin.compiler.schedule.temporary_storage import StorageEffects
 
     facts = dict(
         facts=dict(
@@ -435,7 +438,7 @@ def test_missing_original_effect_law_declines_before_emission(tmp_path, flag):
 
 @pytest.mark.parametrize("mutation", ["unknown", "async", "wrong-rounding", "wrong-byte-order"])
 def test_effect_or_scalar_mutations_are_not_inferred_legal(tmp_path, mutation):
-    from merlin.compile.scheduling.temporary_storage import StorageEffects
+    from merlin.compiler.schedule.temporary_storage import StorageEffects
 
     module, operations, options = model(tmp_path)
     case = direct_case(options)
@@ -488,8 +491,44 @@ def test_observed_producer_and_unknown_intervening_effect_preserve_original(tmp_
     assert ir_digest(module) == before
 
 
+def test_canonical_owner_preserves_legacy_identity_and_actual_source_custody(tmp_path, monkeypatch):
+    canonical = importlib.import_module("merlin.compiler.transforms.multioutput")
+    legacy = importlib.import_module("merlin.compile.scheduling.multioutput_fusion")
+    assert legacy is canonical
+    assert compile_source_multioutput is canonical.compile_source_multioutput
+    for record in (canonical.MultiOutputSource, canonical.MultiOutputCompilation):
+        assert pickle.loads(pickle.dumps(record)) is record
+        assert record.__module__ == "merlin.compile.scheduling.multioutput_fusion"
+    module, operations, options = model(tmp_path)
+    result = compile_source_multioutput(module, operations, **options)
+    owner = Path(canonical.__file__).resolve()
+    assert owner.parts[-3:] == ("compiler", "transforms", "multioutput.py")
+    paths = result.implementation_paths()
+    assert paths[0] == owner
+    shim = owner.parents[2] / "compile" / "scheduling" / "multioutput_fusion.py"
+    assert shim in paths
+    assert owner in dict(result.source_pins) and shim in dict(result.source_pins)
+    copies = []
+    for index, path in enumerate(paths):
+        copied = tmp_path / f"{index}-{path.name}"
+        copied.write_bytes(path.read_bytes())
+        copies.append(copied)
+    monkeypatch.setattr(canonical, "implementation_paths", lambda: tuple(copies))
+    relocated = compile_source_multioutput(module, operations, **options)
+    relocated.revalidate()
+    # Both actual algorithm and compatibility source remain pinned. Alter only
+    # private copies so the shared working tree and other test workers stay fixed.
+    for copied in copies[:2]:
+        original = copied.read_bytes()
+        copied.write_bytes(original + b"\n# changed selected source\n")
+        with pytest.raises(ValueError, match="implementation or selection changed"):
+            relocated.revalidate()
+        copied.write_bytes(original)
+        relocated.revalidate()
+
+
 def test_exact_capacity_exhaustion_refuses_without_an_incomplete_candidate(tmp_path):
-    from merlin.compile.scheduling.temporary_storage import StorageOptimizationUnavailable
+    from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
 
     module, operations, options = model(tmp_path, capacity=8)
     with pytest.raises(StorageOptimizationUnavailable):
@@ -500,7 +539,7 @@ def test_exact_capacity_exhaustion_refuses_without_an_incomplete_candidate(tmp_p
     "helper", ["_elementwise", "_problem", "_source_state", "_checker_functions", "_same_callback", "memory-read"]
 )
 def test_projector_cannot_replace_the_independent_semantic_checker(tmp_path, monkeypatch, helper):
-    from merlin.compile.scheduling import multioutput_fusion_check as checker
+    from merlin.compiler.schedule import multioutput_fusion_check as checker
 
     module, operations, options = model(tmp_path)
     case = direct_case(options)
@@ -524,8 +563,8 @@ def test_projector_cannot_replace_the_independent_semantic_checker(tmp_path, mon
 
 @pytest.mark.parametrize("mutation", ["law", "source", "selected", "reader"])
 def test_first_original_owner_cannot_rebase_frozen_inputs(tmp_path, monkeypatch, mutation):
-    from merlin.compile.scheduling import multioutput_fusion as core
-    from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
+    from merlin.compiler.schedule import multioutput_fusion as core
+    from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
 
     module, operations, options = model(tmp_path)
     selected, law = options["selected_contracts"], options["composition_law"]
@@ -665,7 +704,7 @@ def execute_actual_bytes(result, width, unified, directory):
 
 
 def test_copied_P_cannot_replace_the_retained_private_generation(tmp_path):
-    from merlin.compile.scheduling.temporary_storage import StorageEffects
+    from merlin.compiler.schedule.temporary_storage import StorageEffects
 
     module, operations, options = model(tmp_path)
     case = direct_case(options)

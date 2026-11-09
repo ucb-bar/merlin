@@ -3,7 +3,9 @@ from dataclasses import replace
 import operator
 import numpy as np
 import pytest
-from merlin.compile.scheduling.window_transfer import Window2D,CountedConvolutionPlan,emit_counted_convolution
+from merlin.compiler.schedule.window_transfer import Window2D
+from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
+from merlin.compiler.schedule.window_transfer import emit_counted_convolution
 
 
 class Integers:

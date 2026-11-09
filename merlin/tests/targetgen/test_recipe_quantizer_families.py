@@ -31,14 +31,15 @@ from pathlib import Path
 
 import pytest
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import module_source_path
 
-_SOURCE = merlin_dir() / "python" / "merlin" / "targetgen" / "_recipe_quantizer.py"
+_SOURCE = module_source_path("merlin.targetgen._recipe_specs").parent / "_recipe_quantizer.py"
+_OWNERS = _SOURCE.parent.parent / "compiler/quantization/torchao"
 
 
 def _operator_table() -> dict[str, list[str]]:
     """``{family: [dotted aten op, ...]}`` read out of the module's ``operators`` literal."""
-    tree = ast.parse(_SOURCE.read_text(encoding="utf-8"))
+    tree = ast.parse(_SOURCE.with_name("_recipe_specs.py").read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Dict):
             continue
@@ -88,7 +89,7 @@ class TestValidateCountsEveryFamilyItAnnotates:
         """`annotate` increments `annotated`, `annotated_sums` and `annotated_means`; a refusal that
         reads only the first asserts the recipe's families are uncovered when two of them may be
         covered. Read structurally: the guard must mention every counter it is deciding about."""
-        tree = ast.parse(_SOURCE.read_text(encoding="utf-8"))
+        tree = ast.parse((_OWNERS / "annotation.py").read_text(encoding="utf-8"))
         guards = [
             ast.unparse(node.test)
             for node in ast.walk(tree)
@@ -120,7 +121,7 @@ class TestAModelAlreadyInTheRecipesIntegersIsNotQuantizedAgain:
     """
 
     def test_apply_recipe_checks_for_a_floating_point_input_before_observing(self):
-        tree = ast.parse(_SOURCE.read_text(encoding="utf-8"))
+        tree = ast.parse((_OWNERS / "application.py").read_text(encoding="utf-8"))
         fn = next(
             (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "apply_recipe"),
             None,
@@ -135,7 +136,7 @@ class TestAModelAlreadyInTheRecipesIntegersIsNotQuantizedAgain:
     def test_the_skip_is_recorded_rather_than_silent(self):
         """Skipping is right; skipping quietly is not. A reader of the capsule's provenance has to be
         able to tell 'quantized under this recipe' from 'already was what the recipe would produce'."""
-        tree = ast.parse(_SOURCE.read_text(encoding="utf-8"))
+        tree = ast.parse((_OWNERS / "application.py").read_text(encoding="utf-8"))
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "apply_recipe")
         body = ast.unparse(fn)
         assert "_recipe_quantization_stats" in body and "'applied': False" in body.replace('"', "'"), (

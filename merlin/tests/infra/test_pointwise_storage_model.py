@@ -19,7 +19,7 @@ from test_spilled_pointwise_model import capture
 from test_spilled_pointwise_source import source_text
 
 from merlin.common.digest import sha256_file
-from merlin.compile.scheduling.pointwise_source import compile_source_pointwise
+from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
 from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.model_check import full_build as FB
 from merlin.runtime.backends import spike, spike_model

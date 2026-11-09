@@ -16,8 +16,9 @@ from typing import TYPE_CHECKING
 from .borrowed_buffer_calls import BorrowedBufferEffects, validate_effects
 
 if TYPE_CHECKING:
-    from merlin.compile.scheduling.row_softmax import RowSoftmaxAdapter, RowSoftmaxSourceCompilation
-    from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
+    from merlin.compiler.schedule.row_softmax import RowSoftmaxAdapter
+    from merlin.compiler.schedule.row_softmax import RowSoftmaxSourceCompilation
+    from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
     from merlin.runtime.host_provider import HostProviderBuild, HostProviderContext
 
     from .fresh_tensor_writer import FreshTensorWriterContract
@@ -52,8 +53,8 @@ class SourceRowLowering:
 
     def __post_init__(self):
         validate_effects(self.borrowed_effects)
-        from merlin.compile.scheduling.row_softmax import RowSoftmaxAdapter
-        from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
+        from merlin.compiler.schedule.row_softmax import RowSoftmaxAdapter
+        from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
 
         alignment = self.allocation_alignment
         if (
@@ -91,8 +92,10 @@ class SourceRowBinding:
 
 def discover_rows(module, selection, validate):
     """Compile supported canonical regions on the immutable original module."""
-    from merlin.compile.scheduling.row_softmax import RowSoftmaxUnavailable, compile_source_rows, read_source_rows
-    from merlin.compile.scheduling.temporary_storage import StorageOptimizationUnavailable
+    from merlin.compiler.schedule.row_softmax import RowSoftmaxUnavailable
+    from merlin.compiler.schedule.row_softmax import compile_source_rows
+    from merlin.compiler.schedule.row_softmax import read_source_rows
+    from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
 
     from .source_model import SourceRegion
 

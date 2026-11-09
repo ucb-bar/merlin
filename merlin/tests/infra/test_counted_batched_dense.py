@@ -6,12 +6,11 @@ from itertools import product
 import numpy as np
 import pytest
 
-from merlin.compile.scheduling.batched_dense import (
-    BatchedDenseProblem,
-    BatchMatrixView,
-    counted_batched_dense_products,
-)
-from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter, emit_index_program
+from merlin.compiler.schedule.batched_dense import BatchedDenseProblem
+from merlin.compiler.schedule.batched_dense import BatchMatrixView
+from merlin.compiler.schedule.batched_dense import counted_batched_dense_products
+from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
+from merlin.compiler.schedule.llvm_program import emit_index_program
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.sched.ir import check_structure, concretize, instances
 from merlin.sched.ir.parse import parse_kernel

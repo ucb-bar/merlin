@@ -19,6 +19,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,74 @@ def _quantizer():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_package_and_portable_entries_preserve_facade_patches_and_source_owners(monkeypatch, tmp_path):
+    from merlin.compiler.quantization.torchao import application, eager
+    from merlin.targetgen import _recipe_quantizer, capture_cache
+
+    assert _recipe_quantizer is application
+    def replacement(model):
+        return []
+    monkeypatch.setattr(application, "layer_inventory", replacement)
+    assert eager.layer_inventory is replacement
+    spec = importlib.util.spec_from_file_location("registered_recipe_compatibility", _QUANTIZER)
+    selected = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, selected)
+    spec.loader.exec_module(selected)
+    assert sys.modules[spec.name] is application
+    observed = capture_cache.implementation_identity()
+    assert Path(observed["merlin.targetgen._recipe_quantizer"]["path"]) == _QUANTIZER
+    root = _QUANTIZER.parent.parent / "compiler/quantization/torchao"
+    for name in ("application", "eager", "pt2e", "annotation", "graphs", "effects", "calibration", "portable"):
+        assert Path(observed["merlin.compiler.quantization.torchao." + name]["path"]) == root / (name + ".py")
+    from merlin.common import paths
+
+    actual_source = paths.module_source_path
+    for name in ("recipe", "dynamic"):
+        module = "merlin.compiler.quantization." + name
+        assert Path(observed[module]["path"]) == root.parent / (name + ".py")
+        copied = tmp_path / (name + ".py")
+        copied.write_bytes(actual_source(module).read_bytes())
+        with monkeypatch.context() as selected_owner:
+            selected_owner.setattr(paths, "module_source_path", lambda selected, target=module, path=copied:
+                                  path if selected == target else actual_source(selected))
+            current = capture_cache.implementation_identity()
+            metadata = {"loader_dependency_sources": list(current.values())}
+            assert capture_cache.observed_sources_match(metadata)
+            copied.write_bytes(copied.read_bytes() + b"\n# changed selected recipe implementation\n")
+            assert not capture_cache.observed_sources_match(metadata)
+
+
+@pytest.mark.parametrize("foreign", [False, True])
+def test_isolated_recipe_entry_uses_only_selected_sources_and_retains_patch_globals(foreign):
+    script = r'''
+import importlib.util, sys, types
+before = list(sys.path)
+if sys.argv[2] == "True":
+    foreign = types.ModuleType("_recipe_specs")
+    foreign.__file__ = "/unselected/recipe_specs.py"
+    sys.modules[foreign.__name__] = foreign
+spec = importlib.util.spec_from_file_location("unregistered_recipe", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+try:
+    spec.loader.exec_module(module)
+except ImportError as error:
+    assert sys.argv[2] == "True" and "preloaded recipe dependency" in str(error)
+else:
+    assert sys.argv[2] == "False"
+    assert sys.path == before and "merlin" not in sys.modules and "torch" not in sys.modules
+    assert not any(name == "xdsl" or name.startswith("xdsl.") for name in sys.modules)
+    assert module.calibration_limit.__globals__ is vars(module)
+    class Refusal(ValueError): pass
+    module.RecipeError = Refusal
+    try: module.calibration_limit({"framework_capture_policy":{"calibration_count":0}},100)
+    except Refusal: pass
+    else: raise AssertionError("direct-file patch lost its function globals")
+'''
+    result = subprocess.run([sys.executable, "-I", "-B", "-c", script, str(_QUANTIZER), str(foreign)],
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
 
 
 def _recipe(**policy):

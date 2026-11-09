@@ -14,29 +14,29 @@ code_refs:
   - src/merlin/targetgen/rtl/source_selection.py
   - src/merlin/targetgen/rtl/hw_memory_ports.py
   - src/merlin/targetgen/rtl/hw_hierarchy_bindings.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/hierarchical_memory_intake.py
+  - src/merlin_experiments/phase0/hierarchical_memory_intake.py
   - src/merlin/targetgen/dialect_source_scope.py
   - src/merlin/targetgen/isa_mode_audit.py
   - src/merlin/targetgen/generate/typed_mlir.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/evidence.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/generation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/declared_run.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_source_performance.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/source_requirement_ledger.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/original_reference_roster.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/original_reference_flow.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/original_reference_requirements.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/original_reference_standard_ir.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/original_schema_batch.py
+  - src/merlin_experiments/phase0/evidence.py
+  - src/merlin_experiments/phase0/generation.py
+  - src/merlin_experiments/phase0/declared_run.py
+  - src/merlin_experiments/phase0/component_source_performance.py
+  - src/merlin_experiments/phase0/source_requirement_ledger.py
+  - src/merlin_experiments/phase0/original_reference_roster.py
+  - src/merlin_experiments/phase0/original_reference_flow.py
+  - src/merlin_experiments/phase0/original_reference_requirements.py
+  - src/merlin_experiments/phase0/original_reference_standard_ir.py
+  - src/merlin_experiments/phase0/original_schema_batch.py
   - src/merlin/targetgen/torch_schema_batch_observer.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/evidence_status.py
+  - src/merlin_experiments/phase0/m2m_runtime.py
+  - src/merlin_experiments/phase0/evidence_status.py
   - src/merlin/targetgen/spec_fact_drift.py
   - src/merlin/targetgen/_m2m_capture_worker.py
   - src/merlin/targetgen/original_pointwise_sources.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/component_qualification.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_final_qualification.py
-  - packages/merlin-experiments/src/merlin_experiments/capture_execution/precision_staging.py
+  - src/merlin_experiments/phase1/component_qualification.py
+  - src/merlin_experiments/phase2/component_final_qualification.py
+  - src/merlin_experiments/capture_execution/precision_staging.py
 ---
 
 # Define the software contract before generating tests
@@ -44,7 +44,7 @@ code_refs:
 Phase 0 combines selected hardware evidence, a software specification, and workload/test
 policy. See the matching [Atlas](../../examples/atlas/phase0/README.md) and
 [Gemmini](../../examples/gemmini/phase0/README.md) examples. The installed generator belongs
-to `merlin-experiments`; target-specific inputs belong to examples or a selected
+to the `merlin_experiments` logical component in Merlin; target-specific inputs belong to examples or a selected
 target-owned declaration package.
 
 ## Start with five decisions

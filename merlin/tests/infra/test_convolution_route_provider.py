@@ -16,7 +16,7 @@ class ConvolutionProvider(DenseProvider):
         from merlin.common.digest import sha256_file
         from merlin.common.paths import data_path
         from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
-        from merlin.verify.host_packing_storage import PackingAllocationEffects
+        from merlin.verification.packing import PackingAllocationEffects
 
         # Original caller premise for the reviewed ordinary bare-metal runtime:
         # malloc returns disjoint live storage or traps; only free releases it

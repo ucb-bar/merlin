@@ -6,9 +6,9 @@ owner: experiments
 last_verified: 2026-10-19
 related: [phase2_corpus_search, normal_search_feedback, spike_timing]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_capsule_feedback.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_execution_products.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_emission.py
+  - src/merlin_experiments/phase2/ordinary_capsule_feedback.py
+  - src/merlin_experiments/phase1/feedback/candidate_execution_products.py
+  - src/merlin_experiments/phase1/feedback/compiler_profile_emission.py
   - packages/merlin-experiments/tests/test_ordinary_capsule_feedback.py
   - src/merlin/perf/capsule_roofline.py
   - src/merlin/perf/candidate_diagnostics.py

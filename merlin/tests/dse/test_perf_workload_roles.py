@@ -11,12 +11,9 @@ not a failed optimization target, it is the wrong instrument.
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
+from perf_activity import sources as activity_sources
+from perf_activity import suite as activity_suite
 
-import pytest
-
-from merlin.common.paths import env, repo_root
 from merlin.perf.decompose import ResourceKind, activity_from_busy
 from merlin.perf.workload_roles import (
     FIXED_TERM,
@@ -25,41 +22,11 @@ from merlin.perf.workload_roles import (
     classify_workloads,
 )
 
-BUCKET_KINDS = {
-    "dma": ResourceKind.MOVEMENT,
-    "mxu": ResourceKind.COMPUTE,
-    "vpu": ResourceKind.COMPUTE,
-    "none": ResourceKind.FIXED,
-}
-
-
-def _suite() -> dict:
-    root = env("MERLIN_MLC_DIR")
-    if not root:
-        pytest.skip("MERLIN_MLC_DIR unset -- the per-unit activity fixture lives in the mlc checkout")
-    path = Path(root) / "mlc" / "validate" / "npu_model_suite.json"
-    if not path.is_file():
-        pytest.skip(f"activity fixture not present at {path}")
-    assert repo_root().is_dir()
-    return json.loads(path.read_text(encoding="utf-8"))
+_suite = activity_suite
 
 
 def _sources():
-    out = []
-    for name, body in _suite()["kernels"].items():
-        arc = body["arc"]
-        out.append(
-            activity_from_busy(
-                name,
-                arc["truth"],
-                {"dma": arc["dma_busy"], "mxu": arc["mxu"], "vpu": arc["vpu"], "none": arc["none"]},
-                BUCKET_KINDS,
-                partitioned=True,
-                completion_observable=True,
-                provenance="per-cycle activity decomposition from the cycle-accurate model",
-            )
-        )
-    return out
+    return activity_sources(_suite())
 
 
 # --- the hand-derived fixtures -------------------------------------------------------------------

@@ -264,7 +264,7 @@ def build_arm(
     use_schedule=True,
 ):
     from merlin.common.invocation_record import verify
-    from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+    from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.target_schedule import TargetScheduleSelection
 

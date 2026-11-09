@@ -268,20 +268,6 @@ def _capability_report(rows: list[dict], census: Path, pkg: Path, digest: str, b
         "| model | distinct shapes | fit whole (pre-blocking) | emittable (with blocking) | MACs covered |",
         "|---|---|---|---|---|",
     ]
-    if a.emit_workloads:
-        wdir = Path(a.emit_workloads)
-        wdir.mkdir(parents=True, exist_ok=True)
-        written = []
-        for r in rows:
-            if r["M"] == "":
-                continue
-            short = r["model_id"].split("_int8")[0]
-            leaf = str(r["layer_fqn"]).replace(".", "_")[-40:]
-            name = f"{short}__{leaf}__{r['eval_M']}x{r['eval_N']}x{r['eval_K']}.mlir"
-            (wdir / name).write_text(IFACE.format(M=r["eval_M"], N=r["eval_N"], K=r["eval_K"]), encoding="utf-8")
-            written.append(name)
-        print(f"wrote {len(written)} workloads to {wdir}")
-
     for model in sorted({r["model_id"] for r in rows}):
         mr = [r for r in rows if r["model_id"] == model and r["M"] != ""]
         whole = [r for r in mr if r["fits_without_cutting"] == "yes"]

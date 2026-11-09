@@ -6,7 +6,7 @@ import pytest
 from test_dense_pointer_contracts import pointer_inputs
 from test_dense_source import contraction
 
-from merlin.compile.scheduling.compact_dense_group_check import DenseLHSReuseLaw
+from merlin.compiler.schedule.compact_dense_group_check import DenseLHSReuseLaw
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.llvmlower.source_dense import SourceDenseLowering

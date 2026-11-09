@@ -8,8 +8,9 @@ from xdsl.dialects import llvm
 from xdsl.dialects.builtin import i8
 from xdsl.ir import SSAValue
 
-from merlin.compile.scheduling.llvm_program import FnBuilderControlAdapter
-from merlin.compile.scheduling.rolling_window import RollingWindowPlan, emit_rolling_window
+from merlin.compiler.schedule.llvm_program import FnBuilderControlAdapter
+from merlin.compiler.schedule.rolling_window import RollingWindowPlan
+from merlin.compiler.schedule.rolling_window import emit_rolling_window
 from merlin.llvmlower.host_builder import PTR, FnBuilder
 
 
@@ -119,8 +120,8 @@ def emit_cached_spatial_row_panel(
     guard above its complete contiguous channel run. Channel order and byte
     loads/stores remain unchanged; no cache lifetime or device effect follows.
     """
-    from merlin.compile.scheduling.rolling_spatial import RollingPackedSpatialPlan
-    from merlin.compile.scheduling.rolling_window import emit_rolling_window_lookup
+    from merlin.compiler.schedule.rolling_spatial import RollingPackedSpatialPlan
+    from merlin.compiler.schedule.rolling_window import emit_rolling_window_lookup
     from merlin.llvmlower.convolution_packing import ClippedSpatialHaloRows
 
     if type(plan) is not RollingPackedSpatialPlan or type(builder) is not FnBuilder:

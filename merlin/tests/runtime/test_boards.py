@@ -13,6 +13,9 @@ from pathlib import Path
 import pytest
 
 from merlin.runtime import boards
+from merlin.compiler.build.zephyr import memory
+from merlin.compiler.build.zephyr.config import project_config, vector_max_len_bits
+from merlin.compiler.build.zephyr.tree import TreeConfiguration
 from merlin.runtime.backends import zephyr_model as zm
 from merlin.runtime.sdk_facts import UartConsoleFacts
 
@@ -58,6 +61,19 @@ def uart_facts():
     )
 
 
+@pytest.fixture
+def zephyr_tree(tmp_path):
+    """Configuration capability fixture, not a selected toolchain or hardware qualification."""
+    arch = tmp_path / "arch"
+    arch.mkdir()
+    (arch / "Kconfig").write_text(
+        "config RISCV_V_KERNEL_ONLY\n  bool\n"
+        "config RISCV_ISA_EXT_V_LAZY\n  bool\n"
+        "config RISCV_VECTOR_MAX_LEN\n  int\n  default 256\n"
+    )
+    return TreeConfiguration(tmp_path)
+
+
 def test_kodiak_is_described_by_its_silicon_not_its_dts():
     """Kodiak's DTS says ram0=256MB and MP_MAX_NUM_CPUS=2; the chip has 512MB and 3 working cores."""
     b = boards.board("chipyard_kodiak")
@@ -76,6 +92,41 @@ def test_catalog_selection_is_explicit(monkeypatch):
     monkeypatch.delenv(boards.BOARD_CATALOG_ENV, raising=False)
     with pytest.raises(boards.BoardRegistryError, match="no board catalog selected"):
         boards.load_boards()
+
+
+def test_matrix_affinity_checks_actual_worker_ids_and_declared_route():
+    board = _fixture_board(
+        "mixed", harts=4, vector_harts=3, vector_hart_ids=(0, 2, 3),
+        matrix_hart_ids=(0, 3), matrix_support_target="unit_provider",
+        matrix_unit="matrix", matrix_config="selected_config",
+    )
+    board.check_matrix_route("unit_provider", "matrix", "selected_config")
+    board.check_matrix_image(1)
+    with pytest.raises(boards.BoardRegistryError, match="carry no matrix"):
+        board.check_matrix_image(2)
+    for invalid in (0, -1, True, 4):
+        with pytest.raises(boards.BoardRegistryError, match="workers"):
+            board.check_matrix_image(invalid)
+    with pytest.raises(boards.BoardRegistryError, match="does not match"):
+        board.check_matrix_route("unit_provider", "matrix", "other_config")
+    with pytest.raises(boards.BoardRegistryError, match="does not match"):
+        _fixture_board("undeclared").check_matrix_route(None, None, None)
+
+
+@pytest.mark.parametrize("extra", [
+    "matrix_hart_ids: [0, 0]", "matrix_hart_ids: [2]", "matrix_hart_ids: []",
+    "matrix_unit: matrix", "matrix_unit: ''",
+])
+def test_matrix_catalog_refuses_incomplete_or_invalid_resources(tmp_path, extra):
+    path = tmp_path / "boards.yaml"
+    path.write_text(
+        "schema_version: 1\nboards:\n  selected:\n    dram_bytes: 256 MiB\n"
+        "    dram_base: 0x80000000\n    harts: 2\n    vector_harts: 1\n"
+        "    console: htif\n    flow: baremetal\n    code_reserve: 1 MiB\n"
+        f"    {extra}\n", encoding="utf-8",
+    )
+    with pytest.raises(boards.BoardRegistryError, match="matrix"):
+        boards.load_boards(path)
 
 
 def test_zephyr_image_build_does_not_require_spike(monkeypatch, tmp_path):
@@ -135,7 +186,7 @@ def test_external_memory_layout_uses_the_selected_board_not_a_fixed_address():
         zephyr_default_ram_bytes=256 << 20, zephyr_link_limit_bytes=1900 << 20,
         zephyr_external_ram_bytes=gib, zephyr_external_tail_reserve_bytes=256 << 20,
     )
-    layout = zm._memory_plan(brd, 2 * gib + 1, 3 * gib)
+    layout = memory.memory_plan(brd, 2 * gib + 1, 3 * gib)
     assert layout.external
     assert layout.weights_base == brd.dram_base + gib
     assert layout.ram_region_bytes == gib
@@ -149,9 +200,9 @@ def test_large_model_without_board_layout_fails_before_linking():
         zephyr_default_ram_bytes=256 << 20, zephyr_link_limit_bytes=1900 << 20,
     )
     with pytest.raises(zm.ZephyrModelError, match="declares no external-weights layout"):
-        zm._memory_plan(brd, 2 << 30, 3 << 30)
+        memory.memory_plan(brd, 2 << 30, 3 << 30)
     with pytest.raises(zm.ZephyrModelError, match="RAM override"):
-        zm._memory_plan(brd, 0, 0, override=3 << 30)
+        memory.memory_plan(brd, 0, 0, override=3 << 30)
 
 
 def test_external_weights_cannot_overlap_reserved_dram_tail():
@@ -162,7 +213,7 @@ def test_external_weights_cannot_overlap_reserved_dram_tail():
         zephyr_external_ram_bytes=gib, zephyr_external_tail_reserve_bytes=256 << 20,
     )
     with pytest.raises(zm.ZephyrModelError, match="does not fit"):
-        zm._memory_plan(brd, 3 * gib, 4 * gib)
+        memory.memory_plan(brd, 3 * gib, 4 * gib)
 
 
 def test_external_image_must_leave_room_for_its_activation_arena():
@@ -172,12 +223,12 @@ def test_external_image_must_leave_room_for_its_activation_arena():
     brd = _fixture_board("arena", dram_bytes=8 * gib)
     low = gib
     image = Segment("LOAD", brd.dram_base, 200 << 20, 200 << 20, "RWE")
-    zm._require_external_arena(brd, low, [image], 500 << 20)
+    memory.require_external_arena(brd, low, [image], 500 << 20)
     with pytest.raises(zm.ZephyrModelError, match="external-weights ELF leaves"):
-        zm._require_external_arena(brd, low, [image], 900 << 20)
+        memory.require_external_arena(brd, low, [image], 900 << 20)
     spill = Segment("LOAD", brd.dram_base + low - 4096, 8192, 8192, "RWE")
     with pytest.raises(zm.ZephyrModelError, match="crosses the declared low RAM"):
-        zm._require_external_arena(brd, low, [spill], 0)
+        memory.require_external_arena(brd, low, [spill], 0)
 
 
 def test_cpu_overlay_uses_declared_dt_count_not_board_name():
@@ -191,7 +242,7 @@ def test_overrides_win_so_a_delivery_can_state_what_it_built_for():
     assert b.dram_bytes == 256 * 1024 * 1024 and b.vlen == 256
 
 
-def test_the_config_follows_the_board():
+def test_the_config_follows_the_board(zephyr_tree):
     """cpus, the vector save-area width and FPU_SHARING all come from the descriptor.
 
     The save-area width comes from it FLOORED at the tree's default -- this board states no VLEN, so its
@@ -199,10 +250,10 @@ def test_the_config_follows_the_board():
     `test_the_vector_save_area_is_never_declared_smaller_than_the_tree_default`.
     """
     b = boards.board("spike_riscv64")
-    conf = zm._prj_conf(b.harts, "rvv", b)
+    conf = project_config(b.harts, "rvv", b, tree=zephyr_tree)
     assert f"CONFIG_MP_MAX_NUM_CPUS={b.harts}" in conf
-    assert f"CONFIG_RISCV_VECTOR_MAX_LEN={zm._vector_max_len_bits(b)}" in conf
-    assert zm._vector_max_len_bits(b) >= b.vector_max_len
+    assert f"CONFIG_RISCV_VECTOR_MAX_LEN={vector_max_len_bits(b, zephyr_tree)}" in conf
+    assert vector_max_len_bits(b, zephyr_tree) >= b.vector_max_len
     # y mis-routes V-illegal-instruction traps into the FP path and retries forever: a silent hang.
     assert "CONFIG_FPU_SHARING=n" in conf
 
@@ -214,7 +265,7 @@ def test_zephyr_config_requires_an_explicit_board_descriptor():
         zm._prj_conf(2, "rvv", None)
 
 
-def test_kodiak_lets_zephyr_manage_vector_state():
+def test_kodiak_lets_zephyr_manage_vector_state(zephyr_tree):
     """Kodiak's vector config, and the reasoning that had to be corrected twice to arrive at it.
 
     The descriptor used to say `fpu_sharing=True, zephyr_vector_ext=False`, on this argument: that
@@ -243,7 +294,7 @@ def test_kodiak_lets_zephyr_manage_vector_state():
     """
     b = boards.board("chipyard_kodiak")
     assert b.fpu_sharing is False and b.zephyr_vector_ext is True
-    conf = zm._prj_conf(b.harts, "rvv", b)
+    conf = project_config(b.harts, "rvv", b, tree=zephyr_tree)
     assert "CONFIG_MP_MAX_NUM_CPUS=3" in conf
     assert "CONFIG_FPU_SHARING=n" in conf
     assert "CONFIG_RISCV_ISA_EXT_V=y" in conf, "Zephyr must manage per-thread vector state"
@@ -251,7 +302,7 @@ def test_kodiak_lets_zephyr_manage_vector_state():
     assert "CONFIG_RISCV_V_KERNEL_ONLY=y" in conf, "keeps `v` out of the global -march"
 
 
-def test_a_stale_vector_ext_flag_is_refused_rather_than_built():
+def test_a_stale_vector_ext_flag_is_refused_rather_than_built(zephyr_tree):
     """Denying Zephyr vector state on a tree that supports it is always a stale descriptor now.
 
     It is not a harmless conservative choice: it is the exact configuration that shipped a Kodiak
@@ -263,20 +314,18 @@ def test_a_stale_vector_ext_flag_is_refused_rather_than_built():
     import pytest
 
     b = dataclasses.replace(boards.board("chipyard_kodiak"), zephyr_vector_ext=False)
-    if not zm._kconfig_has("RISCV_V_KERNEL_ONLY"):
-        pytest.skip("this Zephyr tree genuinely cannot express V without the global -march")
     with pytest.raises(RuntimeError, match="zephyr_vector_ext"):
-        zm._prj_conf(b.harts, "rvv", b)
+        project_config(b.harts, "rvv", b, tree=zephyr_tree)
 
 
-def test_a_vector_capable_tree_still_gets_the_full_vector_config():
+def test_a_vector_capable_tree_still_gets_the_full_vector_config(zephyr_tree):
     b = boards.board("chipyard_riscv64")
-    conf = zm._prj_conf(b.harts, "rvv", b)
+    conf = project_config(b.harts, "rvv", b, tree=zephyr_tree)
     assert "CONFIG_RISCV_ISA_EXT_V=y" in conf
     assert f"CONFIG_RISCV_VECTOR_MAX_LEN={b.vector_max_len}" in conf
 
 
-def test_the_vector_save_area_is_never_declared_smaller_than_the_tree_default():
+def test_the_vector_save_area_is_never_declared_smaller_than_the_tree_default(zephyr_tree):
     """Under-declaring the save area corrupts kernel memory; over-declaring only costs RAM.
 
     `vreg[32][CONFIG_RISCV_VECTOR_MAX_LEN/8]` is a fixed buffer, but `z_riscv_vstate_save` fills it via
@@ -290,20 +339,19 @@ def test_the_vector_save_area_is_never_declared_smaller_than_the_tree_default():
     So the emitted value is floored at the tree's own default for the symbol. This is a guard, not a
     substitute for a correct descriptor: it bounds the damage of one being wrong to wasted memory.
     """
-    floor = zm._kconfig_default_int("RISCV_VECTOR_MAX_LEN")
-    if not floor:
-        pytest.skip("this Zephyr tree states no single numeric default for RISCV_VECTOR_MAX_LEN")
+    floor = zephyr_tree.default_int("RISCV_VECTOR_MAX_LEN")
+    assert floor == 256
 
     understated = _fixture_board("some_new_tapeout", vlen=128)
     assert understated.vector_max_len == 128, "the descriptor still reports what it was told"
-    assert zm._vector_max_len_bits(understated) == floor, "but the emitted config is floored"
-    conf = zm._prj_conf(understated.harts, "rvv", understated)
+    assert vector_max_len_bits(understated, zephyr_tree) == floor, "but the emitted config is floored"
+    conf = project_config(understated.harts, "rvv", understated, tree=zephyr_tree)
     assert f"CONFIG_RISCV_VECTOR_MAX_LEN={floor}" in conf
 
     # The floor must not CLAMP a board that legitimately has wider registers -- that would recreate the
     # overrun on the one class of board where it is guaranteed to happen.
     wide = _fixture_board("some_new_tapeout", vlen=1024)
-    assert zm._vector_max_len_bits(wide) == 1024
+    assert vector_max_len_bits(wide, zephyr_tree) == 1024
 
 
 def test_htif_console_options_are_set_only_for_an_htif_board():
@@ -460,6 +508,7 @@ def test_the_hart_count_reaches_the_split_and_not_the_block():
     the 8-hart and 1-hart images different kernels (lstmnetvit int8: 5 matmuls to scalar loops,
     +63.5% instructions in the linked ELF, before any thread existed). The count now reaches the
     SPLIT derivation only; the block is a function of the model alone."""
+    import ast
     import inspect
 
     from merlin.llvmlower import perop_blocks as pb
@@ -469,7 +518,10 @@ def test_the_hart_count_reaches_the_split_and_not_the_block():
     assert "harts" in inspect.signature(zm.prepare_for_lowering).parameters
     assert "parallel_chunk_table(_par_shapes, table, harts)" in src, (
         "the hart count must reach the split derivation")
-    assert "s for s in _cshapes(prepared)" in src
+    assert any(
+        isinstance(node, ast.comprehension) and ast.unparse(node.iter) == "_cshapes(prepared)"
+        for node in ast.walk(ast.parse(src))
+    )
     assert "_par_shapes.extend(_pb.conv_shapes(prepared))" in src, (
         "both matmul-like contractions and direct convolutions must reach the split derivation")
     assert "harts" not in inspect.signature(pb.block_table).parameters, (

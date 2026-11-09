@@ -672,7 +672,7 @@ def _application_operation_inventory(
     not a second independent accelerator demand. Unknowns remain rows, never disappear from a count.
     """
     from merlin.common import mlir_query as mq
-    from merlin.compile.analysis import contraction_shapes
+    from merlin.compiler.ir import contraction_shapes
     from merlin.frontends.capture_normalization import normalize_capture_mlir
     from merlin.targetgen import model_coverage as mc
     from merlin.targetgen import semantic_families as sf

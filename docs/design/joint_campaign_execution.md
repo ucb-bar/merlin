@@ -6,9 +6,9 @@ owner: merlin-experiments
 last_verified: 2026-10-23
 related: [joint_compiler_development, joint_compiler_author_requirements, combined_phase1_phase2_authoring]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase1/session.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/workspace_transport.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/public_scalability.py
+  - src/merlin_experiments/phase1/session.py
+  - src/merlin_experiments/phase1/workspace_transport.py
+  - src/merlin_experiments/phase1/feedback/public_scalability.py
   - src/merlin/perf/staged_roofline.py
 ---
 

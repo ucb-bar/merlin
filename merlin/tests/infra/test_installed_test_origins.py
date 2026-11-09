@@ -65,7 +65,7 @@ def test_actual_finish_hook_accepts_only_the_exact_archived_test(monkeypatch, tm
 
 
 @pytest.mark.parametrize(
-    "name", ["merlin.codegen", "merlin.tests.targetgen.test_other", "merlin_experiments.phase0.driver"]
+    "name", ["merlin.codegen", "merlin.tests.targetgen.test_other", "merlin_experiments.phase0.driver", "merlin_dse.engine"]
 )
 def test_pinned_test_file_cannot_disguise_an_external_production_or_other_test(monkeypatch, tmp_path, probe, name):
     path, _, _ = roster(monkeypatch, tmp_path)
@@ -140,7 +140,7 @@ def test_incomplete_or_substituted_archived_rosters_refuse_before_collection(mon
         probe.pytest_sessionstart(None)
 
 
-@pytest.mark.parametrize("defect", ["none", "external_core", "missing_core", "external_optional"])
+@pytest.mark.parametrize("defect", ["none", "external_core", "missing_core", "external_optional", "external_dse"])
 def test_actual_pytest_archive_import_preserves_the_installed_parent(monkeypatch, tmp_path, probe, defect):
     from _pytest.pathlib import ImportMode, import_path
 
@@ -158,12 +158,13 @@ def test_actual_pytest_archive_import_preserves_the_installed_parent(monkeypatch
         "path": str(path),
         "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
     }
-    if defect == "external_optional":
-        path = archive / "merlin_experiments/tests/infra/test_import.py"
+    if defect in {"external_optional", "external_dse"}:
+        package = "merlin_dse" if defect == "external_dse" else "merlin_experiments"
+        path = archive / package / "tests/infra/test_import.py"
         path.parent.mkdir(parents=True)
         path.write_text("pass\n")
         row = {
-            "module": "merlin_experiments.tests.infra.test_import",
+            "module": package + ".tests.infra.test_import",
             "path": str(path),
             "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         }
@@ -172,14 +173,14 @@ def test_actual_pytest_archive_import_preserves_the_installed_parent(monkeypatch
     monkeypatch.setenv("MERLIN_TEST_ARCHIVED_SOURCES", str(receipt))
     monkeypatch.setattr(probe, "sys", sys)
     saved = {
-        name: module for name, module in sys.modules.items() if name.split(".")[0] in {"merlin", "merlin_experiments"}
+        name: module for name, module in sys.modules.items() if name.split(".")[0] in {"merlin", "merlin_experiments", "merlin_dse"}
     }
     for name in saved:
         del sys.modules[name]
     monkeypatch.setattr(sys, "path", [str(site)])
-    if defect in {"external_core", "external_optional"}:
+    if defect in {"external_core", "external_optional", "external_dse"}:
         external = tmp_path / "external"
-        package = external / ("merlin" if defect == "external_core" else "merlin_experiments")
+        package = external / ("merlin" if defect == "external_core" else package)
         package.mkdir(parents=True)
         (package / "__init__.py").write_text("")
         sys.path.insert(0, str(external))
@@ -199,6 +200,6 @@ def test_actual_pytest_archive_import_preserves_the_installed_parent(monkeypatch
         probe.pytest_sessionfinish(None, 0)
     finally:
         for name in tuple(sys.modules):
-            if name.split(".")[0] in {"merlin", "merlin_experiments"}:
+            if name.split(".")[0] in {"merlin", "merlin_experiments", "merlin_dse"}:
                 del sys.modules[name]
         sys.modules.update(saved)

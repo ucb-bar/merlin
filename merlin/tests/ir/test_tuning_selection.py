@@ -4,7 +4,12 @@ from hashlib import sha256
 
 import pytest
 
-from merlin.compile.tuning_knobs import MAX_KNOBS, Knob, KnobError, KnobSettings, bounded_settings, declare
+from merlin.compiler.selection.knobs import MAX_KNOBS
+from merlin.compiler.selection.knobs import Knob
+from merlin.compiler.selection.knobs import KnobError
+from merlin.compiler.selection.knobs import KnobSettings
+from merlin.compiler.selection.knobs import bounded_settings
+from merlin.compiler.selection.knobs import declare
 from merlin.transforms.evaluated_exploration import CompletedObservation, ExplorationIdentity
 from merlin.transforms.pass_exploration import EmittedProgram, MappingProposalKey
 from merlin.transforms.tuning_selection import KnobTrial, select_settings, unique_emissions

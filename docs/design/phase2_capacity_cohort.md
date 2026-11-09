@@ -5,7 +5,7 @@ status: current
 owner: merlin-experiments
 last_verified: 2026-10-19
 related: [merlin_supplied_host_placement, spike_timing]
-code_refs: [packages/merlin-experiments/src/merlin_experiments/phase2/metric_scope.py, packages/merlin-experiments/src/merlin_experiments/phase2/public_program_measurement.py, packages/merlin-experiments/src/merlin_experiments/phase0/form_perf.py, packages/merlin-experiments/src/merlin_experiments/phase0/capacity_families.py, packages/merlin-experiments/src/merlin_experiments/phase2/claims/capacity.py, packages/merlin-experiments/src/merlin_experiments/phase2/roofline_priority.py, packages/merlin-experiments/src/merlin_experiments/phase2/calibration_validation.py, src/merlin/perf/movement_peak.py, src/merlin/perf/staged_roofline.py, experiments/templates/phase0/performance.yaml]
+code_refs: [src/merlin_experiments/phase2/metric_scope.py, src/merlin_experiments/phase2/public_program_measurement.py, src/merlin_experiments/phase0/form_perf.py, src/merlin_experiments/phase0/capacity_families.py, src/merlin_experiments/phase2/claims/capacity.py, src/merlin_experiments/phase2/roofline_priority.py, src/merlin_experiments/phase2/calibration_validation.py, src/merlin/perf/movement_peak.py, src/merlin/perf/staged_roofline.py, experiments/templates/phase0/performance.yaml]
 ---
 
 # The Phase 2 capacity cohort

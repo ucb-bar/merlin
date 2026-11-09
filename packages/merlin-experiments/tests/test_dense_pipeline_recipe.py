@@ -8,7 +8,8 @@ import pytest
 from author_skill_fixtures import load_script, skill_dir
 
 from merlin.common.paths import repo_root
-from merlin.compile.scheduling import dense_ready_readout, schedule_ir
+from merlin.compiler.schedule import dense_ready_readout
+from merlin.compiler.schedule import schedule_ir
 from merlin.targetgen.tool_profile_shared import prepare_shared_source_release, reviewed_shared_manifest
 
 
@@ -22,7 +23,7 @@ def _llvm(result):
     declarations = {}
 
     def lower(instruction, arguments, metadata=None):
-        from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter
+        from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
 
         bridge = FnBuilderIndexAdapter(builder)
         values = tuple(bridge.value(value) for value in arguments.values())
@@ -60,7 +61,7 @@ def test_actual_square_tall_wide_thin_and_ragged_routes_preserve_products_and_co
     assert len(captured) == len(routes)
     for route, result in zip(routes, captured, strict=True):
         result.revalidate()
-        from merlin.compile.scheduling.scf_commands import materialize_scf_commands
+        from merlin.compiler.schedule.scf_commands import materialize_scf_commands
 
         materialize_scf_commands(result.kernel).verify()
         module, declarations = _llvm(result)

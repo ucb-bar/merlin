@@ -8,7 +8,9 @@ historical Phase 0/1/2 names remain in the module layout and separate workflows.
 
 - `src/merlin/`: canonical Python source. Keep shared compiler, scheduling, capture,
   target/toolchain and verification primitives independent of research orchestration.
-- `packages/`: optional research distributions. Do not duplicate core implementations.
+- `src/merlin_experiments/` and `src/merlin_dse/`: research workflows in the same Merlin distribution;
+  optional dependencies stay lazy and logical compiler/research access boundaries remain explicit.
+- `packages/`: retained research tests and the independent `merlin-timing` observer distribution.
 - `experiments/`: the experiment catalog and versioned definitions; start here to run a study.
 - `merlin/`: schemas, tests, native runtime, and legacy engines/resources during migration.
   `merlin/python/merlin` is a compatibility symlink, not another source tree.
@@ -77,4 +79,4 @@ been published, report it and prepare a separate reviewed remedy before changing
 Run the relevant behavior tests, source-layout/access checks, and
 `python build_tools/scripts/check_structure.py`. Regenerate code-derived docs after changes.
 Release checks must inspect actual wheels/sdists and install outside the checkout without optional
-research packages. Report unavailable hardware separately from passing tests.
+research dependencies. Report unavailable hardware separately from passing tests.

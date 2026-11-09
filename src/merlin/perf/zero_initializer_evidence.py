@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 import hashlib
 
-from merlin.compile.scheduling.zero_initializer_groups import find_zero_initializer_groups
+from merlin.compiler.schedule.zero_initializer_groups import find_zero_initializer_groups
 from merlin.targetgen.oot_starterkit.plan import validate_mixed_program_plan
 
 

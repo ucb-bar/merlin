@@ -347,7 +347,7 @@ def test_ordinary_model_checks_linked_program_and_complete_carried_state(
         software = yaml.safe_load(selected.software_bytes)
         software["isa"]["facts_sha256"] = FB.sha256(facts_path)
         software_path.write_text(yaml.safe_dump(software))
-        from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
+        from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
 
         current = read_scheduling_contracts(facts_path, software_path, target=selected.target)
         tighter = service(

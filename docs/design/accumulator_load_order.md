@@ -5,7 +5,7 @@ status: current
 owner: verification
 last_verified: 2026-10-26
 related: [open_coded_nest_costs, capsule_phase_split, agentic_experiment_integrity]
-code_refs: [examples/gemmini/verification/acc_race/acc_race_repro.c, examples/gemmini/verification/acc_race/vend_repro.c, examples/gemmini/verification/acc_race/classify.py, examples/gemmini/verification/acc_race/fence_vendor_resadd.py, merlin/tests/gemmini/test_acc_race_repro.py, src/merlin/targetgen/completion_order.py, src/merlin/targetgen/rtl/command_ordering.py, packages/merlin-experiments/src/merlin/targetgen/completion_order_gate.py]
+code_refs: [examples/gemmini/verification/acc_race/acc_race_repro.c, examples/gemmini/verification/acc_race/vend_repro.c, examples/gemmini/verification/acc_race/classify.py, examples/gemmini/verification/acc_race/fence_vendor_resadd.py, merlin/tests/gemmini/test_acc_race_repro.py, src/merlin/targetgen/completion_order.py, src/merlin/targetgen/rtl/command_ordering.py, src/merlin/targetgen/completion_order_gate.py]
 ---
 
 # Accumulator loads are ordered by issue, not by completion

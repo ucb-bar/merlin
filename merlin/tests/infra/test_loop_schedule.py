@@ -5,12 +5,11 @@ from dataclasses import replace
 import pytest
 from test_compact_dense import ADAPTER, fixture, schedule
 
-from merlin.compile.scheduling.loop_schedule import LoopTransform, propose_loop_transforms
-from merlin.compile.scheduling.schedule_ir import (
-    dense_schedule_text,
-    make_dense_schedule_plan,
-    parse_dense_schedule_plan,
-)
+from merlin.compiler.schedule.loop_schedule import LoopTransform
+from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
+from merlin.compiler.schedule.schedule_ir import dense_schedule_text
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
 from merlin.sched.ir import Kernel, Ptr, TensorArg, call, evaluate, instances, loop, select
 from merlin.sched.ir.expr import Expr, Var
 from merlin.sched.primitives import NotApplicable
@@ -182,9 +181,9 @@ def test_hoist_moves_actual_invariant_statement_and_folds_singleton_index():
 
 
 def test_typed_hoist_reuses_invariant_full_k_operand_and_final_source_checks_it():
-    from merlin.compile.scheduling.compact_dense import emit_compact_dense
-    from merlin.compile.scheduling.compact_verification import verify_compact_dense
-    from merlin.compile.scheduling.schedule_ir import read_dense_schedule_plan
+    from merlin.compiler.schedule.compact_dense import emit_compact_dense
+    from merlin.compiler.schedule.compact_verification import verify_compact_dense
+    from merlin.compiler.schedule.schedule_ir import read_dense_schedule_plan
     from merlin.transforms.dense_planning import dense_blocks
 
     p, r, s = fixture(shape=(5, 14, 25))
@@ -274,7 +273,7 @@ def test_transformed_dense_tail_and_reduction_execute_original_arithmetic(monkey
 
 
 def test_named_stripes_compose_across_repeated_scope_names_and_keep_ordered_tail():
-    from merlin.compile.scheduling.loop_schedule import striped_fission_transforms
+    from merlin.compiler.schedule.loop_schedule import striped_fission_transforms
 
     original = Kernel(
         "scoped",

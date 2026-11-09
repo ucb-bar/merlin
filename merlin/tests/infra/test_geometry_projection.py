@@ -17,8 +17,9 @@ import dataclasses
 import external_sources
 import pytest
 
-from merlin.compile.scheduling import BlockScheduleError
-from merlin.compile.scheduling.derive import geometry_from_address_space, geometry_from_machine
+from merlin.compiler.schedule import BlockScheduleError
+from merlin.compiler.schedule.derive import geometry_from_address_space
+from merlin.compiler.schedule.derive import geometry_from_machine
 from merlin.sched.mach.derive import derive
 from merlin.targetgen.address_space import derive_address_space
 

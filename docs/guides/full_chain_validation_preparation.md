@@ -7,7 +7,7 @@ last_verified: 2026-10-23
 code_refs:
   - examples/gemmini/phase1/launch/prepare_full_chain_scope.py
   - examples/gemmini/phase1/launch/external_validation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_numerical_selection.py
+  - src/merlin_experiments/phase1/feedback/private_numerical_selection.py
 ---
 
 # Prepare full-session validation after capsule authoring
@@ -25,7 +25,7 @@ python examples/gemmini/phase1/launch/prepare_full_chain_scope.py \
   --private-spec "$PRIVATE_SPEC" --out "$NEW_PRIVATE_PREPARATION"
 ```
 
-Use the selected environment with Merlin and merlin-experiments installed. The
+Use the selected environment with `merlin[experiments]` installed. The
 output directory is created with mode 0700 and the proposal with mode 0600. Keep
 it outside author grants. The proposal pins the private spec, reference manifest,
 SHA256SUMS, model configuration and root session contracts. It retains exact

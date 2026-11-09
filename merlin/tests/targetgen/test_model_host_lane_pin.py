@@ -93,7 +93,17 @@ def test_target_experiment_selects_scalar_lane_for_rocket():
 
 
 def test_selected_dts_checks_every_hart_before_host_execution(tmp_path):
-    from merlin.compile.host_lane import _isa_parts, dts_string_values, require_host_isa_dts
+    from merlin.compiler.backend.isa import dts_string_values, require_host_isa_dts
+    from merlin.compiler.backend.isa import split_isa
+
+    from merlin.compile import host_lane
+    from merlin.compiler.backend import isa
+    from merlin.compiler.selection import host
+
+    assert host_lane is host
+    assert host_lane.require_host_isa_dts is require_host_isa_dts
+    assert host_lane.dts_string_values is dts_string_values
+    assert require_host_isa_dts.__globals__ is vars(isa)
 
     dts = tmp_path / "selected.dts"
     rocket = "rv64imafdcbzicsr_zifencei_zihpm_zfh_zba_zbb_zbs_xrocket"
@@ -104,10 +114,10 @@ def test_selected_dts_checks_every_hart_before_host_execution(tmp_path):
         require_host_isa_dts(["-march=rv64gc_zba_zbb_zbs_zfh"], dts, expected_sha256="0" * 64)
     with pytest.raises(ValueError, match=r"missing \['v'\]"):
         require_host_isa_dts(["-march=rv64gcv"], dts)
-    assert _isa_parts("rv64gc_zba")[0] == "rv64"
+    assert split_isa("rv64gc_zba")[0] == "rv64"
     for malformed in ("rv64", "rv64zba", "rv64gc!", "rv128gc"):
         with pytest.raises(ValueError, match="unrecognized RISC-V ISA"):
-            _isa_parts(malformed)
+            split_isa(malformed)
     text = (
         '// riscv,isa = "rv64gcv"; device_type = "cpu";\n'
         '/* riscv,isa = "rv64gcv"; */\n'
@@ -286,17 +296,52 @@ def test_bwrap_model_grade_never_falls_back_when_snapshot_is_missing_or_malforme
     assert not called
 
 
-def test_qa_loop_exports_verified_snapshot_only_to_host_grading():
+def test_qa_loop_exports_verified_snapshot_only_to_host_grading(monkeypatch, tmp_path):
     import inspect
+    import os
+    from types import SimpleNamespace
 
-    from merlin_experiments.phase1 import session
+    from merlin_experiments.phase1 import author_toolchain, compiler_library, joint_control, session
     from merlin_experiments.phase1.providers import execution
+
+    from merlin.targetgen import target_experiment
 
     source = inspect.getsource(session)
     assert "verify_snapshot_binding" in source
+    # Both fresh and resumed sessions verify ownership before exporting the host pointer.
+    verification = source.index("_BWS.require_snapshot_ownership(_BWS.verify_bundle_snapshot(")
+    export = source.index("os.environ[_MODEL_HOST_SNAPSHOT_ROOT_ENV] =")
+    assert verification < export
     for key in ("ROOT", "REQUIRED", "RECORD"):
         assert f"MERLIN_MODEL_HOST_LANE_SNAPSHOT_{key}" in source
-        assert f"_MODEL_HOST_SNAPSHOT_{key}_ENV" in inspect.getsource(execution.sandbox_command)
+        monkeypatch.setenv(f"MERLIN_MODEL_HOST_LANE_SNAPSHOT_{key}", f"host-private-{key}")
+
+    # Exercise the public command boundary and its real policy assembly. Neutral stand-ins
+    # replace mount discovery only; the actual environment removal and ordering still run.
+    monkeypatch.setattr(execution._START, "call", lambda _stage, function, *a, **kw: function(*a, **kw))
+    monkeypatch.setattr(execution, "_assemble", lambda _stage, function, *a, **kw: function(*a, **kw))
+    monkeypatch.setattr(bwrap, "base_argv", lambda *a, **kw: ["bwrap"])
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda path: object())
+    monkeypatch.setattr(author_toolchain, "toolchain_binds", lambda *a: ["toolchain-bind"])
+    monkeypatch.setattr(author_toolchain, "sandbox_env", lambda *a, **kw: "")
+    monkeypatch.setattr(joint_control, "selected", lambda: None)
+    monkeypatch.setattr(compiler_library, "sandbox_overlay", lambda parts, **kw: (parts, ""))
+    monkeypatch.setattr(bwrap, "reapply_bundle_snapshot", lambda parts, *a, **kw: [*parts, "frozen-snapshot"])
+    monkeypatch.setattr(bwrap, "apply_final_answer_masks", lambda parts, *a, **kw: [*parts, "answer-masks"])
+    composed = []
+    monkeypatch.setattr(bwrap, "compose_command", lambda parts, *a: composed.append(parts) or "command")
+    context = SimpleNamespace(repo=tmp_path, descriptor=tmp_path / "descriptor.yaml")
+    assert execution.sandbox_command(
+        "true", tmp_path / "workspace", {}, ["provider-bind"], context=context, codex_mode=True
+    ) == "command"
+    [parts] = composed
+    for key in ("ROOT", "REQUIRED", "RECORD"):
+        variable = f"MERLIN_MODEL_HOST_LANE_SNAPSHOT_{key}"
+        assert parts[parts.index(variable) - 1] == "--unsetenv"
+        assert os.environ[variable] == f"host-private-{key}"
+        assert f"host-private-{key}" not in parts
+    assert parts.index("toolchain-bind") < parts.index("provider-bind") < parts.index("frozen-snapshot")
+    assert parts[-1] == "answer-masks"
 
 
 def test_model_grade_refuses_descriptor_package_of_the_wrong_datatype(monkeypatch, tmp_path, frozen_capsule):

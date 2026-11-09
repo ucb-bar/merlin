@@ -7,14 +7,14 @@ import pytest
 from test_compact_dense import ADAPTER
 from test_dense_segmented_pipeline import chosen, inputs
 
-from merlin.compile.scheduling.dense_panel_pipeline import DRAIN, dense_panel_rhs_stripes
-from merlin.compile.scheduling.dense_segmented_pipeline import schedule_dense_segmented_pipeline
-from merlin.compile.scheduling.loop_schedule import LoopTransform, propose_loop_transforms
-from merlin.compile.scheduling.schedule_ir import (
-    dense_schedule_text,
-    make_dense_schedule_plan,
-    parse_dense_schedule_plan,
-)
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
+from merlin.compiler.schedule.dense_panel_pipeline import dense_panel_rhs_stripes
+from merlin.compiler.schedule.dense_segmented_pipeline import schedule_dense_segmented_pipeline
+from merlin.compiler.schedule.loop_schedule import LoopTransform
+from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
+from merlin.compiler.schedule.schedule_ir import dense_schedule_text
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
 from merlin.sched.ir import Loop, evaluate, instances
 from merlin.sched.primitives import NotApplicable
 
@@ -126,7 +126,7 @@ def test_segmented_stripes_execute_all_original_scalar_outputs(monkeypatch):
         return p, r, s
 
     def schedule(p, r, s, **kwargs):
-        from merlin.compile.scheduling.dense_panel_pipeline import _serial_projection
+        from merlin.compiler.schedule.dense_panel_pipeline import _serial_projection
         from merlin.transforms.dense_planning import dense_blocks
 
         b = next(b for b in dense_blocks(p, r) if (b.m, b.k, b.n) == (2, 2, 2))
@@ -144,14 +144,13 @@ def test_segmented_stripes_execute_all_original_scalar_outputs(monkeypatch):
 def test_segmented_wide_loads_keep_combined_law_and_check_every_actual_band():
     from test_panel_tile_loads import evaluated_calls
 
-    from merlin.compile.scheduling.dense_segmented_pipeline import admit_segmented_tile_loads
-    from merlin.compile.scheduling.panel_tile_loads import admit_panel_tile_loads, expand_panel_tile_loads
-    from merlin.compile.scheduling.tile_load_coalescing import (
-        TileLoadAddressLaw,
-        TileLoadMapping,
-        _linear,
-        propose_tile_load_coalescing,
-    )
+    from merlin.compiler.schedule.dense_segmented_pipeline import admit_segmented_tile_loads
+    from merlin.compiler.schedule.panel_tile_loads import admit_panel_tile_loads
+    from merlin.compiler.schedule.panel_tile_loads import expand_panel_tile_loads
+    from merlin.compiler.schedule.tile_load_coalescing import TileLoadAddressLaw
+    from merlin.compiler.schedule.tile_load_coalescing import TileLoadMapping
+    from merlin.compiler.schedule.tile_load_coalescing import _linear
+    from merlin.compiler.schedule.tile_load_coalescing import propose_tile_load_coalescing
     from merlin.sched.ir import Const
 
     p, r, s, b, admission = inputs((4, 12, 8), 2)

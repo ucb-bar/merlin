@@ -38,7 +38,7 @@ class DenseRowBatchingBudgets:
 
 
 def implementation_paths():
-    from merlin.compile.scheduling import pointwise_source
+    from merlin.compiler.schedule import pointwise_source
     from merlin.llvmlower import layout_conformance, segmented_matrix_view
     from merlin.transforms import certificates, dense_ir, pipeline_state
 

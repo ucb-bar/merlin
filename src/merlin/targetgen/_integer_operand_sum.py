@@ -37,7 +37,7 @@ class OperandSumError(ValueError):
 
 def _disjoint_static_attention(recipe: Mapping[str, Any]) -> bool:
     """Validate a separate calibrated attention family without rewriting its policy."""
-    from merlin.targetgen import quant_recipe as QR
+    from merlin.compiler.quantization import dynamic as QR
 
     block = recipe.get("dynamic")
     if (

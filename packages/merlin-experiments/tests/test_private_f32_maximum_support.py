@@ -10,7 +10,7 @@ from merlin_experiments.phase1.feedback import private_f32_maximum_support as su
 from merlin_experiments.phase1.feedback import private_host_source_dispatch as dispatch
 
 from merlin.common import mlir_query as mq
-from merlin.compile.model_execution_inputs import strict_tree_sha256
+from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.frontends.capture_normalization import normalize_capture_mlir
 from merlin.frontends.linalg_f32_maximum_patterns import (
     STATIC_F32_MAXIMUM_SOURCE_BODY_SCHEMA,

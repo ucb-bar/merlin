@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from merlin.compile import baremetal_model
+from merlin import model as baremetal_model
 from merlin.compile_cli import main
 from merlin.targetgen import target_registry
 

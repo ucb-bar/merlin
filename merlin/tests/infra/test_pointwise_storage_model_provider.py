@@ -11,10 +11,10 @@ from test_selected_storage_contracts import inputs
 from test_spilled_pointwise_model import SpillProvider
 from test_spilled_pointwise_source import INCREMENT
 
-from merlin.compile.scheduling.pointwise_source import PointwiseBindings
-from merlin.compile.scheduling.program_limits import AddressWindow
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
-from merlin.compile.scheduling.temporary_storage import TemporaryObject
+from merlin.compiler.schedule.pointwise_source import PointwiseBindings
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.temporary_storage import TemporaryObject
 from merlin.sched.ir import Kernel, TensorArg
 
 

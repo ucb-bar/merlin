@@ -15,7 +15,9 @@ from pathlib import Path
 import pytest
 from merlin_experiments.phase1.feedback import private_full_models as PFM
 
-from merlin.compile import baremetal_model, model_execution_inputs, route_before_build
+from merlin import model as baremetal_model
+from merlin.runtime import modelinputs as model_execution_inputs
+from merlin.compiler.planning import model as route_before_build
 from merlin.llvmlower.device_build import DeviceRouting
 from merlin.targetgen.contract.build_service import file_digest
 from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
@@ -144,7 +146,7 @@ def _attempt(tmp_path, monkeypatch, *, fault=None, selected=True, eligible=True)
 
     def plan(*args, **kwargs):
         seen["plans"].append(kwargs)
-        from merlin.compile.complete_group_routing import select_complete_group
+        from merlin.compiler.planning.complete import select_complete_group
 
         route = DeviceRouting(
             target,

@@ -19,6 +19,17 @@ from merlin.kernels.microkernel import (
 )
 
 
+def _register_selected_policy():
+    from merlin.mining import from_strategy
+
+    try:
+        from_strategy._register_rvv_microkernel_resolver()
+    except RuntimeError as exc:
+        if "requires its OOT package" not in str(exc):
+            raise
+        pytest.skip(str(exc))
+
+
 def test_spec_validates_and_round_trips():
     s = MicrokernelSpec(MR=7, NR=32, KC=16, unroll_m=True, vl_strategy=VL_DYNAMIC, pack=True)
     assert MicrokernelSpec.from_knobs(s.to_knobs()) == s
@@ -33,7 +44,7 @@ def test_spec_validates_and_round_trips():
 
 def test_space_is_target_agnostic_and_unregistered_target_raises():
     # RVV registers its resolver on import of the rvv generator...
-    from merlin.mining import from_strategy  # noqa: F401
+    _register_selected_policy()
 
     assert "rvv" in registered_targets()
     assert resolve("rvv", MicrokernelSpec(MR=7, NR=16, KC=16)) == ["accum_resident_v3_7_16_16", "erase_self_copy"]
@@ -47,7 +58,7 @@ def test_space_is_target_agnostic_and_unregistered_target_raises():
 
 def test_unexpressible_axes_raise_instead_of_being_ignored():
     """An axis the target cannot EMIT must stay an OPEN divergence — crediting it would be a fake win."""
-    from merlin.mining import from_strategy  # noqa: F401
+    _register_selected_policy()
 
     # composing unroll_m with pack is not emitted yet (each replaces the schedule)
     with pytest.raises(UnsupportedAxis, match="pack"):
@@ -61,7 +72,7 @@ def test_vl_dynamic_is_emitted_through_the_scalable_route():
     resolves: the N register block is a scalable vector<[k]xT>, so the emitted loop sizes to the
     runtime VL — no _zvl march pin, correct on any RVV part. It rides the ORDINARY MLIR scalable
     lowering (the custom_isa inline-asm hatch was NOT needed)."""
-    from merlin.mining import from_strategy  # noqa: F401
+    _register_selected_policy()
 
     feats = resolve("rvv", MicrokernelSpec(MR=4, NR=16, KC=16, vl_strategy=VL_DYNAMIC))
     assert feats == ["accum_resident_v3vl_4_16_16", "erase_self_copy"]
@@ -100,7 +111,7 @@ def test_vl_dynamic_schedule_is_scalable_peeled_and_unmasked():
 def test_unroll_m_is_emitted_and_shape_agnostic():
     """unroll_m holds M as MR INDEPENDENT accumulators, so ANY MR is expressible — including the
     non-power-of-2 shapes the 2-D vector<MRxNR> formulation collapses on (measured 255-279x off)."""
-    from merlin.mining import from_strategy  # noqa: F401
+    _register_selected_policy()
 
     for MR in (4, 6, 7, 8):
         feats = resolve("rvv", MicrokernelSpec(MR=MR, NR=16, KC=16, unroll_m=True))
@@ -122,7 +133,7 @@ def test_every_realization_carries_the_recipe_lowering_hygiene():
     3,002,346 retired instructions, 85,760 -> 69,428 ticks; f32 128^3 1.88x. The int8 arm was
     1.6-1.8x off our own best path across 64/128/256^3 purely for want of this + v3.
     """
-    from merlin.mining import from_strategy  # noqa: F401
+    _register_selected_policy()
 
     for spec in (
         MicrokernelSpec(MR=4, NR=16, KC=16),
@@ -140,7 +151,7 @@ def test_KC_and_unroll_m_are_pruned_from_proposal_but_stay_resolvable():
     """The two INERT/structurally-wrong levers (KC inert, MR-under-unroll_m ~2.4x slower) must NOT be
     beam-explorable (a proposer would burn certify budget for no possible win), but they must stay
     RESOLVABLE so a package or test can still pin them (no code-path deleted)."""
-    from merlin.mining import from_strategy  # noqa: F401  (registers the rvv resolver)
+    _register_selected_policy()
 
     # pruned from the proposal space ...
     assert set(PRUNED_AXES) == {"KC", "unroll_m"}

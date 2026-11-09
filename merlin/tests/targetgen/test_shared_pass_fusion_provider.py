@@ -162,12 +162,15 @@ def llvm_artifact(image, *, wrong_pointer=False):
 
 
 def verify_artifact(selected_text, artifact, model):
+    return verify_artifact_image(image_from_target(selected_text, model), artifact)
+
+
+def verify_artifact_image(expected, artifact):
     """Independently join actual function operand DAG and actual encoded calls."""
     from xdsl.dialects import llvm
 
     from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
 
-    expected = image_from_target(selected_text, model)
     module = Parser(make_llvm_context(), artifact).parse_module()
     module.verify()
     globals_ = [op for op in module.body.block.ops if isinstance(op, llvm.GlobalOp)]

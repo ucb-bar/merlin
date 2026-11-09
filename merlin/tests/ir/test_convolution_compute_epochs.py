@@ -6,19 +6,15 @@ from test_convolution_column_retention import law as retention_law
 from test_convolution_exploration import issue_law, record
 from test_counted_convolution import Integers
 
-from merlin.compile.scheduling.convolution_exploration import (
-    ConvolutionExplorationSource,
-    ConvolutionScheduleChoice,
-    convolution_pass_space,
-    emit_convolution_schedule,
-    explore_convolution_schedules,
-    plan_convolution_schedule,
-)
-from merlin.compile.scheduling.window_transfer import (
-    ConvolutionComputeEpochLaw,
-    CountedConvolutionPlan,
-    Window2D,
-)
+from merlin.compiler.schedule.convolution_exploration import ConvolutionExplorationSource
+from merlin.compiler.schedule.convolution_exploration import ConvolutionScheduleChoice
+from merlin.compiler.schedule.convolution_exploration import convolution_pass_space
+from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
+from merlin.compiler.schedule.convolution_exploration import explore_convolution_schedules
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_schedule
+from merlin.compiler.schedule.window_transfer import ConvolutionComputeEpochLaw
+from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
+from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.transforms.pass_exploration import EmittedProgram
 from merlin.transforms.pipeline_state import PipelineContext
 
@@ -154,7 +150,7 @@ def test_epoch_fence_is_inside_actual_counted_llvm_control():
     from xdsl.dialects.builtin import ModuleOp
     from xdsl.ir import BlockArgument
 
-    from merlin.compile.scheduling.llvm_program import FnBuilderControlAdapter
+    from merlin.compiler.schedule.llvm_program import FnBuilderControlAdapter
     from merlin.llvmlower.host_builder import FnBuilder
 
     fn = FnBuilder([])

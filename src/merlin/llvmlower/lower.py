@@ -24,6 +24,7 @@ from merlin.common import compile_trace
 from merlin.common.digest import sha256_file, sha256_text
 from merlin.common.ir_audit import IrAudit, audit_mode
 from merlin.common.jsonio import write_pretty_json
+from merlin.compiler.frontend.preprocess import PREPROCESS_STAGES, preprocess_text
 
 from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
 from .codegen import build_host_shared, compile_ll
@@ -37,7 +38,6 @@ from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
 from .im2col_pack import ensure_registered as _register_im2col_panel_pack
 from .masked_contraction import MaskEffectContract
 from .named_broadcast_fold import ensure_registered as _register_named_broadcast_fold
-from .passes_xdsl import PREPROCESS_STAGES, preprocess_text
 from .pipeline import lower_to_llvm_ir
 from .prov_cse import ensure_registered as _register_cse_through_provenance
 from .guarded_zero_contraction import ensure_registered as _register_guarded_zero_contraction
@@ -552,7 +552,7 @@ def lower_model(
             write_pretty_json(work / "operation-profile.json", profile_report)
             audit.stage("operation-profiled", mlir_text)
         if textual:
-            from .passes_xdsl import preprocess_text_textual
+            from merlin.compiler.frontend.repairs import preprocess_text_textual
 
             upstream_text, stats = preprocess_text_textual(mlir_text)
         else:

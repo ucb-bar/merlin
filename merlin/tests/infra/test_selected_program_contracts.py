@@ -14,15 +14,14 @@ from test_private_copy_elimination import command
 from test_selected_storage_contracts import inputs as storage_inputs
 from test_selected_storage_contracts import provider_project
 
-from merlin.compile.scheduling.program_limits import (
-    Continuation,
-    DecodedInstruction,
-    EncodedAccess,
-    EncodedBranch,
-    ProgramDecoder,
-    finalize_program,
-)
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, compile_schedule
+from merlin.compiler.schedule.program_limits import Continuation
+from merlin.compiler.schedule.program_limits import DecodedInstruction
+from merlin.compiler.schedule.program_limits import EncodedAccess
+from merlin.compiler.schedule.program_limits import EncodedBranch
+from merlin.compiler.schedule.program_limits import ProgramDecoder
+from merlin.compiler.schedule.program_limits import finalize_program
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import compile_schedule
 
 QUALIFICATION = "independent-neutral-launch-completion-v1"
 

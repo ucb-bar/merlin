@@ -23,3 +23,9 @@ Kernel abstraction mining: ingest -> features -> emit.
 - Keep this directory focused on its stated purpose.
 - Every subdirectory must also contain an AGENT.md.
 - Per-kernel extraction stays deterministic (regex/filename/AST), zero LLM calls; reusable logic lives here, not in `experiments/`.
+
+## Research workflow responsibilities
+
+Optional measurement controllers contribute to the core-owned `merlin.kernels` namespace.
+Do not add a competing namespace initializer or duplicate compiler/runtime implementations.
+Native driver resources remain in core when runtime backends consume the same bytes.

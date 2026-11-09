@@ -35,7 +35,7 @@ def _service(target, evaluator=_admit):
 
 @pytest.fixture
 def builds(tmp_path, monkeypatch):
-    from merlin.compile import baremetal_model
+    from merlin import model as baremetal_model
 
     source = tmp_path / "pass.py"
     source.write_text("default = False\n")

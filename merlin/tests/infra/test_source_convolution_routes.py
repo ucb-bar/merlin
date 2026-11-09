@@ -37,10 +37,15 @@ def configured(tmp_path, geometry=None, **controls):
 
 @pytest.mark.parametrize("geometry", CASES)
 def test_ordinary_preparation_checks_actual_panel_sum_complete_source_and_padding(tmp_path, geometry):
+    from merlin.compiler.ir import convolution as convolution_ir
+    from merlin.verification import convolution
+
     config, seen, module = configured(tmp_path, geometry)
     source = ir_text(module)
     result, builder = run(tmp_path, config, module)
     assert source_provider_builder(builder) is builder and len(seen) == 2
+    actual_sources = {path for path, _ in builder.__self__.pins}
+    assert {Path(convolution_ir.__file__).resolve(), Path(convolution.__file__).resolve()} <= actual_sources
     record = json.loads((result.parent / "source_dense.json").read_text())
     (normalization,) = record["source_normalization"]
     assert normalization["rewritten"] == 1

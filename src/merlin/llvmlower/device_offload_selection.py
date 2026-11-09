@@ -17,7 +17,7 @@ from pathlib import Path
 
 from merlin.common.digest import sha256_file
 from merlin.common.jsonio import canonical_json, canonical_sha256
-from merlin.compile.scheduling.library_sources import shared_library_sources
+from merlin.compiler.schedule.library_sources import shared_library_sources
 from merlin.perf.offload_profitability import OffloadCostDecision, compare_complete_offload_cost
 from merlin.targetgen.contract.execution_service import _callback_selection, _same_callback
 from merlin.transforms.certificates import ir_digest
@@ -78,6 +78,7 @@ def implementation_paths():
             "merlin.llvmlower.device_shim",
             "merlin.llvmlower.offload_plan",
             "merlin.system.offload",
+            "merlin.compiler.planning.contractions",
             "merlin.system.derive",
             "merlin.targetgen.package_runtime",
             "merlin.targetgen.package_records",
@@ -134,7 +135,7 @@ def _metadata(routing):
 
 
 def _route(routing):
-    from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+    from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection
     from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
     from .device_ir_scalability import DeviceIRBudget

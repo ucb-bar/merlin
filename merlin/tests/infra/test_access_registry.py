@@ -9,6 +9,7 @@ from __future__ import annotations
 import ast
 import builtins
 import importlib
+import os
 import shutil
 import subprocess
 import sys
@@ -30,6 +31,27 @@ def _write(root: Path, rel: str, text: str = "private answer\n") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
     return path
+
+
+def test_development_definition_retains_author_private_role_after_moving(tmp_path):
+    from merlin_experiments.phase1 import author_acceptance as acceptance
+    from merlin_experiments.phase1 import full_compiler_workspace as workspace
+
+    for module in ("merlin_experiments.spec", "merlin.development", "merlin.development.definition"):
+        assert A.author_withheld(module) and A.author_inaccessible(module)
+        assert workspace.forbidden(module)
+    public = _write(tmp_path, "src/merlin/compiler/request.py", "# ordinary compiler input\n")
+    source = _write(tmp_path, "src/merlin/development/definition.py", "# host-only declaration owner\n")
+    names = acceptance.withheld_names({"denied_prefixes": list(workspace.DENIED_PREFIXES)})
+    assert acceptance._withheld_candidates([tmp_path / "src"], names) == ["merlin.development.definition"]
+    args = tmp_path / "recorded.args"
+    argv = ["--ro-bind", str(source), str(source), "--ro-bind", str(public), str(public)]
+    args.write_bytes(b"\0".join(value.encode() for value in argv) + b"\0")
+    exposed = acceptance.audit_sandbox_args(args, names)
+    assert exposed.status == acceptance.FAIL
+    assert exposed.detail["withheld_mounted"] == ["merlin.development.definition at " + str(source)]
+    args.write_bytes(b"\0".join(value.encode() for value in argv[3:]) + b"\0")
+    assert acceptance.audit_sandbox_args(args, names).status == acceptance.PASS
 
 
 def test_evaluation_package_move_does_not_mask_public_descriptor_helper(tmp_path, isolated_policy):
@@ -654,16 +676,20 @@ def test_editable_namespace_placeholders_resolve_loaded_metadata_only(tmp_path, 
 
 def test_real_release_wheel_files_are_covered_when_installed(tmp_path, isolated_policy):
     root = repo_root()
-    candidates = (
-        sorted((root / "out/build/dist").glob("merlin-*.whl")),
-        sorted((root / "out/build/python/merlin-experiments/dist").glob("merlin_experiments-*.whl")),
-    )
-    if not all(candidates):
-        pytest.skip("build core and experiments release wheels to exercise their installed bytes")
+    selected = os.environ.get("MERLIN_TEST_RELEASE_WHEEL")
+    if selected is not None:
+        assert selected, "MERLIN_TEST_RELEASE_WHEEL must name an actual main release wheel"
+        wheel = Path(selected).resolve(strict=True)
+        assert wheel.is_file() and wheel.name.startswith("merlin-") and wheel.suffix == ".whl", wheel
+    else:
+        candidates = sorted((root / "out/build/dist").glob("merlin-*.whl"))
+        if not candidates:
+            pytest.skip("select MERLIN_TEST_RELEASE_WHEEL or build one main release wheel in out/build/dist")
+        assert len(candidates) == 1, "multiple main release wheels; select MERLIN_TEST_RELEASE_WHEEL explicitly"
+        wheel = candidates[0]
     site = tmp_path / ".venv/lib/python3.12/site-packages"
-    for wheels in candidates:
-        with zipfile.ZipFile(max(wheels, key=lambda path: path.stat().st_mtime_ns)) as archive:
-            archive.extractall(site)
+    with zipfile.ZipFile(wheel) as archive:
+        archive.extractall(site)
     grader = site / "merlin/targetgen/package_certification.py"
     oracle = site / "merlin/runtime/reference.py"
     expected_output = site / "merlin/_data/contract/examples/expected_command_buffer_g0.json"

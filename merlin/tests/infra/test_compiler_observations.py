@@ -5,8 +5,8 @@ import json
 import pytest
 from xdsl.dialects import func
 
-from merlin.compile import compiler_observations as C
-from merlin.compile.scheduling.multioutput_fusion import compile_source_multioutput
+from merlin.compiler import observations as C
+from merlin.compiler.schedule.multioutput_fusion import compile_source_multioutput
 from merlin.llvmlower.tensor_preparation_identity import TensorPreparationRequest
 from merlin.xdsl_dialects.lowering.outline import outline_dispatches
 from test_multioutput_fusion import model, source_program

@@ -13,7 +13,7 @@ from xdsl.dialects import arith, builtin, func, tensor
 from xdsl.dialects.linalg.ops import GenericOp, TransposeOp, YieldOp
 from xdsl.ir import Block
 
-from merlin.compile.scheduling.pointwise_source import read_pointwise_source
+from merlin.compiler.schedule.pointwise_source import read_pointwise_source
 from merlin.llvmlower.layout_conformance import _metadata
 from merlin.llvmlower.segmented_matrix_view import SegmentedRows, prove_segmented_matrix
 from merlin.transforms.dense_ir import (

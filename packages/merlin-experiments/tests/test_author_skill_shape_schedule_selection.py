@@ -88,7 +88,7 @@ def test_skill_is_generic_bounded_and_points_at_its_files():
         assert reference in body and (skill_dir(SKILL) / reference).is_file()
     for symbol in ("ExplorationGeometry", "ValidationPartition", "explore_candidates", "rank_observed_metrics",
                    "evaluate_variants", "schedule_ir", "loop_schedule", "dense_panel_pipeline",
-                   "dense_array_retention", "dense_readout_overlap", "merlin.compile.capacity",
+                   "dense_array_retention", "dense_readout_overlap", "merlin.compiler.selection.capacity",
                    "merlin.transforms.shape_policy", "ResourcePredicate", "assess_shape_policy"):
         assert symbol in body, symbol
 

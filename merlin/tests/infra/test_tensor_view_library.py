@@ -5,8 +5,8 @@ import pytest
 from merlin_experiments.phase2.compiler_library_guidance import selected_inventory
 
 from merlin.common.paths import repo_root
-from merlin.compile.scheduling.export import export_shared_scheduling
-from merlin.compile.scheduling.library_sources import library_modules
+from merlin.compiler.schedule.export import export_shared_scheduling
+from merlin.compiler.schedule.library_sources import library_modules
 from merlin.targetgen.compiler_library import (
     CompilerLibrarySelection,
     freeze_compiler_library,

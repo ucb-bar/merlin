@@ -5,8 +5,8 @@ status: current
 owner: experiments
 last_verified: 2026-10-23
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase1/construction_actions.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/construction_study.py
+  - src/merlin_experiments/phase1/construction_actions.py
+  - src/merlin_experiments/phase1/construction_study.py
 ---
 
 # Replay compiler construction with the ordinary experiment tools

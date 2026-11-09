@@ -218,7 +218,7 @@ def test_neutral_literal_indexed_extract_has_exact_trace_and_static_bounds(tmp_p
 def test_reviewed_literal_index_role_requires_source_trace_and_linked_build(tmp_path, monkeypatch):
     from merlin_experiments.phase1.feedback import private_index_host_support as host_support
 
-    from merlin.compile.model_execution_inputs import strict_tree_sha256
+    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.frontends.capture_normalization import normalize_capture_mlir
     from merlin.targetgen.application_inventory import operation_structure
     from merlin.targetgen.host_capabilities import admit_host_operation

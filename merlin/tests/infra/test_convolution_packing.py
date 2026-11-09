@@ -13,8 +13,8 @@ from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, i64
 from xdsl.printer import Printer
 
-from merlin.compile.scheduling.block_schedule import SpatialMaxReadout
-from merlin.compile.scheduling.window_transfer import Window2D
+from merlin.compiler.schedule.blocks import SpatialMaxReadout
+from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.llvmlower.convolution_packing import (
     ClippedSpatialHaloRows,
     emit_nhwc_halo_panel,

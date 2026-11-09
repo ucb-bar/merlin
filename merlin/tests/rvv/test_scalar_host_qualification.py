@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 import yaml
 
-from merlin.compile.scalar_host_qualification import ScalarHostQualificationError, qualify
+from merlin.verification.scalar_host import ScalarHostQualificationError, qualify
 from merlin.runtime.backends import base as backends
 from merlin.runtime.backends import spike_model
 from merlin.targetgen import gsim_emulator, rtl_engine_policy
@@ -395,7 +395,7 @@ def test_native_gsim_uses_shared_model_parser_and_records_exact_engine(tmp_path,
 def test_bound_native_engine_revalidates_execution_inputs_without_legacy_command(tmp_path, monkeypatch):
     from pathlib import Path
 
-    from merlin.compile.model_execution_inputs import native_engine
+    from merlin.runtime.modelinputs import native_engine
     from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
 
     _, citation, seen = _stub_native_gsim(tmp_path, monkeypatch, console="")

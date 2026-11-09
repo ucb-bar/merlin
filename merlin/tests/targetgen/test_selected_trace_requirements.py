@@ -201,7 +201,7 @@ def test_provided_host_structural_scope_cannot_be_replaced_by_trace_skip_or_flag
 
     import yaml
 
-    from merlin.compile.model_execution_inputs import file_sha256
+    from merlin.runtime.modelinputs import file_sha256
     from merlin.targetgen import owned_host_leaf_execution as host
 
     cap = {"name": "host", "kind": "model_slice", "required_oracle_tiers": ["L2"],

@@ -14,7 +14,9 @@ from test_selected_row_contracts import independent_reference, inputs
 from xdsl.dialects import arith, builtin, func, scf, tensor
 from xdsl.ir import Block, Region
 
-from merlin.compile.scheduling.row_softmax import RowSoftmaxUnavailable, compile_source_rows, read_source_rows
+from merlin.compiler.schedule.row_softmax import RowSoftmaxUnavailable
+from merlin.compiler.schedule.row_softmax import compile_source_rows
+from merlin.compiler.schedule.row_softmax import read_source_rows
 from merlin.llvmlower.cpu_softmax import CPU_SOFTMAX_F32_AVX2_POLICY, build_cpu_softmax_lastdim
 
 

@@ -6,8 +6,8 @@ owner: verification
 last_verified: 2026-10-05
 related: [verification, phase0_specification, simulator_selection]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase0/hardware_validation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/cell_probe.py
+  - src/merlin_experiments/phase0/hardware_validation.py
+  - src/merlin_experiments/phase0/cell_probe.py
   - examples/gemmini/verification/mac_unit_reference.mlir
 ---
 

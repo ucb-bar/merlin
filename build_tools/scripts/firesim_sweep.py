@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build chipyard_riscv64 scalar Zephyr images for a set of model bundles and run each on
-FireSim through the firesim-queue (single FPGA -> the queue serializes them), gating cos
+an external FireSim operator, collecting hash-bound observations and gating cos
 against golden.npy. Resumable: results are appended to a JSONL ledger and already-passed
 (bundle, dtype) pairs are skipped on re-run.
 
@@ -9,12 +9,14 @@ Usage:
     .venv/bin/python build_tools/scripts/firesim_sweep.py --ledger /tmp/fs_sweep.jsonl ...
 
 Each BUNDLE is a directory name under out/artifacts/recaptures/ (e.g. rdt2_int8_consistent). The build runs
-locally; the run is submitted to the queue via zephyr_model.run_on_firesim (FIRESIM_QUEUE=1).
+locally; prepare retains a portable workload. An external operator runs it and supplies
+result.json plus UART. Collect applies the existing numerical gates; it never builds or launches.
 """
 
 import argparse
+import hashlib
+import io
 import json
-import shutil
 import sys
 import time
 import traceback
@@ -25,8 +27,9 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "merlin" / "python"))
 from merlin.common.artifacts import recaptures_dir  # noqa: E402
+from merlin.common.paths import artifacts_dir, build_dir  # noqa: E402
+from merlin.compiler.artifact import Deployment  # noqa: E402
 from merlin.runtime.backends import zephyr_model as zm  # noqa: E402
-from merlin.runtime.backends.firesim_runner import select_runner  # noqa: E402
 
 
 def already_done(ledger: Path, bundle: str) -> bool:
@@ -56,7 +59,7 @@ def cycle_report(ledger: Path) -> int:
             r = json.loads(line)
         except Exception:
             continue
-        if r.get("cycles") is None:
+        if not r.get("ok") or r.get("cycles") is None:
             continue
         b = r.get("bundle", "")
         backend = r.get("backend", "scalar")
@@ -75,10 +78,89 @@ def cycle_report(ledger: Path) -> int:
     return 0
 
 
+def collect_study(prepared: Path, results: Path, ledger: Path) -> dict:
+    """Collect an existing study package; no build and no infrastructure access."""
+    request = json.loads((prepared / "request.json").read_text(encoding="utf-8"))
+    files = {item["path"]: item for item in request["files"]}
+
+    def frozen(name):
+        data = (prepared / "inputs" / name).read_bytes()
+        if hashlib.sha256(data).hexdigest() != files["inputs/" + name]["sha256"]:
+            raise ValueError(f"prepared study input changed: {name}")
+        return data
+
+    rec = json.loads(frozen("study.json"))
+    golden = np.load(io.BytesIO(frozen("golden.npy")), allow_pickle=False)
+    refs = {"fp32": golden} if rec["int8_compute"] else None
+    if refs is not None and "inputs/golden_w8a8.npy" in files:
+        refs["w8a8"] = np.load(io.BytesIO(frozen("golden_w8a8.npy")), allow_pickle=False)
+    r = zm.run_on_firesim(
+        prepared, mode="collect", results=results, reference=golden if refs is None else None, references=refs
+    )
+    rec.update(
+        status="collected",
+        request_sha256=r["request_sha256"],
+        observation=r["observation"],
+        execution_authority="external_operator_report",
+        hardware_qualification="not_established",
+        cos=r.get("cos"),
+        rel=r.get("rel"),
+        ok=bool(r.get("ok")),
+        cycles=r.get("metrics", {}).get("cycles"),
+    )
+    for key in ("w8a8_cos", "w8a8_rel", "fp32_cos", "fp32_argmax"):
+        if key in r:
+            rec[key] = r[key]
+    # Preserve historical prefix and available aggregate gates; these do not
+    # establish per-element correctness of an unobserved suffix.
+    rec["verification_scope"] = "legacy_prefix_and_available_aggregates"
+    gflat = golden.astype(np.float32).ravel()
+    if gflat.size > 4096:
+        checks = []
+        if r.get("sum") is not None:
+            g_sum = float(gflat.sum())
+            sum_rel = abs(float(r["sum"]) - g_sum) / max(1e-6, abs(g_sum))
+            rec["sum_rel"] = sum_rel
+            # The SUM check is only meaningful when the true sum is a well-conditioned
+            # aggregate. For mixed-sign outputs (logits) it can be a near-zero residual
+            # of large-magnitude cancellation — bitvla's golden sums to ~1e-4 of its
+            # total |mass|, so a rel-0.004 per-element diff blows sum_rel up to ~0.4
+            # despite cos=0.99999 + 100% argmax. Gate sum only when |sum| is a real
+            # fraction of the L2 magnitude; otherwise ARGMAX governs the full output.
+            l2 = float(np.sqrt((gflat.astype(np.float64) ** 2).sum()))
+            well_conditioned = abs(g_sum) >= 0.1 * l2
+            rec["sum_conditioned"] = well_conditioned
+            if well_conditioned:
+                checks.append(sum_rel < 1e-3)
+        if r.get("argmax") is not None:
+            last = golden.shape[-1]
+            g_arg = golden.astype(np.float32).reshape(-1, last).argmax(1)
+            hw = np.asarray(r["argmax"])
+            k = min(len(hw), len(g_arg))
+            frac = float((hw[:k] == g_arg[:k]).mean()) if k else 0.0
+            rec["argmax_match"] = frac
+            checks.append(frac > 0.999)
+        if checks:
+            rec["ok"] = bool(rec["ok"] and all(checks))
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    with ledger.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(rec) + "\n")
+    print(f"COLLECTED {rec['bundle']}: ok={rec['ok']} cycles={rec['cycles']}", flush=True)
+    return rec
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("bundles", nargs="*")
-    ap.add_argument("--ledger", default="/tmp/fs_sweep.jsonl")
+    ap.add_argument("--ledger")
+    ap.add_argument("--collect", type=Path, help="prepared study package; never builds")
+    ap.add_argument("--results", type=Path, help="external result package for --collect")
+    ap.add_argument("--board", help="explicit board descriptor for preparation")
+    ap.add_argument("--isa", help="explicit image ISA for the external deployment")
+    ap.add_argument("--abi", help="explicit image ABI for the external deployment")
+    ap.add_argument("--harts", type=int, help="number of harts enabled in the image")
+    ap.add_argument("--handoff-root", type=Path)
+    ap.add_argument("--completion-metric-prefix", help="external operator completion marker")
     ap.add_argument(
         "--int8",
         action="store_true",
@@ -123,12 +205,12 @@ def main() -> int:
     # Build scratch goes on /scratch (3 TB), NOT /tmp (the small shared root disk) — a
     # multi-GB external-weights image in /tmp pressures root, where /home caches already
     # sit at ~94%. /scratch is the project's filesystem with terabytes free.
-    ap.add_argument("--workroot", default="/path/to/tmp/merlin_fs")
-    ap.add_argument("--timeout", type=int, default=5400)
-    ap.add_argument("--runner", help="installed FireSim runner name (or set MERLIN_FIRESIM_RUNNER)")
+    ap.add_argument("--workroot", type=Path)
+    ap.add_argument("--timeout", type=int, help="removed launch option; preparation never executes")
+    ap.add_argument("--runner", help="removed launch option; execution belongs to the external operator")
     ap.add_argument("--force", action="store_true", help="re-run even if already passed")
     args = ap.parse_args()
-    ledger = Path(args.ledger)
+    ledger = Path(args.ledger) if args.ledger else None
     routing_args = (args.matrix_unit, args.matrix_config, args.matrix_support_target)
     if any(routing_args) and not all(routing_args):
         ap.error(
@@ -141,11 +223,48 @@ def main() -> int:
         else None
     )
 
+    if args.runner is not None or args.timeout is not None:
+        ap.error("runner/timeout launch options moved to the external operator; use prepare/collect")
     if args.report:
-        return cycle_report(ledger)
+        return cycle_report(ledger or artifacts_dir() / "perf-studies" / "firesim.jsonl")
+    if args.collect is not None:
+        if args.results is None or args.bundles:
+            ap.error("--collect requires --results and accepts no bundles to build")
+        ledger = ledger or artifacts_dir() / "perf-studies" / "firesim.jsonl"
+        try:
+            return 0 if collect_study(args.collect, args.results, ledger)["ok"] else 1
+        except Exception as exc:
+            record = {
+                "status": "collection-failed",
+                "ok": False,
+                "prepared": str(args.collect.resolve()),
+                "results": str(args.results.resolve()),
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+            ledger.parent.mkdir(parents=True, exist_ok=True)
+            with ledger.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(record) + "\n")
+            print(record["error"], file=sys.stderr)
+            return 1
+    if args.results is not None:
+        ap.error("--results requires --collect")
+    if not args.bundles:
+        return 0
+    if not all((args.board, args.isa, args.abi, args.harts)):
+        ap.error("preparation requires --board, --isa, --abi and --harts")
+    from merlin.runtime.boards import board as board_descriptor
 
-    selected_runner = select_runner(args.runner)
-    completion_metric_prefix = getattr(selected_runner, "completion_metric_prefix", None)
+    descriptor = board_descriptor(args.board)
+    if not 1 <= args.harts <= descriptor.harts:
+        ap.error("--harts must fit the selected board's CPU count")
+    if args.rvv_hart not in descriptor.hart_ids_for(args.backend):
+        ap.error("--rvv-hart must select a board hart eligible for the requested backend")
+    if args.rvv_hart >= args.harts:
+        ap.error("--harts must include the selected worker hart ID; it is the image CPU count")
+    ledger = ledger or artifacts_dir() / "perf-studies" / "firesim.jsonl"
+    workroot = args.workroot or build_dir() / "firesim-sweep"
+    handoff_root = args.handoff_root or artifacts_dir() / "handoff" / "firesim"
+    completion_metric_prefix = args.completion_metric_prefix
 
     if matrix:
         from merlin.targetgen.plugins import load_declared
@@ -153,6 +272,7 @@ def main() -> int:
         provider = load_declared(args.matrix_support_target, "matrix_lowering")
         enc = provider.derive_encodings(provider.load_contract(args.matrix_unit)).encodings
 
+    failed = False
     for bundle in args.bundles:
         if not args.force and already_done(ledger, bundle):
             print(f"SKIP {bundle} (already passed in ledger)", flush=True)
@@ -165,7 +285,7 @@ def main() -> int:
             "backend": "matrix" if matrix else args.backend,
         }
         try:
-            golden = np.load(mdir / "golden.npy")
+            np.load(mdir / "golden.npy", allow_pickle=False)  # validate before a potentially expensive build
             # 1. build the chipyard image locally (int8: real W8A8 integer datapath). The rvv
             #    backend targets the Saturn-OPU vector tile (hart 1) where i8xi8->i32 packs ~4x
             #    the lanes of f32 — that is where the int8 throughput win actually shows up.
@@ -179,11 +299,11 @@ def main() -> int:
                 extra = {"matrix": matrix, "features": frozenset([PEROP_BLOCK_NAME, OPU_MATMUL_NAME])}
             b = zm.build_app(
                 mdir,
-                f"{args.workroot}/{bundle}",
-                board="chipyard_riscv64",
+                str(workroot / bundle),
+                board=args.board,
                 backend=args.backend,
                 rvv_hart=args.rvv_hart,
-                cpus=2,
+                cpus=args.harts,
                 int8_compute=args.int8,
                 completion_metric_prefix=completion_metric_prefix,
                 **extra,
@@ -206,82 +326,47 @@ def main() -> int:
                         f"{args.matrix_unit}'s instructions, so it would measure the "
                         "host core while claiming the unit"
                     )
-            print(f"BUILT {bundle} ram={rec['ram_mb']}MB -> submitting to firesim-queue", flush=True)
-            # 2. run on FireSim through the queue, gate cos. For int8, gate multi-tier vs the
-            #    W8A8 reference (T1) + the fp32 golden (T2); golden_w8a8.npy is generated by
-            #    run_model(int8_compute=True) (the host W8A8 sim) and may be absent.
-            if args.int8:
-                w8a8_path = mdir / "golden_w8a8.npy"
-                refs = {"fp32": golden}
-                if w8a8_path.is_file():
-                    refs["w8a8"] = np.load(w8a8_path)
-                r = zm.run_on_firesim(
-                    b["elf"], references=refs, queue=True, timeout=args.timeout, runner=selected_runner
-                )
-                rec.update(
-                    w8a8_cos=r.get("w8a8_cos"),
-                    w8a8_rel=r.get("w8a8_rel"),
-                    fp32_cos=r.get("fp32_cos"),
-                    fp32_argmax=r.get("fp32_argmax"),
-                )
-            else:
-                r = zm.run_on_firesim(
-                    b["elf"], reference=golden, queue=True, timeout=args.timeout, runner=selected_runner
-                )
+            # The build and its reference inputs are retained; preparation is not a verdict.
             rec.update(
-                cos=r.get("cos"), rel=r.get("rel"), ok=bool(r.get("ok")), cycles=r.get("metrics", {}).get("cycles")
+                status="prepared",
+                build_hash=b.get("build_hash"),
+                board=args.board,
+                isa=args.isa,
+                abi=args.abi,
+                harts=args.harts,
+                completion_metric_prefix=completion_metric_prefix,
             )
-            # cos covers only the dumped prefix (<=4096). For larger outputs the model
-            # also emits a full-output SUM and a full per-row ARGMAX — gate those too so
-            # the WHOLE output is validated, not just its first 4096 elements.
-            gflat = golden.astype(np.float32).ravel()
-            if gflat.size > 4096:
-                checks = []
-                if r.get("sum") is not None:
-                    g_sum = float(gflat.sum())
-                    sum_rel = abs(float(r["sum"]) - g_sum) / max(1e-6, abs(g_sum))
-                    rec["sum_rel"] = sum_rel
-                    # The SUM check is only meaningful when the true sum is a well-conditioned
-                    # aggregate. For mixed-sign outputs (logits) it can be a near-zero residual
-                    # of large-magnitude cancellation — bitvla's golden sums to ~1e-4 of its
-                    # total |mass|, so a rel-0.004 per-element diff blows sum_rel up to ~0.4
-                    # despite cos=0.99999 + 100% argmax. Gate sum only when |sum| is a real
-                    # fraction of the L2 magnitude; otherwise ARGMAX governs the full output.
-                    l2 = float(np.sqrt((gflat.astype(np.float64) ** 2).sum()))
-                    well_conditioned = abs(g_sum) >= 0.1 * l2
-                    rec["sum_conditioned"] = well_conditioned
-                    if well_conditioned:
-                        checks.append(sum_rel < 1e-3)
-                if r.get("argmax") is not None:
-                    last = golden.shape[-1]
-                    g_arg = golden.astype(np.float32).reshape(-1, last).argmax(1)
-                    hw = np.asarray(r["argmax"])
-                    k = min(len(hw), len(g_arg))
-                    frac = float((hw[:k] == g_arg[:k]).mean()) if k else 0.0
-                    rec["argmax_match"] = frac
-                    checks.append(frac > 0.999)
-                if checks:
-                    rec["ok"] = bool(rec["ok"] and all(checks))
-            print(
-                f"FSIM {bundle}: cos={rec['cos']:.7f} ok={rec['ok']} "
-                f"sum_rel={rec.get('sum_rel')} argmax={rec.get('argmax_match')} "
-                f"cyc={rec['cycles']}",
-                flush=True,
+            study = workroot / bundle / "firesim-study.json"
+            study.write_text(json.dumps(rec, indent=2) + "\n", encoding="utf-8")
+            inputs = {"study.json": study, "golden.npy": mdir / "golden.npy"}
+            w8a8 = mdir / "golden_w8a8.npy"
+            if args.int8 and w8a8.is_file():
+                inputs["golden_w8a8.npy"] = w8a8
+            deployment = Deployment(
+                args.board,
+                "zephyr",
+                args.isa,
+                args.abi,
+                args.harts,
+                dram_base=descriptor.dram_base,
+                memory_bytes=b["ram_bytes"],
             )
+            r = zm.run_on_firesim(
+                b["elf"], mode="prepare", output=handoff_root / bundle, deployment=deployment, inputs=inputs
+            )
+            rec.update(r)
+            print(f"PREPARED {bundle}: {r['prepared']} (external operator required)", flush=True)
         except Exception as e:
+            failed = True
             rec["error"] = f"{type(e).__name__}: {str(e).splitlines()[0][:200]}"
             rec["ok"] = False
             print(f"FSIM {bundle} ERR: {rec['error']}", flush=True)
             traceback.print_exc()
-        with ledger.open("a") as f:
+        ledger.parent.mkdir(parents=True, exist_ok=True)
+        with ledger.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec) + "\n")
-        # The elf is staged into the firesim deploy dir by run_firesim, so the multi-GB
-        # local build tree is no longer needed — drop it to keep disk from filling during
-        # a long sweep. Keep it only when the build itself failed (no ram_mb), for debug.
-        wd = Path(args.workroot) / bundle
-        if rec.get("ram_mb") is not None and wd.is_dir():
-            shutil.rmtree(wd, ignore_errors=True)
-    return 0
+        # Retain local build products and portable handoff for provenance/reproduction.
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

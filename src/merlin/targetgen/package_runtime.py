@@ -1,7 +1,7 @@
 """OOT package loading, integrity and process invocation, independent of evaluation telemetry.
 
 The legacy ``oot_runner`` name aliases this module so class identities and monkeypatches
-remain stable. Certification is provided lazily by the optional experiments distribution.
+remain stable. Certification is provided lazily by the optional experiments workflow.
 """
 
 from __future__ import annotations
@@ -957,11 +957,11 @@ def __getattr__(name):
         try:
             import merlin.targetgen.package_certification as module
         except ModuleNotFoundError as exc:
-            if exc.name != "merlin.targetgen.package_certification":
+            if exc.name not in {"merlin.targetgen.package_certification", "aet", "jsonschema"}:
                 raise
             raise ModuleNotFoundError(
-                "OOT certification requires the optional merlin-experiments distribution; "
-                "install packages/merlin-experiments alongside core"
+                "OOT certification requires Merlin's optional experiments dependencies; "
+                "install 'merlin[experiments]'"
             ) from exc
         return getattr(module, name)
     if name in _AET_EXPORTS:

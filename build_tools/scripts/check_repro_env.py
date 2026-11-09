@@ -52,12 +52,12 @@ _BASE_CAPABILITIES: dict[str, tuple[str, str, list[str]]] = {
     "zephyr_spike": (
         "WS-A/C",
         "Zephyr SW build_app path (whole-model spike compile)",
-        ["ZEPHYR_BASE", "MERLIN_ZEPHYR_SW", "ZEPHYR_SDK_INSTALL_DIR", "MERLIN_CHIPYARD"],
+        ["ZEPHYR_BASE", "ZEPHYR_SDK_INSTALL_DIR", "MERLIN_CHIPYARD"],
     ),
     "zephyr_multicore": (
         "WS-A/C",
         "multicore RVV Zephyr image (OpenMP shim over pinned harts)",
-        ["ZEPHYR_BASE", "MERLIN_ZEPHYR_SW", "ZEPHYR_SDK_INSTALL_DIR", "MERLIN_CHIPYARD"],
+        ["ZEPHYR_BASE", "ZEPHYR_SDK_INSTALL_DIR", "MERLIN_CHIPYARD"],
     ),
     "circt_firtool": (
         "WS-B",
@@ -74,7 +74,7 @@ _BASE_CAPABILITIES: dict[str, tuple[str, str, list[str]]] = {
 _BACKEND_ENV: dict[str, list[str]] = {
     "simulator": ["(pure-Python model — always available)"],
     "baremetal": ["MERLIN_SPIKE", "MERLIN_RISCV_GCC", "MERLIN_CHIPYARD"],
-    "zephyr": ["ZEPHYR_BASE", "MERLIN_ZEPHYR_SW", "ZEPHYR_SDK_INSTALL_DIR", "MERLIN_CHIPYARD"],
+    "zephyr": ["ZEPHYR_BASE", "ZEPHYR_SDK_INSTALL_DIR", "MERLIN_CHIPYARD"],
 }
 
 # Backend label -> the SIM token in the per-target env-var name MERLIN_<TARGET>_<SIM>. This is the same

@@ -6,11 +6,11 @@ owner: merlin-experiments
 last_verified: 2026-10-20
 related: [phase2_public_diagnostic_launch, phase2_component_search]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase2/capsule_ordinary_scope.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/authoring.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/authoring_cli.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/broker_file_channel.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_policy.py
+  - src/merlin_experiments/phase2/capsule_ordinary_scope.py
+  - src/merlin_experiments/phase2/authoring.py
+  - src/merlin_experiments/phase2/authoring_cli.py
+  - src/merlin_experiments/phase2/broker_file_channel.py
+  - src/merlin_experiments/phase2/ordinary_search_policy.py
 ---
 
 # Capsule-qualified ordinary source development

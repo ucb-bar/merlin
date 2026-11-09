@@ -7,7 +7,8 @@ import pytest
 from merlin_experiments import model_observation as observation
 
 from merlin.common.digest import sha256_file
-from merlin.compile import baremetal_model, model_execution_inputs
+from merlin import model as baremetal_model
+from merlin.runtime import modelinputs as model_execution_inputs
 from merlin.runtime import out_bin, whole_model_readback
 
 

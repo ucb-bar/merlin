@@ -5,8 +5,8 @@ a measured scheduling policy, edited by hand into a copy of its parent. This rep
 
   1. derive the target's :class:`Geometry` from its RTL facts and REFUSE unless it equals the geometry the
      parent package baked (``DIM``, ``SPAD_ROWS``, ``SPAD_BANK_ROWS``, ``ACC_ROWS``);
-  2. copy the parent, VENDOR ``merlin/compile/scheduling/block_schedule.py`` into it byte for byte (that
-     module imports nothing from merlin, so the package still has no runtime dependency on it), and write
+  2. copy the parent, VENDOR the standalone artifact assembled from the canonical shared schedule
+     owners (it has no Merlin runtime dependency), and write
      ``lowering/scheduled_trace.py`` from ``package_template/`` with the geometry and knobs as literals;
   3. rename the parent's ``_matmul_trace``/``_conv_loop_trace`` to ``*_parent`` and append wrappers that
      route every command the pass models to the pass, and everything it does not (a transposed contraction,
@@ -36,7 +36,10 @@ import time
 from pathlib import Path
 
 from merlin.common.paths import artifacts_dir
-from merlin.compile.scheduling import Knobs, block_schedule, geometry_from_address_space
+from merlin.compiler.schedule import Knobs
+from merlin.compiler.schedule import blocks as block_schedule
+from merlin.compiler.schedule import geometry_from_address_space
+from merlin.compiler.schedule.standalone import block_schedule_source
 from merlin.targetgen.address_space import derive_address_space
 
 TEMPLATE = Path(__file__).resolve().parent.parent / "package_template" / "scheduled_trace.py"
@@ -204,8 +207,7 @@ def mint(
     if disagree or "DIM" not in baked:
         raise SystemExit(f"{parent_id} baked a different geometry than {target}'s facts derive: {disagree}")
 
-    pass_module = Path(block_schedule.__file__)
-    pass_bytes = pass_module.read_bytes()
+    pass_bytes = block_schedule_source()
     rendered = (
         TEMPLATE.read_text()
         .replace('"@GEOMETRY@"', repr(dataclasses.replace(geometry, sources={})))
@@ -241,7 +243,7 @@ def mint(
         "parent_isa_sha256": hashlib.sha256(isa_path.read_bytes()).hexdigest(),
         "minted_by": "merlin/experiments/scheduled_backend_v0/scripts/mint.py",
         "minted_utc": time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
-        "pass_module": "merlin/python/merlin/compile/scheduling/block_schedule.py",
+        "pass_module": "merlin.compiler.schedule.standalone.block_schedule_source",
         "pass_module_sha256": hashlib.sha256(pass_bytes).hexdigest(),
         "knobs": dataclasses.asdict(knobs),
         "conv_knobs": dataclasses.asdict(conv_knobs),

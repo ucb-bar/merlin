@@ -6,8 +6,8 @@ owner: merlin-experiments
 last_verified: 2026-10-21
 related: [fresh_compiler_origin, compiler_authoring_prompts, shared_phase1_scheduling, independent_performance_feedback, component_phase2_workflow]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase1/component_origin.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/providers/authoring_prompt.py
+  - src/merlin_experiments/phase1/component_origin.py
+  - src/merlin_experiments/phase1/providers/authoring_prompt.py
   - examples/gemmini/phase2/continuing_campaign.py
   - src/merlin/transforms/pipeline_state.py
   - src/merlin/xdsl_dialects/schedule.py

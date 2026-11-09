@@ -814,7 +814,7 @@ def infrastructure(world, monkeypatch):
 
     from merlin.common import invocation_record as IR
     from merlin.common import owned_process as OP
-    from merlin.compile.model_execution_inputs import strict_tree_sha256
+    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.llvmlower.compilation_recipe import CompilationRecipe
     from merlin.model_check import full_build as FB
     from merlin.model_check import replay as RP

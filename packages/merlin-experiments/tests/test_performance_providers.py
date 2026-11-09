@@ -1,4 +1,4 @@
-"""Research providers retain import identity and private authority after relocation."""
+"""Research providers retain private logical roles inside the main distribution."""
 
 import importlib
 import importlib.abc
@@ -57,10 +57,10 @@ def test_provider_has_one_experiments_owner_and_remains_private(name):
     assert Path(module.__file__).resolve() == expected.resolve()
     assert identity in declared_modules("grader")
     # Wheel RECORD proves distribution ownership even when namespace portions share site-packages.
-    distribution = importlib.metadata.distribution("merlin-experiments")
+    distribution = importlib.metadata.distribution("merlin")
     direct_url = json.loads(distribution.read_text("direct_url.json") or "{}")
     editable = direct_url.get("dir_info", {}).get("editable") is True
-    legacy_metadata = expected.parents[2] / "merlin_experiments.egg-info" / "PKG-INFO"
+    legacy_metadata = expected.parents[2] / "merlin.egg-info" / "PKG-INFO"
     legacy_develop = (
         distribution.read_text("WHEEL") is None
         and legacy_metadata.is_file()

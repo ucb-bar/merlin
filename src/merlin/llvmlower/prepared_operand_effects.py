@@ -11,6 +11,8 @@ from xdsl.dialects import arith, builtin, func, scf
 from xdsl.dialects.linalg.ops import GenericOp, IndexOp, LinalgStructuredOperation, ReduceOp, YieldOp
 from xdsl.traits import get_effects
 
+from merlin.xdsl_dialects.fp8 import Float8E4M3FNType
+
 from .tensor_preparation_identity import validate_tensor_preparation_opportunity
 
 
@@ -38,6 +40,10 @@ def _value_type(typ):
         if not isinstance(typ.encoding, builtin.NoneAttr):
             raise ValueError("prepared source tensor encoding has unknown effects")
         _value_type(typ.element_type)
+    elif type(typ) is Float8E4M3FNType:
+        # This exact shared scalar is an immutable value. Its encoding,
+        # numerical/domain policy and physical execution remain separate claims.
+        pass
     elif not isinstance(typ, (builtin.IntegerType, builtin.IndexType, builtin.AnyFloat)):
         raise ValueError("prepared source may not expose buffer or address values")
 

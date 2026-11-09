@@ -6,37 +6,37 @@ owner: experiments
 last_verified: 2026-10-26
 related: [experiment_dashboard]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/cli.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/discovery.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/serve.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/diagnose.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/placement.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/launch.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/plain.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/__init__.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/timeline.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/machine.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/lifecycle.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/activity.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/insight_common.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/performance.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/cases.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/case_history.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/perf_history.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/tools.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/grader.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/integrity.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/attempts.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/certification.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/focus.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/cost.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/library.py
+  - src/merlin_experiments/tracking/console/cli.py
+  - src/merlin_experiments/tracking/console/discovery.py
+  - src/merlin_experiments/tracking/console/serve.py
+  - src/merlin_experiments/tracking/console/diagnose.py
+  - src/merlin_experiments/tracking/console/placement.py
+  - src/merlin_experiments/tracking/console/launch.py
+  - src/merlin_experiments/tracking/console/plain.py
+  - src/merlin_experiments/tracking/console/sources/__init__.py
+  - src/merlin_experiments/tracking/console/sources/timeline.py
+  - src/merlin_experiments/tracking/console/sources/machine.py
+  - src/merlin_experiments/tracking/console/sources/lifecycle.py
+  - src/merlin_experiments/tracking/console/sources/activity.py
+  - src/merlin_experiments/tracking/console/sources/insight_common.py
+  - src/merlin_experiments/tracking/console/sources/performance.py
+  - src/merlin_experiments/tracking/console/sources/cases.py
+  - src/merlin_experiments/tracking/console/sources/case_history.py
+  - src/merlin_experiments/phase1/feedback/perf_history.py
+  - src/merlin_experiments/tracking/console/sources/tools.py
+  - src/merlin_experiments/tracking/console/sources/grader.py
+  - src/merlin_experiments/tracking/console/sources/integrity.py
+  - src/merlin_experiments/tracking/console/sources/attempts.py
+  - src/merlin_experiments/tracking/console/sources/certification.py
+  - src/merlin_experiments/tracking/console/sources/focus.py
+  - src/merlin_experiments/tracking/console/sources/cost.py
+  - src/merlin_experiments/tracking/console/sources/library.py
   - packages/merlin-experiments/console/internal/ui/insights.go
   - packages/merlin-experiments/console/internal/ui/story.go
   - packages/merlin-experiments/console/internal/ui/model.go
   - packages/merlin-experiments/console/internal/ui/views.go
-  - packages/merlin-experiments/src/merlin_experiments/cli.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/telemetry/startup.py
+  - src/merlin_experiments/cli.py
+  - src/merlin_experiments/phase1/telemetry/startup.py
 ---
 
 # Experiment console

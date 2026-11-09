@@ -2,6 +2,6 @@
 
 import sys
 
-from merlin.compile.analysis import compute_endpoints as _implementation
+from merlin.analysis import compute_endpoints as _implementation
 
 sys.modules[__name__] = _implementation

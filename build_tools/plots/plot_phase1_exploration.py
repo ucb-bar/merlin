@@ -37,9 +37,10 @@ def stamp(value):
 
 
 def extract(run, conclusion, out):
-    sys.path.insert(0, str(REPO / "packages/merlin-experiments/src"))
-    from merlin_experiments.phase1.telemetry.author_agents import _thread_metrics, read_rollout
+    sys.path.insert(0, str(REPO / "src"))
     from phase1_abstraction_trace import abstraction_markers
+
+    from merlin_experiments.phase1.telemetry.author_agents import _thread_metrics, read_rollout
 
     sources = {}
 
@@ -318,7 +319,7 @@ def render(data, out):
     from matplotlib.path import Path as MPath
     from matplotlib.ticker import FuncFormatter
 
-    style_path = REPO / "packages/merlin-analysis/src/merlin/plotting/merlin_plotstyle.py"
+    style_path = REPO / "src/merlin/plotting/merlin_plotstyle.py"
     spec = importlib.util.spec_from_file_location("merlin_plotstyle", style_path)
     style = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(style)

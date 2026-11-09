@@ -5,7 +5,7 @@ status: current
 owner: experiments
 last_verified: 2026-10-12
 related: [phase0_specification, component_compiler_convergence, phase0_phase1_setup]
-code_refs: [packages/merlin-experiments/src/merlin_experiments/phase0/declared_run.py, packages/merlin-experiments/src/merlin_experiments/phase0/component_coverage.py]
+code_refs: [src/merlin_experiments/phase0/declared_run.py, src/merlin_experiments/phase0/component_coverage.py]
 ---
 
 # Component Phase 0 diagnostic API

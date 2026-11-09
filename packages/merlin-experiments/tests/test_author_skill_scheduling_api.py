@@ -14,7 +14,7 @@ from author_skill_support import (
     top_level_imports,
 )
 
-from merlin.compile.scheduling.api_catalog import scheduling_capabilities
+from merlin.compiler.schedule.api_catalog import scheduling_capabilities
 
 SKILL = SKILLS / "scheduling-api"
 SCRIPT = SKILL / "scripts" / "dense_schedule_example.py"
@@ -44,10 +44,10 @@ def test_discovery_lists_every_v19_capability_and_composition_row(example):
 
 
 def test_contract_reads_signature_fields_and_source(example):
-    record = example.contract("merlin.compile.scheduling.dense_segmented_pipeline.DenseSegmentedAdmission")
+    record = example.contract("merlin.compiler.schedule.dense_segmented_pipeline.DenseSegmentedAdmission")
     assert [f["name"] for f in record["fields"]][:3] == ["overlap", "reduction", "qualification_identity"]
     assert record["fields"][2]["required"] and not record["fields"][3]["required"]
-    function = example.contract("merlin.compile.scheduling.dense_segmented_pipeline:schedule_dense_segmented_pipeline")
+    function = example.contract("merlin.compiler.schedule.dense_segmented_pipeline:schedule_dense_segmented_pipeline")
     assert "schedule_plan" in function["signature"] and function["source"].endswith(tuple(str(n) for n in range(10)))
 
 
@@ -67,7 +67,7 @@ def test_a_corrupted_projection_is_caught_by_the_independent_execution(example):
 
     adapter = example.neutral_adapter()
     p, r, s = example.dense_inputs()
-    from merlin.compile.scheduling.compact_dense import schedule_compact_dense
+    from merlin.compiler.schedule.compact_dense import schedule_compact_dense
 
     result = schedule_compact_dense(
         p,

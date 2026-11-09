@@ -573,7 +573,10 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
   capture, optional research workflows or deployment. It requires fresh output,
   defaults to LLVM IR only, and forwards audit/sidecar options. `LowerResult.audit_index`
   identifies the invocation's exact audit index; callers must not guess the latest child.
-- `passes_xdsl.py` — Merlin-authored rewrites: `quant_ext.dequantize_per_channel` → `linalg.generic`; `llvm.emit_c_interface`; (future) `scf.parallel` → `merlin_parallel_for`.
+- `passes_xdsl.py` — exact compatibility alias of `compiler/frontend/preprocess.py`.
+  Actual quantization arithmetic is in `compiler/quantization/linalg.py`, tensor
+  rewrites in `compiler/transforms/{matmul,dead}.py`, scalar casts in
+  `compiler/lower/scalar/casts.py`, and literal text repair in `compiler/frontend/repairs.py`.
   Structural preprocessing accepts the invocation's shared IR audit and records parsed
   input plus each completed rewrite. Inspection must preserve pass order, statistics and
   executable serialization; failures keep only the completed prefix. The textual repair
@@ -923,13 +926,13 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
   nothing. A new optional pass gets an entry there.
 - `normalization_reassociation.py` — the numerics-changing `layer-norm-chunked-sums` rewrite (default
   off): a `prov.op = "layer_norm"` f32 innermost-axis row sum becomes a sum of contiguous chunk sums.
-  `passes_xdsl._preprocess_module` runs it only when selected; selecting it grants both reassociation
+  `compiler.frontend.preprocess._preprocess_module` runs it only when selected; selecting it grants both reassociation
   and finite intermediates, and anything outside its strict scope is left unchanged.
 - `int_softmax_table.py` + `_int_softmax_table_rt.py` — the `int-softmax-table` rewrite. The `_rt` file
   is runner SOURCE (spliced into every runner variant, executed by the compiler's Python), not a module
   Merlin calls: keep it self-contained and its names `_ist_`-prefixed. It runs on the module as parsed,
   behind runner argv gate `ARGV_INDEX`, and must report once (`require_report`).
-- `custom_isa.py` — `merlin.inline_asm` → `llvm.inline_asm` 1:1 (custom ISA / `.insn` raw encodings; no LLVM fork). `passes_xdsl.lower_bf16_matmul_f32acc` rewrites bf16 matmuls to accumulate in f32.
+- `custom_isa.py` — `merlin.inline_asm` → `llvm.inline_asm` 1:1 (custom ISA / `.insn` raw encodings; no LLVM fork). `compiler.transforms.matmul.lower_bf16_matmul_f32acc` rewrites bf16 matmuls to accumulate in f32.
 
 ## What does not belong here
 

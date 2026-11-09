@@ -5,9 +5,9 @@ import numpy as np
 import pytest
 
 from test_compact_loaded_sum import fixture
-from merlin.compile.scheduling.loaded_sum_epochs import (
-    LoadedSumEpochLaw, emit_loaded_sum_epochs, plan_loaded_sum_epochs,
-)
+from merlin.compiler.schedule.loaded_sum_epochs import LoadedSumEpochLaw
+from merlin.compiler.schedule.loaded_sum_epochs import emit_loaded_sum_epochs
+from merlin.compiler.schedule.loaded_sum_epochs import plan_loaded_sum_epochs
 
 
 def selected(rows=5, columns=11, slots=2, flatten=False):
@@ -104,7 +104,7 @@ def test_unknown_effects_changed_source_and_excessive_private_address_refuse():
 @pytest.mark.parametrize('flatten', [False, True])
 def test_large_cover_emits_counted_cfg_without_dynamic_enumeration(flatten):
     from merlin.llvmlower.host_builder import FnBuilder
-    from merlin.compile.scheduling.llvm_program import FnBuilderControlAdapter
+    from merlin.compiler.schedule.llvm_program import FnBuilderControlAdapter
     from merlin.xdsl_dialects._common import text
     from xdsl.dialects import llvm
     from xdsl.dialects.builtin import ModuleOp

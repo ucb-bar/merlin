@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from math import prod
 from pathlib import Path
 
-from merlin.compile.scheduling.dense_contracts import DenseLogicalPointerABI
+from merlin.compiler.schedule.dense_contracts import DenseLogicalPointerABI
 
 from .borrowed_buffer_calls import BorrowedBufferEffects
 from .device_shim import LogicalBuffer, ShimUnit, _memref_typedef

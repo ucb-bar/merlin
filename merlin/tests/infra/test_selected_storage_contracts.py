@@ -17,15 +17,17 @@ import yaml
 from test_private_copy_elimination import ADAPTER, SPACES, command, project
 from test_schedule_pipeline import encoding
 
-from merlin.compile.scheduling.program_limits import AddressWindow, DecodedInstruction, EncodedAccess, ProgramLimits
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, compile_schedule
-from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
-from merlin.compile.scheduling.temporary_storage import (
-    StorageEffects,
-    StorageOptimizationUnavailable,
-    TemporaryObject,
-    allocate_temporary_storage,
-)
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import DecodedInstruction
+from merlin.compiler.schedule.program_limits import EncodedAccess
+from merlin.compiler.schedule.program_limits import ProgramLimits
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import compile_schedule
+from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
+from merlin.compiler.schedule.temporary_storage import StorageEffects
+from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
+from merlin.compiler.schedule.temporary_storage import TemporaryObject
+from merlin.compiler.schedule.temporary_storage import allocate_temporary_storage
 from merlin.sched.ir import Call, Const, Kernel, TensorArg, evaluate
 from merlin.semantic_compiler.allocation_types import Reservation
 from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction
@@ -515,7 +517,7 @@ def test_false_physical_alias_qualification_is_exposed_by_native_execution(tmp_p
 
 @pytest.mark.parametrize("path", ["facts_path", "software_path"])
 def test_input_and_library_changes_during_rewrite_reject(tmp_path, monkeypatch, path):
-    from merlin.compile.scheduling import schedule_pipeline
+    from merlin.compiler.schedule import schedule_pipeline
     model = list(inputs(tmp_path))
     selected = model[0]
     def changed(call, accesses):
@@ -599,7 +601,7 @@ def test_typed_byte_address_bindings_require_matching_resource_and_units(tmp_pat
 
 
 def test_selected_copy_semantics_survive_relocation_and_final_byte_checks(tmp_path, native):
-    from merlin.compile.scheduling.spill_conformance import verify_storage_dataflow
+    from merlin.compiler.schedule.spill_conformance import verify_storage_dataflow
     model = list(inputs(tmp_path))
     selected, template, objects, original_adapter, codec, limits, _, length = model
     size = objects[0].size
@@ -639,7 +641,7 @@ def test_exact_copy_cannot_hide_additional_execution_effects(tmp_path):
 
 
 def test_storage_rewrite_cannot_change_the_original_source_anchor(tmp_path, monkeypatch):
-    from merlin.compile.scheduling import schedule_pipeline
+    from merlin.compiler.schedule import schedule_pipeline
     model = list(inputs(tmp_path))
     source = model[1]
     original = schedule_pipeline.allocate_temporary_storage

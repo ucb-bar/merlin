@@ -8,14 +8,14 @@ parameters — the case that motivated measuring the peak instead of assuming it
 
 from merlin.common.mlir_query import activation_peak_bytes
 from merlin.common.paths import repo_root
-from merlin.runtime.backends.zephyr_model import _ram_for_weights
+from merlin.compiler.build.zephyr.memory import ram_for_weights
 
 MB = 1024 * 1024
 DEFAULT_RAM_BYTES = 256 * MB  # selected example port's device-tree default
 
 
 def _sized(weights, peak=None):
-    return _ram_for_weights(weights, peak, default_ram_bytes=DEFAULT_RAM_BYTES)
+    return ram_for_weights(weights, peak, default_ram_bytes=DEFAULT_RAM_BYTES)
 
 
 def test_measured_activations_never_shrink_the_region():

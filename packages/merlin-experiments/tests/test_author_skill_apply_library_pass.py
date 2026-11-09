@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 
 import pytest
@@ -48,12 +49,20 @@ sys.stdout.write(execute_policy(**binding).artifact)
 '''
 
 
+@pytest.fixture(scope='module')
+def selected_library(tmp_path_factory):
+    """Select stable private bytes while other contributors edit the checkout."""
+    return shutil.copytree(checkout_root() / 'src', tmp_path_factory.mktemp('selected-library') / 'src',
+                           ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+
+
 @pytest.fixture
-def package(tmp_path):
+def package(tmp_path, selected_library):
     base = tmp_path / 'submission'
     (base / 'tools').mkdir(parents=True)
     (base / 'tools/library_pass_adapter.py').write_text(ADAPTER)
     (base / 'tools/compiler.py').write_text(COMPILER)
+    (base / 'compiler_library').symlink_to(selected_library, target_is_directory=True)
     (base / 'manifest.yaml').write_text(json.dumps({'commands': {'lower_target_to_llvm': {
         'argv': [sys.executable, 'tools/compiler.py', '{input_mlir}']}}}))
     (base / 'source.mlir').write_text('''builtin.module { func.func @f() -> i32 {
@@ -69,7 +78,7 @@ def invoke(package, tmp_path, mechanism='fold', *, cli=None, **extra):
     cli = cli or load_script('ab-library-pass', 'apply_library_pass')
     receipt = tmp_path / 'application.json'
     args = ['--submission', str(package), '--variant', str(tmp_path / 'variants/changed'),
-            '--library', str(checkout_root() / 'src'), '--mechanism', mechanism,
+            '--library', str((package / 'compiler_library').resolve()), '--mechanism', mechanism,
             '--case', 'source-locator', '--receipt', str(receipt)]
     for key, value in extra.items():
         args.extend(['--' + key, str(value)])
@@ -78,6 +87,7 @@ def invoke(package, tmp_path, mechanism='fold', *, cli=None, **extra):
 
 
 def evaluate(path):
+    from xdsl.dialects.builtin import IntegerAttr, IntegerType
     from xdsl.interpreter import Interpreter
     from xdsl.interpreters.arith import ArithFunctions
     from xdsl.interpreters.func import FuncFunctions
@@ -85,7 +95,13 @@ def evaluate(path):
     interpreter = Interpreter(parse_ir(path.read_text()))
     interpreter.register_implementations(ArithFunctions())
     interpreter.register_implementations(FuncFunctions())
-    return interpreter.call_op('f', ())
+    values = interpreter.call_op('f', ())
+    # xDSL0.75 returns a typed constant where0.68 returns the Python integer.
+    assert all(type(value) is int or (
+        isinstance(value, IntegerAttr) and isinstance(value.type, IntegerType)
+        and value.type.width.data == 32
+    ) for value in values)
+    return tuple(value.value.data if isinstance(value, IntegerAttr) else value for value in values)
 
 
 def test_registered_pass_changes_actual_emission_and_preserves_neutral_numerics(package, tmp_path):
@@ -166,6 +182,30 @@ def test_unsafe_link_is_refused_before_copy(package, tmp_path):
     code, record = invoke(package, tmp_path)
     assert code == 1 and 'unsafe source link' in record['detail']
     assert not (tmp_path / 'variants/changed').exists()
+
+
+@pytest.mark.parametrize('changed_input', ['source', 'library'])
+def test_changed_selected_input_refuses_success_receipt(package, tmp_path, monkeypatch, changed_input):
+    cli = load_script('ab-library-pass', 'apply_library_pass')
+    original_emit = cli.emit
+    path = (package / 'source.mlir' if changed_input == 'source'
+            else package / 'compiler_library/merlin/__init__.py')
+    original = path.read_bytes()
+
+    def change_after_emission(*args, **kwargs):
+        result = original_emit(*args, **kwargs)
+        if args[0] != package.resolve():
+            path.write_bytes(original + b'\n# changed after actual emission\n')
+        return result
+
+    monkeypatch.setattr(cli, 'emit', change_after_emission)
+    try:
+        code, record = invoke(package, tmp_path, cli=cli)
+        assert code == 1 and record['status'] == 'REFUSED'
+        assert 'changed during application' in record['detail']
+        assert (tmp_path / 'variants/.library-pass-pending-changed').is_file()
+    finally:
+        path.write_bytes(original)
 
 
 def test_idle_discovery_waits_for_success_receipt_after_actual_emission(package, tmp_path, monkeypatch):

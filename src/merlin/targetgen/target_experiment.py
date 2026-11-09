@@ -252,9 +252,9 @@ class HostLane:
 
         # The real loader is part of validation: presence alone is insufficient if the manifest/knobs
         # are malformed or if knobs redirect the schedule outside the package whose digest we record.
-        from ..mining.registry import load_rvv_package
+        from merlin.compiler.backend.host import load_host_package
 
-        loaded = load_rvv_package(package)
+        loaded = load_host_package(package)
         schedule_rel = None
         if loaded.backend == "rvv":
             schedule_rel = _safe_relative(
@@ -268,7 +268,7 @@ class HostLane:
             except (OSError, ValueError) as exc:
                 raise ValueError(f"host_lane schedule {schedule_rel.as_posix()!r} escapes the pinned package") from exc
         if self.host_isa:
-            from merlin.compile.host_lane import require_host_isa
+            from merlin.compiler.backend.isa import require_host_isa
 
             require_host_isa(loaded.cflags, self.host_isa)
 
@@ -410,7 +410,7 @@ class HostLaneMatrix:
         if dtype is None:
             return self.profiles[self.default]
         try:
-            from merlin.compile.host_lane import _DTYPE_STRATEGY
+            from merlin.compiler.selection.host import _DTYPE_STRATEGY
 
             strategy = _DTYPE_STRATEGY.get(dtype)
             if strategy is None:

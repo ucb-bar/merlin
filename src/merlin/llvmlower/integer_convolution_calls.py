@@ -147,7 +147,9 @@ def _bias_add(operation, source, channels):
 
 
 def _match(operation, readout):
-    from .im2col_pack import PackReport, _bounded_plain, _match_im2col
+    from merlin.compiler.ir.convolution import _bounded_plain
+
+    from .im2col_pack import PackReport, _match_im2col
 
     clone = operation.clone()
     for nested in clone.walk():

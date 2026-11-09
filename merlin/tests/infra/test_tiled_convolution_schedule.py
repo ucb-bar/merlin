@@ -6,26 +6,24 @@ from itertools import permutations
 import numpy as np
 import pytest
 
-from merlin.compile.scheduling.block_schedule import (
-    AXES,
-    BANK_ALIGNED,
-    CONTIGUOUS,
-    LHS,
-    WEIGHT,
-    BlockScheduleError,
-    Compute,
-    ConvContraction,
-    Knobs,
-    Load,
-    M,
-    Preload,
-    Store,
-    check_residency,
-    execute,
-    schedule_convolution,
-    schedule_tiled_convolution,
-)
-from merlin.compile.scheduling.derive import geometry_from_address_space
+from merlin.compiler.schedule.blocks import AXES
+from merlin.compiler.schedule.blocks import BANK_ALIGNED
+from merlin.compiler.schedule.blocks import CONTIGUOUS
+from merlin.compiler.schedule.blocks import LHS
+from merlin.compiler.schedule.blocks import WEIGHT
+from merlin.compiler.schedule.blocks import BlockScheduleError
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import ConvContraction
+from merlin.compiler.schedule.blocks import Knobs
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import M
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.blocks import check_residency
+from merlin.compiler.schedule.blocks import execute
+from merlin.compiler.schedule.blocks import schedule_convolution
+from merlin.compiler.schedule.blocks import schedule_tiled_convolution
+from merlin.compiler.schedule.derive import geometry_from_address_space
 from merlin.targetgen.address_space import derive_address_space
 
 

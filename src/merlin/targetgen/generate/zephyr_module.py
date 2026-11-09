@@ -353,10 +353,7 @@ def generate(zephyr_plan: dict[str, Any]) -> list[Artifact]:
     driver_kconfig = (
         f"config {sym}\n"
         f'    bool "Merlin {target} accelerator support"\n'
-        f"    depends on MERLIN_RUNTIME\n\n"
-        f"config {sym}_RTIO\n"
-        f'    bool "Use Zephyr RTIO backend for {target} command submission"\n'
-        f"    depends on {sym} && RTIO\n"
+        f"    depends on MERLIN_RUNTIME\n"
     )
 
     return [

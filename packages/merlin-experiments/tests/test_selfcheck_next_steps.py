@@ -244,7 +244,10 @@ def test_the_client_prints_the_block_after_the_reply_and_keeps_stdout_json(works
     )
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout)["all_pass"] is True  # stdout stays one JSON document
-    block = proc.stderr.split("[self-check] ", 1)[1].strip()
+    receipt, separator, block = proc.stderr.partition("\n[self-check] " + N.HEADER)
+    assert separator and f"[self-check] request {rid}:" in receipt
+    assert f".qa_channel/resp_{rid}.json" in receipt
+    block = N.HEADER + block.rstrip()
     assert block.splitlines()[0] == N.HEADER and "1. MM_case: " in block
     assert len(block.encode()) <= client._NEXT_STEPS_BYTES
     # A reply without next steps prints nothing extra; oversized input is cut to the client's budget.
@@ -377,7 +380,8 @@ def test_printed_progress_is_only_for_the_reply_source_and_model(workspace):
     document = dict(submission_sha256='current')
     brief = dict(largest_headroom=[entry('MM_case')])
     result = N.block(document, rows, brief, workspace=workspace)
-    assert '2 ready baselines, 3 candidates, 4 candidate/case checks outstanding, 2 requests in flight' in result['lines'][0]
+    assert ('2 ready baselines, 3 candidates, 4 candidate/case checks outstanding, '
+            '2 requests in flight') in result['lines'][0]
     assert result['idle_sweep_progress'] == progress
     rows[0]['performance'] = {**model, 'model_sha256': 'older'}
     result = N.block(document, rows, brief, workspace=workspace)

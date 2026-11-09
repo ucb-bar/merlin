@@ -51,13 +51,14 @@ class BuildPyWithData(build_py):
     def run(self) -> None:
         # An older build may have bundled private corpus files. Reusing its build
         # directory must not silently carry them into a new release.
-        staged = Path(self.build_lib) / "merlin"
-        if staged.is_symlink() or not staged.resolve().is_relative_to((_ROOT / "out/build").resolve()):
-            raise ValueError(f"package staging must be under out/build: {staged}")
-        # Drop stale source as well as resources: moved extension modules must not
-        # survive in a reused core wheel build directory.
-        if staged.exists():
-            shutil.rmtree(staged)
+        # These import roots have one distribution owner. Clear each owned root
+        # so an interrupted earlier build cannot retain removed workflow code.
+        for package in ("merlin", "merlin_experiments", "merlin_dse"):
+            staged = Path(self.build_lib) / package
+            if staged.is_symlink() or not staged.resolve().is_relative_to((_ROOT / "out/build").resolve()):
+                raise ValueError(f"package staging must be under out/build: {staged}")
+            if staged.exists():
+                shutil.rmtree(staged)
         super().run()
         for name in public_resources():
             destination = Path(self.build_lib) / "merlin" / "_data" / Path(name).relative_to("merlin")

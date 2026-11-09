@@ -9,7 +9,7 @@ code_refs:
   - src/merlin/xdsl_dialects
   - src/merlin/targetgen/rtl
   - src/merlin/xdsl_dialects/lowering/compute_groups.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/form_perf.py
+  - src/merlin_experiments/phase0/form_perf.py
 ---
 
 # Contributions, abstractions and the ablations that test them

@@ -5,7 +5,7 @@ status: current
 owner: frontends
 last_verified: 2026-10-06
 related: [getting_started, extending_the_stack, phase0_specification, model_lowering, reproducibility]
-code_refs: [src/merlin/frontends, src/merlin/capture/bundle.py, src/merlin/targetgen/_m2m_capture_worker.py, src/merlin/targetgen/frontend_trace.py, src/merlin/frontends/compile_inputs.py, src/merlin/semantic_compiler/linalg_bridge.py, src/merlin/targetgen/cli.py, packages/merlin-experiments/src/merlin_experiments/phase0/m2m_runtime.py]
+code_refs: [src/merlin/frontends, src/merlin/capture/bundle.py, src/merlin/targetgen/_m2m_capture_worker.py, src/merlin/targetgen/frontend_trace.py, src/merlin/frontends/compile_inputs.py, src/merlin/semantic_compiler/linalg_bridge.py, src/merlin/targetgen/cli.py, src/merlin_experiments/phase0/m2m_runtime.py]
 ---
 
 # model2MLIR frontend

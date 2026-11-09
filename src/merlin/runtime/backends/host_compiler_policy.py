@@ -90,7 +90,7 @@ def selected_model_compiler_plan(
 
     if (
         not isinstance(observation, dict)
-        or observation.get("schema") != "merlin.selected-index-lowering.v1"
+        or target_data_layout.selected_index_bits(observation) != observation.get("index_bits")
         or observation.get("compiler_requested") != str(clang)
         or not isinstance(observation.get("compiler_resolved"), str)
         or not is_sha256(observation.get("compiler_sha256"))
@@ -98,7 +98,6 @@ def selected_model_compiler_plan(
         or type(observation.get("index_bits")) is not int
         or observation["index_bits"] <= 0
         or not isinstance(observation.get("data_layout"), str)
-        or target_data_layout.default_index_bits(observation["data_layout"]) != observation["index_bits"]
     ):
         raise SpikeModelError("selected cross compiler returned an incomplete index-width observation")
     if observation["index_bits"] != _C_DESCRIPTOR_INDEX_BITS:

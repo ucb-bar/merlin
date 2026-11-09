@@ -15,7 +15,7 @@ import numpy as np
 from test_row_softmax import native_program
 from test_selected_row_contracts import inputs, schedule
 
-from merlin.compile.scheduling.row_softmax import CausalRowMask
+from merlin.compiler.schedule.row_softmax import CausalRowMask
 
 
 def attention_source(result, opts, *, bad_reset=False):

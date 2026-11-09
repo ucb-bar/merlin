@@ -6,15 +6,11 @@ import pytest
 from test_compact_dense import ADAPTER
 from test_dense_panel_pipeline import setup
 
-from merlin.compile.scheduling.dense_panel_pipeline import (
-    build_dense_panel_pipeline,
-    select_dense_panel_window_offsets,
-)
-from merlin.compile.scheduling.schedule_ir import (
-    dense_schedule_text,
-    make_dense_schedule_plan,
-    parse_dense_schedule_plan,
-)
+from merlin.compiler.schedule.dense_panel_pipeline import build_dense_panel_pipeline
+from merlin.compiler.schedule.dense_panel_pipeline import select_dense_panel_window_offsets
+from merlin.compiler.schedule.schedule_ir import dense_schedule_text
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
 from merlin.semantic_compiler.allocation_types import StorageBank
 
 
@@ -37,7 +33,7 @@ def banks(storage):
 
 
 def test_typed_windows_roundtrip_drive_actual_addresses_and_preserve_original_source():
-    from merlin.compile.scheduling.dense_panel_pipeline import schedule_dense_panel_pipeline
+    from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_panel_pipeline
 
     p, r, storage, block, admission = setup()
     offsets = select_dense_panel_window_offsets(p, block, r, storage, banks=banks(storage))

@@ -3,11 +3,11 @@ title: Shared scalar host optimizations
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-20
+last_verified: 2026-11-08
 related: [optional_passes, shared_pass_phase2, ../reference/host_cpu_arithmetic, ../reference/quantized_host_optimizations]
 code_refs:
-  - src/merlin/compile/host_optimizations.py
-  - src/merlin/compile/host_optimization_export.py
+  - src/merlin/compiler/transforms/host.py
+  - src/merlin/compiler/passes/hostexport.py
   - src/merlin/llvmlower/automatic_host_features.py
   - src/merlin/llvmlower/host_tensor_codegen.py
   - src/merlin/llvmlower/host_epilogue.py
@@ -50,7 +50,7 @@ Selecting a named approximation is not evidence that a particular input permits 
 
 ## Using the algorithms from a compiler generator
 
-`merlin.compile.host_optimizations.rewrite_tensor_module(context, module)` runs
+`merlin.compiler.transforms.host.rewrite_tensor_module(context, module)` runs
 the same canonical native MLIR tensor matchers inside the caller's existing
 context. Named tensor operations must first be generalized. The public module
 also exposes bounded LLVM rounding, constant-clamp and explicitly permitted FMA
@@ -75,7 +75,7 @@ unchanged; this migration does not regenerate it.
 For a prospective shared-source experiment, export a separate reviewable library:
 
 ```bash
-python -m merlin.compile.host_optimization_export \
+python -m merlin.compiler.passes.hostexport \
   --output-dir "$HOST_LIBRARY" --license-directory "$MERLIN_SOURCE"
 ```
 
@@ -87,6 +87,14 @@ resulting `CompilerLibrarySelection` for both comparison arms as described in
 [shared-pass preparation](shared_pass_phase2.md). This is an additional library;
 it does not change frozen SDK inventories, profiles or grants. It excludes
 device code, reference models, graders, measurements and compiler discovery.
+
+The native implementations live in `compiler/transforms/host_contraction.py`,
+`host_reduction.py`, `host_broadcast.py` and `host_integer_math.py`. The public
+`host.py` composes their exact source in the ordinary lowering order. Historical
+imports remain exact module aliases, including the previous exporter command.
+Fresh exports include these actual owners and the public logical-ABI/path
+dependencies required by the existing host builder. Already reviewed releases
+keep their original bytes and source identities.
 
 ## Coverage and execution boundaries
 

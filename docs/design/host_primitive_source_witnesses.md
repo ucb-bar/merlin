@@ -6,9 +6,9 @@ owner: core
 last_verified: 2026-10-08
 related: [verified_compiler_roadmap]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_literal_arange.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_literal_arange_admission.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_host_source_dispatch.py
+  - src/merlin_experiments/phase1/feedback/private_literal_arange.py
+  - src/merlin_experiments/phase1/feedback/private_literal_arange_admission.py
+  - src/merlin_experiments/phase1/feedback/private_host_source_dispatch.py
   - src/merlin/frontends/linalg_patterns.py
   - examples/workloads/host_control_math/loader.py
 ---

@@ -13,8 +13,9 @@ import json
 from dataclasses import asdict, dataclass
 
 from xdsl.dialects import arith, builtin, func, linalg, math, tensor
-from xdsl.dialects.linalg.ops import LinalgStructuredOperation
+from xdsl.dialects.linalg.ops import LinalgStructuredOperation, ReduceOp
 
+from merlin.compiler.ir.semantics import BoundSourceSemantics, source_semantic_attributes
 from merlin.transforms.certificates import ir_digest
 from merlin.transforms.dense_ir import recognize_signed_integer_matmul
 from merlin.transforms.pipeline_state import (
@@ -35,7 +36,7 @@ from merlin.xdsl_dialects.lowering.global_plan import (
     verify_global_plan,
 )
 from merlin.xdsl_dialects.lowering.global_plan_emission import _component_boundary, dispatch_digest
-from merlin.xdsl_dialects.lowering.outline import outline_dispatches
+from merlin.xdsl_dialects.lowering.outline import OutlineResult, outline_dispatches
 
 from .prepared_operand_effects import validate_pure_tensor_function
 
@@ -59,7 +60,9 @@ def _context(context):
     return _record(asdict(context))
 
 
-def _read(module, entry, max_operations):
+def _read(module, entry, max_operations, *, graph_mode="outlined", semantics=None):
+    if type(graph_mode) is not str or graph_mode not in {"outlined", "ssa"}:
+        raise ValueError("source graph mode must be outlined or ssa")
     if type(module) is not builtin.ModuleOp or type(entry) is not str or not entry:
         raise OffloadPlanUnavailable("source offload plan requires a typed module and explicit entry")
     if type(max_operations) is not int or not 0 < max_operations <= 100_000:
@@ -89,16 +92,20 @@ def _read(module, entry, max_operations):
     for operation in function.walk():
         if operation is function or type(operation) is func.ReturnOp:
             continue
+        # ReduceOp is a separate registered class in supported xDSL versions.
+        # Its complete tensor/scalar effects remain checked below and by the
+        # independent existing pure-tensor validator; no reduction is rewritten.
+        structured = isinstance(operation, LinalgStructuredOperation) or type(operation) is ReduceOp
         if (
             type(operation) not in registered
             or operation.successors
             or operation.regions
-            and not isinstance(operation, LinalgStructuredOperation)
-            or any(not key.startswith("prov.") for key in operation.attributes)
+            and not structured
+            or semantics is None and any(not key.startswith("prov.") for key in operation.attributes)
             or "library_call" in operation.properties
         ):
             raise OffloadPlanUnavailable("source offload has unknown effects, required placement or nested control")
-        if isinstance(operation, LinalgStructuredOperation):
+        if structured:
             if len(operation.regions) != 1 or len(operation.regions[0].blocks) != 1:
                 raise OffloadPlanUnavailable("source offload requires one pure structured scalar region")
             if any(sub.regions or sub.successors for sub in operation.regions[0].walk()):
@@ -114,11 +121,22 @@ def _read(module, entry, max_operations):
         raise OffloadPlanUnavailable("source offload entry carries unknown or required execution placement")
     if module.properties or any(not key.startswith("prov.") for key in module.attributes):
         raise OffloadPlanUnavailable("source offload module carries unknown execution attributes")
+    if semantics is None:
+        if source_semantic_attributes(module, entry):
+            raise OffloadPlanUnavailable("source annotations require original-caller semantic admission")
+    elif type(semantics) is not BoundSourceSemantics:
+        raise ValueError("source semantics require the original bound caller admission")
+    else:
+        semantics.validate(module, entry)
     try:
         validate_pure_tensor_function(function, {entry: function}, allow_named_linalg=True)
     except ValueError as error:
         raise OffloadPlanUnavailable("source offload effects are not established: " + str(error)) from error
-    outlined = outline_dispatches(module, forward=entry)
+    # The legacy outliner moves initializer computations into kernel definitions.
+    # Its dispatch boundary is not the live boundary of the original operation.
+    # Exact-source partitioning must read original SSA, with every init operand
+    # and region capture, without first transforming that source.
+    outlined = outline_dispatches(module, forward=entry) if graph_mode == "outlined" else OutlineResult(module, [])
     program = build_dispatch_program(outlined, entry=entry)
     problems = verify_program(program)
     _require(not problems, "invalid actual source graph: " + "; ".join(problems))
@@ -166,6 +184,8 @@ class OffloadSource:
     _session: PipelineSession
     _original_context: PipelineContext
     _context_record: str
+    graph_mode: str = "outlined"
+    _semantics: BoundSourceSemantics | None = None
 
     def revalidate(self, *, context=None):
         current = self._original_context if context is None else context
@@ -174,10 +194,21 @@ class OffloadSource:
         _require(self._session.module is self.module, "bound source owner changed; replan")
         saved = self._session.analysis("source_graph")
         _require(
-            saved == (self.stamp, self.operations, self.operation_ordinals, self.max_operations),
+            saved == (self.stamp, self.operations, self.operation_ordinals, self.max_operations, self.graph_mode),
             "source binding changed; replan",
         )
-        operations, ordinals, _, graph = _read(self.module, self.entry, self.max_operations)
+        if self._semantics is None:
+            _require("source_semantics" not in self._session._analyses,
+                     "original source semantic admission owner changed")
+        else:
+            _require(self._session.analysis("source_semantics") is self._semantics,
+                     "original source semantic admission owner changed")
+        operations, ordinals, _, graph = (
+            _read(self.module, self.entry, self.max_operations)
+            if self.graph_mode == "outlined" and self._semantics is None
+            else _read(self.module, self.entry, self.max_operations, graph_mode=self.graph_mode,
+                       **({"semantics": self._semantics} if self._semantics is not None else {}))
+        )
         _require(
             operations == self.operations and ordinals == self.operation_ordinals,
             "source operation ownership changed; replan",
@@ -186,16 +217,42 @@ class OffloadSource:
         _require(dispatch_digest(graph) == dispatch_digest(self.program), "source graph changed; replan")
         _require(self.cpu_alternatives == _cpu_alternatives(graph), "original CPU alternatives changed; replan")
 
+    def semantic_admission(self):
+        """Inspect original-caller attribute coverage; no qualification claim."""
+        self.revalidate()
+        return None if self._semantics is None else self._semantics.record()
 
-def bind_source(module, *, entry, context, max_operations=4096):
-    """Read every current entry operation, including glue; never prune the graph."""
+
+def bind_source(module, *, entry, context, max_operations=4096, graph_mode="outlined",
+                validate_source=None, source_options=None):
+    """Bind every entry operation without pruning, under an explicit graph contract.
+
+    The default preserves existing offload dispatch semantics. ``graph_mode="ssa"``
+    instead retains complete original operands and captures for source-preserving
+    partitioning. Neither mode supplies numerical or implementation qualification.
+    Explicit ``validate_source(module, entry, source_options)`` must consume each
+    exact typed annotation after checking the caller-approved source contract;
+    a successful parse or provider capability claim is not this admission.
+    """
     context_record = _context(context)
+    if validate_source is None and source_options is not None:
+        raise ValueError("source semantic options require original-caller validation")
+    semantics = (None if validate_source is None
+                 else BoundSourceSemantics(module, entry, validate_source, source_options))
     frozen_context = PipelineContext(**asdict(context))
-    operations, ordinals, _, program = _read(module, entry, max_operations)
+    operations, ordinals, _, program = (
+        _read(module, entry, max_operations)
+        if graph_mode == "outlined" and semantics is None
+        else _read(module, entry, max_operations, graph_mode=graph_mode,
+                   **({"semantics": semantics} if semantics is not None else {}))
+    )
     session = PipelineSession(module, context=frozen_context, ir_level="linalg", max_repairs=0)
     stamp = session.stamp()
-    spec = PassSpec("offload-source", 0, produces=("source_graph",), mutates_ir=False, ir_level="linalg")
-    session.run(spec, lambda: {"source_graph": (stamp, operations, ordinals, max_operations)})
+    analyses = {"source_graph": (stamp, operations, ordinals, max_operations, graph_mode)}
+    if semantics is not None:
+        analyses["source_semantics"] = semantics
+    spec = PassSpec("offload-source", 0, produces=tuple(analyses), mutates_ir=False, ir_level="linalg")
+    session.run(spec, lambda: analyses)
     result = OffloadSource(
         module,
         entry,
@@ -208,6 +265,8 @@ def bind_source(module, *, entry, context, max_operations=4096):
         session,
         context,
         context_record,
+        graph_mode,
+        semantics,
     )
     result.revalidate()
     return result
@@ -386,6 +445,7 @@ def realize_offload_plan(source, plan, *, device_alternatives, context):
     """Check original alternatives and return a selection for the existing rewrite."""
     _require(type(source) is OffloadSource, "an original typed source binding is required")
     source.revalidate(context=context)
+    _require(source.graph_mode == "outlined", "legacy offload realization requires the outlined graph contract")
     _require(
         type(plan) is GlobalPlan
         and type(device_alternatives) is tuple

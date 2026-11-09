@@ -90,14 +90,14 @@ def toolchain_engine(
 ) -> Engine:
     """The real engine: the host package's replay toolchain, the device compiler and the bound Spike."""
     from merlin.llvmlower import toolchain as LT
-    from merlin.mining import registry
+    from merlin.compiler.backend.host import load_host_package
     from merlin.model_check import replay as RP
     from merlin.runtime.backends import spike_model as SM
 
     toolchain = RP.toolchain_for(host_package)
     target_flag = [f for f in toolchain.device_cflags if f.startswith("--target=")] or [SM.CLANG_TARGET]
     marches = [
-        f.removeprefix("-march=") for f in registry.load_rvv_package(host_package).cflags if f.startswith("-march=")
+        f.removeprefix("-march=") for f in load_host_package(host_package).cflags if f.startswith("-march=")
     ]
     work.mkdir(parents=True, exist_ok=True)
 
@@ -346,7 +346,7 @@ def receipt(
     execution_config = block.get("config")
     if execution_config and execution_config != source.get("config"):
         with out.guard("simulation_firrtl_identity"):
-            from merlin.compile import model_execution_inputs as MI
+            from merlin.runtime import modelinputs as MI
             from merlin.targetgen.rtl.unit_correspondence import execution_binding
 
             correspondence = execution_binding(facts_doc, config=execution_config)

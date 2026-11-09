@@ -27,7 +27,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from merlin.common import mlir_query as mq
-from merlin.compile.analysis import contraction_shapes as KS
+from merlin.compiler.ir import contraction_shapes as KS
 
 from . import compute_groups as CG
 from . import group_numerics as GN

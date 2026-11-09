@@ -13,7 +13,7 @@ from pathlib import Path
 from merlin.common.paths import repo_root
 
 
-def test_core_renderer_and_package_loader_do_not_need_extension():
+def test_core_package_loader_and_vector_selection_do_not_need_extension():
     root = repo_root()
     # -S suppresses editable .pth files: a sibling checkout must not supply a missing extension.
     import_paths = [str(root / "src"), sysconfig.get_path("purelib"), sysconfig.get_path("platlib")]
@@ -22,11 +22,22 @@ def test_core_renderer_and_package_loader_do_not_need_extension():
         + """
 import importlib.util
 from merlin.mining import registry, from_strategy
-from merlin.compile import host_lane
+from merlin.compiler.selection import host as host_lane
 assert importlib.util.find_spec('merlin.mining.beam') is None
 assert importlib.util.find_spec('merlin.mining.tuning_agent') is None
 assert importlib.util.find_spec('merlin.mining.reconstruction_learning') is None
-assert 'transform.named_sequence' in from_strategy.render_schedule({})
+from merlin.common import paths
+from merlin.compiler.backend import service
+paths.env = lambda name: None
+def absent(*args, **kwargs):
+    raise ValueError('no installed vector backend in this boundary check')
+service.resolve = absent
+try:
+    from_strategy.render_schedule({})
+except RuntimeError as exc:
+    assert 'requires its OOT package' in str(exc)
+else:
+    raise AssertionError('core unexpectedly implemented target schedule rendering')
 assert registry.DTYPE_STRATEGIES
 assert 'merlin.mining.fork' not in sys.modules
 try:

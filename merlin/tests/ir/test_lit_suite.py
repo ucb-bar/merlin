@@ -31,18 +31,19 @@ def _suite_dir():
     return merlin_dir() / "tests" / "data" / "lit"
 
 
-def _run_lit(*extra: str) -> subprocess.CompletedProcess:
-    return subprocess.run([_LIT, "-sv", *extra, str(_suite_dir())], capture_output=True, text=True, timeout=600)
+@pytest.fixture(scope="module")
+def lit_result() -> subprocess.CompletedProcess:
+    return subprocess.run([_LIT, "-sv", str(_suite_dir())], capture_output=True, text=True, timeout=600)
 
 
-def test_lit_suite_passes():
-    r = _run_lit()
+def test_lit_suite_passes(lit_result):
+    r = lit_result
     assert r.returncode == 0, f"lit suite failed:\n{r.stdout}\n{r.stderr}"
 
 
-def test_suite_is_not_empty():
+def test_suite_is_not_empty(lit_result):
     """A green run over zero tests is not evidence of anything."""
-    r = _run_lit()
+    r = lit_result
     out = r.stdout + r.stderr
     assert "Total Discovered Tests:" in out, out
     n = int(out.split("Total Discovered Tests:")[1].split()[0])

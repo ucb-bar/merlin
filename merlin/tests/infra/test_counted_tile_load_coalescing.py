@@ -3,11 +3,9 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.scheduling.tile_load_coalescing import (
-    TileLoadLaw,
-    TileLoadMapping,
-    coalesce_tile_load_loops,
-)
+from merlin.compiler.schedule.tile_load_coalescing import TileLoadLaw
+from merlin.compiler.schedule.tile_load_coalescing import TileLoadMapping
+from merlin.compiler.schedule.tile_load_coalescing import coalesce_tile_load_loops
 from merlin.sched.ir import Call, Const, Kernel, Loop, TensorArg, Var, concretize, instances
 
 
@@ -92,7 +90,7 @@ def test_million_tile_loop_remains_counted_and_bad_contracts_refuse():
 
 
 def test_final_actual_wide_access_expands_every_local_tile_band_for_hazards():
-    from merlin.compile.scheduling.tile_load_coalescing import expand_tile_load_mapping
+    from merlin.compiler.schedule.tile_load_coalescing import expand_tile_load_mapping
     original, law, project, encode = example(tiles=5)
     actual, report = coalesce_tile_load_loops(original, project=project, encode=encode, max_tiles=4)
     wide = actual.body[0].body[0].body[0]
@@ -105,7 +103,7 @@ def test_final_actual_wide_access_expands_every_local_tile_band_for_hazards():
 
 @pytest.mark.parametrize("tiles", [5, 6, 17, 32])
 def test_optin_shorter_tail_preserves_every_byte_and_actual_band(tiles):
-    from merlin.compile.scheduling.tile_load_coalescing import expand_tile_load_mapping
+    from merlin.compiler.schedule.tile_load_coalescing import expand_tile_load_mapping
 
     original, law, project, encode = example(tiles=tiles, tile=16, rows=16, stride=16, max_columns=127)
     control, _ = coalesce_tile_load_loops(original, project=project, encode=encode, max_tiles=7)

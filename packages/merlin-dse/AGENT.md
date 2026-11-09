@@ -1,6 +1,7 @@
-# Optional DSE distribution
+# Retained merlin-dse tests
 
-Owns the research-only dse, design_pressure, and dse_guidance modules. Keep their
-stable merlin.* import identities; no duplicate implementation under merlin_dse.
-Compiler/capture/evidence APIs needed by core stay in core. Preserve evidence
-ranking and numerical semantics during moves. No generated results belong here.
+Active Python code and package resources moved byte-exactly into the main `src/` tree.
+This directory is not an installable Merlin code distribution. Keep existing tests and
+study inputs here until their separate ownership migration; do not add duplicate code.
+Run `python -m pytest packages/merlin-dse/tests` from the checkout.
+Preserve frozen evidence, access roles, numerical checks and source-custody obligations.

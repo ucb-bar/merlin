@@ -10,6 +10,12 @@ code_refs: [src/merlin/runtime/backends/zephyr_model.py, src/merlin/runtime/back
 
 # Run whole programs on FireSim
 
+Merlin owns **prepare and collect**, not FireSim infrastructure execution. The
+manager, bitstream, queue, credentials, provisioning and timeouts belong to the
+external operator. The infrastructure details below retain historical research
+configuration and operator context; Merlin does not invoke those commands.
+
+
 For a workhorse that drives a remote manager through a locked SSM document, use
 the [post-freeze workhorse workflow](../../examples/gemmini/validation/README.md).
 That deployment offers direct `~/bin/fpga-run-elf ELF NAME` / `FsimRunElf`
@@ -110,7 +116,10 @@ Complete the base install in [Getting started](getting_started.md), then set the
 | `MERLIN_EXT_FIRESIM_QUEUE` | the shared job queue directory | runs bypass the queue and collide on the single FPGA |
 | `MERLIN_FIRESIM_RUNNER` | explicitly selected installed runner name, e.g. `modelblaster` | Merlin refuses to submit without a selected provider |
 | `MERLIN_MODELBLASTER` | ModelBlaster checkout, only for the optional example adapter | the adapter preflight names the missing checkout or runner source |
-| `ZEPHYR_BASE`, `MERLIN_ZEPHYR_SW`, `ZEPHYR_SDK_INSTALL_DIR` | the Zephyr workspace and SDK | cannot build the ELF to run |
+| `ZEPHYR_BASE`, `ZEPHYR_SDK_INSTALL_DIR` | the selected Zephyr tree and SDK | cannot build the ELF to run |
+
+`MERLIN_ZEPHYR_SW` may be a shell shortcut for navigating the containing workspace;
+Merlin does not use it to select a build tree or establish readiness.
 
 Then check the host, read-only — this submits nothing and does not touch the FPGA:
 
@@ -195,60 +204,67 @@ priority, then round-robin across users. **It must be alive** — nothing moves 
 queue can retain pending jobs without execution. Before starting it, inspect
 `status`; existing pending work may start as soon as the daemon is available.
 
-Install the optional [ModelBlaster runner example](../../examples/firesim_modelblaster/README.md)
-or a separately maintained runner distribution, and select its entry-point name
-with `MERLIN_FIRESIM_RUNNER` in `.env`. Merlin's core wheel contains no runner.
-This is a breaking migration from older checkouts: `run_on_firesim` no longer
-imports ModelBlaster implicitly, and generic `build_app` no longer embeds its
-terminal marker. Existing FireSim callers must install/select a runner and
-pass its `completion_metric_prefix` when building the ELF.
-From Merlin, the queue is the default and needs no argument:
+### Prepare and collect from Merlin
+
+`run_on_firesim` retains its historical name for migration, but requires explicit
+`mode="prepare"` or `mode="collect"`. Calling it without a mode, or supplying
+`runner`, `runner_name`, `queue`, `timeout`, `firesim_root` or `firesim_env`, fails
+before plugin discovery. `select_runner` also produces a migration diagnostic.
+The standalone [ModelBlaster adapter](../../examples/firesim_modelblaster/README.md)
+is retained for external operator/research reproduction; core no longer loads it.
 
 ```python
+from pathlib import Path
+from merlin.compiler.artifact import Deployment
 from merlin.runtime.backends import zephyr_model as zm
-from merlin.runtime.backends.firesim_runner import select_runner
-runner = select_runner()  # MERLIN_FIRESIM_RUNNER from .env or process environment
-b = zm.build_app(model_dir, work, board="chipyard_riscv64", backend="scalar", cpus=2,
-                 completion_metric_prefix=getattr(runner, "completion_metric_prefix", None))
-r = zm.run_on_firesim(b["elf"], reference=golden, timeout=5400, runner=runner)
+
+# Select these values from the actual built image and board contract.
+deployment = Deployment(system=system, platform="zephyr", isa=isa, abi=abi, harts=harts)
+prepared = zm.run_on_firesim(
+    elf, mode="prepare", output=Path(handoff_dir), deployment=deployment,
+    inputs={"golden.npy": Path(reference_file)},
+)
+# The external operator executes the retained ELF and produces result.json + UART.
+result = zm.run_on_firesim(
+    prepared["prepared"], mode="collect", results=Path(operator_results), reference=golden,
+)
 ```
 
-The image carries the selected runner's terminal marker. The example runner refuses
-an image without it before submitting work. The example runner sets `FIRESIM_QUEUE=1`
-and `FIRESIM_QUEUE_TIMEOUT`, tags jobs with
-`FIRESIM_PROJECT=merlin-oscar` so they are distinguishable from other workflows on the shared
-queue, runs under the `merlin-oscar` workload definition (`deploy/workloads/merlin-oscar.json`,
-`common_bootbinary: zephyr0-zephyr.elf`), and repairs `SSH_AUTH_SOCK` when the submitting
-session's agent is dead — the queue records the *submitter's* environment and the daemon later
-runs `firesim kill`, which SSHes to localhost.
+A prepared package contains the retained ELF and inputs, an explicit deployment,
+and `request.json`. Preparation returns no numerical `ok` verdict. The external
+operator supplies `result.json` with schema `merlin.external_result.v1`, the exact
+`request_sha256`, integer `exit_code`, and artifacts containing relative `path`,
+SHA-256 and `role`. Exactly one artifact must have `role: uart` for this model
+adapter. Collection retains the result files, rejects nonzero exits or missing
+OUT/DONE, and applies the existing independent reference gate. Hash matching
+binds observations to a request; it does not authenticate execution or establish
+accelerator, bitstream or timing qualification. Those existing qualification
+obligations remain separate.
 
-These settings belong to the optional ModelBlaster adapter, not the Merlin core.
-`run_on_firesim` resolves the explicitly selected installed entry point; missing or duplicate
-providers fail before submission. A caller can also pass `runner_name=` or `runner=` to
-`run_on_firesim`. The callable receives the ELF
-path and keyword arguments `firesim_root`, `firesim_env`, `timeout`, and `queue`, and returns raw
-UART text. The out-of-tree runner owns staging, workload/project identity, queue submission, and
-simulator imports; Merlin alone parses `OUT`/`METRIC`/`DONE` and applies the reference gate. A
-runner must honor `queue=True` on shared hardware. Passing one does not by itself certify that it
-used the queue or that the expected bitstream executed.
+The general API offers `merlin.api.run(..., runner="firesim", options=RunOptions(mode="prepare", ...))`
+and `merlin.api.collect(...)`; generic collection retains observations without
+interpreting application-specific UART or issuing a numerical verdict.
 
-Mind the **timeout**. `run_on_firesim` defaults to 900 s, which is a small model. Whole models
-are hours: at 25 MHz, cycles/2.5×10⁷ = seconds. `firesim_sweep.py` defaults to 5400 s and takes
-`--timeout`.
+A build can declare `completion_metric_prefix` explicitly when the operator
+requires a particular terminal marker. Building no longer imports a launch
+plugin merely to discover that string. `zephyr_firesim_leg.py` accepts
+`--completion-metric-prefix` and retains its existing independent image audit.
 
-For a batch:
+For a study:
 
 ```bash
-.venv/bin/python build_tools/scripts/firesim_sweep.py BUNDLE [BUNDLE ...] --runner modelblaster --timeout 25200
-.venv/bin/python build_tools/scripts/fsq.py            # queue, with model names resolved
+python build_tools/scripts/firesim_sweep.py BUNDLE --board BOARD --isa ISA --abi ABI --harts N
+# External operator executes the prepared workload.
+python build_tools/scripts/firesim_sweep.py --collect PREPARED --results RESULTS --ledger LEDGER
 ```
 
-`firesim_sweep.py` builds each `chipyard_riscv64` image with the selected runner's
-terminal marker, submits the run to the queue,
-gates `cos` against `golden.npy`, and appends to a JSONL ledger so a re-run skips what already
-passed. `fsq.py` exists because the native `status` labels every merlin job by its staged
-bootbinary (`zephyr0-zephyr.elf`) — indistinguishable across model × dtype — so it recovers the
-bundle name from each job's `stage_from` path.
+The sweep freezes the original study record and reference files into the
+prepared package. Collection reads those exact inputs, preserves the original
+numerical and available aggregate checks, and appends the observation association
+to the ledger. Preparation is not a passing row. Prefix plus aggregate checks
+are reported as that limited verification scope, not complete suffix equality.
+Build products and handoffs remain available for reproduction. `fsq.py` remains
+a standalone read-only operator queue report, not an automatic execution step.
 
 ### The four-step sequence is non-negotiable
 
@@ -502,9 +518,9 @@ literal rather than a relocation.
 
 Ordered roughly by how much time each one costs before you work out what it was.
 
-**No selected FireSim runner.** Install a runner package and set `MERLIN_FIRESIM_RUNNER`
-or pass `runner_name=`. For the example runner, set `MERLIN_MODELBLASTER` to a checkout
-containing `validation/firesim_runner.py`; preflight reports the exact missing path.
+**Legacy FireSim launch call refused.** Remove launch options and use the explicit
+prepare/collect contract above. Installing a launch plugin does not enable core
+infrastructure execution. Operator-side adapter dependencies remain external.
 
 **`insmod: ERROR: could not load module poll_mode=1` at INFRASETUP.** The XDMA kernel module is
 not loaded. FireSim's helper searches for a literal `xdma.ko`; a modern kernel ships
@@ -546,7 +562,7 @@ the queue. Check `default_hw_config` is still what you set, and use `fsq.py` to 
 are actually on the board.
 
 **The live `uartlog` goes to zero bytes mid-run.** Do not start a second
-`run_on_firesim(...)` while one is still running, even though the queue will happily accept the
+historical operator adapter invocation while one is still running, even though the queue will accept the
 job. The queue serializes *execution*, but each caller's marker-waiter clears the shared
 `sim_slot_0/uartlog` when it starts watching — so submitting a second run truncates the console
 of the run currently on the FPGA, and worse, the second waiter is then watching a log that the

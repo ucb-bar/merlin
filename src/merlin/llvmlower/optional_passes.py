@@ -14,8 +14,8 @@ Selecting:
 
 * ``merlin-compile --list-passes`` prints the table; ``--pass NAME`` / ``--no-pass NAME`` select;
 * the whole-model builder takes ``lowering_passes: [NAME, -NAME, ...]`` in its build options;
-* both set :data:`ENV` (``MERLIN_PASSES=int-softmax-table,-fusion-guard``), which the lowering reads
-  wherever it decides -- including in child processes -- so one spelling reaches every path.
+* both scope the selection to the current compilation context; :func:`child_environment` exports
+  it explicitly to native children. :data:`ENV` remains the default for callers without a scope.
 
 ``exactness`` is a claim each entry's module and tests stand behind: ``exact`` is bit-identical output
 on every input the original defines; ``numerics-changing`` is a different numerical model, graded
@@ -26,11 +26,12 @@ from __future__ import annotations
 
 import contextlib
 import os
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass
 
-#: The process-wide selection: comma-separated names, each optionally prefixed ``-`` (deselect) or
-#: ``+`` (select). Read at the point each pass is decided, never frozen at import.
+#: The environment default and child-process transport: comma-separated names, each optionally
+#: prefixed ``-`` (deselect) or ``+`` (select). Never mutated by a compilation scope.
 ENV = "MERLIN_PASSES"
 
 EXACT = "exact"
@@ -235,8 +236,10 @@ REGISTRY: tuple[OptionalPass, ...] = (
     OptionalPass(
         name="prepare-repeated-pointwise",
         summary="prepare pure pointwise values before an exact repeated broadcast",
-        changes=("derive repeated coordinates through static tensor views and retain each scalar "
-                 "operation on the smaller domain; immutable scale words must repeat exactly"),
+        changes=(
+            "derive repeated coordinates through static tensor views and retain each scalar "
+            "operation on the smaller domain; immutable scale words must repeat exactly"
+        ),
         exactness=EXACT,
         default="off; explicit source-bound host experiment",
         stage="lowering",
@@ -507,31 +510,48 @@ class Selection:
         return None
 
 
-def active(environ=None) -> Selection:
-    """The selection :data:`ENV` names in ``environ`` (the process environment by default)."""
-    return Selection.parse((os.environ if environ is None else environ).get(ENV))
+_selection: ContextVar[Selection | None] = ContextVar("merlin_optional_passes", default=None)
+
+
+def active(environ: Mapping[str, str] | None = None) -> Selection:
+    """Current compilation selection, falling back to the environment outside a scope.
+
+    An explicit ``environ`` queries that mapping alone, preserving the environment-reader API.
+    """
+    if environ is None:
+        selected = _selection.get()
+        if selected is not None:
+            return selected
+        environ = os.environ
+    return Selection.parse(environ.get(ENV))
+
+
+def child_environment(environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Copy a child environment and export the calling compilation's resolved selection.
+
+    Outside a scope the supplied environment is unchanged. A scoped choice overrides only
+    ``MERLIN_PASSES``; it never mutates the process or caller's mapping. Thread-pool callers must
+    copy their context when submitting work, as they do for other invocation-local owners.
+    """
+    result = dict(os.environ if environ is None else environ)
+    selected = _selection.get()
+    if selected is not None:
+        if selected:
+            result[ENV] = selected.spell()
+        else:
+            result.pop(ENV, None)
+    return result
 
 
 @contextlib.contextmanager
 def applied(selection: Selection) -> Iterator[Selection]:
-    """Make ``selection`` (on top of any already active) the process's for the duration.
-
-    Process-wide by construction, as the switches it replaces are: a lowering runs in child processes
-    and reads the environment there too. Restored on exit, even on error.
-    """
-    previous = os.environ.get(ENV)
+    """Apply choices in this context, nesting over current choices and resetting even on error."""
     combined = active().merged(selection)
-    if combined:
-        os.environ[ENV] = combined.spell()
-    else:
-        os.environ.pop(ENV, None)
+    token = _selection.set(combined)
     try:
         yield combined
     finally:
-        if previous is None:
-            os.environ.pop(ENV, None)
-        else:
-            os.environ[ENV] = previous
+        _selection.reset(token)
 
 
 def selected_features(features: Iterable[str] | None) -> frozenset[str] | None:

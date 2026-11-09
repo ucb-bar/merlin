@@ -2,11 +2,20 @@
 from dataclasses import replace
 import numpy as np
 import pytest
-from merlin.compile.scheduling.block_schedule import (
-    BlockScheduleError, ColumnBias, Compute, Contraction, ConvContraction, Geometry,
-    InitializeAccumulator, Knobs, Preload, check_residency, execute,
-    schedule_contraction, schedule_tiled_convolution, with_column_bias,
-)
+from merlin.compiler.schedule.blocks import BlockScheduleError
+from merlin.compiler.schedule.blocks import ColumnBias
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Contraction
+from merlin.compiler.schedule.blocks import ConvContraction
+from merlin.compiler.schedule.blocks import Geometry
+from merlin.compiler.schedule.blocks import InitializeAccumulator
+from merlin.compiler.schedule.blocks import Knobs
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import check_residency
+from merlin.compiler.schedule.blocks import execute
+from merlin.compiler.schedule.blocks import schedule_contraction
+from merlin.compiler.schedule.blocks import schedule_tiled_convolution
+from merlin.compiler.schedule.blocks import with_column_bias
 
 
 def original():

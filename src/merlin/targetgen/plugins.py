@@ -58,6 +58,20 @@ class PluginKey:
 
 
 PLUGIN_KEYS: dict[str, PluginKey] = {
+    "extension": PluginKey(
+        "extension",
+        "Versioned operation extension declaring offers and prepared-program lowering; "
+        "loaded explicitly from its selected support provider.",
+        consumed=True,
+        expects="path",
+    ),
+    "rvv_codegen": PluginKey(
+        "rvv_codegen",
+        "Provider-owned vector compiler interface; loaded explicitly for vector lowering, "
+        "without registering a runtime backend or changing scalar compilation.",
+        consumed=True,
+        expects="path",
+    ),
     "matrix_lowering": PluginKey(
         "matrix_lowering",
         "Explicit support-provider module for matrix geometry, routing policy, prepared-IR "

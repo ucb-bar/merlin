@@ -6,6 +6,8 @@ import dataclasses
 from collections.abc import Sequence
 from typing import Any
 
+from merlin.compiler.ir.boundary import free_values
+
 #: The symbol stems of the cut: the call the host code makes, and the group's own lowered body.
 DISPATCH_PREFIX = "merlin_dispatch_g"
 #: The argument attribute one-shot bufferization reads an external function's access to an operand from.
@@ -111,7 +113,7 @@ def externalize_dispatches(
                             f"out would drop a value the host code still reads"
                         )
         closure = OL._group_closure(members)
-        params = [p for p in OL._free_values(closure) if id(p) not in inside]
+        params = [p for p in free_values(closure) if id(p) not in inside]
         arg_types = [p.type for p in params]
         result_type = committed.type
         index = int(group.index)

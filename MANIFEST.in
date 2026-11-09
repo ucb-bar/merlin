@@ -1,7 +1,13 @@
 include build_tools/package_resources.json
+include LICENSE
+include NOTICE
+# Independent timing and retained research tests are not a second Merlin code owner.
+prune packages
+global-exclude *.pyc *.pyo
 include src/merlin/semantic_compiler/egg_bridge/Cargo.toml
 include src/merlin/semantic_compiler/egg_bridge/Cargo.lock
 include src/merlin/semantic_compiler/egg_bridge/src/main.rs
+include src/merlin/semantic_compiler/constant_math.c
 include merlin/benchmarks/dse_guidance/accuracy_gate.yaml
 include merlin/benchmarks/dse_guidance/commit_manifest.md
 include merlin/benchmarks/dse_guidance/measured_cycles.yaml
@@ -92,6 +98,7 @@ include merlin/schemas/dse_result.schema.yaml
 include merlin/schemas/evidence_report.schema.yaml
 include merlin/schemas/exploitability_report.schema.yaml
 include merlin/schemas/interface_candidate.schema.yaml
+include merlin/schemas/instruction_semantics.schema.yaml
 include merlin/schemas/kernel_record.schema.yaml
 include merlin/schemas/llvm_extension_plan.schema.yaml
 include merlin/schemas/llvm_requirement.schema.yaml

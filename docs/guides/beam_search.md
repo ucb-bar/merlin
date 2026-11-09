@@ -6,11 +6,11 @@ owner: rvvgen
 last_verified: 2026-07-22
 related: [getting_started, reproducibility, kernel_mining, rvv_e2e, adding_a_target, dse_guidance]
 code_refs:
-  - packages/merlin-mining/src/merlin/mining/beam.py
-  - packages/merlin-mining/src/merlin/mining/beam_cli.py
-  - packages/merlin-mining/src/merlin/mining/wholemodel_proposer.py
-  - packages/merlin-mining/src/merlin/mining/fork_from_action.py
-  - packages/merlin-mining/src/merlin/mining/runner.py
+  - src/merlin/mining/beam.py
+  - src/merlin/mining/beam_cli.py
+  - src/merlin/mining/wholemodel_proposer.py
+  - src/merlin/mining/fork_from_action.py
+  - src/merlin/mining/runner.py
   - src/merlin/mining/k1.py
   - src/merlin/kernels/action_catalog.py
   - src/merlin/targetgen/publish.py

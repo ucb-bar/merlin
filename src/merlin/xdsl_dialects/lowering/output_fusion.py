@@ -836,7 +836,7 @@ def declared_path(target: str) -> dict[str, Any] | None:
 
 def decisions(groups, module, path: Mapping[str, Any], values: Values) -> dict[int, Decision]:
     """``id(root) -> Decision`` for every accelerator contraction group, from ONE matching rule."""
-    from merlin.compile.analysis.contraction_shapes import contraction_extents
+    from merlin.compiler.ir.contraction_shapes import contraction_extents
 
     extents = contraction_extents(module)
     out: dict[int, Decision] = {}

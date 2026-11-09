@@ -39,7 +39,7 @@ def original_factory(_inputs, *, work_root):
 
 @pytest.fixture
 def selected(tmp_path, monkeypatch):
-    from merlin.compile import model_execution_inputs
+    from merlin.runtime import modelinputs as model_execution_inputs
 
     facts = tmp_path / "facts.json"
     facts.write_text("{}")

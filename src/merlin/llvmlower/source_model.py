@@ -138,7 +138,7 @@ def _values(value):
 
 class _SourceModelBuild:
     def __init__(self, families, device, device_admission):
-        from . import borrowed_buffer_calls, fresh_tensor_writer
+        from . import borrowed_buffer_calls, fresh_tensor_writer, pipeline
 
         self.families = families
         self.device, self.device_admission = device, device_admission
@@ -156,6 +156,7 @@ class _SourceModelBuild:
             Path(fresh_tensor_writer.__file__),
             Path(borrowed_buffer_calls.__file__),
             *(Path(__file__).with_name(name) for name in ("dealloc_lifetime.py", "pipeline.py", "lower.py")),
+            *pipeline.implementation_paths(),
             *(f.source_file for f in families),
         )
         if any(getattr(f.selection, "logical_abi", None) is not None for f in families):
@@ -203,7 +204,7 @@ class _SourceModelBuild:
 
             owners = (*owners, *offload_implementation_paths())
         if any(getattr(f.selection, "max_convolution_packing_bytes", None) is not None for f in families):
-            from merlin.verify.host_packing_storage import implementation_paths as packing_paths
+            from merlin.verification.packing import implementation_paths as packing_paths
 
             from .convolution_routes import implementation_paths
 
@@ -719,7 +720,7 @@ class _SourceModelBuild:
         if not self.packing_plans:
             return
         from merlin.common.jsonio import write_pretty_json
-        from merlin.verify.host_packing_storage import (
+        from merlin.verification.packing import (
             PackingStorageRequest,
             PackingStorageUse,
             inspect_packing_storage_batch,
@@ -793,7 +794,7 @@ class _SourceModelBuild:
         self.observe_native(tuple(Path(path) for path in retained), True)
 
     def build(self, context):
-        from merlin.compile.scheduling.library_sources import LIBRARY_MODULES
+        from merlin.compiler.schedule.library_sources import LIBRARY_MODULES
         from merlin.runtime.host_provider import HostProviderBuild, HostProviderObject
 
         self.revalidate()

@@ -253,16 +253,6 @@ _BATCHED_OPS = frozenset({"gemv_batched"})
 _LAYOUT_OPS: frozenset = frozenset()
 
 
-def _sf_primitives(family: str) -> tuple[str, ...]:
-    """The primitive families ``family`` decomposes into, or itself when it is one."""
-    from merlin.targetgen import semantic_families as sf
-
-    try:
-        return tuple(sf.primitives_of(family)) or (family,)
-    except Exception:  # noqa: BLE001 -- an unknown family is its own primitive
-        return (family,)
-
-
 def op_for_shape(
     family: str,
     *,

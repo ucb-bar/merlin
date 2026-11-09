@@ -9,21 +9,21 @@ code_refs:
   - src/merlin/perf/component_cost.py
   - src/merlin/perf/component_screen.py
   - src/merlin/perf/analytical_resources.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_analytical.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_screening.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/supervised_feedback.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_workflow.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_cca.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/broker_policy.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/stage_inputs.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/stage_prompt.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/authoring.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/authoring_cli.py
+  - src/merlin_experiments/phase2/component_analytical.py
+  - src/merlin_experiments/phase2/component_screening.py
+  - src/merlin_experiments/phase2/supervised_feedback.py
+  - src/merlin_experiments/phase2/component_workflow.py
+  - src/merlin_experiments/phase2/component_cca.py
+  - src/merlin_experiments/phase2/broker_policy.py
+  - src/merlin_experiments/phase2/stage_inputs.py
+  - src/merlin_experiments/phase2/stage_prompt.py
+  - src/merlin_experiments/phase2/authoring.py
+  - src/merlin_experiments/phase2/authoring_cli.py
   - packages/merlin-experiments/tests/test_component_workflow.py
   - packages/merlin-experiments/tests/test_component_cca.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_generation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/generation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/corpus.py
+  - src/merlin_experiments/phase0/component_generation.py
+  - src/merlin_experiments/phase0/generation.py
+  - src/merlin_experiments/phase2/corpus.py
   - packages/merlin-experiments/tests/test_component_generation.py
 ---
 

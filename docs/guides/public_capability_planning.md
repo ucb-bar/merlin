@@ -6,14 +6,14 @@ owner: experiments
 last_verified: 2026-10-23
 related: [conditional_compiler_pipelines, ../reference/compiler_optimization_workflow, artifact_evaluation]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase1/capability_inventory.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/capability_source.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/capability_query.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/session.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/run_inputs.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/generated_isa_library.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/compiler_library.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/prepare_author_library.py
+  - src/merlin_experiments/phase1/capability_inventory.py
+  - src/merlin_experiments/phase1/capability_source.py
+  - src/merlin_experiments/phase1/capability_query.py
+  - src/merlin_experiments/phase1/session.py
+  - src/merlin_experiments/phase1/run_inputs.py
+  - src/merlin_experiments/phase1/generated_isa_library.py
+  - src/merlin_experiments/phase1/compiler_library.py
+  - src/merlin_experiments/phase1/prepare_author_library.py
   - examples/gemmini/phase1/launch/prepare_source_release.py
   - examples/gemmini/phase1/launch/prepare_author_launch.py
   - examples/gemmini/phase1/launch/resource_reservation.py

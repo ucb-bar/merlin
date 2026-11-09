@@ -232,3 +232,55 @@ def load(path: str | os.PathLike | None = None, *, source_bytes: bytes | None = 
                         numerics=data.get("numerics"))
     selected_float_policy(result)
     return result
+
+
+PROTOCOL_GEOMETRY_SCHEMA = "merlin.model_check.protocol_geometry.v1"
+
+
+def _protocol_models_bytes(baseline: bytes, protocol: dict) -> bytes:
+    """Resolve only explicitly selected chain geometry over unchanged baseline policy.
+
+    Supplied values are the sole inputs. The returned configuration is a new
+    selection, not a replacement identity for baseline captures or references.
+    No host arithmetic, program bindings, accuracy rules or tolerances change.
+    """
+    authority = protocol.get("authority") if isinstance(protocol, dict) else None
+    selection = authority.get("models_configuration") if isinstance(authority, dict) else None
+    if selection != {"schema": PROTOCOL_GEOMETRY_SCHEMA, "chain_source": "protocol.models"}:
+        raise ModelsFileError("unsupported explicit protocol models configuration selection")
+    data = yaml.safe_load(baseline)
+    if not isinstance(data, dict) or data.get("schema") != MODELS_SCHEMA:
+        raise ModelsFileError("protocol geometry requires an ordinary baseline models file")
+    original, selected = data.get("models"), protocol.get("models")
+    if (not isinstance(original, dict) or not original or not isinstance(selected, dict)
+            or set(original) != set(selected)
+            or any(not isinstance(name, str) or not name for name in original)):
+        raise ModelsFileError("protocol geometry requires the exact baseline model roster")
+    keys = {"single": {"kind"}, "flow": {"kind", "steps"},
+            "causal": {"kind", "prefill_tokens", "decode_steps"}}
+    for name, entry in original.items():
+        declaration = selected[name]
+        before = entry.get("chain") if isinstance(entry, dict) else None
+        chain = declaration.get("chain") if isinstance(declaration, dict) else None
+        kind = before.get("kind") if isinstance(before, dict) else None
+        if (not isinstance(kind, str) or kind not in keys or set(before) != keys[kind] or not isinstance(chain, dict)
+                or chain.get("kind") != kind or set(chain) != keys[kind]
+                or any(type(value) is not int or value <= 0 for key, value in chain.items() if key != "kind")):
+            raise ModelsFileError(
+                f"{name}: protocol geometry requires the same chain kind and exact positive dimensions"
+            )
+        programs, stages = entry.get("programs"), declaration.get("stages")
+        if (not isinstance(programs, list) or not isinstance(stages, dict)
+                or any(not isinstance(program, dict) or not isinstance(program.get("name"), str)
+                       or not program["name"] or type(program.get("steps", 1)) is not int
+                       or program.get("steps", 1) <= 0 for program in programs)
+                or [program.get("name") for program in programs] != list(stages)
+                or any(not isinstance(stages[program["name"]], dict)
+                       or type(stages[program["name"]].get("steps")) is not int
+                       or stages[program["name"]]["steps"] != program.get("steps", 1)
+                       for program in programs)):
+            raise ModelsFileError(f"{name}: protocol geometry cannot change baseline programs, order or step counts")
+        entry["chain"] = dict(chain)
+    resolved = yaml.safe_dump(data, sort_keys=True, allow_unicode=True).encode("utf-8")
+    load(Path("<resolved-protocol-models>"), source_bytes=resolved)
+    return resolved

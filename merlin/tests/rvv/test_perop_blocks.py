@@ -484,6 +484,7 @@ def test_the_named_mr_cap_reaches_the_block_table_and_beats_the_env():
     cap must reach `block_table`, and it must WIN over the ambient env so a fork's measurement
     describes the fork rather than the shell it ran in.
     """
+    import ast
     import inspect
 
     from merlin.runtime.backends import zephyr_model as zm
@@ -493,7 +494,12 @@ def test_the_named_mr_cap_reaches_the_block_table_and_beats_the_env():
     # resolved from the sentinel when named, from the env only as a fallback
     assert "mr_cap = _mr_named[0] if _mr_named else perop_mr_cap()" in prep
     # and the sentinel is swapped for the plain request so it can never reach lowering
-    assert "| {PEROP_BLOCK_NAME})" in prep
+    assert any(
+        isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr)
+        and isinstance(node.right, ast.Set) and len(node.right.elts) == 1
+        and isinstance(node.right.elts[0], ast.Name) and node.right.elts[0].id == "PEROP_BLOCK_NAME"
+        for node in ast.walk(ast.parse(prep))
+    )
 
 
 def test_two_named_mr_caps_are_refused_rather_than_resolved_by_sort_order():
@@ -675,7 +681,7 @@ def test_the_mr_fill_knob_is_registered_at_import_and_ranked():
     import subprocess
     import sys
 
-    from merlin.common.paths import merlin_dir, repo_root
+    from merlin.common.paths import python_source_dir, repo_root
     from merlin.llvmlower.impr_features import PEROP_MR_FILL_NAME
     from merlin.mining.wholemodel_proposer import RANKED_LEVERS, _composes
 
@@ -684,7 +690,7 @@ def test_the_mr_fill_knob_is_registered_at_import_and_ranked():
         "from merlin.llvmlower import impr_features as F\n"
         "print(json.dumps(F.PEROP_MR_FILL_NAME in F.known()))\n"
     )
-    env = {"PYTHONPATH": str(merlin_dir() / "python"), "PATH": "/usr/bin:/bin"}
+    env = {"PYTHONPATH": str(python_source_dir()), "PATH": "/usr/bin:/bin"}
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=repo_root(), env=env)
     assert r.returncode == 0, r.stderr[-2000:]
     assert json.loads(r.stdout.strip().splitlines()[-1]) is True

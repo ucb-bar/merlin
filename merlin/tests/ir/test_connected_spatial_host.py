@@ -93,8 +93,8 @@ def test_same_signature_cannot_hide_a_changed_source_rounding():
 
 
 def test_packed_plan_binds_same_actual_ssa_and_readouts_with_separate_private_capacity():
-    from merlin.compile.scheduling.program_limits import AddressWindow
-    from merlin.compile.scheduling.spatial_producer import PackedSpatialProducerPlan
+    from merlin.compiler.schedule.program_limits import AddressWindow
+    from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan
     from merlin.llvmlower.connected_spatial_route import ConnectedSpatialRoute
 
     source, rewrite, original, contract, workspace, _ = fixture()

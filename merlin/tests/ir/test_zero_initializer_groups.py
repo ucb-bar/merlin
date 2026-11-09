@@ -6,7 +6,7 @@ import pytest
 from xdsl.dialects.builtin import IntegerAttr, StringAttr, i32
 from xdsl.dialects.linalg.ops import GenericOp
 
-from merlin.compile.scheduling.zero_initializer_groups import find_zero_initializer_groups
+from merlin.compiler.schedule.zero_initializer_groups import find_zero_initializer_groups
 from merlin.frontends.linalg_mlir import parse_mlir_text
 
 

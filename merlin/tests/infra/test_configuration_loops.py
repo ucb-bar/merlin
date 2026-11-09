@@ -4,8 +4,11 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.scheduling.configuration import ConfigurationAdapter, ConfigurationEffects, ConfigurationUnavailable
-from merlin.compile.scheduling.configuration_loops import hoist_loop_configuration, verify_loop_configuration_rewrite
+from merlin.compiler.schedule.configuration import ConfigurationAdapter
+from merlin.compiler.schedule.configuration import ConfigurationEffects
+from merlin.compiler.schedule.configuration import ConfigurationUnavailable
+from merlin.compiler.schedule.configuration_loops import hoist_loop_configuration
+from merlin.compiler.schedule.configuration_loops import verify_loop_configuration_rewrite
 from merlin.sched.ir import Call, Const, Kernel, Loop, Var, evaluate
 
 

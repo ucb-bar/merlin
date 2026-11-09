@@ -98,7 +98,7 @@ class RoleProvenance:
 
 def provenance_of_role(role: str) -> RoleProvenance:
     """The full chain for one role, read from the live region taxonomy."""
-    from merlin.compile.analysis import instruction_roles as _roles
+    from merlin.analysis import instruction_roles as _roles
     from merlin.kernels import regions as _regions
 
     if not _roles.is_role(role):
@@ -136,14 +136,14 @@ def provenance_of_role(role: str) -> RoleProvenance:
 
 def provenance_table() -> dict[str, dict]:
     """The whole chain, for every role in the vocabulary."""
-    from merlin.compile.analysis import instruction_roles as _roles
+    from merlin.analysis import instruction_roles as _roles
 
     return {r: provenance_of_role(r).to_dict() for r in sorted(_roles.ROLES)}
 
 
 def unowned_roles() -> tuple[str, ...]:
     """Roles no compiler region governs — instructions we can read but cannot attribute to an owner."""
-    from merlin.compile.analysis import instruction_roles as _roles
+    from merlin.analysis import instruction_roles as _roles
 
     return tuple(r for r in sorted(_roles.ROLES) if not provenance_of_role(r).regions)
 

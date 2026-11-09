@@ -21,7 +21,7 @@ from test_pointwise_source_provider import Descriptor, Provider
 from test_selected_dense_contracts import inputs
 
 from merlin.common.digest import sha256_file
-from merlin.compile.scheduling.block_schedule import Compute
+from merlin.compiler.schedule.blocks import Compute
 from merlin.llvmlower.fresh_tensor_writer import FreshTensorWriterContract
 from merlin.llvmlower.prepared_model_transform import apply_prepared_model_transform
 from merlin.llvmlower.shared_source_routing import DenseSourceBackend, DenseSourceLimits, SharedSourceRouting

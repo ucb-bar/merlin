@@ -1,5 +1,12 @@
 # AGENT.md — src/merlin/verify
 
+Actual verifier algorithms and mathematical resources moved to
+`src/merlin/verification`. The Python leaves here are exact compatibility
+identities, sharing the canonical verifier's live completion state. The optional
+historical plots/replay implementations remain logical research owners here.
+The detailed contracts below apply to the corresponding canonical algorithms;
+do not restore duplicate implementations or mathematical sources in this folder.
+
 Original emission operations may consume their explicitly selected concurrent
 executor's snapshot re-admission context before the existing verification scope.
 The existing scope, original owner checks and final custody remain mandatory.
@@ -60,9 +67,9 @@ and working log: `docs/design/compiler_verification.md`.
 - `split_reduction.py` — SMT proof or counterexample for one signed split-K accumulation at
   declared operand/partial/output widths; an algebraic obligation, not an emitted-kernel check.
 - `merlin.verify.plots` — optional analysis-owned figures under
-  `packages/merlin-analysis/src/merlin/verify/`, each generated from a JSON record, never a literal.
+  `src/merlin/verify/`, each generated from a JSON record, never a literal.
 - `merlin.verify.replay` / `merlin.verify.replay_layers` — optional analysis-owned historical replay,
-  under `packages/merlin-analysis/src/merlin/verify/`; install the analysis `replay` extra.
+  under `src/merlin/verify/`; install the analysis `replay` extra.
 
 ## Invariants
 
@@ -176,3 +183,21 @@ Source publication remains after independent operation-exit verification and its
 own fresh locked publication check. Pure retention inside that same locked check
 must not repeat the entire payload scan. Never issue aliases before final custody
 or reuse this bookkeeping path across commands, threads, or unlocked work.
+
+## Research workflow responsibilities
+
+Owns verification figure generation (`merlin.verify.plots`) and its study collectors.
+Owns historical replay (`merlin.verify.replay` and `merlin.verify.replay_layers`), including its trusted
+qualification bootstrap. Install `merlin[replay]` for pytest, core verification dependencies
+and the experiments-owned numeric evaluator. Actual replay also needs the source checkout's history,
+tests, corpus and declared tools; an installed wheel alone cannot reproduce that research input.
+The compiler verifiers and `merlin.verify` namespace initializer remain in core.
+Do not add an initializer here or duplicate solver/compiler implementation.
+
+Install `merlin[analysis,plots]` to render figures. Measurements come from input records or
+explicit collection, never literals; unavailable verification remains distinct from a passing
+result. Retain the historical module entrypoint for existing analysis commands.
+
+Preserve `executed_checks_v2`, frozen namespace isolation, exact historical population definitions,
+and the explicit unqualified lit limitation. Missing dependencies, runtime/import failures and
+all-skipped checks are unavailable, never detections. Never rewrite previous replay measurements.

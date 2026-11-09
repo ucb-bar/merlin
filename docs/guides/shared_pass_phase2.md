@@ -18,18 +18,18 @@ code_refs:
   - src/merlin/llvmlower/source_dense.py
   - src/merlin/llvmlower/source_choices.py
   - src/merlin/targetgen/capsule_common.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/source_choices_workflow.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py
+  - src/merlin_experiments/phase2/source_choices_workflow.py
+  - src/merlin_experiments/phase2/ordinary_search_stage.py
   - src/merlin/targetgen/compiler_library.py
   - src/merlin/targetgen/compiler_source_optimizations.py
   - merlin/tests/infra/test_compiler_source_optimizations.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_optimizations.py
+  - src/merlin_experiments/phase1/feedback/private_source_optimizations.py
   - packages/merlin-experiments/tests/test_private_source_optimizations.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/compiler_library.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/controller.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/compiler_libraries.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/compiler_library_state.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/compiler_library_guidance.py
+  - src/merlin_experiments/phase1/compiler_library.py
+  - src/merlin_experiments/phase1/controller.py
+  - src/merlin_experiments/phase2/compiler_libraries.py
+  - src/merlin_experiments/phase2/compiler_library_state.py
+  - src/merlin_experiments/phase2/compiler_library_guidance.py
 ---
 
 # Shared passes in ordinary compiler authoring

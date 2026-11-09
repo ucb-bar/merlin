@@ -11,12 +11,21 @@ import pytest
 from merlin.common.paths import repo_root
 
 
-def _gate():
-    path = repo_root() / "build_tools/scripts/check_distribution_layout.py"
+def _gate(name="check_distribution_layout.py"):
+    path = repo_root() / "build_tools/scripts" / name
     spec = importlib.util.spec_from_file_location("distribution_gate", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_required_installation_cannot_report_missing_installer_as_a_pass(monkeypatch, capsys):
+    gate = _gate("check_standalone_install.py")
+    monkeypatch.setattr(gate.shutil, "which", lambda name: None)
+    assert gate.main([]) == 0
+    assert "SKIP" in capsys.readouterr().out
+    assert gate.main(["--require-tools"]) == 1
+    assert "FAIL" in capsys.readouterr().out
 
 
 def _wheel(tmp_path, distribution, files):
@@ -35,19 +44,11 @@ def test_duplicate_namespace_files_are_rejected(tmp_path):
     assert any("overwrites core namespace" in error for error in errors)
 
 
-def test_moved_modules_cannot_survive_a_stale_core_build(tmp_path):
-    core = _wheel(tmp_path, "merlin", {"merlin/dse/cli.py": ""})
-    assert any("research shipped in core" in error for error in _gate().audit([core]))
-
-
-def test_evaluator_cannot_survive_a_stale_core_build(tmp_path):
-    core = _wheel(tmp_path, "merlin", {"merlin/targetgen/capsule_runner.py": ""})
-    assert any("research shipped in core" in error for error in _gate().audit([core]))
-
-
 @pytest.mark.parametrize(
     "module",
     [
+        "merlin/dse/cli.py",
+        "merlin/targetgen/capsule_runner.py",
         "merlin/agentreport/tokens.py",
         "merlin/verify/plots.py",
         "merlin/verify/replay.py",
@@ -68,9 +69,9 @@ def test_evaluator_cannot_survive_a_stale_core_build(tmp_path):
         "merlin/targetgen/rtl/gen_rocc_replay.py",
     ],
 )
-def test_research_adapters_cannot_survive_a_stale_core_build(tmp_path, module):
+def test_one_distribution_may_ship_logically_separate_research_components(tmp_path, module):
     core = _wheel(tmp_path, "merlin", {module: ""})
-    assert any("research shipped in core" in error for error in _gate().audit([core]))
+    assert _gate().audit([core]) == []
 
 
 def test_console_script_has_one_owner(tmp_path):
@@ -133,11 +134,14 @@ def test_source_parity_resolves_out_of_tree_example_owner(tmp_path):
     source = example / "src/merlin_firesim_modelblaster/__init__.py"
     source.parent.mkdir(parents=True)
     source.write_text("# example adapter\n")
-    wheel = _wheel(tmp_path, "merlin_firesim_modelblaster", {"merlin_firesim_modelblaster/__init__.py": source.read_bytes()})
+    wheel = _wheel(
+        tmp_path, "merlin_firesim_modelblaster", {"merlin_firesim_modelblaster/__init__.py": source.read_bytes()}
+    )
     assert _gate().audit_sources([wheel], tmp_path) == []
     source.write_text("# changed adapter\n")
     assert _gate().audit_sources([wheel], tmp_path) == [
-        "Python member differs from canonical source: merlin_firesim_modelblaster:merlin_firesim_modelblaster/__init__.py"
+        "Python member differs from canonical source: "
+        "merlin_firesim_modelblaster:merlin_firesim_modelblaster/__init__.py"
     ]
 
 

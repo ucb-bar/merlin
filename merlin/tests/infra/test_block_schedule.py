@@ -16,34 +16,32 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from merlin.compile.scheduling import (
-    AXES,
-    BANK_ALIGNED,
-    CONTIGUOUS,
-    LHS,
-    NEST,
-    OPPOSITE_END,
-    ROLE,
-    WEIGHT,
-    BlockScheduleError,
-    Compute,
-    Contraction,
-    ConvContraction,
-    Geometry,
-    K,
-    Knobs,
-    Load,
-    M,
-    N,
-    Preload,
-    Store,
-    check_residency,
-    execute,
-    geometry_from_address_space,
-    schedule_contraction,
-    schedule_convolution,
-    schedule_interface_program,
-)
+from merlin.compiler.schedule import AXES
+from merlin.compiler.schedule import BANK_ALIGNED
+from merlin.compiler.schedule import CONTIGUOUS
+from merlin.compiler.schedule import LHS
+from merlin.compiler.schedule import NEST
+from merlin.compiler.schedule import OPPOSITE_END
+from merlin.compiler.schedule import ROLE
+from merlin.compiler.schedule import WEIGHT
+from merlin.compiler.schedule import BlockScheduleError
+from merlin.compiler.schedule import Compute
+from merlin.compiler.schedule import Contraction
+from merlin.compiler.schedule import ConvContraction
+from merlin.compiler.schedule import Geometry
+from merlin.compiler.schedule import K
+from merlin.compiler.schedule import Knobs
+from merlin.compiler.schedule import Load
+from merlin.compiler.schedule import M
+from merlin.compiler.schedule import N
+from merlin.compiler.schedule import Preload
+from merlin.compiler.schedule import Store
+from merlin.compiler.schedule import check_residency
+from merlin.compiler.schedule import execute
+from merlin.compiler.schedule import geometry_from_address_space
+from merlin.compiler.schedule import schedule_contraction
+from merlin.compiler.schedule import schedule_convolution
+from merlin.compiler.schedule import schedule_interface_program
 from merlin.targetgen.address_space import derive_address_space
 
 
@@ -566,10 +564,39 @@ def test_the_adapter_schedules_a_conv_command_and_refuses_pooling():
 
 
 def test_the_pass_module_imports_nothing_from_merlin_so_a_backend_can_vendor_it():
-    """Generated backends may not depend on merlin at run time and copy this module verbatim instead; the
-    package integrity scan rejects any merlin import, so a stray one here would fail every such package."""
-    from merlin.compile.scheduling import block_schedule
+    """The derived standalone artifact executes the actual shared owners without runtime imports."""
+    import ast
+    import sys
+    import types
+
+    from merlin.compiler.schedule import blocks
+    from merlin.compiler.schedule.standalone import OWNERS, block_schedule_source
     from merlin.targetgen.oot_runner import _py_imports_merlin
 
-    with open(block_schedule.__file__, encoding="utf-8") as handle:
-        assert _py_imports_merlin(handle.read()) is None
+    source = block_schedule_source().decode()
+    assert _py_imports_merlin(source) is None
+    module = types.ModuleType("standalone_block_schedule_test")
+    sys.modules[module.__name__] = module
+    try:
+        exec(compile(source, "standalone_block_schedule.py", "exec"), module.__dict__)
+        program = blocks.Contraction(5, 7, 3)
+        geometry = blocks.Geometry(2, 64, 32, 64, True)
+        selected = blocks.schedule_contraction(program, geometry)
+        standalone = module.schedule_contraction(module.Contraction(5, 7, 3), module.Geometry(2, 64, 32, 64, True))
+        lhs = np.arange(35).reshape(5, 7)
+        rhs = np.arange(21).reshape(7, 3)
+        np.testing.assert_array_equal(blocks.execute(selected, lhs, rhs), lhs @ rhs)
+        np.testing.assert_array_equal(module.execute(standalone, lhs, rhs), lhs @ rhs)
+        assert len(selected.ops) == len(standalone.ops)
+        definitions = {node.name: ast.dump(node, include_attributes=False)
+                       for node in ast.parse(source).body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+        for owner in OWNERS:
+            import importlib
+            from pathlib import Path
+
+            actual = importlib.import_module("merlin.compiler.schedule." + owner)
+            for node in ast.parse(Path(actual.__file__).read_text()).body:
+                if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                    assert definitions[node.name] == ast.dump(node, include_attributes=False)
+    finally:
+        del sys.modules[module.__name__]

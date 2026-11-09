@@ -2,8 +2,8 @@
 import hashlib
 import pytest
 
-from merlin.compile.materialized_model_inputs import MaterializedModelInputs
-from merlin.compile import baremetal_model
+from merlin.compiler.frontend.materialized import MaterializedModelInputs
+from merlin import model as baremetal_model
 
 
 def binding(tmp_path):

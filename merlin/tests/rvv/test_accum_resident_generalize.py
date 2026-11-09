@@ -47,7 +47,7 @@ def _build(features, bundle):
     pkg = load_rvv_package(REPO / "out/artifacts/targets" / "rvv" / "hand_v0")
     pkg = replace(pkg, run_id="test_general", compiler_features=list(features))
     work = Path(tempfile.mkdtemp(prefix="test_general_"))
-    apply_rvv_package(pkg, bundle, work, board="spike_riscv64", harts=1, arena_mb=64)
+    apply_rvv_package(pkg, bundle, work, board="spike_riscv64", harts=1)
     return rvv.decode(str(work / "model.o"))
 
 

@@ -415,7 +415,7 @@ def _endpoint_roles(target: str) -> tuple[frozenset[str], str]:
     prohibition and would silently answer "no" for any device that spells it differently.
     """
     try:
-        from merlin.compile.analysis import compute_endpoints as _ep
+        from merlin.analysis import compute_endpoints as _ep
 
         seen: set[str] = set()
         for e in _ep.endpoints_for(target):

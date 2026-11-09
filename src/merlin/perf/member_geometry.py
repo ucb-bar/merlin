@@ -133,7 +133,7 @@ def census_classes(target: str) -> dict[str, Any]:
     place a member against, and :func:`stamp_for` records that rather than pretending the member is
     representative.
     """
-    from merlin.verify.lattice import load_spec
+    from merlin.verification.lattice import load_spec
 
     try:
         spec = load_spec(target)

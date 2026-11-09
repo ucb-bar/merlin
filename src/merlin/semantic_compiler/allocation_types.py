@@ -42,10 +42,11 @@ class StorageBank:
 
 @dataclass(frozen=True)
 class Reservation:
-    """Unavailable physical interval, in the bank's explicit address unit.
+    """Physical interval unavailable to every typed view of one backing store.
 
-    Reservations last for the entire candidate, across every typed view of the
-    backing store. Shorter lifetimes need a qualified temporal model.
+    The target contract names the storage view and supplies the interval in its
+    explicit address unit. Reservations last for this entire candidate. Shorter
+    lifetimes require a qualified temporal model, not an assumed issue order.
     """
 
     storage: str
@@ -79,14 +80,23 @@ class Value:
     input_read_offsets: tuple[int, ...] = ()
     completion_offset: int = 0
     in_place_inputs: tuple[int, ...] = ()
-    # A source input is immutable unless the external boundary permits reuse.
+    # A source input is immutable across the kernel unless its boundary says reusable.
     preserve_input: bool = True
+    instruction_instance: tuple | None = None
+    projection_of: int | None = None
+    value_preserving_copy: bool = False
 
     def __post_init__(self) -> None:
         if type(self.preserve_input) is not bool or (self.kind != "input" and not self.preserve_input):
             raise ValueError("input retention must be a boolean on input values")
         if self.kind == "event" and self.extent != 0:
             raise ValueError("a result-free instruction event consumes no storage")
+        if (self.kind == "projection") != (self.projection_of is not None):
+            raise ValueError("multi-result projection needs exactly one instruction owner")
+        if type(self.value_preserving_copy) is not bool or (
+            self.value_preserving_copy and (self.kind != "instruction" or len(self.children) != 1)
+        ):
+            raise ValueError("value-preserving copy needs one instruction operand")
 
     def read_offset(self, index: int) -> int:
         return self.input_read_offsets[index] if self.input_read_offsets else 0

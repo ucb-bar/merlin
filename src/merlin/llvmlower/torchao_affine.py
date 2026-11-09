@@ -237,7 +237,7 @@ def lower_torchao_affine_quant(module, *, report_out: "dict | None" = None) -> i
     from xdsl.dialects.linalg import ops as L
     from xdsl.ir import Block, Region
 
-    from .passes_xdsl import carry_provenance
+    from merlin.compiler.ir.provenance import carry_provenance
 
     choose_calls: list = []
     quant_calls: list = []

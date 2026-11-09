@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import module_source_path
 from merlin.targetgen._recipe_quantizer import _no_batch_norm_fold_needed
 
 
@@ -40,7 +40,7 @@ def test_static_recipe_conv_bn_fold_preserves_frontend_trace() -> None:
     python = os.environ.get("MERLIN_M2M_PYTHON")
     if not python or not Path(python).is_file():
         pytest.skip("TorchAO capture interpreter is not configured")
-    source = merlin_dir() / "python/merlin/targetgen/_recipe_quantizer.py"
+    source = module_source_path("merlin.targetgen._recipe_specs").with_name("_recipe_quantizer.py")
     script = r"""
 import importlib.util
 import json

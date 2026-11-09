@@ -8,13 +8,13 @@ related: [optional_passes, model_lowering, whole_model_on_accelerator]
 code_refs: [src/merlin/common/compile_trace.py,
             src/merlin/perf/debug_companion.py,
             src/merlin/perf/whole_model_group_timing.py,
-            src/merlin/compile/debug.py,
+            src/merlin/compiler/inspect.py,
             src/merlin/compile/command.py,
             src/merlin/llvmlower/pipeline.py,
             src/merlin/perf/whole_model_build_cli.py,
             src/merlin/perf/whole_model_partial.py,
-            packages/merlin-experiments/src/merlin_experiments/group_inspect.py,
-            packages/merlin-experiments/src/merlin_experiments/group_probes.py,
+            src/merlin_experiments/group_inspect.py,
+            src/merlin_experiments/group_probes.py,
             src/merlin/perf/census_cli.py]
 ---
 

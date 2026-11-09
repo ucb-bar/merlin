@@ -12,7 +12,7 @@ from merlin.targetgen import owned_host_model_execution as owned
 @pytest.mark.parametrize("required", [["WORK"], ["MISSING"]])
 def test_static_tiers_report_dispatch_classes_without_granting_missing_work(tmp_path, monkeypatch, required):
     from merlin.common import facts_view
-    from merlin.compile import model_execution_inputs
+    from merlin.runtime import modelinputs as model_execution_inputs
     from merlin.llvmlower import compilation_recipe, toolchain
     from merlin.runtime import boards
     from merlin.runtime.backends import spike

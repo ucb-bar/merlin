@@ -1,14 +1,13 @@
 """merlin: compiler-centered HW/SW abstraction exploration.
 
-Core provides compiler dialects/lowering, capture and workload contracts, target package
-invocation, runtime/verification primitives, and shared infrastructure. Optional research
-distributions contribute the historical DSE, mining, analysis and evaluation namespaces.
+Merlin owns compiler dialects/lowering, capture and workload contracts, target package
+invocation, runtime/verification primitives, and the research workflows. Optional dependency
+extras enable DSE, mining, analysis and evaluation under their historical import names.
 Experiment definitions live in the root catalog; generated state belongs under out/.
 """
 
-# Optional distributions contribute research modules under their historical names.
-# One extended package path preserves class/function identity and avoids duplicate
-# implementations or process-global import hooks during the packaging migration.
+# Retain the historical package-path behavior without importing optional engines.
+# All active Merlin implementations now have one distribution owner.
 from pkgutil import extend_path
 
 __path__ = extend_path(__path__, __name__)

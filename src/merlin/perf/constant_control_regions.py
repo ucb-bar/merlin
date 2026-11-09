@@ -86,7 +86,7 @@ def control_regions(function, *, include_rectangular=False):
             loops[header] = loop
 
     from merlin.perf.constant_control_cfg import MAX_BLOCK_VISITS, MAX_COUNT_CACHE_KEYS, MAX_OPERATIONS
-    from merlin.verify.input_copy_loops import control_dependencies, region_cost
+    from merlin.verification.input_copy_loops import control_dependencies, region_cost
 
     structural = {}
     for header, loop in loops.items():

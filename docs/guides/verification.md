@@ -6,17 +6,17 @@ owner: verification
 last_verified: 2026-10-09
 related: [phase0_specification, model_lowering, simulator_selection]
 code_refs:
-  - src/merlin/verify/receipts.py
-  - src/merlin/verify/refine.py
-  - src/merlin/verify/linalg_semantics.py
-  - src/merlin/verify/merlin_iface_semantics.py
-  - src/merlin/verify/smt_semantics.py
-  - src/merlin/verify/cb_semantics.py
-  - src/merlin/verify/model_coverage.py
+  - src/merlin/verification/receipts.py
+  - src/merlin/verification/refine.py
+  - src/merlin/verification/linalg_semantics.py
+  - src/merlin/verification/merlin_iface_semantics.py
+  - src/merlin/verification/smt_semantics.py
+  - src/merlin/verification/cb_semantics.py
+  - src/merlin/verification/model_coverage.py
   - src/merlin/verify/scalar_ir.py
   - src/merlin/verify/outline_ir.py
   - src/merlin/verify/split_reduction.py
-  - src/merlin/verify/cli.py
+  - src/merlin/verification/cli.py
 ---
 
 # Verify a compiler transformation

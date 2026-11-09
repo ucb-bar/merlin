@@ -121,7 +121,7 @@ def built(tmp_path, monkeypatch):
     monkeypatch.setattr(FB, "_lowering_sources", lambda: {"fixture.compiler": source})
 
     def material(stage, target, label, submission, submission_sha, settings, offload):
-        from merlin.compile.model_execution_inputs import strict_tree_sha256
+        from merlin.runtime.modelinputs import strict_tree_sha256
 
         return {
             "stage": str(stage.resolve()),
@@ -202,7 +202,7 @@ def built(tmp_path, monkeypatch):
             }
         }
 
-    from merlin.compile import baremetal_model
+    from merlin import model as baremetal_model
 
     monkeypatch.setattr(baremetal_model, "compile_saved_model", compile_model)
     directory = tmp_path / "models"
@@ -263,7 +263,7 @@ def test_full_build_forwards_only_selected_host_math_policy_and_separates_reuse(
 
 
 def test_native_adoption_reuses_observed_image_and_relinks_real_inputs(built, tmp_path):
-    from merlin.compile.model_execution_inputs import strict_tree_sha256
+    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.model_check.full_build_native import adopt
 
     build, stage, _directory, _source, calls = built
@@ -363,7 +363,7 @@ def _ordinary_admission(*, elf, evidence_root):
 
 
 def _adopt_checked_record(record, stage, tmp_path, *, qualification=None, include_bounded_declaration=True):
-    from merlin.compile.model_execution_inputs import strict_tree_sha256
+    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.model_check.full_build_native import adopt
 
     settings = FB.BuildSettings(

@@ -15,7 +15,7 @@ from merlin.model_check import full_build as FB
 @pytest.fixture
 def image(tmp_path, monkeypatch, request):
     from merlin.common.paths import module_source_path
-    from merlin.compile import baremetal_model
+    from merlin import model as baremetal_model
     from merlin.llvmlower.compilation_recipe import CompilationRecipe
     from merlin.targetgen.rtl.facts import observed_facts
 

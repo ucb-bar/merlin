@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 from xdsl.dialects import func
 
-from merlin.compile import fusion_workflow as F
+from merlin.compiler.planning import explore as F
 from merlin.transforms.certificates import ir_digest
 from test_multioutput_fusion import model, source_program
 from test_physical_fusion import fixture as physical_fixture
@@ -111,7 +111,7 @@ def test_compact_loop_route_is_retained_without_unrolling():
 
 
 def test_native_receipt_writer_accepts_source_discovery_without_emitted_claim(tmp_path):
-    from merlin.compile.compiler_observations import write_receipt
+    from merlin.compiler.observations import write_receipt
     module, _ = source_program()
     section = F.discover(module, capability_contract={}, numerical_policy_sha256="a"*64)
     observation = write_receipt(tmp_path / "fusion.json", compiler_sha256="b"*64,

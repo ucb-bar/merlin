@@ -6,7 +6,7 @@ from itertools import product
 import pytest
 from test_im2col_panel_pack import _module
 from test_selected_dense_contracts import inputs
-from xdsl.dialects import arith, builtin
+from xdsl.dialects import arith, builtin, func, scf
 from xdsl.dialects.linalg.ops import GenericOp
 
 from merlin.common import mlir_query as mq
@@ -95,6 +95,15 @@ def actual_outputs(rewrite, image, weight):
     ],
 )
 def test_actual_windows_complete_outputs_tails_and_modular_accumulation(tmp_path, bits, width, shape):
+    from pathlib import Path
+
+    from merlin.compiler.ir import convolution as convolution_ir
+    from merlin.llvmlower.convolution_routes import implementation_paths
+    from merlin.verification import convolution
+
+    assert ip.verify_bounded_match is convolution.verify_bounded_match
+    assert ip.BoundedIm2ColRewrite is convolution_ir.BoundedIm2ColRewrite
+    assert {Path(convolution.__file__), Path(convolution_ir.__file__)} <= set(implementation_paths())
     _, rewrite, report, _, _, g = build(tmp_path, bits=bits, width=width, **shape)
     n, c, kh, kw, oh, ow = (g[k] for k in ("n", "c", "kh", "kw", "oh", "ow"))
     ih = (oh - 1) * g["sh"] + (kh - 1) * g["dh"] + 1
@@ -228,3 +237,70 @@ def test_same_typed_external_binding_substitution_refuses_original_context(tmp_p
     assert mutated.source_identity == mutated.source.identity  # A canonical standalone function erases SSA binding.
     with pytest.raises(ValueError, match="external SSA bindings"):
         ip.verify_bounded_match(mutated, expected_source=rewritten.source_identity, expected_bindings=original)
+
+
+@pytest.mark.parametrize("placement", ["outer", "same_block", "late", "sibling", "isolated", "source_scope", "malformed"])
+def test_weight_views_are_retained_only_as_valid_dominating_captures(tmp_path, placement):
+    # The ordinary model route hoists immutable weight reshapes above a loop,
+    # while activation gathering and the contraction remain inside its body.
+    _, _, _, selected, source, _ = build(tmp_path)
+    source = source.replace("%w: tensor<3x12xi8>", "%raw: tensor<3x2x2x3xi8>")
+    source = source.replace(
+        "    %c0 =",
+        "    %w = tensor.collapse_shape %raw [[0], [1, 2, 3]] "
+        ": tensor<3x2x2x3xi8> into tensor<3x12xi8>\n"
+        "    %lo = arith.constant 0 : index\n"
+        "    %hi = arith.constant 2 : index\n"
+        "    %step = arith.constant 1 : index\n"
+        "    %e0 = tensor.empty() : tensor<3x21xi32>\n"
+        "    %result = scf.for %i = %lo to %hi step %step "
+        "iter_args(%carry = %e0) -> (tensor<3x21xi32>) {\n    %c0 =",
+    ).replace(
+        "    func.return %mm : tensor<3x21xi32>",
+        "    scf.yield %mm : tensor<3x21xi32>\n    }\n"
+        "    func.return %result : tensor<3x21xi32>",
+    )
+    module = mq.parse(source)
+    operation = [op for op in module.walk() if type(op) is GenericOp][-1]
+    view = operation.inputs[0].owner
+    loop = next(op for op in module.walk() if type(op) is scf.ForOp)
+    outer = loop.parent_block()
+    body = operation.parent_block()
+    if placement == "same_block":
+        outer.detach_op(view)
+        body.insert_op_before(view, body.first_op)
+    elif placement == "late":
+        outer.detach_op(view)
+        outer.insert_op_after(view, loop)
+    elif placement == "sibling":
+        sibling = loop.clone()
+        outer.insert_op_before(sibling, loop)
+        outer.detach_op(view)
+        sibling.body.block.insert_op_before(view, sibling.body.block.first_op)
+    elif placement == "isolated":
+        # Deliberately invalid capture across a nested isolated function. The
+        # matcher must refuse rather than relying on a later whole-module check.
+        nested = func.FuncOp("isolated", ([], []))
+        outer.insert_op_before(nested, loop)
+        for op in tuple(body.ops):
+            body.detach_op(op)
+            nested.body.block.add_op(op)
+    elif placement == "malformed":
+        view.properties["reassociation"] = ip._reassoc([[0, 1], [2, 3]])
+    elif placement == "source_scope":
+        foreign = func.FuncOp("foreign", ([view.operands[0].type], []))
+        outer.insert_op_before(foreign, loop)
+        view.operands = (foreign.body.block.args[0],)
+    match = ip.match_bounded_im2col(operation, selected_contracts=selected)
+    if placement not in {"outer", "same_block"}:
+        assert match is None
+        return
+    module.verify()
+    assert match is not None
+    original_parent = view.parent_block()
+    identity = ip.bounded_source_identity(match)
+    rewritten = ip.rewrite_bounded_match(match, 3)
+    assert view.parent_block() is original_parent
+    assert all(arm.contraction.inputs[0] is view.results[0] for arm in rewritten.arms)
+    module.verify()
+    ip.verify_bounded_match(rewritten, expected_source=identity)

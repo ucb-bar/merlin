@@ -45,8 +45,8 @@ def extract_connected_spatial_region(module, rewrite, source_pair, *, symbol="fo
     from xdsl.dialects.builtin import ModuleOp, UnitAttr
     from xdsl.ir import Block, Region
 
+    from merlin.compiler.ir.boundary import free_values
     from merlin.xdsl_dialects._common import text
-    from merlin.xdsl_dialects.lowering.outline import _free_values
 
     from .spatial_scratch_abi import _symbol
 
@@ -73,7 +73,7 @@ def extract_connected_spatial_region(module, rewrite, source_pair, *, symbol="fo
     operations = current[first : last + 1]
     if not operations or any(op not in (producer, pool) and not isinstance(op, tensor.EmptyOp) for op in operations):
         raise ValueError("spatial extraction cannot cross an intervening operation or effect")
-    params = tuple(_free_values(operations))
+    params = tuple(free_values(operations))
     members = {op for top in operations for op in top.walk()}
     outputs = tuple(
         value for op in operations for value in op.results

@@ -6,12 +6,10 @@ from test_convolution_compute_epochs import plan
 from test_convolution_readout_epochs import readout_law
 from test_counted_convolution import Integers
 
-from merlin.compile.scheduling.convolution_exploration import emit_convolution_schedule
-from merlin.compile.scheduling.window_transfer import (
-    ConvolutionOutputTile,
-    ConvolutionReadoutTransferLaw,
-    plan_convolution_readout_transfers,
-)
+from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
+from merlin.compiler.schedule.window_transfer import ConvolutionOutputTile
+from merlin.compiler.schedule.window_transfer import ConvolutionReadoutTransferLaw
+from merlin.compiler.schedule.window_transfer import plan_convolution_readout_transfers
 
 
 def law(schedule, *, states=None, maximum=8):

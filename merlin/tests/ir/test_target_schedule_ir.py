@@ -6,7 +6,7 @@ import pytest
 from test_selected_fusion_contracts import inputs
 from xdsl.dialects import builtin
 
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 from merlin.llvmlower import target_schedule as T
 from merlin.transforms.certificates import ir_text
 

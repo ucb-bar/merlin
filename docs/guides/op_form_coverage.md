@@ -9,7 +9,7 @@ code_refs:
   - src/merlin/targetgen/opset_contract.py
   - src/merlin/targetgen/op_form_regimes.py
   - src/merlin/targetgen/opset_coverage_input.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/op_cell_synth.py
+  - src/merlin_experiments/phase0/op_cell_synth.py
   - build_tools/scripts/check_opset_coverage.py
   - build_tools/scripts/synth_op_cell_capsules.py
 ---

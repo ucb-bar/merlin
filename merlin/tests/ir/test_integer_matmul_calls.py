@@ -6,7 +6,8 @@ import subprocess
 import numpy as np
 import pytest
 
-from merlin.compile.scheduling.dense_contracts import DenseIntegerReadout, DenseLogicalPointerABI
+from merlin.compiler.schedule.dense_contracts import DenseIntegerReadout
+from merlin.compiler.schedule.dense_contracts import DenseLogicalPointerABI
 from merlin.llvmlower.abi import HostModel
 from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.llvmlower.integer_matmul_calls import lower_integer_matmul_program, prepare_integer_matmul_calls

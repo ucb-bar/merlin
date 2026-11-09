@@ -132,12 +132,26 @@ def test_partial_chain_and_failed_kernel_replay_cannot_be_complete(tmp_path, mon
     assert not calls and result["gates"]["quantized_reference"]["status"] == "fail"
 
 
-@pytest.mark.parametrize("change", ["reference", "source_configuration", "seal", "arity", "reference_nonfinite"])
+@pytest.mark.parametrize("change", [
+    "reference", "source_configuration", "resolved_protocol_configuration", "seal", "arity", "reference_nonfinite",
+])
 def test_sealed_reference_mismatch_refuses_before_build(tmp_path, monkeypatch, change):
     args, report, models, model, bundle, calls = _setup(tmp_path, monkeypatch)
     path = bundle.root / "m/visible/v00/int8.npz"
     if change == "source_configuration":
         models.path.write_text("different model configuration\n")
+    elif change == "resolved_protocol_configuration":
+        import yaml
+
+        from merlin.common.paths import repo_root
+        from merlin.model_check.models import _protocol_models_bytes
+
+        protocol_root = repo_root() / "examples/gemmini/protocol"
+        selected = yaml.safe_load((protocol_root / "experiment.yaml").read_bytes())
+        baseline = (protocol_root / selected["authority"]["numerical_contract"]).read_bytes()
+        models.path = tmp_path / "new-protocol-models.yaml"
+        models.path.write_bytes(_protocol_models_bytes(baseline, selected))
+        assert models.path.read_bytes() != (bundle.root / "configuration/models.yaml").read_bytes()
     elif change == "seal":
         (bundle.root / "SHA256SUMS").write_text("forged seal\n")
     elif change == "reference":

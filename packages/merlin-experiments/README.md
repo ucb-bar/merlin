@@ -1,9 +1,14 @@
 # Merlin experiments
 
-Owns versioned phase definitions and process orchestration (`merlin_experiments`),
-and trusted evaluation and agent isolation (the stable `merlin.targetgen` shared
-namespace). Core owns package invocation, schemas, and declarative engine policy;
-this distribution owns graders, independent golden evaluation, and the sandbox.
+This logical component owns versioned phase definitions and process orchestration
+(`src/merlin_experiments`), plus trusted evaluation and agent isolation under the
+stable `merlin.targetgen` imports. All implementation ships in the main `merlin`
+distribution. From the repository root, install `python -m pip install '.[experiments]'`
+to select its optional dependencies. This retained directory contains tests, the
+console frontend and workflow documentation; it is not an installable code package.
+
+Shared compiler code owns package invocation, schemas and declarative engine policy;
+the experiments component owns graders, independent golden evaluation and the sandbox.
 Transcript accounting and the AET bridge also live here under their stable
 `experiment_tokens` and `aet_bridge` imports. The former targetgen Claude CLI
 slot was uncalled duplicate transport and is retired; Phase 1 owns agent launch.
@@ -21,12 +26,13 @@ namespace). Their output can contain private expected values and remains host-on
 `merlin experiment list` starts at the checked-in experiment catalog. Inspect and
 preflight never launch agents. Run and resume invoke the existing phase engines;
 their scoring, AET records and certification policies remain authoritative.
-The optional package does not introduce a second telemetry store.
+The experiments component does not introduce a second telemetry store.
 
 Existing grader imports remain their canonical module identities, not duplicated
-wrappers. Core extends the namespace; this wheel never replaces its initializer.
-Source relocation remains subject to the core access registry and the same
-fail-closed candidate import and filesystem-mask checks.
+wrappers. One main package supplies their source and initializers. Sharing one
+distribution does not grant candidate access to graders or reference answers;
+the logical access registry and the existing candidate import and filesystem masks
+remain authoritative.
 
 Phase 0 emits a run-owned corpus. `merlin experiment corpus prepare`, `inspect`,
 and explicit operator `seal` provide the reviewed handoff described in
@@ -68,7 +74,7 @@ For recorded runs, use `merlin experiment run` with `config.profiles_root` and
 `config.descriptor`; the runner supplies its run-owned output. It freezes every
 implementation Python file and the complete profiles directory, including hidden
 sidecars. Neither private data nor target qualification is supplied by installing
-this wheel. The old generator script remains only a checkout CLI launcher.
+Merlin. The old generator script remains only a checkout CLI launcher.
 The staged public self-check client is package-owned and uses only the standard
 library, so it needs no Merlin imports inside an agent workspace.
 

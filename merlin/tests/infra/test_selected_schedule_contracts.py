@@ -14,9 +14,11 @@ import yaml
 from test_configuration_elimination import STORAGE, codec, command, source
 from test_configuration_elimination import native as native
 
-from merlin.compile.scheduling.program_limits import AddressWindow, ProgramLimits
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, compile_schedule
-from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import ProgramLimits
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import compile_schedule
+from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
 from merlin.sched.ir import Call, Const, evaluate
 from merlin.semantic_compiler.allocation_types import StorageBank
 from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction

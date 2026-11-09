@@ -60,7 +60,7 @@ def interface_for(
     numeric_policy: dict | None = None,
 ) -> str:
     """The interface module a device build hands the package for one stated group program."""
-    from merlin.compile.mesh import _mesh_tile_binding
+    from merlin.compiler.selection.mesh import _mesh_tile_binding
     from merlin.targetgen import corpus_spec as CS
 
     binding = _mesh_tile_binding(target, operand_dtype, accum_dtype, numeric_policy=numeric_policy)

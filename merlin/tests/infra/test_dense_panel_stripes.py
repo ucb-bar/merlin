@@ -6,18 +6,14 @@ import pytest
 from test_compact_dense import ADAPTER
 from test_dense_panel_pipeline import setup
 
-from merlin.compile.scheduling.dense_panel_pipeline import (
-    DRAIN,
-    build_dense_panel_pipeline,
-    dense_panel_rhs_stripes,
-    schedule_dense_panel_pipeline,
-)
-from merlin.compile.scheduling.loop_schedule import propose_loop_transforms
-from merlin.compile.scheduling.schedule_ir import (
-    dense_schedule_text,
-    make_dense_schedule_plan,
-    parse_dense_schedule_plan,
-)
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
+from merlin.compiler.schedule.dense_panel_pipeline import build_dense_panel_pipeline
+from merlin.compiler.schedule.dense_panel_pipeline import dense_panel_rhs_stripes
+from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_panel_pipeline
+from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
+from merlin.compiler.schedule.schedule_ir import dense_schedule_text
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
 from merlin.sched.ir import evaluate, instances
 
 

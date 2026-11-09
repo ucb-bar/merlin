@@ -15,8 +15,8 @@ from test_selected_dense_contracts import inputs as dense_inputs
 from test_selected_dense_contracts import schedule
 from test_source_pointwise_lowering import fixture, run
 
-from merlin.compile.scheduling.pointwise_source import compile_source_pointwise
-from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
+from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
+from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
 from merlin.llvmlower.prepared_model_transform import RECEIPT
 
 MUTATIONS = ("rtl", "numerical_policy", "software")
@@ -33,7 +33,7 @@ def other_selection(original, directory, mutation):
     elif mutation == "numerical_policy":
         software["scheduling"]["numerical_policy"] += "-different-policy"
         if "row_reduction" in software["scheduling"]:
-            from merlin.compile.scheduling.row_softmax import RowSoftmaxNumerics
+            from merlin.compiler.schedule.row_softmax import RowSoftmaxNumerics
 
             # A different but internally consistent complete row policy is
             # independently admissible; its old result must still reject it.
@@ -242,7 +242,7 @@ def test_row_original_optional_selection_cannot_be_added_or_removed(tmp_path, mu
     from test_row_softmax import fixture as row_fixture
     from test_selected_row_contracts import inputs as row_inputs
 
-    from merlin.compile.scheduling.row_softmax import compile_row_softmax
+    from merlin.compiler.schedule.row_softmax import compile_row_softmax
 
     if mutation == "remove":
         result = checked_result(tmp_path / "original", "row")

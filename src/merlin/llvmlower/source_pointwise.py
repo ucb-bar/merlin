@@ -14,16 +14,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 
 from .borrowed_buffer_calls import BorrowedBufferEffects, validate_effects
 
 if TYPE_CHECKING:
-    from merlin.compile.scheduling.pointwise_source import PointwiseBindings, PointwiseCompilation, PointwiseSource
-    from merlin.compile.scheduling.program_limits import ProgramLimits
-    from merlin.compile.scheduling.schedule_pipeline import ScheduleEncoding
-    from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
-    from merlin.compile.scheduling.temporary_storage import StorageAdapter, TemporaryObject
+    from merlin.compiler.schedule.pointwise_source import PointwiseBindings
+    from merlin.compiler.schedule.pointwise_source import PointwiseCompilation
+    from merlin.compiler.schedule.pointwise_source import PointwiseSource
+    from merlin.compiler.schedule.program_limits import ProgramLimits
+    from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
+    from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
+    from merlin.compiler.schedule.temporary_storage import StorageAdapter
+    from merlin.compiler.schedule.temporary_storage import TemporaryObject
     from merlin.runtime.host_provider import HostProviderBuild, HostProviderContext
     from merlin.sched.ir import Kernel
 
@@ -40,8 +43,8 @@ class PointwiseProgram:
     bindings: PointwiseBindings
 
     def __post_init__(self):
-        from merlin.compile.scheduling.pointwise_source import PointwiseBindings
-        from merlin.compile.scheduling.temporary_storage import TemporaryObject
+        from merlin.compiler.schedule.pointwise_source import PointwiseBindings
+        from merlin.compiler.schedule.temporary_storage import TemporaryObject
         from merlin.sched.ir import Kernel
 
         if (
@@ -80,10 +83,10 @@ class SourcePointwiseLowering:
     multi_output: SourceMultiOutputLowering | None = None
 
     def __post_init__(self):
-        from merlin.compile.scheduling.program_limits import ProgramLimits
-        from merlin.compile.scheduling.schedule_pipeline import ScheduleEncoding
-        from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
-        from merlin.compile.scheduling.temporary_storage import StorageAdapter
+        from merlin.compiler.schedule.program_limits import ProgramLimits
+        from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
+        from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
+        from merlin.compiler.schedule.temporary_storage import StorageAdapter
 
         validate_effects(self.borrowed_effects)
         if self.multi_output is not None:
@@ -138,9 +141,11 @@ class SourcePointwiseBinding:
 
 def discover_pointwise(module, selection, validate, *, excluded_operations=frozenset()):
     """Find semantics from software, while instruction mapping remains target-owned."""
-    from merlin.compile.scheduling.fusion_semantics import UnsupportedElementwise, scalar_graph
-    from merlin.compile.scheduling.pointwise_source import compile_source_pointwise, read_pointwise_source
-    from merlin.compile.scheduling.temporary_storage import StorageOptimizationUnavailable
+    from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
+    from merlin.compiler.schedule.fusion_semantics import scalar_graph
+    from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
+    from merlin.compiler.schedule.pointwise_source import read_pointwise_source
+    from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
 
     from .source_model import SourceRegion
 

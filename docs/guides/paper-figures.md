@@ -6,10 +6,10 @@ owner: plotting
 last_verified: 2026-08-31
 related: [docs/reference/plot_style.md, merlin/benchmarks/rvv_paper/study_v2.yaml]
 code_refs:
-  - packages/merlin-analysis/src/merlin/plotting/rvv_paper_figures.py
-  - packages/merlin-analysis/src/merlin/compare/paper_full_model_ablation.py
-  - packages/merlin-analysis/src/merlin/plotting/cpu_host_experiment_figures.py
-  - packages/merlin-analysis/src/merlin/plotting/cpu_host_beam_figures.py
+  - src/merlin/plotting/rvv_paper_figures.py
+  - src/merlin/compare/paper_full_model_ablation.py
+  - src/merlin/plotting/cpu_host_experiment_figures.py
+  - src/merlin/plotting/cpu_host_beam_figures.py
 ---
 
 # Generate RVV paper figures

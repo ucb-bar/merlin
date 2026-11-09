@@ -25,7 +25,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Callable
 
-from merlin.compile.analysis.contraction_shapes import ContractionShape
+from merlin.compiler.ir.contraction_shapes import ContractionShape
 
 #: how the vector length is chosen for the inner loop.
 VL_FIXED = "fixed"  # a compile-time vector length (e.g. RVV vsetivli) — simple, wastes tail lanes

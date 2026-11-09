@@ -93,7 +93,7 @@ def apply_common_pipeline(
         if verifier is not None:
             receipt = verifier(change)
             if not plan_only:
-                from merlin.verify.lean_checker import accepted_pipeline_receipt
+                from merlin.verification.lean_checker import accepted_pipeline_receipt
 
                 if not accepted_pipeline_receipt(receipt, change):
                     raise ValueError("covered transformation lacks fresh host Lean completion for this exact change")

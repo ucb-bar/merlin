@@ -6,11 +6,9 @@ from test_convolution_exploration import issue_law, record, retention_law
 from test_convolution_exploration import source as convolution_source
 from test_pipeline_policy import registry, source
 
-from merlin.compile.scheduling.convolution_exploration import (
-    ConvolutionExplorationSource,
-    convolution_pass_space,
-    plan_convolution_schedule,
-)
+from merlin.compiler.schedule.convolution_exploration import ConvolutionExplorationSource
+from merlin.compiler.schedule.convolution_exploration import convolution_pass_space
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_schedule
 from merlin.transforms.evaluated_exploration import (
     CompletedObservation,
     ExplorationIdentity,

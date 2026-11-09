@@ -6,26 +6,26 @@ owner: experiments
 last_verified: 2026-10-20
 related: [phase2_corpus_search, phase0_phase1_setup]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase0/development_sources.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/workload_roster.py
+  - src/merlin_experiments/phase0/development_sources.py
+  - src/merlin_experiments/phase0/workload_roster.py
   - src/merlin/targetgen/capsule_source.py
   - merlin/contract/schemas/capsule.schema.json
   - src/merlin/targetgen/contract/schemas.py
-  - packages/merlin-experiments/src/merlin/targetgen/capsule_golden.py
-  - packages/merlin-experiments/src/merlin/targetgen/capsule_runner.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/development_cohort.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/development_capture.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/development_capture_intake.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/development_reference_supplement.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/development_shape_supplement.py
-  - packages/merlin-experiments/src/merlin_experiments/capture_execution/native_integer.py
-  - packages/merlin-experiments/src/merlin_experiments/capture_execution/readonly_runtime.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_dense_projection.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_streaming_exclusion_issuer.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_mixed_exclusion.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_structured_exclusion.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_registered_exclusion.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_windowed_ir.py
+  - src/merlin/targetgen/capsule_golden.py
+  - src/merlin/targetgen/capsule_runner.py
+  - src/merlin_experiments/phase0/development_cohort.py
+  - src/merlin_experiments/phase0/development_capture.py
+  - src/merlin_experiments/phase0/development_capture_intake.py
+  - src/merlin_experiments/phase0/development_reference_supplement.py
+  - src/merlin_experiments/phase0/development_shape_supplement.py
+  - src/merlin_experiments/capture_execution/native_integer.py
+  - src/merlin_experiments/capture_execution/readonly_runtime.py
+  - src/merlin_experiments/phase0/operator_dense_projection.py
+  - src/merlin_experiments/phase0/operator_streaming_exclusion_issuer.py
+  - src/merlin_experiments/phase0/operator_mixed_exclusion.py
+  - src/merlin_experiments/phase0/operator_structured_exclusion.py
+  - src/merlin_experiments/phase0/operator_registered_exclusion.py
+  - src/merlin_experiments/phase0/operator_windowed_ir.py
 ---
 
 # Construct fresh connected public development sources

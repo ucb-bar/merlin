@@ -116,8 +116,9 @@ def test_logical_borrowed_bridge_transports_all_results_without_tensor_arithmeti
 
 
 def test_owned_model_entry_consumes_sibling_route_in_real_host_preparation(tmp_path, monkeypatch):
-    from merlin.compile import baremetal_model, route_before_build
-    from merlin.compile.owned_host_model import OwnedHostModelCompiler
+    from merlin import model as baremetal_model
+    from merlin.compiler.planning import model as route_before_build
+    from merlin.compiler.build.owned import OwnedHostModelCompiler
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.runtime.backends.zephyr_model import prepare_for_lowering
 
@@ -356,7 +357,7 @@ def test_composition_join_preserves_original_eligibility_through_checked_weight_
     assert text(original, generic=True) != text(prepared_module, generic=True)
     build = tmp_path / "prospective"
     build.mkdir()
-    from merlin.compile.complete_group_routing import select_complete_group
+    from merlin.compiler.planning.complete import select_complete_group
     from merlin.llvmlower.prepacked_device_capture import rebind
 
     # Select the ORIGINAL source, then use the ordinary checked preparation

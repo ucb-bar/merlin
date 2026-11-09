@@ -12,6 +12,19 @@ import pytest
 from merlin.common.paths import repo_root
 
 
+def _logical_research_modules():
+    root = repo_root()
+    policy = json.loads((root / "build_tools/logical_components.json").read_text())["research"]
+    modules = set()
+    for path in (root / "src").rglob("*.py"):
+        name = ".".join(path.relative_to(root / "src").with_suffix("").parts).removesuffix(".__init__")
+        if any(name in fields["modules"] or any(name == prefix or name.startswith(prefix + ".")
+                                               for prefix in fields["namespaces"]) for fields in policy.values()):
+            modules.add(name)
+    assert modules
+    return modules
+
+
 def test_lane_evidence_interpretation_is_core_only(tmp_path):
     script = """
 import sys
@@ -79,7 +92,10 @@ def test_legacy_lane_vocabulary_has_one_owner():
 )
 def test_research_imports_require_only_their_owner(distribution, modules, tmp_path):
     root = repo_root()
-    owner = root / "packages" / distribution / "src"
+    owner = root / "src"
+    fields = json.loads((root / "build_tools/logical_components.json").read_text())["research"][distribution]
+    assert all(name in fields["modules"] or any(name == prefix or name.startswith(prefix + ".")
+                                               for prefix in fields["namespaces"]) for name in modules)
     # Disable all site/editable packages. No sibling checkout or extension may
     # make this ownership check pass, and these readers must be import-light.
     script = """
@@ -108,7 +124,7 @@ def test_model_slice_recipes_are_not_shipped_by_shared_distributions():
         assert not (owner / "merlin/targetgen/model_slice_export.py").exists()
 
 
-def test_core_does_not_ship_research_readers_or_agent_adapters(tmp_path):
+def test_research_readers_are_present_but_core_intake_does_not_import_them(tmp_path):
     script = """
 import importlib.util
 import sys
@@ -129,12 +145,12 @@ for module in (
     "merlin.targetgen.aet_bridge",
     "merlin.targetgen.experiment_tokens",
     "merlin.targetgen.heavy_oracles",
-    "merlin.targetgen.model_slice_export",
     "merlin.targetgen.group_capsules",
     "merlin.targetgen.store_probe",
     "merlin.verify.plots",
 ):
-    assert importlib.util.find_spec(module) is None, module
+    assert importlib.util.find_spec(module) is not None, module
+    assert module not in sys.modules, module
 """
     result = subprocess.run(
         [sys.executable, "-I", "-S", "-c", script, str(repo_root() / "src")],
@@ -158,7 +174,7 @@ assert entries.SOURCE_ROLE == 'model_derived'
 assert entries._identity({'op': 'matmul', 'name': 'one', 'acc_scale': 2}) == entries._identity(
     {'op': 'matmul', 'name': 'two', 'acc_scale': 3})
 assert entries._label({'op': 'matmul', 'M': 2, 'K': 4, 'N': 8}) == 'G_matmul_m2k4n8_raw'
-assert importlib.util.find_spec('merlin.targetgen.group_capsules') is None
+assert 'merlin.targetgen.group_capsules' not in sys.modules
 assert not any(name.startswith(('aet', 'torch', 'merlin_experiments',
     'merlin.targetgen.capsule_runner', 'merlin.targetgen.capsule_golden')) for name in sys.modules)
 """
@@ -169,28 +185,33 @@ assert not any(name.startswith(('aet', 'torch', 'merlin_experiments',
         text=True,
     )
     assert result.returncode == 0, result.stderr
-    tree = ast.parse((repo_root() / "src/merlin/compile_cli.py").read_text())
-    names = {
-        alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module == "targetgen"
-        for alias in node.names
-    }
-    assert "group_capsule_entries" in names
-    assert "group_capsules" not in names
+    # Follow the actual production chain after orchestration was decomposed.
+    # The public compiler must reach the shared core derivation, rather than
+    # importing the evaluator's research re-export or reporting disconnected data.
+    chain = (
+        ("compile_cli.py", "_route_before_build", "compile.route_before_build", "plan_before_build", None),
+        ("compile/route_before_build.py", "plan_before_build", "merlin.compiler.planning.reports",
+         "group_reports", None),
+        ("compiler/planning/reports.py", "group_reports", "merlin.targetgen", "group_capsule_entries", "entries"),
+    )
+    for path, function, imported_from, imported, method in chain:
+        tree = ast.parse((repo_root() / "src/merlin" / path).read_text(encoding="utf-8"))
+        assert any(isinstance(node, ast.ImportFrom) and node.module == imported_from
+                   and any(alias.name == imported for alias in node.names) for node in ast.walk(tree)), path
+        owner = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == function)
+        calls = [node.func for node in ast.walk(owner) if isinstance(node, ast.Call)]
+        assert any((isinstance(call, ast.Name) and call.id == imported) if method is None else
+                   (isinstance(call, ast.Attribute) and call.attr == method
+                    and isinstance(call.value, ast.Name) and call.value.id == imported) for call in calls), path
+        assert not any(isinstance(node, ast.ImportFrom) and
+                       any(alias.name == "group_capsules" for alias in node.names) for node in ast.walk(tree)), path
 
 
 def test_core_grouping_executes_without_any_optional_distribution(tmp_path):
     from im2col_conv_layer import module
 
     root = repo_root()
-    optional_modules = set()
-    for owner in (root / "packages").glob("*/src"):
-        for path in owner.rglob("*.py"):
-            parts = list(path.relative_to(owner).with_suffix("").parts)
-            if parts[-1] == "__init__":
-                parts.pop()
-            optional_modules.add(".".join(parts))
+    optional_modules = _logical_research_modules()
     script = """
 import importlib.abc
 import json
@@ -248,7 +269,7 @@ def test_group_research_reexports_exact_core_entries_and_retains_grader_identity
     for module in (group_capsules, store_probe):
         assert module.__name__ in access.declared_modules("grader")
         item = next(item for item in access.MODULE_ACCESS if module.__name__ in item.modules)
-        assert repo_root() / "packages/merlin-experiments/src" / (
+        assert repo_root() / "src" / (
             module.__name__.replace(".", "/") + ".py"
         ) in access.module_locations(repo_root(), item)
 
@@ -273,7 +294,7 @@ assert not any(name.startswith(('merlin.targetgen.capsule_runner',
             "-c",
             script,
             str(repo_root() / "src"),
-            str(repo_root() / "packages/merlin-experiments/src"),
+            str(repo_root() / "src"),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -297,7 +318,7 @@ assert "matplotlib" not in sys.modules
 """
     root = repo_root()
     result = subprocess.run(
-        [sys.executable, "-I", "-S", "-c", script, str(root / "src"), str(root / "packages/merlin-analysis/src")],
+        [sys.executable, "-I", "-S", "-c", script, str(root / "src"), str(root / "src")],
         cwd=tmp_path,
         capture_output=True,
         text=True,

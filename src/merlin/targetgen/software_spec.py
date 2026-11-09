@@ -163,6 +163,10 @@ def load_software_spec(path: str | Path, target: str | None = None) -> dict:
     """Read one versioned authored spec, refusing malformed or foreign declarations."""
     source = Path(path)
     document = yaml.safe_load(source.read_bytes())
+    if isinstance(document, dict) and document.get("schema") == "merlin.software_spec.v2":
+        from merlin.target.spec import load_spec
+
+        return load_spec(source, target=target).software_spec()
     return validate_software_spec(document, target=target, source=source)
 
 
@@ -299,7 +303,7 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
                 raise ValueError(f"{source}: operation {row['id']!r} shape_bounds must map axes to constraints")
     if "evidence" in document and not isinstance(document.get("evidence"), dict):
         raise ValueError(f"{source}: evidence must record the declaration's provenance and unknowns")
-    from merlin.targetgen.quantization_spec import validate_quantization_declarations
+    from merlin.target.spec.quantization import validate_quantization_declarations
 
     validate_quantization_declarations(document)
     from merlin.targetgen.spec_fact_drift import validate_restrictions
@@ -345,6 +349,23 @@ def numerical_datapath(spec: dict) -> dict:
 
 def software_spec_identity(path: str | Path, spec: dict | None = None) -> dict:
     """Byte identity, distinct from any generated contract or hardware identity."""
+    authored = yaml.safe_load(Path(path).read_bytes())
+    if isinstance(authored, dict) and authored.get("schema") == "merlin.software_spec.v2":
+        from merlin.target.spec import load_spec
+
+        expansion = load_spec(path)
+        projected = expansion.software_spec()
+        if spec is not None and spec != projected:
+            raise ValueError("supplied software spec differs from the current compact expansion")
+        record = expansion.record()
+        return {
+            "schema": record["source_schema"],
+            "target": record["target"],
+            "sha256": record["expansion_sha256"],
+            "source_sha256": record["source_sha256"],
+            "canonical_sha256": record["canonical_sha256"],
+            "status": record["status"],
+        }
     document = spec if spec is not None else load_software_spec(path)
     return {
         "schema": document["schema"],
@@ -361,7 +382,18 @@ def software_spec_references(path: str | Path, document: dict | None = None) -> 
     identity. The caller must inventory and freeze the actual selected source bytes.
     """
     source = Path(path).absolute()
-    spec = document if document is not None else load_software_spec(source)
+    authored = yaml.safe_load(source.read_bytes())
+    references = {}
+    if isinstance(authored, dict) and authored.get("schema") == "merlin.software_spec.v2":
+        from merlin.target.spec import load_spec
+
+        expansion = load_spec(source)
+        spec = expansion.software_spec()
+        if document is not None and document != spec:
+            raise ValueError("supplied software spec differs from the current compact expansion")
+        references.update(expansion.source_references())
+    else:
+        spec = document if document is not None else load_software_spec(source)
     model = spec["numerical_semantics"]["model"]
     value = model.get("source_root_path")
     if "source_root_env" in model:
@@ -369,11 +401,11 @@ def software_spec_references(path: str | Path, document: dict | None = None) -> 
         if not value:
             raise ValueError(f"{source}: selected model requires {model['source_root_env']}")
     if value is None:
-        return {}
+        return references
     root = Path(value).expanduser()
     if not root.is_absolute():
         root = source.parent / root
-    return {"numerical_model": root.resolve()}
+    return {**references, "numerical_model": root.resolve()}
 
 
 def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dict:

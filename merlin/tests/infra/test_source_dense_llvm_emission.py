@@ -14,7 +14,7 @@ from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, StringAttr, i32, i64
 from xdsl.printer import Printer
 
-from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter
+from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
 from merlin.common.paths import repo_root
 from merlin.llvmlower.host_builder import FnBuilder, PTR
 

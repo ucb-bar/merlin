@@ -18,7 +18,7 @@ from test_pointwise_source import case
 from test_readout_model_fusion import _EXECUTOR, EPILOGUE
 
 from merlin.common.digest import sha256_file
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 from merlin.runtime.host_provider import HostProviderBuild, HostProviderObject, read_host_function_abi
 from merlin.transforms.certificates import ir_text
 

@@ -12,9 +12,6 @@ Reads:
 import csv
 import json
 import os
-import sys
-
-sys.path.insert(0, str(_ROOT / "scripts"))
 import matplotlib
 
 matplotlib.use("Agg")

@@ -5,9 +5,11 @@ import subprocess
 import numpy as np
 import pytest
 from test_compact_dense import encode as plain_encode, project as plain_project, fixture, mutate
-from merlin.compile.scheduling.block_schedule import InitializeAccumulator
-from merlin.compile.scheduling.compact_dense import DenseBiasSource, DenseLoopAdapter, schedule_compact_dense
-from merlin.compile.scheduling.compact_verification import verify_compact_dense
+from merlin.compiler.schedule.blocks import InitializeAccumulator
+from merlin.compiler.schedule.compact_dense import DenseBiasSource
+from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
+from merlin.compiler.schedule.compact_dense import schedule_compact_dense
+from merlin.compiler.schedule.compact_verification import verify_compact_dense
 from merlin.sched.ir import Call, as_expr, instances
 from merlin.sched.isa import InstrDef, InstructionSet, Operand
 

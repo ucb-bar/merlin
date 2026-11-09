@@ -1,4 +1,4 @@
-"""New release selections retain exact old defaults and bind an actual SDK export."""
+"""Fresh releases freeze SDK26; explicit source selections retain their recorded identity."""
 
 from pathlib import Path
 
@@ -12,8 +12,8 @@ from merlin.targetgen import tool_registry as TR
 from merlin.targetgen.tool_profile_shared import prepare_shared_source_release
 
 
-def test_omitted_selection_keeps_original_v3_source():
-    assert preparation.compiler_source_selection() == (TP.COMMON_SUBSTRATE_V3, python_source_dir())
+def test_omitted_selection_freezes_current_sdk26_source():
+    assert preparation.compiler_source_selection() == (TP.COMMON_SUBSTRATE_V19, python_source_dir())
 
 
 def test_real_v6_export_selects_exact_public_inventory_and_mutation_refuses(tmp_path):
@@ -22,17 +22,17 @@ def test_real_v6_export_selects_exact_public_inventory_and_mutation_refuses(tmp_
     exported = prepare_shared_source_release(
         sdk, python_source_root=python_source_dir(), license_directory=repo_root(), tools=tools, source_binding=True
     )
-    assert preparation.compiler_source_selection(TP.COMMON_SUBSTRATE_V6, sdk) == (TP.COMMON_SUBSTRATE_V6, sdk)
+    assert preparation.compiler_source_selection(TP.COMMON_SUBSTRATE_V19, sdk) == (TP.COMMON_SUBSTRATE_V19, sdk)
     bundle = {"arm": "merlin_assisted", "tools": list(tools), "allowed": [], "denied": [], "host_inputs": []}
-    TP.attach_common_substrate(bundle, version=TP.COMMON_SUBSTRATE_V6, python_source_root=sdk)
+    TP.attach_common_substrate(bundle, version=TP.COMMON_SUBSTRATE_V19, python_source_root=sdk)
     profile = bundle["compiler_tool_profile"]
     assert TP.verify_tool_profile(bundle) == profile
     assert profile["shared_scheduling_library"] == exported
-    assert "merlin.compile.scheduling.configuration_ir" in profile["common_public_modules"]
+    assert "merlin.compiler.schedule.configuration_ir" in profile["common_public_modules"]
     member = sdk / exported["members"][0]["path"]
     member.write_bytes(member.read_bytes() + b"\n# changed\n")
     with pytest.raises(ValueError, match="bytes differ"):
-        preparation.compiler_source_selection(TP.COMMON_SUBSTRATE_V6, sdk)
+        preparation.compiler_source_selection(TP.COMMON_SUBSTRATE_V19, sdk)
 
 
 @pytest.mark.parametrize("version,root", [("unknown", None), (TP.COMMON_SUBSTRATE_V6, Path("relative"))])
@@ -57,7 +57,16 @@ def test_release_forwards_explicit_selection_to_actual_scaffold(release_fixture,
 
     monkeypatch.setattr(release, "scaffold", observed)
     _prepare(release_fixture, capsys)
-    assert selected == [(None, None)]
+    assert selected == [(TP.COMMON_SUBSTRATE_V19, None)]
+    import json
+
+    prepared = json.loads((release_fixture["release"] / "private/preparation.json").read_text())
+    source = prepared["scaffolding"]["bundle_generation"]["compiler_source"]
+    assert source["common_substrate"] == TP.COMMON_SUBSTRATE_V19
+    assert source["preparation"] == "owned_sdk26_snapshot"
+    assert source["library_sha256"]
+    assert Path(source["python_source_root"]).is_relative_to(release_fixture["release"] / "private")
+    assert not (Path(source["python_source_root"]) / "merlin/compile").exists()
 
 
 def test_release_cli_materializes_explicit_v6_sdk(release_fixture, capsys):
@@ -87,7 +96,7 @@ def test_release_cli_materializes_explicit_v6_sdk(release_fixture, capsys):
                 "--output",
                 str(release_fixture["release"]),
                 "--common-substrate",
-                TP.COMMON_SUBSTRATE_V6,
+                TP.COMMON_SUBSTRATE_V19,
                 "--python-source-root",
                 str(sdk),
             ]
@@ -97,7 +106,7 @@ def test_release_cli_materializes_explicit_v6_sdk(release_fixture, capsys):
     capsys.readouterr()
     prepared = json.loads((release_fixture["release"] / "private/preparation.json").read_text())
     assert prepared["scaffolding"]["bundle_generation"]["compiler_source"] == {
-        "common_substrate": TP.COMMON_SUBSTRATE_V6,
+        "common_substrate": TP.COMMON_SUBSTRATE_V19,
         "python_source_root": str(sdk),
     }
     manifests = list(
@@ -107,7 +116,7 @@ def test_release_cli_materializes_explicit_v6_sdk(release_fixture, capsys):
     import yaml
 
     bundle = yaml.safe_load(manifests[0].read_text())
-    assert TP.verify_tool_profile(bundle)["common_substrate"] == TP.COMMON_SUBSTRATE_V6
+    assert TP.verify_tool_profile(bundle)["common_substrate"] == TP.COMMON_SUBSTRATE_V19
 
 
 # Reuse the ordinary harmless fixture, with no hardware, tool or candidate authority.

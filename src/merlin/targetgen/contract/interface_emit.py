@@ -251,7 +251,7 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
 
 def _commit_out_shape(cb: dict[str, Any], acc_name: str, attrs: dict[str, Any] | None = None) -> tuple[int, int]:
     """Original logical COMMIT result geometry, shared with the public ABI resolver."""
-    from merlin.compile.logical_abi import commit_output_shape
+    from merlin.compiler.ir.logical_abi import commit_output_shape
 
     return commit_output_shape(cb, acc_name, attrs)
 

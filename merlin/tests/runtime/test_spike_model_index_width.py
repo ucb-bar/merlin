@@ -20,6 +20,7 @@ import pytest
             "cross_flags": ["--target=riscv64-unknown-elf", "-march=rv64gc"],
             "data_layout": "e-p:64:64:64:32",
             "index_bits": 64,  # Refuses a width that disagrees with the reported GEP index width.
+            "scope": "synthetic mismatched-width fixture; no compiler execution",
         },
         {
             "schema": "merlin.selected-index-lowering.v1",
@@ -29,6 +30,7 @@ import pytest
             "cross_flags": ["--target=riscv64-unknown-elf", "-march=rv64gc"],
             "data_layout": "e-p:32:32",
             "index_bits": 32,  # Valid generic lowering, but not the selected int64_t C descriptor ABI.
+            "scope": "synthetic descriptor-width fixture; no compiler execution",
         },
     ],
 )
@@ -89,6 +91,7 @@ def test_compiler_plan_reexport_preserves_flags_and_original_spike_globals(monke
             "cross_flags": list(flags),
             "index_bits": 64,
             "data_layout": "e-p:64:64",
+            "scope": "synthetic flag-propagation fixture; no compiler execution",
         }
 
     monkeypatch.setattr(spike_model, "_harness_cflags", harness)

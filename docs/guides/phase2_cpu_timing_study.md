@@ -5,7 +5,7 @@ status: current
 owner: experiments
 last_verified: 2026-10-11
 related: [component_phase2_workflow, phase2_test_justification]
-code_refs: [packages/merlin-experiments/src/merlin_experiments/phase2/evaluation_fidelity.py, packages/merlin-experiments/src/merlin_experiments/phase2/component_compiled_arms.py, packages/merlin-experiments/src/merlin_experiments/phase2/timing_study.py, packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_timing_study.py, packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_calibration.py]
+code_refs: [src/merlin_experiments/phase2/evaluation_fidelity.py, src/merlin_experiments/phase2/component_compiled_arms.py, src/merlin_experiments/phase2/timing_study.py, src/merlin_experiments/phase2/ordinary_timing_study.py, src/merlin_experiments/phase2/ordinary_calibration.py]
 ---
 
 # Phase 2 CPU fidelity and timing study

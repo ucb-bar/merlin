@@ -27,8 +27,8 @@ from merlin.llvmlower import (
 from merlin.llvmlower.borrowed_buffer_calls import CHECKPOINT, REPORT, RESULTS_SCHEMA, from_writers, verify_native
 from merlin.llvmlower.fresh_tensor_writer import prove_lowered_writer_results
 from merlin.llvmlower.llvm_dialect_product import verify_llvm_dialect_product
-from merlin.verify import host_call_alignment
-from merlin.verify.host_call_alignment import import_host_entry
+from merlin.verification import host_call_alignment as host_call_alignment
+from merlin.verification.host_call_alignment import import_host_entry
 from merlin.xdsl_dialects._common import text
 
 

@@ -39,13 +39,13 @@ def test_stale_detects_edited_and_orphaned_files(generator, monkeypatch, tmp_pat
     assert generator.stale(repo_root()) == ["reference/storage.md"]
 
 
-def test_every_mechanism_appears_once_with_a_resolved_call(catalog):
+def test_every_mechanism_appears_once_with_a_resolved_call(catalog, generator):
     text = {path.relative_to(SKILL).as_posix(): path.read_text(encoding="utf-8") for path in SKILL.rglob("*.md")}
     for row in catalog["mechanisms"]:
         reference = text[f"reference/{row['facet']}.md"]
         assert reference.count(f"### {row['id']}") == 1, row["id"]
         entry = reference.split(f"### {row['id']}", 1)[1].split("\n### ", 1)[0]
-        compiler = row["compiler"]
+        compiler = generator.current_binding(row["compiler"])
         assert f"`{compiler['module']}:{compiler['symbol']}`" in entry
         assert "**signature**" in entry, row["id"]  # the symbol exists in the current source
         assert "test that calls it**: `" in entry or "test of its module**" in entry, row["id"]

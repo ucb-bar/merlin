@@ -8,24 +8,23 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.scheduling.configuration import (
-    ConfigurationAdapter,
-    ConfigurationEffects,
-    ConfigurationUnavailable,
-    eliminate_redundant_configuration,
-    verify_configuration_rewrite,
-    verify_configuration_state,
-)
-from merlin.compile.scheduling.program_limits import (
-    AddressWindow,
-    Continuation,
-    DecodedInstruction,
-    EncodedAccess,
-    ProgramDecoder,
-    ProgramLimits,
-)
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, ScheduleEncoding, compile_schedule
-from merlin.compile.scheduling.temporary_storage import StorageAdapter, StorageEffects
+from merlin.compiler.schedule.configuration import ConfigurationAdapter
+from merlin.compiler.schedule.configuration import ConfigurationEffects
+from merlin.compiler.schedule.configuration import ConfigurationUnavailable
+from merlin.compiler.schedule.configuration import eliminate_redundant_configuration
+from merlin.compiler.schedule.configuration import verify_configuration_rewrite
+from merlin.compiler.schedule.configuration import verify_configuration_state
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import Continuation
+from merlin.compiler.schedule.program_limits import DecodedInstruction
+from merlin.compiler.schedule.program_limits import EncodedAccess
+from merlin.compiler.schedule.program_limits import ProgramDecoder
+from merlin.compiler.schedule.program_limits import ProgramLimits
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
+from merlin.compiler.schedule.schedule_pipeline import compile_schedule
+from merlin.compiler.schedule.temporary_storage import StorageAdapter
+from merlin.compiler.schedule.temporary_storage import StorageEffects
 from merlin.sched.ir import Call, Const, Kernel, TensorArg, evaluate, loop
 from merlin.semantic_compiler.allocation_types import Reservation, StorageBank
 

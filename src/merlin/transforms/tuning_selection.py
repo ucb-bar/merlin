@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from hashlib import sha256
 from math import isfinite
 
-from merlin.compile.tuning_knobs import KnobSettings
+from merlin.compiler.selection.knobs import KnobSettings
 
 from .evaluated_exploration import CompletedObservation, ExplorationIdentity
 from .pass_exploration import EmittedProgram, MappingProposalKey, ObservedMetrics, rank_performance_variants

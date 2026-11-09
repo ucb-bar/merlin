@@ -1,4 +1,4 @@
-"""Qualify committed core+experiments distributions outside the source checkout.
+"""Qualify the committed Merlin distribution outside the source checkout.
 
 Usage: python build_tools/scripts/qualify_installed.py --ref HEAD --suite phase1
 phase1 replays controller, CLI, RTL-feedback and private model-gate tests with core[xdsl].
@@ -5880,21 +5880,18 @@ class Recorder:
 
 
 def projects(snapshot, extras, *, include_experiments=True, include_analysis=False):
-    result = []
-    roots = (Path("."), Path("packages/merlin-experiments")) if include_experiments else (Path("."),)
-    if include_analysis:
-        roots = (*roots, Path("packages/merlin-analysis"))
-    for relative in roots:
-        directory = snapshot / relative
-        project = tomllib.loads((directory / "pyproject.toml").read_text())["project"]
-        selected = extras if relative == Path(".") else ()
-        for extra in selected:
-            if extra not in project.get("optional-dependencies", {}):
-                raise QualificationFailed(f"{project['name']} does not declare extra {extra}")
-        result.append(
-            {"name": project["name"], "version": project["version"], "path": str(directory), "extras": list(selected)}
+    """Select dependency extras for one shipping distribution, never extra wheels."""
+    directory = snapshot
+    project = tomllib.loads((directory / "pyproject.toml").read_text())["project"]
+    selected = tuple(
+        dict.fromkeys(
+            (*extras, *(("experiments",) if include_experiments else ()), *(("analysis",) if include_analysis else ()))
         )
-    return result
+    )
+    for extra in selected:
+        if extra not in project.get("optional-dependencies", {}):
+            raise QualificationFailed(f"{project['name']} does not declare extra {extra}")
+    return [{"name": project["name"], "version": project["version"], "path": str(directory), "extras": list(selected)}]
 
 
 def only_artifact(directory, pattern):
@@ -5979,6 +5976,11 @@ def qualify(
         "source_inputs": {},
         "tests_root": tests_root.as_posix(),
         "core_extras": list(SUITES[suite]["core_extras"]),
+        "workflow_dependencies": {
+            "experiments": SUITES[suite].get("include_experiments", True),
+            "analysis": SUITES[suite].get("include_analysis", False),
+        },
+        "shipping_policy": "one main distribution; workflow flags select dependencies and probes only",
         "probe_modules": list(SUITES[suite]["probe_modules"]),
         "required_modules": list(SUITES[suite]["required_modules"]),
         "required_entry_points": list(SUITES[suite].get("required_entry_points", ())),
@@ -6026,16 +6028,7 @@ def qualify(
             "LICENSE",
             "MANIFEST.in",
             "build_tools/package_resources.json",
-            "build_tools/extension_setup.py",
             "build_tools/scripts/check_distribution_layout.py",
-            "packages/merlin-experiments/src",
-            "packages/merlin-experiments/setup.py",
-            "packages/merlin-experiments/pyproject.toml",
-            *(
-                ["packages/merlin-analysis/src", "packages/merlin-analysis/pyproject.toml"]
-                if SUITES[suite].get("include_analysis")
-                else []
-            ),
             *[(tests_root / n).as_posix() for n in test_files],
             *source_input_archive_roots(source_inputs),
             *resources,

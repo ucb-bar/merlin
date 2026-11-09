@@ -138,7 +138,7 @@ def _decode(features, M, N, K, int8=False):
     pkg = load_rvv_package(REPO / "out/artifacts/targets" / "rvv" / "hand_v0")
     pkg = replace(pkg, run_id="test_v3", compiler_features=list(features))
     work = Path(tempfile.mkdtemp(prefix="test_v3_"))
-    apply_rvv_package(pkg, bundle, work, board="spike_riscv64", harts=1, arena_mb=64, int8_compute=int8)
+    apply_rvv_package(pkg, bundle, work, board="spike_riscv64", harts=1, int8_compute=int8)
     return rvv.decode(str(work / "model.o"))
 
 

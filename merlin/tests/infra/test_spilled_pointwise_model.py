@@ -15,7 +15,7 @@ from test_pointwise_source_whole_model import model_source as original_model_sou
 from test_pointwise_source_whole_model import test_ordinary_recurrent_model_runs_source_bound_fusion as run_pair
 from test_selected_storage_contracts import STORAGE_EXECUTOR
 
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 
 
 def increment(name, value, m, n):

@@ -8,14 +8,14 @@ related: [runtime, experiment_abi]
 code_refs:
   - src/merlin/targetgen/contract/readback_policy.py
   - src/merlin/targetgen/contract/compile.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/native_memory_readback.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/native_output_readback.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/native_packet_readback.py
+  - src/merlin_experiments/phase1/feedback/native_memory_readback.py
+  - src/merlin_experiments/phase1/feedback/native_output_readback.py
+  - src/merlin_experiments/phase1/feedback/native_packet_readback.py
   - src/merlin/runtime/out_packet.py
-  - packages/merlin-experiments/src/merlin/targetgen/capsule_runner.py
+  - src/merlin/targetgen/capsule_runner.py
   - src/merlin/runtime/backends/chipyard_rocc.py
   - src/merlin/runtime/out_digest.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/gsim_digest_readback.py
+  - src/merlin_experiments/phase2/gsim_digest_readback.py
 ---
 
 # Native full-value output readback

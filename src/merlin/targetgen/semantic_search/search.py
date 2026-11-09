@@ -579,7 +579,7 @@ def search(
         if instruction_model.get("schema") != INSTRUCTION_SCHEMA:
             raise ValueError("instruction model schema is not merlin.instruction_semantics.v1")
         if "canonical_sha256" in instruction_model:
-            from merlin.targetgen.instruction_semantics import validate_normalized_instruction_model
+            from merlin.target.spec.instructions import validate_normalized_instruction_model
 
             validate_normalized_instruction_model(instruction_model)
         if instruction_model.get("status") == "UNKNOWN":

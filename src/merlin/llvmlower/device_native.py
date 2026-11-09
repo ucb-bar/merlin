@@ -577,7 +577,7 @@ def build_device_native_seam(
     except Exception as exc:  # noqa: BLE001
         return DeviceNativeSeam(device=device, window_base=window_base, skipped=(("all", f"package unusable: {exc}"),))
 
-    from merlin.compile.mesh import _mesh_tile_binding
+    from merlin.compiler.selection.mesh import _mesh_tile_binding
 
     binding = _mesh_tile_binding(device, operand_dtype, accum_dtype, numeric_policy=numeric_policy)
 

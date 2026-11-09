@@ -6,6 +6,7 @@ import copy
 import json
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 import yaml
@@ -139,16 +140,33 @@ def test_shared_and_accumulator_residuals_cannot_acquire_the_same_graph():
 
 
 def test_successor_reporting_config_preserves_geometry_and_exact_quantized_comparison():
-    from merlin.model_check.models import load, selected_float_policy, selected_host_math_policy
+    from merlin.model_check.models import (
+        _protocol_models_bytes,
+        load,
+        selected_float_policy,
+        selected_host_math_policy,
+    )
 
     root = repo_root() / "examples/gemmini/numerics"
+    baseline = (root / "models.yaml").read_bytes()
+    protocol = yaml.safe_load((root.parent / "protocol/experiment.yaml").read_bytes())
     old, new = load(root / "models.yaml"), load(root / "models-speed-first.yaml")
-    assert selected_float_policy(old) == selected_float_policy(new)
+    resolved = _protocol_models_bytes(baseline, protocol)
+    selected = load(Path("<selected-protocol-models>"), source_bytes=resolved)
+    original, current = yaml.safe_load(baseline), yaml.safe_load(resolved)
+    assert old.model("tiny_llama").chain["prefill_tokens"] == 128
+    assert selected.model("tiny_llama").chain["prefill_tokens"] == 32
+    assert selected_float_policy(old) == selected_float_policy(selected) == selected_float_policy(new)
     for name in old.models:
-        before, after = old.model(name), new.model(name)
+        before, after = selected.model(name), new.model(name)
         assert (before.chain, before.programs) == (after.chain, after.programs)
+        assert before.programs == old.model(name).programs
+        assert current["models"][name]["chain"] == protocol["models"][name]["chain"]
+        current["models"][name]["chain"] = original["models"][name]["chain"]
         assert all(rule["report_only"] for rule in after.judged["admission"])
         assert any(not rule.get("report_only") for rule in before.judged["admission"])
+    assert current == original  # Geometry is the only baseline change; no copied or relaxed policy.
+    assert selected_host_math_policy(selected.model("tiny_llama"), selected.full) == "native"
     assert selected_host_math_policy(new.model("tiny_llama"), new.full) == "portable_exp_trig"
     assert selected_host_math_policy(new.model("smolvla"), new.full) == "portable_neural_f32"
 

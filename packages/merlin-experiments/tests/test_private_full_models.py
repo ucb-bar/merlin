@@ -102,7 +102,7 @@ def _synthetic_source_demand(raw, normalized, groups, *, linked=None):
 def test_private_capture_binds_sealed_and_compiler_tree_algorithms_independently(tmp_path):
     from merlin_experiments.capture_execution import sealed_m2m
 
-    from merlin.compile.model_execution_inputs import strict_tree_sha256
+    from merlin.runtime.modelinputs import strict_tree_sha256
 
     capture = tmp_path / "capture"
     capture.mkdir()
@@ -1261,7 +1261,7 @@ def test_source_obligations_prove_copy_before_hardware_eligibility(tmp_path, mon
     from merlin_experiments.phase1.feedback import private_data_movement as movement
 
     from merlin.common import mlir_query as mq
-    from merlin.compile.model_execution_inputs import file_sha256
+    from merlin.runtime.modelinputs import file_sha256
     from merlin.frontends.capture_normalization import normalize_capture_mlir
     from merlin.targetgen import application_inventory as ai
     from merlin.targetgen import eligibility

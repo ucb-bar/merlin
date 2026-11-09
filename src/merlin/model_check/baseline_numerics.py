@@ -171,7 +171,23 @@ def compare(manifest_path: Path) -> dict:
     selected_policy, policy_bytes = reader.read(manifest["numerical_policy"])
     if selected_policy.resolve() != policy_path.resolve():
         raise ValueError("numerical policy is not the protocol-linked models file")
-    models = MD.load(policy_path, source_bytes=policy_bytes)
+    configuration = None
+    if "models_configuration" in protocol["authority"]:
+        expected = MD._protocol_models_bytes(policy_bytes, protocol)
+        if "models_configuration" not in manifest:
+            raise ValueError("selected protocol requires an explicit resolved models configuration")
+        models_path, models_bytes = reader.read(manifest["models_configuration"])
+        if models_path.resolve() in {policy_path.resolve(), protocol_path.resolve()} or models_bytes != expected:
+            raise ValueError("resolved models configuration differs from the selected baseline/protocol geometry")
+        models = MD.load(models_path, source_bytes=models_bytes)
+        configuration = {"path": str(models_path), "sha256": hashlib.sha256(models_bytes).hexdigest(),
+                         "baseline_sha256": hashlib.sha256(policy_bytes).hexdigest(),
+                         "protocol_sha256": hashlib.sha256(payload).hexdigest(),
+                         "scope": "geometry-only selection; no capture, reference or execution qualification"}
+    else:
+        if "models_configuration" in manifest:
+            raise ValueError("resolved models configuration requires an explicit protocol selection")
+        models = MD.load(policy_path, source_bytes=policy_bytes)
     model = models.model(manifest["model"])
     definition = protocol["models"][model.name]
     input_manifest_path = (protocol_path.parent / protocol["authority"]["evaluation_input_manifest"]).absolute()
@@ -229,6 +245,7 @@ def compare(manifest_path: Path) -> dict:
             "quantized_reference_quality_admission": _admission(rows, model, protocol, "quantized_reference_vs_fp32"),
             "implementation": implementation, "float_policy": policy, "artifacts": reader.finish(),
             "checker_sources": checker_sources,
+            **({"models_configuration": configuration} if configuration is not None else {}),
             "execution_qualified": False, "reference_origin_certified": False, "placement_qualified": False,
             "scope": "Offline supplied-output checks only; no execution or model qualification."}
 

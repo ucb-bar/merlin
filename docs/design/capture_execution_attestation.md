@@ -6,13 +6,13 @@ owner: targetgen
 last_verified: 2026-10-06
 related: [phase0_specification, model2mlir, reproducibility]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase0/capture_execution_attestation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/capture_selection.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/sealed_generation.py
-  - packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_static.py
-  - packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_m2m.py
-  - packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_python.py
-  - packages/merlin-experiments/src/merlin_experiments/capture_execution/python_preflight.py
+  - src/merlin_experiments/phase0/capture_execution_attestation.py
+  - src/merlin_experiments/phase0/capture_selection.py
+  - src/merlin_experiments/phase0/sealed_generation.py
+  - src/merlin_experiments/capture_execution/sealed_static.py
+  - src/merlin_experiments/capture_execution/sealed_m2m.py
+  - src/merlin_experiments/capture_execution/sealed_python.py
+  - src/merlin_experiments/capture_execution/python_preflight.py
   - src/merlin/targetgen/application_inventory.py
 ---
 

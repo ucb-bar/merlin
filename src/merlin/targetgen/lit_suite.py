@@ -267,7 +267,7 @@ def run_core_suite() -> bool | None:
     """Run the tracked core lit suite. ``None`` when llvm-lit is unavailable."""
     import subprocess
 
-    from merlin.verify.tools import find_lit
+    from merlin.verification.tools import find_lit
 
     lit = find_lit()
     root = core_suite_dir()
@@ -282,7 +282,7 @@ def run_suite(target: str) -> bool | None:
     import subprocess
 
     from merlin.common.artifacts import artifacts_dir
-    from merlin.verify.tools import find_lit
+    from merlin.verification.tools import find_lit
 
     lit = find_lit()
     root = Path(artifacts_dir()) / "verify" / "lit" / target

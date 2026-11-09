@@ -28,11 +28,11 @@ from pathlib import Path
 
 import pytest
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import module_source_path
 from merlin.targetgen import quant_recipe as QR
 
-_QUANTIZER = merlin_dir() / "python/merlin/targetgen/_recipe_quantizer.py"
-_DYNAMIC = merlin_dir() / "python/merlin/targetgen/_activation_contractions.py"
+_QUANTIZER = module_source_path("merlin.targetgen._recipe_specs").with_name("_recipe_quantizer.py")
+_DYNAMIC = module_source_path("merlin.targetgen._activation_contractions")
 
 
 def _recipe(**activation) -> dict:
@@ -110,7 +110,7 @@ def test_the_family_is_spelled_the_same_on_both_sides_of_the_capture_boundary():
     """The quantizer is read in the capture venv without merlin, so it repeats the constants."""
     values = {}
     for path, names in (
-        (_QUANTIZER, ("ACTIVATION_CONTRACTION", "MIN_ACTIVATION_REDUCTION")),
+        (_QUANTIZER.with_name("_recipe_specs.py"), ("ACTIVATION_CONTRACTION", "MIN_ACTIVATION_REDUCTION")),
         (_DYNAMIC, ("MIN_REDUCTION",)),
     ):
         for node in ast.parse(path.read_text(encoding="utf-8")).body:

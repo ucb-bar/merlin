@@ -234,7 +234,7 @@ def tiled_readout_parameter_table(readout, *, symbol):
     from xdsl.dialects import llvm
     from xdsl.dialects.builtin import DenseIntOrFPElementsAttr, TensorType, i32
 
-    from merlin.compile.scheduling.dense_contracts import DenseTiledIntegerReadout
+    from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout
 
     if type(readout) is not DenseTiledIntegerReadout or type(symbol) is not str or not symbol.isidentifier():
         raise ValueError("parameter table requires an exact tiled source readout and local symbol")

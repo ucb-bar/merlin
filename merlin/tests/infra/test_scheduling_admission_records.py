@@ -6,8 +6,8 @@ from dataclasses import replace
 import pytest
 from test_dense_panel_epochs import law, original
 
-from merlin.compile.scheduling import library_sources as L
-from merlin.compile.scheduling.dense_panel_epochs import schedule_dense_panel_epochs
+from merlin.compiler.schedule import library_sources as L
+from merlin.compiler.schedule.dense_panel_epochs import schedule_dense_panel_epochs
 
 API = "merlin.compile.scheduling.dense_panel_epochs.schedule_dense_panel_epochs"
 

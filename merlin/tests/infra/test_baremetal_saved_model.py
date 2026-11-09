@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 import yaml
 
-from merlin.compile import baremetal_model as BM
-from merlin.compile import model_execution_inputs as MI
+from merlin import model as BM
+from merlin.runtime import modelinputs as MI
 from merlin.llvmlower.device_build import DeviceRouting
 
 
@@ -90,7 +90,7 @@ def _fixture(tmp_path: Path, monkeypatch, *, elements: int = 2):
     pkg = SimpleNamespace(
         backend="scalar", cflags=["-march=rv64imafdc_zicsr_zifencei"], is_int8=False, schedule_text=""
     )
-    monkeypatch.setattr(BM.registry, "load_rvv_package", lambda path: pkg)
+    monkeypatch.setattr(BM.host, "load_host_package", lambda path: pkg)
     monkeypatch.setattr(
         BM.spike_model, "arch_extensions", lambda path: ["rv64i", "m", "a", "f", "d", "c", "zicsr", "zifencei"]
     )
@@ -221,6 +221,8 @@ def test_executed_profile_is_read_from_console_and_table_mutation_refuses(tmp_pa
 
     monkeypatch.setattr(BM.spike_model, "build", build)
     monkeypatch.setattr(BM.spike_model, "run", run)
+    # The synthetic build/run pair above owns this simulator-free seam.
+    monkeypatch.setattr(BM.spike_backend, "available", lambda: True)
     monkeypatch.setattr(BM, "_spike_extension_backend", lambda target: None)
     kwargs = dict(inputs, output=out / "executed", run="spike", reference_file="golden.npy", op_profile=True)
     if mutation:
@@ -380,7 +382,7 @@ def test_native_failure_keeps_partial_stream_bytes_without_numerical_claim(
 
 
 def test_captured_quantization_scope_is_explicit_and_bound(tmp_path, monkeypatch):
-    from merlin.llvmlower.quant_scope import FEATURE
+    from merlin.compiler.quantization.scope import FEATURE
 
     inputs, out = _fixture(tmp_path, monkeypatch)
     calls = []
@@ -401,8 +403,8 @@ def test_captured_quantization_scope_is_explicit_and_bound(tmp_path, monkeypatch
 
 
 def test_host_fusion_selection_preserves_the_captured_quantization_scope(tmp_path, monkeypatch):
+    from merlin.compiler.quantization.scope import FEATURE
     from merlin.llvmlower.impr_features import FUSE_AFTER_GENERALIZE_NAME
-    from merlin.llvmlower.quant_scope import FEATURE
 
     inputs, out = _fixture(tmp_path, monkeypatch)
     calls = []
@@ -432,7 +434,7 @@ def test_host_fusion_requires_a_boolean_before_output_creation(tmp_path, monkeyp
 
 def test_host_fusion_cannot_change_a_vector_host_schedule(tmp_path, monkeypatch):
     inputs, out = _fixture(tmp_path, monkeypatch)
-    monkeypatch.setattr(BM.registry, "load_rvv_package", lambda _: SimpleNamespace(backend="rvv"))
+    monkeypatch.setattr(BM.host, "load_host_package", lambda _: SimpleNamespace(backend="rvv"))
     with pytest.raises(BM.BaremetalModelError, match="scalar host lane"):
         BM.compile_saved_model(**inputs, output=out / "vector", run="none", host_elementwise_fusion=True)
 
@@ -489,7 +491,7 @@ def test_host_bounded_rne_requires_a_boolean_before_output_creation(tmp_path, mo
 def test_host_bounded_rne_requires_a_compatible_scalar_cpu_package(tmp_path, monkeypatch, backend, march):
     inputs, out = _fixture(tmp_path, monkeypatch)
     monkeypatch.setattr(
-        BM.registry, "load_rvv_package", lambda _: SimpleNamespace(backend=backend, cflags=["-march="+march])
+        BM.host, "load_host_package", lambda _: SimpleNamespace(backend=backend, cflags=["-march="+march])
     )
     monkeypatch.setattr(BM, "require_host_isa_dts", lambda *args, **kwargs: [march])
     with pytest.raises(ValueError, match="scalar host lane|incompatible"):
@@ -551,7 +553,7 @@ def test_unknown_host_math_policy_refuses_before_any_input_or_output_io(tmp_path
 
 
 def test_exact_preparation_sharing_reaches_normal_lowering_only_when_selected(tmp_path, monkeypatch):
-    from merlin.llvmlower.quant_scope import FEATURE as quant_scope
+    from merlin.compiler.quantization.scope import FEATURE as quant_scope
     from merlin.llvmlower.tensor_provenance_cse import FEATURE as preparation_cse
 
     inputs, out = _fixture(tmp_path, monkeypatch)

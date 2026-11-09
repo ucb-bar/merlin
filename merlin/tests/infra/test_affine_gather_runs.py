@@ -2,7 +2,8 @@
 
 import pytest
 
-from merlin.compile.scheduling.affine_gather_runs import ConvolutionGatherRuns, emit_convolution_gather_runs
+from merlin.compiler.schedule.affine_gather_runs import ConvolutionGatherRuns
+from merlin.compiler.schedule.affine_gather_runs import emit_convolution_gather_runs
 
 
 class IntegerBuilder:
@@ -83,7 +84,7 @@ class DeferredBuilder(IntegerBuilder):
 
 @pytest.mark.parametrize("ow", [1, 7, 14, 28])
 def test_dynamic_row_tail_preserves_every_sample_across_source_rows_and_images(ow):
-    from merlin.compile.scheduling.affine_gather_runs import emit_convolution_matrix_gather
+    from merlin.compiler.schedule.affine_gather_runs import emit_convolution_matrix_gather
 
     plan = ConvolutionGatherRuns((2, 5, 2 * ow - 1, 12), (2, 3, ow),
                                 (2, 2), (1, 1), (1, 1), 16)
@@ -116,7 +117,7 @@ def test_dynamic_gather_requires_a_valid_explicit_bound_and_keeps_static_count_c
 @pytest.mark.parametrize('stride,dilation', [((1, 1), (1, 1)), ((2, 3), (2, 1))])
 @pytest.mark.parametrize('channels,tile', [(16, 16), (32, 16), (6, 3)])
 def test_implicit_matrix_tiles_equal_original_ordered_convolution(stride, dilation, channels, tile):
-    from merlin.compile.scheduling.affine_gather_runs import emit_convolution_matrix_gather
+    from merlin.compiler.schedule.affine_gather_runs import emit_convolution_matrix_gather
 
     b, oh, ow, kh, kw = 2, 3, 7, 2, 3
     sh, sw = stride

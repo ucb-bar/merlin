@@ -6,8 +6,10 @@ import numpy as np
 import pytest
 from xdsl.dialects.builtin import StringAttr
 
-from merlin.compile.connected_regions import plan_connected_region, compile_connected_pointwise
-from merlin.compile.scheduling.program_limits import AddressWindow, Continuation
+from merlin.compiler.partition.connected import plan_connected_region
+from merlin.compiler.lower.connected import compile_connected_pointwise
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import Continuation
 from merlin.sched.ir import Const, Kernel
 from test_multioutput_fusion import model, WORD, SPACES
 
@@ -130,7 +132,7 @@ def test_stage_selector_cannot_reassign_source_owned_binding_fields(tmp_path, fi
 
 
 def test_discovered_connected_candidate_consumed_by_normal_emission(tmp_path):
-    from merlin.compile import fusion_workflow as F
+    from merlin.compiler.planning import explore as F
     region, settings = fixture(tmp_path)
     contract = dict(capability_contract={}, numerical_policy_sha256='a'*64)
     page = F.discover(region.source, **contract)

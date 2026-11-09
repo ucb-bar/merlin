@@ -10,9 +10,11 @@ changes; the same gates run in pre-commit and CI.
 
 ## Source ownership
 
-`src/merlin/` owns the installed compiler core. Optional phase execution, DSE, mining workflows,
-and analysis live under `packages/*/src/`; their historical imports share the `merlin` namespace
-without duplicate implementations. `merlin/python/merlin` is only a compatibility symlink.
+`src/` owns the single installed Merlin distribution: `merlin`, `merlin_experiments`, and
+`merlin_dse`. Research workflows preserve their historical imports while optional dependencies
+stay lazy. Logical compiler/research and protected-source boundaries remain independent of
+wheel ownership. `packages/` retains research tests and the independent timing observer;
+do not duplicate active Merlin code there. `merlin/python/merlin` is only a compatibility symlink.
 Experiment definitions start at `experiments/catalog.yaml`; retained research inputs live under
 `experiments/reference-data/`, not generated `out/`. See `docs/reference/repo_structure.md`.
 
@@ -206,8 +208,9 @@ Escape hatch for a genuine one-off: `export MERLIN_ALLOW_ARTIFACT_WRITE=1` or ad
 
 Cross-subsystem tests live in **`merlin/tests/`** (the root project's pytest `testpaths`), organized
 into **subsystem buckets**: `kernels/ rvv/ dse/ gemmini/ targetgen/ ir/ runtime/ infra/`.
-Focused distribution/orchestration tests also live in `packages/*/tests/`, with their owning
-project's test configuration. Rules for the cross-subsystem suite (enforced by
+Retained workflow tests also live in `packages/*/tests/`; their implementations ship in the
+main Merlin distribution. The independent timing observer retains its own project configuration.
+Rules for the cross-subsystem suite (enforced by
 `build_tools/scripts/check_structure.py` "test layout"; see `.claude/skills/test-layout`):
 
 - A test file is `merlin/tests/<bucket>/test_<area>.py` — **never at the `merlin/tests/` root**, and
@@ -215,9 +218,10 @@ project's test configuration. Rules for the cross-subsystem suite (enforced by
 - Shared inputs live in `merlin/tests/fixtures/` and `merlin/tests/data/`.
 - Resolve repo paths via `merlin.common.paths.repo_root()` / `merlin_dir()` — **never** `Path(__file__).parents[N]`
   (so tests are location-independent and survive moves).
-- Run the cross-subsystem suite: `.venv/bin/python -m pytest merlin/tests`; include the optional
-  distributions' test directories explicitly when validating those distributions. Installing core
-  alone is not sufficient to run optional research tests.
+- Run the cross-subsystem suite: `.venv/bin/python -m pytest merlin/tests`; include the retained
+  workflow test directories explicitly when validating those workflows. Install their selected
+  optional dependency extras; a base Merlin installation need not include research engines.
+  Historical replay retains its recorded source/distribution selection and test inputs.
 
 # Documentation convention — durable docs vs reports
 

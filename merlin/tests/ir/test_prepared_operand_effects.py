@@ -177,3 +177,20 @@ def test_serial_tensor_control_checks_each_nested_effect(control):
     body.insert_op_before(func.CallOp("unknown_writer", [], []), body.last_op)
     with pytest.raises(ValueError, match="unknown external"):
         validate_pure_tensor_function(owner, functions)
+
+
+def test_exact_shared_fp8_values_are_immutable_without_other_float_type_permission():
+    from merlin.xdsl_dialects.fp8 import Float8E4M3FNType, Float8E5M2Type
+
+    def identity(element):
+        value = builtin.TensorType(element, [2, 3])
+        function = func.FuncOp("identity", ([value], [value]))
+        function.body.block.add_op(func.ReturnOp(function.args[0]))
+        return function
+
+    function = identity(Float8E4M3FNType())
+    validate_pure_tensor_function(function, {"identity": function})
+
+    unknown = identity(Float8E5M2Type())
+    with pytest.raises(ValueError, match="buffer or address"):
+        validate_pure_tensor_function(unknown, {"identity": unknown})

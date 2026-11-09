@@ -25,7 +25,7 @@ def check_actual_effects(package, generated, artifact):
     from xdsl.dialects import arith, builtin
     from xdsl.parser import Parser
 
-    from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
+    from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
     from merlin.targetgen.isa_dialect_gen import build_dialect
     from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
 

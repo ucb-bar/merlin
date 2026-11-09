@@ -366,7 +366,7 @@ def require_host(host, selected):
 
 
 def prepare_host(device, selected, source, directory):
-    from merlin.compile.mesh import _mesh_tile_binding
+    from merlin.compiler.selection.mesh import _mesh_tile_binding
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.targetgen import corpus_spec as CS
 

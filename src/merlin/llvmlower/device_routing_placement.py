@@ -51,7 +51,7 @@ def routing_for_placement(
     for this operand pair -- the same source :mod:`merlin.system.offload` uses -- and it is still an
     error when those facts name none, or name more than one.
     """
-    from merlin.system.place import device_selector
+    from merlin.compiler.planning.placement import device_selector
 
     # At call time: that module re-exports this function, so it imports this one.
     from .device_build import DeviceRouting

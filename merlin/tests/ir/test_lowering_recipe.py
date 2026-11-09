@@ -129,3 +129,26 @@ def test_ordinary_ciface_annotation_retains_upstream_and_checks_exact_change(tmp
     assert result["upstream_returned_llvm_ir"]["sha256"] == hashlib.sha256(before.encode()).hexdigest()
     assert result["returned_llvm_ir"]["sha256"] == hashlib.sha256(after.encode()).hexdigest()
     assert result["ciface_boundary_inline"]["report"]["count"] == 1
+
+
+def test_refactored_source_owners_are_bound_and_revalidated(tmp_path, monkeypatch):
+    from merlin.llvmlower import source_model
+    from merlin.llvmlower.lowering_recipe import LoweringRecipe
+
+    paths = pipeline.implementation_paths()
+    modules = {path.as_posix().split("/merlin/")[-1] for path in paths}
+    assert {"compiler/lower/scalar/pipeline.py", "compiler/lower/llvm/normalize.py",
+            "compiler/passes/fragments.py", "compiler/selection/features.py"} <= modules
+    # A changed canonical owner must invalidate a prepared source transaction,
+    # even though the compatibility driver's bytes remain unchanged.
+    selected = tmp_path / "selected-policy.py"
+    selected.write_text("policy = 1\n")
+    monkeypatch.setattr(pipeline, "implementation_paths", lambda: (*paths, selected))
+    owner = source_model._SourceModelBuild((), None, None)
+    owner.revalidate()
+    recipe = LoweringRecipe(tmp_path, features=(), sources={str(i): path for i, path in enumerate(paths)})
+    identities = recipe.record["sources"]
+    assert {row["path"] for row in identities.values()} == {str(path.resolve()) for path in paths}
+    selected.write_text("policy = 2\n")
+    with pytest.raises(ValueError, match="preparation inputs.*changed"):
+        owner.revalidate()

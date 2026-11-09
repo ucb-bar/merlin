@@ -18,8 +18,8 @@ from merlin.transforms.certificates import ir_digest
 from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
 
 if TYPE_CHECKING:
-    from merlin.compile.scheduling.compact_dense import DenseLoopStorage
-    from merlin.compile.scheduling.compact_dense_group_check import DenseLHSReuseLaw
+    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+    from merlin.compiler.schedule.compact_dense_group_check import DenseLHSReuseLaw
 
 
 # Weak keys and weak guard references retain no completed model or callback
@@ -43,8 +43,8 @@ class SourceDenseGrouping:
     max_members: int = 2
 
     def __post_init__(self):
-        from merlin.compile.scheduling.compact_dense import DenseLoopStorage
-        from merlin.compile.scheduling.compact_dense_group_check import DenseLHSReuseLaw
+        from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+        from merlin.compiler.schedule.compact_dense_group_check import DenseLHSReuseLaw
 
         if (
             type(self.storages) is not tuple
@@ -76,13 +76,13 @@ def _callbacks(selection):
 
 
 def _callback_snapshot(selection):
-    from merlin.compile.scheduling.compact_dense_group import _callback
+    from merlin.compiler.schedule.compact_dense_group import _callback
 
     return tuple(_callback(function) for function in _callbacks(selection))
 
 
 def _check_callbacks(selection, snapshot):
-    from merlin.compile.scheduling.compact_dense_group import _same_callback
+    from merlin.compiler.schedule.compact_dense_group import _same_callback
 
     if any(
         not _same_callback(function, frozen) for function, frozen in zip(_callbacks(selection), snapshot, strict=True)
@@ -91,20 +91,20 @@ def _check_callbacks(selection, snapshot):
 
 
 def _validator_snapshot(validate):
-    from merlin.compile.scheduling.compact_dense_group import _callback
+    from merlin.compiler.schedule.compact_dense_group import _callback
 
     return _callback(validate)
 
 
 def _check_validator(validate, snapshot):
-    from merlin.compile.scheduling.compact_dense_group import _same_callback
+    from merlin.compiler.schedule.compact_dense_group import _same_callback
 
     if not _same_callback(validate, snapshot):
         raise ValueError("original dense group validation callback changed; replan")
 
 
 def _functions():
-    from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
+    from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
 
     from .source_model import _region_results, _SourceModelBuild
 
@@ -136,13 +136,13 @@ def _functions():
 
 
 def _function_snapshot():
-    from merlin.compile.scheduling.compact_dense_group import _callback
+    from merlin.compiler.schedule.compact_dense_group import _callback
 
     return tuple(_callback(function) for function in _functions())
 
 
 def _check_functions(snapshot):
-    from merlin.compile.scheduling.compact_dense_group import _same_callback
+    from merlin.compiler.schedule.compact_dense_group import _same_callback
 
     if any(not _same_callback(function, frozen) for function, frozen in zip(_functions(), snapshot, strict=True)):
         raise ValueError("original dense group implementation function or code changed; replan")
@@ -197,7 +197,7 @@ def _check_source(module, operations, snapshot):
 
 def implementation_paths():
     """Direct original owners to freeze before any group implementation runs."""
-    from merlin.compile.scheduling.compact_dense_group import implementation_paths as group_paths
+    from merlin.compiler.schedule.compact_dense_group import implementation_paths as group_paths
 
     return tuple(
         dict.fromkeys(
@@ -249,8 +249,8 @@ class SourceDenseGroupResult:
         return tuple(operation.results[0] for operation in self.operations)
 
     def revalidate(self):
-        from merlin.compile.scheduling.compact_dense_group import CompactDenseGroupResult
-        from merlin.compile.scheduling.library_sources import shared_library_sources
+        from merlin.compiler.schedule.compact_dense_group import CompactDenseGroupResult
+        from merlin.compiler.schedule.library_sources import shared_library_sources
 
         issued = _ISSUED_GROUPS.get(self)
         if issued is None or self._guard is not issued[0]() or self._guard.__code__ is not issued[1]:
@@ -303,9 +303,10 @@ class SourceDenseGroupResult:
 
 def schedule_source_dense_group(module, operations, selection, validate):
     """Require current complete independent source domains before grouping."""
-    from merlin.compile.scheduling.compact_dense_group import schedule_compact_dense_group
-    from merlin.compile.scheduling.dense_source import DenseSourceUnavailable, read_source_dense
-    from merlin.compile.scheduling.library_sources import shared_library_sources
+    from merlin.compiler.schedule.compact_dense_group import schedule_compact_dense_group
+    from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
+    from merlin.compiler.schedule.dense_source import read_source_dense
+    from merlin.compiler.schedule.library_sources import shared_library_sources
 
     from .source_model import SourceRegion, _region_results, _values
 
@@ -482,8 +483,9 @@ def schedule_source_dense_group(module, operations, selection, validate):
 
 def discover_dense_groups(module, selection, validate):
     """Try bounded adjacent groups; unsupported candidates retain singles."""
-    from merlin.compile.scheduling.dense_contracts import DenseSchedulingUnavailable
-    from merlin.compile.scheduling.dense_source import DenseSourceUnavailable, _problem
+    from merlin.compiler.schedule.dense_contracts import DenseSchedulingUnavailable
+    from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
+    from merlin.compiler.schedule.dense_source import _problem
 
     from .source_model import SourceRegion
 

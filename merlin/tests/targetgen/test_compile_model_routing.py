@@ -17,7 +17,7 @@ import selected_driver
 # `_mesh_verify` and `run_matmul_on_mesh` resolve `_default_oot_package` in merlin.compile.mesh, where it
 # is defined, so a stand-in package goes there; the name merlin.compile_cli re-exports is never read.
 from merlin.compile import mesh as MESH
-from merlin.compile.model_preflight import preflight_model
+from merlin.compiler.frontend.preflight import preflight_model
 from merlin.targetgen import capsule_source as CSrc
 from merlin.targetgen import routing as R
 

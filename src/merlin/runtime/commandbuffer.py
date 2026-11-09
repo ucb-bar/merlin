@@ -14,33 +14,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from merlin.compile.logical_abi import (
-    DERIVATION_RECIPE_KEYS as DERIVATION_RECIPE_KEYS,
-)
-from merlin.compile.logical_abi import (
-    IM2COL_RECIPE_KEY as IM2COL_RECIPE_KEY,
-)
-from merlin.compile.logical_abi import (
-    POOL_ATTR_ARITY as POOL_ATTR_ARITY,
-)
-from merlin.compile.logical_abi import (
-    POOL_PAD_VALUE_ATTR as POOL_PAD_VALUE_ATTR,
-)
-from merlin.compile.logical_abi import (
-    PRODUCING_KEYS as PRODUCING_KEYS,
-)
-from merlin.compile.logical_abi import (
-    _produces as _produces,
-)
-from merlin.compile.logical_abi import (
-    declared_output_dtypes as declared_output_dtypes,
-)
-from merlin.compile.logical_abi import (
-    harness_derived_tensors as harness_derived_tensors,
-)
-from merlin.compile.logical_abi import (
-    pool_params as pool_params,
-)
+from merlin.compiler.ir.logical_abi import DERIVATION_RECIPE_KEYS
+from merlin.compiler.ir.logical_abi import IM2COL_RECIPE_KEY
+from merlin.compiler.ir.logical_abi import POOL_ATTR_ARITY
+from merlin.compiler.ir.logical_abi import POOL_PAD_VALUE_ATTR
+from merlin.compiler.ir.logical_abi import PRODUCING_KEYS
+from merlin.compiler.ir.logical_abi import _produces
+from merlin.compiler.ir.logical_abi import declared_output_dtypes
+from merlin.compiler.ir.logical_abi import harness_derived_tensors
+from merlin.compiler.ir.logical_abi import pool_params
 
 from .tensor import Tensor, pool_out_dims  # noqa: F401  (pool_out_dims re-exported: see its docstring)
 

@@ -1,6 +1,6 @@
 """Apply an RVV package's codegen knobs to a workload build, via the existing build_app seam.
 
-This is the plug-back-in point: an isolated :class:`RvvPackage` supplies its transform schedule
+This is the plug-back-in point: an isolated :class:`HostPackage` supplies its transform schedule
 and cflags into ``build_app(rvv_schedule=..., cflags_override=...)`` — WITHOUT touching the
 ``pipeline.RVV_TRANSFORM_SCHEDULE`` / ``RVV_CFLAGS`` module defaults. ``apply_rvv_package(hand_v0)``
 is therefore byte-identical to today's ``build_app(backend="rvv")`` (asserted by test_rvv_package).
@@ -11,8 +11,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from merlin.compiler.backend.host import HostPackage, load_host_package
+
 from ..runtime.backends import zephyr_model as zm
-from .registry import RvvPackage, load_rvv_package
 
 
 class _SplitShape:
@@ -55,7 +56,7 @@ def _harts_split_shapes(shapes, harts: int) -> list:
     return out
 
 
-def shape_adapted_features(pkg: "RvvPackage", model_dir: str | Path, *, harts: int = 1) -> list[str]:
+def shape_adapted_features(pkg: HostPackage, model_dir: str | Path, *, harts: int = 1) -> list[str]:
     """``pkg``'s compiler features re-resolved against the CONTRACTIONS ``model_dir`` actually has.
 
     This is the seam where a package and a workload first meet, so it is where a register block
@@ -78,15 +79,18 @@ def shape_adapted_features(pkg: "RvvPackage", model_dir: str | Path, *, harts: i
     ``harts`` is the hart count the image will be built for. It matters because the multicore stage
     splits each matmul over N BEFORE this schedule runs, so what the block must cover is the per-hart
     tile, not the model's N — see :func:`_harts_split_shapes`."""
-    from merlin.compile.analysis.contraction_shapes import contraction_shapes
+    provider = getattr(pkg, "codegen_provider", None)
+    if provider is not None:
+        return list(provider.shape_adapted_features(pkg, model_dir, harts=harts))
 
-    from .registry import _resolve_features
+    from merlin.compiler.ir.contraction_shapes import contraction_shapes
+    from merlin.compiler.backend.host import resolve_features
 
     shapes = contraction_shapes(Path(model_dir) / "model.mlir")
     if not shapes:
         return list(pkg.compiler_features)
     shapes = _harts_split_shapes(shapes, int(harts))
-    feats = _resolve_features(pkg.knobs, pkg.manifest, shapes=shapes)
+    feats = resolve_features(pkg.knobs, pkg.manifest, shapes=shapes)
     return _adapt_frozen_points(feats, shapes, target=str(pkg.manifest.get("target", "rvv")))
 
 
@@ -130,7 +134,7 @@ def _schedule_pinned_blocks(schedule_text: str) -> dict[str, tuple[int, int]]:
     return blocks
 
 
-def blocking_risks(pkg: "RvvPackage", model_dir: str | Path) -> list[str]:
+def blocking_risks(pkg: HostPackage, model_dir: str | Path) -> list[str]:
     """Op classes whose extents this package's SCHEDULE-PINNED block would mask, as messages.
 
     A masked parallel dim is not a style question: it fails to lower outright on the integer path and
@@ -140,7 +144,7 @@ def blocking_risks(pkg: "RvvPackage", model_dir: str | Path) -> list[str]:
     Empty when the package has an adaptable feature, when nothing is masked, or when the schedule is
     unreadable.
     """
-    from merlin.compile.analysis.contraction_shapes import contraction_shapes
+    from merlin.compiler.ir.contraction_shapes import contraction_shapes
 
     from ..llvmlower.frozen_blocks import is_frozen_block
     from .from_strategy import _rvv_blocking_lowers
@@ -221,13 +225,12 @@ def _adapt_frozen_points(feats: list[str], shapes, *, target: str) -> list[str]:
 
 
 def apply_rvv_package(
-    pkg: "RvvPackage | str | Path",
+    pkg: HostPackage | str | Path,
     model_dir: str | Path,
     work: str | Path,
     *,
     board: str | None = None,
     harts: int = 2,
-    arena_mb: int = 64,
     int8_compute: bool | None = None,
     shape_adapt: bool = False,
     **kw: Any,
@@ -246,8 +249,8 @@ def apply_rvv_package(
     """
     if board is None:
         raise ValueError("apply_rvv_package requires a board from MERLIN_BOARD_CATALOG")
-    if not isinstance(pkg, RvvPackage):
-        pkg = load_rvv_package(pkg)
+    if not isinstance(pkg, HostPackage):
+        pkg = load_host_package(pkg)
     if int8_compute is None:
         int8_compute = pkg.is_int8
     feats = shape_adapted_features(pkg, model_dir) if shape_adapt else list(pkg.compiler_features)
@@ -259,7 +262,6 @@ def apply_rvv_package(
         rvv_schedule=pkg.schedule_text,
         cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
         int8_compute=int8_compute,
-        arena_mb=arena_mb,
         cpus=max(harts, 1),
         features=frozenset(feats) or None,
         **kw,

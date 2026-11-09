@@ -130,7 +130,7 @@ def test_generated_reference_matches_the_library(specs_tool):
 def test_the_stated_schedule_order_is_the_library_order(specs_tool):
     rows = specs_tool.scan(repo_root() / "src" / "merlin")
     declared = {str(row["name"]) for row in specs_tool.pipelines(rows)[
-        "merlin.compile.scheduling.schedule_pipeline:compile_schedule"] if row["kind"] == "declare"}
+        "merlin.compiler.schedule.schedule_pipeline:compile_schedule"] if row["kind"] == "declare"}
     assert set(SCHEDULE_ORDER) | {"prefetch", "post_storage.name"} == declared
     assert specs_tool.check(rows, "schedule_pipeline:compile_schedule", list(SCHEDULE_ORDER))["status"] == "valid"
     swapped = ["semantic_admission", "storage", "fusion", "completion", "emission", "final_program"]

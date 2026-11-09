@@ -4,15 +4,16 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.scheduling.block_schedule import Compute, Load, Preload, Store
-from merlin.compile.scheduling.compact_dense import (
-    DenseLoopAdapter,
-    DenseLoopStorage,
-    DenseMemoryView,
-    emit_compact_dense,
-    schedule_compact_dense,
-)
-from merlin.compile.scheduling.compact_verification import verify_compact_dense
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
+from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+from merlin.compiler.schedule.compact_dense import DenseMemoryView
+from merlin.compiler.schedule.compact_dense import emit_compact_dense
+from merlin.compiler.schedule.compact_dense import schedule_compact_dense
+from merlin.compiler.schedule.compact_verification import verify_compact_dense
 from merlin.sched.ir import Call, Loop, as_expr, evaluate, instances
 from merlin.transforms.dense_planning import DenseProblem, DenseResources, dense_blocks
 
@@ -341,7 +342,7 @@ def test_physical_padding_and_separate_pools_narrow_k_before_ranking():
 
 @pytest.mark.parametrize("failure", ["budget", "invariant"])
 def test_bounded_repair_rechecks_actual_fallback_and_never_hides_a_bug(monkeypatch, failure):
-    from merlin.compile.scheduling import compact_verification as checker
+    from merlin.compiler.schedule import compact_verification as checker
 
     original = checker.verify_compact_dense
     checked = []

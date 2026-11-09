@@ -130,8 +130,8 @@ def decoded_commands(rows, *, decoder, entry_state=None, call_summaries=None):
     fields and the bound operand observer); nothing is retained beyond the record.
     ``entry_state``/``call_summaries`` reach the lifter only when it accepts them.
     """
-    from merlin.compile.analysis.riscv_machine import register_facts
-    from merlin.compile.analysis.rocc_commands import fields_of
+    from merlin.analysis.riscv_machine import register_facts
+    from merlin.analysis.rocc_commands import fields_of
     from merlin.kernels.machine_evidence import lifter_call
 
     semantics, target = (decoder or {}).get("semantics"), (decoder or {}).get("target")

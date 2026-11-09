@@ -18,9 +18,9 @@ from merlin.common.digest import sha256_file
 from merlin.transforms.certificates import ir_digest
 
 if TYPE_CHECKING:
-    from merlin.compile.scheduling.multioutput_fusion import MultiOutputBindings, MultiOutputSource
-    from merlin.compile.scheduling.multioutput_fusion_check import MultiOutputCompositionLaw
-    from merlin.compile.scheduling.temporary_storage import TemporaryObject
+    from merlin.compiler.schedule.multioutput_fusion_check import MultiOutputCompositionLaw
+    from merlin.compiler.schedule.temporary_storage import TemporaryObject
+    from merlin.compiler.transforms.multioutput import MultiOutputBindings, MultiOutputSource
     from merlin.sched.ir import Kernel
 
 
@@ -33,8 +33,8 @@ class MultiOutputProgram:
     bindings: MultiOutputBindings
 
     def __post_init__(self):
-        from merlin.compile.scheduling.multioutput_fusion import MultiOutputBindings
-        from merlin.compile.scheduling.temporary_storage import TemporaryObject
+        from merlin.compiler.schedule.temporary_storage import TemporaryObject
+        from merlin.compiler.transforms.multioutput import MultiOutputBindings
         from merlin.sched.ir import Kernel
 
         if (
@@ -55,7 +55,7 @@ class SourceMultiOutputLowering:
     composition_law: MultiOutputCompositionLaw
 
     def __post_init__(self):
-        from merlin.compile.scheduling.multioutput_fusion_check import MultiOutputCompositionLaw
+        from merlin.compiler.schedule.multioutput_fusion_check import MultiOutputCompositionLaw
 
         if not callable(self.lower) or type(self.composition_law) is not MultiOutputCompositionLaw:
             raise ValueError("multi-output selection requires its original typed composition law and mapping")
@@ -114,13 +114,14 @@ def check_callbacks(selection, snapshots):
 
 
 def _functions():
-    from merlin.compile.scheduling import multioutput_fusion, multioutput_fusion_check
-    from merlin.compile.scheduling.multioutput_fusion import (
+    from merlin.compiler.schedule import multioutput_fusion_check
+    from merlin.compiler.schedule.multioutput_fusion_check import MultiOutputCompositionLaw
+    from merlin.compiler.transforms import multioutput as multioutput_fusion
+    from merlin.compiler.transforms.multioutput import (
         MultiOutputCompilation,
         compile_source_multioutput,
         read_source_multioutput,
     )
-    from merlin.compile.scheduling.multioutput_fusion_check import MultiOutputCompositionLaw
 
     from .source_model import _region_results, _SourceModelBuild
     from .source_pointwise import SourcePointwiseLowering, discover_pointwise
@@ -173,7 +174,7 @@ def check_functions(snapshot):
 
 
 def implementation_paths():
-    from merlin.compile.scheduling.multioutput_fusion import implementation_paths as core_paths
+    from merlin.compiler.transforms.multioutput import implementation_paths as core_paths
 
     return tuple(
         dict.fromkeys(
@@ -188,9 +189,9 @@ def implementation_paths():
 
 def discover_multioutput(module, selection, validate, *, excluded_operations=frozenset()):
     """Admit adjacent pure fanout only; all unsupported candidates keep singles."""
-    from merlin.compile.scheduling.fusion_semantics import UnsupportedElementwise
-    from merlin.compile.scheduling.multioutput_fusion import compile_source_multioutput, read_source_multioutput
-    from merlin.compile.scheduling.temporary_storage import StorageOptimizationUnavailable
+    from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
+    from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
+    from merlin.compiler.transforms.multioutput import compile_source_multioutput, read_source_multioutput
 
     from .source_model import SourceRegion, _region_results, _values
 

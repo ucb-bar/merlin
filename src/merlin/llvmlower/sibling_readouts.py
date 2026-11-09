@@ -19,7 +19,7 @@ def extend_sibling_readouts(plan, *, path, values, extents=None):
     from xdsl.dialects.builtin import ArrayAttr, DenseIntOrFPElementsAttr, IntegerAttr, TensorType, i32, i64
     from xdsl.ir import Block, Operation, Region
 
-    from merlin.compile.analysis.contraction_shapes import contraction_extents
+    from merlin.compiler.ir.contraction_shapes import contraction_extents
     from merlin.xdsl_dialects.lowering import compute_groups as CG
     from merlin.xdsl_dialects.lowering import group_output_program as GOP
     from merlin.xdsl_dialects.lowering import output_fusion as OF

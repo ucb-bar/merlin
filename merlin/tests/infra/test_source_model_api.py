@@ -20,7 +20,8 @@ from test_dense_source_provider import DenseProvider
 from test_selected_dense_contracts import inputs as dense_inputs
 
 from merlin.common.digest import sha256_file
-from merlin.compile.baremetal_model import BaremetalModelError, compile_saved_model
+from merlin.model import BaremetalModelError
+from merlin.model import compile_saved_model
 from merlin.model_check import full_build as FB
 from merlin.runtime.backends import spike, spike_model
 from merlin.targetgen.elf_lanes import read_program_section
@@ -149,7 +150,7 @@ def setup(tmp_path, monkeypatch, shape, tile, width, shared, *, unavailable=Fals
 
 
 def test_explicit_foreign_contract_still_refuses_neutral_extension(tmp_path, monkeypatch):
-    from merlin.compile.baremetal_model import _spike_extension_backend
+    from merlin.model import _spike_extension_backend
 
     contract = tmp_path / "foreign-contract.json"
     contract.write_text(json.dumps({"name": "foreign", "runner": {"backend": "chipyard_rocc"}}))

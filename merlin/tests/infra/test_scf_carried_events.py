@@ -5,13 +5,11 @@ import pytest
 from test_scf_commands import ExecuteIndices
 from xdsl.dialects import builtin, llvm, scf
 
-from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter
-from merlin.compile.scheduling.scf_commands import (
-    emit_scf_commands,
-    materialize_scf_commands,
-    unroll_small_command_loops,
-    verify_scf_commands,
-)
+from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
+from merlin.compiler.schedule.scf_commands import emit_scf_commands
+from merlin.compiler.schedule.scf_commands import materialize_scf_commands
+from merlin.compiler.schedule.scf_commands import unroll_small_command_loops
+from merlin.compiler.schedule.scf_commands import verify_scf_commands
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.sched.ir import Call, Const, Kernel, Loop, Stage, Var, check_structure, parse_kernel
 
@@ -192,7 +190,8 @@ def test_old_synchronous_text_and_digest_are_unchanged():
 @pytest.mark.parametrize("trips,action,factor", [(7, "split", 2), (7, "unroll", 2), (2, "unroll", 2),
                                                (9, "split", 4), (9, "unroll", 4)])
 def test_ordered_ir_split_unroll_tail_and_alpha_renamed_completion_edges(trips, action, factor):
-    from merlin.compile.scheduling.loop_schedule import LoopTransform, propose_loop_transforms
+    from merlin.compiler.schedule.loop_schedule import LoopTransform
+    from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
 
     source = pipeline(trips)
     result = propose_loop_transforms(source, (LoopTransform(action, ("i",), factor=factor),))
@@ -202,7 +201,8 @@ def test_ordered_ir_split_unroll_tail_and_alpha_renamed_completion_edges(trips, 
 
 
 def test_nested_ir_partial_unroll_and_partition_thread_enclosing_yields():
-    from merlin.compile.scheduling.loop_schedule import LoopTransform, propose_loop_transforms
+    from merlin.compiler.schedule.loop_schedule import LoopTransform
+    from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
 
     source = pipeline(7, nested=True)
     result = propose_loop_transforms(source, (
@@ -214,7 +214,8 @@ def test_nested_ir_partial_unroll_and_partition_thread_enclosing_yields():
 
 
 def test_partial_unroll_preserves_original_select_tail_operand():
-    from merlin.compile.scheduling.loop_schedule import LoopTransform, propose_loop_transforms
+    from merlin.compiler.schedule.loop_schedule import LoopTransform
+    from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
     from merlin.sched.ir.expr import select
 
     source = pipeline(7)
@@ -232,7 +233,8 @@ def test_partial_unroll_preserves_original_select_tail_operand():
 
 
 def test_dependency_changing_carried_transform_refuses_and_low_level_split_is_not_erased():
-    from merlin.compile.scheduling.loop_schedule import LoopTransform, propose_loop_transforms
+    from merlin.compiler.schedule.loop_schedule import LoopTransform
+    from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
     from merlin.sched.primitives import Cursor, NotApplicable, divide_loop
 
     source = pipeline(4)
@@ -248,8 +250,8 @@ def test_dependency_changing_carried_transform_refuses_and_low_level_split_is_no
 def test_mutated_actual_ssa_edge_and_untyped_loop_marker_refuse():
     import json
 
-    from merlin.compile.scheduling.scf_carried_events import CARRIED_EVENTS
-    from merlin.compile.scheduling.scf_commands import SCHEMA
+    from merlin.compiler.schedule.scf_carried_events import CARRIED_EVENTS
+    from merlin.compiler.schedule.scf_commands import SCHEMA
 
     module = materialize_scf_commands(pipeline())
     loop = next(op for op in module.walk() if type(op) is scf.ForOp)
@@ -267,7 +269,8 @@ def test_mutated_actual_ssa_edge_and_untyped_loop_marker_refuse():
 
 
 def test_nested_complete_unroll_propagates_actual_final_event_to_outer_yield():
-    from merlin.compile.scheduling.loop_schedule import LoopTransform, propose_loop_transforms
+    from merlin.compiler.schedule.loop_schedule import LoopTransform
+    from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
 
     source = pipeline(3, nested=True)
     result = propose_loop_transforms(source, (LoopTransform("unroll", ("outer", "i"), factor=3),))

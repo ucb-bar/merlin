@@ -14,7 +14,7 @@ from weakref import WeakKeyDictionary, ref
 
 from merlin.common import invocation_record as I
 from merlin.common.digest import sha256_file
-from merlin.compile.model_execution_inputs import strict_tree_sha256
+from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.llvmlower import compilation_recipe as C
 from merlin.llvmlower import lower as L
 from merlin.llvmlower import source_recomputation as S
@@ -67,7 +67,7 @@ def _metadata(function):
 
 
 def _functions():
-    from merlin.compile import baremetal_model
+    from merlin import model as baremetal_model
     from merlin.runtime.backends import spike_model
 
     return (
@@ -97,6 +97,7 @@ def _functions():
         strict_tree_sha256,
         sha256_file,
         baremetal_model.compile_saved_model,
+        *baremetal_model.implementation_functions(),
         spike_model.build,
         spike_model._run,
         spike_model._proc.run_checked,

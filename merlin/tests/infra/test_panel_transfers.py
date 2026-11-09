@@ -7,16 +7,14 @@ from random import Random
 
 import pytest
 
-from merlin.compile.scheduling.panel_transfers import (
-    AffineMatrixSource,
-    PackedPanelLayout,
-    PanelTransferLimits,
-    check_panel_transfers,
-    execute_panel_transfers,
-    plan_packed_panels,
-    resolve_panel_transfer_limits,
-)
-from merlin.compile.scheduling.storage_contracts import StorageWindow
+from merlin.compiler.schedule.panel_transfers import AffineMatrixSource
+from merlin.compiler.schedule.panel_transfers import PackedPanelLayout
+from merlin.compiler.schedule.panel_transfers import PanelTransferLimits
+from merlin.compiler.schedule.panel_transfers import check_panel_transfers
+from merlin.compiler.schedule.panel_transfers import execute_panel_transfers
+from merlin.compiler.schedule.panel_transfers import plan_packed_panels
+from merlin.compiler.schedule.panel_transfers import resolve_panel_transfer_limits
+from merlin.compiler.schedule.storage_contracts import StorageWindow
 
 
 def _source(shape, element_bytes, style="rows"):

@@ -1,0 +1,95 @@
+# Opt-in compact migration candidate. The reviewed software-spec.yaml remains
+# the default and the retained paper authority until this selection is reviewed.
+# Application preparation is selected separately from ../preparation.yaml.
+schema: merlin.software_spec.v2
+target: gemmini
+status: unreviewed
+
+definitions:
+  integer_mac_and_readout:
+    kind: numerical_semantics
+    value:
+      model: {engine: integer_reference}
+      operand_dtype: int8
+      accumulator_dtype: i32
+      readout_dtype: i32
+      subnormal_operand_flush: false
+      overflow: wrap_internal_mac
+      internal_arithmetic:
+        signed_operand_bits: 8
+        mac_result_bits: 20
+        mac_result_overflow: wrap_to_20_bits
+        full_operation_overflow_policy: bounded_exact_requires_each_partial_sum
+      readout:
+        acc_scale_rounding: half_even
+        narrowing: saturate_to_declared_dtype
+        requant_rounding: half_up
+        hardware_integer_shift_rounding: rne
+        shift: operation_parameter
+
+numerical_semantics: {$ref: integer_mac_and_readout}
+operations:
+  contraction:
+    families: [contraction, window_mean]
+    placement: accelerator
+    operand_dtypes: [int8]
+    accumulator_dtype: i32
+    ranks: [2, 3, 4]
+    layouts: [row_major_contiguous]
+    tails: [zero_pad_valid_window]
+    broadcasting: [none, independent_batches]
+    aliasing: [disjoint_inputs_outputs]
+  elementwise_map: {hardware: fused}
+  elementwise_map_standalone:
+    families: [elementwise_map, operand_sum]
+    hardware: standalone
+  elementwise_map_after_operand_sum:
+    status: reviewed
+    numerical_contract: operand_sum_exhaustive_i8_v1
+    families: [elementwise_map]
+    hardware: fused_operand_sum
+  pooling_on_readout:
+    families: [reduction]
+    hardware: fused
+  movement:
+    hardware: standalone
+    layouts: [row_major_contiguous]
+    aliasing: [disjoint_inputs_outputs]
+
+restrictions:
+- declaration: elementwise_map_after_operand_sum
+  family: elementwise_map
+  field: epilogues
+  values: [bias_add]
+  reason: The direct operand-sum witness covers readout scaling and ReLU, not a bias
+    epilogue after the sum.
+
+quantization:
+  formats:
+  - operand_dtype: int8
+    accumulator_dtype: i32
+    scale_encoding: fp32
+    eligible_operations: from_facts
+
+transfer_contracts:
+  status: reviewed
+  declarations:
+    - id: operand_load
+      from: host
+      to: accelerator
+      copy: {dtype: int8, layout: row_major_contiguous}
+      evidence:
+        status: reviewed
+        basis: 'RTL facts: storage_datapaths input i8 (scratchpad smem UInt<8>) and
+          compute input elem_bits 8 (SInt<8> in_a); every observed host->accelerator
+          crossing is an i8 row_major_contiguous SSA value'
+    - id: accumulator_readout
+      from: accelerator
+      to: host
+      copy: {dtype: i32, layout: row_major_contiguous}
+      valid_window: required
+      evidence:
+        status: reviewed
+        basis: 'RTL facts: storage_datapaths accumulator i32 (AccumulatorMem SInt<32>);
+          every observed accelerator->host crossing is an i32 row_major_contiguous SSA
+          value'

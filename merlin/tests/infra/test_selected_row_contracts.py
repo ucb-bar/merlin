@@ -22,9 +22,11 @@ from test_row_softmax import (
     native_program,
 )
 
-from merlin.compile.scheduling.row_softmax import CausalRowMask, RowSoftmaxResources, RowSoftmaxUnavailable
-from merlin.compile.scheduling.row_softmax import compile_row_softmax as compile_row
-from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
+from merlin.compiler.schedule.row_softmax import CausalRowMask
+from merlin.compiler.schedule.row_softmax import RowSoftmaxResources
+from merlin.compiler.schedule.row_softmax import RowSoftmaxUnavailable
+from merlin.compiler.schedule.row_softmax import compile_row_softmax as compile_row
+from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
 from merlin.sched.ir import Const
 from merlin.semantic_compiler.allocation_types import Reservation, StorageBank
 
@@ -367,7 +369,7 @@ def test_row_source_changes_during_encoding_reject_stale_context(tmp_path):
 
 
 def test_row_library_changes_during_encoding_and_before_emission_reject(tmp_path, monkeypatch):
-    from merlin.compile.scheduling import schedule_pipeline
+    from merlin.compiler.schedule import schedule_pipeline
     model = inputs(tmp_path)
     result = schedule(model)
     selected, opts = model

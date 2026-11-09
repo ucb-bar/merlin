@@ -7,34 +7,74 @@ An UNSAT result applies only to one candidate, order and bounded model.
 
 from __future__ import annotations
 
+from .allocation_schedule import _defer_boundary_copies, _direct_view_alias, _geometry, _instruction_predecessors, _qualified_in_place_pair, _view_alias_roots, _view_problem, instruction_schedule, interference_edges, live_ranges, topological_orders
+
 from collections.abc import Iterator
+from itertools import chain
+
 from typing import TYPE_CHECKING
 
 from .allocation_types import AllocationResult, CandidateGraph, Reservation, StorageBank, Value
-from .rules import AddressConstraint
 
 if TYPE_CHECKING:
     from .extract import Candidate, Choice
+from .rules import AddressConstraint
+
+if TYPE_CHECKING:
     from .rules import RuleProgram
 
 
 def lower_candidate(candidate: Candidate, program: RuleProgram) -> CandidateGraph:
+    if not candidate.bundles_complete():
+        raise ValueError("multi-result instruction selection omitted or changed a projection")
     values: list[Value] = []
     ids: dict[tuple, int] = {}
+    leaders: dict[tuple, Choice] = {}
+
+    def collect(choice: Choice) -> None:
+        instance = choice.physical_instance()
+        if instance is not None and choice.bundle_result_index == 0:
+            leaders[instance] = choice
+        for child in choice.children:
+            collect(child)
+
+    for output in candidate.outputs:
+        collect(output)
 
     def visit(choice: Choice) -> int:
         key = choice.key()
         if key in ids:
             return ids[key]
+        instance = choice.physical_instance()
+        owner = None
+        if instance is not None and choice.bundle_result_index != 0:
+            owner = visit(leaders[instance])
         children = tuple(visit(child) for child in choice.children)
         metadata = program.symbols[choice.symbol]
-        kind = metadata["kind"]
-        extent = int(metadata["descriptor"]["extent"]) if kind == "instruction" else 1
-        validity = (
-            tuple(AddressConstraint(**row) for row in metadata["descriptor"]["validity"])
-            if kind == "instruction"
-            else ()
+        kind = "projection" if owner is not None else metadata["kind"]
+        extent = (
+            metadata["descriptor"]["extent"]
+            if kind in {"instruction", "projection", "view"}
+            else (metadata.get("extent"))
         )
+        if type(extent) is not int or extent <= 0:
+            raise ValueError("selected value has no positive physical extent")
+        if kind in {"instruction", "projection"}:
+            validity = tuple(AddressConstraint(**row) for row in metadata["descriptor"]["validity"])
+        elif kind == "view":
+            descriptor = metadata["descriptor"]
+            if descriptor.get("kind") == "concat":
+                prefix = 0
+                conditions = [AddressConstraint("eq_offset", "out", "in0", 0)]
+                for index, source_extent in enumerate(descriptor["source_extents"]):
+                    if index:
+                        conditions.append(AddressConstraint("eq_offset", f"in{index}", "out", prefix))
+                    prefix += source_extent
+                validity = tuple(conditions)
+            else:
+                validity = (AddressConstraint("eq_offset", "out", "in0", descriptor.get("physical_offset", 0)),)
+        else:
+            validity = ()
         value_id = len(values)
         ids[key] = value_id
         values.append(
@@ -51,140 +91,16 @@ def lower_candidate(candidate: Candidate, program: RuleProgram) -> CandidateGrap
                 completion_offset=int(metadata["descriptor"]["completion_offset"]) if kind == "instruction" else 0,
                 in_place_inputs=tuple(metadata["descriptor"]["in_place_inputs"]) if kind == "instruction" else (),
                 preserve_input=metadata.get("preserve_input", True),
+                instruction_instance=instance,
+                projection_of=owner,
+                value_preserving_copy=kind == "instruction"
+                and metadata["descriptor"].get("value_preserving_copy", False),
             )
         )
         return value_id
 
     outputs = tuple(visit(choice) for choice in candidate.outputs)
     return CandidateGraph(tuple(values), outputs)
-
-
-def topological_orders(graph: CandidateGraph, *, limit: int) -> Iterator[tuple[int, ...]]:
-    """Enumerate bounded legal instruction orders after a low-pressure first order."""
-    if limit <= 0:
-        raise ValueError("order limit must be positive")
-    instructions = {value.id for value in graph.values if value.kind in {"instruction", "event"}}
-    emitted = 0
-
-    def walk(done: tuple[int, ...], pending: frozenset[int]) -> Iterator[tuple[int, ...]]:
-        nonlocal emitted
-        if emitted >= limit:
-            return
-        if not pending:
-            emitted += 1
-            yield done
-            return
-        ready = [item for item in pending if not any(child in pending for child in graph.value(item).children)]
-        # Prefer consuming larger inputs, reducing the expected live set.
-        ready.sort(key=lambda item: (-sum(graph.value(c).extent for c in graph.value(item).children), item))
-        for item in ready:
-            if emitted >= limit:
-                return
-            yield from walk((*done, item), pending - {item})
-
-    yield from walk((), frozenset(instructions))
-
-
-def instruction_schedule(graph: CandidateGraph, order: tuple[int, ...]) -> dict[int, tuple[int, int]]:
-    """Issue serially until target timing has a reviewed overlap contract."""
-    instructions = {value.id for value in graph.values if value.kind in {"instruction", "event"}}
-    if len(order) != len(instructions) or set(order) != instructions:
-        raise ValueError("order omits or duplicates an instruction")
-    position = {value_id: index for index, value_id in enumerate(order)}
-    if any(
-        child in position and position[child] >= position[value.id]
-        for value in graph.values
-        if value.kind in {"instruction", "event"}
-        for child in value.children
-    ):
-        raise ValueError("order executes a consumer before its instruction producer")
-    schedule: dict[int, tuple[int, int]] = {}
-    last_completion = 0
-    for value_id in order:
-        value = graph.value(value_id)
-        if value.completion_offset < 0 or (
-            value.input_read_offsets and len(value.input_read_offsets) != len(value.children)
-        ):
-            raise ValueError("instruction has malformed execution timing")
-        if any(
-            value.read_offset(index) < 0 or value.read_offset(index) > value.completion_offset
-            for index in range(len(value.children))
-        ):
-            raise ValueError("instruction reads an input outside its execution interval")
-        issue = last_completion + 1
-        last_completion = issue + value.completion_offset
-        schedule[value_id] = (issue, last_completion)
-    return schedule
-
-
-def live_ranges(graph: CandidateGraph, order: tuple[int, ...]) -> dict[int, tuple[int, int]]:
-    schedule = instruction_schedule(graph, order)
-    ranges: dict[int, tuple[int, int]] = {}
-    for value in graph.values:
-        start = schedule[value.id][0] if value.id in schedule else 0
-        uses = [
-            schedule[parent.id][0] + parent.read_offset(index)
-            for parent in graph.values
-            if parent.id in schedule
-            for index, child in enumerate(parent.children)
-            if child == value.id
-        ]
-        own_completion = schedule[value.id][1] if value.id in schedule else start
-        end = max((*uses, own_completion))
-        if value.id in graph.outputs:
-            end = max((completion for _, completion in schedule.values()), default=0) + 1
-        ranges[value.id] = (start, end)
-    return ranges
-
-
-def _qualified_in_place_pair(graph: CandidateGraph, left: Value, right: Value) -> bool:
-    """Permit exact reuse only for a declared, last-use produced operand."""
-    for child, parent in ((left, right), (right, left)):
-        if child.kind != "instruction" or parent.kind != "instruction" or child.id in graph.outputs:
-            continue
-        if child.extent != parent.extent or parent.children.count(child.id) != 1:
-            continue
-        port = parent.children.index(child.id)
-        if port not in parent.in_place_inputs or parent.read_offset(port) >= parent.completion_offset:
-            continue
-        if sum(value.children.count(child.id) for value in graph.values) != 1:
-            continue
-        return True
-    return False
-
-
-def interference_edges(
-    graph: CandidateGraph,
-    order: tuple[int, ...],
-    banks: tuple[StorageBank, ...],
-) -> frozenset[tuple[int, int]]:
-    """Canonical storage-conflict edges; order affects only this part of our formula."""
-    bank_map = _geometry(banks)
-    ranges = live_ranges(graph, order)
-    edges = set()
-    for left_index, left in enumerate(graph.values):
-        for right in graph.values[left_index + 1 :]:
-            if left.extent == 0 or right.extent == 0:
-                continue
-            if bank_map[left.storage].backing != bank_map[right.storage].backing:
-                continue
-            lo1, hi1 = ranges[left.id]
-            lo2, hi2 = ranges[right.id]
-            if lo1 <= hi2 and lo2 <= hi1 and not _qualified_in_place_pair(graph, left, right):
-                edges.add((left.id, right.id))
-    return frozenset(edges)
-
-
-def _geometry(banks: tuple[StorageBank, ...]) -> dict[str, StorageBank]:
-    by_name = {bank.name: bank for bank in banks}
-    if len(by_name) != len(banks):
-        raise ValueError("duplicate storage bank")
-    by_backing: dict[str, str] = {}
-    for bank in banks:
-        existing = by_backing.setdefault(bank.backing, bank.unit)
-        if existing != bank.unit:
-            raise ValueError("typed aliases need one explicit common address unit")
-    return by_name
 
 
 def _address_unit_problem(graph: CandidateGraph, bank_map: dict[str, StorageBank]) -> str:
@@ -226,17 +142,19 @@ def _boundary_problem(
     fixed_inputs: dict[str, int],
     fixed_outputs: tuple[int | None, ...] | None,
 ) -> str:
-    inputs = {value.source_node: value for value in graph.values if value.kind == "input"}
+    # A declared constant is an initialized boundary value too. Its external
+    # address may be fixed by the materializer before selection, just like an
+    # invocation input; the payload itself remains a compiler input.
+    boundaries = {value.source_node: value for value in graph.values if value.kind in {"input", "constant"}}
     for name, address in fixed_inputs.items():
-        if name not in inputs:
-            return "fixed input ABI names an unknown source"
+        if name not in boundaries:
+            return "fixed boundary ABI names an unknown source"
         if type(address) is not int or address < 0:
-            return "fixed input ABI has an invalid address"
-        value = inputs[name]
+            return "fixed boundary ABI has an invalid address"
+        value = boundaries[name]
         bank = banks.get(value.storage)
-        if bank is not None and (address < bank.start or address + value.extent > bank.capacity
-                                 or address % bank.alignment):
-            return "fixed input ABI exceeds physical storage"
+        if bank is not None and (address < bank.start or address + value.extent > bank.capacity or address % bank.alignment):
+            return "fixed boundary ABI exceeds physical storage"
     if fixed_outputs is None:
         return ""
     if len(fixed_outputs) != len(graph.outputs):
@@ -248,8 +166,7 @@ def _boundary_problem(
             return "fixed output ABI has an invalid address"
         value = graph.value(value_id)
         bank = banks.get(value.storage)
-        if bank is not None and (address < bank.start or address + value.extent > bank.capacity
-                                 or address % bank.alignment):
+        if bank is not None and (address < bank.start or address + value.extent > bank.capacity or address % bank.alignment):
             return "fixed output ABI exceeds physical storage"
     return ""
 
@@ -266,6 +183,10 @@ def check_assignment(
 ) -> tuple[bool, str]:
     """Recompute original geometry/lifetimes without consulting Z3 expressions."""
     bank_map = _geometry(banks)
+    view_problem = _view_problem(graph)
+    if view_problem:
+        return False, view_problem
+    alias_roots = _view_alias_roots(graph)
     unit_problem = _address_unit_problem(graph, bank_map)
     if unit_problem:
         return False, unit_problem
@@ -294,22 +215,27 @@ def check_assignment(
         address = addresses[value.id]
         if not isinstance(address, int) or isinstance(address, bool):
             return False, "non-integer address"
-        minimum = bank.start if value.extent else 0
-        if address < minimum or address + value.extent > bank.capacity or address % bank.alignment:
+        if address < (bank.start if value.extent else 0) or address + value.extent > bank.capacity or address % bank.alignment:
             return False, "out-of-range or misaligned address"
+        if value.kind == "view":
+            offset = value.validity[0].value
+            if address != addresses[value.children[0]] + offset:
+                return False, (
+                    "concat view moved from its first source address"
+                    if len(value.children) > 1
+                    else "identity view moved from its source address"
+                    if offset == 0
+                    else "slice view has wrong source offset"
+                )
         for reservation in reservations:
             if bank.backing != bank_map[reservation.storage].backing:
                 continue
-            if (
-                value.extent
-                and address < reservation.start + reservation.extent
-                and reservation.start < address + value.extent
-            ):
+            if value.extent and address < reservation.start + reservation.extent and reservation.start < address + value.extent:
                 return False, "assignment overlaps reserved physical storage"
-        if value.source_node in fixed_inputs and value.kind == "input":
+        if value.source_node in fixed_inputs and value.kind in {"input", "constant"}:
             if address != fixed_inputs[value.source_node]:
-                return False, "input moved from fixed external address"
-        for child_id in value.children:
+                return False, "boundary moved from fixed external address"
+        for child_id in () if value.kind == "projection" else value.children:
             child = graph.value(child_id)
             if child.id not in ranges or ranges[child.id][1] < ranges[value.id][0]:
                 return False, "consumer reads a dead value"
@@ -319,6 +245,10 @@ def check_assignment(
                 return False, "instruction address map or validity failed"
             if condition.kind == "aligned" and ports[condition.lhs] % condition.value:
                 return False, "instruction alignment validity failed"
+            if condition.kind == "at_least" and ports[condition.lhs] < condition.value:
+                return False, "instruction lower address bound failed"
+            if condition.kind == "at_most" and ports[condition.lhs] > condition.value:
+                return False, "instruction upper address bound failed"
     for left_index, left in enumerate(graph.values):
         for right in graph.values[left_index + 1 :]:
             if left.extent == 0 or right.extent == 0:
@@ -329,13 +259,15 @@ def check_assignment(
             b = addresses[right.id]
             overlap = a < b + right.extent and b < a + left.extent
             if overlap and (
-                (left.kind == "input" and left.preserve_input and right.kind == "instruction")
-                or (right.kind == "input" and right.preserve_input and left.kind == "instruction")
+                (left.kind == "input" and left.preserve_input and right.kind in {"instruction", "projection"})
+                or (right.kind == "input" and right.preserve_input and left.kind in {"instruction", "projection"})
             ):
                 return False, "boundary input overlaps an instruction write"
             lo1, hi1 = ranges[left.id]
             lo2, hi2 = ranges[right.id]
             if overlap and lo1 <= hi2 and lo2 <= hi1:
+                if alias_roots[left.id] == alias_roots[right.id] or _direct_view_alias(left, right):
+                    continue
                 # Replay the exact-reuse exception without relying on solver constraints.
                 allowed = False
                 for child, parent in ((left, right), (right, left)):
@@ -356,6 +288,36 @@ def check_assignment(
     return True, ""
 
 
+def _live_capacity_problem(
+    graph: CandidateGraph,
+    bank_map: dict[str, StorageBank],
+    ranges: dict[int, tuple[int, int]],
+) -> str:
+    """Reject only a necessary capacity violation in one candidate and order.
+
+    Without views or in-place permissions, simultaneously live values in a
+    backing store must occupy disjoint intervals. Their total extent cannot
+    exceed its largest address domain. Ignore reservations and alignment here;
+    the full formula still checks those and all cases that permit aliasing.
+    """
+    for backing in sorted({bank.backing for bank in bank_map.values()}):
+        values = [value for value in graph.values if bank_map[value.storage].backing == backing]
+        if any(value.kind == "view" or value.in_place_inputs for value in values):
+            continue
+        capacity = max(bank.capacity for bank in bank_map.values() if bank.backing == backing)
+        events: dict[int, int] = {}
+        for value in values:
+            start, end = ranges[value.id]
+            events[start] = events.get(start, 0) + value.extent
+            events[end + 1] = events.get(end + 1, 0) - value.extent
+        live = 0
+        for time in sorted(events):
+            live += events[time]
+            if live > capacity:
+                return f"live disjoint storage in {backing} needs {live} units, capacity is {capacity}"
+    return ""
+
+
 def allocate(
     graph: CandidateGraph,
     order: tuple[int, ...],
@@ -373,6 +335,10 @@ def allocate(
     except ImportError as exc:
         return AllocationResult("tool_unavailable", order, {}, f"z3-solver missing: {exc}")
     bank_map = _geometry(banks)
+    view_problem = _view_problem(graph)
+    if view_problem:
+        return AllocationResult("modeling_failure", order, {}, view_problem)
+    alias_roots = _view_alias_roots(graph)
     unit_problem = _address_unit_problem(graph, bank_map)
     if unit_problem:
         return AllocationResult("unqualified_target", order, {}, unit_problem)
@@ -384,6 +350,9 @@ def allocate(
     if boundary_problem:
         return AllocationResult("modeling_failure", order, {}, boundary_problem)
     ranges = live_ranges(graph, order)
+    capacity_problem = _live_capacity_problem(graph, bank_map, ranges)
+    if capacity_problem:
+        return AllocationResult("infeasible_candidate", order, {}, capacity_problem)
     # A plain SAT model may select different valid physical registers on
     # repeated invocations. Lexicographic minimization fixes one canonical
     # assignment in value-ID order, so replayed emission has stable bytes.
@@ -399,8 +368,7 @@ def allocate(
         if bank is None:
             return AllocationResult("unqualified_target", order, {}, "unknown storage bank")
         addr = variables[value.id]
-        solver.add(addr >= (bank.start if value.extent else 0),
-                   addr + value.extent <= bank.capacity, addr % bank.alignment == 0)
+        solver.add(addr >= (bank.start if value.extent else 0), addr + value.extent <= bank.capacity, addr % bank.alignment == 0)
         for reservation in reservations:
             if value.extent and bank.backing == bank_map[reservation.storage].backing:
                 solver.add(
@@ -409,25 +377,33 @@ def allocate(
                         addr >= reservation.start + reservation.extent,
                     )
                 )
-        if value.kind == "input" and value.source_node in fixed_inputs:
+        if value.kind in {"input", "constant"} and value.source_node in fixed_inputs:
             solver.add(addr == fixed_inputs[value.source_node])
+        if value.kind == "view":
+            solver.add(addr == variables[value.children[0]] + value.validity[0].value)
         ports = {"out": addr, **{f"in{index}": variables[child] for index, child in enumerate(value.children)}}
         for condition in value.validity:
             if condition.kind == "eq_offset":
                 solver.add(ports[condition.lhs] == ports[condition.rhs] + condition.value)
             elif condition.kind == "aligned":
                 solver.add(ports[condition.lhs] % condition.value == 0)
+            elif condition.kind == "at_least":
+                solver.add(ports[condition.lhs] >= condition.value)
+            elif condition.kind == "at_most":
+                solver.add(ports[condition.lhs] <= condition.value)
     for left_index, left in enumerate(graph.values):
         for right in graph.values[left_index + 1 :]:
             if left.extent == 0 or right.extent == 0:
                 continue
             if bank_map[left.storage].backing != bank_map[right.storage].backing:
                 continue
+            if alias_roots[left.id] == alias_roots[right.id] or _direct_view_alias(left, right):
+                continue
             lo1, hi1 = ranges[left.id]
             lo2, hi2 = ranges[right.id]
-            preserve_input = (left.kind == "input" and left.preserve_input and right.kind == "instruction") or (
-                right.kind == "input" and right.preserve_input and left.kind == "instruction"
-            )
+            preserve_input = (
+                left.kind == "input" and left.preserve_input and right.kind in {"instruction", "projection"}
+            ) or (right.kind == "input" and right.preserve_input and left.kind in {"instruction", "projection"})
             if preserve_input or lo1 <= hi2 and lo2 <= hi1:
                 alternatives = [
                     variables[left.id] + left.extent <= variables[right.id],

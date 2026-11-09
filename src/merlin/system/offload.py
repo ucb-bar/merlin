@@ -148,40 +148,15 @@ def offloadable_contractions(module, device_name: str, *, require_zero_init: boo
     if not triples:
         return []  # fail closed: an underivable datapath offloads nothing
 
-    return _contractions_for_dtypes(module, device_name, triples, require_zero_init=require_zero_init)
+    from merlin.compiler.planning.contractions import contractions_for_dtypes
+
+    return contractions_for_dtypes(module, device_name, triples, require_zero_init=require_zero_init)
 
 
 def catalog_source_contractions(
     module, device_name: str, source_dtypes: tuple[str, str, str], *, require_zero_init: bool = True
 ) -> list[tuple[Any, Any]]:
-    """Structural candidates for an explicit source-bound conversion catalog.
+    """Compatibility entrypoint for the shared planning query."""
+    from merlin.compiler.planning.contractions import catalog_source_contractions as catalog
 
-    The catalog's source ABI is checked separately from the device's native
-    datapaths. A target-owned conversion contract names one or more native
-    target triples; this query must not pretend its f32 (or other source)
-    tensors are natively consumed by the device. Without native device facts,
-    even an explicit catalog has no grounded target to route to.
-    """
-    if len(source_dtypes) != 3 or not all(isinstance(value, str) and value for value in source_dtypes):
-        raise ValueError("catalog source dtypes must be an explicit triple")
-    if not device_dtype_triples(device_name):
-        return []
-    return _contractions_for_dtypes(module, device_name, (source_dtypes,), require_zero_init=require_zero_init)
-
-
-def _contractions_for_dtypes(module, device_name, triples, *, require_zero_init: bool):
-    from merlin.compile.analysis.contraction_shapes import observe_contractions
-
-    ranks = device_contraction_ranks(device_name)
-
-    picked: list[tuple[Any, Any]] = []
-    for op, shape in observe_contractions(module):
-        if why_not(shape, triples=triples, ranks=ranks) is not None:
-            continue
-        if require_zero_init:
-            from merlin.compile.analysis.contraction_shapes import zero_initialised
-
-            if not zero_initialised(op):
-                continue
-        picked.append((op, shape))
-    return picked
+    return catalog(module, device_name, source_dtypes, require_zero_init=require_zero_init)

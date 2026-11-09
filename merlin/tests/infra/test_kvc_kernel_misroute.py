@@ -84,3 +84,10 @@ def test_a_malformed_line_does_not_abort_the_scan(tmp_path):
         'not json at all\n{"broken": \n' + json.dumps({"part": {"state": {"input": {"filePath": str(stray)}}}})
     )
     assert R._find_misrouted_kernel(p, expected=_expected(tmp_path)) == stray
+
+
+def test_kernel_agent_help_resolves_default_run_root_without_starting_an_agent(capsys):
+    with pytest.raises(SystemExit) as exc:
+        R.main(["--help"])
+    assert exc.value.code == 0
+    assert "--runs-root" in capsys.readouterr().out

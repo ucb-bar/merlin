@@ -432,7 +432,7 @@ def mesh_datapath(target: str, *, numeric_policy: dict | None = None):
     take the fields they need off the binding, and a field added later reaches them without a signature
     change. The MLIR spelling the filter wants is ``b.mlir_dtype(b.operand_dtype)``.
     """
-    from ..compile.mesh import _mesh_tile_binding
+    from merlin.compiler.selection.mesh import _mesh_tile_binding
 
     return _mesh_tile_binding(target, None, None, numeric_policy=numeric_policy)
 
@@ -891,7 +891,7 @@ def execute(
             return
         mroute = mesh_routes.get(symbol)
         if mroute is not None:  # run this matmul LAYER on the target mesh (real data)
-            from ..compile_cli import run_matmul_on_mesh
+            from merlin.runtime.mesh import run_matmul_on_mesh
 
             a = np.ascontiguousarray(env[id(op.operands[mroute["a"]])])
             b = np.ascontiguousarray(env[id(op.operands[mroute["b"]])])
@@ -1264,13 +1264,10 @@ def _normalize_model_module(
     quant_select=None,
 ) -> None:
     """The one normalization sequence used by execution and exact audit replay."""
-    from ..llvmlower.passes_xdsl import (
-        collapse_overrank_matmul,
-        fix_bool_fptosi,
-        fix_bool_sitofp,
-        lower_bf16_matmul_f32acc,
-        lower_quant_ext,
-    )
+    from merlin.compiler.lower.scalar.casts import fix_bool_fptosi, fix_bool_sitofp
+    from merlin.compiler.quantization.linalg import lower_quant_ext
+    from merlin.compiler.transforms.matmul import collapse_overrank_matmul, lower_bf16_matmul_f32acc
+
     from ..llvmlower.torchao_affine import lower_torchao_affine_quant
 
     lower_torchao_affine_quant(module)
@@ -1278,7 +1275,7 @@ def _normalize_model_module(
     _propagate_quant_inner(module)
     if int8_compute:
         from ..llvmlower.quant_passes import apply_quant, compute_passes
-        from ..llvmlower.quant_scope import captured_quantized_contraction
+        from merlin.compiler.quantization.scope import captured_quantized_contraction
 
         # Match the compiled captured-scope path: a BF16 dequantized operand
         # needs an F32 accumulator before the INT8 contraction selector runs.

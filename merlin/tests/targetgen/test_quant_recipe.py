@@ -59,6 +59,38 @@ def _facet(**kwargs) -> RF.ReadoutFacet:
     )
 
 
+def test_canonical_recipe_owners_preserve_legacy_records_and_cli(tmp_path, monkeypatch):
+    import inspect
+    import pickle
+
+    from merlin.compiler.quantization import capabilities, dynamic, recipe, static
+
+    assert QR is capabilities
+    for name in ("TensorSpec", "QuantRecipe", "QuantCandidate", "digest"):
+        assert getattr(QR, name) is getattr(recipe, name)
+        original_global = b"cmerlin.targetgen.quant_recipe\n" + name.encode() + b"\n."
+        assert pickle.loads(original_global) is getattr(recipe, name)
+    assert QR.with_gptq_weights is static.with_gptq_weights
+    assert QR.with_dynamic_contractions is dynamic.with_dynamic_contractions
+    assert Path(inspect.getsourcefile(QR.derive)).name == "capabilities.py"
+    assert Path(inspect.getsourcefile(QR.QuantRecipe)).name == "recipe.py"
+    original = QR.derive(_facet()).to_dict()
+    source, output = tmp_path / "recipe.json", tmp_path / "selected.json"
+    source.write_text(json.dumps(original))
+    selected = QR.with_activation_observer(original, "histogram")
+    calls = []
+
+    def actual_choice(body, observer):
+        """Selected observer choice."""
+        calls.append((body, observer))
+        return selected
+
+    monkeypatch.setattr(QR, "with_activation_observer", actual_choice)
+    assert QR._main(["activation-observer", str(source), str(output), "histogram"]) == 0
+    assert calls == [(original, "histogram")]
+    assert output.read_text() == json.dumps(selected, indent=2, sort_keys=True) + "\n"
+
+
 def test_a_readout_holding_one_scale_per_command_derives_per_tensor_symmetric_int8() -> None:
     recipe = QR.derive(_facet()).to_dict()
     assert recipe["status"] == QR.DERIVED

@@ -1,12 +1,12 @@
 """Captured quantization reach is derived from quant IR, not framework/model names."""
 
-from merlin.llvmlower import impr_features as F
-from merlin.llvmlower.quant_scope import (
+from merlin.compiler.quantization.scope import (
     FEATURE,
     captured_quantized_contraction,
     ensure_registered,
     traces_to_prequantized,
 )
+from merlin.llvmlower import impr_features as F
 
 
 class _Op:
@@ -53,6 +53,15 @@ def test_only_input_operands_can_admit_a_contraction():
 
 
 def test_feature_is_registered_as_a_default_off_policy_request():
+    import importlib
+
+    from merlin.compiler.selection import shared
+
+    canonical = importlib.import_module("merlin.compiler.quantization.scope")
+    legacy = importlib.import_module("merlin.llvmlower.quant_scope")
+    assert legacy is canonical
+    assert shared._name_modules()[FEATURE] == canonical.__name__
+    assert shared.get_shared_feature(FEATURE).name == FEATURE
     ensure_registered()
     feature = F.get(FEATURE)
     assert feature.edit_pipeline is None
@@ -88,7 +97,7 @@ func.func @forward(%w: tensor<4x8xi8>, %a: tensor<2x4xf32>) -> tensor<4x8xf32> {
 
 def _results_by_kind():
     from merlin.common import mlir_query as mq
-    from merlin.llvmlower.quant_scope import value_preserving_input
+    from merlin.compiler.quantization.scope import value_preserving_input
 
     module = mq.parse(_WIDENED)
     generics = [op for op in module.walk() if op.name == "linalg.generic"]
@@ -97,7 +106,7 @@ def _results_by_kind():
 
 
 def test_an_exact_widening_or_copy_of_a_dequantized_value_is_evidence():
-    from merlin.llvmlower.quant_scope import prequantized_source
+    from merlin.compiler.quantization.scope import prequantized_source
 
     value_preserving_input, copy, wide, scaled = _results_by_kind()
     assert value_preserving_input(wide) is wide.inputs[0]
@@ -110,7 +119,7 @@ def test_an_exact_widening_or_copy_of_a_dequantized_value_is_evidence():
 
 
 def test_arithmetic_on_a_widened_value_is_not_value_preserving():
-    from merlin.llvmlower.quant_scope import prequantized_source
+    from merlin.compiler.quantization.scope import prequantized_source
 
     value_preserving_input, _copy, _wide, scaled = _results_by_kind()
     assert value_preserving_input(scaled) is None

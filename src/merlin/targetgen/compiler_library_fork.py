@@ -23,7 +23,7 @@ def enabled(selection):
 def editable(member):
     # Compiler-side copies never replace independent host checks. Keep grading,
     # provenance, target facts and runtime endpoints on the fixed guest release.
-    roots = ('merlin.compile', 'merlin.transforms', 'merlin.sched',
+    roots = ('merlin.compile', 'merlin.compiler', 'merlin.transforms', 'merlin.sched',
              'merlin.semantic_compiler', 'merlin.llvmlower', 'merlin.frontends',
              'merlin.xdsl_dialects', 'merlin.common', 'merlin.capture', 'merlin.integrations')
     return member.module != 'merlin.common.access' and member.module is not None and any(

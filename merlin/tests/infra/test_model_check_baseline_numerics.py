@@ -319,3 +319,59 @@ def test_quality_case_relabelling_cannot_replace_selected_observation_bytes(case
     write(manifest, spec)
     with pytest.raises(ValueError, match="evaluation manifest"):
         B.compare(manifest)
+
+
+@pytest.mark.parametrize("changed", [None, "missing", "geometry", "tolerance", "bindings", "baseline", "protocol"])
+def test_explicit_protocol_geometry_requires_exact_new_configuration_before_arrays(case, changed):
+    root, manifest = case
+    spec = variant(case, "tiny")
+    policy_path, protocol_path = root / "models.json", root / "protocol.json"
+    protocol = B.yaml.safe_load(protocol_path.read_bytes())
+    protocol["authority"]["models_configuration"] = {
+        "schema": B.MD.PROTOCOL_GEOMETRY_SCHEMA, "chain_source": "protocol.models",
+    }
+    protocol["models"]["example"]["chain"]["prefill_tokens"] = 1
+    write(protocol_path, protocol)
+    selected_path = root / "resolved-models.json"
+    selected_path.write_bytes(B.MD._protocol_models_bytes(policy_path.read_bytes(), protocol))
+    if changed in {"geometry", "tolerance", "bindings"}:
+        selected = B.yaml.safe_load(selected_path.read_bytes())
+        if changed == "geometry":
+            selected["models"]["example"]["chain"]["prefill_tokens"] = 2
+        elif changed == "tolerance":
+            selected["numerics"]["functional"]["atol"] = 1.0
+        else:
+            selected["models"]["example"]["programs"][0]["inputs"] = [{"from": "input", "key": "other"}]
+        selected_path.write_text(json.dumps(selected, sort_keys=True, indent=2) + "\n")
+    elif changed == "baseline":
+        policy = B.yaml.safe_load(policy_path.read_bytes())
+        policy["numerics"]["functional"]["atol"] = 0.0001
+        write(policy_path, policy)
+    elif changed == "protocol":
+        protocol["models"]["example"]["chain"]["prefill_tokens"] = 2
+        write(protocol_path, protocol)
+    spec["protocol"], spec["numerical_policy"] = pin(protocol_path, root), pin(policy_path, root)
+    if changed != "missing":
+        spec["models_configuration"] = pin(selected_path, root)
+    write(manifest, spec)
+    if changed is None:
+        result = B.compare(manifest)
+        assert result["functional_passed"] is True
+        assert result["cases"][0]["perplexity"]["actual"]["target_positions"] == [1, 2]
+        assert result["models_configuration"]["sha256"] == pin(selected_path, root)["sha256"]
+        assert result["models_configuration"]["baseline_sha256"] == spec["numerical_policy"]["sha256"]
+        assert result["models_configuration"]["protocol_sha256"] == spec["protocol"]["sha256"]
+        assert result["reference_origin_certified"] is result["execution_qualified"] is False
+    else:
+        # Resealing a different configuration cannot change the selected comparison.
+        with pytest.raises(ValueError, match="models configuration"):
+            B.compare(manifest)
+
+
+def test_legacy_protocol_cannot_implicitly_select_an_extra_configuration(case):
+    root, manifest = case
+    spec = B.yaml.safe_load(manifest.read_bytes())
+    spec["models_configuration"] = pin(root / "models.json", root)
+    write(manifest, spec)
+    with pytest.raises(ValueError, match="explicit protocol selection"):
+        B.compare(manifest)

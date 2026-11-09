@@ -37,7 +37,7 @@ from packing_execution_inputs import (
 )
 
 from merlin.common.digest import sha256_file
-from merlin.compile.model_execution_inputs import strict_tree_sha256
+from merlin.runtime.modelinputs import strict_tree_sha256
 
 pytestmark = pytest.mark.target("gemmini")
 SELECTION_ENV = "MERLIN_TEST_GEMMINI_PACKING_SELECTION"
@@ -74,9 +74,10 @@ def run_public_pair(tmp_path, monkeypatch, *, case="packing", descriptor_effects
     from merlin_experiments.phase1.feedback import private_instruction_coordinator as C
     from merlin_experiments.phase1.feedback import private_instruction_declaration as D
 
-    from merlin.compile.baremetal_model import compile_saved_model, read_full_outputs
-    from merlin.compile.model_execution_inputs import selected_execution_firrtl
-    from merlin.compile.route_before_build import plan_before_build
+    from merlin.model import compile_saved_model
+    from merlin.model import read_full_outputs
+    from merlin.runtime.modelinputs import selected_execution_firrtl
+    from merlin.compiler.planning.model import plan_before_build
     from merlin.llvmlower.optional_passes import Selection, applied
     from merlin.llvmlower.source_optimization_policy import SourceOptimizationPolicy
     from merlin.llvmlower.source_optimization_request import GATHER_PASS, PACKING_PASS

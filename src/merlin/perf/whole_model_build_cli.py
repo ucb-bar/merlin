@@ -2,7 +2,7 @@
 
 The command line of :func:`merlin.perf.whole_model_build.build`, kept apart from it so the builder module
 holds the build alone. Beside the build's own options it takes the compile-debugging ones
-(:mod:`merlin.compile.debug`: ``--list-stages``, ``--dump-ir-after``, ``--dump-ir-before``,
+(:mod:`merlin.compiler.inspect`: ``--list-stages``, ``--dump-ir-after``, ``--dump-ir-before``,
 ``--stop-after``, ``--trace-dir``) and ``--only-group``, which builds a PARTIAL program
 (:mod:`merlin.perf.whole_model_partial`) that is never graded or measured as the whole model.
 """
@@ -22,7 +22,7 @@ from .whole_model_partial import MARKER
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    from merlin.compile import debug
+    from merlin.compiler import inspect as debug
 
     parser = argparse.ArgumentParser(
         prog="merlin-whole-model-build",

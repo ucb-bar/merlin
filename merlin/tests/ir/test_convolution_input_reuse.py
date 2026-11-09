@@ -8,13 +8,14 @@ import test_convolution_spatial_output_groups as spatial
 from test_convolution_rhs_residency import rhs_law
 from test_counted_convolution import Integers
 
-from merlin.compile.scheduling.convolution_exploration import (
-    ConvolutionRhsPhaseLaw, emit_convolution_schedule, plan_convolution_rhs_phases, plan_convolution_schedule,
-)
-from merlin.compile.scheduling.convolution_input_reuse import (
-    ConvolutionInputReuseAdmission, InvariantConvolutionInput, select_convolution_input_reuse,
-)
-from merlin.compile.scheduling.convolution_output_groups import plan_rolling_convolution_output_group
+from merlin.compiler.schedule.convolution_exploration import ConvolutionRhsPhaseLaw
+from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_rhs_phases
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_schedule
+from merlin.compiler.schedule.convolution_input_reuse import ConvolutionInputReuseAdmission
+from merlin.compiler.schedule.convolution_input_reuse import InvariantConvolutionInput
+from merlin.compiler.schedule.convolution_input_reuse import select_convolution_input_reuse
+from merlin.compiler.schedule.convolution_output_groups import plan_rolling_convolution_output_group
 
 
 def fixture(*, stride=(1, 1), batch=1, slots=None):

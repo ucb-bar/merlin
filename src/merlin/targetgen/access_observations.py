@@ -25,6 +25,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from merlin.compiler.ir.graph import type_layout
+
 #: Body operations that keep zero the additive identity of a padded reduction element.
 _ZERO_PAD_EXACT_BODY = frozenset(
     {
@@ -43,22 +45,6 @@ _ZERO_PAD_EXACT_BODY = frozenset(
 _NAMED_CONTRACTIONS = frozenset({"linalg.matmul", "linalg.batch_matmul", "linalg.matvec", "linalg.vecmat"})
 
 
-def type_layout(value_type) -> str | None:
-    """``row_major_contiguous`` for an unencoded tensor or identity-layout memref, else ``None``.
-
-    The same rule judges one SSA value (a transfer edge) and every operand of an operation, so a
-    transfer and the operations on either side of it are described in one vocabulary.
-    """
-    kind = type(value_type).__name__
-    if kind == "TensorType":
-        encoding = getattr(value_type, "encoding", None)
-        return None if encoding is not None and type(encoding).__name__ != "NoneAttr" else "row_major_contiguous"
-    if kind == "MemRefType":
-        layout = getattr(value_type, "layout", None)
-        return None if layout is not None and type(layout).__name__ != "NoneAttr" else "row_major_contiguous"
-    return None
-
-
 def _layout(op) -> str | None:
     values = [*op.operands, *op.results]
     shaped = [value.type for value in values if hasattr(value.type, "get_shape") or hasattr(value.type, "shape")]
@@ -73,7 +59,7 @@ def _n_inputs(op) -> int:
 
 
 def _maps(op):
-    from merlin.compile.analysis import contraction_shapes as KS
+    from merlin.compiler.ir import contraction_shapes as KS
 
     maps, kinds = KS.indexing_maps(op), KS._iterator_types(op)  # noqa: SLF001
     if not maps or not kinds:

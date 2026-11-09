@@ -5,16 +5,12 @@ import numpy as np
 import pytest
 from test_counted_convolution import Integers
 
-from merlin.compile.scheduling.convolution_exploration import (
-    ConvolutionExplorationSource,
-    emit_convolution_schedule,
-    plan_convolution_schedule,
-)
-from merlin.compile.scheduling.window_transfer import (
-    ConvolutionResidentInputRows,
-    CountedConvolutionPlan,
-    Window2D,
-)
+from merlin.compiler.schedule.convolution_exploration import ConvolutionExplorationSource
+from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_schedule
+from merlin.compiler.schedule.window_transfer import ConvolutionResidentInputRows
+from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
+from merlin.compiler.schedule.window_transfer import Window2D
 
 
 def layout(window, identity='a'*64):

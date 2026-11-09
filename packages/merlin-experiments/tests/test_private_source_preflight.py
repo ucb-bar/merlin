@@ -15,7 +15,9 @@ import pytest
 from merlin_experiments.phase1.feedback import private_full_models as PFM
 from merlin_experiments.phase1.feedback import private_source_preflight as preflight
 
-from merlin.compile import baremetal_model, model_execution_inputs, route_before_build
+from merlin import model as baremetal_model
+from merlin.runtime import modelinputs as model_execution_inputs
+from merlin.compiler.planning import model as route_before_build
 from merlin.targetgen.contract.build_service import file_digest
 
 TARGET = "owned_fixture"

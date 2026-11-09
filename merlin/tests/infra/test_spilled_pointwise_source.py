@@ -11,11 +11,13 @@ from test_private_copy_elimination import SPACES, command
 from test_selected_spill_contracts import emit_copy, inputs
 from test_selected_storage_contracts import native  # noqa: F401
 
-from merlin.compile.scheduling.fusion_semantics import UnsupportedElementwise
-from merlin.compile.scheduling.pointwise_source import PointwiseBindings, compile_source_pointwise
-from merlin.compile.scheduling.program_limits import AddressWindow
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
-from merlin.compile.scheduling.temporary_storage import StorageOptimizationUnavailable, TemporaryObject
+from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
+from merlin.compiler.schedule.pointwise_source import PointwiseBindings
+from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
+from merlin.compiler.schedule.temporary_storage import TemporaryObject
 from merlin.sched.ir import Kernel, TensorArg
 
 INCREMENT = b"""builtin.module {func.func @step(%x:i8)->i8 {
@@ -232,7 +234,7 @@ def test_arithmetic_cannot_interpret_prefix_or_suffix_of_computed_fragment(tmp_p
 
 @pytest.mark.parametrize("fault", ["drop_store", "short_store", "wrong_reload", "tail_arithmetic"])
 def test_final_spill_bytes_are_reopened_against_original_source(tmp_path, monkeypatch, fault):
-    from merlin.compile.scheduling import pointwise_source
+    from merlin.compiler.schedule import pointwise_source
 
     module, operation = source_program(source_text())
     kwargs = case(tmp_path)
@@ -255,7 +257,7 @@ def test_final_spill_bytes_are_reopened_against_original_source(tmp_path, monkey
 
 @pytest.mark.parametrize("changed", ["facts", "software", "source", "bytes", "library"])
 def test_fragmented_result_rejects_stale_inputs(tmp_path, monkeypatch, changed):
-    from merlin.compile.scheduling import pointwise_source
+    from merlin.compiler.schedule import pointwise_source
 
     module, operation = source_program(source_text())
     kwargs = case(tmp_path)

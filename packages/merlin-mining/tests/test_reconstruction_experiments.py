@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from merlin.compile import tuning_knobs
+from merlin.compiler.selection import knobs as tuning_knobs
 from merlin.mining.reconstruction_experiments import (
     ExperimentBudget,
     build_experiment_packet,

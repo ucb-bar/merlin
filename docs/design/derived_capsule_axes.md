@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-10-12
 related: [generating_capsules, phase0_specification, capsule_phase_split, phase2_test_justification]
-code_refs: [src/merlin/targetgen/conformance.py, src/merlin/targetgen/corpus_synth.py, packages/merlin-experiments/src/merlin/targetgen/store_probe.py]
+code_refs: [src/merlin/targetgen/conformance.py, src/merlin/targetgen/corpus_synth.py, src/merlin/targetgen/store_probe.py]
 ---
 
 # Derive coverage axes from selected facts and source programs

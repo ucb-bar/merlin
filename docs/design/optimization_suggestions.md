@@ -120,7 +120,7 @@ provide a counted-loop route. The existing
 is a different bounded-region route. Optional schedule/interface dialects are
 available representations, with target integration still requiring evidence.
 [Shared host codegen](../../src/merlin/llvmlower/host_tensor_codegen.py) and
-[host optimizations](../../src/merlin/compile/host_optimizations.py) own generic
+[host optimizations](../../src/merlin/compiler/transforms/host.py) own generic
 CPU work and boundary handling. None of these module grants proves a complete
 production graph path, legal fusion, or realized performance.
 

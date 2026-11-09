@@ -5,10 +5,10 @@ import operator
 import numpy as np
 import pytest
 
-from merlin.compile.scheduling.horizontal_convolution import (
-    emit_horizontal_convolution_panels, plan_horizontal_convolution_panels,
-)
-from merlin.compile.scheduling.window_transfer import CountedConvolutionPlan, Window2D
+from merlin.compiler.schedule.horizontal_convolution import emit_horizontal_convolution_panels
+from merlin.compiler.schedule.horizontal_convolution import plan_horizontal_convolution_panels
+from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
+from merlin.compiler.schedule.window_transfer import Window2D
 
 
 class Integers:

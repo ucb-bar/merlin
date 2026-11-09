@@ -3,7 +3,7 @@
 import pytest
 from test_compact_dense_group import fixture, schedule
 
-from merlin.compile.scheduling.compact_dense_group_check import _range
+from merlin.compiler.schedule.compact_dense_group_check import _range
 from merlin.sched.ir import Loop, Var
 
 

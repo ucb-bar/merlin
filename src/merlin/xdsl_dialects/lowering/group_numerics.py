@@ -333,7 +333,7 @@ def candidate(numerics: GroupNumerics, capability_name: str, *, bias: tuple[int,
     with a bias and no folded values yet is stated with a single placeholder so the STRUCTURE can
     be checked before the weights are read.
     """
-    from merlin.perf.quantization_contract import QuantizedEpilogueCandidate
+    from merlin.compiler.quantization.contract import QuantizedEpilogueCandidate
 
     if numerics.multiplier is None:
         raise GroupNumericsError(

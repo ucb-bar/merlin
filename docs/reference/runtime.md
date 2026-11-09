@@ -35,6 +35,26 @@ Merlin's runtime spans two Merlin-owned planes:
 These map onto the `runtime` dialect concepts: command buffers, dispatches, queues, persistent
 handles, waits, profiling regions. See [core dialects](core_dialects.md).
 
+## Existing artifact execution
+
+`merlin.api.run` and `merlin run` execute an existing artifact under its explicit
+deployment contract. Compilation and runtime selection are separate. Installed
+ordinary runtime services use the `merlin.runners` entry-point group; a Python
+caller can also provide an explicitly constructed runtime object. Spike consumes
+the selected baremetal or Zephyr image. FireSim remains an external prepare and
+collect workflow; Merlin does not set up or launch its infrastructure.
+
+The installed `merlin.linux` service executes an already linked native Linux ELF.
+It checks the image against the executing host's ELF architecture and admitted
+ABI, retains exact image/worker source identities, and records argv, stdout,
+stderr, exit status and initial CPU affinity. Its hart count selects the initial
+affinity CPU count; it neither creates that many threads nor reserves exclusive
+CPUs. Nonzero exit and timeout remain failures. Timeout cleanup targets the
+process group created for that invocation. This runner performs no compilation
+or numerical acceptance. Its open-file execution preserves the selected image;
+programs whose behavior depends on the loader's executable pathname may require
+a different explicitly selected runtime adapter.
+
 ## Runtime ABI (Merlin-owned spec)
 
 The runtime ABI is the versioned operation set every backend/adapter must implement. It is a
@@ -165,7 +185,7 @@ are unchanged.
 Each backend's external toolchain / simulator resolves via a `MERLIN_*` env var and is optional: its
 `available()` returns False (or it fails at use with an actionable message) when the toolchain is
 absent, so the Python simulator + whole-model paths that need no external tool still work. `spike`
-uses `MERLIN_CHIPYARD`; `zephyr_model` also drives FireSim (see [zephyr](../guides/zephyr.md)).
+uses `MERLIN_CHIPYARD`; `zephyr_model` also prepares FireSim workloads and gates collected UART (see [zephyr](../guides/zephyr.md)).
 (There is no longer a standalone `vcs` backend — the prebuilt-VCS-RTL-as-certification-oracle role now
 lives inside `saturn_vec` and `muon`.)
 

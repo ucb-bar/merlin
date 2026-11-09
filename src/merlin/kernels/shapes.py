@@ -2,6 +2,6 @@
 
 import sys
 
-from merlin.compile.analysis import contraction_shapes as _implementation
+from merlin.compiler.ir import contraction_shapes as _implementation
 
 sys.modules[__name__] = _implementation

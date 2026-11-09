@@ -10,9 +10,9 @@ import pytest
 from merlin_experiments.phase2.common_transforms import supports_check
 
 from merlin.common.paths import repo_root
-from merlin.compile.scheduling.api_catalog import scheduling_capabilities
-from merlin.compile.scheduling.export import public_modules
-from merlin.compile.scheduling.library_sources import library_modules
+from merlin.compiler.schedule.api_catalog import scheduling_capabilities
+from merlin.compiler.schedule.export import public_modules
+from merlin.compiler.schedule.library_sources import library_modules
 from merlin.targetgen.tool_profile import (
     COMMON_SUBSTRATE_V11,
     attach_common_substrate,

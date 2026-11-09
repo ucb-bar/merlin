@@ -31,7 +31,7 @@ def prepare_sibling_components(module, *, effects, max_members=8, max_components
     """
     from xdsl.dialects import func
 
-    from merlin.compile.scheduling.dense_source import read_zero_seeded_integer_matmul
+    from merlin.compiler.schedule.dense_source import read_zero_seeded_integer_matmul
     from merlin.llvmlower.borrowed_effects import BorrowedBufferEffects
     from merlin.llvmlower.fresh_tensor_writer import rewrite_fresh_tensor_writers
     from merlin.llvmlower.source_region import _apply_sibling_contractions, _plan_sibling_contractions
@@ -63,7 +63,7 @@ def prepare_sibling_components(module, *, effects, max_members=8, max_components
     # no new contraction becomes eligible from an earlier component rewrite.
     readout_extents = None
     if output_path is not None:
-        from merlin.compile.analysis.contraction_shapes import contraction_extents
+        from merlin.compiler.ir.contraction_shapes import contraction_extents
         readout_extents = contraction_extents(current)
     components, attempts = [], []
     while len(components) < max_components:

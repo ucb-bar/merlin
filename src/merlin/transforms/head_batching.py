@@ -18,7 +18,8 @@ from xdsl.dialects.linalg.ops import GenericOp
 from xdsl.ir import Block
 from xdsl.ir.affine import AffineDimExpr, AffineMap
 
-from merlin.compile.scheduling.batched_dense import BatchedDenseProblem, BatchMatrixView
+from merlin.compiler.schedule.batched_dense import BatchedDenseProblem
+from merlin.compiler.schedule.batched_dense import BatchMatrixView
 from merlin.transforms import dense_row_batching_check as views
 from merlin.transforms.certificates import ir_digest
 from merlin.transforms.dense_ir import recognize_signed_integer_matmul, static_zero_integer_matmul_geometry
@@ -207,7 +208,7 @@ def _verify(source, candidate, value_map, replacements):
         if (batch.inputs[0] is not value_map[group.lhs] or batch.inputs[1] is not value_map[group.rhs]
                 or batch.outputs[0] is not initialized.result):
             raise ValueError("actual batch changed original roots or initialization")
-        from merlin.compile.analysis.contraction_shapes import zero_initialised
+        from merlin.compiler.ir.contraction_shapes import zero_initialised
 
         if not zero_initialised(batch):
             raise ValueError("actual batch changed the original zero seed")

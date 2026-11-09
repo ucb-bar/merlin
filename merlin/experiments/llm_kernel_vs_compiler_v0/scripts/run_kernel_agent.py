@@ -33,6 +33,7 @@ import sys
 import time
 from pathlib import Path
 
+from merlin.common.paths import runs_dir
 from merlin.targetgen import experiment_tokens as ET
 
 HERE = Path(__file__).resolve().parent

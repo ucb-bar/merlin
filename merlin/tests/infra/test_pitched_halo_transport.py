@@ -11,7 +11,7 @@ import pytest
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, i64
 
-from merlin.compile.scheduling.window_transfer import Window2D
+from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.llvmlower.host_builder import PTR, FnBuilder
 from merlin.llvmlower.pitched_halo_transport import (
     PitchedNHWCHalo, emit_pitched_halo_address, emit_pitched_nhwc_halo,

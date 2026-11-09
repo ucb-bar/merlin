@@ -6,14 +6,14 @@ owner: merlin-experiments
 last_verified: 2026-10-12
 related: [component_phase2_workflow, phase2_cpu_timing_study, phase2_test_justification]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase2/search_configuration.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/search_coordinator.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/evaluation_pool.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/retained_revisions.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_launch_inputs.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_stage.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_workflow.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_exclusion.py
+  - src/merlin_experiments/phase2/search_configuration.py
+  - src/merlin_experiments/phase2/search_coordinator.py
+  - src/merlin_experiments/phase2/evaluation_pool.py
+  - src/merlin_experiments/phase2/retained_revisions.py
+  - src/merlin_experiments/phase2/component_launch_inputs.py
+  - src/merlin_experiments/phase2/component_stage.py
+  - src/merlin_experiments/phase2/component_workflow.py
+  - src/merlin_experiments/phase0/operator_exclusion.py
 ---
 
 # Launch a bounded component compiler search

@@ -11,7 +11,8 @@ import pytest
 from test_compiler_tool_profile_v6 import bundle, original_owner, prepare, reseal
 
 from merlin.common.paths import repo_root
-from merlin.compile.scheduling import export, library_sources
+from merlin.compiler.schedule import export
+from merlin.compiler.schedule import library_sources
 from merlin.targetgen.package_runtime import _py_imports_merlin
 from merlin.targetgen.tool_profile import (
     COMMON_SUBSTRATE_V6,

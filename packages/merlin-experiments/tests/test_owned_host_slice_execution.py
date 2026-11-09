@@ -35,7 +35,7 @@ def test_unsupported_host_seam_is_reported_before_materialization(tmp_path):
 def test_source_join_ignores_only_literal_allocation_scaffolding(tmp_path, monkeypatch, fill_tags):
     from types import SimpleNamespace
     from merlin.common import mlir_query as mq
-    from merlin.compile.model_execution_inputs import file_sha256
+    from merlin.runtime.modelinputs import file_sha256
     from merlin.targetgen import native_model_execution as native
     from merlin.targetgen import owned_host_model_execution as owned
 

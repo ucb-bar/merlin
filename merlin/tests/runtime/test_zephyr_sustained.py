@@ -128,7 +128,7 @@ def test_sustained_run_holds_steady_state(tmp_path):
         refs["w8a8"] = np.load(w8)
 
     res = zm.build_and_run(b, tmp_path / "sustained", board="spike_riscv64", backend="rvv",
-                           rvv_hart=0, harts=2, arena_mb=64, int8_compute=True,
+                           rvv_hart=0, harts=2, int8_compute=True,
                            iters=12, warmup=2, references=refs, timeout=5400)
     assert res.get("ok"), f"sustained run failed the accuracy gate: cos={res.get('cos')}"
     s = res["sustained"]

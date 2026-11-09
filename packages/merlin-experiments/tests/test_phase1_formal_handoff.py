@@ -191,7 +191,7 @@ def build_handoff(
     # oracle above is synthetic; production PFM.run is never replaced.
     from merlin_experiments.phase1.feedback import private_full_models as PFM
 
-    from merlin.compile.model_execution_inputs import strict_tree_sha256
+    from merlin.runtime.modelinputs import strict_tree_sha256
 
     private_spec = tmp_path / "synthetic-private-spec.yaml"
     target = load_context(descriptor, repo=repo).target

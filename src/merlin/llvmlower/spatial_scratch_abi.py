@@ -12,7 +12,8 @@ import hashlib
 from dataclasses import asdict, dataclass, replace
 from math import prod
 
-from merlin.compile.scheduling.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
+from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan
+from merlin.compiler.schedule.spatial_producer import SpatialProducerPlan
 
 from .borrowed_effects import BorrowedBufferEffects
 from .fresh_tensor_writer import (

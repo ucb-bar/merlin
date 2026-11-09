@@ -8,8 +8,8 @@ from test_compact_dense import encode, project
 from test_dense_source import compile_source, contraction
 from test_selected_dense_contracts import inputs, schedule
 
-from merlin.compile.scheduling.block_schedule import Store
-from merlin.compile.scheduling.dense_source import DenseSourceUnavailable
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
 from merlin.frontends.linalg_mlir import parse_mlir_text
 
 QUALIFICATION = "neutral-independent-i32-clamp-i8-readout-v1"
@@ -193,7 +193,7 @@ def test_unsupported_original_composition_preserves_dense_only_route(tmp_path, e
 
 
 def test_original_scalar_and_column_readout_representations_have_same_bits_and_outputs():
-    from merlin.compile.scheduling.dense_contracts import DenseTiledIntegerReadout
+    from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout
 
     scalar = DenseTiledIntegerReadout.from_source_scales(0.125, columns=19, tile_columns=16, relu=True)
     vector = DenseTiledIntegerReadout.from_source_scales([0.125]*19, columns=19, tile_columns=16, relu=True)
@@ -211,7 +211,7 @@ def test_original_scalar_and_column_readout_representations_have_same_bits_and_o
     ([0.125]*15+[0.25]*4, 19),
 ])
 def test_source_readout_normalization_keeps_original_domain_and_tile_refusals(scales, columns):
-    from merlin.compile.scheduling.dense_contracts import DenseTiledIntegerReadout
+    from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout
 
     with pytest.raises(ValueError):
         DenseTiledIntegerReadout.from_source_scales(scales, columns=columns, tile_columns=16)

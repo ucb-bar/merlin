@@ -6,11 +6,11 @@ owner: experiments
 last_verified: 2026-10-19
 related: [phase2_test_justification, phase2_corpus_search, phase0_specification]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase0/public_source_roles.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/requirements.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/public_programs.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/writer.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/corpus.py
+  - src/merlin_experiments/phase0/public_source_roles.py
+  - src/merlin_experiments/phase0/requirements.py
+  - src/merlin_experiments/phase0/public_programs.py
+  - src/merlin_experiments/phase0/writer.py
+  - src/merlin_experiments/phase2/corpus.py
 ---
 
 # Select prospective public source roles before Phase 2 evaluation

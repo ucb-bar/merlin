@@ -112,7 +112,7 @@ def test_unsupported_source_or_capabilities_keep_the_exact_source_bytes_and_no_p
         facts_path.write_text(json.dumps(facts))
         software["isa"]["facts_sha256"] = hashlib.sha256(facts_path.read_bytes()).hexdigest()
         config.selected_contracts.software_path.write_text(json.dumps(software))
-        from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
+        from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
 
         current = read_scheduling_contracts(facts_path, config.selected_contracts.software_path,
                                             target=config.selected_contracts.target)

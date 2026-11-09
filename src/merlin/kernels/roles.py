@@ -2,6 +2,6 @@
 
 import sys
 
-from merlin.compile.analysis import instruction_roles as _implementation
+from merlin.analysis import instruction_roles as _implementation
 
 sys.modules[__name__] = _implementation

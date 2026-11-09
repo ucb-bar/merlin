@@ -13,13 +13,11 @@ def _project(relative_path: str) -> dict:
 
 def test_aet_pin_is_identical_for_every_direct_owner():
     core = _project("pyproject.toml")
-    experiments = _project("packages/merlin-experiments/pyproject.toml")
-    analysis = _project("packages/merlin-analysis/pyproject.toml")
     pins = []
     for dependencies in (
         core["optional-dependencies"]["telemetry"],
-        experiments["dependencies"],
-        analysis["dependencies"],
+        core["optional-dependencies"]["experiments"],
+        core["optional-dependencies"]["analysis"],
     ):
         aet = [dependency for dependency in dependencies if dependency.startswith("aet @ ")]
         assert len(aet) == 1
@@ -31,9 +29,12 @@ def test_aet_pin_is_identical_for_every_direct_owner():
 
 
 def test_analysis_does_not_require_experiments_or_transitive_aet_url():
-    analysis = _project("packages/merlin-analysis/pyproject.toml")
-    dependencies = analysis["dependencies"]
-    assert "merlin[xdsl,targetgen]" in dependencies
+    project = _project("pyproject.toml")
+    dependencies = project["optional-dependencies"]["analysis"]
+    assert "xdsl>=0.68" in dependencies and "jsonschema" in dependencies
     assert not any("telemetry" in dependency for dependency in dependencies)
     assert not any(dependency.startswith("merlin-experiments") for dependency in dependencies)
-    assert analysis["optional-dependencies"]["experiments"] == ["merlin-experiments==0.1.0"]
+    assert project["optional-dependencies"]["dse"] == []
+    assert project["optional-dependencies"]["mining"] == []
+    assert not any((repo_root() / "packages" / owner / "pyproject.toml").exists()
+                   for owner in ("merlin-experiments", "merlin-analysis", "merlin-dse", "merlin-mining"))

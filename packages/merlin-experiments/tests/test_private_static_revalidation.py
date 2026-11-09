@@ -15,7 +15,7 @@ from merlin_experiments.phase1.feedback import private_source_freeze as source_f
 from merlin_experiments.phase1.feedback import private_static_products as products
 from merlin_experiments.phase1.feedback import private_static_revalidation as replay
 
-from merlin.compile.model_execution_inputs import strict_tree_sha256
+from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.llvmlower.compilation_recipe import CompilationRecipe
 
 

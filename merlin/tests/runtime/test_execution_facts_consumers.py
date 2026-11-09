@@ -9,7 +9,7 @@ import pytest
 from test_bound_chipyard_rocc_backend import _bound
 from test_bound_simulation_correspondence import _corresponding
 
-from merlin.compile import model_execution_inputs as MI
+from merlin.runtime import modelinputs as MI
 from merlin.runtime.backends import base as backends
 
 pytest_plugins = ("test_bound_chipyard_rocc_backend",)

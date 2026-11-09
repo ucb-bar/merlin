@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from merlin.common import mlir_query as mq
-from merlin.compile.analysis import contraction_shapes
+from merlin.compiler.ir import contraction_shapes
 from merlin.llvmlower.device_offload import rewrite_groups_to_device
 from merlin.xdsl_dialects.lowering import compute_groups as CG
 from merlin.xdsl_dialects.lowering import group_command as GC

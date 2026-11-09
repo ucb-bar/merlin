@@ -243,7 +243,7 @@ def test_logical_abi_requires_original_qualification_and_controls(tmp_path, monk
     "mutation,diagnostic", [("address", "wrong tile address"), ("continuation", "Arrays are not equal")]
 )
 def test_wrong_logical_primitive_refuses_ordinary_model_before_execution(tmp_path, monkeypatch, mutation, diagnostic):
-    from merlin.compile.baremetal_model import compile_saved_model
+    from merlin.model import compile_saved_model
     from merlin.targetgen.rtl.facts import observed_facts
 
     model, _expected, trace, root, options = setup(tmp_path, monkeypatch, CASES[0])

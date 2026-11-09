@@ -12,14 +12,14 @@ import hashlib
 import json
 from pathlib import Path
 
-from merlin.compile.scheduling.export import (
+from merlin.compiler.schedule.export import (
     SOURCE_BINDING_MODULES,
     SOURCE_BINDING_PROTOCOL,
     export_shared_scheduling,
     namespace_replacements,
     public_modules,
 )
-from merlin.compile.scheduling.library_sources import library_modules
+from merlin.compiler.schedule.library_sources import canonical_module, library_modules
 
 _NAMESPACE_MODULES_V6 = (
     "merlin",
@@ -48,6 +48,8 @@ _NAMESPACE_MODULES_V24 = (*_NAMESPACE_MODULES_V20, "merlin.capture", "merlin.tar
 
 def _namespace_modules(version):
     library_modules(version)
+    if version == 26:
+        return tuple(dict.fromkeys((*map(canonical_module, _namespace_modules(25)), "merlin.compiler.selection")))
     return {
         6: _NAMESPACE_MODULES_V6,
         7: _NAMESPACE_MODULES_V7,
@@ -61,6 +63,8 @@ def _namespace_modules(version):
         22: _NAMESPACE_MODULES_V20,
         23: _NAMESPACE_MODULES_V20,
         24: _NAMESPACE_MODULES_V24,
+        25: (*_NAMESPACE_MODULES_V24, "merlin.compile.analysis", "merlin.compiler",
+             "merlin.compiler.ir", "merlin.compiler.passes"),
     }[version]
 
 
@@ -79,6 +83,17 @@ _SDK_SUPPORT_SOURCES_V22 = (
     "compile/analysis/rocc_commands.py",
 )
 
+# Namespace/owner relocation only: exactly the existing support implementations.
+# Machine observation helpers remain outside the shared editable SDK; selected
+# infrastructure tools retain their independently declared exact source grants.
+_SDK_SUPPORT_SOURCES_V26 = (
+    "analysis/__init__.py",
+    "compiler/ir/contraction_shapes.py",
+    "analysis/disassembly.py",
+    "analysis/intrinsics_header.py",
+    "analysis/rocc_commands.py",
+)
+
 
 def withholds_author_packages(version) -> bool:
     """Whether this SDK release excludes every author-inaccessible module from its staged sources."""
@@ -88,6 +103,8 @@ def withholds_author_packages(version) -> bool:
 
 def sdk_support_sources(version) -> tuple[str, ...]:
     """Exact extra source files (relative to ``merlin/``) a release stages for its tool grants."""
+    if version == 26:
+        return _SDK_SUPPORT_SOURCES_V26
     return _SDK_SUPPORT_SOURCES_V22 if withholds_author_packages(version) else ()
 
 
@@ -104,6 +121,9 @@ def staged_module(relative: str) -> str:
 
 
 def _selected_inventory(namespaces, public, modules, exported, *, version):
+    if version == 26:
+        namespaces = tuple(canonical_module(name) for name in namespaces)
+        public = tuple(canonical_module(name) for name in public)
     namespaces = tuple(
         dict.fromkeys((*namespaces, *(name + ".__init__" for name in _namespace_modules(version) if name in modules)))
     )
@@ -112,8 +132,11 @@ def _selected_inventory(namespaces, public, modules, exported, *, version):
     return namespaces, public, implementation
 
 
-def shared_inventory(namespaces, public, *, version=6):
+def shared_inventory(namespaces, public, *, version=26):
     """Stable exact membership; package initializers never become public APIs."""
+    if version == 26:
+        namespaces = tuple(canonical_module(name) for name in namespaces)
+        public = tuple(canonical_module(name) for name in public)
     namespaces = tuple(dict.fromkeys((*namespaces, *(name + ".__init__" for name in _namespace_modules(version)))))
     public = tuple(dict.fromkeys((*public, *public_modules(version))))
     implementation = tuple(
@@ -134,7 +157,7 @@ def _manifest_version(document, version):
         return "inventory_version" not in document and schema == (
             "merlin.shared_scheduling_library.v2" if binding else "merlin.shared_scheduling_library.v1"
         )
-    if version in (16, 17, 18, 19, 20, 21, 22, 23, 24):
+    if version in (16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26):
         schemas = {
             16: "merlin.shared_scheduling_library.v10",
             17: "merlin.shared_scheduling_library.v11",
@@ -145,6 +168,8 @@ def _manifest_version(document, version):
             22: "merlin.shared_scheduling_library.v16",
             23: "merlin.shared_scheduling_library.v17",
             24: "merlin.shared_scheduling_library.v18",
+            25: "merlin.shared_scheduling_library.v19",
+            26: "merlin.shared_scheduling_library.v20",
         }
         return (
             schema == schemas[version]
@@ -564,8 +589,10 @@ def _release_inventory(document, *, version=6):
                     )
                 )
     if binding:
+        binding_modules = (tuple(canonical_module(name) for name in SOURCE_BINDING_MODULES)
+                           if version == 26 else SOURCE_BINDING_MODULES)
         candidates = [
-            ((*modules, *SOURCE_BINDING_MODULES), (*public, *SOURCE_BINDING_MODULES)) for modules, public in candidates
+            ((*modules, *binding_modules), (*public, *binding_modules)) for modules, public in candidates
         ]
     members = document.get("members", [])
     if isinstance(members, list) and all(type(row) is dict for row in members):
@@ -731,15 +758,17 @@ def prepare_shared_source_release(
     directory: Path,
     *,
     python_source_root: Path,
-    license_directory: Path,
+    license_directory: Path | None = None,
     tools: tuple[str, ...] = (),
-    version=6,
+    version=26,
     source_binding: bool = False,
 ) -> dict:
     """Prepare one source root before Phase 1; never alter a frozen run's grants."""
     from .tool_profile import _SHARED_SUBSTRATES, substrate_data, substrate_inventory
 
     library_modules(version)
+    if version != 26:
+        raise ValueError("legacy source preparation requires its frozen release environment; fresh work uses SDK26")
     substrate = next((name for name, number in _SHARED_SUBSTRATES.items() if number == version), None)
     if substrate is None:
         raise ValueError("selected shared inventory has no explicit common-substrate integration")
@@ -781,7 +810,7 @@ def prepare_shared_source_release(
         destination = directory / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.exists() and destination.read_bytes() != payload:
-            raise ValueError("shared export differs from its selected source release")
+            raise ValueError(f"shared export differs from its selected source release: {relative}")
         destination.write_bytes(payload)
     if any(_read(root, relative) != payload for relative, payload in before.items()):
         raise ValueError("shared source release changed during preparation")
@@ -794,7 +823,9 @@ def main(argv=None):
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--python-source-root", required=True, type=Path)
     parser.add_argument("--license-directory", required=True, type=Path)
-    parser.add_argument("--library-version", type=int, choices=(6, 7, 8, 16, 17, 18, 19, 20, 21, 22, 23, 24), default=6)
+    parser.add_argument(
+        "--library-version", type=int, choices=(26,), default=26
+    )
     parser.add_argument("--tool", action="append", default=[], help="existing tool registry name to stage, not grant")
     parser.add_argument("--source-binding", action="store_true", help="explicit version-8 typed-source/LLVM lexer APIs")
     args = parser.parse_args(argv)

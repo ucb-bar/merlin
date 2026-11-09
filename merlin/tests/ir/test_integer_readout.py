@@ -143,7 +143,7 @@ def test_refuse_nonmonotone_or_invalid_scales(scales):
 @pytest.mark.parametrize("relu", [False, True])
 def test_rational_scalar_ir_consumed_with_complete_transition_boundary_inputs(scale, relu):
     from merlin.llvmlower.integer_readout import emit_rational_scalar_ir
-    from merlin.compile.scheduling.dense_contracts import DenseIntegerReadout
+    from merlin.compiler.schedule.dense_contracts import DenseIntegerReadout
     from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.runtime.linalg_numpy import evaluate as evaluate_ir
 
@@ -178,7 +178,7 @@ def test_rational_refuses_nonpositive_scale(scales):
 
 @pytest.mark.parametrize("shift", [-1, 64])
 def test_readout_refuses_poison_constant_shifts(shift):
-    from merlin.compile.scheduling.dense_contracts import DenseIntegerReadout
+    from merlin.compiler.schedule.dense_contracts import DenseIntegerReadout
     ir = f"""module {{func.func @readout(%x:i64)->i8 {{
       %shift=arith.constant {shift}:i64
       %v=arith.shrsi %x,%shift:i64
@@ -190,7 +190,7 @@ def test_readout_refuses_poison_constant_shifts(shift):
 
 
 def test_readout_refuses_dynamic_shift():
-    from merlin.compile.scheduling.fusion_semantics import scalar_graph
+    from merlin.compiler.schedule.fusion_semantics import scalar_graph
     ir = b"""module {func.func @readout(%x:i64,%shift:i64)->i8 {
       %v=arith.shrsi %x,%shift:i64
       %r=arith.trunci %v:i64 to i8

@@ -25,7 +25,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
 from merlin.common.paths import env  # noqa: E402
-from merlin.runtime.backends.firesim_runner import select_runner  # noqa: E402
 
 OK, WARN, FAIL = "OK", "WARN", "FAIL"
 # The queue daemon writes its pid file on start and refreshes a heartbeat row; a pid file older
@@ -48,18 +47,15 @@ def check_chipyard() -> list[dict]:
 
 
 def check_runner() -> list[dict]:
-    """Check explicit installed runner selection; delegate optional read-only checks."""
-    try:
-        runner = select_runner()
-        check = getattr(runner, "preflight", None)
-        if check is None:
-            return [_r("runner", WARN, "selected runner has no read-only preflight; inspect its own requirements")]
-        detail = check()
-        if not isinstance(detail, str):
-            raise TypeError("preflight must return a detail string")
-        return [_r("runner", OK, detail)]
-    except Exception as exc:  # noqa: BLE001 - selected provider may fail
-        return [_r("runner", FAIL, str(exc))]
+    """State the handoff boundary without importing an execution adapter."""
+    return [
+        _r(
+            "runner",
+            WARN,
+            "Merlin prepares workloads and collects external results; runner installation, "
+            "queue policy and execution preflight belong to the external operator",
+        )
+    ]
 
 
 def _pid_alive(pid: int) -> bool:

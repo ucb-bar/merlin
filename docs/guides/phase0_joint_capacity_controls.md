@@ -4,7 +4,7 @@ kind: guide
 status: current
 owner: experiments
 last_verified: 2026-10-20
-code_refs: [packages/merlin-experiments/src/merlin_experiments/phase0/development_joint_capacity.py, packages/merlin-experiments/src/merlin_experiments/phase0/development_capacity_materialize.py]
+code_refs: [src/merlin_experiments/phase0/development_joint_capacity.py, src/merlin_experiments/phase0/development_capacity_materialize.py]
 ---
 
 # Retained joint-store capacity controls

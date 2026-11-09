@@ -9,6 +9,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin` | merlin: compiler-centered HW/SW abstraction exploration. |
 | `merlin.agentreport.campaign` | Campaign figure: one agentic compiler-construction campaign drawn as a single stitched run. |
 | `merlin.agentreport.phase1` | Post-hoc Phase 1 run, treatment and model reports with explicit artifact inputs. |
+| `merlin.analysis` | Public target-neutral IR, instruction and artifact observations. |
 | `merlin.baselines` | External-baseline K1-RVV comparison harness. |
 | `merlin.baselines.exo_kernels` | EXO kernel sources for the K1-RVV whole-model baseline arm. |
 | `merlin.benchharness` | Shared, target-parametric benchmark-harness primitives. |
@@ -17,13 +18,31 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.compare` | merlin.compare — unified, spec-driven, versioned comparison driver. |
 | `merlin.compile` | Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, and mesh execution. |
 | `merlin.compile.analysis` | Target-agnostic analyses that derive facts from IR, shapes and a target's own derived tables. |
-| `merlin.compile.scheduling` | Scheduling passes over a target's derived on-chip geometry. |
+| `merlin.compile.scheduling` | Legacy scheduling imports; use merlin.compiler.schedule. |
+| `merlin.compiler` | Shared compiler contracts and implementation capabilities. |
+| `merlin.compiler.backend` | Explicit out-of-tree provider identity, composition, and implementation contracts. |
+| `merlin.compiler.frontend` | Framework adapters; numerical preparation remains an explicit stage. |
+| `merlin.compiler.frontend.torch` | Process-isolated PyTorch input adapters without eager framework imports. |
+| `merlin.compiler.ir` | Shared read-only IR analyses used before planning and materialization. |
+| `merlin.compiler.lower` | Reusable lowering below compiler orchestration and backend selection. |
+| `merlin.compiler.lower.c` | Source C argument binding for admitted staged tensor constants. |
+| `merlin.compiler.lower.llvm` | Shared LLVM finalization for scalar, vector, and control implementations. |
+| `merlin.compiler.lower.scalar` | Reusable scalar computation lowering, independent of target providers. |
+| `merlin.compiler.partition` | Materialize selected source regions while preserving their exact SSA boundaries. |
+| `merlin.compiler.passes` | Invocation mechanisms for the selected native and xDSL environments. |
+| `merlin.compiler.planning` | Program placement policies and their declared candidate and cost inputs. |
+| `merlin.compiler.quantization` | Framework-independent numerical contracts and preparation capabilities. |
+| `merlin.compiler.quantization.torchao` | TorchAO framework adapters; numerical intent and target truth remain separate. |
+| `merlin.compiler.schedule` | Shared scheduling algorithms over explicit semantics and derived resource geometry. |
+| `merlin.compiler.selection` | Local implementation selection and reusable feature constraints. |
+| `merlin.compiler.transforms` | Shared compiler transformations with explicit semantic and source contracts. |
 | `merlin.design_pressure` | Design-pressure analysis: workload region -> cutpoints -> pressure metrics -> emitted reports. |
 | `merlin.design_pressure.cutpoints` | Compiler cut points for analysis: the IR levels a workload region is observed at (graph, linalg, dispatch, bufferized, loop, trace), one module per cut point. |
 | `merlin.design_pressure.emit` | Emit the schema-validated design-pressure artifacts: the design_pressure report, the candidate_contracts ladder (I0-I3) and interface candidates. |
 | `merlin.design_pressure.ingest` | Ingest workload regions from external frontends (e.g. model2MLIR linalg-on-tensors). |
 | `merlin.design_pressure.metrics` | Design-pressure metrics: per-axis pressures computed over a region's cut points -- compute/shapes, memory, layout, packing, reuse, lifetimes, dispatch and synchronization. |
 | `merlin.design_pressure.workloads` | Synthetic, parameterized workload-region builders for design-pressure experiments. |
+| `merlin.development` | Host-owned experiment declarations; engines retain their existing lifecycle owners. |
 | `merlin.dse` | Design-space exploration: search the hardware and interface space a design-pressure report opens. |
 | `merlin.dse.pipelines` | xDSL pass registry + pipeline builder. A compilation strategy's lowering_pipeline string is assembled here from named passes (MLIR --pass-pipeline style). |
 | `merlin.dse.search` | Search layer over candidate compiler artifacts. Three methods only: grid (explicit sweeps), evolutionary (improve a candidate), MAP-Elites (keep many good families). Orchestration/experiment logic —… |
@@ -65,6 +84,8 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.sched.primitives` | The scheduling language: semantics-preserving rewrites of a kernel, each with a proof obligation. |
 | `merlin.semantic_compiler` | Typed, target-independent native semantic compiler components. |
 | `merlin.system` | Host+device system model: what we compile for, and how the pieces are reached. |
+| `merlin.target` | Shared target contract loading; no target discovery or implementation imports. |
+| `merlin.target.spec` | Opt-in compact software specification composition and inspection. |
 | `merlin.targetgen` | TargetGen pipeline: ingest -> extract -> plan -> generate -> validate. |
 | `merlin.targetgen.contract` | Experiment-ABI contract layer. |
 | `merlin.targetgen.evidence` | Evidence layer: deterministically discover source files and detect concepts. |
@@ -82,6 +103,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.transforms` | Target-independent xDSL transformations with explicit verification handoff. |
 | `merlin.triton` | Triton as a target-independent KERNEL FRONTEND to Merlin (not a per-target backend). |
 | `merlin.validation` | Structural/artifact validation for generated target repos + contract plans. |
+| `merlin.verification` | Independent program and compiler transformation checks with explicit scope. |
 | `merlin.verify` | Compiler-pass verification: static (lit/FileCheck) and formal (SMT/Lean) checks. |
 | `merlin.xdsl_dialects` | merlin's core dialects in xDSL (the default prototyping plane). |
 | `merlin.xdsl_dialects.lowering` | Staged lowering across the core dialects. |

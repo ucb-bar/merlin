@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from merlin.common import stimulus as STIM
-from merlin.compile.logical_abi import pool_out_dims as pool_out_dims
+from merlin.compiler.ir.logical_abi import pool_out_dims
 
 try:
     import numpy as _np

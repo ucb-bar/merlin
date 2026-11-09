@@ -9,8 +9,9 @@ import sys
 import numpy as np
 import pytest
 
-from merlin.compile.scheduling.batched_dense import BatchedDenseProblem, BatchMatrixView
-from merlin.compile.scheduling.dense_contracts import DenseLogicalPointerABI
+from merlin.compiler.schedule.batched_dense import BatchedDenseProblem
+from merlin.compiler.schedule.batched_dense import BatchMatrixView
+from merlin.compiler.schedule.dense_contracts import DenseLogicalPointerABI
 from merlin.llvmlower.borrowed_effects import BorrowedBufferEffects
 from merlin.llvmlower.logical_borrowed_abi import LogicalBorrowedABI
 from merlin.llvmlower.logical_borrowed_batch_abi import emit_borrowed_batch_translation_unit

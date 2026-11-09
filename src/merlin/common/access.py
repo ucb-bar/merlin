@@ -28,6 +28,10 @@ class PythonSourceRoot:
 PYTHON_SOURCE_ROOTS = (
     PythonSourceRoot("merlin", "merlin/python/merlin"),
     PythonSourceRoot("merlin", "src/merlin"),
+    PythonSourceRoot("merlin_experiments", "src/merlin_experiments"),
+    PythonSourceRoot("merlin_dse", "src/merlin_dse"),
+    PythonSourceRoot("merlin_mining", "src/merlin_mining"),
+    PythonSourceRoot("merlin_analysis", "src/merlin_analysis"),
     PythonSourceRoot("merlin", "packages/merlin-experiments/src/merlin"),
     PythonSourceRoot("merlin_experiments", "packages/merlin-experiments/src/merlin_experiments"),
     PythonSourceRoot("merlin", "packages/merlin-dse/src/merlin"),
@@ -96,14 +100,24 @@ AUTHOR_WITHHELD_PREFIXES = (
     "merlin.runtime.reference",
     "merlin.runtime.simulator",
     "merlin_experiments",
+    # Migrated orchestration has the same author-private role as its legacy package.
+    "merlin.development",
     # Operator-only consumers of the withheld packages above. Each needs a mined schedule package, the
     # mined host-action catalogue or an expert-corpus CCA lift (the bare-metal model build also needs
     # declared oracle runtime backends). No public module imports one at module level; the operator
     # host-model build reaches the bare-metal builder lazily. In the public tree each could only fail or
-    # report nothing. The generic analyses the withheld packages held live in merlin.compile.analysis
+    # report nothing. The generic analyses the withheld packages held live in merlin.analysis
     # and stay public.
     "merlin.compile.baremetal_model",
+    # Exact canonical closure of the original saved-model operator workflow.
+    # Build/run/reference decomposition does not expose its private authority.
+    "merlin.model",
+    "merlin.compiler.build.saved",
+    "merlin.compiler.build.modeloptions",
+    "merlin.runtime.model",
+    "merlin.verification.model",
     "merlin.compile.scalar_host_qualification",
+    "merlin.verification.scalar_host",
     "merlin.llvmlower.host_policy",
     "merlin.sched.expressiveness",
 )
@@ -172,6 +186,9 @@ module_access = _module
 
 
 MODULE_ACCESS = (
+    # Independent mesh gates/references are not candidate compiler source grants.
+    _module("merlin.verification.mesh", "grader"),
+    _module("merlin.verification.mesh_reference", "oracle", aliases=("merlin.compile.mesh_reference",)),
     _module("merlin.perf.analysis_worker", "grader"),
     _module("merlin.perf.command_recorder", "grader"),
     # The whole-model build reads a model capsule's golden and recomputes its oracle; the rest of the
@@ -599,6 +616,7 @@ def legacy_module_paths(origin: str, *, items: tuple[ModuleAccess, ...] = MODULE
 CONTRACT_RESOURCE_ROOTS = (
     "merlin/contract",
     "src/merlin/_data/contract",
+    "src/merlin_experiments/_data/contract",
     "packages/merlin-experiments/src/merlin_experiments/_data/contract",
 )
 

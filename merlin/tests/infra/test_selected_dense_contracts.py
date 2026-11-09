@@ -13,10 +13,12 @@ import pytest
 import yaml
 from test_compact_dense import ADAPTER, encode, fixture, native_dense_pair
 
-from merlin.compile.scheduling.block_schedule import Compute, Load
-from merlin.compile.scheduling.compact_dense import DenseLoopStorage, schedule_compact_dense
-from merlin.compile.scheduling.program_limits import AddressWindow
-from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+from merlin.compiler.schedule.compact_dense import schedule_compact_dense
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
 from merlin.transforms.dense_planning import DenseResources
 
 
@@ -277,7 +279,7 @@ def test_changed_numerical_identity_index_width_and_alignment_refuse(tmp_path):
 
 
 def test_current_library_and_checked_kernel_are_required_for_emission(tmp_path, monkeypatch):
-    from merlin.compile.scheduling import compact_dense
+    from merlin.compiler.schedule import compact_dense
     model = inputs(tmp_path)
     result = schedule(model)
     changed = replace(result.kernel, name="changed_after_verification")
@@ -289,7 +291,7 @@ def test_current_library_and_checked_kernel_are_required_for_emission(tmp_path, 
 
 
 def test_library_change_inside_instruction_encoding_rejects(tmp_path, monkeypatch):
-    from merlin.compile.scheduling import compact_dense
+    from merlin.compiler.schedule import compact_dense
     model = inputs(tmp_path)
     original = compact_dense._dense_library_sources
     changed = False

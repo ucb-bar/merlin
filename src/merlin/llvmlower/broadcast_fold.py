@@ -167,7 +167,7 @@ def run_source() -> str:
 
 
 def _feature():
-    from .impr_features import ImprFeature
+    from .shared_feature_registry import ImprFeature
 
     return ImprFeature(
         name=FEATURE,
@@ -188,7 +188,7 @@ def _feature():
 
 
 def ensure_registered() -> str:
-    from .impr_features import known, register
+    from .shared_feature_registry import known, register
 
     if FEATURE not in known():
         register(_feature())

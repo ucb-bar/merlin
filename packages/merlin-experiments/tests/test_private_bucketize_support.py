@@ -11,7 +11,7 @@ from merlin_experiments.phase1.feedback import private_bucketize_support as supp
 from merlin_experiments.phase1.feedback import private_host_source_dispatch as dispatch
 
 from merlin.common import mlir_query as mq
-from merlin.compile.model_execution_inputs import strict_tree_sha256
+from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.frontends.bucketize_source import STATIC_BUCKETIZE_SOURCE_BODY_SCHEMA
 from merlin.frontends.capture_normalization import normalize_capture_mlir
 from merlin.targetgen.host_capabilities import admit_host_operation

@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from merlin.compile import model_execution_inputs as MI
+from merlin.runtime import modelinputs as MI
 from merlin.runtime.backends import base as backends
 from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
 from merlin.targetgen.rocc import operand_selection_recipe as R

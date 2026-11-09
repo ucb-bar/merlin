@@ -179,7 +179,8 @@ def transform_loop(kernel, handle, *, action, factor=None, cuts=(), names=()):
     continue to use their existing source-family APIs until their handle mapping
     is specified. This helper does not guess a descendant after reorder/fusion.
     """
-    from merlin.compile.scheduling.loop_schedule import LoopTransform, propose_loop_transforms
+    from merlin.compiler.schedule.loop_schedule import LoopTransform
+    from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
 
     if type(handle) is not LoopHandle:
         raise PrimitiveError("typed loop occurrence handle required")

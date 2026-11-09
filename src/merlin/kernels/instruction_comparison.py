@@ -7,7 +7,7 @@ import json
 from collections import Counter
 from dataclasses import asdict
 
-from merlin.compile.analysis.riscv_machine import decode_cpu
+from merlin.analysis.riscv_machine import decode_cpu
 
 
 def _digest(value):
@@ -235,7 +235,7 @@ def instruction_summary(rows, *, decoder=None, offset=0, limit=8):
                 dict(local_instruction=ordinal[cpu.target]) if cpu.target in ordinal else dict(external_pc=cpu.target)
             )
         if len(row.hexcode) == 8 and int(row.hexcode, 16) & 127 == isa.get("CUSTOM_OPCODE"):
-            from merlin.compile.analysis.rocc_commands import fields_of
+            from merlin.analysis.rocc_commands import fields_of
 
             fields = fields_of(int(row.hexcode, 16))
             token = dict(kind="endpoint", instruction=isa["FUNCT_CLASS"].get(fields["funct"], "UNKNOWN"), fields=fields)

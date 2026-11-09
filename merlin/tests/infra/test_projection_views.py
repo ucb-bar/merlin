@@ -6,8 +6,10 @@ import numpy as np
 import pytest
 from test_shared_input_schedule import source
 
-from merlin.compile.scheduling.projection_views import SharedProjectionViews, plan_shared_projection_views
-from merlin.compile.scheduling.shared_input_groups import SharedInputGroup, find_shared_input_groups
+from merlin.compiler.schedule.projection_views import SharedProjectionViews
+from merlin.compiler.schedule.projection_views import plan_shared_projection_views
+from merlin.compiler.schedule.shared_input_groups import SharedInputGroup
+from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups
 
 
 def views():

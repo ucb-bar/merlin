@@ -130,8 +130,8 @@ def extract_source_region(
     from xdsl.ir import Operation
     from xdsl.traits import IsTerminator
 
+    from merlin.compiler.ir.boundary import free_values
     from merlin.xdsl_dialects._common import text
-    from merlin.xdsl_dialects.lowering.outline import _free_values
 
     if (
         type(symbol) is not str
@@ -211,12 +211,12 @@ def extract_source_region(
             capture(operand)
         prefix.append(op)
 
-    for value in _free_values(operations):
+    for value in free_values(operations):
         capture(value)
     constants = tuple(op for op in prefix if type(op) is arith.ConstantOp or op in literal_splats)
     if sum(len(text(op, generic=True).encode()) for op in constants) > max_constant_bytes:
         raise ValueError("original literal dependencies exceed the source capture byte bound")
-    inputs = tuple(_free_values((*prefix, *operations)))
+    inputs = tuple(free_values((*prefix, *operations)))
     members = {op for top in operations for op in top.walk()}
     outputs = tuple(v for op in operations for v in op.results if any(u.operation not in members for u in v.uses))
     if not outputs:
@@ -368,7 +368,10 @@ def _sibling_tensor_operation_is_pure(op):
     Unknown fields/effects still refuse. This is not target readout permission.
     """
     from xdsl.dialects.builtin import ModuleOp, UnregisteredOp
-    from .passes_xdsl import _DEQUANT_KINDS, _QUANT_KINDS, _dead_tensor_operation_is_pure, lower_quant_ext
+
+    from merlin.compiler.quantization.linalg import _DEQUANT_KINDS, _QUANT_KINDS, lower_quant_ext
+    from merlin.compiler.transforms.dead import _dead_tensor_operation_is_pure
+
     if _dead_tensor_operation_is_pure(op):
         return True
     name = getattr(getattr(op, "op_name", None), "data", None)
@@ -404,8 +407,8 @@ def _plan_sibling_contractions(host, selected, *, symbol, max_source_elements=64
     from xdsl.dialects.builtin import ModuleOp
     from xdsl.ir import Block, Region
 
-    from merlin.compile.scheduling.dense_source import read_zero_seeded_integer_matmul
-    from merlin.xdsl_dialects.lowering.outline import _free_values
+    from merlin.compiler.schedule.dense_source import read_zero_seeded_integer_matmul
+    from merlin.compiler.ir.boundary import free_values
 
     if type(selected) is not tuple or not 2 <= len(selected) <= 8 or len(set(selected)) != len(selected):
         raise ValueError("source siblings require two to eight distinct current roots")
@@ -449,7 +452,7 @@ def _plan_sibling_contractions(host, selected, *, symbol, max_source_elements=64
         if not _sibling_tensor_operation_is_pure(op):
             raise ValueError("source sibling preparation has no closed immutable tensor semantics")
         pending.add(op)
-        for operand in _free_values((op,)):
+        for operand in free_values((op,)):
             preparation(operand)
         pending.remove(op)
         hoisted.add(op)
@@ -471,7 +474,7 @@ def _plan_sibling_contractions(host, selected, *, symbol, max_source_elements=64
         if type(literal) is not arith.ConstantOp or literal.value.value.data != 0:
             raise ValueError("source sibling initializer is not an original literal zero")
         core_ops.extend(item for item in (literal, seed, op) if item not in core_ops)
-    inputs = tuple(_free_values(tuple(core_ops)))
+    inputs = tuple(free_values(tuple(core_ops)))
     outputs = tuple(op.results[0] for op in selected)
     if inputs != (lhs, *(op.operands[1] for op in selected)):
         raise ValueError("source sibling core has an unaccounted input or aliased member weight")

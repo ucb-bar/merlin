@@ -573,7 +573,7 @@ def _restate(entry: Mapping[str, Any], cls: str, sizes: Mapping[str, int], rng) 
 
 def interface_builder(target: str, routing: Mapping[str, Any]) -> Callable[[Mapping[str, Any]], str]:
     """:func:`merlin.model_check.kernel_reference.interface_for` with the device binding derived once."""
-    from merlin.compile.mesh import _mesh_tile_binding
+    from merlin.compiler.selection.mesh import _mesh_tile_binding
     from merlin.targetgen import corpus_spec as CS
 
     binding = _mesh_tile_binding(

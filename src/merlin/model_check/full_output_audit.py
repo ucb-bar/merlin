@@ -153,7 +153,7 @@ def _numeric_contract(files, bundle, validation, expected):
 
 def _decode_readback(console, specs, build_hash):
     """Ordinary packet/ABI readback checks with one source-bound program signature."""
-    from merlin.compile.baremetal_model import console_text_metrics
+    from merlin.model import console_text_metrics
     from merlin.runtime.out_bin import binary_console_diagnostics, parse_binary_console_details
     from merlin.runtime.whole_model_readback import decode_outputs
 
@@ -300,7 +300,7 @@ def verify(
     if expected_identity_path is not None:
         _require(files.json(expected_identity_path) == expected_identity, "selected identity file changed")
     requirement = files.pin(requirement_path)
-    from merlin.compile import baremetal_model
+    from merlin import model as baremetal_model
     from merlin.llvmlower import c_runtime
     from merlin.runtime import out_bin, whole_model_readback
 
@@ -309,6 +309,7 @@ def verify(
         for module in (CH, F, FB, FQ, M, B, CR, baremetal_model, c_runtime, out_bin, whole_model_readback)
     ]
     operator_sources.append(files.pin(Path(__file__).resolve()))
+    operator_sources.extend(files.pin(path) for path in baremetal_model.implementation_paths())
     reference, job, report = (files.json(Path(path)) for path in (reference_path, job_pin_path, report_path))
     _require(
         reference.get("schema") == REFERENCE_SCHEMA

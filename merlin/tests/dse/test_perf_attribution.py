@@ -17,12 +17,13 @@ real thing when mlc is importable and reported as "did not run" when it is not.
 from __future__ import annotations
 
 import functools
-import json
-from pathlib import Path
+from functools import partial
 
 import pytest
+from perf_activity import BUCKET_KINDS
+from perf_activity import sources as activity_sources
+from perf_activity import suite as activity_suite
 
-from merlin.common.paths import env, repo_root
 from merlin.perf import attribution as A
 from merlin.perf.attribution import (
     BUCKETS,
@@ -37,48 +38,16 @@ from merlin.perf.decompose import (
     UNKNOWN,
     ResourceKind,
     Unavailable,
-    activity_from_busy,
     is_unknown,
 )
 from merlin.perf.envelope import Basis, Peak, ResourceDemand, ResourceTime, envelope, resource_time
 from merlin.perf.headroom import Composition, concurrency_traits, headroom
 
-BUCKET_KINDS = {
-    "dma": ResourceKind.MOVEMENT,
-    "mxu": ResourceKind.COMPUTE,
-    "vpu": ResourceKind.COMPUTE,
-    "none": ResourceKind.FIXED,
-}
-
-
-@functools.cache
-def _suite() -> dict:
-    root = env("MERLIN_MLC_DIR")
-    if not root:
-        pytest.skip("MERLIN_MLC_DIR unset -- the measured cycle suite lives in the mlc checkout")
-    path = Path(root) / "mlc" / "validate" / "npu_model_suite.json"
-    if not path.is_file():
-        pytest.skip(f"measured cycle suite not present at {path}")
-    assert repo_root().is_dir()
-    return json.loads(path.read_text(encoding="utf-8"))
+_suite = functools.cache(partial(activity_suite, measured=True))
 
 
 def _sources():
-    out = []
-    for name, body in _suite()["kernels"].items():
-        arc = body["arc"]
-        out.append(
-            activity_from_busy(
-                name,
-                arc["truth"],
-                {"dma": arc["dma_busy"], "mxu": arc["mxu"], "vpu": arc["vpu"], "none": arc["none"]},
-                BUCKET_KINDS,
-                partitioned=True,
-                completion_observable=True,
-                provenance="per-cycle activity decomposition from the cycle-accurate model",
-            )
-        )
-    return out
+    return activity_sources(_suite())
 
 
 def _buckets() -> dict[str, str]:

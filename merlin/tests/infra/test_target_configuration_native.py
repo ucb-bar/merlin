@@ -240,7 +240,7 @@ def execute(library, *, faulty=False):
 
 @pytest.mark.parametrize("width,endian", [(4, "<"), (8, ">")])
 def test_selected_target_ir_drives_real_translation_and_complete_native_state(tmp_path, record_property, width, endian):
-    from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+    from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection
     from merlin.llvmlower import toolchain
 
     translator = Path(toolchain.mlir_translate())
@@ -339,7 +339,7 @@ def test_selected_target_ir_drives_real_translation_and_complete_native_state(tm
 
 
 def test_selected_cleanup_without_consuming_package_protocol_refuses(tmp_path):
-    from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+    from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection
 
     facts = tmp_path / "capabilities"
     facts.mkdir()

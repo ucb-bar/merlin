@@ -8,8 +8,9 @@ from xdsl.dialects import arith
 from xdsl.dialects.builtin import IntegerAttr, StringAttr, i32
 
 from merlin.common import mlir_query as mq
-from merlin.compile import route_before_build as RB
-from merlin.compile.scheduling.dense_source import DenseSourceUnavailable, _problem
+from merlin.compiler.planning import model as RB
+from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
+from merlin.compiler.schedule.dense_source import _problem
 from merlin.targetgen import routing
 from merlin.targetgen.capsule_source import ModelDemandIncomplete, model_op_demands_checked
 from merlin.transforms.certificates import ir_text

@@ -122,6 +122,7 @@ def _policy_methods(policy, cls):
 
 def _functions(policy, build):
     from merlin.common import dense_float_ir, digest, mlir_query
+    from merlin.compiler.ir import convolution as convolution_ir
     from merlin.frontends import linalg_mlir
     from merlin.llvmlower import (
         automatic_destinations,
@@ -141,6 +142,7 @@ def _functions(policy, build):
     from merlin.runtime import source_optimization_build
     from merlin.targetgen import compiler_pass_selection
     from merlin.transforms import certificates, pipeline_state
+    from merlin.verification import convolution as convolution_verifier
     from merlin.xdsl_dialects import _common
 
     direct = []
@@ -150,6 +152,8 @@ def _functions(policy, build):
         compilation_recipe,
         destination_check,
         im2col_pack,
+        convolution_ir,
+        convolution_verifier,
         im2col_padding,
         im2col_padding_check,
         insert_slice_destination,

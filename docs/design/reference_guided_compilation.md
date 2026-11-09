@@ -5,7 +5,7 @@ status: current
 owner: mining
 last_verified: 2026-10-27
 related: [kernel_reconstruction, kernel_mining, rvv_kernel_mining_methodology, core_dialects]
-code_refs: [src/merlin/kernels/reference_capture.py, src/merlin/kernels/kernel_evidence.py, src/merlin/kernels/reconstruction.py, src/merlin/compile/scheduling/schedule_ir.py, packages/merlin-mining/src/merlin/mining/reconstruction_reference.py, packages/merlin-mining/src/merlin/mining/reconstruction_experiments.py]
+code_refs: [src/merlin/kernels/reference_capture.py, src/merlin/kernels/kernel_evidence.py, src/merlin/kernels/reconstruction.py, src/merlin/compile/scheduling/schedule_ir.py, src/merlin/mining/reconstruction_reference.py, src/merlin/mining/reconstruction_experiments.py]
 ---
 
 # Bottom-up lifting and top-down reconstruction

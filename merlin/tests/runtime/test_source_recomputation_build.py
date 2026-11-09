@@ -11,7 +11,7 @@ from test_recomputation import budgets, permissions, source
 from test_source_recomputation_selection import synthetic_comparison
 
 from merlin.common.ir_audit import IrAudit
-from merlin.compile import baremetal_model as BM
+from merlin import model as BM
 from merlin.llvmlower import compilation_recipe as C
 from merlin.llvmlower import lower as L
 from merlin.llvmlower import source_recomputation as S
@@ -230,9 +230,15 @@ def test_model_object_must_consume_exact_observed_llvm(tmp_path):
     assert not recipe.record["commands"]
 
 
-@pytest.mark.parametrize("which", ["materialized", "prepared", "defaults", "method", "policy"])
+@pytest.mark.parametrize("which", ["materialized", "prepared", "defaults", "method", "policy", "model_stage", "model_isa", "isa_parser"])
 def test_original_inputs_methods_and_signature_metadata_do_not_refresh(tmp_path, monkeypatch, which):
     build, recipe, prepared, lower = setup(tmp_path)
+    assert {Path(BM.__file__).resolve(),
+            Path(inspect.getsourcefile(BM.prepare_saved)).resolve(),
+            Path(inspect.getsourcefile(BM.build_saved)).resolve(),
+            Path(inspect.getsourcefile(BM.launch_saved)).resolve(),
+            Path(inspect.getsourcefile(BM.revalidate_saved)).resolve(),
+            Path(inspect.getsourcefile(BM.require_host_isa_dts)).resolve()} <= set(BM.implementation_paths())
     if which == "materialized":
         (tmp_path / "capture/model.mlir").write_text("module {}")
     elif which == "prepared":
@@ -242,6 +248,14 @@ def test_original_inputs_methods_and_signature_metadata_do_not_refresh(tmp_path,
         monkeypatch.setattr(raw, "__defaults__", (("foreign",), *raw.__defaults__[1:]))
     elif which == "method":
         monkeypatch.setattr(B.SourceRecomputationBuild, "finish", lambda *args: None)
+    elif which == "model_stage":
+        monkeypatch.setattr(BM, "build_saved", lambda **kwargs: None)
+    elif which == "model_isa":
+        monkeypatch.setattr(BM, "require_host_isa_dts", lambda *args, **kwargs: [])
+    elif which == "isa_parser":
+        from merlin.compiler.backend import isa
+
+        monkeypatch.setattr(isa, "_skip_dts_trivia", lambda source, position: len(source))
     else:
         object.__setattr__(build.policy.context, "execution", "different")
     with pytest.raises(ValueError):

@@ -142,7 +142,7 @@ def test_mapping_cannot_inflate_fixed_policy_or_change_execution_domain(tmp_path
 
     selected, _, prepared = fixture(tmp_path, mapper=lower)
     if field == "branch":
-        from merlin.compile.scheduling.program_limits import BranchRule
+        from merlin.compiler.schedule.program_limits import BranchRule
 
         selected = replace(
             selected,

@@ -7,7 +7,7 @@ from xdsl.parser import Parser
 
 from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferCall, BorrowedBufferEffects
 from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
-from merlin.verify.host_packing_storage import (
+from merlin.verification.packing import (
     PackingAllocationEffects,
     PackingStorageUse,
     verify_packing_storage,
@@ -227,19 +227,21 @@ def two_islands(*, shared):
 
 @pytest.mark.parametrize("shared", [False, True])
 def test_batch_proves_union_once_and_preserves_independent_island_payloads(shared, monkeypatch):
-    from merlin.verify import host_packing_storage as checker
+    from merlin.verification import packing as checker
 
     source, calls, islands, effects = two_islands(shared=shared)
     module = Parser(make_llvm_context(), source).parse_module()
     module.verify()
     cfg_preparations = []
-    original = checker.prepare_host_cfg
+    from merlin.verification import packing_ir
+
+    original = packing_ir.prepare_host_cfg
 
     def prepare(function):
         cfg_preparations.append(function)
         return original(function)
 
-    monkeypatch.setattr(checker, "prepare_host_cfg", prepare)
+    monkeypatch.setattr(packing_ir, "prepare_host_cfg", prepare)
     requests = tuple(checker.PackingStorageRequest(uses, 4) for uses in islands)
     result = checker.verify_packing_storage_batch(
         module, borrowed_calls=calls, requests=requests, allocation_effects=effects, entry="model"
@@ -266,7 +268,7 @@ def test_batch_proves_union_once_and_preserves_independent_island_payloads(share
 
 
 def test_batch_shared_root_does_not_grant_unselected_call_escape():
-    from merlin.verify import host_packing_storage as checker
+    from merlin.verification import packing as checker
 
     source, calls, islands, effects = two_islands(shared=True)
     module = Parser(make_llvm_context(), source).parse_module()
@@ -281,8 +283,8 @@ def test_batch_shared_root_does_not_grant_unselected_call_escape():
 
 
 def test_batch_imports_once_and_retains_one_request_projections(tmp_path, monkeypatch):
-    from merlin.verify import host_call_alignment as importer
-    from merlin.verify import host_packing_storage as checker
+    from merlin.verification import host_call_alignment as importer
+    from merlin.verification import packing as checker
 
     source, calls, islands, effects = two_islands(shared=True)
     imports = []
@@ -328,14 +330,14 @@ def test_batch_imports_once_and_retains_one_request_projections(tmp_path, monkey
 
 @pytest.mark.parametrize("uses,budget", [((), 4), ([], 4), ((PackingStorageUse("writer", 0),), 0)])
 def test_batch_requests_are_closed_nonempty_and_budgeted(uses, budget):
-    from merlin.verify.host_packing_storage import PackingStorageRequest
+    from merlin.verification.packing import PackingStorageRequest
 
     with pytest.raises(ValueError, match="island request"):
         PackingStorageRequest(uses, budget)
 
 
 def test_asymmetric_shared_root_projects_payload_not_union_capacity_or_alignment():
-    from merlin.verify import host_packing_storage as checker
+    from merlin.verification import packing as checker
 
     source, calls, islands, effects = two_islands(shared=True)
     source = source.replace("constant(12)", "constant(16)")

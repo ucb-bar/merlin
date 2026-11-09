@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from merlin.common import mlir_query as mq
-from merlin.compile.analysis import contraction_shapes as KS
+from merlin.compiler.ir import contraction_shapes as KS
 
 from .compute_groups import (
     CAST,

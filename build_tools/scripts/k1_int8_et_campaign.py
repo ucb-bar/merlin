@@ -80,8 +80,8 @@ INSTRUMENT = "build_tools/scripts/k1_int8_fair_compare.py"
 _CAMPAIGN_SOURCES = (
     "build_tools/scripts/k1_int8_et_campaign.py",
     INSTRUMENT,
-    "packages/merlin-analysis/src/merlin/compare/et_campaign.py",
-    "packages/merlin-analysis/src/merlin/compare/executorch_column.py",
+    "src/merlin/compare/et_campaign.py",
+    "src/merlin/compare/executorch_column.py",
 )
 
 

@@ -17,14 +17,16 @@ from merlin.common.paths import runtime_dir
 
 def implementation_paths():
     """Original implementation dependencies for this particular caller proof."""
-    # Sibling paths, not imports: these files are digested, never executed here, and importing the
-    # C runtime would pull the whole host lowering into every reader of this analysis.
+    # Digest runtime siblings without importing host lowering. Shared preprocessing
+    # reports its real algorithm owners and selected callback source separately.
+    from merlin.compiler.frontend.preprocess import implementation_paths as preprocess_sources
+
     here = Path(__file__).parent
     return (
         Path(__file__),
         here / "c_runtime.py",
         here / "prepared_operand_effects.py",
-        here / "passes_xdsl.py",
+        *preprocess_sources(),
         runtime_dir() / "c" / "merlin_model.c",
     )
 
@@ -76,8 +78,8 @@ def fixed_arguments(source, manifest, *, entry="forward"):
     updates are interpreted anew on every call, including cache hits.
     """
     from merlin.common.yaml import load_yaml
+    from merlin.compiler.frontend.preprocess import lower_quant_ext
 
-    from .passes_xdsl import lower_quant_ext
     from .prepared_operand_effects import validate_pure_tensor_function
 
     source = Path(source)

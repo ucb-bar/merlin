@@ -16,7 +16,9 @@ from xdsl.ir import Block, Region, SSAValue
 from xdsl.ir.affine import AffineMap
 from xdsl.rewriter import InsertPoint, Rewriter
 
-from .im2col_pack import _is_copy_body, _static_shape, _window_term
+from merlin.compiler.ir.convolution import _is_copy_body
+
+from .im2col_pack import _static_shape, _window_term
 
 
 @dataclass(frozen=True)

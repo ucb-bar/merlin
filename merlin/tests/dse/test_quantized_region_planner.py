@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+from merlin.compiler.quantization import contract as numerical_contract
 from merlin.perf.agent_guidance import (
     guidance_for_quantized_region_plan,
     inspect_compiler_package,
@@ -15,10 +18,10 @@ from merlin.perf.quantization_contract import (
     POLICY_SCHEMA,
     AccuracyPolicy,
     ExactEpilogueProof,
-    QuantParameter,
     QuantizedEpilogueCandidate,
     QuantizedEpilogueCapability,
     QuantizedEpilogueContract,
+    QuantParameter,
     admit_epilogue,
     evaluate_candidate,
     parse_accuracy_policy,
@@ -34,7 +37,6 @@ from merlin.perf.quantization_planner import (
     plan_quantized_regions,
     plan_residual_domains,
 )
-
 
 SOURCE_SHA = "1" * 64
 EVIDENCE_SHA = "2" * 64
@@ -116,6 +118,44 @@ def _capability() -> QuantizedEpilogueCapability:
 
 def _output_sha(values: list[int]) -> str:
     return hashlib.sha256(json.dumps(values, separators=(",", ":")).encode()).hexdigest()
+
+
+def test_numerical_record_move_preserves_receipt_identity() -> None:
+    """Historical imports and source-bound evidence retain one record identity."""
+    assert QuantParameter is numerical_contract.QuantParameter
+    assert QuantizedEpilogueContract is numerical_contract.QuantizedEpilogueContract
+    assert QuantizedEpilogueCandidate is numerical_contract.QuantizedEpilogueCandidate
+    assert QuantizedEpilogueCapability is numerical_contract.QuantizedEpilogueCapability
+    assert _contract().to_dict()["semantic_contract_sha256"] == (
+        "e24d6c17791e4281aa11bc605f53243c60d57fac00b0f7b4eed31e0eb1f6f98a"
+    )
+    assert _candidate().sha256 == (
+        "561d2ec81d095b943947f8763a915d1c95f47c6f881e9912338ef9bacf6ed1ad"
+    )
+    assert _capability().to_dict()["capability_sha256"] == (
+        "e3a13edf341dfd5da5cb806b770f3865d13a9178fa6333fdd7b6014a3516f567"
+    )
+
+
+def test_numerical_records_load_without_evaluation_or_frameworks() -> None:
+    """A backend can use numerical records without loading its acceptance policy."""
+    from merlin.common.paths import repo_root
+
+    code = """
+import sys
+sys.path.insert(0, sys.argv[1])
+from merlin.compiler.quantization.contract import QuantParameter
+assert QuantParameter('per_tensor', None, 'f32', 'runtime_scale').binding == 'runtime_scale'
+for prefix in ('merlin.perf', 'merlin.evaluation', 'torch', 'torchao', 'numpy'):
+    assert not any(name == prefix or name.startswith(prefix + '.') for name in sys.modules), prefix
+"""
+    subprocess.run(
+        [sys.executable, "-I", "-c", code, str(repo_root() / "src")],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
 
 
 def _policy_document(

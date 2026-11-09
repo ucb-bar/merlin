@@ -2,11 +2,18 @@
 from dataclasses import replace
 import numpy as np
 import pytest
-from merlin.compile.scheduling.block_schedule import (
-    BlockScheduleError,Contraction,Geometry,Knobs,Preload,Store,SpatialMaxReadout,
-    schedule_contraction,with_column_bias,plan_spatial_max_readout,check_spatial_max_readout,
-    execute_spatial_max_readout,
-)
+from merlin.compiler.schedule.blocks import BlockScheduleError
+from merlin.compiler.schedule.blocks import Contraction
+from merlin.compiler.schedule.blocks import Geometry
+from merlin.compiler.schedule.blocks import Knobs
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.blocks import SpatialMaxReadout
+from merlin.compiler.schedule.blocks import schedule_contraction
+from merlin.compiler.schedule.blocks import with_column_bias
+from merlin.compiler.schedule.blocks import plan_spatial_max_readout
+from merlin.compiler.schedule.blocks import check_spatial_max_readout
+from merlin.compiler.schedule.blocks import execute_spatial_max_readout
 
 def build(*,padding=(0,0,0,0),bias=False):
     base=schedule_contraction(Contraction(2*3*5,7,6),Geometry(4,128,32,128,True),Knobs(lookahead_steps=0))

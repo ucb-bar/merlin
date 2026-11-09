@@ -204,7 +204,7 @@ def traced_integer_owners(trace: dict, program_sha256: str) -> tuple[int, dict[t
 def _report_only_quality(selection: dict) -> dict:
     """Project an explicit validated numerical selection without publishing recipe details."""
     from merlin.common.digest import is_sha256
-    from merlin.targetgen.quant_recipe import digest
+    from merlin.compiler.quantization.recipe import digest
     from merlin.targetgen.quant_recipe_policy import validate
 
     identities = ("source_recipe_sha256", "source_methodology_sha256", "source_output_path_sha256")
@@ -236,7 +236,7 @@ def dynamic_integerization_count(evidence: dict, *, emitted: int, exported: int,
     from collections import Counter
 
     from merlin.common.digest import is_sha256
-    from merlin.targetgen.quant_recipe import site_agreement_of
+    from merlin.compiler.quantization.dynamic import site_agreement_of
 
     if not isinstance(evidence, dict) or evidence.get("schema") not in (
         "merlin.dynamic_integerization.v1",
@@ -381,7 +381,8 @@ def dynamic_integerization_projection(
     Do not publish the private recipe, graph, workload names, source paths or tensor values.
     The receipt owner still has to bind all three artifacts to their exact bytes.
     """
-    from merlin.targetgen.quant_recipe import DYNAMIC, digest, site_agreement_of
+    from merlin.compiler.quantization.recipe import DYNAMIC, digest
+    from merlin.compiler.quantization.dynamic import site_agreement_of
 
     recipe = meta.get("recipe")
     if not (isinstance(recipe, dict) and recipe.get("recipe_sha256") == meta.get("recipe_sha256") == digest(recipe)):

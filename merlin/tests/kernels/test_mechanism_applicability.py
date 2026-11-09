@@ -2,7 +2,9 @@
 
 import pytest
 
-from merlin.compile.scheduling.api_catalog import CAPABILITY_EFFECTS, capability_effects, scheduling_capabilities
+from merlin.compiler.schedule.api_catalog import CAPABILITY_EFFECTS
+from merlin.compiler.schedule.api_catalog import capability_effects
+from merlin.compiler.schedule.api_catalog import scheduling_capabilities
 from merlin.kernels.mechanism_applicability import applicability, mechanism_differences
 
 # Neutral synthetic geometry: a 4-wide block, 64 operand rows and 32 accumulator rows.

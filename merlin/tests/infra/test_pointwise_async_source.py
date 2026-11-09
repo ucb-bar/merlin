@@ -19,10 +19,11 @@ from test_private_copy_elimination import command as original_command
 from test_selected_storage_contracts import STORAGE_EXECUTOR, inputs, provider_project
 from test_spilled_pointwise_source import INCREMENT, source_text
 
-from merlin.compile.scheduling.pointwise_source import PointwiseBindings, compile_source_pointwise
-from merlin.compile.scheduling.program_limits import AddressWindow
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
-from merlin.compile.scheduling.temporary_storage import TemporaryObject
+from merlin.compiler.schedule.pointwise_source import PointwiseBindings
+from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.temporary_storage import TemporaryObject
 from merlin.sched.ir import Const, Kernel, TensorArg, evaluate
 
 # Select a unique encoded token independently of transfer size. The original
@@ -353,7 +354,7 @@ def test_async_arithmetic_is_not_admitted_as_sync_elementwise(tmp_path):
 
 @pytest.mark.parametrize("fault", ["missing_wait", "wrong_wait", "wrong_source"])
 def test_final_source_conformance_decodes_actual_async_program(tmp_path, monkeypatch, fault):
-    from merlin.compile.scheduling import pointwise_source
+    from merlin.compiler.schedule import pointwise_source
 
     result, kwargs, _ = compile_case(tmp_path)
     calls = list(kwargs["encoding"].decode_calls(b"".join(result.images())))

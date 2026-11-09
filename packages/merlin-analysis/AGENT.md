@@ -1,11 +1,8 @@
-# AGENT.md — packages/merlin-analysis
+# Retained merlin-analysis tests
 
-Owns optional baseline comparisons, scientific measurement controllers, and plotting.
-Stable imports remain merlin.baselines, merlin.compare, merlin.plotting, merlin.agentreport and
-merlin.verify.plots, merlin.verify.replay, merlin.verify.replay_layers and merlin.perf.recovery through the
-shared namespace. Core capture and ISA-audit implementations live in merlin.capture and
-merlin.runtime; do not duplicate them. Preserve frozen study/evidence semantics.
-
-Campaign figure: `python -m merlin.agentreport.campaign --manifest <campaign.yaml>` regenerates the
-single-run campaign figure (versioned product under `out/artifacts/agentic-report/campaign-figures/`);
-see `src/merlin/agentreport/campaign/AGENT.md`.
+Active Python code and package resources moved byte-exactly into the main `src/` tree.
+This directory is not an installable Merlin code distribution. Keep existing tests and
+study inputs here until their separate ownership migration; do not add duplicate code.
+Existing coverage lives under `merlin/tests/runtime/test_baselines*.py`,
+`merlin/tests/kernels/` and `merlin/tests/dse/`; select the workflow's actual cases.
+Preserve frozen evidence, access roles, numerical checks and source-custody obligations.

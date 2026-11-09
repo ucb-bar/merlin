@@ -4,20 +4,17 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.scheduling.copy_pipeline import (
-    CopyPipelinePolicy,
-    pipeline_private_copies,
-    resolve_copy_pipeline_admission,
-    verify_copy_pipeline,
-)
-from merlin.compile.scheduling.fusion_semantics import ElementwiseSemantics
-from merlin.compile.scheduling.program_limits import AddressWindow, EncodedAccess
-from merlin.compile.scheduling.temporary_storage import (
-    StorageAdapter,
-    StorageEffects,
-    StorageOptimizationUnavailable,
-    TemporaryObject,
-)
+from merlin.compiler.schedule.copy_pipeline import CopyPipelinePolicy
+from merlin.compiler.schedule.copy_pipeline import pipeline_private_copies
+from merlin.compiler.schedule.copy_pipeline import resolve_copy_pipeline_admission
+from merlin.compiler.schedule.copy_pipeline import verify_copy_pipeline
+from merlin.compiler.schedule.fusion_semantics import ElementwiseSemantics
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import EncodedAccess
+from merlin.compiler.schedule.temporary_storage import StorageAdapter
+from merlin.compiler.schedule.temporary_storage import StorageEffects
+from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
+from merlin.compiler.schedule.temporary_storage import TemporaryObject
 from merlin.sched.ir import Call, Const, Kernel, Loop, TensorArg, evaluate
 from merlin.semantic_compiler.allocation_types import Reservation, StorageBank
 

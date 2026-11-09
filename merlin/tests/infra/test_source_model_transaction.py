@@ -172,18 +172,33 @@ def test_invalid_child_witness_identity_refuses_before_aggregate_manifest(tmp_pa
     assert not (context.workdir / "source_lowerings.json").exists()
 
 
-@pytest.mark.parametrize("mutation", ["row_domain", "pointwise_domain", "pointwise_limits", "pointwise_budgets"])
-def test_post_preparation_policy_or_execution_selection_drift_refuses_before_child_build(tmp_path, mutation):
+@pytest.mark.parametrize(
+    "mutation", ["row_domain", "pointwise_domain", "pointwise_limits", "pointwise_budgets", "host_source"]
+)
+def test_post_preparation_policy_or_execution_selection_drift_refuses_before_child_build(
+    tmp_path, monkeypatch, mutation
+):
+    if mutation == "host_source":
+        from pathlib import Path
+
+        from merlin.compiler.transforms import host_contraction
+
+        selected_source = tmp_path / "selected-host-contraction.py"
+        selected_source.write_bytes(Path(host_contraction.__file__).read_bytes())
+        monkeypatch.setattr(host_contraction, "__file__", str(selected_source))
     plan = transaction(tmp_path)
     context = prepare_and_context(plan)
     pointwise = plan.configurations["pointwise"]
-    if mutation.endswith("domain"):
+    if mutation == "host_source":
+        selected_source.write_bytes(selected_source.read_bytes() + b"\n# changed after source selection\n")
+    elif mutation.endswith("domain"):
         object.__setattr__(plan.configurations[mutation.split("_")[0]], "execution_domain", "device")
     elif mutation == "pointwise_limits":
         object.__setattr__(pointwise.limits, "max_instructions", pointwise.limits.max_instructions + 1)
     else:
         object.__setattr__(pointwise.budgets, "max_fusions", pointwise.budgets.max_fusions + 1)
-    with pytest.raises(ValueError, match="selection changed"):
+    expected = "preparation inputs or selected output changed" if mutation == "host_source" else "selection changed"
+    with pytest.raises(ValueError, match=expected):
         plan.builder(context)
     assert not plan.events
     assert not (context.workdir / "source_lowerings.json").exists()

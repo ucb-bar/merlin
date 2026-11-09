@@ -9,13 +9,6 @@ Scoped quantization recipes use the selected package's Merlin admission screen.
 
 from __future__ import annotations
 
-from merlin.targetgen._m2m_capture_support import (
-    _capture_api_report as _capture_api_report,
-    _diagnostic_model_copy as _diagnostic_model_copy,
-    _seed_capture as _seed_capture,
-    _RecordedForwards as _RecordedForwards,
-)
-
 import argparse
 import hashlib
 import importlib.util
@@ -27,22 +20,39 @@ import random
 import sys
 from pathlib import Path
 
+from merlin.targetgen._m2m_capture_support import (
+    _capture_api_report as _capture_api_report,
+)
+from merlin.targetgen._m2m_capture_support import (
+    _diagnostic_model_copy as _diagnostic_model_copy,
+)
+from merlin.targetgen._m2m_capture_support import (
+    _RecordedForwards as _RecordedForwards,
+)
+from merlin.targetgen._m2m_capture_support import (
+    _seed_capture as _seed_capture,
+)
+
 if __package__:
     from ._m2m_capture_artifacts import (
         _framework_catalog,
-        _framework_cpu_dispatch as _framework_cpu_dispatch,
         finalize_session_artifacts,
         frontend_trace_bytes,
         write_frontend_trace,
+    )
+    from ._m2m_capture_artifacts import (
+        _framework_cpu_dispatch as _framework_cpu_dispatch,
     )
     from ._m2m_capture_deployment import _mlir_dtype, _numeric_deployment
 else:
     from merlin.targetgen._m2m_capture_artifacts import (
         _framework_catalog,
-        _framework_cpu_dispatch as _framework_cpu_dispatch,
         finalize_session_artifacts,
         frontend_trace_bytes,
         write_frontend_trace,
+    )
+    from merlin.targetgen._m2m_capture_artifacts import (
+        _framework_cpu_dispatch as _framework_cpu_dispatch,
     )
     from merlin.targetgen._m2m_capture_deployment import _mlir_dtype, _numeric_deployment
 
@@ -370,7 +380,7 @@ def _materialize_session(
     if args.quantize_activation_contractions or args.integer_nonlinear:
         raise ValueError("multi-program capture requires a recipe, not additional numerical rewrites")
     if recipe is not None:
-        from merlin.targetgen.quant_recipe import digest as recipe_digest
+        from merlin.compiler.quantization.recipe import digest as recipe_digest
 
         if (
             not quantized
@@ -699,6 +709,8 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         action="store_true",
         help="copy raw converted MLIR for inventory with byte hashes, without a capture receipt or Phase 0 admission",
     )
+    ap.add_argument("--observe-buffer-state", action="store_true",
+                    help="observe actual prepared export effects and source storage for explicit later freeze consent")
     a = argv if isinstance(argv, argparse.Namespace) else ap.parse_args(argv)
     native_integer_source = getattr(a, "native_integer_source", False)
     if native_integer_source and (
@@ -986,7 +998,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     weights_path = str(out / "weights.safetensors")
     recipe = json.loads(Path(a.recipe).read_text(encoding="utf-8")) if a.recipe else None
     if recipe is not None:
-        from merlin.targetgen.quant_recipe import digest as recipe_digest
+        from merlin.compiler.quantization.recipe import digest as recipe_digest
 
         if recipe.get("recipe_sha256") != recipe_digest(recipe):
             raise ValueError("selected quantization recipe digest does not match its content")
@@ -1229,6 +1241,19 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         weights_path=weights_path,
         **trace_options,
     )
+    export_state = None
+    if getattr(a, "observe_buffer_state", False):
+        # Load one admitted leaf from this exact source tree. The capture
+        # interpreter need not have the modern Merlin/xDSL package installed.
+        observer_path = Path(__file__).resolve().parents[1] / "compiler/frontend/torch/state.py"
+        observer_bytes = observer_path.read_bytes()
+        spec = importlib.util.spec_from_file_location("_merlin_export_state_observer", observer_path)
+        observer = importlib.util.module_from_spec(spec)
+        exec(compile(observer_bytes, str(observer_path), "exec"), observer.__dict__)
+        export_state = observer.observe_export_state(res, tuple(inputs), directory=out)
+        if (observer_path.read_bytes() != observer_bytes
+                or export_state["observer_source_sha256"] != hashlib.sha256(observer_bytes).hexdigest()):
+            raise ValueError("selected export state observer source changed during execution")
     # Preserve this boundary before later eager evaluation or bundle writing can
     # fail. A conversion refusal must remain visible even if a subsequent error
     # prevents final metadata from being written; this is not an execution grade.
@@ -1324,9 +1349,14 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         reference = outputs if float_reference is None else float_reference["outputs"]
         (out / "float_reference.json").write_text(json.dumps(reference), encoding="utf-8")
     extra_path = _write_leaf_constants(mdl, inputs, weights_path, out / "extra.npz")
+    if export_state is not None:
+        if (observer_path.read_bytes() != observer_bytes
+                or observer.observe_export_state(res, tuple(inputs), directory=out) != export_state):
+            raise ValueError("prepared export state/source changed during reference/bundle preparation")
     precision = frontend_trace.get("precision") or {}
     precision_exact = precision.get("status") != "projected" and not precision.get("projections")
     meta = {
+        **({"export_state": export_state} if export_state is not None else {}),
         "ok": bool(res.ok) and precision_exact,
         "precision_realization": precision if precision else {"status": "unknown"},
         "precision_conversion": precision_conversion,

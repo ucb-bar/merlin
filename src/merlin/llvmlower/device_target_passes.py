@@ -12,7 +12,7 @@ from pathlib import Path
 def freeze_configuration(selected, target):
     if selected is None:
         return None
-    from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+    from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection
 
     if type(selected) is not ConfigurationIRSelection:
         raise ValueError("target configuration requires an original ConfigurationIRSelection")

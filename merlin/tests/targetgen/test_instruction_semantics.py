@@ -2,6 +2,7 @@
 
 import copy
 import hashlib
+import pickle
 
 import pytest
 import yaml
@@ -94,13 +95,30 @@ def _description():
     }
 
 
-def test_normalization_is_deterministic_and_preserves_typed_semantics():
+def test_normalization_is_deterministic_and_preserves_typed_semantics(monkeypatch):
+    from merlin.target.spec import computation, instructions, signature
+    from merlin.targetgen import instruction_semantics as legacy
+
+    assert legacy is instructions
+    assert legacy._computation is computation._computation
+    assert legacy._scalar_body is computation._scalar_body
+    assert legacy._software_signature_unknowns is signature._software_signature_unknowns
+    assert pickle.loads(pickle.dumps(normalize_instruction_semantics)) is instructions.normalize_instruction_semantics
+    calls = []
+    original_computation = instructions._computation
+
+    def observed_computation(*args, **kwargs):
+        calls.append(True)
+        return original_computation(*args, **kwargs)
+
+    monkeypatch.setattr(legacy, "_computation", observed_computation)
     software, facts = _selected_inputs()
     description = _description()
     original = copy.deepcopy(description)
     one = normalize_instruction_semantics(description, software_spec=software, rtl_facts=facts, target="fixture_target")
     two = normalize_instruction_semantics(description, software_spec=software, rtl_facts=facts, target="fixture_target")
     assert one == two
+    assert calls
     assert description == original
     assert one["status"] == "described"
     assert one["unknowns"] == []

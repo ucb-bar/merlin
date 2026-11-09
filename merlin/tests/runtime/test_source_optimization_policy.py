@@ -178,7 +178,7 @@ def test_highlevel_uses_original_pending_policy_and_real_completed_build(tmp_pat
     import runpy
 
     from merlin.common.paths import merlin_dir
-    from merlin.compile import baremetal_model as BM
+    from merlin import model as BM
 
     helpers = runpy.run_path(str(merlin_dir() / "tests/infra/test_baremetal_saved_model.py"))
     inputs, out = helpers["_fixture"](tmp_path, monkeypatch)

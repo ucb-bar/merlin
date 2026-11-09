@@ -260,7 +260,7 @@ class GsimEngine:
     name = "gsim"
 
     def __init__(self, target: str, rtl_facts: str | Path, *, board_catalog: str | Path | None = None) -> None:
-        from merlin.compile import model_execution_inputs as MI
+        from merlin.runtime import modelinputs as MI
 
         facts_path = Path(rtl_facts)
         self.target = target

@@ -251,7 +251,7 @@ def test_a_small_model_computes_the_same_bits_with_blob_weights() -> None:
 def test_the_whole_model_build_stores_weights_once_by_default() -> None:
     import inspect
 
-    from merlin.compile.baremetal_model import compile_saved_model
+    from merlin.model import compile_saved_model
 
     assert inspect.signature(compile_saved_model).parameters["blob_weights"].default is True
 

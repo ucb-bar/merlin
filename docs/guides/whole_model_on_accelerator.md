@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-10-09
 related: [compilation_strategies, targetgen, adding_a_target, phase0_phase1_setup, firesim]
-code_refs: [src/merlin/compile_cli.py, src/merlin/compile/command.py, src/merlin/compile/baremetal_model.py, src/merlin/compile/model_execution_inputs.py, src/merlin/llvmlower/group_offload.py, src/merlin/llvmlower/device_build.py, src/merlin/targetgen/coverage_certificate.py, packages/merlin-experiments/src/merlin/targetgen/native_model_execution.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_full_model_execution.py]
+code_refs: [src/merlin/compile_cli.py, src/merlin/compile/command.py, src/merlin/compile/baremetal_model.py, src/merlin/compile/model_execution_inputs.py, src/merlin/llvmlower/group_offload.py, src/merlin/llvmlower/device_build.py, src/merlin/targetgen/coverage_certificate.py, src/merlin/targetgen/native_model_execution.py, src/merlin_experiments/phase1/feedback/private_full_model_execution.py]
 ---
 
 # Compiling a whole model onto an accelerator

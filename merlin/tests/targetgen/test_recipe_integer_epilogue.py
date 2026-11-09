@@ -21,11 +21,11 @@ import subprocess
 
 import pytest
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import module_source_path
 from merlin.targetgen import quant_methodology as QM
 from merlin.targetgen import quant_recipe as QR
 
-_DIR = merlin_dir() / "python" / "merlin" / "targetgen"
+_DIR = module_source_path("merlin.targetgen._recipe_specs").parent
 
 _METHODOLOGY = {
     "scale_granularity": "from_output_path",
@@ -90,9 +90,9 @@ def _recipes() -> dict[str, dict]:
 
 
 def test_the_quantizer_reads_the_epilogue_block_through_its_sibling() -> None:
-    quantizer = (_DIR / "_recipe_quantizer.py").read_text(encoding="utf-8")
+    quantizer = (_DIR.parent / "compiler/quantization/torchao/graphs.py").read_text(encoding="utf-8")
     epilogue = (_DIR / "_integer_epilogue.py").read_text(encoding="utf-8")
-    assert 'recipe.get("epilogue")' in quantizer and "import _integer_epilogue as IE" in quantizer
+    assert 'recipe.get("epilogue")' in quantizer and 'helper("_integer_epilogue")' in quantizer
     assert "DerivedQuantizationSpec" in epilogue and "def equalize" in epilogue and "def correct_biases" in epilogue
     assert all(r["status"] == QR.DERIVED for r in _recipes().values())
 

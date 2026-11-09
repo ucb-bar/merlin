@@ -19,13 +19,14 @@ import subprocess
 
 import pytest
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import module_source_path
 
-_DIR = merlin_dir() / "python" / "merlin" / "targetgen"
+_DIR = module_source_path("merlin.targetgen._recipe_specs").parent
 
 
 def test_the_recipe_fields_are_read_by_the_quantizer() -> None:
-    quantizer = (_DIR / "_recipe_quantizer.py").read_text(encoding="utf-8")
+    quantizer = (_DIR / "_recipe_specs.py").read_text(encoding="utf-8") + (
+        _DIR.parent / "compiler/quantization/torchao/application.py").read_text(encoding="utf-8")
     observers = (_DIR / "_recipe_observers.py").read_text(encoding="utf-8")
     assert 'tensor.get("channels_per_scale")' in quantizer
     assert 'recipe.get("bias_domain") == "accumulator"' in quantizer

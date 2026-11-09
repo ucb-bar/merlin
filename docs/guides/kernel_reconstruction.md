@@ -5,7 +5,7 @@ status: current
 owner: mining
 last_verified: 2026-10-28
 related: [kernel_mining, rvv_kernel_mining_methodology, core_dialects, reference_guided_compilation]
-code_refs: [src/merlin/kernels/reconstruction.py, src/merlin/kernels/kernel_evidence.py, src/merlin/kernels/instruction_comparison.py, src/merlin/kernels/mechanism_inference.py, src/merlin/kernels/source_product_views.py, src/merlin/kernels/consumer_structure.py, src/merlin/compile/scheduling/dense_panel_pipeline.py, packages/merlin-mining/src/merlin/mining/reconstruction_cli.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/reference_mechanisms.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_build_views.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/public_scalability_inspection.py]
+code_refs: [src/merlin/kernels/reconstruction.py, src/merlin/kernels/kernel_evidence.py, src/merlin/kernels/instruction_comparison.py, src/merlin/kernels/mechanism_inference.py, src/merlin/kernels/source_product_views.py, src/merlin/kernels/consumer_structure.py, src/merlin/compile/scheduling/dense_panel_pipeline.py, src/merlin/mining/reconstruction_cli.py, src/merlin_experiments/phase1/feedback/reference_mechanisms.py, src/merlin_experiments/phase1/feedback/candidate_build_views.py, src/merlin_experiments/phase1/feedback/public_scalability_inspection.py]
 ---
 
 # Reference-guided kernel reconstruction

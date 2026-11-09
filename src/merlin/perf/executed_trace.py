@@ -58,7 +58,7 @@ def executed_trace(
 ) -> dict[str, Any]:
     """The executed accelerator trace and retired-instruction count of one commit log."""
     from merlin.targetgen.rocc import semantics
-    from merlin.compile.analysis.rocc_commands import fields_of
+    from merlin.analysis.rocc_commands import fields_of
 
     opcode = isa.get("CUSTOM_OPCODE")
     if isinstance(opcode, bool) or not isinstance(opcode, int):

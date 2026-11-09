@@ -18,7 +18,7 @@ code_refs:
   - merlin/experiments/capsule_bench/harness/isa_tools_broker.py
   - merlin/experiments/capsule_bench/harness/simjob_broker.py
   - merlin/experiments/capsule_bench/harness/agent_selfcheck.py
-  - packages/merlin-experiments/src/merlin/targetgen/sandbox/bwrap.py
+  - src/merlin/targetgen/sandbox/bwrap.py
 ---
 
 # The RTL-derived compiler tooling — an honest, exhaustive accounting

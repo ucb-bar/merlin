@@ -50,7 +50,7 @@ def test_small_llama_on_zephyr_spike(rvv_hart, tmp_path):
         pytest.skip("small_consistent not captured")
     golden = np.load(bundle / "golden.npy")
     res = zm.build_and_run(
-        bundle, tmp_path, board="spike_riscv64", rvv_hart=rvv_hart, harts=2, arena_mb=64, reference=golden, timeout=1800
+        bundle, tmp_path, board="spike_riscv64", rvv_hart=rvv_hart, harts=2, reference=golden, timeout=1800
     )
     assert res["ok"], (res.get("cos"), res.get("rel"))
     assert res["metrics"].get("cycles", 0) > 0
@@ -66,7 +66,7 @@ def test_zephyr_app_builds_for_chipyard_board(tmp_path):
     bundle = REPO / "out/artifacts" / "recaptures" / "small_consistent"
     if not (bundle / "model.mlir").is_file():
         pytest.skip("small_consistent not captured")
-    b = zm.build_app(bundle, tmp_path, board="chipyard_riscv64", rvv_hart=1, arena_mb=64, cpus=2)
+    b = zm.build_app(bundle, tmp_path, board="chipyard_riscv64", rvv_hart=1, cpus=2)
     assert Path(b["elf"]).is_file()
 
 
@@ -92,84 +92,80 @@ def test_gate_multi_tier_and_legacy():
     assert _gate(far, {"fp32": fp32})["ok"] is False
 
 
-def test_firesim_runner_seam_parses_and_gates_without_legacy_setup(monkeypatch):
-    """An OOT runner owns execution; Merlin consumes only its UART text."""
-    import sys
+def _external_case(tmp_path, *, uart="OUT 2 1065353216 1073741824\nMETRIC cycles 1234\nDONE\n", rc=0):
+    import hashlib
+    import json
 
-    zm = _zm()
-    before_path = list(sys.path)
-    before_env = dict(os.environ)
-    received = {}
+    from merlin.compiler.artifact import Deployment
 
-    def runner(elf, *, firesim_root, firesim_env, timeout, queue):
-        received.update(elf=elf, firesim_root=firesim_root, firesim_env=firesim_env, timeout=timeout, queue=queue)
-        return "OUT 2 1065353216 1073741824\nMETRIC cycles 1234\nDONE\n"
-
-    def no_installed(*args, **kwargs):
-        raise AssertionError("the explicit runner must not load an installed adapter")
-
-    monkeypatch.setattr(zm, "select_runner", no_installed)
-    result = zm.run_on_firesim(
-        "image.elf",
-        reference=np.array([1.0, 2.0], dtype=np.float32),
-        firesim_root="/selected/firesim",
-        firesim_env="/selected/env.sh",
-        timeout=23,
-        runner=runner,
+    elf = tmp_path / "image.elf"
+    elf.write_bytes(b"test image: no simulator execution")
+    prepared = _zm().run_on_firesim(
+        elf, mode="prepare", output=tmp_path / "prepared", deployment=Deployment("system", "zephyr", "isa", "abi", 2)
     )
-    assert received == {
-        "elf": "image.elf",
-        "firesim_root": "/selected/firesim",
-        "firesim_env": "/selected/env.sh",
-        "timeout": 23,
-        "queue": True,
-    }
-    assert result["ok"] is True
+    assert prepared["status"] == "prepared" and "ok" not in prepared
+    results = tmp_path / "results"
+    results.mkdir()
+    log = results / "uart.txt"
+    log.write_text(uart, encoding="utf-8")
+    (results / "result.json").write_text(
+        json.dumps(
+            {
+                "schema": "merlin.external_result.v1",
+                "request_sha256": prepared["request_sha256"],
+                "exit_code": rc,
+                "artifacts": [
+                    {"path": log.name, "role": "uart", "sha256": hashlib.sha256(log.read_bytes()).hexdigest()}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return Path(prepared["prepared"]), results
+
+
+@pytest.mark.parametrize("reference,accepted", [([1.0, 2.0], True), ([2.0, 1.0], False)])
+def test_firesim_collection_keeps_uart_metrics_and_independent_gate(tmp_path, reference, accepted):
+    prepared, results = _external_case(tmp_path)
+    result = _zm().run_on_firesim(
+        prepared, mode="collect", results=results, reference=np.array(reference, dtype=np.float32)
+    )
+    assert result["ok"] is accepted
     assert result["metrics"]["cycles"] == 1234
-    assert sys.path == before_path
-    assert dict(os.environ) == before_env
+    assert result["execution_authority"] == "external_operator_report"
+    assert (prepared / "observations/uart.txt").is_file()
 
 
-def test_firesim_runner_requires_uart_text():
-    zm = _zm()
-
-    def wrong_result(elf, *, firesim_root, firesim_env, timeout, queue):
-        return {"ok": True}
-
-    with pytest.raises(zm.ZephyrModelError, match="captured UART text"):
-        zm.run_on_firesim("image.elf", runner=wrong_result)
-
-
-def test_firesim_installed_runner_keeps_existing_call_shape(monkeypatch):
-    zm = _zm()
-    calls = []
-
-    def installed(elf, *, firesim_root, firesim_env, timeout, queue):
-        calls.append((elf, timeout, queue))
-        return "OUT 2 1065353216 1073741824\nMETRIC cycles 7\nDONE\n"
-
-    monkeypatch.setattr(zm, "select_runner", lambda name: installed)
-    result = zm.run_on_firesim("image.elf", timeout=900)
-    assert calls == [("image.elf", 900, True)]
-    assert result["metrics"]["cycles"] == 7
+@pytest.mark.parametrize(
+    "uart,rc,reason",
+    [
+        ("OUT 2 1065353216 1073741824\nDONE\n", 7, "exit code 7"),
+        ("OUT 2 1065353216 1073741824\n", 0, "OUT/DONE"),
+    ],
+)
+def test_firesim_collection_rejects_failed_or_incomplete_execution(tmp_path, uart, rc, reason):
+    prepared, results = _external_case(tmp_path, uart=uart, rc=rc)
+    with pytest.raises((ValueError, _zm().ZephyrModelError), match=reason):
+        _zm().run_on_firesim(
+            prepared, mode="collect", results=results, reference=np.array([1.0, 2.0], dtype=np.float32)
+        )
+    assert (prepared / "observations/uart.txt").is_file()
 
 
-def test_firesim_runner_requires_explicit_installed_selection(monkeypatch):
-    from merlin.runtime.backends import firesim_runner
-
-    monkeypatch.setattr(firesim_runner, "env", lambda name: None)
-    with pytest.raises(firesim_runner.FireSimRunnerError, match="MERLIN_FIRESIM_RUNNER"):
-        firesim_runner.select_runner()
-
-
-def test_firesim_runner_rejects_duplicate_installed_names(monkeypatch):
-    from types import SimpleNamespace
+def test_firesim_launch_refuses_before_plugin_discovery(monkeypatch):
+    from importlib import metadata
 
     from merlin.runtime.backends import firesim_runner
 
-    providers = [SimpleNamespace(name="selected") for _ in range(2)]
-    monkeypatch.setattr(firesim_runner, "entry_points", lambda group: providers)
-    with pytest.raises(firesim_runner.FireSimRunnerError, match="2 installed providers"):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("no launch plugin discovery or execution")
+
+    monkeypatch.setattr(metadata, "entry_points", forbidden)
+    with pytest.raises(firesim_runner.FireSimRunnerError, match="externally managed"):
+        _zm().run_on_firesim("image.elf", runner=forbidden)
+    with pytest.raises(firesim_runner.FireSimRunnerError, match="externally managed"):
+        _zm().run_on_firesim("image.elf", mode="prepare", queue=False)
+    with pytest.raises(firesim_runner.FireSimRunnerError, match="infrastructure execution is external"):
         firesim_runner.select_runner("selected")
 
 
@@ -193,3 +189,63 @@ def test_console_parse_surfaces_per_op_profile():
     res = _parse_console(base + "PROF 3 900 2\nPROF 7 100 1\n", 0)
     assert res["op_prof"] == {3: (900, 2), 7: (100, 1)}
     assert "op_prof" not in _parse_console(base, 0)
+
+
+def test_firesim_study_collects_frozen_reference_without_rebuilding(tmp_path, monkeypatch):
+    import hashlib
+    import json
+    import runpy
+
+    from merlin.compiler.artifact import Deployment
+
+    sweep = runpy.run_path(str(REPO / "build_tools/scripts/firesim_sweep.py"))
+    elf = tmp_path / "study.elf"
+    elf.write_bytes(b"study image")
+    golden = tmp_path / "golden.npy"
+    np.save(golden, np.array([1.0, 2.0], dtype=np.float32))
+    study = tmp_path / "study.json"
+    study.write_text(
+        json.dumps({"bundle": "case_fp32", "int8_compute": False, "backend": "scalar", "build_hash": "original"}),
+        encoding="utf-8",
+    )
+    prepared = _zm().run_on_firesim(
+        elf,
+        mode="prepare",
+        output=tmp_path / "prepared",
+        deployment=Deployment("system", "zephyr", "isa", "abi", 2),
+        inputs={"study.json": study, "golden.npy": golden},
+    )
+    results = tmp_path / "results"
+    results.mkdir()
+    uart = results / "uart.txt"
+    uart.write_text("OUT 2 1065353216 1073741824\nMETRIC cycles 123\nDONE\n", encoding="utf-8")
+    (results / "result.json").write_text(
+        json.dumps(
+            {
+                "schema": "merlin.external_result.v1",
+                "request_sha256": prepared["request_sha256"],
+                "exit_code": 0,
+                "artifacts": [
+                    {"path": "uart.txt", "role": "uart", "sha256": hashlib.sha256(uart.read_bytes()).hexdigest()}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    # Original study inputs can disappear: the exact retained copies own this comparison.
+    golden.unlink()
+    study.unlink()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("collection must not build or launch")
+
+    monkeypatch.setattr(_zm(), "build_app", forbidden)
+    ledger = tmp_path / "ledger.jsonl"
+    result = sweep["collect_study"](Path(prepared["prepared"]), results, ledger)
+    row = json.loads(ledger.read_text(encoding="utf-8"))
+    assert row == result
+    assert row["ok"] and row["cycles"] == 123
+    assert row["request_sha256"] == prepared["request_sha256"]
+    assert row["build_hash"] == "original"
+    assert row["hardware_qualification"] == "not_established"
+    assert row["verification_scope"] == "legacy_prefix_and_available_aggregates"

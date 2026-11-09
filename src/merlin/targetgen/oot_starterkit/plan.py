@@ -408,12 +408,24 @@ def _lowered_task_problems(text: str, plan: Mapping[str, Any], command_buffer: M
 
 def validate_mixed_program_plan(
     source: bytes | str, command_buffer: Mapping[str, Any], lowered_mlir: str | None = None,
-    *, lowered_abi: Mapping[str, str] | None = None
+    *, lowered_abi: Mapping[str, str] | None = None, schema_path: str | Path | None = None
 ) -> dict[str, Any]:
-    """Public preflight only; a successful result is never a grading certificate."""
+    """Public preflight only; a successful result is never a grading certificate.
+
+    An OOT package may provide its retained schema path, but that document must
+    match the installed public schema. This compatibility input cannot replace
+    the shared constraints or select weaker acceptance rules.
+    """
     from xdsl.utils.exceptions import ParseError, VerifyException
 
     try:
+        if schema_path is not None:
+            selected_schema = json.loads(Path(schema_path).read_text(encoding="utf-8"))
+            public_schema = json.loads(
+                data_path("contract", "schemas", "mixed_program_plan.schema.json").read_text(encoding="utf-8")
+            )
+            if selected_schema != public_schema:
+                return {"ok": False, "findings": ["selected schema differs from the installed public plan contract"]}
         if not isinstance(command_buffer, Mapping):
             return {"ok": False, "findings": ["command buffer must be an object"]}
         params = command_buffer.get("params")

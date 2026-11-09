@@ -7,14 +7,19 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
-from merlin_experiments.phase0 import program_admission, requirements
 
 from merlin.targetgen import column_readout_capsules as CR
 from merlin.targetgen import quantization_spec
+from merlin_experiments.phase0 import program_admission, requirements
 
 
 @pytest.mark.parametrize("profile", [None, CR.THREE_BLOCKS_V1, CR.DISTINCT_SCALES_V2, "unrecognized"])
 def test_actual_recipe_derivation_forwards_the_explicit_profile(tmp_path, monkeypatch, profile):
+    from merlin.compiler.quantization import admission
+    from merlin.compiler.quantization.torchao import recipes
+
+    assert quantization_spec is admission
+    assert admission.capture_recipe_candidates is recipes.capture_recipe_candidates
     recipe = tmp_path / "recipe.yaml"
     recipe.write_text(yaml.safe_dump({} if profile is None else {"column_readout_profile": profile}))
     software = tmp_path / "software.yaml"

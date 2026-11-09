@@ -11,7 +11,11 @@ the payload (single mmap/copy), so weights are not embedded into C arrays.
 
 from __future__ import annotations
 
+import hashlib
 import json
+from contextlib import nullcontext
+from io import BytesIO
+from merlin.capture.safetensors import read_header
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -132,3 +136,42 @@ def emit_c_table(entries: list[WeightEntry]) -> str:
     lines += [f"  {{{e.arg_index}, {e.offset}, {e.nbytes}}}," for e in entries]
     lines.append("};")
     return "\n".join(lines) + "\n"
+
+
+def checked_payload(safetensors_path, *, archive_sha256, out_blob=None):
+    """Hash the source archive and its payload; optionally publish a fresh blob.
+
+    Metadata and bytes come from the same read stream. Retain bounded header
+    and chunk storage, and never replace an existing output. This validates
+    byte identity, not tensor numerical domains or target packing.
+    """
+    if not isinstance(archive_sha256, str) or len(archive_sha256) != 64 or any(
+        char not in "0123456789abcdef" for char in archive_sha256
+    ):
+        raise ValueError("weight archive needs a canonical SHA256 identity")
+    target = Path(out_blob) if out_blob is not None else None
+    created = False
+    try:
+        with Path(safetensors_path).open("rb") as source:
+            header, offset = read_header(source)
+            source.seek(0)
+            prefix = source.read(offset)
+            if read_header(BytesIO(prefix)) != (header, offset):
+                raise ValueError("weight metadata changed during payload intake")
+            complete, payload, count = hashlib.sha256(prefix), hashlib.sha256(), 0
+            with target.open("xb") if target is not None else nullcontext() as destination:
+                created = target is not None
+                while chunk := source.read(1024 * 1024):
+                    complete.update(chunk)
+                    payload.update(chunk)
+                    count += len(chunk)
+                    if destination is not None:
+                        destination.write(chunk)
+                if complete.hexdigest() != archive_sha256:
+                    raise ValueError("weight archive changed after compiler input validation")
+        return {"archive_sha256": archive_sha256, "payload_sha256": payload.hexdigest(),
+                "payload_offset": offset, "payload_bytes": count}
+    except BaseException:
+        if created:
+            target.unlink(missing_ok=True)
+        raise

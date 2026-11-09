@@ -36,6 +36,24 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
 
 
+def image_affinity(board, workers: int) -> tuple[int, int]:
+    """Choose the master and CPU extent for the existing ascending vector pool.
+
+    Runtime vector discovery still determines the observed worker set. This
+    build calculation is not evidence that those workers executed.
+    """
+    eligible = board.hart_ids_for("rvv")
+    if type(workers) is not int or not 1 <= workers <= len(eligible):
+        raise ValueError("requested workers must fit the board's eligible vector harts")
+    if tuple(sorted(set(eligible))) != eligible:
+        raise ValueError("board vector hart order must match the ascending runtime discovery order")
+    selected = eligible[:workers]
+    required = max(selected) + 1
+    if min(selected) < 0 or required > board.harts:
+        raise ValueError("selected worker IDs do not fit the board's CPU count")
+    return selected[0], max(min(2, board.harts), required)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="zephyr_firesim_leg", description=__doc__.split("\n\n")[0])
     ap.add_argument("bundle", help="capture bundle name under out/artifacts/recaptures/")
@@ -69,24 +87,24 @@ def main(argv: list[str] | None = None) -> int:
     # and the flag is there for boards that have more.
     ap.add_argument("--harts", type=int, default=1)
     ap.add_argument("--vlen", type=int, default=512)
-    ap.add_argument("--arena-mb", type=int, default=0, help="0 = derive from the model's activation peak (see below)")
-    ap.add_argument("--runner", help="installed FireSim runner name (or set MERLIN_FIRESIM_RUNNER)")
+    ap.add_argument("--completion-metric-prefix", help="explicit completion marker required by the external operator")
     a = ap.parse_args(argv)
     if not a.matrix_support_target:
         ap.error("routing and unit audit require --matrix-support-target (not inferred from --unit)")
 
-    from merlin.common.ir_lock import IR_LOCK
-    from merlin.common.mlir_query import activation_peak_bytes
     from merlin.common.paths import repo_root
     from merlin.kernels.decode import opu as opu_audit
     from merlin.llvmlower.impr_features import OPU_MATMUL_NAME, PEROP_BLOCK_NAME
     from merlin.mining.registry import load_rvv_package
     from merlin.runtime.backends import zephyr_model as zm
-    from merlin.runtime.backends.firesim_runner import select_runner
+    from merlin.runtime.boards import board as board_descriptor
     from merlin.targetgen.plugins import load_declared
 
+    descriptor = board_descriptor(a.board)
+    master, cpus = image_affinity(descriptor, a.harts)
+    if a.leg == "device":
+        descriptor.check_matrix_image(a.harts)
     provider = load_declared(a.matrix_support_target, "matrix_lowering")
-    selected_runner = select_runner(a.runner)
     enc = provider.derive_encodings(provider.load_contract(a.unit)).encodings
 
     bundle = repo_root() / "out/artifacts/recaptures" / a.bundle
@@ -95,12 +113,6 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(a.outdir)
     out.mkdir(parents=True, exist_ok=True)
     pkg = load_rvv_package(repo_root() / "out/artifacts/targets" / a.package)
-
-    with IR_LOCK:
-        peak = activation_peak_bytes(bundle / "model.mlir")
-    # `free()` is a no-op in this runtime, so the arena must cover the SUM of allocations, not the
-    # liveness peak. Provision generously; the post-build region check fails closed if still short.
-    arena_mb = a.arena_mb or max(512, (int(peak or 0) * 3 // 2 + 512 * 1024 * 1024 + 2**20 - 1) // 2**20)
 
     routed = a.leg == "device"
     feats = {PEROP_BLOCK_NAME} | ({OPU_MATMUL_NAME} if routed else set())
@@ -116,22 +128,21 @@ def main(argv: list[str] | None = None) -> int:
         str(out),
         board=a.board,
         backend="rvv",
-        rvv_hart=0,
-        cpus=max(2, a.harts),
+        rvv_hart=master,
+        cpus=cpus,
         n_harts=a.harts,
         int8_compute=True,
         features=frozenset(feats),
         rvv_schedule=pkg.schedule_text,
-        arena_mb=arena_mb,
         cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
         vlen=a.vlen,
         inputs_npz=bundle / "inputs.npz",
         debug=True,
-        completion_metric_prefix=getattr(selected_runner, "completion_metric_prefix", None),
+        completion_metric_prefix=a.completion_metric_prefix,
         **kw,
     )
     print(
-        f"[leg] built ZEPHYR {a.leg} {a.bundle} harts={a.harts} vlen={a.vlen} arena={arena_mb}MB "
+        f"[leg] built ZEPHYR {a.leg} {a.bundle} harts={a.harts} vlen={a.vlen} "
         f"in {time.time() - t0:.0f}s hash={b.get('build_hash')} ram={b.get('ram_bytes')} "
         f"elf={b.get('elf')}",
         flush=True,

@@ -101,7 +101,7 @@ def test_preflight_does_not_credit_changed_inputs_or_empty_emission(benchmark, t
     from subprocess import CompletedProcess
 
     from merlin.common import proc
-    from merlin.compile.model_execution_inputs import strict_tree_sha256
+    from merlin.runtime.modelinputs import strict_tree_sha256
 
     compiler = tmp_path / "compiler"
     compiler.mkdir()

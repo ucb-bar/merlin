@@ -6,7 +6,7 @@ import pytest
 from test_scf_commands import ExecuteIndices, async_kernel
 from xdsl.dialects import arith, builtin, func, scf
 
-from merlin.compile.scheduling import scf_commands as C
+from merlin.compiler.schedule import scf_commands as C
 from merlin.sched.ir import Call, Const, Kernel, Loop, Var
 
 

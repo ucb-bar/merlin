@@ -7,10 +7,10 @@ last_verified: 2026-10-26
 code_refs:
   - src/merlin/compile/composition_catalog.py
   - src/merlin/compile/scheduling/api_catalog.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/prepare_author_library.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/full_compiler_workspace.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/author_skills/heavy-pass-recipes/scripts/composition_routes.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/composition_next.py
+  - src/merlin_experiments/phase1/prepare_author_library.py
+  - src/merlin_experiments/phase1/full_compiler_workspace.py
+  - src/merlin_experiments/phase1/author_skills/heavy-pass-recipes/scripts/composition_routes.py
+  - src/merlin_experiments/phase1/feedback/composition_next.py
 ---
 
 # Compose shared compiler transformations in an authoring loop

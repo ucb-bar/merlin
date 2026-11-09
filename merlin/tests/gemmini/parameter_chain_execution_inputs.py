@@ -102,7 +102,7 @@ def prepare(selected, destination, monkeypatch):
     from merlin_experiments.phase0 import sealed_native_program as N
 
     from merlin.common import quant_formats as QF
-    from merlin.compile.materialized_model_inputs import MaterializedModelInputs
+    from merlin.compiler.frontend.materialized import MaterializedModelInputs
     from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen import capsule_source as S
     from merlin.targetgen import target_registry as TR

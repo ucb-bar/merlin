@@ -10,11 +10,14 @@ from xdsl.dialects import func, memref, tensor
 from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, StringAttr
 from xdsl.parser import Parser
 
-from merlin.compile.scheduling.block_schedule import SpatialMaxReadout
-from merlin.compile.scheduling.program_limits import AddressWindow
-from merlin.compile.scheduling.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
-from merlin.compile.scheduling.spatial_readout import RoundedReadout, SpatialReadoutChain
-from merlin.compile.scheduling.window_transfer import CountedConvolutionPlan, Window2D
+from merlin.compiler.schedule.blocks import SpatialMaxReadout
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan
+from merlin.compiler.schedule.spatial_producer import SpatialProducerPlan
+from merlin.compiler.schedule.spatial_readout import RoundedReadout
+from merlin.compiler.schedule.spatial_readout import SpatialReadoutChain
+from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
+from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.llvmlower.fresh_tensor_writer import FreshTensorWriterContract, PrivateWorkspaceContract
 from merlin.llvmlower.spatial_scratch_abi import emit_spatial_raw_entry, prepare_spatial_scratch_abi

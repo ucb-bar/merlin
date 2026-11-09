@@ -109,6 +109,12 @@ class Board:
     #: callers use this instead of inspecting a target-specific board name.
     simulator: str | None = None
     notes: str = ""
+    # Explicit matrix resource affinity and instruction/configuration identity.
+    # Kept after existing fields to preserve positional Board construction.
+    matrix_hart_ids: tuple[int, ...] | None = None
+    matrix_support_target: str | None = None
+    matrix_unit: str | None = None
+    matrix_config: str | None = None
 
     @property
     def loader_bytes_per_s(self) -> float:
@@ -140,6 +146,36 @@ class Board:
         if self.vector_hart_ids is not None:
             return tuple(self.vector_hart_ids)
         return tuple(range(self.n_vector_harts))
+
+    @property
+    def matrix_harts(self) -> tuple[int, ...]:
+        """Matrix affinity within the selected route, defaulting to its vector workers.
+
+        This is not capability admission: callers must also check_matrix_route.
+        """
+        return tuple(self.matrix_hart_ids) if self.matrix_hart_ids is not None else self.hart_ids_for("rvv")
+
+    def check_matrix_image(self, n_harts: int) -> None:
+        """Check every actual vector worker, without truncating an invalid count."""
+        eligible = self.hart_ids_for("rvv")
+        if type(n_harts) is not int or not 1 <= n_harts <= len(eligible):
+            raise BoardRegistryError(f"{self.name}: matrix workers must be an integer in 1..{len(eligible)}")
+        missing = [hart for hart in eligible[:n_harts] if hart not in self.matrix_harts]
+        if missing:
+            raise BoardRegistryError(
+                f"{self.name}: a matrix image over {n_harts} hart(s) would run on hart(s) {missing}, "
+                f"which carry no matrix unit (matrix harts: {list(self.matrix_harts)})"
+            )
+
+    def check_matrix_route(self, support_target: str, unit: str, config: str) -> None:
+        """Match an explicitly declared instruction route; missing facts never match."""
+        requested = (support_target, unit, config)
+        actual = (self.matrix_support_target, self.matrix_unit, self.matrix_config)
+        if any(not isinstance(value, str) or not value.strip() for value in requested) or actual != requested:
+            raise BoardRegistryError(
+                f"{self.name}: matrix route {requested!r} does not match this board's "
+                f"decoded route {actual!r}; select a board for the requested unit and config"
+            )
 
     @property
     def vector_max_len(self) -> int:
@@ -308,6 +344,21 @@ def load_boards(path: str | Path | None = None) -> dict[str, Board]:
             and kwargs.get("vector_hart_ids") is None
         ):
             raise BoardRegistryError(f"{where}: declare vector_harts or vector_hart_ids for a Zephyr board")
+        if kwargs.get("matrix_hart_ids") is not None:
+            ids = kwargs["matrix_hart_ids"]
+            vector = kwargs.get("vector_hart_ids")
+            if vector is None:
+                count = kwargs.get("vector_harts")
+                vector = tuple(range(kwargs["harts"] if count is None else count))
+            if not ids or len(set(ids)) != len(ids) or any(h not in vector or not 0 <= h < kwargs["harts"] for h in ids):
+                raise BoardRegistryError(
+                    f"{where}: matrix_hart_ids must be distinct vector-capable harts {list(vector)}; got {list(ids)}"
+                )
+        route_fields = ("matrix_support_target", "matrix_unit", "matrix_config")
+        if any(kwargs.get(key) is not None for key in route_fields) and not all(
+            isinstance(kwargs.get(key), str) and kwargs[key].strip() for key in route_fields
+        ):
+            raise BoardRegistryError(f"{where}: matrix route must declare all of {route_fields}")
         if kwargs.get("host_dts_sha256") is not None and (
             len(kwargs["host_dts_sha256"]) != 64
             or any(letter not in "0123456789abcdef" for letter in kwargs["host_dts_sha256"])

@@ -11,7 +11,8 @@ from test_dense_integer_readout import QUALIFICATION, readout_inputs
 from test_dense_source import compile_source, contraction
 from test_dense_source_catalog import implementation
 
-from merlin.compile.scheduling.dense_source import DenseSourceUnavailable, read_source_dense_readout_chain
+from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
+from merlin.compiler.schedule.dense_source import read_source_dense_readout_chain
 from merlin.frontends.linalg_mlir import parse_mlir_text
 
 

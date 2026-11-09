@@ -696,6 +696,8 @@ def check_library_boundary(errors):
     implements it -- and so told a reader the rule was broken in the one place it was being obeyed.
     Pre-existing real violations are recorded in library_boundary_ratchet.txt, which may only shrink.
     """
+    components = (_source_layout.logical_components(Path(ROOT))
+                  if (Path(ROOT) / "build_tools/logical_components.json").is_file() else None)
     ratchet = set()
     if os.path.isfile(BOUNDARY_RATCHET):
         with open(BOUNDARY_RATCHET, encoding="utf-8") as fh:
@@ -731,7 +733,9 @@ def check_library_boundary(errors):
             # and the same dependency remains forbidden in the compiler core.
             resource = Path(literal)
             if (
-                key.startswith("packages/")
+                (key.startswith("packages/") if components is None else
+                 _source_layout.component_owner(_source_layout.module_name(Path(ROOT) / relative, Path(ROOT)) or "",
+                                                components) != "core")
                 and resource.parts[:2] == ("experiments", "reference-data")
                 and ".." not in resource.parts
             ):

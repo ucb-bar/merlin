@@ -80,8 +80,9 @@ def test_carried_event_names_are_not_integer_binder_names():
 def test_selected_occurrence_reaches_actual_scf_and_llvm_target_callback():
     from xdsl.dialects import builtin, llvm
 
-    from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter
-    from merlin.compile.scheduling.scf_commands import emit_scf_commands, materialize_scf_commands
+    from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
+    from merlin.compiler.schedule.scf_commands import emit_scf_commands
+    from merlin.compiler.schedule.scf_commands import materialize_scf_commands
     from merlin.llvmlower.host_builder import FnBuilder
 
     # No target law is invented: this neutral target callback is an external

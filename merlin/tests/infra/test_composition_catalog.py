@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from merlin.compile.composition_catalog import composition_capabilities
+from merlin.compiler.passes.composition import composition_capabilities
 
 
 def test_every_advertised_symbol_is_an_existing_callable():

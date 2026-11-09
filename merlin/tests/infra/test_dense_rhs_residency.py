@@ -2,7 +2,7 @@
 
 import pytest
 
-from merlin.compile.scheduling.dense_rhs_residency import plan_dense_rhs_residency
+from merlin.compiler.schedule.dense_rhs_residency import plan_dense_rhs_residency
 
 
 def plan(m=31, k=17, n=33, **kwargs):

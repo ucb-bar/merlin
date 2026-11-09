@@ -29,7 +29,7 @@ import struct
 from typing import Any
 
 from merlin.common.facts_view import interface as _facts_interface
-from merlin.compile.analysis.rocc_commands import fields_of
+from merlin.analysis.rocc_commands import fields_of
 
 #: Width of the R-type ``funct7`` field that carries a RoCC instruction's identity. This is the RISC-V
 #: RoCC transport itself (``.insn r opcode, funct3, funct7, rd, rs1, rs2``), not a property of any

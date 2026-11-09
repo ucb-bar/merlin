@@ -18,7 +18,7 @@ def pin(path):
 @pytest.fixture
 def selected(tmp_path, monkeypatch):
     from merlin.targetgen import target_experiment
-    from merlin.compile import model_execution_inputs
+    from merlin.runtime import modelinputs as model_execution_inputs
 
     descriptor, catalog, dts, facts = [tmp_path / name for name in ("descriptor.yaml", "catalog.yaml", "cpu.dts", "facts.json")]
     descriptor.write_text("selected descriptor")
@@ -98,7 +98,7 @@ def test_symlink_and_unpinned_request_refuse(selected, tmp_path):
 
 
 def test_configuration_validation_and_postcheck_cannot_be_skipped(selected, monkeypatch):
-    from merlin.compile import model_execution_inputs
+    from merlin.runtime import modelinputs as model_execution_inputs
 
     def mutate(*a, **kw): selected.facts.write_text("changed during validation")
     monkeypatch.setattr(model_execution_inputs, "selected_firrtl", mutate)

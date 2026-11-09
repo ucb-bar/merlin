@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.scheduling.tile_load_coalescing import TileLoadCoalescing
+from merlin.compiler.schedule.tile_load_coalescing import TileLoadCoalescing
 
 
 @pytest.mark.parametrize("columns", [1, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 129, 256, 2048])

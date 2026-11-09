@@ -361,8 +361,8 @@ def constant_control_counts(
     loops, constants = {}, {}
     if summarize_loops:
         from merlin.perf.constant_control_regions import control_regions, rectangular_counts
-        from merlin.verify.input_copy_batch import execute as batch_control
-        from merlin.verify.input_copy_loops import control_dependencies, copy_regions, region_cost
+        from merlin.verification.input_copy_batch import execute as batch_control
+        from merlin.verification.input_copy_loops import control_dependencies, copy_regions, region_cost
 
         batched_regions = {**control_regions(function, include_rectangular=watched is not None),
                            **copy_regions(function)}

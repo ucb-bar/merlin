@@ -367,3 +367,184 @@ def test_unused_dynamic_argument_remains_outside_static_source_domain():
     assert not unused.uses
     with pytest.raises((ValueError, OffloadPlanUnavailable), match="static"):
         bind_source(module, entry="forward", context=context)
+
+
+
+def _registered_reduction_source():
+    from xdsl.dialects import arith
+    from xdsl.dialects.linalg.ops import ReduceOp, YieldOp
+    from xdsl.ir import Block, Region
+
+    value = builtin.TensorType(builtin.f32, [2, 2])
+    accumulator = builtin.TensorType(builtin.f32, [2])
+    function = func.FuncOp("forward", ([value, accumulator], [accumulator]))
+    body = Block(arg_types=[builtin.f32, builtin.f32])
+    add = arith.AddfOp(body.args[0], body.args[1])
+    body.add_ops([add, YieldOp(add.result)])
+    reduction = ReduceOp(function.args[0], function.args[1],
+                                builtin.DenseArrayBase.from_list(builtin.i64, [1]), Region(body))
+    function.body.block.add_ops([reduction, func.ReturnOp(reduction.results[0])])
+    return builtin.ModuleOp([function]), reduction
+
+
+def test_exact_registered_reduction_retains_init_result_and_original_scalar_order():
+    module, reduction = _registered_reduction_source()
+    original = ir_text(module)
+    source = bind_source(module, entry="forward", context=PipelineContext(), graph_mode="ssa")
+    assert source.operations == (reduction,) and ir_text(module) == original
+    node = source.program.nodes[0]
+    assert len(node.inputs) == 2 and len(node.outputs) == 1  # Include the live accumulator initializer.
+    source.revalidate()
+    add = reduction.regions[0].block.first_op
+    add.operands = (add.operands[1], add.operands[0])
+    with pytest.raises(ValueError, match="source bytes changed|stale|source graph"):
+        source.revalidate()
+
+
+@pytest.mark.parametrize("changed", ["unknown_body", "nested_region", "placement", "custom_class"])
+def test_registered_reduction_cannot_hide_unknown_effects_control_or_custom_classes(changed):
+    module, reduction = _registered_reduction_source()
+    body = reduction.regions[0].block
+    if changed == "unknown_body":
+        body.insert_op_before(builtin.UnregisteredOp.with_name("opaque.effect").create(), body.last_op)
+    elif changed == "nested_region":
+        body.insert_op_before(reduction.clone(), body.last_op)
+    elif changed == "placement":
+        reduction.attributes["required_device"] = builtin.StringAttr("external")
+    else:
+        class CustomReduction(type(reduction)):
+            pass
+        reduction.__class__ = CustomReduction
+    module.verify()
+    with pytest.raises(OffloadPlanUnavailable, match="effects|scalar region"):
+        bind_source(module, entry="forward", context=PipelineContext(), graph_mode="ssa")
+
+
+def annotated_source():
+    return parse_mlir_text('''module {
+      func.func @forward(%x:tensor<2x3xbf16>)->tensor<2x3xbf16> {
+        %empty=tensor.empty():tensor<2x3xbf16>
+        %result=linalg.generic {
+          indexing_maps=[affine_map<(i,j)->(i,j)>,affine_map<(i,j)->(i,j)>],
+          iterator_types=["parallel","parallel"]
+        } ins(%x:tensor<2x3xbf16>) outs(%empty:tensor<2x3xbf16>)
+        attrs={merlin.numeric_semantics="bf16-sign-clamp-v1",
+               merlin.input_domain="finite-normal-or-zero-bf16"} {
+          ^bb0(%value:bf16,%old:bf16):
+            %zero=arith.constant 0.0:bf16
+            %positive=arith.maximumf %value,%zero:bf16
+            linalg.yield %positive:bf16
+        } ->tensor<2x3xbf16>
+        func.return %result:tensor<2x3xbf16>
+      }
+    }''')
+
+
+def approved_source_options():
+    # Original caller's selected mathematical contract, independent of providers.
+    return {"merlin.numeric_semantics": "bf16-sign-clamp-v1",
+            "merlin.input_domain": "finite-normal-or-zero-bf16"}
+
+
+def check_annotated_source(module, entry, options):
+    from merlin.compiler.ir.semantics import source_semantic_attributes
+    from merlin.frontends.linalg_bf16_relu import recognize_bf16_sign_clamp_relu
+
+    operations = tuple(module.walk())
+    coverage = source_semantic_attributes(module, entry)
+    checked = set()
+    for row in coverage:
+        if row.location != "operation" or type(row.attribute) is not builtin.StringAttr:
+            raise ValueError("unsupported semantic location or typed attribute")
+        if row.ordinal not in checked:
+            recognize_bf16_sign_clamp_relu(operations[row.ordinal])
+            checked.add(row.ordinal)
+        if row.key not in options or row.attribute.data != options[row.key]:
+            raise ValueError("source declaration differs from the original approved contract")
+    return coverage
+
+
+def test_explicit_source_semantics_keep_attributes_and_original_caller_custody():
+    module, options = annotated_source(), approved_source_options()
+    before = ir_text(module)
+    with pytest.raises(OffloadPlanUnavailable):
+        bind_source(module, entry="forward", context=PipelineContext(), graph_mode="ssa")
+    bound = bind_source(module, entry="forward", context=PipelineContext(), graph_mode="ssa",
+                        validate_source=check_annotated_source, source_options=options)
+    assert ir_text(module) == before
+    record = bound.semantic_admission()
+    assert record["origin"] == "original_caller" and record["qualification"] == "not_established"
+    assert record["options"] == options and len(record["attributes"]) == 2
+    options["merlin.input_domain"] = "unapproved"
+    with pytest.raises(ValueError, match="options changed"):
+        bound.revalidate()
+
+
+@pytest.mark.parametrize("mode", ["none", "missing", "value", "ordinal", "unknown_attr", "policy", "typed",
+                                  "body", "callback_ir", "callback_options", "drop_admission", "callback_code",
+                                  "misplaced", "signature", "library", "module", "function", "duplicate"])
+def test_source_semantics_refuse_unconsumed_changed_or_unapproved_obligations(mode):
+    from merlin.compiler.ir.semantics import SourceSemanticAttribute
+
+    module, options = annotated_source(), approved_source_options()
+    generic = next(op for op in module.walk() if op.name == "linalg.generic")
+    if mode == "unknown_attr":
+        generic.attributes["unknown.required_semantics"] = builtin.StringAttr("unknown")
+    elif mode == "policy":
+        options["merlin.input_domain"] = "unapproved"
+    elif mode == "typed":
+        generic.attributes["merlin.input_domain"] = builtin.IntegerAttr(1, builtin.i32)
+    elif mode == "body":
+        maximum = next(op for op in generic.walk() if op.name == "arith.maximumf")
+        maximum.operands = (maximum.operands[1], maximum.operands[0])
+    elif mode == "misplaced":
+        constant = next(op for op in generic.walk() if op.name == "arith.constant")
+        constant.attributes["merlin.numeric_semantics"] = builtin.StringAttr("bf16-sign-clamp-v1")
+    elif mode == "signature":
+        module.body.block.first_op.properties["arg_attrs"] = builtin.ArrayAttr([
+            builtin.DictionaryAttr({"merlin.input_domain": builtin.StringAttr("finite-normal-or-zero-bf16")})
+        ])
+    elif mode == "library":
+        generic.properties["library_call"] = builtin.StringAttr("external")
+    elif mode in {"module", "function"}:
+        owner = module if mode == "module" else module.body.block.first_op
+        owner.attributes["required_device"] = builtin.StringAttr("external")
+
+    def checked(current, entry, selected):
+        rows = check_annotated_source(current, entry, selected)
+        if mode == "none":
+            return None
+        if mode == "missing":
+            return rows[:-1]
+        if mode == "duplicate":
+            return rows[0], rows[0]
+        if mode in {"value", "ordinal"}:
+            row = rows[0]
+            if mode == "value":
+                row = SourceSemanticAttribute(row.ordinal, row.location, row.key,
+                                              builtin.StringAttr("changed"), builtin.StringAttr, '"changed"')
+            else:
+                row = replace(row, ordinal=row.ordinal + 1)
+            return (row, *rows[1:])
+        if mode == "callback_ir":
+            generic.attributes["prov.changed"] = builtin.StringAttr("changed")
+        elif mode == "callback_options":
+            selected["changed"] = True
+        return rows
+
+    if mode in {"drop_admission", "callback_code"}:
+        bound = bind_source(module, entry="forward", context=PipelineContext(), graph_mode="ssa",
+                            validate_source=checked, source_options=options)
+        if mode == "drop_admission":
+            object.__setattr__(bound, "_semantics", None)
+        else:
+            def changed(a, b, c):
+                _ = (SourceSemanticAttribute, generic, mode)  # Preserve closure arity; change actual code.
+                return ()
+            checked.__code__ = changed.__code__
+        with pytest.raises(ValueError, match="admission|validator"):
+            bound.revalidate()
+    else:
+        with pytest.raises(ValueError):
+            bind_source(module, entry="forward", context=PipelineContext(), graph_mode="ssa",
+                        validate_source=checked, source_options=options)

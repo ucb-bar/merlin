@@ -6,25 +6,25 @@ owner: merlin-experiments
 last_verified: 2026-10-20
 related: [phase2_corpus_search, phase2_cpu_timing_study, independent_performance_feedback]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_observations.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_census.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_fast_feedback.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/_public_native_feedback.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/_public_native_observation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/native_development_decision.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/functional_inputs.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_calibration.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_screen_features.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_queue_calibration.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_measurement_selection.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/provisional_search.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/queued_search_actions.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/evaluation_costs.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/evaluation_priorities.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/public_program_measurement.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/search_coordinator.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/stage_prompt.py
+  - src/merlin_experiments/phase1/feedback/selfcheck.py
+  - src/merlin_experiments/phase1/feedback/candidate_observations.py
+  - src/merlin_experiments/phase1/feedback/candidate_census.py
+  - src/merlin_experiments/phase2/ordinary_fast_feedback.py
+  - src/merlin_experiments/phase2/_public_native_feedback.py
+  - src/merlin_experiments/phase2/_public_native_observation.py
+  - src/merlin_experiments/phase2/native_development_decision.py
+  - src/merlin_experiments/phase2/functional_inputs.py
+  - src/merlin_experiments/phase2/ordinary_calibration.py
+  - src/merlin_experiments/phase2/ordinary_screen_features.py
+  - src/merlin_experiments/phase2/ordinary_queue_calibration.py
+  - src/merlin_experiments/phase2/ordinary_measurement_selection.py
+  - src/merlin_experiments/phase2/provisional_search.py
+  - src/merlin_experiments/phase2/queued_search_actions.py
+  - src/merlin_experiments/phase2/evaluation_costs.py
+  - src/merlin_experiments/phase2/evaluation_priorities.py
+  - src/merlin_experiments/phase2/public_program_measurement.py
+  - src/merlin_experiments/phase2/search_coordinator.py
+  - src/merlin_experiments/phase2/stage_prompt.py
   - src/merlin/perf/candidate_diagnostics.py
   - src/merlin/perf/candidate_cost_graph.py
   - src/merlin/perf/host_cfg_activity.py

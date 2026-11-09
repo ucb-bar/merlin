@@ -57,7 +57,7 @@ def test_score_projection_preserves_audited_engine_without_inventing_one(candida
 
 @pytest.mark.parametrize('mutation',['none','mismatch','missing','extra','duplicate','short_extent','wrong_order','missing_done','duplicate_done'])
 def test_owned_numeric_reopens_complete_frozen_output_roster(tmp_path,monkeypatch,mutation):
-    from merlin.compile import baremetal_model
+    from merlin import model as baremetal_model
     from merlin.targetgen.owned_host_model_execution import _numeric_full_output
 
     capsule=tmp_path/'capsule';capsule.mkdir()

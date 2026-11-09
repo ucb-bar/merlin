@@ -16,7 +16,7 @@ from pathlib import Path
 import yaml
 
 from merlin.common.access import module_name_for
-from merlin.verify.lean_contract import document_digest
+from merlin.verification.lean_contract import document_digest
 
 from .tool_profile import verify_tool_profile
 

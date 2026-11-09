@@ -6,17 +6,15 @@ from dataclasses import replace
 import pytest
 from xdsl.dialects import arith
 
-from merlin.compile.scheduling.program_limits import AddressWindow
-from merlin.compile.scheduling.rolling_window import (
-    emit_rolling_window,
-    emit_rolling_window_lookup,
-    materialize_rolling_window,
-    propose_rolling_window,
-    read_rolling_window,
-    rolling_window_text,
-    verify_rolling_window,
-)
-from merlin.compile.scheduling.window_transfer import Window2D
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.rolling_window import emit_rolling_window
+from merlin.compiler.schedule.rolling_window import emit_rolling_window_lookup
+from merlin.compiler.schedule.rolling_window import materialize_rolling_window
+from merlin.compiler.schedule.rolling_window import propose_rolling_window
+from merlin.compiler.schedule.rolling_window import read_rolling_window
+from merlin.compiler.schedule.rolling_window import rolling_window_text
+from merlin.compiler.schedule.rolling_window import verify_rolling_window
+from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.xdsl_dialects.rolling_window import CompleteOp, StageRowOp
 
 

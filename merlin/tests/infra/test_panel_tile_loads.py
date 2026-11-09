@@ -5,16 +5,16 @@ from dataclasses import replace
 import pytest
 from test_compact_dense import ADAPTER, fixture
 
-from merlin.compile.scheduling.dense_panel_pipeline import DensePanelOverlapAdmission, schedule_dense_panel_pipeline
-from merlin.compile.scheduling.panel_tile_loads import admit_panel_tile_loads, expand_panel_tile_loads
-from merlin.compile.scheduling.schedule_ir import make_dense_schedule_plan
-from merlin.compile.scheduling.tile_load_coalescing import (
-    TileLoadAddressLaw,
-    TileLoadMapping,
-    _linear,
-    coalesce_tile_load_loops,
-    propose_tile_load_coalescing,
-)
+from merlin.compiler.schedule.dense_panel_pipeline import DensePanelOverlapAdmission
+from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_panel_pipeline
+from merlin.compiler.schedule.panel_tile_loads import admit_panel_tile_loads
+from merlin.compiler.schedule.panel_tile_loads import expand_panel_tile_loads
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.tile_load_coalescing import TileLoadAddressLaw
+from merlin.compiler.schedule.tile_load_coalescing import TileLoadMapping
+from merlin.compiler.schedule.tile_load_coalescing import _linear
+from merlin.compiler.schedule.tile_load_coalescing import coalesce_tile_load_loops
+from merlin.compiler.schedule.tile_load_coalescing import propose_tile_load_coalescing
 from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, Ptr, Var, evaluate, instances, select
 from merlin.transforms.dense_planning import dense_blocks
 
@@ -167,7 +167,7 @@ def test_counted_projection_preserves_unknown_metadata_and_effect_boundaries(met
         return TileLoadMapping("source", "local", a["src"], a["dst"], a["rows"], a["cols"], law)
 
     def band(call, mapping):
-        from merlin.compile.scheduling.tile_load_coalescing import _linear
+        from merlin.compiler.schedule.tile_load_coalescing import _linear
 
         index = (_linear(mapping.source_byte)[0] - _linear(project(call).source_byte)[0]) // 2
         args = {"src": mapping.source_byte, "dst": mapping.local_row, "cols": mapping.columns}
@@ -242,7 +242,7 @@ def test_wrong_actual_source_pitch_and_wrong_band_encoder_refuse():
 
 
 def test_explicit_affine_external_view_preserves_original_bands_and_live_address_checks():
-    from merlin.compile.scheduling.panel_transfers import AffineMatrixSource
+    from merlin.compiler.schedule.panel_transfers import AffineMatrixSource
 
     p, r, s, b, original, proposal, logical_project, _, band = setup()
     source = AffineMatrixSource("weight", (p.k, p.n), 1, 7, 21, 1, 0, 7 + (p.k - 1) * 21 + p.n)
@@ -286,7 +286,7 @@ def test_explicit_affine_external_view_preserves_original_bands_and_live_address
 
 @pytest.mark.parametrize("mutation", ["shape", "columns", "offset"])
 def test_changed_affine_binding_cannot_hide_different_source_effects(mutation):
-    from merlin.compile.scheduling.panel_transfers import AffineMatrixSource
+    from merlin.compiler.schedule.panel_transfers import AffineMatrixSource
 
     p, r, s, b, original, proposal, project, _, band = setup()
     source = AffineMatrixSource("weight", (p.k, p.n), 1, 0, p.n, 1, 0, 128)
@@ -347,7 +347,7 @@ def test_projection_budget_bounds_all_generated_bands_before_expanding():
 
 
 def test_readout_batching_composes_with_final_wide_loads_in_either_order():
-    from merlin.compile.scheduling.dense_panel_readout import batch_dense_panel_readouts
+    from merlin.compiler.schedule.dense_panel_readout import batch_dense_panel_readouts
 
     p, r, s, b, original, proposal, project, encode, band = setup()
     admission = replace(original.admission, max_issued_readouts=4, pending_readouts=1,
@@ -381,13 +381,11 @@ def typed_setup(kind):
     from test_compact_dense_bias import ADAPTER as bias_adapter
     from test_dense_integer_readout import SCALAR_IR
 
-    from merlin.compile.scheduling.block_schedule import Store
-    from merlin.compile.scheduling.compact_dense import DenseBiasSource
-    from merlin.compile.scheduling.dense_contracts import (
-        DenseIntegerReadout,
-        DenseTiledIntegerReadout,
-        TiledIntegerStore,
-    )
+    from merlin.compiler.schedule.blocks import Store
+    from merlin.compiler.schedule.compact_dense import DenseBiasSource
+    from merlin.compiler.schedule.dense_contracts import DenseIntegerReadout
+    from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout
+    from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
 
     p, r, s, b, _, _, project, encode, band = setup()
     p = replace(p, bias=True)
@@ -450,7 +448,7 @@ def test_wide_bands_preserve_original_bias_and_exact_readout_contracts(kind):
 
 @pytest.mark.parametrize("kind", ["raw", "scalar", "tiled"])
 def test_wide_readout_batching_retains_numerical_boundaries_and_rechecks_actual_payload(kind):
-    from merlin.compile.scheduling.dense_panel_readout import batch_dense_panel_readouts
+    from merlin.compiler.schedule.dense_panel_readout import batch_dense_panel_readouts
 
     p, r, s, b, original, proposal, adapter, project, band = typed_setup(kind)
     wide = admit_panel_tile_loads(original, proposal, p, b, r, s, adapter,

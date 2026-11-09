@@ -5,28 +5,26 @@ status: current
 owner: kernels
 last_verified: 2026-10-08
 related: [kernel_mining, architecture, repo_structure]
-code_refs: [src/merlin/kernels/ingest, packages/merlin-experiments/pyproject.toml, packages/merlin-analysis/pyproject.toml, packages/merlin-experiments/src/merlin/benchharness/chia_bridge.py, packages/merlin-experiments/src/merlin/benchharness/chia_tasks.py, packages/merlin-experiments/src/merlin/targetgen/aet_bridge.py, packages/merlin-experiments/src/merlin_experiments/phase2/telemetry.py]
+code_refs: [src/merlin/kernels/ingest, pyproject.toml, src/merlin/benchharness/chia_bridge.py, src/merlin/benchharness/chia_tasks.py, src/merlin/targetgen/aet_bridge.py, src/merlin_experiments/phase2/telemetry.py]
 ---
 
 # Integrations
 
 Integrations are **adapters**, not copied implementations of their upstream projects.
-Adapters live in their owning distribution: shared compiler contracts and runtime integration
-under `src/merlin`, and research/evaluation integrations under the relevant `packages/` tree.
-Shared upstream import/process adapters live in `src/merlin/integrations`; workflow-specific
-adapters remain in their owning distributions, not a separate monolithic integration checkout.
-Stable `merlin.*` imports can resolve to an optional distribution; they do not imply core ownership.
-Core can also resolve an installed owner through a declared entry-point group rather than importing
-an optional distribution: exact whole-model offload (`merlin.llvmlower.exact_offload`) requires
-exactly one `merlin.exact_offload_release` provider named `reviewed_phase0`, which the experiments
-package registers (`merlin_experiments.corpus.release:verify_exact_offload_binding`). An absent or
+Adapters retain their logical owners inside the main Merlin distribution. Shared compiler
+contracts and import/process integration live under `src/merlin/integrations`; research and
+evaluation adapters remain with their owning workflows under `src/merlin` or
+`src/merlin_experiments`. Stable `merlin.*` imports do not imply shared compiler ownership.
+Shared code can resolve a trusted owner through a declared entry-point group: exact whole-model
+offload (`merlin.llvmlower.exact_offload`) requires exactly one `merlin.exact_offload_release`
+provider named `reviewed_phase0`, registered by the main package (`merlin_experiments.corpus.release:verify_exact_offload_binding`). An absent or
 ambiguous provider refuses exact offload; the lookup is a trusted-host gate, not a sandbox. See the
 [architecture reference](../reference/architecture.md) and
 [integration rationale](../design/integrations.md).
 
 | Dependency type   | Where                          | When                                          |
 | ----------------- | ------------------------------ | --------------------------------------------- |
-| Adapter only      | owning core or optional distribution | parse/index/emit-to/call the external tool |
+| Adapter only      | owning logical component in Merlin | parse/index/emit-to/call the external tool |
 | External checkout | outside the repo, by path/env  | inspect or run the repo; merlin doesn't own it|
 | Pinned dependency | `third_party/<name>/`          | merlin cannot build/test without it           |
 
@@ -150,7 +148,7 @@ Install from the Merlin checkout into a separate environment, without changing t
 
 ```bash
 uv venv out/build/chia-venv --python 3.13
-uv pip install --python out/build/chia-venv/bin/python -e . -e 'packages/merlin-experiments[chia]'
+uv pip install --python out/build/chia-venv/bin/python -e '.[experiments,chia]'
 export MERLIN_CHIA_PYTHON="$PWD/out/build/chia-venv/bin/python"
 export MERLIN_EXPERIMENT_PYTHON="$PWD/.venv/bin/python"
 "$MERLIN_CHIA_PYTHON" -I -c 'from merlin.benchharness.chia_bridge import require_chia; require_chia()'
@@ -158,8 +156,8 @@ export MERLIN_EXPERIMENT_PYTHON="$PWD/.venv/bin/python"
 
 The distribution is **`chialoops`**, not the unrelated `chia` distribution. Its import name is
 `chia`. The experiments extra pins an immutable Chia source archive; its example submodules are
-not Python package dependencies. AET retains the experiments package's exact Git revision.
-Inspect `packages/merlin-experiments/pyproject.toml` for both pins. Do not install Chia's unpinned
+not Python package dependencies. AET retains the main package's exact Git revision.
+Inspect `pyproject.toml` for both pins. Do not install Chia's unpinned
 `aet` extra over that environment. Ray/Pydantic requirements belong in the Chia environment,
 not in core. Editable installs are for development, not frozen-run qualification.
 

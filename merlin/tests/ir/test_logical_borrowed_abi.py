@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from merlin.compile.scheduling.dense_contracts import DenseLogicalPointerABI
+from merlin.compiler.schedule.dense_contracts import DenseLogicalPointerABI
 from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.llvmlower.device_shim import LogicalBuffer
 from merlin.llvmlower.logical_borrowed_abi import (

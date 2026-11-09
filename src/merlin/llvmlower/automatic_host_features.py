@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import os
 
-from merlin.compile.host_optimizations import tensor_rewrite_source
+from merlin.compiler.transforms.host import tensor_rewrite_source
 
 FEATURE = "automatic_scalar_host"
 MARKER = "__merlin_automatic_scalar_host__"

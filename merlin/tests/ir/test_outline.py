@@ -446,3 +446,43 @@ def test_outline_quantized_runs_correctly_on_host(tmp_path):
         ],
     )
     assert np.allclose(y, ref, rtol=1e-4, atol=1e-4), np.abs(y - ref).max()
+
+
+def test_externalize_exact_dispatch_keeps_driver_and_other_kernel():
+    from xdsl.dialects import func
+
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects.lowering.outline import externalize_dispatches, outline_dispatches
+
+    outlined = outline_dispatches(parse_mlir_text(CHAIN))
+    first, second = (dispatch.symbol for dispatch in outlined.dispatches)
+    selected = externalize_dispatches(outlined, [first])
+
+    functions = {
+        op.sym_name.data: op for op in selected.module.body.block.ops if isinstance(op, func.FuncOp)
+    }
+    assert selected.symbols == (first,)
+    assert not functions[first].body.blocks
+    assert functions[second].body.blocks
+    assert functions["forward"].body.blocks
+    assert functions[first].function_type == next(
+        op.function_type
+        for op in outlined.module.body.block.ops
+        if isinstance(op, func.FuncOp) and op.sym_name.data == first
+    )
+    assert all(op.body.blocks for op in outlined.module.body.block.ops if isinstance(op, func.FuncOp))
+    selected.module.verify()
+
+
+def test_externalize_dispatch_rejects_unknown_duplicate_and_bad_symbol():
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects.lowering.outline import OutlineError, externalize_dispatches, outline_dispatches
+
+    outlined = outline_dispatches(parse_mlir_text(CHAIN))
+    symbol = outlined.dispatches[0].symbol
+    with pytest.raises(OutlineError, match="not an outlined dispatch"):
+        externalize_dispatches(outlined, ["forward"])
+    with pytest.raises(OutlineError, match="unique"):
+        externalize_dispatches(outlined, [symbol, symbol])
+    with pytest.raises(OutlineError, match="nonempty strings"):
+        externalize_dispatches(outlined, [""])

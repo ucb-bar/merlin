@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+    from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection
     from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
     from .borrowed_buffer_calls import BorrowedBufferCalls
@@ -556,7 +556,10 @@ def verify_object_symbol_binding(
 
 
 def _run(argv: Sequence[str], *, timeout: int) -> subprocess.CompletedProcess:
-    return subprocess.run([str(a) for a in argv], capture_output=True, text=True, timeout=timeout)
+    from .optional_passes import child_environment
+
+    return subprocess.run([str(a) for a in argv], capture_output=True, text=True, timeout=timeout,
+                          env=child_environment())
 
 
 def _run_build_tool(argv: Sequence[str], *, timeout: int) -> subprocess.CompletedProcess:
@@ -887,7 +890,7 @@ def build_device_objects(
     entry_symbol = executable_kernel_entry(device)
 
     if expected_interfaces is None:
-        from merlin.compile.mesh import _mesh_tile_binding
+        from merlin.compiler.selection.mesh import _mesh_tile_binding
 
         binding = _mesh_tile_binding(device, operand_dtype, accum_dtype, numeric_policy=numeric_policy)
 
@@ -1161,40 +1164,28 @@ def build_device_objects(
             yield sym, provenance, want, stem, ifc
 
     def emit_interface(job):
-        started = time.monotonic()
+        from merlin.compiler.lower.regions import lower_region
+
         sym, _provenance, _want, _stem, ifc = job
-        receipt_sha256 = None
         # Model builds must honor the same checked command-buffer
         # acceptance as capsule builds. A successful artifact process
         # can still accompany an explicit refusal or a fence-only stub.
         lowering = work / f"{sym}.lowering"
-        target_options = {}
-        if target_selection is not None:
-            if freeze_target(selected_target, device) != target_selection:
-                raise ValueError("target configuration context changed during build")
-            target_options[target_kind] = selected_target
-        object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
-        _, artifact = CC.lower_interface(
+
+        def check_inputs():
+            object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
+
+        return lower_region(
             pkg,
             ifc,
             lowering,
-            contract=None,
             timeout=timeout,
-            **target_options,
+            check_inputs=check_inputs,
+            target_kind=target_kind if target_selection is not None else None,
+            target=selected_target,
+            target_is_current=lambda: freeze_target(selected_target, device) == target_selection,
+            revalidate_target=revalidate_target,
         )
-        object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
-        if target_selection is not None and (freeze_target(selected_target, device) != target_selection):
-            raise ValueError("target configuration context changed during package lowering")
-        if target_selection is not None:
-            receipt_sha256 = hashlib.sha256((lowering / (target_kind + ".json")).read_bytes()).hexdigest()
-            revalidate_target(
-                pkg,
-                lowering,
-                selected_target,
-                expected_receipt_sha256=receipt_sha256,
-            )
-            object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
-        return artifact, receipt_sha256, time.monotonic() - started
 
     # A selected target transformation has its own callback/lifetime contract;
     # package-entrypoint concurrency alone cannot authorize sharing that owner.

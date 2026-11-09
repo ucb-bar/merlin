@@ -277,28 +277,29 @@ def test_explicit_native_selection_refuses_bad_rosters(tmp_path, defect):
 
 def test_versions_and_assisted_extra_come_from_projects(tmp_path):
     (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname="custom-core"\nversion="9.8.7"\n[project.optional-dependencies]\nxdsl=["xdsl>=1"]\n'
+        '[project]\nname="custom-core"\nversion="9.8.7"\n[project.optional-dependencies]\nxdsl=["xdsl>=1"]\nexperiments=["approved-agent==1"]\nanalysis=["approved-analysis==2"]\n'
     )
-    extension = tmp_path / "packages/merlin-experiments"
-    extension.mkdir(parents=True)
-    (extension / "pyproject.toml").write_text('[project]\nname="custom-extension"\nversion="6.5.4"\n')
-    projects = Q.projects(tmp_path, ("xdsl",))
-    assert [p["version"] for p in projects] == ["9.8.7", "6.5.4"]
-    assert projects[0]["extras"] == ["xdsl"] and projects[1]["extras"] == []
+    projects = Q.projects(tmp_path, ("xdsl", "experiments"), include_analysis=True)
+    assert projects == [{
+        "name": "custom-core", "version": "9.8.7", "path": str(tmp_path),
+        "extras": ["xdsl", "experiments", "analysis"],
+    }]
     with pytest.raises(Q.QualificationFailed, match="does not declare"):
         Q.projects(tmp_path, ("undeclared",))
 
 
 def test_analysis_project_is_explicit_and_uses_declared_distribution(tmp_path):
-    (tmp_path / "pyproject.toml").write_text('[project]\nname="core"\nversion="1"\n')
-    analysis = tmp_path / "packages/merlin-analysis"
-    analysis.mkdir(parents=True)
-    (analysis / "pyproject.toml").write_text('[project]\nname="analysis"\nversion="2"\n')
-    assert [row["name"] for row in Q.projects(tmp_path, (), include_experiments=False)] == ["core"]
-    assert [row["name"] for row in Q.projects(tmp_path, (), include_experiments=False, include_analysis=True)] == [
-        "core",
-        "analysis",
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname="core"\nversion="1"\n[project.optional-dependencies]\nanalysis=["approved-analysis==2"]\n'
+    )
+    assert Q.projects(tmp_path, (), include_experiments=False) == [
+        {"name": "core", "version": "1", "path": str(tmp_path), "extras": []}
     ]
+    assert Q.projects(tmp_path, (), include_experiments=False, include_analysis=True) == [
+        {"name": "core", "version": "1", "path": str(tmp_path), "extras": ["analysis"]}
+    ]
+    with pytest.raises(Q.QualificationFailed, match="does not declare extra experiments"):
+        Q.projects(tmp_path, ())
     suite = Q.SUITES["capture-contraction-formats"]
     assert suite["include_analysis"] is True and suite["include_experiments"] is False
     assert suite["tests"] == (
@@ -383,17 +384,58 @@ def test_probe_compares_actual_installed_bytes(probe, monkeypatch, tmp_path):
         archive.writestr("payload.py", b"original")
     monkeypatch.setattr(probe.sysconfig, "get_path", lambda _: str(site))
     monkeypatch.setattr(probe, "sys", SimpleNamespace(modules={}))
+
+    def absent(name):
+        raise probe.PackageNotFoundError(name)
+
+    monkeypatch.setattr(probe, "distribution", absent)
     imported = []
     monkeypatch.setattr(probe.importlib, "import_module", imported.append)
     monkeypatch.setattr(probe.importlib.util, "find_spec", lambda _: object())
     assert probe.probe([wheel], modules=("fixture.module",), required_modules=("fixture",))["verified_payloads"] == 1
     assert imported == ["fixture.module"]
+    with pytest.raises(AssertionError, match="one main distribution"):
+        probe.probe([wheel, wheel])
+    monkeypatch.setattr(probe, "distribution", lambda name: object())
+    with pytest.raises(AssertionError, match="obsolete distribution remains"):
+        probe.probe([wheel])
+    monkeypatch.setattr(probe, "distribution", absent)
     monkeypatch.setattr(probe.importlib.util, "find_spec", lambda _: None)
     with pytest.raises(AssertionError, match="suite requires module: fixture"):
         probe.probe([wheel], required_modules=("fixture",))
     leaf.write_bytes(b"changed")
     with pytest.raises(AssertionError, match="payload.py"):
         probe.probe([wheel])
+
+
+@pytest.mark.parametrize("missing", ["aet", "jsonschema", "aet.internal", "other_dependency"])
+def test_selected_workflow_optional_dependency_guidance_is_precise(monkeypatch, capsys, missing):
+    from merlin import cli
+
+    observed = []
+    failure = ModuleNotFoundError("explicit missing dependency fixture", name=missing)
+    original_import = cli.importlib.import_module
+
+    def unavailable(name, *args, **kwargs):
+        if name == "merlin_experiments.cli":
+            observed.append(name)
+            raise failure
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(cli.importlib, "import_module", unavailable)
+    if missing in {"aet", "jsonschema"}:
+        with pytest.raises(SystemExit) as exc:
+            cli.main(["experiment", "--help"])
+        assert exc.value.code == 2
+        message = capsys.readouterr().err
+        assert "merlin[experiments]" in message and missing in message
+        assert "optional distribution" not in message and "packages/" not in message
+    else:
+        with pytest.raises(ModuleNotFoundError) as exc:
+            cli.main(["experiment", "--help"])
+        assert exc.value is failure
+        assert capsys.readouterr().err == ""
+    assert observed == ["merlin_experiments.cli"]
 
 
 @pytest.mark.parametrize("missing_extra", [False, True])
@@ -446,12 +488,11 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
         elif label == "source-archive":
             core = '[project]\nname="merlin"\nversion="7.8.9"\n'
             if not missing_extra:
-                core += '[project.optional-dependencies]\nxdsl=["xdsl>=0.68"]\ntargetgen=["jsonschema>=4"]\n'
-            files = {
-                "pyproject.toml": core,
-                "packages/merlin-experiments/pyproject.toml": '[project]\nname="merlin-experiments"\nversion="9.8.7"\n',
-                "packages/merlin-analysis/pyproject.toml": '[project]\nname="merlin-analysis"\nversion="2.3.4"\n',
-            }
+                core += (
+                    '[project.optional-dependencies]\nxdsl=["xdsl>=0.68"]\ntargetgen=["jsonschema>=4"]\n'
+                    'experiments=["approved-agent==1"]\nanalysis=["approved-analysis==2"]\n'
+                )
+            files = {"pyproject.toml": core}
             for name in (*Q.SUITES[suite]["tests"], *Q.SUITES[suite].get("support_files", ())):
                 tests_root = Q.SUITES[suite].get("tests_root", "packages/merlin-experiments/tests")
                 files[tests_root + "/" + name] = "# committed synthetic test\n"
@@ -549,15 +590,22 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
     )
     report = json.loads((output / "report.json").read_text())
     assert report["requested_ref"] == "named-ref" and report["ref"] == "b" * 40
-    if missing_extra and Q.SUITES[suite]["core_extras"]:
+    expected_extras = list(dict.fromkeys((
+        *Q.SUITES[suite]["core_extras"],
+        *(("experiments",) if Q.SUITES[suite].get("include_experiments", True) else ()),
+        *(("analysis",) if Q.SUITES[suite].get("include_analysis", False) else ()),
+    )))
+    if missing_extra and expected_extras:
         assert not success and report["status"] == "failed"
         assert not any(name.endswith("-sdist") for name, _ in calls)
         return
     assert success
-    versions = ["7.8.9", "9.8.7"] if Q.SUITES[suite].get("include_experiments", True) else ["7.8.9"]
-    if Q.SUITES[suite].get("include_analysis"):
-        versions.append("2.3.4")
-    assert [p["version"] for p in report["projects"]] == versions
+    assert [p["version"] for p in report["projects"]] == ["7.8.9"]
+    assert report["projects"][0]["extras"] == expected_extras
+    assert report["workflow_dependencies"] == {
+        "experiments": Q.SUITES[suite].get("include_experiments", True),
+        "analysis": Q.SUITES[suite].get("include_analysis", False),
+    }
     labels = [name for name, _ in calls]
     assert (
         labels.index("install")
@@ -567,8 +615,8 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
     )
     install = dict(calls)["install"]
     assert "pytest" not in install
-    extra_suffix = ".whl[" + ",".join(Q.SUITES[suite]["core_extras"]) + "]"
-    assert any(item.endswith(extra_suffix) for item in install) == bool(Q.SUITES[suite]["core_extras"])
+    extra_suffix = ".whl[" + ",".join(expected_extras) + "]"
+    assert any(item.endswith(extra_suffix) for item in install) == bool(expected_extras)
     assert report["selected_tests"] == list(Q.SUITES[suite]["tests"])
     assert report["support_files"] == list(Q.SUITES[suite].get("support_files", ()))
     assert report["probe_modules"] == list(Q.SUITES[suite]["probe_modules"])
@@ -579,6 +627,15 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
     assert report["tests_root"] == Q.SUITES[suite].get("tests_root", "packages/merlin-experiments/tests")
     archive_command = dict(calls)["source-archive"]
     assert archive_command[:4] == ["git", "archive", "--format=tar", "b" * 40]
+    assert "src" in archive_command
+    assert "build_tools/extension_setup.py" not in archive_command
+    assert not any(
+        member.startswith("packages/") and member.endswith(("/src", "/setup.py", "/pyproject.toml"))
+        for member in archive_command[4:]
+    )
+    assert labels.count("merlin-sdist") == labels.count("merlin-wheel") == 1
+    wheel_command = dict(calls)["merlin-wheel"]
+    assert Path(wheel_command[-1]).suffixes == [".tar", ".gz"]
     for name in (*Q.SUITES[suite]["tests"], *Q.SUITES[suite].get("support_files", ())):
         member = (Path(report["tests_root"]) / name).as_posix()
         assert member in archive_command
@@ -610,7 +667,7 @@ def test_pipeline_uses_archived_versions_extra_and_probe_before_pytest(
     assert report["test_process_policy"] == ("deny_processes_and_listeners" if guarded else "suite_defined")
     assert test_command[test_command.index("--basetemp") + 1] == str(external / "test-tmp")
     if not Q.SUITES[suite].get("include_experiments", True):
-        assert len(report["projects"]) == (2 if Q.SUITES[suite].get("include_analysis") else 1)
+        assert len(report["projects"]) == 1
         assert not any("experiments" in label for label in labels)
         assert not any(module.startswith("merlin_experiments") for module in report["probe_modules"])
     assert "--source-root" in dict(calls)["layout"]

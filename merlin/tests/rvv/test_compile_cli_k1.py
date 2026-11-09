@@ -8,7 +8,7 @@ import yaml
 
 from merlin import compile_cli
 from merlin.mining import k1
-from merlin.mining import registry
+from merlin.compiler.backend import host
 
 
 def test_compile_rvv_forwards_strict_backend_harts_and_surfaces_metrics(tmp_path, monkeypatch):
@@ -16,7 +16,7 @@ def test_compile_rvv_forwards_strict_backend_harts_and_surfaces_metrics(tmp_path
     bundle.mkdir()
     (bundle / "model.mlir").write_text("module {}\n")
     monkeypatch.setattr(compile_cli, "_ensure_bundle", lambda *_a, **_kw: bundle)
-    monkeypatch.setattr(registry, "load_rvv_package", lambda _path: SimpleNamespace(
+    monkeypatch.setattr(host, "load_host_package", lambda _path: SimpleNamespace(
         is_int8=False, run_id="test", schedule_text="", cflags=[], compiler_features=()))
     monkeypatch.setattr(k1, "available", lambda: True)
     seen = {}
@@ -71,7 +71,7 @@ def test_compile_rvv_separates_session_repeats_from_observations(tmp_path, monke
     bundle = tmp_path / "bundle"
     bundle.mkdir()
     (bundle / "model.mlir").write_text("module {}\n")
-    monkeypatch.setattr(registry, "load_rvv_package", lambda _path: SimpleNamespace(
+    monkeypatch.setattr(host, "load_host_package", lambda _path: SimpleNamespace(
         is_int8=False, run_id="test", schedule_text="", cflags=[], compiler_features=()))
     monkeypatch.setattr(k1, "available", lambda: True)
     seen = {}
@@ -113,7 +113,7 @@ def test_multi_program_verify_uses_same_precision_trajectory_not_root_golden(
     bundle = tmp_path / "session"
     bundle.mkdir()
     (bundle / "session_contract.yaml").write_text(yaml.safe_dump({"version": 2}))
-    monkeypatch.setattr(registry, "load_rvv_package", lambda _path: SimpleNamespace(
+    monkeypatch.setattr(host, "load_host_package", lambda _path: SimpleNamespace(
         is_int8=False, run_id="test", schedule_text="", cflags=[], compiler_features=()))
     monkeypatch.setattr(k1, "available", lambda: True)
     monkeypatch.setattr(k1, "run_on_k1", lambda *_args, **_kwargs: {
@@ -148,7 +148,7 @@ def test_forged_session_version_is_not_reported_as_semantic(tmp_path, monkeypatc
     bundle.mkdir()
     (bundle / "model.mlir").write_text("module {}\n")
     (bundle / "session_contract.yaml").write_text(yaml.safe_dump({"version": 999}))
-    monkeypatch.setattr(registry, "load_rvv_package", lambda _path: SimpleNamespace(
+    monkeypatch.setattr(host, "load_host_package", lambda _path: SimpleNamespace(
         is_int8=False, run_id="test", schedule_text="", cflags=[], compiler_features=()))
     monkeypatch.setattr(k1, "available", lambda: True)
     monkeypatch.setattr(k1, "run_on_k1", lambda *_args, **_kwargs: {

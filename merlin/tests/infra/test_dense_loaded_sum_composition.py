@@ -8,18 +8,24 @@ sys.path.insert(0,str(repo_root()/'merlin/tests/ir'))
 from test_quantized_sum_source import fixture as source_fixture
 from test_dense_retained_reduction import inputs
 from test_compact_dense import ADAPTER
-from merlin.compile.scheduling.block_schedule import Store
-from merlin.compile.scheduling.dense_contracts import DenseTiledIntegerReadout,TiledIntegerStore
-from merlin.compile.scheduling.schedule_ir import make_dense_schedule_plan
-from merlin.compile.scheduling.dense_ready_readout import schedule_dense_pipeline
-from merlin.compile.scheduling.dense_loaded_sum_composition import (
-    CheckedLoadedSumView, QuantizedSumCompositionAdmission,compose_dense_loaded_sum,_compose_kernel)
-from merlin.compile.scheduling.compact_loaded_sum import LoadedSumContract,LoadedSumLayout,LoadedSumEffect
-from merlin.compile.scheduling.loaded_sum_epochs import LoadedSumEpochLaw,plan_loaded_sum_epochs
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout
+from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.dense_ready_readout import schedule_dense_pipeline
+from merlin.compiler.schedule.dense_loaded_sum_composition import CheckedLoadedSumView
+from merlin.compiler.schedule.dense_loaded_sum_composition import QuantizedSumCompositionAdmission
+from merlin.compiler.schedule.dense_loaded_sum_composition import compose_dense_loaded_sum
+from merlin.compiler.schedule.dense_loaded_sum_composition import _compose_kernel
+from merlin.compiler.schedule.compact_loaded_sum import LoadedSumContract
+from merlin.compiler.schedule.compact_loaded_sum import LoadedSumLayout
+from merlin.compiler.schedule.compact_loaded_sum import LoadedSumEffect
+from merlin.compiler.schedule.loaded_sum_epochs import LoadedSumEpochLaw
+from merlin.compiler.schedule.loaded_sum_epochs import plan_loaded_sum_epochs
 from merlin.llvmlower.quantized_affine_pair import prove_ordered_loaded_sum
 from merlin.llvmlower.quantized_sum_source import plan_quantized_sum_source
 from merlin.sched.ir import Call,Const,Kernel,Loop,TensorArg,Var,select,instances,evaluate
-from merlin.compile.scheduling.compact_dense import _digest
+from merlin.compiler.schedule.compact_dense import _digest
 
 
 def selected(rows=7,columns=16,*,prefetch=False):
@@ -38,8 +44,8 @@ def selected(rows=7,columns=16,*,prefetch=False):
     adapter=replace(ADAPTER,encode=encode,project=project)
     transforms=()
     if prefetch:
-        from merlin.compile.scheduling.compact_dense import emit_compact_dense
-        from merlin.compile.scheduling.dense_panel_pipeline import dense_retained_operand_hoists
+        from merlin.compiler.schedule.compact_dense import emit_compact_dense
+        from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_operand_hoists
         admission=replace(admission,max_issued_readouts=b.m*b.n,pending_readouts=2,
             readout_configuration='ordered_snapshot_before_store_issue')
         raw=emit_compact_dense(p,b,s,adapter,name='q1',dtypes=('i8','i8','i32'),
@@ -52,8 +58,9 @@ def selected(rows=7,columns=16,*,prefetch=False):
         source_identity='a'*64,external_buffers_disjoint=True,schedule_plan=plan,pipeline_admission=admission,
         batch_readouts=False,output_readout=readout,readout_qualification_identity='TEST-original-Q1')
     if prefetch:
-        from merlin.compile.scheduling.dense_panel_pipeline import DenseReadoutConfigurationSnapshot,DenseReadyReadoutAdmission
-        from merlin.compile.scheduling.dense_ready_readout import schedule_dense_ready_readout
+        from merlin.compiler.schedule.dense_panel_pipeline import DenseReadoutConfigurationSnapshot
+        from merlin.compiler.schedule.dense_panel_pipeline import DenseReadyReadoutAdmission
+        from merlin.compiler.schedule.dense_ready_readout import schedule_dense_ready_readout
         ready=DenseReadyReadoutAdmission(adapter.configuration_identity,adapter.numerical_policy_identity,
             'TEST-original-Q1-producer-RAW','TEST-original-Q1-ordered-store',b.m*b.n,2,
             configuration_snapshot=DenseReadoutConfigurationSnapshot(adapter.configuration_identity,
@@ -179,7 +186,7 @@ def test_peeled_group_cannot_read_unwritten_tail_workspace():
 
 
 def test_eliminated_single_column_group_has_an_exact_zero_origin_only():
-    from merlin.compile.scheduling.dense_panel_pipeline import _remap
+    from merlin.compiler.schedule.dense_panel_pipeline import _remap
 
     result,project=selected(9,8)
     source=result.producer.kernel

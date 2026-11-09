@@ -27,7 +27,8 @@ detected STRUCTURALLY over the ``ast`` (a text search cannot tell an ``except: p
 in a docstring, and this repo does not use regex).
 
 Known debt lives in ``silent_default_ratchet.txt`` beside this file, one ``<path>::<scope>::<shape>::
-<subject>`` key per line (a repeated subject in one scope takes a ``~2`` ordinal) -- keyed by the SUBJECT, not the line number, so the ledger survives an edit
+<subject>`` key per line (a repeated subject in one scope takes a ``~2`` ordinal) -- keyed by the SUBJECT,
+not the line number, so the ledger survives an edit
 above it. It may only shrink (``check_ratchets_shrink.py`` holds every ``*_ratchet.txt``), and an
 entry whose finding is gone fails this gate until it is removed, so the ledger cannot rot into an
 allowlist.
@@ -66,10 +67,10 @@ EVIDENCE_ROOTS: tuple[str, ...] = (
     # Phase 1: the controller modules that PRODUCE a verdict -- grading, certification, promotion,
     # freeze, the audit and the conformance check -- not the providers, brokers or task staging that
     # merely carry one.
-    "packages/merlin-experiments/src/merlin_experiments/phase1/feedback",
-    "packages/merlin-experiments/src/merlin_experiments/phase1/audit.py",
-    "packages/merlin-experiments/src/merlin_experiments/phase1/conformance.py",
-    "packages/merlin-experiments/src/merlin_experiments/phase1/tools/await_verdict.py",
+    "src/merlin_experiments/phase1/feedback",
+    "src/merlin_experiments/phase1/audit.py",
+    "src/merlin_experiments/phase1/conformance.py",
+    "src/merlin_experiments/phase1/tools/await_verdict.py",
     # The retained native capsule-bench drivers that still grade or audit a run.
     "merlin/experiments/capsule_bench/harness/conformance.py",
     "merlin/experiments/capsule_bench/harness/freeze_run.py",
@@ -83,7 +84,7 @@ EVIDENCE_ROOTS: tuple[str, ...] = (
     "merlin/experiments/capsule_bench/harness/verify_no_cheat.py",
     # Phase 2: what chains a candidate to a certified whole-model number -- the measured mode's gates
     # and the champion export that records it.
-    "packages/merlin-experiments/src/merlin_experiments/phase2/whole_model_measured/gates.py",
+    "src/merlin_experiments/phase2/whole_model_measured/gates.py",
     "src/merlin/targetgen/champions.py",
 )
 
@@ -354,6 +355,8 @@ def scan() -> list[Finding]:
     found: list[Finding] = []
     for path in _scanned_files():
         relative = str(path.relative_to(ROOT))
+        if relative.startswith("src/merlin_experiments/"):
+            relative = "packages/merlin-experiments/" + relative
         found.extend(findings_for_source(path.read_text(encoding="utf-8", errors="replace"), relative))
     return found
 

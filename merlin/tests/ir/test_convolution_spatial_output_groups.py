@@ -11,18 +11,18 @@ from test_convolution_readout_epochs import readout_law
 from test_convolution_rhs_residency import rhs_law
 from test_counted_convolution import Integers
 
-from merlin.compile.scheduling.convolution_exploration import (
-    ConvolutionExplorationSource,
-    ConvolutionRhsPhaseLaw,
-    ConvolutionScheduleChoice,
-    emit_convolution_schedule,
-    plan_convolution_rhs_phases,
-    plan_convolution_rhs_residency,
-    plan_convolution_schedule,
-)
-from merlin.compile.scheduling.convolution_output_groups import plan_rolling_convolution_output_group
-from merlin.compile.scheduling.dense_array_retention import DenseArrayRetentionAdmission
-from merlin.compile.scheduling.window_transfer import ConvolutionResidentInputRows, CountedConvolutionPlan, Window2D
+from merlin.compiler.schedule.convolution_exploration import ConvolutionExplorationSource
+from merlin.compiler.schedule.convolution_exploration import ConvolutionRhsPhaseLaw
+from merlin.compiler.schedule.convolution_exploration import ConvolutionScheduleChoice
+from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_rhs_phases
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_rhs_residency
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_schedule
+from merlin.compiler.schedule.convolution_output_groups import plan_rolling_convolution_output_group
+from merlin.compiler.schedule.dense_array_retention import DenseArrayRetentionAdmission
+from merlin.compiler.schedule.window_transfer import ConvolutionResidentInputRows
+from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
+from merlin.compiler.schedule.window_transfer import Window2D
 
 
 def selected(shape=(1, 5, 11, 5), padding=(1, 1, 1, 1), *, bias=True, slots=3, max_output_rows=1,
@@ -194,7 +194,7 @@ def run(s, rhs, inp, group, array, readout, *, pending_limit=0, ready_readout=Fa
 @pytest.mark.parametrize('ready_readout',[False,True])
 @pytest.mark.parametrize('bias',[False,True])
 def test_direct_ring_fragments_pack_acc_and_keep_original_products(pending_limit,ready_readout,bias):
-    from merlin.compile.scheduling.convolution_output_groups import plan_rolling_convolution_row_fragments
+    from merlin.compiler.schedule.convolution_output_groups import plan_rolling_convolution_row_fragments
     s,rhs,inp,ordinary,array,readout=selected(shape=(2,7,11,5),slots=7,max_output_rows=3,bias=bias)
     packed=plan_rolling_convolution_row_fragments(s,rhs,inp,max_output_rows=3)
     assert packed.row_blocks==9 and ordinary.row_blocks==9
@@ -212,8 +212,8 @@ def test_direct_ring_fragments_pack_acc_and_keep_original_products(pending_limit
 
 
 def test_direct_ring_fragment_choice_compacts_without_extra_compute_for_aligned_bands():
-    from merlin.compile.scheduling.convolution_output_groups import (
-        plan_rolling_convolution_row_fragments,plan_rolling_convolution_output_group)
+    from merlin.compiler.schedule.convolution_output_groups import plan_rolling_convolution_row_fragments
+    from merlin.compiler.schedule.convolution_output_groups import plan_rolling_convolution_output_group
     s,rhs,inp,ordinary,array,readout=selected(shape=(1,4,14,5),slots=6,max_output_rows=4)
     source=replace(s.source,plan=replace(s.source.plan,accumulator_rows=256))
     s=plan_convolution_schedule(source,s.choice,retention_law=s.retention_law,
@@ -232,7 +232,7 @@ def test_direct_ring_fragment_choice_compacts_without_extra_compute_for_aligned_
 
 @pytest.mark.parametrize('mutation',['source','gather','capacity'])
 def test_direct_ring_fragments_reject_changed_source_or_storage_before_effects(mutation):
-    from merlin.compile.scheduling.convolution_output_groups import plan_rolling_convolution_row_fragments
+    from merlin.compiler.schedule.convolution_output_groups import plan_rolling_convolution_row_fragments
     s,rhs,inp,ordinary,array,readout=selected(shape=(2,7,11,5),slots=7,max_output_rows=3)
     packed=plan_rolling_convolution_row_fragments(s,rhs,inp,max_output_rows=3)
     if mutation=='source':packed=replace(packed,source_identity='0'*64)
@@ -386,7 +386,7 @@ def test_multirow_uses_actual_counted_cfg_and_real_completion(phases, ready_read
     from xdsl.dialects import llvm
     from xdsl.dialects.builtin import ModuleOp
 
-    from merlin.compile.scheduling.llvm_program import FnBuilderControlAdapter
+    from merlin.compiler.schedule.llvm_program import FnBuilderControlAdapter
     from merlin.llvmlower.host_builder import FnBuilder
 
     s, rhs, inp, group, array, readout = phased() if phases else selected(slots=4, max_output_rows=2)
@@ -607,7 +607,7 @@ def test_grouped_transport_preserves_all_source_work_and_removes_empty_row_waits
 @pytest.mark.parametrize('pending_limit',[0,2])
 @pytest.mark.parametrize('width',[11,21])
 def test_invocation_input_prefetch_uses_actual_original_k_run_continuations(pending_limit,width):
-    from merlin.compile.scheduling.rolling_lookahead import RollingLookaheadAdmission
+    from merlin.compiler.schedule.rolling_lookahead import RollingLookaheadAdmission
     args=selected(shape=(2,9,width,5),slots=6,max_output_rows=2)
     law=RollingLookaheadAdmission('neutral','TEST-ONLY-complete-source-effects',True,True,True,True,True,True)
     trace=[]
@@ -618,7 +618,7 @@ def test_invocation_input_prefetch_uses_actual_original_k_run_continuations(pend
 
 
 def test_invocation_input_prefetch_refuses_missing_ring_horizon_before_rhs_preparation():
-    from merlin.compile.scheduling.rolling_lookahead import RollingLookaheadAdmission
+    from merlin.compiler.schedule.rolling_lookahead import RollingLookaheadAdmission
     s,rhs,inp,group,array,readout=selected(shape=(1,9,11,5),slots=4,max_output_rows=2)
     law=RollingLookaheadAdmission('neutral','TEST-ONLY-complete-source-effects',True,True,True,True,True,True)
     trace=[]
@@ -630,7 +630,7 @@ def test_invocation_input_prefetch_refuses_missing_ring_horizon_before_rhs_prepa
 @pytest.mark.parametrize('pending_limit',[0,2])
 @pytest.mark.parametrize('image_windows',[1,2])
 def test_invocation_batch_frontier_reuses_only_source_dead_input_rows(pending_limit,image_windows):
-    from merlin.compile.scheduling.rolling_lookahead import RollingBatchFrontierAdmission
+    from merlin.compiler.schedule.rolling_lookahead import RollingBatchFrontierAdmission
     args=list(selected(shape=(2,7,9,5),padding=(0,0,0,0),slots=7,max_output_rows=5))
     if image_windows>1:args[2]=replace(args[2],slots=14,image_windows=image_windows)
     assert args[3].output_rows==5

@@ -6,7 +6,7 @@ import pytest
 from test_source_pointwise_lowering import fixture as pointwise_selection
 from xdsl.dialects import func
 
-from merlin.compile.scheduling.multioutput_fusion_check import MultiOutputCompositionLaw
+from merlin.compiler.schedule.multioutput_fusion_check import MultiOutputCompositionLaw
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.llvmlower.source_multioutput import SourceMultiOutputLowering, discover_multioutput

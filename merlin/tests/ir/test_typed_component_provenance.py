@@ -11,7 +11,7 @@ from test_sibling_components import effects
 from test_sibling_quantized_readout import shared_readout_source
 from xdsl.dialects.builtin import ArrayAttr, StringAttr
 
-from merlin.compile.scheduling.dense_source import read_zero_seeded_integer_matmul
+from merlin.compiler.schedule.dense_source import read_zero_seeded_integer_matmul
 from merlin.llvmlower import device_shim
 from merlin.llvmlower.device_build import DeviceRouting
 from merlin.llvmlower.sibling_component_route import build_components

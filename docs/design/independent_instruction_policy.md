@@ -7,10 +7,10 @@ last_verified: 2026-10-08
 related: [fresh_compiler_origin, component_compiler_convergence]
 code_refs:
   - src/merlin/targetgen/contract/elf_admission.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_instruction_policy.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_instruction_audit.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_runtime_instruction_control.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_runtime_fixture.py
+  - src/merlin_experiments/phase2/component_instruction_policy.py
+  - src/merlin_experiments/phase2/component_instruction_audit.py
+  - src/merlin_experiments/phase2/component_runtime_instruction_control.py
+  - src/merlin_experiments/phase2/component_runtime_fixture.py
   - packages/merlin-experiments/tests/test_component_instruction_audit.py
 ---
 

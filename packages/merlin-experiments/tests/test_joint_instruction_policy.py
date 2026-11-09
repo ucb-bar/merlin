@@ -107,18 +107,32 @@ def test_no_catalogue_mechanism_or_hint_suggests_a_hardware_loop():
 
 @pytest.mark.parametrize("version", [20, 21, 22])
 def test_no_exported_scheduling_capability_is_a_hardware_loop(version):
-    from merlin.compile.scheduling.api_catalog import scheduling_capabilities
+    from merlin.compiler.schedule.api_catalog import scheduling_capabilities
 
     assert _mentions_hardware_loop(json.dumps(scheduling_capabilities(version))) == []
 
 
-def test_no_library_pass_in_optimization_next_suggests_a_hardware_loop(tmp_path):
+@pytest.mark.parametrize("workload_role", [None, "diagnostic_control", "connected"])
+def test_no_library_pass_in_optimization_next_suggests_a_hardware_loop(tmp_path, workload_role):
     (tmp_path / "OPTIMIZATION_SUGGESTIONS.json").write_text(json.dumps(FIXTURE["suggestions"]))
     (tmp_path / "submission").mkdir()
     (tmp_path / ".agents" / "skills" / "ab-library-pass").mkdir(parents=True)
+    # Advisories require explicit public search roles; result labels cannot supply them.
+    if workload_role is not None:
+        members = {
+            row["capsule"]: {"workload_role": workload_role}
+            for key, rows in (("scalability", "cases"), ("core_gsim", "per_capsule"))
+            for row in FIXTURE[key][rows]
+        }
+        (tmp_path / "PUBLIC_CAPABILITIES.json").write_text(json.dumps({
+            "schema": "merlin.public_capability_inventory.v1", "members": members,
+        }))
     written = []
     for key, rows in (("scalability", "cases"), ("core_gsim", "per_capsule")):
         document = copy.deepcopy(FIXTURE[key])
         PB.attach(document, document[rows], workspace=tmp_path)
         written += [row.get("optimization_next") for row in document[rows] if row.get("optimization_next")]
-    assert written and _mentions_hardware_loop(json.dumps(written)) == []
+    if workload_role == "connected":
+        assert written and _mentions_hardware_loop(json.dumps(written)) == []
+    else:
+        assert written == []

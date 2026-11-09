@@ -7,7 +7,7 @@ import struct
 
 import pytest
 
-from merlin.compile.scheduling.tensor_storage import column_panel_storage
+from merlin.compiler.schedule.tensor_storage import column_panel_storage
 from merlin.frontends.argument_identity import replay_argument_identity
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.perf.storage_encoding import GroupedAxesStorage

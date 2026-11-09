@@ -7,7 +7,13 @@ hash-bound selection and check saved arrays with the common numerical code.
 Use [`experiment.yaml`](experiment.yaml) to agree on workload shapes and inputs,
 and [`numerics/models.yaml`](../numerics/models.yaml) as the single numerical
 policy: common `numerics` semantics and each model's `judged.admission` thresholds.
-The protocol links that policy instead of copying its rules. It records
+The protocol links that policy instead of copying its rules. Its explicit
+geometry-only selection resolves the protocol's 32-token chain over the
+historical 128-token defaults without changing programs or numerical rules.
+The [export command](baselines.md#freeze-the-comparison-selection) writes the
+resolved models file and source hashes into the requested artifact directory;
+old seals and calibration/reference records do not qualify that new selection.
+Host-math overrides remain separate explicit selections. It records
 the full-model profile selected on 2026-10-19. The exact, data-only
 [`recipes/`](recipes/) are copied byte-for-byte from that selection. They contain
 no kernels, checkpoints, tensor values or reference outputs.

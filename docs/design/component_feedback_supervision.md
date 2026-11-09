@@ -6,11 +6,11 @@ owner: experiments
 last_verified: 2026-10-08
 related: [component_independent_feedback, component_phase2_workflow]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase2/feedback_protocol.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/feedback_guardian.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/supervised_feedback.py
-  - packages/merlin-experiments/src/merlin_experiments/execution/owned_children.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_workflow.py
+  - src/merlin_experiments/phase2/feedback_protocol.py
+  - src/merlin_experiments/phase2/feedback_guardian.py
+  - src/merlin_experiments/phase2/supervised_feedback.py
+  - src/merlin_experiments/execution/owned_children.py
+  - src/merlin_experiments/phase2/component_workflow.py
 ---
 
 # Component feedback transport and supervision

@@ -97,11 +97,11 @@ class Toolchain:
 
 def toolchain_for(host_package: str | Path, *, features: frozenset[str] = frozenset()) -> Toolchain:
     """The compilers and flags a whole-model image for ``host_package`` is built with."""
-    from merlin.mining import registry
+    from merlin.compiler.backend.host import load_host_package
     from merlin.runtime.backends import spike as spike_backend
     from merlin.runtime.backends import spike_model
 
-    pkg = registry.load_rvv_package(Path(host_package))
+    pkg = load_host_package(Path(host_package))
     plan = spike_model.selected_model_compiler_plan(
         backend=pkg.backend, cflags_override=list(pkg.cflags), vlen=None, features=features
     )

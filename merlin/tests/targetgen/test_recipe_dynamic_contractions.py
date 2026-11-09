@@ -30,10 +30,10 @@ from pathlib import Path
 
 import pytest
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import module_source_path
 from merlin.targetgen import quant_recipe as QR
 
-_QUANTIZER = merlin_dir() / "python/merlin/targetgen/_recipe_quantizer.py"
+_QUANTIZER = module_source_path("merlin.targetgen._recipe_specs").with_name("_recipe_quantizer.py")
 
 
 def _recipe() -> dict:

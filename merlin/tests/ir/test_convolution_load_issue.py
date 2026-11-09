@@ -6,13 +6,11 @@ import numpy as np
 import pytest
 from test_counted_convolution import Integers
 
-from merlin.compile.scheduling.window_transfer import (
-    ConvolutionLoadIssueLaw,
-    CountedConvolutionPlan,
-    Window2D,
-    emit_convolution_load_issue_tile,
-    emit_convolution_tile,
-)
+from merlin.compiler.schedule.window_transfer import ConvolutionLoadIssueLaw
+from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
+from merlin.compiler.schedule.window_transfer import Window2D
+from merlin.compiler.schedule.window_transfer import emit_convolution_load_issue_tile
+from merlin.compiler.schedule.window_transfer import emit_convolution_tile
 
 
 def law():

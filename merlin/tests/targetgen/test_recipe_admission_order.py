@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import module_source_path
 
 
 def test_closed_sum_admission_rows_are_stable_across_hash_seeds() -> None:
@@ -17,7 +17,7 @@ def test_closed_sum_admission_rows_are_stable_across_hash_seeds() -> None:
     python = os.environ.get("MERLIN_M2M_PYTHON")
     if not python or not Path(python).is_file():
         pytest.skip("the TorchAO capture interpreter is not configured")
-    source = merlin_dir() / "python/merlin/targetgen/_recipe_quantizer.py"
+    source = module_source_path("merlin.targetgen._recipe_specs").with_name("_recipe_quantizer.py")
     script = r"""
 import importlib.util
 import json

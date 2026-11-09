@@ -10,10 +10,10 @@ from test_pointwise_source import execute as execute
 from test_pointwise_source import source_program
 from test_readout_model_fusion import _EXECUTOR, KEYS, OPS, WORD, command, params
 
-from merlin.compile.scheduling.pointwise_source import compile_source_pointwise
-from merlin.compile.scheduling.program_limits import DecodedInstruction
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
-from merlin.compile.scheduling.temporary_storage import StorageEffects
+from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
+from merlin.compiler.schedule.program_limits import DecodedInstruction
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.temporary_storage import StorageEffects
 from merlin.sched.ir import Call, Const
 from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction
 
@@ -292,7 +292,7 @@ def test_emitter_cannot_change_settings_after_source_admission(tmp_path, fusion,
 
 
 def test_configuration_source_conformance_reopens_actual_settings(tmp_path, monkeypatch):
-    from merlin.compile.scheduling import pointwise_source
+    from merlin.compiler.schedule import pointwise_source
 
     module, operation = source_program()
     options = case(tmp_path)

@@ -316,7 +316,8 @@ def test_runtime_trace_keeps_physical_provenance_across_members():
 
     import pytest
 
-    from merlin.compile.scheduling.compact_dense import DenseLoopStorage, DenseMemoryView
+    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+    from merlin.compiler.schedule.compact_dense import DenseMemoryView
     from merlin.transforms.dense_planning import DenseProblem
 
     problem = DenseProblem(2, 2, 2, 2, 2, 2, 1, 1, 4)
@@ -361,7 +362,7 @@ def original_model(directory, case):
 
     from test_selected_dense_contracts import inputs
 
-    from merlin.compile.scheduling.compact_dense import DenseLoopStorage
+    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
 
     def declare(facts, software, dense):
         # These explicit test hardware capacities cover every reviewed window;
@@ -463,7 +464,7 @@ class OriginalGroupBindings:
 
         from test_compact_dense import encode
 
-        from merlin.compile.scheduling.block_schedule import Compute
+        from merlin.compiler.schedule.blocks import Compute
         from merlin.sched.ir import Const
 
         call = encode(operation)
@@ -482,7 +483,10 @@ class OriginalGroupBindings:
 
         from test_compact_dense import encode
 
-        from merlin.compile.scheduling.block_schedule import Compute, Load, Preload, Store
+        from merlin.compiler.schedule.blocks import Compute
+        from merlin.compiler.schedule.blocks import Load
+        from merlin.compiler.schedule.blocks import Preload
+        from merlin.compiler.schedule.blocks import Store
         from merlin.sched.ir import Const, as_expr
 
         call = encode(operation)
@@ -562,7 +566,7 @@ class SharedLHSProvider:
         work.mkdir()
 
     def selection(self):
-        from merlin.compile.scheduling.compact_dense_group_check import DenseLHSReuseLaw
+        from merlin.compiler.schedule.compact_dense_group_check import DenseLHSReuseLaw
         from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
         from merlin.llvmlower.source_dense import SourceDenseLowering
         from merlin.llvmlower.source_dense_group import SourceDenseGrouping

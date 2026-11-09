@@ -47,9 +47,9 @@ def test_a_float_format_token_does_not_concatenate_its_digit_runs():
     instead of 65536. Asserted on the arithmetic, since which store a float target declares is a
     separate question (see the module docstring)."""
     assert _dtype_bits("fp8_e4m3") == 8
-    # Stand in for the store where `_operand_store_capacity_elems` looks it up: merlin.compile.capacity
+    # Stand in for the store where `_operand_store_capacity_elems` looks it up: merlin.compiler.selection.capacity
     # defines both. The name merlin.compile_cli re-exports is a separate binding the function never reads.
-    from merlin.compile import capacity
+    from merlin.compiler.selection import capacity
 
     real = capacity._operand_store_bytes
     try:
@@ -189,7 +189,7 @@ def test_an_oversized_layer_is_blocked_and_charged(monkeypatch, target, dtype, e
 def test_an_undecidable_obligation_says_so_instead_of_going_quiet(monkeypatch):
     """`holds: None` is the correct answer for a target that declares no capacity -- and a silent None
     is how a whole class of residency failures came to be reported as an unreachable oracle."""
-    from merlin.compile import capacity
+    from merlin.compiler.selection import capacity
 
     monkeypatch.setattr(capacity, "_operand_store_bytes", lambda _t: None, raising=True)
     obs = _probe(monkeypatch, "gemmini", "int8", 32, 512, 512)

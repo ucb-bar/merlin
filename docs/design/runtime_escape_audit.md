@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-10-12
 related: [normal_search_feedback, compiler_plane, compile_debugging]
-code_refs: [src/merlin/kernels/escape_audit.py, packages/merlin-mining/src/merlin/mining/escape_sweep.py, src/merlin/llvmlower/selfcopy.py, build_tools/scripts/k1_escape_cost.py]
+code_refs: [src/merlin/kernels/escape_audit.py, src/merlin/mining/escape_sweep.py, src/merlin/llvmlower/selfcopy.py, build_tools/scripts/k1_escape_cost.py]
 ---
 
 # Audit runtime helper calls in emitted compute

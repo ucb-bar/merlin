@@ -3,15 +3,16 @@ from dataclasses import replace
 import pytest
 
 from xdsl.dialects import builtin
-from merlin.compile.scheduling.program_limits import AddressWindow
-from merlin.compile.scheduling.rolling_window import RollingWindowPlan
-from merlin.compile.scheduling.rolling_lookahead import (
-    RollingLookaheadAdmission, RollingRhsFrontier, materialize_lookahead_rolling_window,
-    verify_lookahead_rolling_window, emit_lookahead_rolling_window,
-)
-from merlin.compile.scheduling.window_transfer import Window2D
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.rolling_window import RollingWindowPlan
+from merlin.compiler.schedule.rolling_lookahead import RollingLookaheadAdmission
+from merlin.compiler.schedule.rolling_lookahead import RollingRhsFrontier
+from merlin.compiler.schedule.rolling_lookahead import materialize_lookahead_rolling_window
+from merlin.compiler.schedule.rolling_lookahead import verify_lookahead_rolling_window
+from merlin.compiler.schedule.rolling_lookahead import emit_lookahead_rolling_window
+from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.xdsl_dialects.rolling_window import StageRowOp, StageRhsOp, CompleteOp, AdvanceConsumerOp
-from merlin.compile.scheduling.convolution_output_groups import ConvolutionGroupContinuation
+from merlin.compiler.schedule.convolution_output_groups import ConvolutionGroupContinuation
 
 
 class IntegerBuilder:
@@ -176,7 +177,8 @@ def test_rhs_frontier_refuses_incomplete_source_runs_and_growing_next_span():
 @pytest.mark.parametrize('image_windows',[1,2])
 def test_batch_frontier_stages_each_original_row_after_its_final_source_read(
         shape,kernel,stride,padding,dilation,image_windows):
-    from merlin.compile.scheduling.rolling_lookahead import RollingBatchFrontier, RollingBatchFrontierAdmission
+    from merlin.compiler.schedule.rolling_lookahead import RollingBatchFrontier
+    from merlin.compiler.schedule.rolling_lookahead import RollingBatchFrontierAdmission
     window=Window2D(shape,kernel,stride,dilation,padding)
     oh,ow=window.output_spatial
     slots=(kernel[0]-1)*dilation[0]+1+(oh-1)*stride[0]
@@ -229,7 +231,7 @@ def test_batch_frontier_stages_each_original_row_after_its_final_source_read(
 
 
 def test_batch_frontier_refuses_partial_source_and_changed_actual_row_write():
-    from merlin.compile.scheduling.rolling_lookahead import RollingBatchFrontier
+    from merlin.compiler.schedule.rolling_lookahead import RollingBatchFrontier
     p=plan(shape=(2,7,9,5),padding=(0,0,0,0),slots=7)
     frontier=RollingBatchFrontier(p.source_identity,4)
     with pytest.raises(ValueError,match='complete original'):

@@ -14,8 +14,8 @@ code_refs:
   - src/merlin/targetgen/capsule_common.py
   - src/merlin/llvmlower/target_schedule.py
   - merlin/tests/targetgen/test_shared_pass_consumption.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/controller.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/compiler_library.py
+  - src/merlin_experiments/phase1/controller.py
+  - src/merlin_experiments/phase1/compiler_library.py
 ---
 
 # Generate compilers that consume shared passes

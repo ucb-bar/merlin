@@ -6,11 +6,11 @@ owner: merlin-experiments
 last_verified: 2026-10-20
 related: [phase2_component_search, spike_timing]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase2/public_diagnostic_launch.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/public_source_diagnostic.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/public_native_exploration.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_fast_feedback.py
-  - packages/merlin-experiments/src/merlin/targetgen/checked_source_model_diagnostic_execution.py
+  - src/merlin_experiments/phase2/public_diagnostic_launch.py
+  - src/merlin_experiments/phase2/public_source_diagnostic.py
+  - src/merlin_experiments/phase2/public_native_exploration.py
+  - src/merlin_experiments/phase2/ordinary_fast_feedback.py
+  - src/merlin/targetgen/checked_source_model_diagnostic_execution.py
 ---
 
 # Public diagnostic retained queue

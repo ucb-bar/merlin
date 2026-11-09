@@ -6,7 +6,7 @@ import pytest
 from test_connected_spatial_route import route
 from xdsl.dialects import memref
 
-from merlin.compile.owned_host_model import OwnedHostModelCompiler
+from merlin.compiler.build.owned import OwnedHostModelCompiler
 from merlin.llvmlower import device_preparation, device_shim
 from merlin.llvmlower.device_offload import load_sidecar
 from merlin.xdsl_dialects._common import text
@@ -17,7 +17,8 @@ def original_logical_effects(source, built):
 
 
 def test_owned_logical_descriptor_selection_preserves_actual_storage_and_view_flags(tmp_path, monkeypatch):
-    from merlin.compile import baremetal_model, route_before_build
+    from merlin import model as baremetal_model
+    from merlin.compiler.planning import model as route_before_build
     from merlin.llvmlower.device_build import DeviceRouting
     from merlin.runtime.device_descriptor_results import DeviceDescriptorResults
 
@@ -49,7 +50,8 @@ def test_owned_logical_descriptor_selection_preserves_actual_storage_and_view_fl
 
 
 def test_owned_model_selected_route_reaches_actual_original_host_preparation(tmp_path, monkeypatch):
-    from merlin.compile import baremetal_model, route_before_build
+    from merlin import model as baremetal_model
+    from merlin.compiler.planning import model as route_before_build
 
     module, rewrite, selected_device = route(tmp_path)
     original_device = replace(selected_device, connected_spatial=None)
@@ -119,7 +121,8 @@ def test_owned_model_selected_route_reaches_actual_original_host_preparation(tmp
 
 @pytest.mark.parametrize("damage", ["opaque_route", "different_selection"])
 def test_owned_model_does_not_accept_opaque_or_replace_distinct_selection(tmp_path, monkeypatch, damage):
-    from merlin.compile import baremetal_model, route_before_build
+    from merlin import model as baremetal_model
+    from merlin.compiler.planning import model as route_before_build
 
     module, _, device = route(tmp_path)
     host, candidate, capture = (tmp_path / name for name in ("host", "candidate", "capture"))

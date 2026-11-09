@@ -3,13 +3,11 @@
 import pytest
 from xdsl.dialects.builtin import ArrayAttr, StringAttr
 
-from merlin.compile.scheduling.projection_provenance import (
-    projection_compute_member,
-    projection_ir_attributes,
-    projection_provenance_attributes,
-    shared_projection_provenance,
-)
-from merlin.compile.scheduling.shared_input_groups import find_shared_input_groups
+from merlin.compiler.schedule.projection_provenance import projection_compute_member
+from merlin.compiler.schedule.projection_provenance import projection_ir_attributes
+from merlin.compiler.schedule.projection_provenance import projection_provenance_attributes
+from merlin.compiler.schedule.projection_provenance import shared_projection_provenance
+from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups
 from merlin.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
 
 

@@ -9,18 +9,16 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from merlin.compile.scheduling.row_softmax import (
-    PHASE_ROLES,
-    CausalRowMask,
-    RowSoftmaxAdapter,
-    RowSoftmaxNumerics,
-    RowSoftmaxProblem,
-    RowSoftmaxResources,
-    RowSoftmaxStep,
-    RowSoftmaxUnavailable,
-    compile_row_softmax,
-)
-from merlin.compile.scheduling.row_softmax_verification import verify_row_softmax
+from merlin.compiler.schedule.row_softmax import PHASE_ROLES
+from merlin.compiler.schedule.row_softmax import CausalRowMask
+from merlin.compiler.schedule.row_softmax import RowSoftmaxAdapter
+from merlin.compiler.schedule.row_softmax import RowSoftmaxNumerics
+from merlin.compiler.schedule.row_softmax import RowSoftmaxProblem
+from merlin.compiler.schedule.row_softmax import RowSoftmaxResources
+from merlin.compiler.schedule.row_softmax import RowSoftmaxStep
+from merlin.compiler.schedule.row_softmax import RowSoftmaxUnavailable
+from merlin.compiler.schedule.row_softmax import compile_row_softmax
+from merlin.compiler.schedule.row_softmax_verification import verify_row_softmax
 from merlin.llvmlower.cpu_softmax import CPU_SOFTMAX_F32_AVX2_POLICY, cpu_softmax_row_numerics
 from merlin.sched.ir import NULL, Call, Const
 from merlin.semantic_compiler.allocation_types import Reservation, StorageBank

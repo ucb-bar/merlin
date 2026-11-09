@@ -7,8 +7,8 @@ last_verified: 2026-10-10
 related: [architecture, conditional_source_value_cones]
 code_refs:
   - src/merlin/targetgen/original_reduction_sources.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/original_call_sources.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/declared_run.py
+  - src/merlin_experiments/phase0/original_call_sources.py
+  - src/merlin_experiments/phase0/declared_run.py
 ---
 
 # Original reduction source geometry

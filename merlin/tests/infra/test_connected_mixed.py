@@ -9,8 +9,10 @@ from test_dense_source import contraction
 from test_multioutput_fusion import SPACES, WORD, model, scalar_bodies
 from test_selected_dense_contracts import inputs
 
-from merlin.compile.connected_regions import compile_connected_region, plan_connected_region
-from merlin.compile.scheduling.program_limits import AddressWindow, Continuation
+from merlin.compiler.lower.connected import compile_connected_region
+from merlin.compiler.partition.connected import plan_connected_region
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import Continuation
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.sched.ir import Const, Kernel, evaluate, instances
 
@@ -85,7 +87,9 @@ def fixture(tmp_path, widths=(2, 2, 2)):
 def launch_native(invocation, inputs, output):
     assert all(view.readonly for view in inputs) and not output.readonly
     if invocation.images is None:
-        from merlin.compile.scheduling.block_schedule import Compute, Load, Preload
+        from merlin.compiler.schedule.blocks import Compute
+        from merlin.compiler.schedule.blocks import Load
+        from merlin.compiler.schedule.blocks import Preload
 
         compiled = invocation.product.compiled
         left = np.frombuffer(inputs[0], dtype="<i2").reshape(compiled.kernel.args[0].shape)
@@ -193,7 +197,7 @@ def test_mixed_boundary_refusals(tmp_path, failure):
 
 
 def test_workflow_consumes_mixed_products_and_keeps_unfused_fallback(tmp_path):
-    from merlin.compile import fusion_workflow as F
+    from merlin.compiler.planning import explore as F
 
     region, settings, _ = fixture(tmp_path)
     contract = dict(capability_contract={}, numerical_policy_sha256="a" * 64)

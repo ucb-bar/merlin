@@ -1,12 +1,10 @@
-# Optional distributions
+# Independent components and retained research tests
 
-Each directory owns one independently built distribution. Core primitives live under
-`src/merlin/`, never as a copied implementation here. Shared `merlin.*` namespace contributions
-must have unique file and command ownership; core owns shared namespace initializers.
+`merlin-timing/` remains an independently owned observer distribution and uses the shared
+extension setup hook. Its source and measurement authority are separate from the compiler.
+The four former research distributions retain tests and supporting study inputs here;
+their active Python implementations now live under `src/` and ship only in `merlin`.
+Do not recreate code wheels or shared namespace copies for those workflows.
 
-Keep phase execution, research studies and optional framework dependencies in their owners.
-Register trusted evaluation access identities before moving code. Build products belong under
-the repository's `out/build/python/`, using the shared extension setup hook.
-
-Validate real wheels with `build_tools/scripts/check_distribution_layout.py`, not just editable
-imports. Existing command and import identities must remain compatible where documented.
+Preserve existing test, access-role and frozen source identities. Build products belong under
+`out/build/python/`. Validate actual wheel/sdist bytes and installed origins outside checkout.

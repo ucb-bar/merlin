@@ -344,7 +344,7 @@ def verify(form, source, *, extent, text, trace, registry, source_inventory, lim
     calls = {
         stage: _trace_call(snapshots.get(stage), stage, form, shape) for stage in ("original", "quantized", "prepared")
     }
-    from .application_graph import _program_graph
+    from merlin.compiler.ir.graph import _program_graph
 
     digest = hashlib.sha256(text.encode()).hexdigest()
     raw = _program_graph(module, digest)

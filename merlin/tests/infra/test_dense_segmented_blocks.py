@@ -6,8 +6,10 @@ import pytest
 from test_compact_dense import ADAPTER
 from test_dense_segmented_pipeline import chosen, inputs
 
-from merlin.compile.scheduling.compact_dense import DenseLoopStorage, DenseMemoryView
-from merlin.compile.scheduling.dense_segmented_pipeline import _assignment, dense_segmented_blocks
+from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+from merlin.compiler.schedule.compact_dense import DenseMemoryView
+from merlin.compiler.schedule.dense_segmented_pipeline import _assignment
+from merlin.compiler.schedule.dense_segmented_pipeline import dense_segmented_blocks
 from merlin.transforms.dense_planning import DenseProblem, DenseResources, dense_blocks
 
 

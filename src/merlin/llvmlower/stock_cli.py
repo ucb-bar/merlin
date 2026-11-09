@@ -70,15 +70,15 @@ def lower(
         pipeline = _bind_index_width(pipeline, index_bits)
     if data_layout is not None:
         from xdsl.dialects.builtin import StringAttr
-        from xdsl.printer import Printer
 
+        from merlin.common.dense_float_ir import DenseFloatPrinter
         from merlin.frontends.linalg_mlir import parse_mlir_text
 
         module = parse_mlir_text(text)
         module.attributes["llvm.data_layout"] = StringAttr(data_layout)
         module.verify()
         stream = StringIO()
-        Printer(stream=stream, print_generic_format=True).print_op(module)
+        DenseFloatPrinter(stream=stream, print_generic_format=True).print_op(module)
         text = stream.getvalue() + "\n"
     remaining()
     source, lowered, translated = [work / name for name in ("model.mlir", "model.llvm.mlir", "model.ll")]

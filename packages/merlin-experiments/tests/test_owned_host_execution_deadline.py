@@ -10,7 +10,7 @@ from merlin.targetgen import owned_host_model_execution as owned
 @pytest.mark.parametrize("wait_s", [27, 601])
 def test_owned_rtl_dispatch_caps_budget_and_counts_queue_wait(monkeypatch, wait_s):
     from merlin.common import execution_deadline
-    from merlin.compile import model_execution_inputs
+    from merlin.runtime import modelinputs as model_execution_inputs
     from merlin.targetgen import rtl_engine_policy
 
     clock, dispatched = [0.0], []

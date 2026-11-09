@@ -1,11 +1,11 @@
-# AGENT.md — merlin/python/merlin/mining
+# AGENT.md — src/merlin/mining
 
 ## Purpose
 
 Compiler/runtime schedule-package primitives retained in core during staged cutover.
-Search, agents, fork creation, campaigns and reports belong to `packages/merlin-mining`.
-The single core-owned initializer extends its package path, preserving historical module names.
-See `packages/merlin-mining/README.md` for the ownership table and remaining extraction work.
+Search, agents, fork creation, campaigns and reports belong to `merlin.mining`.
+One distribution owns these modules; compiler primitives keep their logical dependency boundary.
+Retained workflow tests and historical ownership notes remain in `packages/merlin-mining/`.
 
 ## Modules
 
@@ -13,9 +13,15 @@ See `packages/merlin-mining/README.md` for the ownership table and remaining ext
 - `from_strategy.py` — Render a transform-dialect RVV schedule FROM knobs, and mint a versioned fork package.
 - `registry.py` — Loader for ISOLATED, per-run RVV codegen packages.
 
-The other `merlin.mining.*` implementations live in the optional mining distribution;
+The other `merlin.mining.*` implementations live in the optional mining workflow;
 their stable import names do not imply core ownership. The `from_strategy.mint_fork`
-compatibility operation still requires that distribution; schedule rendering does not.
+compatibility operation still selects the workflow dependencies; schedule rendering does not.
 
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
+
+## Research workflow responsibilities
+
+Search, agents, campaigns, fork creation, measurement orchestration, and reports live here.
+The compiler-facing initializer and runtime primitives keep their logical owner. Preserve
+historical module names and class identity; do not create another implementation tree.

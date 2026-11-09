@@ -1,0 +1,70 @@
+name: integration
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 8 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  hosted-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          version: '0.9.6'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - name: install the single package with hosted-check dependencies
+        run: >-
+          uv sync --frozen
+          --extra dev --extra verify --extra semantic-search
+          --extra kernels-ast --extra kernels-exo --extra kernels-parquet
+          --extra kernels-plots --extra experiments --extra analysis --extra triton
+      - name: build wheel and source archives once
+        run: |
+          uv run --no-sync python -m build --no-isolation --outdir "$PWD/out/build/python/releases" .
+          uv run --no-sync python build_tools/scripts/check_distribution_layout.py \
+            --source-root . \
+            out/build/python/releases/merlin-*.whl
+      - name: check the exact main wheel outside the checkout
+        run: |
+          wheels=(out/build/python/releases/merlin-*.whl)
+          test "${#wheels[@]}" -eq 1
+          uv run --no-sync python build_tools/scripts/check_standalone_install.py --wheel "${wheels[0]}" --require-tools
+      - name: hosted runtime and vector-provider boundaries
+        run: |
+          mkdir -p out/build/python/ci
+          wheels=(out/build/python/releases/merlin-*.whl)
+          test "${#wheels[@]}" -eq 1
+          export MERLIN_TEST_RELEASE_WHEEL="${wheels[0]}"
+          uv run --no-sync pytest -q \
+            merlin/tests/infra/test_access_registry.py::test_real_release_wheel_files_are_covered_when_installed \
+            merlin/tests/runtime/test_semantic_application.py \
+            merlin/tests/runtime/test_application_c.py \
+            merlin/tests/runtime/test_application_parameters.py \
+            merlin/tests/runtime/test_application_state.py \
+            merlin/tests/runtime/test_external_handoff.py \
+            merlin/tests/runtime/test_zephyr_configuration.py \
+            merlin/tests/rvv/test_host_package_boundary.py \
+            merlin/tests/rvv/test_shared_finalization.py \
+            merlin/tests/rvv/test_policy_owner.py \
+            --junitxml=out/build/python/ci/hosted-boundaries.xml
+      - name: retain distributions and exact test outcomes
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: distributions-and-results
+          path: |
+            out/build/python/releases/
+            out/build/python/ci/
+          if-no-files-found: error
+          retention-days: 14

@@ -29,7 +29,7 @@ from packing_execution_inputs import (
 from recomputation_execution_inputs import PublicRecomputationCase, materialize, original_case
 from test_public_packing_execution import _trace_contract
 
-from merlin.compile.model_execution_inputs import strict_tree_sha256
+from merlin.runtime.modelinputs import strict_tree_sha256
 
 pytestmark = pytest.mark.target("gemmini")
 SELECTION_ENV = "MERLIN_TEST_GEMMINI_RECOMPUTATION_SELECTION"
@@ -130,9 +130,10 @@ def test_original_public_compiler_executes_checked_source_recomputation(tmp_path
     from merlin_experiments.phase1.feedback import private_instruction_coordinator as C
     from merlin_experiments.phase1.feedback import private_instruction_declaration as D
 
-    from merlin.compile.baremetal_model import compile_saved_model, read_full_outputs
-    from merlin.compile.model_execution_inputs import selected_execution_firrtl
-    from merlin.compile.route_before_build import plan_before_build
+    from merlin.model import compile_saved_model
+    from merlin.model import read_full_outputs
+    from merlin.runtime.modelinputs import selected_execution_firrtl
+    from merlin.compiler.planning.model import plan_before_build
     from merlin.llvmlower import compilation_recipe as CR
     from merlin.llvmlower import optional_passes
     from merlin.runtime.input_observation import revalidate_observation

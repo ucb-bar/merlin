@@ -16,14 +16,15 @@ from typing import TYPE_CHECKING
 from .borrowed_buffer_calls import BorrowedBufferEffects, validate_effects
 
 if TYPE_CHECKING:
-    from merlin.compile.scheduling.compact_dense import DenseLoopAdapter, DenseLoopStorage
-    from merlin.compile.scheduling.dense_source import DenseSourceResult
-    from merlin.compile.scheduling.program_limits import AddressWindow
-    from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
+    from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
+    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+    from merlin.compiler.schedule.dense_source import DenseSourceResult
+    from merlin.compiler.schedule.program_limits import AddressWindow
+    from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
     from merlin.perf.offload_profitability import OffloadCostDecision
     from merlin.runtime.host_provider import HostProviderBuild, HostProviderContext
     from merlin.transforms.dense_planning import DenseResources
-    from merlin.verify.host_packing_storage import PackingAllocationEffects
+    from merlin.verification.packing import PackingAllocationEffects
 
     from .fresh_tensor_writer import FreshTensorWriterContract
     from .logical_borrowed_abi import LogicalBorrowedABI
@@ -77,9 +78,11 @@ class SourceDenseLowering:
     lhs_grouping: SourceDenseGrouping | None = None
 
     def __post_init__(self):
-        from merlin.compile.scheduling.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
-        from merlin.compile.scheduling.program_limits import AddressWindow
-        from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
+        from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
+        from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+        from merlin.compiler.schedule.compact_dense import DenseMemoryView
+        from merlin.compiler.schedule.program_limits import AddressWindow
+        from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
         from merlin.transforms.dense_planning import DenseResources
 
         from .logical_borrowed_abi import LogicalBorrowedABI
@@ -92,7 +95,7 @@ class SourceDenseLowering:
                 raise ValueError("dense grouping requires an original typed selection and borrowed ABI effects")
             self.lhs_grouping.__post_init__()
         if self.packing_allocation_effects is not None:
-            from merlin.verify.host_packing_storage import PackingAllocationEffects
+            from merlin.verification.packing import PackingAllocationEffects
 
             if type(self.packing_allocation_effects) is not PackingAllocationEffects:
                 raise ValueError("packing storage requires original typed allocation effects")
@@ -230,7 +233,7 @@ def offload_context(selection):
     the original qualifier and actual provider/product checks remain mandatory.
     """
     from merlin.common.jsonio import canonical_sha256
-    from merlin.compile.scheduling.library_sources import shared_library_sources
+    from merlin.compiler.schedule.library_sources import shared_library_sources
     from merlin.transforms.pipeline_state import PipelineContext
 
     if type(selection) is not SourceDenseLowering:
@@ -359,13 +362,11 @@ class SourceDenseBinding:
 
 def discover_dense(module, selection, validate):
     """Derive contractions and schedules from current IR; never ask a backend to select regions."""
-    from merlin.compile.scheduling.dense_contracts import DenseSchedulingUnavailable
-    from merlin.compile.scheduling.dense_source import (
-        DenseSourceUnavailable,
-        _problem,
-        read_source_dense_readout,
-        schedule_source_dense,
-    )
+    from merlin.compiler.schedule.dense_contracts import DenseSchedulingUnavailable
+    from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
+    from merlin.compiler.schedule.dense_source import _problem
+    from merlin.compiler.schedule.dense_source import read_source_dense_readout
+    from merlin.compiler.schedule.dense_source import schedule_source_dense
 
     from .source_model import SourceRegion
 

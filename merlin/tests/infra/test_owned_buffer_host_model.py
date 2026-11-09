@@ -20,7 +20,7 @@ from xdsl.dialects import arith, memref, scf
 from merlin.common import compile_trace
 from merlin.common import mlir_query as mq
 from merlin.common.digest import sha256_file
-from merlin.compile.baremetal_model import compile_saved_model
+from merlin.model import compile_saved_model
 from merlin.llvmlower import toolchain
 from merlin.llvmlower.pipeline import dealloc_placement_violations
 from merlin.model_check import full_build as FB

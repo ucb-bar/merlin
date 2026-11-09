@@ -56,7 +56,7 @@ def crosscheck_declared_geometry(declared: Mapping[str, int], target: str | None
             "call site rather than widening this one."
         )
     try:
-        from merlin.compile.scheduling.derive import geometry_from_machine
+        from merlin.compiler.schedule.derive import geometry_from_machine
 
         from .derive import derive
 

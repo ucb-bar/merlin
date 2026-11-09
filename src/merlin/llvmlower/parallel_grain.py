@@ -138,7 +138,7 @@ def ensure_registered(threshold: int) -> str:
     child process that re-imports the registry: a point registered only in the parent fails to
     resolve in the child.
     """
-    from .impr_features import ImprFeature, known, register
+    from .shared_feature_registry import ImprFeature, known, register
 
     name = feature_name(threshold)
     if name in known():

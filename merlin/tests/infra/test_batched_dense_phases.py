@@ -5,14 +5,16 @@ import pytest
 from test_compact_dense import ADAPTER, mutate
 from test_dense_retained_reduction import chosen, inputs
 
-from merlin.compile.scheduling.batched_dense import (
-    partition_batched_dense_storage,
-    partition_dense_phases,
-    verify_dense_phase_partition,
-)
-from merlin.compile.scheduling.block_schedule import Compute, Load, Preload, Store
-from merlin.compile.scheduling.compact_dense import DenseLoopStorage, DenseMemoryView
-from merlin.compile.scheduling.dense_panel_pipeline import DRAIN
+from merlin.compiler.schedule.batched_dense import partition_batched_dense_storage
+from merlin.compiler.schedule.batched_dense import partition_dense_phases
+from merlin.compiler.schedule.batched_dense import verify_dense_phase_partition
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+from merlin.compiler.schedule.compact_dense import DenseMemoryView
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
 from merlin.sched.ir import Call, evaluate, instances
 
 

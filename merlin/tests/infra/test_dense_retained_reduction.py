@@ -5,21 +5,17 @@ from dataclasses import replace
 import pytest
 from test_compact_dense import ADAPTER, fixture, mutate
 
-from merlin.compile.scheduling.compact_dense import emit_compact_dense
-from merlin.compile.scheduling.dense_panel_pipeline import (
-    DRAIN,
-    DenseRetainedReductionAdmission,
-    _serial_projection,
-    complete_dense_retained_reduction,
-    dense_retained_operand_hoists,
-    schedule_dense_panel_pipeline,
-    verify_dense_retained_reduction,
-)
-from merlin.compile.scheduling.schedule_ir import (
-    dense_schedule_text,
-    make_dense_schedule_plan,
-    parse_dense_schedule_plan,
-)
+from merlin.compiler.schedule.compact_dense import emit_compact_dense
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
+from merlin.compiler.schedule.dense_panel_pipeline import DenseRetainedReductionAdmission
+from merlin.compiler.schedule.dense_panel_pipeline import _serial_projection
+from merlin.compiler.schedule.dense_panel_pipeline import complete_dense_retained_reduction
+from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_operand_hoists
+from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_panel_pipeline
+from merlin.compiler.schedule.dense_panel_pipeline import verify_dense_retained_reduction
+from merlin.compiler.schedule.schedule_ir import dense_schedule_text
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
 from merlin.transforms.dense_planning import dense_blocks
 
 
@@ -50,14 +46,14 @@ def chosen(p, r, s, b, a, *, role="lhs", order=("m", "n"), hoist=True, compute_o
     raw = emit_compact_dense(p, b, s, ADAPTER, name="retained", dtypes=("i8", "i8", "i32"), outer_order=order)
     transforms = dense_retained_operand_hoists(raw, ADAPTER, role=role) if hoist else ()
     if compute_order is not None:
-        from merlin.compile.scheduling.dense_panel_pipeline import dense_retained_compute_order
-        from merlin.compile.scheduling.loop_schedule import propose_loop_transforms
+        from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_compute_order
+        from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
 
         current = propose_loop_transforms(raw, transforms)
         transforms += dense_retained_compute_order(current, ADAPTER, order=compute_order)
     if compute_unroll is not None:
-        from merlin.compile.scheduling.dense_panel_pipeline import dense_retained_compute_unroll
-        from merlin.compile.scheduling.loop_schedule import propose_loop_transforms
+        from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_compute_unroll
+        from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
 
         current = propose_loop_transforms(raw, transforms)
         axis, factor = compute_unroll
@@ -160,7 +156,7 @@ def test_unknown_overwrite_reduction_observer_and_completion_refuse(instruction,
 
 
 def test_two_window_grant_cannot_authorize_ordered_accumulator_commits():
-    from merlin.compile.scheduling.dense_panel_pipeline import DensePanelOverlapAdmission
+    from merlin.compiler.schedule.dense_panel_pipeline import DensePanelOverlapAdmission
 
     p, r, s, b, a = inputs()
     result = chosen(p, r, s, b, a)
@@ -193,7 +189,7 @@ def test_two_window_grant_cannot_authorize_ordered_accumulator_commits():
 
 
 def test_overlapping_stage_writes_refuse_even_when_serial_source_is_valid():
-    from merlin.compile.scheduling.compact_verification import verify_compact_dense
+    from merlin.compiler.schedule.compact_verification import verify_compact_dense
     from merlin.sched.ir import Call, Loop
 
     p, r, s, b, a = inputs()
@@ -220,19 +216,17 @@ def test_overlapping_stage_writes_refuse_even_when_serial_source_is_valid():
 
 @pytest.mark.parametrize("batch", [False, True])
 def test_final_wide_lhs_k_bands_and_rhs_n_bands_use_retained_hazard_checker(batch):
-    from merlin.compile.scheduling.panel_tile_loads import admit_panel_tile_loads
-    from merlin.compile.scheduling.tile_load_coalescing import (
-        TileLoadAddressLaw,
-        TileLoadMapping,
-        _linear,
-        propose_tile_load_coalescing,
-    )
+    from merlin.compiler.schedule.panel_tile_loads import admit_panel_tile_loads
+    from merlin.compiler.schedule.tile_load_coalescing import TileLoadAddressLaw
+    from merlin.compiler.schedule.tile_load_coalescing import TileLoadMapping
+    from merlin.compiler.schedule.tile_load_coalescing import _linear
+    from merlin.compiler.schedule.tile_load_coalescing import propose_tile_load_coalescing
     from merlin.sched.ir import Const
 
     p, r, s, b, a = inputs(shape=(8, 8, 8), tile=(2, 2, 2))
     original = chosen(p, r, s, b, a)
     if batch:
-        from merlin.compile.scheduling.dense_panel_readout import batch_dense_panel_readouts
+        from merlin.compiler.schedule.dense_panel_readout import batch_dense_panel_readouts
 
         original = batch_dense_panel_readouts(
             original,
@@ -309,7 +303,7 @@ def test_final_wide_lhs_k_bands_and_rhs_n_bands_use_retained_hazard_checker(batc
 
 
 def test_retained_readout_batches_keep_exact_calls_and_original_compute_law():
-    from merlin.compile.scheduling.dense_panel_readout import batch_dense_panel_readouts
+    from merlin.compiler.schedule.dense_panel_readout import batch_dense_panel_readouts
     from merlin.sched.ir import evaluate, instances
 
     p, r, s, b, a = inputs()
@@ -345,7 +339,7 @@ def test_retained_readout_batches_keep_exact_calls_and_original_compute_law():
 
 @pytest.mark.parametrize("role", ["lhs", "weight"])
 def test_residency_choice_transfer_estimates_equal_independently_checked_actual_tail_program(role):
-    from merlin.compile.scheduling.dense_panel_pipeline import dense_retained_choices
+    from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_choices
 
     p, r, s, _b, _a = inputs()
     choice = dense_retained_choices(p, r, s, roles=(role,))[0]
@@ -377,8 +371,9 @@ def test_residency_choice_transfer_estimates_equal_independently_checked_actual_
     ],
 )
 def test_shape_and_original_separate_capacity_select_both_residency_families(shape, expected):
-    from merlin.compile.scheduling.compact_dense import DenseLoopStorage, DenseMemoryView
-    from merlin.compile.scheduling.dense_panel_pipeline import dense_retained_choices
+    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+    from merlin.compiler.schedule.compact_dense import DenseMemoryView
+    from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_choices
     from merlin.transforms.dense_planning import DenseProblem, DenseResources
 
     p = DenseProblem(*shape, 16, 16, 16, 1, 1, 4)
@@ -447,7 +442,7 @@ def test_resident_compute_interchanges_change_real_commands_and_keep_exact_reduc
 
 
 def test_compute_interchange_uses_projected_axes_and_refuses_unknown_order():
-    from merlin.compile.scheduling.dense_panel_pipeline import dense_retained_compute_order
+    from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_compute_order
 
     p, _r, s, b, _a = inputs()
     raw = emit_compact_dense(p, b, s, ADAPTER, name="axes", dtypes=("i8", "i8", "i32"))
@@ -478,7 +473,7 @@ def test_semantic_compute_unroll_preserves_exact_command_order_and_partial_reduc
 
 
 def test_semantic_compute_unroll_refuses_unknown_axes_excess_extent_and_static_growth():
-    from merlin.compile.scheduling.dense_panel_pipeline import dense_retained_compute_unroll
+    from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_compute_unroll
     from merlin.sched.primitives import NotApplicable
 
     p, _r, s, b, _a = inputs()

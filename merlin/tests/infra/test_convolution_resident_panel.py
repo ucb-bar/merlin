@@ -4,8 +4,8 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.scheduling.affine_gather_runs import plan_convolution_resident_panel
-from merlin.compile.scheduling.block_schedule import Geometry
+from merlin.compiler.schedule.affine_gather_runs import plan_convolution_resident_panel
+from merlin.compiler.schedule.blocks import Geometry
 
 GEOMETRY = Geometry(16, 16384, 4096, 1024, True, {"facts": "selected-test-geometry"})
 

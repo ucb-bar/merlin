@@ -430,12 +430,16 @@ def bind_runner(source, *, directory, max_source_bytes, max_response_bytes, time
 
 def run_command(command, *, directory, callback, max_source_bytes, max_response_bytes, timeout):
     """Serve one callback on the calling thread and terminate only our child."""
+    from .optional_passes import child_environment
+
     directory = Path(directory)
     source, request, response = (directory / name for name in ("current.mlir", "request.json", "response.json"))
     if any(path.exists() for path in (source, request, response)):
         raise ValueError("current scalar transport requires a fresh private request owner")
     deadline = time.monotonic() + timeout
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=child_environment()
+    )
     served = False
     try:
         while True:

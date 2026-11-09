@@ -63,7 +63,7 @@ RUNNER_CALL = "if _INT_SOFTMAX_TABLE:\n    _ist_run_and_report(ctx, module)\n"
 
 
 def _feature():
-    from .impr_features import ImprFeature
+    from .shared_feature_registry import ImprFeature
 
     return ImprFeature(
         name=FEATURE,
@@ -81,7 +81,7 @@ def _feature():
 
 
 def ensure_registered() -> str:
-    from .impr_features import known, register
+    from .shared_feature_registry import known, register
 
     if FEATURE not in known():
         register(_feature())

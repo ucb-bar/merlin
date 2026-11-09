@@ -10,16 +10,18 @@ import yaml
 from test_multi_output_source import scalar_sources, wrap
 from test_shared_lhs_provider import SharedLHSProvider
 
-from merlin.compile.scheduling.fusion_semantics import ElementwiseSemantics, scalar_graph
-from merlin.compile.scheduling.program_limits import (
-    AddressWindow,
-    DecodedInstruction,
-    EncodedAccess,
-    ProgramDecoder,
-    ProgramLimits,
-)
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, ScheduleEncoding
-from merlin.compile.scheduling.temporary_storage import StorageAdapter, StorageEffects, TemporaryObject
+from merlin.compiler.schedule.fusion_semantics import ElementwiseSemantics
+from merlin.compiler.schedule.fusion_semantics import scalar_graph
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import DecodedInstruction
+from merlin.compiler.schedule.program_limits import EncodedAccess
+from merlin.compiler.schedule.program_limits import ProgramDecoder
+from merlin.compiler.schedule.program_limits import ProgramLimits
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
+from merlin.compiler.schedule.temporary_storage import StorageAdapter
+from merlin.compiler.schedule.temporary_storage import StorageEffects
+from merlin.compiler.schedule.temporary_storage import TemporaryObject
 from merlin.sched.ir import Call, Const, Kernel, TensorArg, evaluate
 
 SPACES = ("private0", "private1", "input0", "input1", "input2", "input3", "output0", "output1")
@@ -77,7 +79,7 @@ def relocate(call, accesses):
 
 def original_model(directory, case):
     """One fixed hardware/software envelope, selected before source discovery."""
-    from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
+    from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
     from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction
 
     width = case.width
@@ -385,7 +387,7 @@ class MultiOutputProvider(SharedLHSProvider):
         work.mkdir()
 
     def lower(self, source):
-        from merlin.compile.scheduling.pointwise_source import PointwiseBindings
+        from merlin.compiler.schedule.pointwise_source import PointwiseBindings
         from merlin.llvmlower.source_pointwise import PointwiseProgram
 
         graphs = [scalar_graph(text, 32, 65536) for text in scalar_sources(self.case.width)]
@@ -406,7 +408,7 @@ class MultiOutputProvider(SharedLHSProvider):
         return PointwiseProgram(Kernel("original_" + opcode, args, (call,)), (), bindings)
 
     def lower_multioutput(self, source):
-        from merlin.compile.scheduling.multioutput_fusion import MultiOutputBindings
+        from merlin.compiler.schedule.multioutput_fusion import MultiOutputBindings
         from merlin.llvmlower.source_multioutput import MultiOutputProgram
 
         count, width = int(np.prod(source.shape)), self.case.width
@@ -460,7 +462,7 @@ class MultiOutputProvider(SharedLHSProvider):
         )
         if not self.grouped:
             return config
-        from merlin.compile.scheduling.multioutput_fusion import MultiOutputCompositionLaw
+        from merlin.compiler.schedule.multioutput_fusion import MultiOutputCompositionLaw
         from merlin.llvmlower.source_multioutput import SourceMultiOutputLowering
 
         p, e0, e1 = self.group_calls()

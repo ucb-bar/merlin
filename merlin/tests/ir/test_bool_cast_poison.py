@@ -98,9 +98,9 @@ def test_prepare_wires_the_fix_into_both_paths():
     They diverge silently otherwise: ``int(x)`` in the interpreter, poison in the object, and the
     interpreter's golden then certifies a compiled model that no longer exists.
     """
-    from merlin.common.paths import merlin_dir
+    from merlin.common.paths import python_source_dir
 
-    root = merlin_dir() / "python" / "merlin"
+    root = python_source_dir() / "merlin"
     for rel in ("runtime/backends/zephyr_model.py", "runtime/dispatch_runtime.py"):
         src = (root / rel).read_text(encoding="utf-8")
         assert "fix_bool_fptosi(module)" in src, rel

@@ -56,6 +56,12 @@ def test_parallel_pipeline_adds_the_openmp_stages_and_preloads_both_libraries():
 
 def test_parallel_schedule_never_tiles_the_reduction_dim():
     """K is the reduction dim: splitting it across harts races the accumulator."""
+    from merlin.compiler.passes import parallel as owner
+
+    assert P.parallel_transform_schedule is owner.parallel_transform_schedule
+    assert P._perop_parallel_schedule is owner._perop_parallel_schedule
+    assert P._PARALLEL_DIM_NUM_THREADS is owner._PARALLEL_DIM_NUM_THREADS
+    assert owner.__file__ in {str(path) for path in P.implementation_paths()}
     sched = P.parallel_transform_schedule(4)
     assert P.PARALLEL_ENTRY in sched
     assert "tile_using_forall" in sched

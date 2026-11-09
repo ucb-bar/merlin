@@ -4,18 +4,26 @@ from __future__ import annotations
 
 import pytest
 
-from merlin.verify.split_reduction import maximum_safe_chunk, verify_split_reduction
+from merlin.verification.split_reduction import maximum_safe_chunk, verify_split_reduction
 
 pytest.importorskip("z3")
 
 
 def test_split_reduction_proves_all_inputs_at_one_shape() -> None:
+    import pickle
+
+    from merlin.verification import split_reduction as owner
+    from merlin.verify import split_reduction as legacy
+
+    assert legacy is owner
     # A 4-bit signed input has maximum absolute product 64. Two terms need
     # 9 signed bits; the source's 10-bit accumulation handles all three.
     assert maximum_safe_chunk(4, 9) == 3
     verdict = verify_split_reduction(k=3, operand_width=4, partial_width=9, output_width=10, chunks=(2, 1))
     assert verdict.status == "verified"
     assert verdict.counterexample is None
+    assert verdict.__class__.__module__ == "merlin.verify.split_reduction"
+    assert pickle.loads(pickle.dumps(verdict)) == verdict
 
 
 def test_narrow_partial_accumulator_is_refuted() -> None:

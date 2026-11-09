@@ -208,7 +208,7 @@ def rewrite_absf(module, report_out: "dict | None" = None) -> int:
     from xdsl.dialects import arith
     from xdsl.dialects.builtin import IntegerAttr, IntegerType
 
-    from .passes_xdsl import carry_provenance
+    from merlin.compiler.ir.provenance import carry_provenance
 
     report: dict = {} if report_out is None else report_out
     n = 0

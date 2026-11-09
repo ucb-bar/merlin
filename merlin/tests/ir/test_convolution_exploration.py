@@ -8,19 +8,15 @@ from test_convolution_column_retention import law as retention_law
 from test_convolution_load_issue import law as base_issue_law
 from test_counted_convolution import Integers
 
-from merlin.compile.scheduling.convolution_exploration import (
-    ConvolutionExplorationSource,
-    ConvolutionScheduleChoice,
-    convolution_pass_space,
-    emit_convolution_schedule,
-    explore_convolution_schedules,
-    plan_convolution_schedule,
-)
-from merlin.compile.scheduling.window_transfer import (
-    CountedConvolutionPlan,
-    Window2D,
-    emit_counted_convolution,
-)
+from merlin.compiler.schedule.convolution_exploration import ConvolutionExplorationSource
+from merlin.compiler.schedule.convolution_exploration import ConvolutionScheduleChoice
+from merlin.compiler.schedule.convolution_exploration import convolution_pass_space
+from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
+from merlin.compiler.schedule.convolution_exploration import explore_convolution_schedules
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_schedule
+from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
+from merlin.compiler.schedule.window_transfer import Window2D
+from merlin.compiler.schedule.window_transfer import emit_counted_convolution
 from merlin.transforms.pass_exploration import EmittedProgram
 from merlin.transforms.pipeline_state import PipelineContext
 

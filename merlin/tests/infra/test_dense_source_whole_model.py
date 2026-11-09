@@ -12,7 +12,7 @@ from test_dense_source import contraction
 from test_dense_source_catalog import Catalog, compilation_memory, digest, qualify_native
 from test_selected_dense_contracts import inputs
 
-from merlin.compile.baremetal_model import compile_saved_model
+from merlin.model import compile_saved_model
 from merlin.llvmlower.device_build import DeviceRouting
 from merlin.model_check import full_build as FB
 from merlin.model_check.admission import service

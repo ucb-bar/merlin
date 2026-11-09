@@ -4,10 +4,10 @@ from dataclasses import replace
 import pytest
 from test_convolution_spatial_output_groups import selected, run
 from test_counted_convolution import Integers
-from merlin.compile.scheduling.convolution_exploration import emit_convolution_schedule
-from merlin.compile.scheduling.convolution_input_first_use import (
-    ConvolutionInputFirstUseAdmission, ConvolutionInputLead, PendingConvolutionInput,
-)
+from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
+from merlin.compiler.schedule.convolution_input_first_use import ConvolutionInputFirstUseAdmission
+from merlin.compiler.schedule.convolution_input_first_use import ConvolutionInputLead
+from merlin.compiler.schedule.convolution_input_first_use import PendingConvolutionInput
 
 
 def law():
@@ -70,9 +70,10 @@ def test_owner_requires_actual_reader_scope_and_real_final_completion():
 
 def test_pending_input_composes_with_original_dead_rhs_frontier():
     from test_convolution_rhs_residency import rhs_law
-    from merlin.compile.scheduling.convolution_exploration import ConvolutionRhsPhaseLaw,plan_convolution_rhs_phases
-    from merlin.compile.scheduling.convolution_output_groups import plan_rolling_convolution_output_group
-    from merlin.compile.scheduling.rolling_lookahead import RollingRhsFrontierAdmission
+    from merlin.compiler.schedule.convolution_exploration import ConvolutionRhsPhaseLaw
+    from merlin.compiler.schedule.convolution_exploration import plan_convolution_rhs_phases
+    from merlin.compiler.schedule.convolution_output_groups import plan_rolling_convolution_output_group
+    from merlin.compiler.schedule.rolling_lookahead import RollingRhsFrontierAdmission
     s,_,rows,_,array,readout=selected((2,7,6,5),(0,0,0,0),slots=7,max_output_rows=5)
     phases=plan_convolution_rhs_phases(s,operand_rows=1024,law=rhs_law(),input_rows=rows,max_column_blocks=2,
         phase_law=ConvolutionRhsPhaseLaw(s.source.identity,"TEST-ONLY-complete-phase",True,True,True,True))

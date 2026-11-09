@@ -13,12 +13,10 @@ a LEAN runtime needs that the bare dispatch program lacks:
   opcode set, and per-program capability flags — the hooks that let custom-ISA / SIMT / research
   HW plug in via an adapter without changing the program format.
 
-The program is pure data (``to_dict``/``to_json``). The Python reference runtime
-(:mod:`merlin.runtime.dispatch_runtime` / :mod:`merlin.runtime.simulator`) is the only thing that
-consumes anything like it today: the C replay engine this docstring used to name as a co-consumer,
-``merlin/runtime/c/merlin_program.c``, DOES NOT EXIST in the tree, and :func:`build_program` itself has
-no caller outside its tests. Saying otherwise is what makes an unwired planner look wired. See
-``docs/design/static_arena_wiring.md`` for what the K1 path would need before it could call this.
+The program is serializable data. The explicitly selected C dispatcher in
+:mod:`merlin.compiler.lower.c.dispatch` consumes a checked bounded-memory plan
+and compiled wrappers. It supplies no operator interpreter or automatic target
+lowering. The ordinary monolithic model path remains separate.
 
 The arena the measured whole-model build actually gets does NOT come through here. It is planned
 directly over the emitted LLVM IR by :mod:`merlin.llvmlower.arena_bind`, which shares this module's
@@ -31,6 +29,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from collections.abc import Callable
+
+from merlin.compiler.schedule.arena import ArenaRequirements, check_bounded_arena, plan_bounded_arena
 from typing import Any
 
 from ..xdsl_dialects.lowering.arena_plan import MemoryPlan, plan_arena
@@ -74,6 +75,7 @@ class MerlinProgram:
     # changing the command buffer that executes it; ``emit`` attaches the exact plan lowering consumed.
     global_plan: GlobalPlan | None = None
     global_plan_emission: GlobalPlanEmission | None = None
+    memory_requirements: ArenaRequirements | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result = {
@@ -120,6 +122,8 @@ def build_program(
     abi_version: str = PROGRAM_ABI_VERSION,
     global_plan: GlobalPlan | None = None,
     global_plan_emitter: GlobalPlanEmitter | None = None,
+    memory_requirements: ArenaRequirements | Callable[[DispatchProgram], ArenaRequirements] | None = None,
+    memory_plan: MemoryPlan | None = None,
 ) -> MerlinProgram:
     """Assemble a :class:`MerlinProgram` from a dispatch program: plan the arena, build the kernel
     table from the dispatch nodes, and tag the required capability. The opcode set is the distinct
@@ -141,7 +145,16 @@ def build_program(
     # explicitly shadow analysis and preserves the legacy dispatch byte-for-byte.
     if emission is not None:
         dispatch = emission.dispatch
-    mem = plan_arena(dispatch)
+    # Recompute requirements after outlining so lifetimes bind the actual graph.
+    if callable(memory_requirements):
+        memory_requirements = memory_requirements(dispatch)
+    if memory_plan is not None:
+        if memory_requirements is None:
+            raise ValueError("reusing a memory plan requires explicit memory requirements")
+        check_bounded_arena(dispatch, memory_requirements, memory_plan)
+        mem = memory_plan
+    else:
+        mem = plan_bounded_arena(dispatch, memory_requirements) if memory_requirements is not None else plan_arena(dispatch)
     kernels: dict[str, KernelEntry] = {}
     opcodes: set[str] = set()
     for node in dispatch.nodes:
@@ -171,4 +184,5 @@ def build_program(
         opcodes=sorted(opcodes),
         global_plan=global_plan,
         global_plan_emission=emission,
+        memory_requirements=memory_requirements,
     )

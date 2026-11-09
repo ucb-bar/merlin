@@ -9,21 +9,17 @@ from test_convolution_exploration import issue_law
 from test_convolution_rhs_residency import rhs_law
 from test_counted_convolution import Integers
 
-from merlin.compile.scheduling.convolution_exploration import (
-    ConvolutionExplorationSource,
-    ConvolutionRhsPhaseLaw,
-    ConvolutionRhsPhases,
-    ConvolutionScheduleChoice,
-    emit_convolution_schedule,
-    plan_convolution_rhs_phases,
-    plan_convolution_rhs_residency,
-    plan_convolution_schedule,
-)
-from merlin.compile.scheduling.window_transfer import (
-    ConvolutionResidentInputRows,
-    CountedConvolutionPlan,
-    Window2D,
-)
+from merlin.compiler.schedule.convolution_exploration import ConvolutionExplorationSource
+from merlin.compiler.schedule.convolution_exploration import ConvolutionRhsPhaseLaw
+from merlin.compiler.schedule.convolution_exploration import ConvolutionRhsPhases
+from merlin.compiler.schedule.convolution_exploration import ConvolutionScheduleChoice
+from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_rhs_phases
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_rhs_residency
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_schedule
+from merlin.compiler.schedule.window_transfer import ConvolutionResidentInputRows
+from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
+from merlin.compiler.schedule.window_transfer import Window2D
 
 
 def fixture():
@@ -176,7 +172,8 @@ def test_exact_partition_source_permission_and_capacity_limits():
 def test_phase_registry_is_executable_and_capacity_fallback_deduplicates():
     import json
 
-    from merlin.compile.scheduling.convolution_exploration import convolution_pass_space, explore_convolution_schedules
+    from merlin.compiler.schedule.convolution_exploration import convolution_pass_space
+    from merlin.compiler.schedule.convolution_exploration import explore_convolution_schedules
     from merlin.transforms.pass_exploration import EmittedProgram
     from merlin.transforms.pipeline_state import PipelineContext
 

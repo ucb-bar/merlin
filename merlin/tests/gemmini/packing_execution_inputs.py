@@ -19,8 +19,8 @@ import numpy as np
 from merlin.common.digest import sha256_file
 from merlin.common.paths import repo_root
 from merlin.common.strict_json import loads
-from merlin.compile.materialized_model_inputs import MaterializedModelInputs
-from merlin.compile.model_execution_inputs import strict_tree_sha256
+from merlin.compiler.frontend.materialized import MaterializedModelInputs
+from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.frontends.linalg_mlir import parse_mlir_text
 
 SCHEMA = "merlin.test.gemmini_packing_pair.v1"

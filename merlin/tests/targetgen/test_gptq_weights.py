@@ -30,11 +30,11 @@ from pathlib import Path
 
 import pytest
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import module_source_path
 from merlin.targetgen import _gptq as G
 from merlin.targetgen import quant_recipe as QR
 
-_TARGETGEN = merlin_dir() / "python/merlin/targetgen"
+_TARGETGEN = module_source_path("merlin.targetgen._recipe_specs").parent
 _WEIGHT_KEYS = {"dtype", "granularity", "symmetric", "quant_min", "quant_max", "block", "mode"}
 
 

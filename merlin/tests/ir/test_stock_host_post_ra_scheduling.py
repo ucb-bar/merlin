@@ -43,7 +43,8 @@ def test_ordinary_model_plan_changes_only_model_object(monkeypatch):
     def observe(compiler, flags):
         return dict(schema="merlin.selected-index-lowering.v1", compiler_requested=str(compiler),
                     compiler_resolved="/compiler", compiler_sha256="a" * 64, cross_flags=flags,
-                    index_bits=64, data_layout="e-p:64:64")
+                    index_bits=64, data_layout="e-p:64:64",
+                    scope="synthetic flag-propagation fixture; no compiler execution")
 
     monkeypatch.setattr(spike_model.target_data_layout, "observe_index_width", observe)
     control = spike_model.selected_model_compiler_plan(

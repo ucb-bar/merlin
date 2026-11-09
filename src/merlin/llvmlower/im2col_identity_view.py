@@ -34,7 +34,7 @@ def _rewrite_one(mt) -> None:
     from xdsl.dialects.tensor import CollapseShapeOp, EmptyOp
     from xdsl.rewriter import InsertPoint, Rewriter
 
-    from .im2col_pack import _reassoc
+    from merlin.compiler.ir.convolution import _reassoc
 
     source = mt.gather.inputs[0]
     elem = source.type.get_element_type()
@@ -104,7 +104,7 @@ def rewrite_prepared_file(prepared: "str | Path", work: "str | Path | None" = No
 
 
 def ensure_registered() -> str:
-    from .impr_features import ImprFeature, known, register
+    from .shared_feature_registry import ImprFeature, known, register
 
     if FEATURE not in known():
         register(

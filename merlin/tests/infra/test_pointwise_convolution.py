@@ -7,9 +7,9 @@ from test_compact_dense import ADAPTER, fixture
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, i64
 
-from merlin.compile.scheduling.compact_dense import schedule_compact_dense
-from merlin.compile.scheduling.pointwise_convolution import pointwise_dense_view
-from merlin.compile.scheduling.window_transfer import Window2D
+from merlin.compiler.schedule.compact_dense import schedule_compact_dense
+from merlin.compiler.schedule.pointwise_convolution import pointwise_dense_view
+from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.llvmlower.host_builder import FnBuilder
 
 

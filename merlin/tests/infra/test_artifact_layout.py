@@ -1,10 +1,4 @@
-"""Durability tests for the three-root artifact/run convention.
-
-Covers the shared helper (start_run/new_product/cache_dir), the layout linter, and the
-PreToolUse guard hook. These assert the convention "holds for the future": a fresh run lands
-in the right place, products carry a manifest + relative `latest`, the linter flags a planted
-stray, and the hook denies a bad write while allowing source edits.
-"""
+"""Artifact publication obligations: immediate provenance, declared homes and write gates."""
 
 from __future__ import annotations
 
@@ -17,10 +11,32 @@ import pytest
 
 from merlin.common import artifacts as A
 from merlin.common.paths import repo_root
+from merlin.common.yaml import load_yaml
 
 REPO = repo_root()
 HOOK = REPO / ".claude" / "hooks" / "guard_artifact_writes.py"
 LINT = REPO / "build_tools" / "scripts" / "check_artifact_layout.py"
+
+
+@pytest.fixture()
+def layout_workspace(tmp_path, monkeypatch):
+    """One real Git/storage workspace for publication and checker obligations."""
+    for args in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"]):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+    contract = tmp_path / "merlin/contract/storage.yaml"
+    contract.parent.mkdir(parents=True)
+    contract.write_text(
+        "concerns: {dse: 'Search', perf-studies: 'Studies', compare: 'Comparisons', probes: 'Probes'}\n"
+        "product_roots: {perf-ledger: perf-studies/ledger}\n"
+    )
+    monkeypatch.setenv("MERLIN_REPO_ROOT", str(tmp_path))
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
+
+    def check(*flags):
+        return subprocess.run([sys.executable, str(LINT), *flags], cwd=tmp_path,
+                              capture_output=True, text=True, timeout=15)
+
+    return tmp_path, contract, check
 
 
 # ----------------------------------------------------------------- helper API
@@ -41,19 +57,26 @@ def test_start_run_lands_under_target_suite(tmp_path):
     A.finish_run(h, "completed", summary={"n": 1})
 
 
-def test_new_product_manifest_and_relative_latest(tmp_path, monkeypatch):
-    monkeypatch.setenv("MERLIN_REPO_ROOT", str(tmp_path))
-    monkeypatch.delenv("MERLIN_OUT_ROOT", raising=False)
-    p = A.new_product("dse", version=1, target="bitvla", notes="t")
-    rel = p.path.relative_to(tmp_path).parts
-    assert rel[:5] == ("out", "artifacts", "dse", "bitvla", "v1")  # single out/ root; topic+target+version
-    p.add_artifact("findings.csv").write_text("a,b\n1,2\n")
-    mp = p.write_manifest()
-    man = mp.read_text()
-    assert "git_sha" in man and "timestamp" in man and "findings.csv" in man
+@pytest.mark.parametrize("target,write_payload", [(None, False), ("bitvla", True)])
+def test_product_lifecycle_is_gate_valid_before_and_after_producer_write(layout_workspace, target, write_payload):
+    root, _, check = layout_workspace
+    p = A.new_product("dse", version=1, target=target, notes="t")
+    expected = ("out", "artifacts", "dse", *((target,) if target else ()), "v1")
+    assert p.path.relative_to(root).parts[:-1] == expected
+    assert p.manifest_path.is_file() and p.manifest_path.parent == p.path
+    manifest = load_yaml(p.manifest_path)
+    assert {"run_id", "timestamp", "git_sha", "version"} <= manifest.keys()
+    assert manifest["run_id"] == p.path.name and manifest["artifacts"] == []
+    created = check("--staged")
+    assert created.returncode == 0, created.stdout + created.stderr
     latest = p.path.parent / "latest"
     assert latest.is_symlink() and not os.path.isabs(os.readlink(latest))  # relative (bwrap-safe)
-    assert (p.path.parent / os.readlink(latest)).exists()  # not dangling
+    assert latest.resolve() == p.path  # not dangling
+    artifact = p.add_artifact("findings.csv")
+    if write_payload:
+        artifact.write_text("a,b\n1,2\n")
+    p.write_manifest()
+    assert load_yaml(p.manifest_path)["artifacts"] == ["findings.csv"]  # producer replaces placeholder
 
 
 def test_cache_dir_under_artifacts_cache(tmp_path, monkeypatch):
@@ -96,6 +119,45 @@ def test_invalid_product_destination_refuses_before_writes(tmp_path, monkeypatch
     with pytest.raises(ValueError):
         storage_cli.planned_folds()
     assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("relative", ["perf-studies/ledger/v2", "perf-studies/ledger/fixture/v2", "compare/fixture/v2"])
+def test_declared_product_versions_require_manifest_and_relative_latest(layout_workspace, relative):
+    root, _, check = layout_workspace
+    version = root / "out/artifacts" / relative
+    product = version / "product"
+    product.mkdir(parents=True)
+    latest = version / "latest"
+    latest.symlink_to(product)
+    failed = check()
+    assert failed.returncode == 1
+    assert "product dir missing manifest.yaml" in failed.stderr
+    assert "absolute `latest` symlink" in failed.stderr
+    (product / "manifest.yaml").write_text("schema: fixture\n")
+    latest.unlink()
+    latest.symlink_to(product.name)
+    assert check().returncode == 0
+    latest.unlink()
+    latest.symlink_to("missing")
+    assert "dangling `latest` symlink" in check().stderr
+
+
+def test_scan_does_not_descend_past_declared_axes_or_treat_verify_as_version(layout_workspace):
+    root, _, check = layout_workspace
+    for relative in ("probes/verify/unit", "perf-studies/ledger/fixture/extra/v2/unit"):
+        (root / "out/artifacts" / relative).mkdir(parents=True)
+    checked = check()
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+
+
+@pytest.mark.parametrize("document", ["[]", "broken: [", "product_roots: {perf-ledger: ../outside}"])
+def test_invalid_storage_declaration_blocks_stop_hook(layout_workspace, document):
+    root, contract, check = layout_workspace
+    contract.write_text(document)
+    (root / "out/artifacts").mkdir(parents=True)
+    checked = check("--stop-hook")
+    assert checked.returncode == 0
+    assert json.loads(checked.stdout)["decision"] == "block"
 
 
 # ----------------------------------------------------------------- linter

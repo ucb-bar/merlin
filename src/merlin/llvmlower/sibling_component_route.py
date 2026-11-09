@@ -108,7 +108,7 @@ def build_components(device, selected, actual, *, original, preparation=None):
     )
     # Freeze unmatched interfaces through the same original group constructor
     # ordinary device_build uses; a partial exact-interface roster is invalid.
-    from merlin.compile.mesh import _mesh_tile_binding
+    from merlin.compiler.selection.mesh import _mesh_tile_binding
     from merlin.targetgen import corpus_spec as CS
 
     binding = _mesh_tile_binding(

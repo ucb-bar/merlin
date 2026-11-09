@@ -154,6 +154,11 @@ def test_native_compile_reports_the_target_binding_failure_status(
 
     monkeypatch.setattr(snapshot_module, "open_native_snapshot", lambda _root: _Snapshot())
     monkeypatch.setattr(target_binding, "load_native_target_binding", lambda _name: _Binding())
+    original_loader, loaded = cli._load_native_request, []
+    def selected_loader(*args, **kwargs):
+        loaded.append(kwargs)
+        return original_loader(*args, **kwargs)
+    monkeypatch.setattr(cli, "_load_native_request", selected_loader)
     request_path, abi_path = tmp_path / "request.json", tmp_path / "abi.json"
     request_path.write_text(json.dumps(request.record()))
     abi_path.write_text(json.dumps({"fixed_inputs": {"x": 0}, "fixed_outputs": [1]}))
@@ -185,6 +190,7 @@ def test_native_compile_reports_the_target_binding_failure_status(
     status = json.loads(status_path.read_text())
     assert status["status"] == "tool_unavailable"
     assert "generated target parser absent" in status["reason"]
+    assert loaded == [{"target_identity": request.target_identity, "mode": request.lowering_policy}]
 
 
 def test_native_select_abi_reservations_are_optional_and_checked(tmp_path: Path) -> None:

@@ -63,7 +63,7 @@ def completed_program(receipt_pin: dict) -> dict:
     receipt = json.loads(payload(receipt_pin))
     recovery_pins = []
     if receipt.get("schema") == "merlin.completed_model_link_revalidation.v1":
-        from merlin.compile.completed_model_link import verify
+        from merlin.verification.completed_model import verify
 
         receipt, recipe, recovery_pins = verify(receipt_pin)
     elif receipt.get("schema") != "merlin.baremetal-saved-model.v1" or receipt.get("status") != "compiled":

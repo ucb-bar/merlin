@@ -14,9 +14,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from pathlib import Path
-
-import pytest
 
 from merlin.common.paths import repo_root
 
@@ -117,15 +114,6 @@ def test_the_audit_fails_closed_in_BOTH_directions():
     assert "not a control" in src
 
 
-def test_the_arena_is_sized_for_a_no_op_free_not_for_liveness_peak():
-    """`free()` is a no-op in this runtime, so the arena must cover the SUM of allocations. Sizing it
-    from the liveness peak is how a whole-model run dies at op 11,494 of 11,526."""
-    src = _src()
-    assert "activation_peak_bytes" in src
-    assert "SUM of allocations, not the" in src
-    assert "a.arena_mb or max(" in src  # explicit override still wins
-
-
 def test_the_help_text_explains_the_board_argument_is_a_correctness_knob():
     r = subprocess.run([sys.executable, str(SCRIPT), "--help"], capture_output=True, text=True, cwd=repo_root())
     assert r.returncode == 0
@@ -140,3 +128,20 @@ def test_the_hart_default_is_safe_on_a_one_hart_board():
     src = _src()
     assert 'ap.add_argument("--harts", type=int, default=1)' in src
     assert "deadlock the barrier" in src  # the reason, so nobody raises it back
+
+
+def test_image_cpu_extent_covers_nonconsecutive_worker_ids():
+    import runpy
+    from types import SimpleNamespace
+
+    import pytest
+
+    select = runpy.run_path(str(SCRIPT))["image_affinity"]
+    board = SimpleNamespace(harts=4, hart_ids_for=lambda backend: (1, 3))
+    assert select(board, 1) == (1, 2)
+    assert select(board, 2) == (1, 4)
+    with pytest.raises(ValueError, match="eligible"):
+        select(board, 3)
+    board.harts = 3
+    with pytest.raises(ValueError, match="CPU count"):
+        select(board, 2)

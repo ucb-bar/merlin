@@ -555,22 +555,6 @@ def _program(
     return e.kernel_s()
 
 
-def _base_operands(isa: Any, mnemonic: str, ladder: Sequence[int]) -> dict[str, int]:
-    """The operand assignment every variant is measured against.
-
-    Each operand sits at the SECOND value the encoding can carry cleanly where there is one, not the
-    first. The reason is the register-file convention this class of machine shares: index zero is the
-    fixed-zero register, so an instruction whose destination operand is parked there writes nothing
-    and the whole probe compares two runs that both did nothing. Preferring the next value keeps the
-    baseline run observable, which is what every later comparison is measured against."""
-    fields = isa.fields_of(mnemonic)
-    out: dict[str, int] = {}
-    for attr in fields:
-        values = candidate_values(fields, attr, ladder)
-        out[attr] = (values[1] if len(values) > 1 else values[0]) if values else 0
-    return out
-
-
 def _baseline_assignments(isa: Any, mnemonic: str, ladder: Sequence[int]) -> list[dict[str, int]]:
     """The operand assignments the trials are run against -- more than one, and every one of them.
 

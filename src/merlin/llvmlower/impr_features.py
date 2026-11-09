@@ -19,73 +19,46 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+
+from merlin.compiler.selection.features import CompositionError as CompositionError
+from merlin.compiler.selection.features import FeatureRegistry, ImprFeature
+
+
+from merlin.compiler.passes.features import (
+    FUSE_AFTER_GENERALIZE_NAME as FUSE_AFTER_GENERALIZE_NAME,
+    FUSE_ELEMENTWISE_ANCHOR as FUSE_ELEMENTWISE_ANCHOR,
+    FUSE_ELEMENTWISE_NAME as FUSE_ELEMENTWISE_NAME,
+    FUSE_ELEMENTWISE_STAGE as FUSE_ELEMENTWISE_STAGE,
+    PROMOTE_STACK_BYTES_ENV as PROMOTE_STACK_BYTES_ENV,
+    PROMOTE_STACK_NAME as PROMOTE_STACK_NAME,
+    _PROMOTE_STACK_DEFAULT_BYTES as _PROMOTE_STACK_DEFAULT_BYTES,
+    _fuse_after_generalize as _fuse_after_generalize,
+    _fuse_elementwise_pipeline as _fuse_elementwise_pipeline,
+    _promote_buffers_to_stack as _promote_buffers_to_stack,
+    _promote_stack_bytes as _promote_stack_bytes,
+    _reuse_tensor_destination as _reuse_tensor_destination,
+)
 
 from .copy_expand import FEATURE as _EXPAND_COPY_FEATURE
 from .selfcopy import FEATURE as _SELF_COPY_FEATURE
 from .transpose_fuse import FEATURE as _FUSE_TRANSPOSE_FEATURE
 
 
-@dataclass(frozen=True)
-class ImprFeature:
-    """One named, default-off compiler change.
-
-    ``edit_pipeline`` rewrites the ordered MLIR pass list (PASS/HEURISTIC at the pipeline level).
-    ``edit_schedule`` rewrites the transform-dialect schedule text (PATTERN at the schedule level
-    that goes beyond what a hand-written ``schedule.mlir`` knob expresses). Either may be None.
-    Both are pure functions (input -> new value); they must be deterministic.
-
-    ``schedule_replace`` flags an ``edit_schedule`` that IGNORES its input text and emits a full
-    replacement schedule (e.g. the tiled-vfmacc / accumulator-resident recipes whose structure
-    differs fundamentally from the tile+vectorize baseline). Two such features cannot COMPOSE — the
-    last one in sorted order would silently clobber the other's clamp — so ``apply_schedule`` refuses
-    to apply more than one full-replacement schedule feature at once (the composed, whole-model-safe
-    config is a SINGLE feature with all the clamps inherent). Additive edits (``schedule_replace`` =
-    False, e.g. ``lmul_widen_n``'s string substitution) layer freely on top of a replacement.
-
-    ``edit_cflags`` rewrites the clang flag list for the model object (KNOB at the BACKEND level).
-    It exists because some codegen decisions are not expressible in the IR at all: the width of the
-    vector register group the auto-vectorizer asks for is a backend query, not a type, so no tile
-    size or schedule edit reaches it directly -- the only way this registry could move it before was
-    to widen the N tile and let the group width follow, which changes the vectorized shapes as a side
-    effect and can push a transfer into a masked form the backend rejects (see ``lmul_group``). A
-    ``None`` hook leaves the flags untouched, so a build that names no cflag-editing feature compiles
-    byte-identically.
-
-    ``implies`` names features this one CANNOT be measured without -- lowering hygiene that is a
-    property of the recipe's SHAPE rather than a tuning choice. It exists because a default-off
-    feature whose payoff is cancelled by a separate default-off fix is, in practice, an inert lever:
-    the beam has to discover the conjunction, and everyone who names the feature directly in
-    ``compiler_features`` gets the cancelled version. See ``_tile_epilogue_hygiene``.
-
-    ``alternative_group`` names a family whose members are alternative choices: at most one
-    member may be selected. ``requires_exactly_one_of`` names explicit prerequisites from which
-    exactly one must be selected. Both constraints are checked after the ``implies`` closure;
-    neither selects a prerequisite or drops a conflicting feature automatically.
-    """
-
-    name: str
-    action_class: str  # "PASS" | "HEURISTIC" | "PATTERN"
-    description: str
-    edit_pipeline: Callable[[list[str]], list[str]] | None = None
-    edit_schedule: Callable[[str], str] | None = None
-    edit_cflags: Callable[[list[str]], list[str]] | None = None
-    schedule_replace: bool = False
-    implies: frozenset[str] = frozenset()
-    alternative_group: str | None = None
-    requires_exactly_one_of: frozenset[str] = frozenset()
 
 
-_REGISTRY: dict[str, ImprFeature] = {}
+_FEATURES = FeatureRegistry(lambda name: _try_lazy_register(name))
+_REGISTRY = _FEATURES.entries
 
 
-def register(feature: ImprFeature) -> ImprFeature:
-    if feature.name in _REGISTRY:
-        raise ValueError(f"duplicate impr feature {feature.name!r}")
-    _REGISTRY[feature.name] = feature
-    return feature
+register = _FEATURES.register
+
+from merlin.compiler.selection import shared as _shared_features
+
+NAMED_INT8_CONTRACTION_NAME = _shared_features.NAMED_INT8_CONTRACTION_NAME
+QUANTIZE_BEFORE_GATHER_NAME = _shared_features.QUANTIZE_BEFORE_GATHER_NAME
+for _feature in _shared_features.eager_features():
+    register(_feature)
 
 
 #: Cache for :func:`_single_name_lever_modules` (built once per process).
@@ -161,6 +134,13 @@ def _try_lazy_register(name: str) -> bool:
     ``compiler_features`` -- rather than reaching it through a ``microkernel`` knob block, which
     registers it as a side effect of resolving -- failed with an "unknown impr feature" KeyError.
     Each family is registered from its own arity, so a name is either derivable or an honest error."""
+    try:
+        shared = _shared_features.get_shared_feature(name)
+    except KeyError:
+        pass
+    else:
+        register(shared)
+        return True
     # A SINGLE-NAME lever lives in its own module and resolves by importing that module, rather than
     # through the arity table below. It has to resolve HERE and not only where it is ranked:
     # `wholemodel_proposer` registers it for the PROPOSAL path, but a package that names it in
@@ -247,133 +227,25 @@ def _try_lazy_register(name: str) -> bool:
     return False
 
 
-def get(name: str) -> ImprFeature:
-    if name not in _REGISTRY and not _try_lazy_register(name):
-        raise KeyError(f"unknown impr feature {name!r}; registered: {sorted(_REGISTRY)}")
-    return _REGISTRY[name]
+get = _FEATURES.get
 
 
 def known() -> list[str]:
-    return sorted(_REGISTRY)
+    return sorted(set(_FEATURES.known()) | set(_shared_features.known()))
 
 
-def normalize(features) -> frozenset[str]:
-    """Accept None / list / set / frozenset -> validated frozenset (every name must be registered),
-    closed under ``ImprFeature.implies`` and satisfying declared selection constraints.
-
-    The closure is here, and not at each call site, because ``feats = normalize(...)`` is the single
-    point every consumer reads: the runner selection, the schedule edits, and the argv gates for the
-    self-copy erase / transpose fusion all key off this one set. Expanding anywhere later would let
-    them disagree about which features are on.
-
-    Empty in => empty out, so the frozen baseline stays byte-identical.
-    """
-    if not features:
-        return frozenset()
-    fs = frozenset(features)
-    for n in fs:
-        get(n)  # raises on unknown
-    while True:
-        grown = fs | frozenset().union(*(get(n).implies for n in fs)) if fs else fs
-        if grown == fs:
-            break
-        for n in grown - fs:
-            get(n)  # an implied name must be registered too
-        fs = grown
-
-    groups: dict[str, list[str]] = {}
-    for n in sorted(fs):
-        feature = get(n)
-        if feature.alternative_group is not None:
-            groups.setdefault(feature.alternative_group, []).append(n)
-    for group, members in sorted(groups.items()):
-        if len(members) > 1:
-            raise ValueError(f"feature alternatives in group {group!r} cannot compose: {members}")
-    for n in sorted(fs):
-        required = get(n).requires_exactly_one_of
-        selected = sorted(fs & required)
-        if required and len(selected) != 1:
-            raise ValueError(f"feature {n!r} requires exactly one of {sorted(required)}; selected {selected}")
-    return fs
+normalize = _FEATURES.normalize
 
 
-def apply_pipeline(passes: list[str], features: frozenset[str]) -> list[str]:
-    """Apply each enabled feature's pipeline edit, in a stable (sorted) order. Empty -> unchanged
-    list object content (identity), so the joined string is byte-identical to the baseline."""
-    if not features:
-        return passes
-    out = list(passes)
-    for name in sorted(features):
-        f = get(name)
-        if f.edit_pipeline is not None:
-            out = f.edit_pipeline(out)
-    return out
+apply_pipeline = _FEATURES.apply_pipeline
 
 
-class CompositionError(ValueError):
-    """Two features both fully REPLACE the transform schedule -> they cannot compose (one would
-    silently clobber the other). The whole-model-safe composed config is a SINGLE feature with all
-    clamps inherent; raise instead of letting sorted order pick a winner."""
 
 
-def apply_schedule(schedule_text: str, features: frozenset[str]) -> str:
-    """Apply each enabled feature's schedule edit so features COMPOSE rather than clobber.
-
-    Full-schedule-REPLACEMENT features (``schedule_replace=True``, e.g. the tiled-vfmacc /
-    accumulator-resident recipes whose ``edit_schedule`` ignores its input) are applied FIRST, and
-    at most ONE is allowed — two would make the result depend on sorted order, silently discarding
-    the other's clamp (the bug WORK-ITEM 2 fixes). Additive edits (``schedule_replace=False``, pure
-    text transforms like ``lmul_widen_n``) then layer on top in stable order. Empty -> unchanged text.
-    """
-    if not features:
-        return schedule_text
-    replacers = [get(n) for n in sorted(features) if get(n).edit_schedule is not None and get(n).schedule_replace]
-    if len(replacers) > 1:
-        raise CompositionError(
-            "cannot compose multiple full-schedule-replacement features "
-            f"{[f.name for f in replacers]}: each emits a complete transform schedule and would "
-            "clobber the others. Enable the single composed feature that carries all clamps "
-            "inherent (e.g. accumulator_resident_wholemodel) instead of stacking replacements."
-        )
-    out = schedule_text
-    if replacers:  # the one replacement runs first (input ignored)
-        out = replacers[0].edit_schedule(out)
-    for name in sorted(features):  # then additive edits layer on top
-        f = get(name)
-        if f.edit_schedule is not None and not f.schedule_replace:
-            out = f.edit_schedule(out)
-    return out
+apply_schedule = _FEATURES.apply_schedule
 
 
-def apply_cflags(cflags, features: frozenset[str]) -> list[str]:
-    """``cflags`` with every enabled feature's ``edit_cflags`` hook applied, in stable name order.
-
-    Empty ``features`` (the baseline, and every build that names only IR-level features) returns the
-    list unchanged, so the emitted object is byte-identical -- the same invariant
-    :func:`apply_pipeline` / :func:`apply_schedule` carry, extended to the backend flags.
-
-    Unlike a schedule replacement there is no composition hazard here: each hook appends its own
-    ``-mllvm`` option and the flags are independent, so two cflag features layer the way two additive
-    schedule edits do. A feature that wanted to CONTRADICT another on the same option would have to
-    be caught by whoever adds it; today the only such option is the register-group width, and the
-    registrar mints one feature per width so two of them cannot be named without saying so.
-
-    WHO CALLS THIS. Every builder that turns the lowered ``.ll`` into the model object must, or a
-    cflag feature is INERT on that path -- named, resolved, and emitting byte-identical code, which
-    is the failure mode hardest to notice from the outside. Wired today:
-    ``runtime.backends.zephyr_model.build_app`` and ``runtime.backends.spike_model.build``. NOT yet
-    wired: ``mining.k1.build_k1_binary`` (and its staged sibling), which assembles its model-object
-    flag list inline; a cflag feature therefore has no effect on that path until the same call is
-    added there.
-    """
-    out = list(cflags)
-    if not features:
-        return out
-    for name in sorted(features):
-        f = get(name)
-        if f.edit_cflags is not None:
-            out = list(f.edit_cflags(out))
-    return out
+apply_cflags = _FEATURES.apply_cflags
 
 
 # ---- registered features ------------------------------------------------------------
@@ -2035,61 +1907,14 @@ def unclaimed_op_classes(feature: str) -> list[str]:
 #: layout, im2col gather, pad) falls through convert-linalg-to-loops to SCALAR code on one core. It is
 #: 86-89% of the linalg ops of every workload measured, which is why whole-model MAC/cycle sits at a
 #: few percent of the datapath's peak while the matmul kernel itself looks fine.
-NAMED_INT8_CONTRACTION_NAME = "named_int8_contraction"
 
-register(
-    ImprFeature(
-        name=NAMED_INT8_CONTRACTION_NAME,
-        action_class="PASS",
-        description="Emit the canonical 2-D i8xi8->i32 contraction as a MIXED-TYPE linalg.matmul instead "
-        "of a linalg.generic, so the named-op transform schedules can see it. The int8 quant "
-        "pass otherwise leaves ZERO linalg.matmul in the module (measured: 15 -> 0 on "
-        "small_llama_int8), and transform.structured.match on a name nothing carries returns "
-        "an empty handle -- which makes every one of the 39 linalg.matmul/batch_matmul "
-        "matchers in this file a vacuous no-op on int8 while still reporting as applied. An "
-        "87-fork beam over those levers emitted only 21 distinct binaries. Batched, conv and "
-        "non-canonical indexing keep the generic form: a named op ASSERTS an indexing "
-        "convention, so claiming one the op does not have would be a correctness bug rather "
-        "than a missed optimization. Default-off; baseline byte-identical.",
-    )
-)
 
 #: Quantize an activation BEFORE the pure data-movement op that expands it, not after.
 #:
 #: Registered EAGERLY, at import of this module, and listed in `wholemodel_proposer.RANKED_LEVERS`.
 #: Both are load-bearing: `_composes` swallows the KeyError for an unregistered name and returns
 #: False, so a lazily-registered lever is not declined by the search, it is INVISIBLE to it.
-QUANTIZE_BEFORE_GATHER_NAME = "quantize_before_gather"
 
-register(
-    ImprFeature(
-        name=QUANTIZE_BEFORE_GATHER_NAME,
-        action_class="PASS",
-        description=(
-            "When a contraction's f32 activation operand is produced by a PURE data-movement op (an "
-            "all-parallel linalg.generic whose body only yields its input, i.e. an element copy), "
-            "quantize the op's SOURCE with a per-tensor scale instead of quantizing its expanded result "
-            "with a per-parallel-row one. Quantization is elementwise, so quantize(G(A)) == G(quantize(A)) "
-            "exactly for a single shared scale; what blocks the commutation today is only the per-row "
-            "scale, under which one element of A carries a different scale in every im2col column it "
-            "appears in. This is the case that matters on every convolutional model here: model2MLIR "
-            "expands every conv into im2col + matmul before merlin sees it (190 such ops in deepjscc "
-            "int8, 175 in lstmnetvit int8, zero fused conv2d), so the operand being quantized IS the "
-            "expanded matrix -- deepjscc enc.net.1 quantizes a 147x4096 f32 matrix, ~41x the "
-            "1x3x70x70 activation it was gathered from. With the scale moved, the abs-max and the "
-            "quantize both run on the activation and the gather itself moves i8, 4x less traffic for the "
-            "same trip count, and the f32 expansion is erased entirely. The abs-max is EXACT in both "
-            "modes: over the source when the indexing maps and bounds PROVE the gather reads every "
-            "element, otherwise reduced through the gather's own map (same reads, scalar result, no "
-            "materialization) -- so a strided or dilated gather that skips elements is handled, not "
-            "approximated with the coarser amax(A) >= amax(G(A)). Refuses and counts the reason for a "
-            "computed body, a shared intermediate, a dynamic extent or a non-gather producer. "
-            "NOT bit-identical: the per-tensor activation scale is a genuine numeric change against the "
-            "shipped per-row scheme and must pass the accuracy gate on its own. Default-off; with the "
-            "feature absent the int8 datapath is byte-identical."
-        ),
-    )
-)
 
 VEC_NONCONTRACTION_NAME = "vectorize_non_contraction_generics"
 #: Default lane count for the bare feature name. The lane width is a KNOB SPACE, not a
@@ -2614,106 +2439,18 @@ def ensure_vec_noncontraction(lanes: int, max_rank: int = VEC_NONCONTRACTION_MAX
 #: pre-generalization pass still fuses the generics that are already generic, and leaving it in place
 #: keeps this a strict addition to the baseline rather than a reshuffle whose effect is harder to
 #: attribute. General, not target-specific -- every per-channel-quantized model has this shape.
-FUSE_AFTER_GENERALIZE_NAME = "fuse_elementwise_after_generalize"
 
 
-def _fuse_after_generalize(passes: list[str]) -> list[str]:
-    """Insert a second ``linalg-fuse-elementwise-ops`` immediately after generalization."""
-    out = list(passes)
-    anchor = "func.func(linalg-generalize-named-ops)"
-    try:
-        i = out.index(anchor)
-    except ValueError:
-        raise ValueError(
-            f"{FUSE_AFTER_GENERALIZE_NAME}: anchor {anchor!r} not in the pipeline; refusing to guess "
-            f"where the second fusion belongs"
-        ) from None
-    out.insert(i + 1, "func.func(linalg-fuse-elementwise-ops)")
-    return out
 
 
-register(
-    ImprFeature(
-        name=FUSE_AFTER_GENERALIZE_NAME,
-        action_class="PASS",
-        description="run elementwise fusion a second time, AFTER linalg-generalize-named-ops. The "
-        "upstream order fuses (pos 2) before generalizing (pos 3), and fusion only sees "
-        "linalg.generic -- so every NAMED op is invisible to it. MEASURED on small_llama "
-        "int8: 39 linalg.broadcast ops at 23.9% of the model, each materialising a "
-        "per-channel quantization scale into a full weight-sized tensor (a 344-element "
-        "vector splatted to 44,032 elements, then read straight back). "
-        "MEASURED AND REFUTED as a whole-model lever on that same model: 3,543,517 -> "
-        "4,313,041 ns, 1.22x SLOWER (sustained, n=3, cos identical). It does what it says -- "
-        "the scalar bucket falls 3.1 -> 2.8 ms -- but the contraction RISES 1.8 -> 2.8 ms, "
-        "because fusing the dequant chain into the producers perturbs the shape the "
-        "contraction was vectorized into and costs more than the broadcast it removes. Kept "
-        "registered so the finding is reproducible and the lever is not re-attempted blindly; "
-        "the broadcast waste is real but needs a TARGETED fold of the broadcast into its "
-        "consumer's indexing map, not blanket elementwise fusion. Default-off; baseline "
-        "byte-identical.",
-        edit_pipeline=_fuse_after_generalize,
-    )
-)
 
 
-PROMOTE_STACK_NAME = "promote_buffers_to_stack"
-PROMOTE_STACK_BYTES_ENV = "MERLIN_PROMOTE_STACK_BYTES"
-_PROMOTE_STACK_DEFAULT_BYTES = 16384
 
 
-def _promote_stack_bytes() -> int:
-    """Per-buffer promotion cap in bytes (env-overridable so the search can size it per model)."""
-    raw = os.environ.get(PROMOTE_STACK_BYTES_ENV)
-    if raw:
-        try:
-            v = int(raw)
-        except ValueError:
-            v = 0
-        if v > 0:
-            return v
-    return _PROMOTE_STACK_DEFAULT_BYTES
 
 
-def _promote_buffers_to_stack(passes: list[str], cap: int | None = None) -> list[str]:
-    """Insert ``promote-buffers-to-stack`` right after the buffer hoisting.
-
-    After hoisting (so a buffer already lifted out of a loop is promoted once, not per iteration) and
-    before the loop lowering. Deallocation runs earlier in this pipeline (``__DEALLOC__``), and a
-    stack buffer needs none -- promoting after it is what keeps the two consistent.
-
-    ``cap`` names the per-buffer byte cap explicitly (the sized variants minted by
-    :func:`ensure_promote_stack`); ``None`` keeps the env-or-default behaviour.
-    """
-    out = list(passes)
-    anchor = "func.func(buffer-hoisting,buffer-loop-hoisting)"
-    try:
-        i = out.index(anchor)
-    except ValueError:  # pipeline shape changed -> fail closed rather than insert somewhere wrong
-        raise ValueError(
-            f"{PROMOTE_STACK_NAME}: anchor {anchor!r} not in the pipeline; refusing to guess where "
-            f"promote-buffers-to-stack belongs"
-        ) from None
-    nbytes = _promote_stack_bytes() if cap is None else int(cap)
-    out.insert(i + 1, f"func.func(promote-buffers-to-stack{{max-alloc-size-in-bytes={nbytes}}})")
-    return out
 
 
-register(
-    ImprFeature(
-        name=PROMOTE_STACK_NAME,
-        action_class="PASS",
-        description="promote small bufferization allocs to the stack after hoisting. Targets LOCALITY, "
-        "not allocator cost: bufferization gives each intermediate its own memref.alloc (209 "
-        "of them on small_llama int8, ~3% of wall), and scattered heap buffers mean every "
-        "intermediate is written and re-read through cache misses. ExecuTorch's memory "
-        "planner places EVERY activation of the same model into ONE 32,512-byte arena, small "
-        "enough to stay in L1; we have no whole-model planner wired, and this upstream pass "
-        "buys much of the same effect. Per-buffer cap (MERLIN_PROMOTE_STACK_BYTES, default "
-        "16384) is a stack-overflow guard, not a tuning knob. Default-off; baseline "
-        "byte-identical.",
-        edit_pipeline=_promote_buffers_to_stack,
-    )
-)
 
 
 def ensure_promote_stack(nbytes: int) -> str:
@@ -3550,27 +3287,7 @@ module attributes {transform.with_named_sequence} {
 # baseline `convert-math-to-libm` -> scalar `expf` path (exact, crash-free). No pipeline edit needed.
 
 
-register(
-    ImprFeature(
-        name="approximate_transcendental_activation",
-        action_class="PASS",
-        description="Explicit f32 activation polynomial rewrite, independent of host vectorization. "
-        "Shares the provenance-scoped exp/erf/tanh approximation with the vectorized activation "
-        "feature. Normalization and unsupported dtypes retain libm lowering. Changes numerical "
-        "arithmetic and requires the caller's original model accuracy gate; default off.",
-    )
-)
 
-register(
-    ImprFeature(
-        name="fuse_activation_polynomial_fma",
-        action_class="PASS",
-        description="Explicit fused evaluation of the selected f32 activation polynomial. "
-        "Changes approximation arithmetic; requires the original model accuracy gate. "
-        "Selects exact FMA intrinsics and leaves normalization expf unchanged; default off.",
-        implies=frozenset({"approximate_transcendental_activation", "lower_fma_to_intrinsic"}),
-    )
-)
 
 register(
     ImprFeature(
@@ -3619,16 +3336,6 @@ register(
 #   instructions 1,710,650 -> 475,899 (3.59x)   ticks 41,195 -> 21,882 (1.88x)
 #   vs XNNPACK   3.57x -> 1.90x
 # The mechanism and why nothing upstream folds it: see llvmlower/selfcopy.py.
-register(
-    ImprFeature(
-        name=_SELF_COPY_FEATURE,
-        action_class="PASS",
-        description="erase `memref.copy %x, %x` (a buffer copied onto itself) after bufferization/cse "
-        "and before finalize-memref-to-llvm, where it would otherwise survive as an opaque "
-        "@memrefCopy rank-generic runtime call costing ~79 retired instructions per OUTPUT "
-        "ELEMENT. Removes the tile-epilogue copy; emits no new code.",
-    )
-)
 
 
 # Expand every static `memref.copy` into an emitted loop nest instead of a runtime call. The
@@ -3645,19 +3352,6 @@ register(
 # erased. Rewriting the copy to `linalg.copy` hands it to the `convert-linalg-to-loops` already in
 # every pipeline, and finalize-memref-to-llvm then has nothing left to turn into a call.
 # See llvmlower/copy_expand.py for the structural predicate and the fail-closed skip count.
-register(
-    ImprFeature(
-        name=_EXPAND_COPY_FEATURE,
-        action_class="PASS",
-        description="rewrite every ranked, statically shaped `memref.copy` to a `linalg.copy` after "
-        "bufferization and before finalize-memref-to-llvm, so the pipeline's own "
-        "convert-linalg-to-loops emits an scf load/store nest instead of leaving a call to "
-        "the rank-generic `@memrefCopy` runtime helper (or a copy-derived `memcpy`). "
-        "Structure-keyed (ranked + static shape), no shape or model assumption; a copy it "
-        "cannot prove static is left alone and counted. Default-off, baseline "
-        "byte-identical.",
-    )
-)
 
 
 # Fold a `linalg.transpose` of a matmul's B operand INTO the matmul's access pattern (transpose-b
@@ -3667,18 +3361,6 @@ register(
 # the scalar transpose op AND its materialized buffer; the op stays `linalg.matmul` (transposed-B
 # indexing_map) so the frozen RVV schedule still vectorizes it. Default-off; baseline byte-identical.
 # The rewrite runs in the lowering runner (gated by argv[5]); see llvmlower/transpose_fuse.py.
-register(
-    ImprFeature(
-        name=_FUSE_TRANSPOSE_FEATURE,
-        action_class="PASS",
-        description="fuse `matmul(A, transpose(B, [1,0]))` into a transpose-b `linalg.matmul` (repoint "
-        "the B operand to the un-transposed weight + permute its indexing_map (k,n)->(n,k), "
-        "then erase the dead transpose). Eliminates the standalone SCALAR weight transpose "
-        "(393 ms / 57% of openvla) and its DRAM buffer with no op materialized; the matmul "
-        "stays vectorized by the frozen schedule and reads B contiguously along k. "
-        "Whole-model cross-op fusion; default-off, baseline byte-identical.",
-    )
-)
 
 
 # ---- vectorize a standalone reduction -> vfredusum/vredsum (the compute.reduction_form lever) ------
@@ -3925,81 +3607,21 @@ register(
 #
 # STRUCTURE-KEYED: the hooks name an upstream MLIR pass and one anchor pass, no model, shape, dtype or
 # target. Nothing here knows what a quantize is.
-FUSE_ELEMENTWISE_NAME = "fuse_elementwise_post_contraction"
 
 #: The stage, in the order `build_rvv_pipeline` documents for it. The `canonicalize`/`cse` are NOT
 #: decoration: measured on the tagged IR of another model, fusion alone gives broadcast 277 /
 #: tensor.empty 1415 and fuse+canonicalize+cse gives 245 / 68 -- most of the temporary collapse is
 #: the cleanup, not the fusion.
-FUSE_ELEMENTWISE_STAGE: tuple[str, ...] = ("func.func(linalg-fuse-elementwise-ops)", "canonicalize", "cse")
 
 #: The pass the stage must sit IMMEDIATELY IN FRONT OF. Anchoring on this one rather than on an index
 #: is what keeps the stage on the correct side of the two passes whose order is a correctness
 #: property: it must run AFTER `transform-interpreter` (fusing earlier folds matmuls into generics and
 #: `ops{["linalg.matmul"]}` then matches nothing -- a silent 0-vectorization) and BEFORE bufferization
 #: (afterwards there are no producer/consumer tensors left to fuse).
-FUSE_ELEMENTWISE_ANCHOR = "func.func(linalg-generalize-named-ops)"
 
 
-def _fuse_elementwise_pipeline(passes: list[str]) -> list[str]:
-    """Splice :data:`FUSE_ELEMENTWISE_STAGE` in just before :data:`FUSE_ELEMENTWISE_ANCHOR`.
-
-    Two refusals, both fail-closed, because "the feature was enabled and changed nothing" is the
-    failure mode this repo keeps re-learning:
-
-    * the stage already being present means ``MERLIN_FUSE_POST`` put it there, so this returns the
-      list unchanged rather than fusing twice (which is not merely wasteful -- a second
-      ``canonicalize``/``cse`` pair changes the emitted code, so a manual A/B and a feature-driven one
-      would not be comparing the same build);
-    * the anchor being absent means this is not a pipeline the stage belongs in, and inserting at a
-      guessed index would put the fusion on the wrong side of the transform interpreter. Raise, so the
-      build fails loudly instead of quietly emitting the baseline while reporting the feature applied.
-    """
-    if FUSE_ELEMENTWISE_STAGE[0] in passes:
-        return list(passes)
-    if FUSE_ELEMENTWISE_ANCHOR not in passes:
-        raise ValueError(
-            f"{FUSE_ELEMENTWISE_NAME} was requested but the pass list carries no "
-            f"{FUSE_ELEMENTWISE_ANCHOR!r} to anchor the fusion stage against, so there is no position "
-            f"that is provably after the transform interpreter and before bufferization. Refusing to "
-            f"insert at a guessed index and report the feature as applied."
-        )
-    at = passes.index(FUSE_ELEMENTWISE_ANCHOR)
-    return [*passes[:at], *FUSE_ELEMENTWISE_STAGE, *passes[at:]]
 
 
-register(
-    ImprFeature(
-        name=FUSE_ELEMENTWISE_NAME,
-        action_class="PASS",
-        description=(
-            "Run `linalg-fuse-elementwise-ops` (+ canonicalize/cse) after the transform schedule has "
-            "matched and vectorized the contractions, so the elementwise producer->consumer chains that "
-            "`linalg-specialize-generic-ops` un-fuses collapse again and each line is touched once. The "
-            "stage already existed in build_rvv_pipeline but was reachable only through the "
-            "MERLIN_FUSE_POST environment variable, which no fork can vary -- so the tuning loop could "
-            "not select it. Attacks the linalg.generic long tail (16.5% of int8 whole-model runtime "
-            "across 191 ops in 26 classes): the per-row activation-quantize and requant generics each "
-            "read a scale that `specialize` materialized into a full-size temporary first. MEASURED on "
-            "small_llama_int8_consistent at the current best config -- linalg.broadcast 50 -> 13, "
-            "242,944 -> 60,160 bytes written per inference for zero arithmetic (13.9x amplification "
-            "removed); emitted `forward` 35,253 -> 31,348 instructions (-11.1%, vector 14,053 -> 12,561 "
-            "and scalar 13,802 from 15,319, so the vector FRACTION is flat at 0.478 -> 0.477 by "
-            "construction), model.o 189,008 -> 170,664 bytes, stack alloca 118 -> 103 sites. Output "
-            "BIT-IDENTICAL on spike (prefix digest cc60e8a90270ec1e either way; tiers ['fp32','w8a8'], "
-            "tier_ok 'fp32_cos_only', ok True, every gate figure equal to the last digit). NOT the "
-            "refuted `fuse_elementwise_after_generalize`, which runs the stage on the far side of the "
-            "generalize anchor and measured 1.22x SLOWER by perturbing the already-vectorized "
-            "contraction: here vwmacc stays 152 and vredmax 104 while vle32.v 2,116 -> 1,729 and "
-            "vse32.v 809 -> 581. (fmul.s 0 -> 82 is a small scalar tail this introduces.) THE WALL IS "
-            "UNMEASURED -- fewer instructions is a reason to measure, not a result: on this same model a "
-            "transpose fold that removed ops and shrank the object measured 1.09x SLOWER. Structure-keyed "
-            "(names one upstream pass and one anchor pass; no model, shape, dtype or target). "
-            "Default-off; baseline byte-identical."
-        ),
-        edit_pipeline=_fuse_elementwise_pipeline,
-    )
-)
 
 
 # ---- vectorize the amax reduction dynamic quantization emits ------------------------------------
@@ -4015,61 +3637,13 @@ from .reduce_vec import ensure_registered as _ensure_amax_reduction  # noqa: E40
 VECTORIZE_AMAX_REDUCTION_NAME = _ensure_amax_reduction()
 
 
-def _reuse_tensor_destination(passes: list[str]) -> list[str]:
-    """Run upstream destination forwarding after fusion, before bufferization.
-
-    Tensor semantics and upstream use/alias analysis decide whether an empty
-    producer destination can be replaced by the eventual insert-slice view.
-    No shape, model name, floating arithmetic, or device ABI is rewritten here.
-    """
-    out = list(passes)
-    for i, item in enumerate(out):
-        if item.startswith("one-shot-bufferize"):
-            if i and out[i - 1] == "eliminate-empty-tensors":
-                return out
-            out.insert(i, "eliminate-empty-tensors")
-            return out
-    return out
 
 
-register(
-    ImprFeature(
-        name="reuse_tensor_destination",
-        action_class="PASS",
-        description="Forward tensor destinations through proved insert-slice chains before bufferization; default off.",
-        edit_pipeline=_reuse_tensor_destination,
-        implies=frozenset({_SELF_COPY_FEATURE}),
-    )
-)
-
-register(
-    ImprFeature(
-        name="initialize_tensor_border_only",
-        action_class="PASS",
-        description="Fill only the proved exterior of a fresh tensor destination whose interior is fully overwritten; default off.",
-        implies=frozenset({"reuse_tensor_destination"}),
-    )
-)
 
 
-register(
-    ImprFeature(
-        name="fold_uniform_fill_copy",
-        action_class="PASS",
-        description="Fill proved copy destinations directly from a private uniform buffer; default off.",
-        implies=frozenset({_SELF_COPY_FEATURE}),
-    )
-)
 
 
-register(
-    ImprFeature(
-        name="specialize_contiguous_copy",
-        action_class="PASS",
-        description="Specialize disjoint static copies to contiguous suffix memcpy and outer strided loops; default off.",
-        implies=frozenset({_SELF_COPY_FEATURE}),
-    )
-)
+
 
 from .bufferized_result_identity import ensure_registered as _ensure_buffer_identity  # noqa: E402
 BUFFERIZED_RESULT_IDENTITY_NAME = _ensure_buffer_identity()

@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 
 from merlin.common import mlir_query as mq
-from merlin.compile.model_interface import export_rewrite
+from merlin.compiler.partition.model import export_rewrite
 from merlin.xdsl_dialects.lowering.compute_groups import Group
 from merlin.xdsl_dialects.lowering.group_route_report import lowering_obligation
 

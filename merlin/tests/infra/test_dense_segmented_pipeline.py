@@ -5,24 +5,18 @@ from dataclasses import replace
 import pytest
 from test_compact_dense import ADAPTER, fixture
 
-from merlin.compile.scheduling.dense_panel_pipeline import (
-    DRAIN,
-    DensePanelOverlapAdmission,
-    DenseRetainedReductionAdmission,
-    _serial_projection,
-    verify_dense_panel_pipeline,
-)
-from merlin.compile.scheduling.dense_segmented_pipeline import (
-    DenseSegmentedAdmission,
-    build_dense_segmented_pipeline,
-    schedule_dense_segmented_pipeline,
-    verify_dense_segmented_pipeline,
-)
-from merlin.compile.scheduling.schedule_ir import (
-    dense_schedule_text,
-    make_dense_schedule_plan,
-    parse_dense_schedule_plan,
-)
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
+from merlin.compiler.schedule.dense_panel_pipeline import DensePanelOverlapAdmission
+from merlin.compiler.schedule.dense_panel_pipeline import DenseRetainedReductionAdmission
+from merlin.compiler.schedule.dense_panel_pipeline import _serial_projection
+from merlin.compiler.schedule.dense_panel_pipeline import verify_dense_panel_pipeline
+from merlin.compiler.schedule.dense_segmented_pipeline import DenseSegmentedAdmission
+from merlin.compiler.schedule.dense_segmented_pipeline import build_dense_segmented_pipeline
+from merlin.compiler.schedule.dense_segmented_pipeline import schedule_dense_segmented_pipeline
+from merlin.compiler.schedule.dense_segmented_pipeline import verify_dense_segmented_pipeline
+from merlin.compiler.schedule.schedule_ir import dense_schedule_text
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
 from merlin.sched.ir import Loop, instances
 from merlin.transforms.dense_planning import dense_blocks
 
@@ -65,7 +59,7 @@ def lookahead_inputs(shape):
 
 @pytest.mark.parametrize("shape", [(5, 14, 9), (5, 14, 17), (5, 14, 29), (4, 6, 37), (4, 6, 41)])
 def test_full_k_rhs_lookahead_has_actual_mixed_epochs_and_preserves_all_tail_products(shape):
-    from merlin.compile.scheduling.dense_segmented_pipeline import OUTPUT_GROUP_PREFETCH
+    from merlin.compiler.schedule.dense_segmented_pipeline import OUTPUT_GROUP_PREFETCH
 
     p, r, s, b, admission = lookahead_inputs(shape)
     previous = chosen(p, r, s, b, admission)
@@ -81,7 +75,7 @@ def test_full_k_rhs_lookahead_has_actual_mixed_epochs_and_preserves_all_tail_pro
 
 def test_full_k_rhs_lookahead_runs_the_independent_original_integer_executor(monkeypatch):
     import test_compact_dense as existing
-    from merlin.compile.scheduling.dense_segmented_pipeline import OUTPUT_GROUP_PREFETCH
+    from merlin.compiler.schedule.dense_segmented_pipeline import OUTPUT_GROUP_PREFETCH
 
     original_fixture = existing.fixture
 
@@ -106,8 +100,8 @@ def test_full_k_rhs_lookahead_runs_the_independent_original_integer_executor(mon
 
 
 def test_full_k_rhs_lookahead_rejects_missing_frontiers_and_current_slot_overwrite():
-    from merlin.compile.scheduling.dense_segmented_pipeline import OUTPUT_GROUP_PREFETCH
-    from merlin.compile.scheduling.tile_load_coalescing import _linear
+    from merlin.compiler.schedule.dense_segmented_pipeline import OUTPUT_GROUP_PREFETCH
+    from merlin.compiler.schedule.tile_load_coalescing import _linear
 
     p, r, s, b, admission = lookahead_inputs((5, 14, 29))
     with pytest.raises(ValueError, match="prefetched epoch"):
@@ -232,7 +226,7 @@ def test_live_capacity_is_full_lhs_plus_two_rhs_segments_not_two_full_operands()
 
 
 def test_existing_pure_store_grouping_composes_without_changing_mixed_epochs_or_capabilities():
-    from merlin.compile.scheduling.dense_segmented_pipeline import batch_dense_segmented_readouts
+    from merlin.compiler.schedule.dense_segmented_pipeline import batch_dense_segmented_readouts
 
     p, r, s, b, a = inputs()
     source = chosen(p, r, s, b, a)
@@ -258,7 +252,7 @@ def test_existing_pure_store_grouping_composes_without_changing_mixed_epochs_or_
 
 
 def test_combined_law_enforces_the_smaller_component_readout_budget():
-    from merlin.compile.scheduling.dense_panel_readout import _propose
+    from merlin.compiler.schedule.dense_panel_readout import _propose
 
     p, r, s, b, a = inputs()
     source = chosen(p, r, s, b, a)
@@ -314,7 +308,7 @@ def test_typed_frontier_issue_reorders_real_calls_without_changing_cover_reducti
     interleaved.materialize_scf().verify()
     from types import SimpleNamespace
 
-    from merlin.compile.scheduling.dense_panel_pipeline import _fission_noninterfering_epoch_loads
+    from merlin.compiler.schedule.dense_panel_pipeline import _fission_noninterfering_epoch_loads
 
     checking, changes = _fission_noninterfering_epoch_loads(interleaved.kernel, ADAPTER)
     assert changes
@@ -357,7 +351,7 @@ def test_frontier_issue_scalar_outputs_still_match_original_source(monkeypatch, 
 
 
 def test_frontier_issue_refuses_missing_epoch_and_bad_next_segment_and_keeps_actual_alias_check():
-    from merlin.compile.scheduling.dense_segmented_pipeline import interleave_dense_segmented_frontier
+    from merlin.compiler.schedule.dense_segmented_pipeline import interleave_dense_segmented_frontier
 
     p, r, s, b, a = inputs()
     with pytest.raises(ValueError, match="explicit prefetched epoch"):
@@ -396,8 +390,8 @@ def test_frontier_issue_refuses_missing_epoch_and_bad_next_segment_and_keeps_act
 def test_phase_fission_never_bypasses_actual_hazards_or_source_dependencies(monkeypatch):
     from test_compact_dense import mutate
 
-    import merlin.compile.scheduling.dense_panel_pipeline as epochs
-    from merlin.compile.scheduling.dense_segmented_pipeline import interleave_dense_segmented_frontier
+    import merlin.compiler.schedule.dense_panel_pipeline as epochs
+    from merlin.compiler.schedule.dense_segmented_pipeline import interleave_dense_segmented_frontier
 
     p, r, s, b, a = inputs((3, 14, 7), 2)
     source = build_dense_segmented_pipeline(p, b, r, s, ADAPTER, name="bad", dtypes=("i8", "i8", "i32"))

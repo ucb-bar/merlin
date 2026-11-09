@@ -28,6 +28,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from merlin.compiler.passes.contract import (
+    PAR_TAG_PREFIX as PAR_TAG_PREFIX,
+    class_token as class_token,
+    par_tag_for as par_tag_for,
+)
+
 #: Marker pass name spliced after specialization; the runner splits the pipeline here.
 BLOCK_TAG_MARKER = "__merlin_tag_perop_blocks__"
 
@@ -44,12 +50,6 @@ TAG_PREFIX = "merlin.blk_"
 #: arrives as a plain ``linalg.generic`` with a compound-affine input map, and there is no named op to
 #: key on. It is spelled like one so it flows through ``shape_key`` / ``distinct_blocks`` /
 #: ``coverage`` with the contraction classes instead of needing a parallel bookkeeping path.
-_CLASS_TOKEN = {
-    "linalg.matmul": "mm",
-    "linalg.batch_matmul": "bmm",
-    "linalg.conv2d_direct": "conv",
-    "linalg.conv2d_grouped_direct": "gconv",
-}
 
 #: The DIRECT 2-D convolution contraction: ``out[n,f,oh,ow] += in[n,ci,oh*sh+kh,ow*sw+kw] * w[f,ci,kh,kw]``,
 #: i.e. the form model2MLIR emits when the im2col intermediate would exceed its element budget
@@ -72,8 +72,7 @@ GROUPED_CONV_CLASS = "linalg.conv2d_grouped_direct"
 CONV_ARM_FEATURE = "conv_register_block"
 
 
-def class_token(op: str) -> str:
-    return _CLASS_TOKEN.get(op, op.rsplit(".", 1)[-1])
+
 
 
 def tag_for(op: str, mr: int, nr: int) -> str:
@@ -84,12 +83,9 @@ def tag_for(op: str, mr: int, nr: int) -> str:
 #: Attribute prefix for the MULTICORE split. Same join-key contract as :data:`TAG_PREFIX`: one
 #: distinct attribute per distinct (op class, forall tile) pair, set by the tagger and matched by the
 #: parallel schedule. See :func:`parallel_chunk_table` for why the split is derived per op.
-PAR_TAG_PREFIX = "merlin.par_"
 
 
-def par_tag_for(op: str, tiles: "tuple[int, ...]") -> str:
-    """Attribute name for op class ``op`` split by ``scf.forall`` at ``tiles``."""
-    return f"{PAR_TAG_PREFIX}{class_token(op)}_" + "_".join(str(int(t)) for t in tiles)
+
 
 
 def _even_split(extent: int, harts: int, admits) -> "tuple[int, int] | None":
@@ -139,11 +135,14 @@ def parallel_chunk_table(shapes, table: dict[str, tuple[int, int]], harts: int) 
 
     ``harts < 2`` -> ``{}``: no split, and every schedule derived from this is absent.
     """
-    from ..mining.from_strategy import _rvv_blocking_lowers
-
     out: dict[str, tuple[int, ...]] = {}
     if int(harts) < 2:
         return out
+    from ..mining.from_strategy import _codegen, policy_source_record
+
+    provider = _codegen()
+    sources = policy_source_record(provider, operation="blocking")
+    _rvv_blocking_lowers = provider.blocking_cost_api()._rvv_blocking_lowers
     for s in shapes:
         par = tuple(int(d) for d in s.parallel)
         red = tuple(int(d) for d in (getattr(s, "reduction", ()) or ()))
@@ -199,6 +198,8 @@ def parallel_chunk_table(shapes, table: dict[str, tuple[int, int]], harts: int) 
         tiles = [0] * len(par)
         tiles[len(par) - back] = chunk
         out[key] = tuple(tiles)
+    if policy_source_record(provider, operation="blocking") != sources:
+        raise ValueError("selected vector blocking policy changed during parallel chunk selection")
     return out
 
 
@@ -446,7 +447,9 @@ def mr_cap_for_registers(mr_cap: int, *, vlen: int | None, nr: int, dtypes, vreg
     return max(1, (budget - live) // acc_regs)
 
 
-def _solve_block(mr_cap: int, nr_cap: int, pairs, *, mr_vlen: int | None, dtypes) -> tuple[int, int]:
+def _solve_block(
+    mr_cap: int, nr_cap: int, pairs, *, mr_vlen: int | None, dtypes, codegen_provider=None,
+) -> tuple[int, int]:
     """``(MR, NR)`` for one contraction, with the MR cap DERIVED from its own block when asked.
 
     Two-sided, and it has to be: the register-file bound on MR is a function of the N tile (that is
@@ -460,18 +463,22 @@ def _solve_block(mr_cap: int, nr_cap: int, pairs, *, mr_vlen: int | None, dtypes
     ``mr_vlen=None`` skips the whole thing and returns exactly what the single-cap call returned, so
     every existing caller is byte-identical.
     """
-    from ..mining.from_strategy import _rvv_best_block
+    from ..mining.from_strategy import _codegen, policy_source_record
     from .lmul_group import LMUL_LADDER
 
+    provider = _codegen(codegen_provider)
+    sources = policy_source_record(provider, operation="blocking")
+    _rvv_best_block = provider.blocking_cost_api()._rvv_best_block
     block = _rvv_best_block(mr_cap, nr_cap, pairs)
-    if not mr_vlen:
-        return block
-    for _ in range(len(LMUL_LADDER)):
-        cap = mr_cap_for_registers(mr_cap, vlen=mr_vlen, nr=block[1], dtypes=dtypes)
-        nxt = _rvv_best_block(cap, nr_cap, pairs)
-        if nxt == block:
-            break
-        block = nxt
+    if mr_vlen:
+        for _ in range(len(LMUL_LADDER)):
+            cap = mr_cap_for_registers(mr_cap, vlen=mr_vlen, nr=block[1], dtypes=dtypes)
+            nxt = _rvv_best_block(cap, nr_cap, pairs)
+            if nxt == block:
+                break
+            block = nxt
+    if policy_source_record(provider, operation="blocking") != sources:
+        raise ValueError("selected vector blocking policy changed during block selection")
     return block
 
 
@@ -513,6 +520,12 @@ def block_table(
     way: this table is derived from the model's own extents, and
     :func:`parallel_chunk_table` chooses a split that preserves it.
     """
+    from ..mining.from_strategy import _codegen
+
+    shapes = tuple(shapes)
+    if not shapes:
+        return {}
+    provider = _codegen()
     out: dict[str, tuple[int, int]] = {}
     for s in shapes:
         par = tuple(int(d) for d in s.parallel)
@@ -523,7 +536,8 @@ def block_table(
         # vlen is known (see nr_cap_for_dtypes). vlen=None -> the caller's cap, unchanged.
         shape_nr_cap = nr_cap_for_dtypes(nr_cap, vlen, getattr(s, "dtypes", ()))
         mr, nr = _solve_block(
-            mr_cap, shape_nr_cap, [(par[-2], par[-1])], mr_vlen=mr_vlen, dtypes=getattr(s, "dtypes", ())
+            mr_cap, shape_nr_cap, [(par[-2], par[-1])], mr_vlen=mr_vlen, dtypes=getattr(s, "dtypes", ()),
+            codegen_provider=provider,
         )
         if nr <= 1:
             continue
@@ -682,7 +696,10 @@ def conv_shapes(src, *, with_strides: bool = False) -> "list[Any]":
     schedule legality. Returns ``[]`` (never raises) on an unreadable module, so an observer failure
     costs a vectorization rather than a build.
     """
-    from merlin.compile.analysis.contraction_shapes import ContractionShape, _iterator_types, _shaped, indexing_maps
+    from merlin.compiler.ir.contraction_shapes import ContractionShape
+    from merlin.compiler.ir.contraction_shapes import _iterator_types
+    from merlin.compiler.ir.contraction_shapes import _shaped
+    from merlin.compiler.ir.contraction_shapes import indexing_maps
 
     from ..common import mlir_query as mq
 

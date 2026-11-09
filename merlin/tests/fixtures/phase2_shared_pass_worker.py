@@ -22,7 +22,7 @@ import numpy as np  # noqa: E402
 import test_configured_pointwise as configured  # noqa: E402
 import test_pointwise_source as source  # noqa: E402
 
-from merlin.compile.scheduling.library_sources import shared_library_sources  # noqa: E402
+from merlin.compiler.schedule.library_sources import shared_library_sources  # noqa: E402
 
 choose = runpy.run_path(config["candidate"])["schedule"]
 observations = []

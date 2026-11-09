@@ -8,18 +8,21 @@ import pytest
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, StringAttr, UnregisteredOp
 
-from merlin.compile.scheduling.block_schedule import SpatialMaxReadout
-from merlin.compile.scheduling.llvm_program import FnBuilderControlAdapter
-from merlin.compile.scheduling.program_limits import AddressWindow
-from merlin.compile.scheduling.spatial_producer import (SpatialProducerPlan, SpatialProducerBand,SpatialProducerBandAdmission,
-    emit_spatial_producer,emit_spatial_producer_band,spatial_producer_band_choices)
-from merlin.compile.scheduling.spatial_readout import (
-    ReadoutCompositionUnavailable,
-    RoundedReadout,
-    SpatialReadoutChain,
-    prove_spatial_readout,
-)
-from merlin.compile.scheduling.window_transfer import CountedConvolutionPlan, Window2D
+from merlin.compiler.schedule.blocks import SpatialMaxReadout
+from merlin.compiler.schedule.llvm_program import FnBuilderControlAdapter
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.spatial_producer import SpatialProducerPlan
+from merlin.compiler.schedule.spatial_producer import SpatialProducerBand
+from merlin.compiler.schedule.spatial_producer import SpatialProducerBandAdmission
+from merlin.compiler.schedule.spatial_producer import emit_spatial_producer
+from merlin.compiler.schedule.spatial_producer import emit_spatial_producer_band
+from merlin.compiler.schedule.spatial_producer import spatial_producer_band_choices
+from merlin.compiler.schedule.spatial_readout import ReadoutCompositionUnavailable
+from merlin.compiler.schedule.spatial_readout import RoundedReadout
+from merlin.compiler.schedule.spatial_readout import SpatialReadoutChain
+from merlin.compiler.schedule.spatial_readout import prove_spatial_readout
+from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
+from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.llvmlower.requantization import f32, quantized
 
@@ -200,9 +203,11 @@ def test_actual_effects_equal_original_convolution_and_pool(raw, biased, staged,
         3,3,7,7,81,True,True,True,True)if band else None)
     resident=selected_rhs
     if rhs_mode and resident is None:
-        from merlin.compile.scheduling.convolution_exploration import (
-            ConvolutionExplorationSource,ConvolutionScheduleChoice,ConvolutionRhsResidencyLaw,
-            plan_convolution_schedule,plan_convolution_rhs_residency)
+        from merlin.compiler.schedule.convolution_exploration import ConvolutionExplorationSource
+        from merlin.compiler.schedule.convolution_exploration import ConvolutionScheduleChoice
+        from merlin.compiler.schedule.convolution_exploration import ConvolutionRhsResidencyLaw
+        from merlin.compiler.schedule.convolution_exploration import plan_convolution_schedule
+        from merlin.compiler.schedule.convolution_exploration import plan_convolution_rhs_residency
         src=ConvolutionExplorationSource(p,((0,4),(4,1)),plan.identity)
         schedule=plan_convolution_schedule(src,ConvolutionScheduleChoice())
         law=ConvolutionRhsResidencyLaw('neutral-test','original-i32',src.identity,
@@ -284,10 +289,13 @@ def test_band_target_law_refuses_before_real_source_effects(change):
 
 def test_spatial_registry_combines_band_and_rhs_orders_and_deduplicates_actual_effects():
     import json,hashlib
-    from merlin.compile.scheduling.spatial_producer import spatial_producer_pass_space,explore_spatial_producer
-    from merlin.compile.scheduling.convolution_exploration import (
-        ConvolutionExplorationSource,ConvolutionScheduleChoice,ConvolutionRhsResidencyLaw,
-        plan_convolution_schedule,plan_convolution_rhs_residency)
+    from merlin.compiler.schedule.spatial_producer import spatial_producer_pass_space
+    from merlin.compiler.schedule.spatial_producer import explore_spatial_producer
+    from merlin.compiler.schedule.convolution_exploration import ConvolutionExplorationSource
+    from merlin.compiler.schedule.convolution_exploration import ConvolutionScheduleChoice
+    from merlin.compiler.schedule.convolution_exploration import ConvolutionRhsResidencyLaw
+    from merlin.compiler.schedule.convolution_exploration import plan_convolution_schedule
+    from merlin.compiler.schedule.convolution_exploration import plan_convolution_rhs_residency
     from merlin.transforms.pass_exploration import EmittedProgram
     from merlin.transforms.pipeline_state import PipelineContext
     source=small_plan(staged=True)

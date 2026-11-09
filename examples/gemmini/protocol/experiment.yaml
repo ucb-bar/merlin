@@ -8,6 +8,7 @@ authority:
   phase1_launch: ../phase1/launch/phase1_el4_config.yaml
   source_workloads: ../target/phase0-workloads.yaml
   numerical_contract: ../numerics/models.yaml
+  models_configuration: {schema: merlin.model_check.protocol_geometry.v1, chain_source: protocol.models}
   capsule_calibration_requirements: capsule-calibration.yaml
   historical_input_sources: ../numerics/sources.yaml
   evaluation_input_manifest: ../numerics/MANIFEST.json

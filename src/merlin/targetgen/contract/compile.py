@@ -27,7 +27,7 @@ from typing import Any
 from merlin.common import execution_deadline as _deadline_owner
 from merlin.common.execution_deadline import ExecutionDeadline, selected_deadline
 from merlin.targetgen.host_optimization_admission import active_selection, host_choices_build
-from merlin.verify.lean_emission_context import observe_object, requires_original_object
+from merlin.verification.lean_emission_context import observe_object, requires_original_object
 
 from .artifact_retesting import active_artifact_retests, compare_selected_artifacts, retain_selected_artifacts
 from .build_recipe import named_object_paths

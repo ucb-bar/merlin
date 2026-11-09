@@ -15,7 +15,7 @@ import composition_fixtures as F
 import pytest
 from author_skill_fixtures import load_script, skill_dir
 
-from merlin.compile.composition_catalog import composition_capabilities
+from merlin.compiler.schedule.api_catalog import scheduling_capabilities
 
 SKILL = "heavy-pass-recipes"
 
@@ -26,7 +26,7 @@ def routes():
 
 
 def test_every_route_names_catalog_rows_a_listed_symbol_and_existing_files(routes):
-    rows = {row["name"]: row for row in composition_capabilities()["capabilities"]}
+    rows = {row["name"]: row for row in scheduling_capabilities(26)["composition"]["capabilities"]}
     skills = {path.parent.name for path in skill_dir(SKILL).parent.glob("*/SKILL.md")}
     for route in routes.ROUTES:
         assert set(route["rows"]) <= set(rows), route["id"]
@@ -131,7 +131,7 @@ def test_report_lists_routes_with_imports_and_commands(routes, tmp_path):
     F.declare(tmp_path, "layers", F.conv_pool())
     (tmp_path / "submission").mkdir()
     (tmp_path / "submission" / "backend.py").write_text(
-        "from merlin.compile.scheduling.rolling_spatial import emit_rolling_spatial_producer\n"
+        "from merlin.compiler.schedule.rolling_spatial import emit_rolling_spatial_producer\n"
     )
     out = routes.report("conv_pool", workspace=tmp_path)
     by_route = {row["route"]: row for row in out["routes"]}
@@ -146,7 +146,7 @@ def test_report_lists_routes_with_imports_and_commands(routes, tmp_path):
     assert epilogue["imported_by_submission"] is False
     assert epilogue["next"] == (
         "python .agents/skills/scheduling-api/scripts/dense_schedule_example.py contract "
-        "merlin.compile.scheduling.spatial_readout:prove_spatial_readout"
+        "merlin.compiler.schedule.spatial_readout:prove_spatial_readout"
     )
     assert "source_composition" not in out  # a single layer is not a model or program check
     everything = routes.report(workspace=tmp_path)

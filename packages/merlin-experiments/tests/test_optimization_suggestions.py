@@ -1,4 +1,5 @@
 """Suggestions must not promote missing capabilities, grants or IR obligations."""
+import hashlib
 import json
 from pathlib import Path
 
@@ -54,7 +55,8 @@ def test_workload_evidence_cannot_come_from_chip_or_software_label():
     caps = {'memory.scratchpad': 'supported', 'workload.graph_fanout': 'supported'}
     modules = ['merlin.compile.scheduling.shared_input_schedule']
     assert state(S.select(c, capabilities=caps, public_modules=modules), 'sibling_input_reuse') == 'unknown'
-    ir = 'builtin.module { func.func @f(%a: tensor<2xi8>) -> (tensor<2xi8>, tensor<2xi8>) { func.return %a, %a : tensor<2xi8>, tensor<2xi8> } }'
+    ir = ('builtin.module { func.func @f(%a: tensor<2xi8>) -> (tensor<2xi8>, tensor<2xi8>) '
+          '{ func.return %a, %a : tensor<2xi8>, tensor<2xi8> } }')
     workload = S.ir_traits(ir)
     assert workload['workload.multiple_live_outputs'] == 'supported'
     assert workload['workload.ranked_tensors'] == 'supported'
@@ -70,7 +72,8 @@ def test_prepare_writes_compact_scoped_guidance(tmp_path):
     ws, run = tmp_path / 'ws', tmp_path / 'run'
     (ws / 'public_declarations').mkdir(parents=True)
     run.mkdir()
-    (ws / 'public_declarations/software-spec.yaml').write_text('numerical_semantics:\n  operand_dtype: int8\n  accumulator_dtype: i32\n')
+    (ws / 'public_declarations/software-spec.yaml').write_text(
+        'numerical_semantics:\n  operand_dtype: int8\n  accumulator_dtype: i32\n')
     inventory = {'contract_sha256': 'a'*64, 'public_modules': [{'module': 'merlin.llvmlower.requantization'}]}
     text = S.prepare(ws, run, repo=REPO, inventory=inventory)
     result = json.loads((ws / 'OPTIMIZATION_SUGGESTIONS.json').read_text())
@@ -81,6 +84,49 @@ def test_prepare_writes_compact_scoped_guidance(tmp_path):
     assert 'pass order' in text and 'no workload IR' in text
     assert (ws / 'optimization_suggest.py').read_bytes() == (run / 'optimization_suggest.py').read_bytes()
     assert 'selected_gemmini' not in (ws / 'OPTIMIZATION_CATALOG.json').read_text()
+
+
+@pytest.mark.parametrize('selection', ['legacy', 'canonical', 'both'])
+def test_staged_catalog_resolves_only_selected_source_owners(tmp_path, capsys, selection):
+    from author_skill_fixtures import load_script
+
+    ws, run = tmp_path / 'ws', tmp_path / 'run'
+    (ws / 'public_declarations').mkdir(parents=True)
+    run.mkdir()
+    (ws / 'public_declarations/software-spec.yaml').write_text('{}')
+    original = 'merlin.compile.scheduling.staged_dense'
+    current = 'merlin.compiler.schedule.staged_dense'
+    modules = ([original] if selection == 'legacy' else
+               [current] if selection == 'canonical' else [original, current])
+    chosen = original if selection == 'legacy' else current
+    source = ws / 'submission/compiler_library' / Path(*chosen.split('.')).with_suffix('.py')
+    source.parent.mkdir(parents=True)
+    source.write_text('def order_output_tiles_n_before_m(kernel):\n    """Selected declaration."""\n'
+                      'raise AssertionError("metadata must never import candidate code")\n')
+    inventory = {'contract_sha256': 'a' * 64, 'public_modules': [{'module': module} for module in modules]}
+    S.prepare(ws, run, repo=REPO, inventory=inventory)
+    staged = json.loads((ws / 'OPTIMIZATION_CATALOG.json').read_text())
+    rows = {row['id']: row for row in staged['mechanisms']}
+    assert list(rows) == [row['id'] for row in catalog()['mechanisms']]
+    assert rows['tile_traversal']['compiler']['module'] == chosen
+    assert rows['block_order']['compiler']['module'] == 'merlin.compile.scheduling.block_schedule'
+    if selection == 'legacy':
+        assert 'source_bindings' not in staged
+    else:
+        binding = staged['source_bindings'][original]
+        assert binding['source_sha256'] == hashlib.sha256(source.read_bytes()).hexdigest()
+        assert binding['selected_library_sha256'] == inventory['contract_sha256']
+        assert binding['source_observation'] == 'staged source bytes'
+        assert current.replace('.', '/') + '.py' == binding['path']
+    report = json.loads((ws / 'OPTIMIZATION_SUGGESTIONS.json').read_text())
+    traversals = next(row for row in report['all_mechanisms'] if row['id'] == 'tile_traversal')
+    assert traversals['requirements']['compiler.api:' + chosen] == 'supported'
+    assert next(row for row in report['all_mechanisms'] if row['id'] == 'block_order')['status'] == 'unsupported'
+    reader = load_script('ab-library-pass', 'mechanism_api')
+    assert reader.main(['tile_traversal', '--workspace', str(ws)]) == 0
+    shown = json.loads(capsys.readouterr().out)
+    assert shown['module'] == chosen and shown['signature'] == 'def order_output_tiles_n_before_m(kernel)'
+    assert shown['source'].startswith(str(source))
 
 
 def test_invalid_or_contradictory_declarations_do_not_become_support():

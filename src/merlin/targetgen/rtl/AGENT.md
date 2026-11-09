@@ -293,3 +293,13 @@ inputs, registers, memories, signed arithmetic, unsupported primitives and budge
 overflows refuse; never read a register's next-state connect as its current value.
 A two-state cutpoint result supplies no reachability, protocol, instruction,
 physical-transfer or timing authority. Original owners retain file custody.
+
+## Research workflow responsibilities
+
+`gen_rocc_replay` constructs replay inputs and independent expected outputs for
+the existing native harness. It is host-owned grading tooling, not structure-only
+RTL inspection. Its source identity must remain withheld in `common.access`.
+
+Core owns the `merlin.targetgen.rtl` initializer. Do not add one here. Keep the
+stable module CLI and existing numerical/layout behavior; target generalization
+is separate from this ownership move.

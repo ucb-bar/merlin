@@ -26,41 +26,79 @@ import tempfile
 from pathlib import Path
 
 from merlin.common import compile_trace
+from merlin.compiler.passes import policy as pass_policy
+from merlin.compiler.passes import parallel as parallel_schedule
+from merlin.compiler.passes.fragments import DEALLOC_CHECK_RUNNER as DEALLOC_CHECK_RUNNER
+from merlin.compiler.passes.contract import PipelineError as PipelineError
+from merlin.compiler.lower.llvm.normalize import normalize_float_literals as _fix_float_literals
+from merlin.compiler.lower.llvm.normalize import normalize_hex_literals as _fix_f0x_literals
+from merlin.compiler.lower.llvm.passes import INDEX_CONVERSION_PASSES, finalization_passes
+from merlin.compiler.lower.llvm.passes import bind_index_width as _bind_index_width
+from merlin.compiler.lower.scalar.pipeline import scalar_passes
+from merlin.compiler.passes import native as native_passes
 
 from .dealloc_lifetime import DEALLOC_CHECK_PRELUDE as DEALLOC_CHECK_PRELUDE
 from .llvm_dialect_product import _residual_vector_dialect_ops as _residual_vector_dialect_ops
 from .llvm_dialect_product import run_translation, select_retention
+from .optional_passes import child_environment
 from .sliced_elementwise_output import PRELUDE as SLICED_OUTPUT_PRELUDE
 from .sliced_elementwise_output import RUNNER as SLICED_OUTPUT_RUNNER
 from .source_scalar_carrier_binding import host_admitted
 from .toolchain import m2m_python
 
+_INDEX_CONVERSION_PASSES = INDEX_CONVERSION_PASSES
+
+# Exact compatibility names; the implementation is shared below providers/drivers.
+PARALLEL_ENTRY = parallel_schedule.PARALLEL_ENTRY
+_PARALLEL_DIM_NUM_THREADS = parallel_schedule._PARALLEL_DIM_NUM_THREADS
+_perop_parallel_schedule = parallel_schedule._perop_parallel_schedule
+parallel_transform_schedule = parallel_schedule.parallel_transform_schedule
+
+
+def implementation_paths() -> tuple[Path, ...]:
+    """Source custody for this driver's shared policy and implementation owners.
+
+    Selected transforms and generated runners add their own sources at invocation.
+    This is the common lowering closure, not a complete toolchain lock.
+    """
+    from importlib import import_module
+
+    owners = (
+        "merlin.compiler.lower.scalar.pipeline",
+        "merlin.compiler.lower.llvm.passes",
+        "merlin.compiler.lower.llvm.normalize",
+        "merlin.compiler.passes.contract",
+        "merlin.compiler.passes.parallel",
+        "merlin.compiler.passes.native",
+        "merlin.compiler.passes.policy",
+        "merlin.compiler.passes.fragments",
+        "merlin.compiler.passes.features",
+        "merlin.compiler.selection.features",
+        "merlin.compiler.selection.shared",
+        "merlin.llvmlower.optional_passes",
+        "merlin.llvmlower.automatic_host_features",
+        "merlin.compiler.transforms.host",
+        "merlin.compiler.transforms.host_contraction",
+        "merlin.compiler.transforms.host_reduction",
+        "merlin.compiler.transforms.host_broadcast",
+        "merlin.compiler.transforms.host_integer_math",
+    )
+    return (Path(__file__), *(Path(import_module(name).__file__) for name in owners))
+
 
 def _dealloc_passes(sink: bool | None = None) -> list[str]:
-    """Pipeline design rationale: see docs/design/llvm_pipeline_rationale.md."""
+    """Retain legacy policy hooks while sharing the provider implementation."""
     import os
 
     if os.environ.get("MERLIN_NO_DEALLOC"):
         return []
-    passes = [
-        "ownership-based-buffer-deallocation",
-        "buffer-deallocation-simplification",
-        "bufferization-lower-deallocations",
-    ]
-    # Aggregate bufferization.dealloc ops can keep hundreds of otherwise-dead allocations
-    # alive until function exit. Split only provably owned, unique alloc roots before the
-    # simplification/lowering passes so the ordinary liveness pass can place their frees.
-    if _split_fresh_deallocs():
-        passes.insert(1, SPLIT_FRESH_DEALLOCS_MARKER)
-    if sink is None:
-        sink = _sink_deallocs()
-    if _split_fresh_deallocs() or _slice_unused_elementwise_outputs():
-        sink = True
-    if sink:
-        passes += _sink_dealloc_passes()
-    if _slice_unused_elementwise_outputs():
-        passes.append(SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER)
-    return passes
+    return pass_policy.deallocation_passes(
+        sink=_sink_deallocs() if sink is None else sink,
+        split=_split_fresh_deallocs(),
+        slice_outputs=_slice_unused_elementwise_outputs(),
+        disabled=False,
+    )
+
 
 
 def _sink_deallocs() -> bool:
@@ -106,71 +144,18 @@ def _sink_dealloc_passes() -> list[str]:
     return ["canonicalize", SINK_DEALLOC_PASS]
 
 
-_UPSTREAM_PASSES = [
-    "canonicalize",
-    "cse",
-    "func.func(linalg-fuse-elementwise-ops)",
-    "func.func(linalg-generalize-named-ops)",
-    "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}",
-    # Expose invariant carried buffers before forwarding static result storage
-    # to caller out-parameters. Otherwise a row loop keeps a full result copy.
-    "canonicalize",
-    "buffer-results-to-out-params{modify-public-functions hoist-static-allocs}",
-    # Derive ownership after the last allocation move. Hoisting allocations
-    # after placing frees can leave repeated frees in their original loop.
-    "func.func(buffer-hoisting,buffer-loop-hoisting)",
-    "__DEALLOC__",
-    "func.func(convert-linalg-to-loops)",
-    "convert-scf-to-cf",
-    # memref.expand/collapse_shape/subview must be expanded before LLVM conversion.
-    "expand-strided-metadata",
-    "lower-affine",
-    # transcendentals (erf/exp/tanh/...) have no LLVM intrinsic -> libm calls
-    # (host libm; riscv newlib libm). Remaining math (fma/abs/...) -> intrinsics.
-    "convert-math-to-libm",
-    "convert-math-to-llvm",
-    "convert-index-to-llvm",
-    "convert-arith-to-llvm",
-    "finalize-memref-to-llvm",
-    "convert-func-to-llvm",
-    "convert-cf-to-llvm",
-    "reconcile-unrealized-casts",
-    "canonicalize",
-    "cse",
-    "symbol-dce",
-]
+_UPSTREAM_PASSES = scalar_passes()
 
 
 def _splice(passes: list[str]) -> str:
-    """Join a pass list, expanding the ``__DEALLOC__`` marker in place.
-
-    The marker names *where* deallocation belongs (after allocation movement,
-    before control-flow lowering), so its position is visible rather than computed by an
-    index that drifts when the list is edited.
-
-    The generalize/fuse reorder is applied HERE, at the one point every pipeline in this file passes
-    through, and AFTER ``apply_pipeline`` has spliced any feature-driven fusion stage -- so the
-    reorder reaches the ``fuse_elementwise_post_contraction`` feature's stage as well as the
-    ``MERLIN_FUSE_POST`` one, instead of only the copy that happens to be written in a literal list.
-    Default off; see :func:`_generalize_before_fuse`."""
+    """Expand shared policy with the retained legacy per-build selection hooks."""
     if _generalize_before_fuse():
         passes = _reorder_generalize_before_fuse(passes)
-    out: list[str] = []
-    for p in passes:
-        out.extend(_dealloc_passes() if p == "__DEALLOC__" else [p])
-    dealloc = next((i for i, p in enumerate(out) if "ownership-based-buffer-deallocation" in p), None)
-    if dealloc is not None:
-        # Valid tensor loops may yield fresh storage. Permit that only when
-        # ownership is derived and releases are inserted by this pipeline.
-        out = [
-            p[:-1] + " allow-return-allocs-from-loops}"
-            if p.startswith("one-shot-bufferize{") and p.endswith("}") and "allow-return-allocs-from-loops" not in p
-            else p
-            for p in out
-        ]
-    if dealloc is not None and any("buffer-hoisting" in p or "buffer-loop-hoisting" in p for p in out[dealloc + 1 :]):
-        raise ValueError("allocation hoisting invalidates ownership: schedule it before buffer deallocation")
-    return ",".join(out)
+    return pass_policy.splice_passes(
+        passes, deallocation=_dealloc_passes() if "__DEALLOC__" in passes else [],
+        generalize_before_fuse=False,
+    )
+
 
 
 def _upstream_pipeline(features: "frozenset[str] | None" = None) -> str:
@@ -190,40 +175,6 @@ def _upstream_pipeline(features: "frozenset[str] | None" = None) -> str:
     return _splice(passes)
 
 
-_INDEX_CONVERSION_PASSES = (
-    "convert-index-to-llvm",
-    "convert-arith-to-llvm",
-    "finalize-memref-to-llvm",
-    "convert-func-to-llvm",
-    "convert-cf-to-llvm",
-)
-
-
-def _bind_index_width(pipeline: str, index_bits: int) -> str:
-    """Bind every LLVM index converter, refusing missing or preconfigured passes."""
-    if type(index_bits) is not int or index_bits <= 0:
-        raise ValueError("selected index width must be a positive integer")
-    selected = pipeline
-    for name in _INDEX_CONVERSION_PASSES:
-        positions = []
-        start = 0
-        while (at := selected.find(name, start)) >= 0:
-            before = at - 1
-            while before >= 0 and selected[before].isspace():
-                before -= 1
-            end = at + len(name)
-            while end < len(selected) and selected[end].isspace():
-                end += 1
-            if (before < 0 or selected[before] in "(,") and (end == len(selected) or selected[end] in ",){"):
-                positions.append((at, end))
-            start = at + len(name)
-        if len(positions) != 1 or selected[positions[0][1] :].startswith("{"):
-            raise ValueError(f"selected pipeline has no unique bare {name} pass")
-        at, _end = positions[0]
-        selected = selected[:at] + f"{name}{{index-bitwidth={index_bits}}}" + selected[at + len(name) :]
-    return selected
-
-
 def _parallel_pipeline(features: "frozenset[str] | None" = None) -> str:
     """The scalar pipeline, re-targeted for **multicore** via OpenMP.
 
@@ -238,37 +189,7 @@ def _parallel_pipeline(features: "frozenset[str] | None" = None) -> str:
     This is the K1 big-model path: the diffusion-transformer / large VLAs that run on the
     *scalar* fallback (no fixed-width vectorize) otherwise execute on one core and time out.
     Gated — never on the default flow (``UPSTREAM_PIPELINE`` is untouched)."""
-    passes = [
-        "canonicalize",
-        "cse",
-        "func.func(linalg-fuse-elementwise-ops)",
-        "func.func(linalg-generalize-named-ops)",
-        "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}",
-        "buffer-results-to-out-params{modify-public-functions}",  # heap intermediates (K1)
-        "__DEALLOC__",
-        # Do not run buffer-hoisting here: it wraps moved allocations in ``memref.alloca_scope``;
-        # lowering this pipeline's surrounding OpenMP region then makes that scope multi-block,
-        # which is verifier-invalid. The serial pipeline retains both hoisting stages.
-        # parallel iterator dims -> scf.parallel; reduction dims stay scf.for (sequential).
-        "func.func(convert-linalg-to-parallel-loops)",
-        "convert-scf-to-openmp",  # scf.parallel -> omp.parallel{omp.wsloop}
-        "canonicalize",
-        "convert-scf-to-cf",  # remaining (reduction) scf.for -> cf
-        "expand-strided-metadata",
-        "lower-affine",
-        "convert-openmp-to-llvm",  # omp region operands -> llvm
-        "convert-math-to-libm",
-        "convert-math-to-llvm",
-        "convert-index-to-llvm",
-        "convert-arith-to-llvm",
-        "finalize-memref-to-llvm",
-        "convert-func-to-llvm",
-        "convert-cf-to-llvm",
-        "reconcile-unrealized-casts",
-        "canonicalize",
-        "cse",
-        "symbol-dce",
-    ]
+    passes = scalar_passes(parallel=True)
     if features:
         from .impr_features import apply_pipeline, normalize
 
@@ -359,20 +280,9 @@ def _generalize_before_fuse() -> bool:
 
 
 def _reorder_generalize_before_fuse(passes: list[str]) -> list[str]:
-    """Pipeline design rationale: see docs/design/llvm_pipeline_rationale.md."""
-    if _GENERALIZE_NAMED not in passes or _FUSE_ELEMENTWISE not in passes:
-        return list(passes)
-    gen = passes.index(_GENERALIZE_NAMED)
-    fuse = next((i for i, p in enumerate(passes) if p == _FUSE_ELEMENTWISE and i < gen), None)
-    if fuse is None:
-        return list(passes)  # already generalize-then-fuse
-    if any("transform-interpreter" in p for p in passes[fuse:gen]):
-        raise ValueError(
-            "refusing to move linalg-generalize-named-ops across a transform-interpreter: the "
-            "schedule matches contractions by NAME and would then match nothing"
-        )
-    out = [p for i, p in enumerate(passes) if i != gen]
-    return [*out[:fuse], _GENERALIZE_NAMED, *out[fuse:]]
+    """Preserve the legacy entry while sharing the provider ordering check."""
+    return pass_policy.reorder_generalize_before_fuse(passes)
+
 
 
 def _par_residue_parallel(features=frozenset()) -> bool:
@@ -403,104 +313,6 @@ def _fuse_post() -> bool:
     import os
 
     return bool(os.environ.get("MERLIN_FUSE_POST"))
-
-
-PARALLEL_ENTRY = "__transform_parallel_main"
-
-_PARALLEL_DIM_NUM_THREADS = {
-    # op -> {dim: num_threads list}. A 0 means "do not tile this dim".
-    "linalg.matmul": {"m": "[{n}]", "n": "[0, {n}]"},
-    "linalg.batch_matmul": {"b": "[{n}]", "m": "[0, {n}]", "n": "[0, 0, {n}]"},
-}
-
-
-def parallel_transform_schedule(
-    n_harts: int,
-    *,
-    matmul_dim: str = "n",
-    batch_matmul_dim: str = "b",
-    chunks: "list | None" = None,
-    tile_aligned: bool = False,
-) -> str:
-    """Pipeline design rationale: see docs/design/llvm_pipeline_rationale.md."""
-    if n_harts < 2:
-        raise ValueError(f"parallel schedule needs n_harts >= 2, got {n_harts}")
-    if chunks is not None:
-        return _perop_parallel_schedule(chunks)
-    if tile_aligned:
-        body = [
-            '    %matmul = transform.structured.match ops{["linalg.matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op\n'
-            "    %matmul_loop, %matmul_tiled = transform.structured.tile_using_forall %matmul tile_sizes [0, 16] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)",
-            '    %batch_matmul = transform.structured.match ops{["linalg.batch_matmul"]} in %arg0 : (!transform.any_op) -> !transform.any_op\n'
-            "    %batch_matmul_loop, %batch_matmul_tiled = transform.structured.tile_using_forall %batch_matmul tile_sizes [1, 0, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)",
-        ]
-        return (
-            "module attributes {transform.with_named_sequence} {\n"
-            f"  transform.named_sequence @{PARALLEL_ENTRY}"
-            "(%arg0: !transform.any_op {transform.readonly}) {\n" + "\n".join(body) + "\n    transform.yield\n  }\n}\n"
-        )
-    body = []
-    for op, dim in (("linalg.matmul", matmul_dim), ("linalg.batch_matmul", batch_matmul_dim)):
-        choices = _PARALLEL_DIM_NUM_THREADS[op]
-        if dim not in choices:
-            raise ValueError(
-                f"{op}: parallel dim {dim!r} not in {sorted(choices)} (the reduction dim K is never tileable)"
-            )
-        tag = op.split(".")[-1]
-        body.append(
-            f'    %{tag} = transform.structured.match ops{{["{op}"]}} in %arg0 '
-            f": (!transform.any_op) -> !transform.any_op\n"
-            f"    %{tag}_loop, %{tag}_tiled = transform.structured.tile_using_forall "
-            f"%{tag} num_threads {choices[dim].format(n=n_harts)} "
-            f": (!transform.any_op) -> (!transform.any_op, !transform.any_op)"
-        )
-    return (
-        "module attributes {transform.with_named_sequence} {\n"
-        f"  transform.named_sequence @{PARALLEL_ENTRY}"
-        "(%arg0: !transform.any_op {transform.readonly}) {\n" + "\n".join(body) + "\n"
-        "    transform.yield\n"
-        "  }\n"
-        "}\n"
-    )
-
-
-def _perop_parallel_schedule(chunks: list) -> str:
-    """The PER-OP multicore library: one ``tile_using_forall`` arm per distinct (class, tile).
-
-    Matched by the ``merlin.par_*`` attribute, not by op name, for the same reason the block arms
-    match ``merlin.blk_*``: two contractions of the same class legitimately want different splits,
-    and a name match cannot tell them apart. Uses ``tile_sizes`` rather than ``num_threads`` because
-    the tile is the thing that has to be exact — merlin chose one that divides the extent, so every
-    chunk is STATIC and equal, and the package schedule below sees the same geometry it would have
-    seen at 1 hart.
-
-    An empty ``chunks`` (a hart count was asked for, but no contraction has a dim that splits into
-    equal block-legal pieces) yields a schedule with no arms: the module reaches the package schedule
-    exactly as the serial build does and the image runs on one core. Said rather than silently
-    produced -- see :func:`lower_to_llvm_ir`, which prints it.
-    """
-    from .perop_blocks import class_token, par_tag_for
-
-    body = []
-    for i, (op, tiles) in enumerate(chunks):
-        tiles = tuple(int(t) for t in tiles)
-        h = f"p{i}{class_token(op)}"
-        body.append(
-            f"    %{h} = transform.structured.match attributes{{{par_tag_for(op, tiles)}}} in %arg0 "
-            f": (!transform.any_op) -> !transform.any_op\n"
-            f"    %{h}_loop, %{h}_tiled = transform.structured.tile_using_forall "
-            f"%{h} tile_sizes [{', '.join(str(t) for t in tiles)}] "
-            f": (!transform.any_op) -> (!transform.any_op, !transform.any_op)"
-        )
-    return (
-        "module attributes {transform.with_named_sequence} {\n"
-        f"  transform.named_sequence @{PARALLEL_ENTRY}"
-        "(%arg0: !transform.any_op {transform.readonly}) {\n"
-        + ("\n".join(body) + "\n" if body else "")
-        + "    transform.yield\n"
-        "  }\n"
-        "}\n"
-    )
 
 
 #: Entry point of the library that runs the NON-CONTRACTION vectorize arms, before specialization.
@@ -715,20 +527,7 @@ def build_rvv_pipeline(
         "convert-scf-to-cf",
         "expand-strided-metadata",
         "lower-affine",
-        "convert-vector-to-llvm",
-        "convert-ub-to-llvm",
-        *(["convert-openmp-to-llvm"] if par else []),
-        "convert-math-to-libm",
-        "convert-math-to-llvm",
-        "convert-index-to-llvm",
-        "convert-arith-to-llvm",
-        "finalize-memref-to-llvm",
-        "convert-func-to-llvm",
-        "convert-cf-to-llvm",
-        "reconcile-unrealized-casts",
-        "canonicalize",
-        "cse",
-        "symbol-dce",
+        *finalization_passes(vector=True, openmp=par),
     ]
     if features:  # default-off impr-fork hooks; empty -> byte-identical
         from .impr_features import apply_pipeline
@@ -796,41 +595,6 @@ from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
 #: Runner glue: wrap ``_run_stages`` so the placement check runs on the IR the sinking stage
 #: produced, in EVERY runner variant, without any of them having to know about it. The wrapper
 #: delegates unchanged when the pass list carries no sinking stage.
-DEALLOC_CHECK_RUNNER = r"""
-_ORIG_RUN_STAGES = _run_stages
-_SINK_MARK = 'optimize-allocation-liveness'
-
-
-def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
-                pre_generalize=()):
-    passes = [p for p in pipeline.split(',') if p]
-    k = next((i for i, p in enumerate(passes) if _SINK_MARK in p), -1)
-    if k < 0:
-        return _ORIG_RUN_STAGES(ctx, module, pipeline, erase, mid, late, post_openmp,
-                                pre_generalize)
-    head, tail = passes[:k + 1], passes[k + 1:]
-    # `erase`/`mid` open their window after buffer-loop-hoisting, and `late` opens its own before
-    # convert-scf-to-openmp; hand each to whichever half contains its anchor, or it would be
-    # accepted here and silently never run. A `late` whose anchor is in neither half goes to the
-    # tail, where the wrapped runner still applies it at the end rather than dropping it.
-    hoist_head = any('buffer-loop-hoisting' in p for p in head)
-    late_head = any('convert-scf-to-openmp' in p for p in head)
-    post_head = late_head
-    _ORIG_RUN_STAGES(ctx, module, ','.join(head),
-                     erase if hoist_head else 0, mid if hoist_head else (),
-                     late if late_head else (), post_openmp if post_head else (),
-                     pre_generalize)
-    bad, n_alloc, n_sunk = _dealloc_placement_violations(module)
-    _obl_write_observation(module, bad)
-    print('OK dealloc_placement', n_alloc, 'allocations', n_sunk, 'sunk', len(bad), 'violations')
-    if bad:
-        raise RuntimeError('post-deallocation lifetime verification failed '
-                           '(' + str(len(bad)) + ' violations):\n  ' + '\n  '.join(bad[:20]))
-    if tail:
-        _ORIG_RUN_STAGES(ctx, module, ','.join(tail),
-                         0 if hoist_head else erase, () if hoist_head else mid,
-                         () if late_head else late, () if post_head else post_openmp, ())
-"""
 
 #: The line the runner prints once the check has run. `lower_to_llvm_ir` REQUIRES it whenever the
 #: pipeline carries the sinking stage: a runner variant that drove the PassManager itself and never
@@ -1019,7 +783,8 @@ def apply_passes(mlir_text: str, pipeline: str, timeout: int = 600) -> str:
         encoding="utf-8",
     )
     proc = subprocess.run(
-        [str(m2m_python()), str(script), str(src), str(dst), pipeline], capture_output=True, text=True, timeout=timeout
+        [str(m2m_python()), str(script), str(src), str(dst), pipeline], capture_output=True, text=True,
+        timeout=timeout, env=child_environment()
     )
     if proc.returncode != 0 or not dst.is_file():
         raise PipelineError(f"apply_passes failed:\n{proc.stdout}\n{proc.stderr}")
@@ -1056,7 +821,8 @@ def dealloc_placement_violations(mlir_text: str, timeout: int = 600, *, borrowed
         "'sunk': n_sunk}))\n",
         encoding="utf-8",
     )
-    proc = subprocess.run([str(m2m_python()), str(script), str(src)], capture_output=True, text=True, timeout=timeout)
+    proc = subprocess.run([str(m2m_python()), str(script), str(src)], capture_output=True, text=True,
+                          timeout=timeout, env=child_environment())
     if proc.returncode != 0:
         raise PipelineError(f"dealloc placement check failed:\n{proc.stdout}\n{proc.stderr}")
     line = next(ln for ln in proc.stdout.splitlines() if ln.startswith("MERLIN_CHECK "))
@@ -1416,8 +1182,7 @@ def _harvest_native(traced: "tuple[Path, bool] | None", produced: Path, failure:
         raise stop from failure
 
 
-class PipelineError(RuntimeError):
-    pass
+
 
 
 @host_admitted
@@ -1488,9 +1253,12 @@ def lower_to_llvm_ir(
     (work / _SOURCE_REPORT).unlink(missing_ok=True)
     recipe_sources = {
         "pipeline_driver": Path(__file__),
+        "native_stage_invocation": Path(native_passes.__file__),
         "loop_ownership_checker": Path(__file__).with_name("dealloc_lifetime.py"),
         "translation_transport": Path(__file__).with_name("llvm_dialect_product.py"),
     }
+    recipe_sources.update({str(path.relative_to(Path(__file__).parents[1])): path
+                           for path in implementation_paths()})
     from .impr_features import apply_schedule, normalize
 
     # `normalize` REJECTS an unregistered name, and the lowering runs in forked/child processes that
@@ -1540,7 +1308,7 @@ def lower_to_llvm_ir(
     from .fma_intrinsic import ensure_registered as _register_fma_intrinsic
 
     _register_fma_intrinsic()
-    from .quant_scope import ensure_registered as _register_quant_scope
+    from merlin.compiler.quantization.scope import ensure_registered as _register_quant_scope
 
     _register_quant_scope()
     from .int_softmax_table import ensure_registered as _register_int_softmax_table
@@ -2097,7 +1865,8 @@ def lower_to_llvm_ir(
         recipe.command(translate_command)
         if audit is not None:
             audit.command(translate_command, sources=(__file__,))
-        tproc = subprocess.run(translate_command, capture_output=True, text=True, timeout=timeout)
+        tproc = subprocess.run(translate_command, capture_output=True, text=True, timeout=timeout,
+                               env=child_environment())
         if tproc.returncode != 0 or not out.is_file():
             raise PipelineError(f"mlir-translate (parallel) failed:\n{tproc.stdout}\n{tproc.stderr}")
     result = _fix_float_literals((retention.translation if retention is not None else out).read_text(encoding="utf-8"))
@@ -2121,87 +1890,3 @@ def lower_to_llvm_ir(
             _from_verified_native(borrowed_buffer_calls, mlir_text, work, result, checked, runner)
         )
     return result
-
-
-import struct as _struct
-
-# The MLIR printer emits float immediates in MLIR's own hex spelling, e.g. the real line
-#     %9 = fmul float f0x3F4C422A, %8
-# from a bf16 gelu capsule's model.ll. LLVM's textual parser has no `f0x` literal, so the
-# module fails to parse. LLVM IR wants a bare `0x…`, and a *float* hex literal must carry
-# the 64-bit pattern of the double the f32 represents — so an 8-hex (f32) payload is
-# widened, a 16-hex (f64) payload only sheds the `f`.
-_F0X = "f0x"
-_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
-
-
-def _is_word_char(ch: str) -> bool:
-    """The `\\b` before `f0x`: a preceding identifier character means this is the tail of a
-    longer token (e.g. `named_f0x…`), not a float literal. `%` is not one, so `%f0x…` — an
-    LLVM local whose name happens to start that way — IS treated as a literal, matching the
-    behaviour this replaced."""
-    return ch.isalnum() or ch == "_"
-
-
-def _f0x_payload_to_llvm(hexs: str) -> str:
-    if len(hexs) == 16:  # already a double bit pattern
-        return f"0x{hexs.upper()}"
-    bits = int(hexs, 16)  # f32 -> widen to double
-    f32 = _struct.unpack("<f", _struct.pack("<I", bits))[0]
-    dbits = _struct.unpack("<Q", _struct.pack("<d", f32))[0]
-    return f"0x{dbits:016X}"
-
-
-def _fix_f0x_literals(ll_text: str) -> str:
-    """Rewrite every `f0x<8 or 16 hex>` token to its LLVM `0x…` spelling.
-
-    Scanned structurally: find the literal `f0x`, require an identifier boundary before it,
-    then take the maximal run of hex digits after it. Only a run of EXACTLY 8 (f32) or 16
-    (f64) digits is a float literal — any other length is not something this repair
-    understands, so it is left untouched for the LLVM parser to reject loudly rather than
-    being half-rewritten into a plausible-looking wrong constant.
-    """
-    out: list[str] = []
-    i = 0
-    while True:
-        j = ll_text.find(_F0X, i)
-        if j < 0:
-            out.append(ll_text[i:])
-            break
-        out.append(ll_text[i:j])
-        i = j + len(_F0X)
-        if j > 0 and _is_word_char(ll_text[j - 1]):
-            out.append(_F0X)  # inside a longer token — not a literal
-            continue
-        k = i
-        while k < len(ll_text) and ll_text[k] in _HEX_DIGITS:
-            k += 1
-        if k - i not in (8, 16):
-            out.append(_F0X)  # unknown payload width — leave verbatim
-            continue
-        out.append(_f0x_payload_to_llvm(ll_text[i:k]))
-        i = k
-    return "".join(out)
-
-
-def _fix_float_literals(ll_text: str) -> str:
-    """The MLIR LLVM-IR printer emits non-LLVM float literals (bare inf/-inf/nan,
-    and `f0x..` f32 hex) that the textual parser rejects — canonicalize them."""
-    ll_text = _fix_f0x_literals(ll_text)
-    # half (fp16) uses the LLVM `0xH<4hex>` literal form, bfloat (bf16) uses `0xR<4hex>` — the MLIR
-    # printer emits bare inf/-inf/nan for these too (e.g. an fp16 causal-mask -inf), which the LLVM
-    # textual parser rejects. Order matters: replace the widest names first so `float`↛`bfloat` etc.
-    return (
-        ll_text.replace("bfloat -inf", "bfloat 0xRFF80")
-        .replace("bfloat inf", "bfloat 0xR7F80")
-        .replace("bfloat nan", "bfloat 0xR7FC0")
-        .replace("half -inf", "half 0xHFC00")
-        .replace("half inf", "half 0xH7C00")
-        .replace("half nan", "half 0xH7E00")
-        .replace("float -inf", "float 0xFFF0000000000000")
-        .replace("float inf", "float 0x7FF0000000000000")
-        .replace("float nan", "float 0x7FF8000000000000")
-        .replace("double -inf", "double 0xFFF0000000000000")
-        .replace("double inf", "double 0x7FF0000000000000")
-        .replace("double nan", "double 0x7FF8000000000000")
-    )

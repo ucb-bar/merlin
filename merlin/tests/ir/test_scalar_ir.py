@@ -6,7 +6,7 @@ import pytest
 
 from merlin.common import mlir_query as mq
 from merlin.perf.whole_model_chunks import chunk_forward
-from merlin.verify.scalar_ir import ScalarTransformReceipt, qualify_scalar_receipt, verify_scalar_transform
+from merlin.verification.scalar_ir import ScalarTransformReceipt, qualify_scalar_receipt, verify_scalar_transform
 
 pytest.importorskip("z3")
 
@@ -25,6 +25,15 @@ SOURCE = """module {
 
 @pytest.mark.parametrize("chunk_ops", [1, 2, 3])
 def test_actual_chunk_forward_ir_has_byte_bound_proof(chunk_ops: int) -> None:
+    import hashlib
+    import pickle
+    from pathlib import Path
+
+    from merlin.verification import scalar_ir as owner
+    from merlin.verify import scalar_ir as legacy
+
+    assert legacy is owner
+    assert legacy.UnsupportedScalarIR is owner.UnsupportedScalarIR
     module = mq.parse(SOURCE)
     before = str(module).encode("utf-8")
     made = chunk_forward(module, chunk_ops=chunk_ops)
@@ -34,6 +43,9 @@ def test_actual_chunk_forward_ir_has_byte_bound_proof(chunk_ops: int) -> None:
 
     receipt = verify_scalar_transform(before, after)
     assert receipt.status == "verified", receipt.reason
+    assert receipt.verifier_sha256 == hashlib.sha256(Path(owner.__file__).read_bytes()).hexdigest()
+    assert receipt.__class__.__module__ == "merlin.verify.scalar_ir"
+    assert pickle.loads(pickle.dumps(receipt)) == receipt
     assert receipt.source_sha256 != receipt.target_sha256
     assert receipt.input_types == ("i32",)
     assert receipt.output_types == ("i32",)

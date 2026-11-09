@@ -10,13 +10,12 @@ import pytest
 from test_private_copy_elimination import command
 from test_selected_program_contracts import inputs as program_inputs
 
-from merlin.compile.scheduling import schedule_pipeline
-from merlin.compile.scheduling.fusion_semantics import ElementwiseSemantics
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, compile_schedule
-from merlin.compile.scheduling.temporary_storage import (
-    TemporaryObject,
-    verify_copy_prefetch,
-)
+from merlin.compiler.schedule import schedule_pipeline
+from merlin.compiler.schedule.fusion_semantics import ElementwiseSemantics
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import compile_schedule
+from merlin.compiler.schedule.temporary_storage import TemporaryObject
+from merlin.compiler.schedule.temporary_storage import verify_copy_prefetch
 from merlin.sched.ir import evaluate
 
 QUALIFICATION = "independent-neutral-copy-integer-overlap-v1"

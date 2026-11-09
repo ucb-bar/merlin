@@ -246,7 +246,7 @@ def ask_package_region(
         return refuse(cause, f"the package did not lower this region: {str(failure)[:300]}")
     except Exception as error:  # noqa: BLE001
         return refuse(WP.PACKAGE_FAILED, f"the package did not run: {type(error).__name__}: {error}")
-    from merlin.verify.lean_emission_context import write_emitted_artifact
+    from merlin.verification.lean_emission_context import write_emitted_artifact
 
     write_emitted_artifact(work / f"{tag}.artifact.txt", artifact)
     if record is not None:

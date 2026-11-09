@@ -12,9 +12,9 @@ from test_private_copy_elimination import command, rewrite
 from test_schedule_pipeline import encoding, limits_for
 from test_selected_storage_contracts import inputs, native  # noqa: F401
 
-from merlin.compile.scheduling import dead_writes as D
-from merlin.compile.scheduling.dead_write_pipeline import compile_schedule_with_dead_writes as compile_schedule
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule import dead_writes as D
+from merlin.compiler.schedule.dead_write_pipeline import compile_schedule_with_dead_writes as compile_schedule
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 
 
 def ordinary(width=7, *, separate=False, word_format="<BBBQQQ", **options):
@@ -398,7 +398,7 @@ class OriginalRewrite:
 
 def slot(owner, *, sources=None):
     from merlin.common.paths import merlin_dir
-    from merlin.compile.scheduling.schedule_pipeline import PostStorageRewrite
+    from merlin.compiler.schedule.schedule_pipeline import PostStorageRewrite
 
     return PostStorageRewrite(
         "original_deletion",
@@ -411,7 +411,7 @@ def slot(owner, *, sources=None):
 
 
 def slot_build(args, model, owner, *, budgets=None):
-    from merlin.compile.scheduling.schedule_pipeline import compile_schedule as ordinary_compile
+    from merlin.compiler.schedule.schedule_pipeline import compile_schedule as ordinary_compile
 
     return ordinary_compile(
         *args,
@@ -508,7 +508,7 @@ def test_slot_requires_pinnable_python_callbacks_and_their_actual_source_owners(
     with pytest.raises(ValueError, match="separate verifier"):
         replace(slot(owner), verify=CallableVerifier())
     args, _, model = ordinary()
-    from merlin.compile.scheduling.schedule_pipeline import compile_schedule as ordinary_compile
+    from merlin.compiler.schedule.schedule_pipeline import compile_schedule as ordinary_compile
 
     with pytest.raises(ValueError, match="actual Python source owners"):
         ordinary_compile(
@@ -529,7 +529,7 @@ def test_over_budget_source_refuses_before_any_original_owner_callback():
 
 @pytest.mark.parametrize("replacement", ["function", "code"])
 def test_first_record_cannot_replace_the_original_input_snapshot_reader(monkeypatch, replacement):
-    from merlin.compile.scheduling import schedule_pipeline as P
+    from merlin.compiler.schedule import schedule_pipeline as P
 
     args, _, model = ordinary()
 
@@ -556,7 +556,7 @@ def test_slot_name_cannot_shadow_existing_pipeline_analysis(name):
 
 @pytest.mark.parametrize("name", ["objects", "addresses", "lifetime_calls", "actual_commands", "image_sha256"])
 def test_original_slot_name_cannot_overwrite_allocation_or_actual_emission_report_fields(name):
-    from merlin.compile.scheduling.schedule_pipeline import compile_schedule as ordinary_compile
+    from merlin.compiler.schedule.schedule_pipeline import compile_schedule as ordinary_compile
 
     args, _, model = ordinary()
     owner = OriginalRewrite(

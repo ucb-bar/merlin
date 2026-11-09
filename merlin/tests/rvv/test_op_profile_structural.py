@@ -304,7 +304,7 @@ def test_ordinary_generic_model_build_profiles_and_executes_on_rv64gc(tmp_path, 
     values = np.array([-5, -0.75, 0, 1.25, 7], dtype=np.float32)
     state = np.array([3, 4, 5, 6, 7], dtype=np.float32)
     np.savez(bundle / "inputs.npz", in0=values, in1=state)
-    from merlin.compile.baremetal_model import read_full_outputs
+    from merlin.model import read_full_outputs
     from merlin.runtime.operation_profile import summarize
     from merlin.runtime.out_bin import binary_console_diagnostics
 

@@ -273,7 +273,7 @@ def test_disjoint_source_components_share_one_current_shape_analysis(monkeypatch
     from test_output_fusion import _path
     from test_sibling_components import multi_source
 
-    from merlin.compile.analysis import contraction_shapes
+    from merlin.compiler.ir import contraction_shapes
 
     original = contraction_shapes.contraction_extents
     observed = []

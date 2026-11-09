@@ -6,19 +6,19 @@ owner: core
 last_verified: 2026-10-08
 related: [derived_capsule_axes, capsule_phase_split, radiance_staged_evaluation]
 code_refs:
-  - packages/merlin-experiments/src/merlin/targetgen/capsule_grade.py
-  - packages/merlin-experiments/src/merlin/targetgen/capsule_runner.py
-  - src/merlin/verify/epilogue_applicability.py
+  - src/merlin/targetgen/capsule_grade.py
+  - src/merlin/targetgen/capsule_runner.py
+  - src/merlin/verification/epilogue_applicability.py
   - merlin/experiments/capsule_bench/harness/agg_agentic_results.py
   - merlin/experiments/capsule_bench/harness/regrade_run_snapshot.py
   - merlin/experiments/capsule_bench/harness/freeze_run.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/promotion.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/qa.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/source_inputs.py
+  - src/merlin_experiments/phase1/feedback/promotion.py
+  - src/merlin_experiments/phase1/feedback/qa.py
+  - src/merlin_experiments/phase1/source_inputs.py
   - merlin/experiments/capsule_bench/harness/conformance.py
   - merlin/experiments/capsule_bench/harness/readiness_check.py
   - merlin/experiments/capsule_bench/harness/verify_no_cheat.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/providers/codex_agent.py
+  - src/merlin_experiments/phase1/providers/codex_agent.py
   - build_tools/scripts/check_no_answer_keys.py
   - build_tools/scripts/check_provenance.py
   - merlin/tests/infra/test_continuous_is_the_default.py

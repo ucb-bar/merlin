@@ -4,8 +4,9 @@ import pytest
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, i64
 
-from merlin.compile.scheduling.llvm_index_bounds import FnBuilderBoundedControlAdapter
-from merlin.compile.scheduling.scf_commands import emit_scf_commands, materialize_scf_commands
+from merlin.compiler.schedule.llvm_index_bounds import FnBuilderBoundedControlAdapter
+from merlin.compiler.schedule.scf_commands import emit_scf_commands
+from merlin.compiler.schedule.scf_commands import materialize_scf_commands
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.sched.ir import Call, Kernel, Loop, Var, evaluate, instances
 

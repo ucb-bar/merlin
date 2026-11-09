@@ -5,7 +5,7 @@ status: current
 owner: dse
 last_verified: 2026-07-22
 related: [getting_started, dse, design_pressure]
-code_refs: [packages/merlin-dse/src/merlin/dse_guidance]
+code_refs: [src/merlin/dse_guidance]
 ---
 
 # DSE Guidance — Workload-Contract Analysis

@@ -193,7 +193,7 @@ def test_highlevel_forwards_original_selection_and_verifies_real_completed_trans
     helpers = runpy.run_path(str(merlin_dir() / "tests/infra/test_baremetal_saved_model.py"))
     _fake_build, _fixture = helpers["_fake_build"], helpers["_fixture"]
 
-    from merlin.compile import baremetal_model as BM
+    from merlin import model as BM
 
     inputs, out = _fixture(tmp_path, monkeypatch)
     selection = selected()

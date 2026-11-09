@@ -204,6 +204,14 @@ def codes_to_f32(codes, fmt: str) -> np.ndarray:
     u = np.asarray(codes, dtype=np.int64) & np.int64(mask)
     if bits >= 32:
         return np.ascontiguousarray(u.astype(np.uint32)).view(np.float32).copy()
+    eb, mb, bias, scheme = float_format_params(t)
+    f32_eb, f32_mb, f32_bias, f32_scheme = float_format_params("f32")
+    if (eb, bias, scheme) == (f32_eb, f32_bias, f32_scheme) and mb < f32_mb:
+        # Matching IEEE exponent fields permit exact stored-bit widening.
+        # Arithmetic reconstruction would canonicalize NaNs and erase their
+        # sign/payload or quiet a signaling encoding during a readback copy.
+        widened = np.ascontiguousarray(u.astype(np.uint32)) << (f32_mb - mb)
+        return widened.view(np.float32)
     return _decode(u.astype(np.uint32), t)
 
 

@@ -8,18 +8,14 @@ from test_convolution_compute_epochs import epoch_law
 from test_convolution_exploration import issue_law
 from test_counted_convolution import Integers
 
-from merlin.compile.scheduling.affine_gather_runs import ConvolutionGatherRuns
-from merlin.compile.scheduling.convolution_exploration import (
-    ConvolutionExplorationSource,
-    ConvolutionScheduleChoice,
-    emit_convolution_schedule,
-    plan_convolution_schedule,
-)
-from merlin.compile.scheduling.window_transfer import (
-    CountedConvolutionPlan,
-    Window2D,
-    emit_convolution_tile,
-)
+from merlin.compiler.schedule.affine_gather_runs import ConvolutionGatherRuns
+from merlin.compiler.schedule.convolution_exploration import ConvolutionExplorationSource
+from merlin.compiler.schedule.convolution_exploration import ConvolutionScheduleChoice
+from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_schedule
+from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
+from merlin.compiler.schedule.window_transfer import Window2D
+from merlin.compiler.schedule.window_transfer import emit_convolution_tile
 
 
 class SelectIntegers(Integers):

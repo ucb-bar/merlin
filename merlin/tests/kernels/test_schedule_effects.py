@@ -282,7 +282,8 @@ def _replace_first(body, target, **change):
 
 def test_the_llvm_index_bridge_drives_the_replay_and_folds_constant_selections():
     """A lowering that emits through the ordinary index bridge needs nothing replay-specific."""
-    from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter, emit_index_program
+    from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
+    from merlin.compiler.schedule.llvm_program import emit_index_program
     from merlin.kernels.schedule_effects import ReplayContext
     from merlin.sched.ir import select
 

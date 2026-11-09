@@ -118,7 +118,7 @@ class ArtifactCompiler:
             future = Future()
             future.set_result(compile_artifact())
         else:
-            future = self._executor.submit(compile_artifact)
+            future = self._executor.submit(copy_context().run, compile_artifact)
         self._artifacts.setdefault(digest, []).append((artifact, future))
         return future
 

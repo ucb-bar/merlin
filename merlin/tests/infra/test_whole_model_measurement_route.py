@@ -550,3 +550,34 @@ def test_a_submission_records_the_digest_of_the_bytes_it_staged(tmp_path: Path) 
     assert read_back["stage_from_sha256"] == FC.sha256_file(elf)
     assert read_back["stamp"].startswith(f"job=901 elf={FC.sha256_file(elf)[:12]}")
     assert FC.staged_binary_record(902, ledger=ledger) is None
+
+
+def test_window_driver_constructs_admitted_contiguous_policy_from_selected_backend(monkeypatch):
+    import importlib.util
+    from types import SimpleNamespace
+
+    from merlin.common.paths import repo_root
+    from merlin.runtime.backends import base
+
+    script = repo_root() / "merlin/experiments/gemmini_perf_bench/scripts/firesim_gemm_windows.py"
+    spec = importlib.util.spec_from_file_location("gemm_window_policy", script)
+    assert spec is not None and spec.loader is not None
+    driver = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(driver)
+    monkeypatch.setattr(
+        base,
+        "get_backend",
+        lambda target: SimpleNamespace(
+            WINDOW_CHECKSUM_LINE={"prefix": "CHECK", "group_key": "label", "value_key": "digest"},
+            window_marker=lambda label: f"DONE {label}",
+        ),
+    )
+    plan = {"target": "selected", "declared": [{"label": "one", "digest_expected": 29, "repeats": None}]}
+    document = driver.validation_policy(plan, policy_id="selected-window")
+    policy = FB.BatchValidationPolicy.from_json(document)
+    assert policy.window("one").window_kind == FB.WINDOW_KIND_CONTIGUOUS
+    assert policy.window("one").checksums == (("one", 29),)
+    assert policy.window("one").markers == ("DONE one",)
+    document["per_window"][0]["window_kind"] = "unrecognized"
+    with pytest.raises(FB.BatchError, match="window_kind"):
+        FB.BatchValidationPolicy.from_json(document)

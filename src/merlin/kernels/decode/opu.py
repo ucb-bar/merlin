@@ -27,7 +27,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from merlin.compile.analysis.disassembly import UNKNOWN_MNEMONIC, word_of
+from merlin.analysis.disassembly import UNKNOWN_MNEMONIC, word_of
 
 __all__ = ["Audit", "Decoded", "audit", "decode_stream", "digest", "fields_of"]
 
@@ -223,13 +223,13 @@ def audit(insns: Sequence[Any], encodings: Mapping[str, Any], *, config_mnemonic
 
 def audit_object(obj_path, encodings: Mapping[str, Any], *, triple: str = "riscv64") -> Audit:
     """Audit a compiled object file."""
-    from merlin.compile.analysis.disassembly import tokenize
+    from merlin.analysis.disassembly import tokenize
 
     return audit(tokenize(obj_path, triple=triple), encodings)
 
 
 def audit_text(text: str, encodings: Mapping[str, Any]) -> Audit:
     """Audit already-disassembled text, so a saved objdump can be re-audited with no toolchain."""
-    from merlin.compile.analysis.disassembly import tokenize_text
+    from merlin.analysis.disassembly import tokenize_text
 
     return audit(tokenize_text(text), encodings)

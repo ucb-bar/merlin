@@ -830,7 +830,7 @@ def spec_fact_drift(spec: Mapping[str, Any], facts: Mapping[str, Any], *, target
                 continue  # unconstrained on the authored side, or nothing the facts can say
             findings.extend(_finding(family, field, authored_values, fact, spec=spec))
 
-    from merlin.targetgen import quant_recipe as QR
+    from merlin.compiler.quantization import recipe as QR
 
     # The recipe's own family vocabulary; a declaration's other families are never quantized by a
     # recipe (``capture_recipe_candidates`` intersects with it), so they claim nothing here.

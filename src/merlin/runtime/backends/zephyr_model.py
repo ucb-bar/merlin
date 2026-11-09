@@ -20,7 +20,6 @@ import struct
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
-from functools import cache, lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +28,21 @@ import numpy as np
 from merlin.common import proc as _proc
 from merlin.common.mlir_query import parse_scope
 from merlin.common.paths import runtime_dir
+from merlin.compiler.backend.proposal import MatrixExtension
+from merlin.compiler.backend.proposal import MatrixRouting as MatrixRouting
+from merlin.compiler.build.zephyr.config import (
+    cpu_disable_overlay as _cpu_disable_overlay,
+    image_cpus as image_cpus,
+    project_config,
+    vector_max_len_bits,
+)
+from merlin.compiler.build.zephyr.tree import TreeConfiguration
+from merlin.compiler.build.zephyr.memory import (
+    ZephyrBuildError as ZephyrModelError,
+    memory_plan,
+    ram_for_weights,
+    require_external_arena,
+)
 
 from ...llvmlower import c_runtime, toolchain
 from ...llvmlower.lower import lower_model_file
@@ -36,7 +50,7 @@ from ...llvmlower.masked_contraction import MaskEffectContract
 from ...llvmlower.source_expression_interval import IntervalEffectContract
 from ...llvmlower.source_scalar_carrier_binding import host_admitted
 from . import spike as _spike
-from .firesim_runner import FireSimRunner, select_runner
+from .firesim_runner import FireSimRunner
 
 from ._model_statistics import (
     out_hash_fnv1a32 as out_hash_fnv1a32,
@@ -87,10 +101,6 @@ def _cflags(backend: str) -> list[str]:
     raise ZephyrModelError(f"unknown backend {backend!r} (want 'scalar' | 'rvv')")
 
 
-class ZephyrModelError(RuntimeError):
-    pass
-
-
 # ---- environment / toolchain resolution -------------------------------------------
 
 
@@ -108,13 +118,6 @@ def _zephyr_base() -> Path:
     selected = _pick("ZEPHYR_BASE")
     if selected is None:
         raise ZephyrModelError("ZEPHYR_BASE is not configured")
-    return selected
-
-
-def _zephyr_sw_root() -> Path:
-    selected = _pick("MERLIN_ZEPHYR_SW")
-    if selected is None:
-        raise ZephyrModelError("MERLIN_ZEPHYR_SW is not configured")
     return selected
 
 
@@ -309,71 +312,6 @@ def perop_mr_cap() -> int:
 
 _PEROP_KC = 16
 
-_WEIGHTS_ALIGN_BYTES = 4096  # Zephyr memory-region alignment, not a board address
-
-
-@dataclass(frozen=True)
-class _MemoryPlan:
-    external: bool
-    ram_region_bytes: int
-    spike_span_bytes: int
-    weights_base: int | None = None
-    weights_region_bytes: int = 0
-
-
-def _memory_plan(brd: Any, weights_bytes: int, linked_region: int, override: int | None = None) -> _MemoryPlan:
-    """Choose an in-DRAM layout using only the selected board's memory facts.
-
-    A missing external-weights layout is a refusal, not a guess at another board's
-    16 GiB map. The returned spike span covers every byte of the emitted ELF.
-    """
-    default = brd.zephyr_default_ram_bytes
-    limit = brd.zephyr_link_limit_bytes
-    if default is None or limit is None:
-        raise ZephyrModelError(f"{brd.name}: Zephyr memory facts are missing from the selected board")
-    if linked_region < 0 or weights_bytes < 0:
-        raise ZephyrModelError(f"{brd.name}: negative model memory requirement")
-    if brd.dram_base > 0xFFFFFFFF or default > 0xFFFFFFFF:
-        raise ZephyrModelError(f"{brd.name}: Zephyr RAM overlay requires one-cell DRAM address and size")
-    if override is not None:
-        if override < default or override < weights_bytes or override > limit or override > brd.dram_bytes:
-            raise ZephyrModelError(f"{brd.name}: RAM override cannot hold weights or exceeds board limits")
-        return _MemoryPlan(False, override, override)
-    if linked_region < default:
-        raise ZephyrModelError(f"{brd.name}: computed region is smaller than the port's default RAM region")
-    if linked_region <= limit:
-        if linked_region > brd.dram_bytes or linked_region > 0xFFFFFFFF:
-            raise ZephyrModelError(f"{brd.name}: linked region exceeds physical DRAM")
-        return _MemoryPlan(False, linked_region, linked_region)
-    low = brd.zephyr_external_ram_bytes
-    tail = brd.zephyr_external_tail_reserve_bytes
-    if low is None or tail is None:
-        raise ZephyrModelError(
-            f"{brd.name}: linked region exceeds the port's limit and the board declares no external-weights layout"
-        )
-    if low <= 0 or low > limit or low > 0xFFFFFFFF or tail < 0 or low + tail >= brd.dram_bytes:
-        raise ZephyrModelError(f"{brd.name}: invalid external-weights layout")
-    base = brd.dram_base + low
-    aligned = (weights_bytes + _WEIGHTS_ALIGN_BYTES - 1) & ~(_WEIGHTS_ALIGN_BYTES - 1)
-    if base % _WEIGHTS_ALIGN_BYTES or aligned + low + tail > brd.dram_bytes:
-        raise ZephyrModelError(f"{brd.name}: aligned weights blob does not fit the declared DRAM layout")
-    return _MemoryPlan(True, low, low + aligned, base, aligned)
-
-
-def _require_external_arena(brd: Any, ram_region_bytes: int, segments: list[Any], demand: int) -> None:
-    """Refuse an external image whose *linked* low-memory footprint crowds its arena."""
-    low_end = brd.dram_base + ram_region_bytes
-    low_segments = [sg for sg in segments if sg.vaddr < low_end]
-    if any(sg.vaddr < brd.dram_base or sg.end > low_end for sg in low_segments):
-        raise ZephyrModelError(f"{brd.name}: linked ELF crosses the declared low RAM region")
-    available = ram_region_bytes - sum(sg.memsz for sg in low_segments)
-    if available < demand:
-        raise ZephyrModelError(
-            f"{brd.name}: external-weights ELF leaves {available} bytes "
-            f"of low RAM for {demand} bytes of activation demand; declare a larger "
-            "external RAM region in the target-owned catalog"
-        )
-
 
 #: What one heap allocation looks like in the emitted LLVM IR. The lowered model reaches the C library
 #: through this symbol, so a call to it is an allocation the arena has to hold.
@@ -417,24 +355,6 @@ def allocation_bytes(ll_path: str | Path) -> tuple[int, int]:
     return total, dynamic
 
 
-def _ram_for_weights(
-    weights_bytes: int,
-    activation_bytes: int | None = None,
-    allocation_bytes_total: int | None = None,
-    *,
-    default_ram_bytes: int,
-) -> int:
-    """Build the selected image; see docs/design/zephyr_model_memory.md for sizing rationale."""
-    headroom = (weights_bytes * 3) // 10 + 128 * 1024 * 1024
-    demand = int(allocation_bytes_total or 0) or int(activation_bytes or 0)
-    if demand:
-        headroom = max(headroom, demand + 128 * 1024 * 1024)
-    total = weights_bytes + headroom
-    align = 16 * 1024 * 1024
-    total = ((total + align - 1) // align) * align
-    return max(default_ram_bytes, total)
-
-
 def _prepare_model_mlir(
     mlir_path: Path,
     work: Path,
@@ -461,14 +381,11 @@ def _prepare_model_mlir(
     numpy interpreter applies in ``dispatch_runtime.run_model`` (collapse over-rank
     `aten.linear` matmuls; dequantize int8 weights; f32-accumulate bf16 matmuls; fix the
     sitofp(i1) bool-cast sign). Without them only clean LLMs (small_llama) lower."""
+    from merlin.compiler.lower.scalar.casts import fix_bool_fptosi, fix_bool_sitofp
+    from merlin.compiler.quantization.linalg import lower_quant_ext
+    from merlin.compiler.transforms.matmul import collapse_overrank_matmul, lower_bf16_matmul_f32acc
+
     from ...frontends.linalg_mlir import parse_mlir_file
-    from ...llvmlower.passes_xdsl import (
-        collapse_overrank_matmul,
-        fix_bool_fptosi,
-        fix_bool_sitofp,
-        lower_bf16_matmul_f32acc,
-        lower_quant_ext,
-    )
     from ...llvmlower.torchao_affine import lower_torchao_affine_quant
     from ...xdsl_dialects._common import text as to_text
     from ..dispatch_runtime import _propagate_quant_inner
@@ -540,7 +457,7 @@ def _prepare_model_mlir(
         # pass that could not reach anything both return 0, and only the counters separate them.
         _qrep: dict = {}
         if respect_captured_quantization_scope:
-            from ...llvmlower.quant_scope import captured_quantized_contraction
+            from merlin.compiler.quantization.scope import captured_quantized_contraction
 
             apply_quant(
                 module,
@@ -816,63 +733,6 @@ def _prepare_model_mlir(
     return out
 
 
-@dataclass(frozen=True)
-class MatrixRouting:
-    """Which matrix extension a build routes contractions to, and in which configuration.
-
-    Carried as one object so the tile edge has exactly ONE source. The alternative -- deriving the edge
-    here from the caller's ``vlen`` and again at object-build time from the config's Scala -- is two
-    statements of the same fact that can disagree, and the disagreement would be silent: the selector
-    would choose contractions for a geometry the compiled kernel does not have.
-
-    ``select`` overrides the default tile-filling decision, which is the seam the cost model and the
-    e-graph plug into. Nothing here decides profitability on its own.
-
-    ``support_target`` selects executable OOT support on ``MERLIN_TARGET_PATH``;
-    it is not inferred from ``unit`` or ``config``. The provider declares
-    ``plugin.matrix_lowering`` with geometry, selector, rewrite_prepared_file,
-    load_signatures and build_object callables. Rewrite reports preserve count,
-    signatures, skipped and sub_tile(); builds expose object_path, tile_edge,
-    scalar_tile, scratch_bytes, parallel_tiles and to_dict().
-    """
-
-    support_target: str  # explicitly selected OOT support identity
-    unit: str  # a unit declared by that provider
-    config: str  # the elaborated hardware configuration
-    select: Callable[[Any], bool] | None = None
-
-    def __post_init__(self) -> None:
-        for name, value in self.identity().items():
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"matrix routing requires an explicit nonempty {name}")
-
-    def provider(self):
-        """Resolve executable support explicitly, never from the unit's name."""
-        from ...targetgen.plugins import PluginError, load_declared
-
-        provider = load_declared(self.support_target, "matrix_lowering")
-        required = ("geometry", "selector", "rewrite_prepared_file", "load_signatures", "build_object")
-        missing = [name for name in required if not callable(getattr(provider, name, None))]
-        if missing:
-            raise PluginError(f"{self.support_target!r}: matrix_lowering lacks callable {missing}")
-        return provider
-
-    def identity(self) -> dict[str, str]:
-        return {"support_target": self.support_target, "unit": self.unit, "config": self.config}
-
-    def tile_edge(self) -> int:
-        """The edge, read from this configuration's own declaration.
-
-        Through the contract's own accessor rather than re-resolving the paths here: this used to rebuild
-        them, which meant two places had to agree about where a unit's configs live -- and when the contract
-        grew a second declaration site they stopped agreeing.
-        """
-        return self.provider().geometry(unit=self.unit, config=self.config)[0]
-
-    def selector(self) -> Callable[[Any], bool]:
-        return self.select if self.select is not None else self.provider().selector(self.tile_edge())
-
-
 MATRIX_ROUTING_RECORD = "matrix_routing.json"
 
 
@@ -1034,7 +894,7 @@ def prepare_for_lowering(
     from ...llvmlower.impr_features import NAMED_INT8_CONTRACTION_NAME, QUANTIZE_BEFORE_GATHER_NAME
     from ...llvmlower.quant_hoist import FEATURE as _HOIST_WEIGHT_INVARIANT_QUANTIZE
     from ...llvmlower.quant_round import FEATURE as _FUSE_QUANT_ROUND
-    from ...llvmlower.quant_scope import FEATURE as _CAPTURED_QUANT_SCOPE
+    from merlin.compiler.quantization.scope import FEATURE as _CAPTURED_QUANT_SCOPE
     from ...llvmlower.reduce_vec import FEATURE as _VEC_AMAX_REDUCTION
 
     _op_counts: dict[str, int] = {}
@@ -1180,9 +1040,7 @@ def prepare_for_lowering(
                 "unit and configuration to route to are unknown; pass "
                 "MatrixRouting(support_target=..., unit=..., config=...)"
             )
-        routed = matrix.provider().rewrite_prepared_file(
-            prepared, work, select=matrix.selector(), tile_edge=matrix.tile_edge()
-        )
+        routed = MatrixExtension(matrix).lower(prepared, work)
         (work / MATRIX_ROUTING_RECORD).write_text(
             json.dumps(
                 {
@@ -1234,7 +1092,7 @@ def prepare_for_lowering(
     from ...llvmlower.impr_features import LMUL_GROUP_SENTINEL, lmul_group_feature
 
     if LMUL_GROUP_SENTINEL in features:
-        from merlin.compile.analysis.contraction_shapes import contraction_shapes as _cshapes0
+        from merlin.compiler.ir.contraction_shapes import contraction_shapes as _cshapes0
 
         from ...llvmlower.lmul_group import LmulDerivationError, group_lmul_for_shapes
 
@@ -1393,7 +1251,7 @@ def prepare_for_lowering(
             f for f in features if parse_perop_mr_sentinel(f) is None and parse_perop_nr_sentinel(f) is None
         } | {PEROP_BLOCK_NAME}
     if PEROP_BLOCK_NAME in features:
-        from merlin.compile.analysis.contraction_shapes import contraction_shapes as _cshapes
+        from merlin.compiler.ir.contraction_shapes import contraction_shapes as _cshapes
 
         # The N-tile cap follows the board's vector length: a fixed element count on a wider unit
         # is spent as a smaller LMUL rather than as more work per instruction (measured: the same
@@ -1978,343 +1836,20 @@ int main(void) {{
 """
 
 
-def _cpu_disable_overlay(n_harts: int, max_dt_cpus: int) -> str:
-    """Disable the DT CPUs the SoC does not have.
-
-    The board catalog states the port's DT CPU count. An image for fewer harts
-    disables extra nodes so Zephyr does not wait for non-existent processors.
-    """
-    if n_harts > max_dt_cpus:
-        raise ZephyrModelError(
-            f"image requests {n_harts} harts, but the selected port declares only {max_dt_cpus} CPU nodes"
-        )
-    if n_harts >= max_dt_cpus:
-        return ""
-    disabled = "".join(f'\t\tcpu@{i} {{ status = "disabled"; }};\n' for i in range(n_harts, max_dt_cpus))
-    return (
-        "/*\n * Generated by merlin.runtime.backends.zephyr_model.\n"
-        f" * SoC has {n_harts} tile(s); disable the other DT CPUs so SMP boot does not\n"
-        " * try to wake harts that do not exist.\n */\n\n"
-        "/ {\n\tcpus {\n" + disabled + "\t};\n};\n"
-    )
-
-
-def _kconfig_has(symbol: str) -> bool:
-    """Does THIS Zephyr tree define ``CONFIG_<symbol>``?
-
-    Zephyr versions differ in their vector Kconfig, and setting a symbol a tree does not have is a hard
-    build failure ("attempt to assign the value 'y' to the undefined symbol ..." -> "Aborting due to
-    Kconfig warnings"), not a warning. Measured: `RISCV_V_KERNEL_ONLY` exists on the zephyr-chipyard-sw
-    `dev` Zephyr and is ABSENT in the one the `kodiak` branch pins, so a config written for one tree
-    cannot build for the other. Probing the tree is the difference between targeting a board and
-    assuming its Zephyr matches ours.
-    """
-    return symbol in _kconfig_symbols()
-
-
-@lru_cache(maxsize=1)
-def _kconfig_symbols() -> frozenset[str]:
-    """Every ``config <NAME>`` this tree declares, across the subsystems we configure from.
-
-    Scoped to specific roots rather than the whole tree: a full rglob walks tens of thousands of files
-    for an answer we need on every build. The roots are the ones merlin actually sets symbols in --
-    `arch/` for the ISA and vector options, `kernel/` and `subsys/debug/` for the diagnostic ones a
-    debug image turns on. A symbol outside them reads as absent, which is the safe direction: we
-    comment it out rather than emit it, and an unknown symbol is a HARD build failure ("attempt to
-    assign the value 'y' to the undefined symbol"), never a warning.
-    """
+def _selected_zephyr_tree() -> TreeConfiguration:
     try:
         base = _zephyr_base()
     except ZephyrModelError:
-        return frozenset()
-    roots = [base / "arch", base / "kernel", base / "subsys" / "debug"]
-    found: set[str] = set()
-    try:
-        for root in roots:
-            if not root.is_dir():
-                continue
-            for f in root.rglob("Kconfig*"):
-                if not f.is_file():
-                    continue
-                for line in f.read_text(errors="replace").splitlines():
-                    s = line.strip()
-                    # `config NAME` and `menuconfig NAME` both declare a settable symbol.
-                    head, _, name = s.partition(" ")
-                    if head in ("config", "menuconfig") and name and " " not in name:
-                        found.add(name)
-    except Exception:  # noqa: BLE001
-        return frozenset(found)
-    return frozenset(found)
-
-
-@cache
-def _kconfig_default_int(symbol: str) -> int | None:
-    """The tree's own ``default <int>`` for an ``int``-typed Kconfig symbol, or None.
-
-    Read from the tree rather than written here because it is the tree that decides what is safe: see
-    `_vector_max_len_bits` for why the default is a FLOOR and not just a fallback.
-    """
-    try:
-        base = _zephyr_base()
-    except ZephyrModelError:
-        return None
-    roots = [base / "arch", base / "kernel", base / "subsys" / "debug"]
-    for root in roots:
-        if not root.is_dir():
-            continue
-        for f in root.rglob("Kconfig*"):
-            if not f.is_file():
-                continue
-            in_sym = False
-            for line in f.read_text(errors="replace").splitlines():
-                s = line.strip()
-                head, _, name = s.partition(" ")
-                if head in ("config", "menuconfig"):
-                    in_sym = name == symbol
-                    continue
-                if not in_sym:
-                    continue
-                key, _, val = s.partition(" ")
-                if key == "default":
-                    val = val.strip()
-                    if val.isdigit():
-                        return int(val)
-                    return None  # a conditional/symbolic default: no single number
-    return None
+        base = None
+    return TreeConfiguration(base)
 
 
 def _vector_max_len_bits(brd) -> int:
-    """Bits to declare for the per-thread vector save area, floored at the tree's own default.
-
-    `CONFIG_RISCV_VECTOR_MAX_LEN` sizes a FIXED buffer -- `vreg[32][MAX_LEN/8]` in
-    `arch/riscv/thread.h` -- but the code that fills it takes its length from the HARDWARE:
-    `z_riscv_vstate_save` does `vsetvli %0, x0, e8, m8` and then four `vse8.v`, i.e. it stores
-    32 x vlenb bytes with no clamp and no check against the buffer it was given. So the two numbers are
-    not symmetric. Declaring MORE than the silicon has costs RAM per thread and nothing else.
-    Declaring LESS is an unchecked buffer overrun on every context switch, of
-    `32 * (vlenb_hw - MAX_LEN/8)` bytes, into whatever the linker put after that thread struct.
-
-    That is not hypothetical: a descriptor saying `vlen=128` against silicon whose own probe reports
-    `vlenb 32` (VLEN 256) overran `z_idle_threads[1]` by 512 bytes into the adjacent `z_main_thread`,
-    zeroing its name and `stack_info.start` -- a thread that has never executed a vector instruction
-    has a zeroed register file, so the overrun writes zeros. The first tick after `z_smp_init()` then
-    loaded from address 0. No simulator gate can see it, because a spike run is given the VLEN we
-    declared: configured and actual agree by construction and the overrun cannot happen there.
-
-    So: take the board's declared VLEN, but never emit below the tree's own default for the symbol.
-    A wrong-but-larger declaration wastes memory; a wrong-but-smaller one corrupts the kernel.
-    """
-    want = int(brd.vector_max_len)
-    floor = _kconfig_default_int("RISCV_VECTOR_MAX_LEN")
-    return max(want, floor) if floor else want
-
-
-def _debug_conf() -> str:
-    """Kconfig a DEBUG image adds. Every symbol here exists in the pinned tree and was checked before
-    being emitted -- an unknown symbol aborts the build, and a debug image that will not build is worse
-    than no debug image.
-
-    `EXCEPTION_DEBUG` is already `y` by default (it only needs PRINTK), so the register dump is not
-    what these buy. What they buy is: a stack overflow reported as a stack overflow instead of as
-    corruption somewhere else entirely (`STACK_SENTINEL`), the high-water measurement that tells us
-    whether the 8 MB worker stack is 8 MB of evidence or 8 MB of caution (`INIT_STACKS` +
-    `THREAD_STACK_INFO`), assertions that fire instead of being compiled away (`ASSERT`), and a thread
-    NAME in the fault line so "which of the pool workers" is answerable (`THREAD_NAME`).
-    """
-    want = [
-        ("EXCEPTION_DEBUG", "y"),
-        ("ASSERT", "y"),
-        ("THREAD_NAME", "y"),
-        ("THREAD_STACK_INFO", "y"),
-        ("INIT_STACKS", "y"),
-        ("THREAD_MONITOR", "y"),
-        ("STACK_SENTINEL", "y"),
-    ]
-    out = ["\n# DEBUG image: diagnosis over size. Not shipped in a delivery build."]
-    for sym, val in want:
-        if _kconfig_has(sym):
-            out.append(f"CONFIG_{sym}={val}")
-        else:
-            out.append(f"# CONFIG_{sym} not defined by this Zephyr tree")
-    return "\n".join(out) + "\n"
-
-
-def image_cpus(brd, harts: int, rvv_hart: int = 0) -> int:
-    """``CONFIG_MP_MAX_NUM_CPUS`` for an image that fans out over ``harts``.
-
-    One rule, in one place, because there were two. The packager computed this differently on its gated
-    path (``max(2, harts, 2)``) and on its build-only path (``max(harts, brd.harts)``), so the same model
-    at the same hart count got a different CPU count depending on whether it was going to be simulated --
-    and on a 3-hart board the ungated build of a ONE-hart image declared three CPUs.
-
-    That is not a cosmetic difference. ``z_smp_init()`` starts CPUs 1..MP_MAX_NUM_CPUS-1, and
-    ``arch_cpu_start`` spins on ``riscv_cpu_boot_flag`` with **no timeout**, so a CPU the image does not
-    need is a hang with nothing printed past the boot banner if that hart does not answer.
-
-    Hence: enough CPUs for every hart the image fans out to plus the master's, never more than the board
-    has. The floor of 2 is kept so an image that is gated today is byte-identical tomorrow; the clamp is
-    the new part, and it is the half that prevents the hang.
-    """
-    need = max(2, int(harts), int(rvv_hart) + 1)
-    return min(need, int(brd.harts)) if getattr(brd, "harts", None) else need
+    return vector_max_len_bits(brd, _selected_zephyr_tree())
 
 
 def _prj_conf(cpus: int, backend: str, brd, console_facts=None, debug: bool = False) -> str:
-    """Generated app config for the selected :class:`runtime.boards.Board`.
-
-    ``console_facts`` is a :class:`runtime.sdk_facts.UartConsoleFacts` and is REQUIRED when the board
-    declares a UART console: the baud divisor the RTOS driver computes depends on two clock numbers
-    that belong to the chip, and defaulting either of them produces a console that emits garbage.
-    """
-    from ..boards import CONSOLE_HTIF, CONSOLE_UART
-
-    if brd is None:
-        raise ZephyrModelError("a board descriptor is required for Zephyr app configuration")
-    if brd.fpu_sharing is None or brd.zephyr_vector_ext is None:
-        raise ZephyrModelError("Zephyr board must declare fpu_sharing and zephyr_vector_ext")
-    # HTIF: the direct-putchar path races under SMP (a worker on hart != 0 printing) and silently
-    # wedges, so use the buffered + syscall path. It is also the fix for an apparent hang: unbuffered
-    # HTIF emits ONE CHARACTER per host round-trip, which on a ~20 MHz core looks like the model never
-    # finishing. Both options default to `n` in Zephyr, so this must be stated. (Lesson 3,
-    # merlin_hetero_runner.) A non-HTIF board configures its own console via its defconfig; we say
-    # nothing rather than setting options its driver does not have.
-    # A tick every few cycles is a real pathology, not a tuning preference: measured on the Kodiak
-    # config, four spike images each burned 58 minutes of CPU without finishing a single inference,
-    # because the board pairs a 40 kHz timer with a 10 kHz tick rate and its required FPU_SHARING=y
-    # makes every tick save 32 vector registers. Our image has one pinned COOP worker per hart, no
-    # preemption and no timeouts, so it needs almost no ticks. Emitted only when the descriptor asks.
-    tick_conf = (
-        ""
-        if getattr(brd, "tick_hz", None) is None
-        else f"""
-# This image is a single-shot inference on pinned cooperative workers: no preemption, no timeouts to
-# resolve, so it does not need the board's default tick rate (and paying it costs a vector-state
-# save/restore per tick under FPU_SHARING).
-CONFIG_SYS_CLOCK_TICKS_PER_SEC={brd.tick_hz}
-"""
-    )
-    if brd.console == CONSOLE_HTIF:
-        console_conf = """# SMP-safe HTIF console (buffered + syscall; both default to n upstream).
-CONFIG_UART_HTIF_BUFFERED_OUTPUT=y
-CONFIG_UART_HTIF_BUFFERED_OUTPUT_SIZE=256
-CONFIG_UART_HTIF_SYSCALL_PRINT=y
-"""
-    elif brd.console == CONSOLE_UART:
-        if console_facts is None:
-            raise RuntimeError(
-                f"board {brd.name} declares a UART console but no SDK facts were derived; the baud "
-                "divisor depends on the chip's own clock rates and must not be defaulted"
-            )
-        # Saying nothing here was a SILENT failure: the chipyard board's own defconfig sets
-        # CONFIG_UART_HTIF=y, so "let the board configure its console" left the image on a
-        # host-assisted channel that hangs on silicon. Turn it off explicitly.
-        #
-        # The SiFive-style driver computes
-        #   div = (SYS_CLOCK_HW_CYCLES_PER_SEC * RTC_CLOCK_DIVIDER_VALUE) / baud - 1
-        # so both terms must describe THIS chip. The board defaults (1 MHz mtime x 1000) imply a 1 GHz
-        # peripheral clock; against real hardware that programs a wildly wrong divisor and the console
-        # emits GARBAGE rather than nothing -- which reads as a corrupt program, not a misconfigured
-        # UART. Both numbers come from the SDK's chip_config.h.
-        divider = console_facts.sys_clk_hz // console_facts.mtime_hz
-        if divider * console_facts.mtime_hz != console_facts.sys_clk_hz:
-            raise RuntimeError(
-                f"core clock {console_facts.sys_clk_hz} is not an integer multiple of the mtime rate "
-                f"{console_facts.mtime_hz}; the RTOS peripheral-clock model cannot express it"
-            )
-        console_conf = f"""# Console: the chip's own UART. Facts derived from its SDK headers, not assumed.
-CONFIG_UART_HTIF=n
-CONFIG_CONSOLE=y
-CONFIG_SERIAL=y
-CONFIG_UART_CONSOLE=y
-CONFIG_UART_SIFIVE=y
-CONFIG_UART_SIFIVE_PORT_0=y
-# Peripheral clock = {console_facts.sys_clk_hz} Hz, expressed as the mtime rate times the
-# core/mtime divider, which is how this SoC's headers model it.
-CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC={console_facts.mtime_hz}
-CONFIG_RTC_CLOCK_DIVIDER_VALUE={divider}
-"""
-    else:
-        raise RuntimeError(f"unknown console kind {brd.console!r} for board {brd.name}")
-    # FPU_SHARING=y mis-routes V-illegal-instruction traps into the FP path, which retries forever --
-    # a hang with NO fault printed (the FireSim Saturn-tile hang). Off unless a board needs otherwise;
-    # note this also compiles out fpu.c/fpu.S, i.e. no FP/vector state is saved across a context
-    # switch, which is safe for the single pinned cooperative worker this image runs.
-    fpu_sharing = "y" if brd.fpu_sharing else "n"
-    vector_max_len = _vector_max_len_bits(brd)
-    common = f"""# Generated by merlin.runtime.backends.zephyr_model (backend={backend}, board={brd.name}).
-CONFIG_PRINTK=y
-CONFIG_STDOUT_CONSOLE=y
-CONFIG_THREAD_STACK_INFO=y
-
-CONFIG_MP_MAX_NUM_CPUS={cpus}
-CONFIG_SMP=y
-CONFIG_SCHED_CPU_MASK=y
-CONFIG_SCHED_CPU_MASK_PIN_ONLY=y
-CONFIG_SCHED_DUMB=y
-
-{console_conf}
-CONFIG_FPU=y
-CONFIG_FLOAT_HARD=y
-# FPU_SHARING=y mis-routes V-illegal-instruction traps to the FP path, which
-# silently retries forever (a hang with NO fault printed) — the FireSim
-# vector-tile hang. Keep it off so traps surface, and so single-COOP-worker FP
-# context stays eager. (merlin_hetero_runner.)
-CONFIG_FPU_SHARING={fpu_sharing}
-
-# malloc for the lowered model's memref.alloc buffers (the whole-model activation
-# arena). ARENA_SIZE=-1 = "use all leftover RAM" (a linker-defined region at the end of
-# RAM), NOT a fixed static BSS array — a large fixed array overflows R_RISCV_PCREL_HI20
-# relocations once it exceeds the model-link window. So the arena scales to the board's
-# RAM (spike -m / FireSim DRAM) for free, and big models just work.
-CONFIG_COMMON_LIBC_MALLOC=y
-CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=-1
-
-CONFIG_MAIN_STACK_SIZE=32768
-CONFIG_HEAP_MEM_POOL_SIZE=65536
-{tick_conf}{_debug_conf() if debug else ""}"""
-    if backend == "scalar":
-        return common  # no vector config at all — the model object is rv64gc.
-    # rvv: eager per-thread V save/restore + keep global -march scalar so the
-    # non-V picolibc multilib links (the rv64gcv model object re-adds V itself).
-    #
-    # VECTOR_MAX_LEN sizes `vreg[32][N/8]` per thread, so it must cover the board's real VLEN and
-    # costs memory if it over-covers. LAZY=n is deliberate: the other chipyard silicon boards disable
-    # lazy vector switching explicitly, and Kodiak's defconfig is the one that leaves it at its
-    # default y — we do not inherit that.
-    # Whether Zephyr's own kernel can be built with V is a property of the TREE, not of the board:
-    # without RISCV_V_KERNEL_ONLY, setting CONFIG_RISCV_ISA_EXT_V puts `v` in the global -march and no
-    # matching libgcc multilib exists (the link falls back to a 32-bit one). So require both the board's
-    # permission and the tree's capability -- otherwise pointing ZEPHYR_BASE at a tree that lacks the
-    # symbol breaks every board, including spike_riscv64.
-    tree_can = _kconfig_has("RISCV_V_KERNEL_ONLY")
-    if tree_can and not brd.zephyr_vector_ext:
-        # The only reason to deny Zephyr vector state is that the TREE cannot express it. When the tree
-        # can and a descriptor still says no, the descriptor is stale -- and the failure it produces is
-        # the worst kind: threads whose mstatus never carries VS, so the image works on one hart and
-        # hangs (silently, with FPU_SHARING=y) the moment a context switch costs the master its vector
-        # state. That shipped once on Kodiak. Fail closed rather than rebuild it.
-        raise RuntimeError(
-            f"board {brd.name} sets zephyr_vector_ext=False, but this Zephyr tree "
-            f"({_zephyr_base()}) defines RISCV_V_KERNEL_ONLY -- V can be enabled without putting `v` "
-            "in the global -march. The flag exists for trees that CANNOT do this; on a tree that can, "
-            "leaving it off denies every thread its vector state and hangs any multi-hart image on "
-            "silicon that enforces mstatus.VS. Set zephyr_vector_ext=True."
-        )
-    if not (brd.zephyr_vector_ext and tree_can):
-        # Zephyr's kernel stays scalar (see Board.zephyr_vector_ext); the model object still carries V
-        # from its own -march, and mstatus.VS is enabled at boot by reset.S under CONFIG_FPU.
-        return common + (
-            "\n# CONFIG_RISCV_ISA_EXT_V intentionally NOT set: this Zephyr has no\n"
-            "# RISCV_V_KERNEL_ONLY, so setting it would put `v` in the global -march and\n"
-            "# no matching libgcc multilib exists. mstatus.VS comes from CONFIG_FPU.\n"
-        )
-    vec = ["\nCONFIG_RISCV_ISA_EXT_V=y", f"CONFIG_RISCV_VECTOR_MAX_LEN={vector_max_len}"]
-    # Emit only what this Zephyr tree actually defines -- an unknown symbol aborts the build.
-    if _kconfig_has("RISCV_V_KERNEL_ONLY"):
-        vec.append("CONFIG_RISCV_V_KERNEL_ONLY=y")
-    if _kconfig_has("RISCV_ISA_EXT_V_LAZY"):
-        vec.append("CONFIG_RISCV_ISA_EXT_V_LAZY=n")
-    return common + "\n".join(vec) + "\n"
+    return project_config(cpus, backend, brd, console_facts, debug, tree=_selected_zephyr_tree())
 
 
 def _cmakelists(
@@ -2427,13 +1962,7 @@ def build_app(
     board: str | None = None,
     backend: str = "rvv",
     rvv_hart: int = 0,
-    arena_mb: int = 64,
     cpus: int = 2,
-    # NOTE: `arena_mb` is ACCEPTED AND IGNORED. The activation arena is
-    # CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=-1, i.e. "all leftover RAM", because a fixed
-    # array overflows R_RISCV_PCREL_HI20 once it exceeds the model-link window. The
-    # parameter is kept so existing callers (zephyr_matrix.py passes 192) still work; the
-    # arena is sized by `_ram_for_weights` instead. Do not add code that reads it.
     inputs_npz: str | Path | None = None,
     ram_bytes_override: int | None = None,
     int8_compute: bool = False,
@@ -2660,10 +2189,10 @@ def build_app(
         # bogus ParseError on valid IR, which read as a broken build rather than a race.
         with IR_LOCK:
             peak = int(activation_peak_bytes(model_dir / "model.mlir") or 0) or None
-        linked_region = _ram_for_weights(
+        linked_region = ram_for_weights(
             weights_size, peak, alloc_total, default_ram_bytes=brd.zephyr_default_ram_bytes
         )
-    layout = _memory_plan(brd, weights_size, linked_region or 0, ram_bytes_override)
+    layout = memory_plan(brd, weights_size, linked_region or 0, ram_bytes_override)
     external = layout.external
     weights_base = layout.weights_base
     if external:
@@ -2693,6 +2222,8 @@ def build_app(
         # chip with a matrix unit per core, the ONLY place the other units can be reached from is inside
         # the kernel's own tile loop, so a multi-hart image compiles that loop with OpenMP. A serial
         # object on such a chip is not an error and not a wrong answer: it uses one unit, silently.
+        from merlin.compiler.backend.kernel import build_kwargs
+
         matrix_build = matrix.provider().build_object(
             matrix_sigs,
             work / "matrix",
@@ -2702,6 +2233,7 @@ def build_app(
             cflags=["--target=riscv64-unknown-elf", *cflags],
             scalar_tile=matrix_scalar_tile,
             parallel_tiles=n_harts > 1,
+            **build_kwargs(matrix, matrix_sigs),
         )
         matrix_objs = [matrix_build.object_path]
         print(
@@ -2740,7 +2272,9 @@ def build_app(
                 "own headers, never hardcoded or defaulted"
             )
         console_facts = derive_uart_console(sdk_dir, brd.sdk_chip)
-    prj_conf_text = _prj_conf(cpus, backend, brd, console_facts, debug=debug)
+    prj_conf_text = project_config(
+        cpus, backend, brd, console_facts, debug=debug, tree=TreeConfiguration(_zephyr_base())
+    )
     (app / "prj.conf").write_text(prj_conf_text)
     rt = runtime_dir() / "c"
     abi = runtime_dir() / "abi"
@@ -2920,7 +2454,7 @@ def build_app(
         from ..elf_audit import read_elf as _read_elf
 
         low_demand = (alloc_total or peak or 0) + 128 * 1024 * 1024
-        _require_external_arena(brd, ram_region_bytes, _read_elf(elf)[1], low_demand)
+        require_external_arena(brd, ram_region_bytes, _read_elf(elf)[1], low_demand)
     if not external and alloc_total:
         from ..elf_audit import read_elf as _read_elf
 
@@ -3383,35 +2917,61 @@ def run_on_firesim(
     *,
     reference: np.ndarray | None = None,
     references: dict | None = None,
-    timeout: int = 900,
-    queue: bool = True,
+    mode: str | None = None,
+    output: str | Path | None = None,
+    deployment=None,
+    inputs: dict[str, Path] | None = None,
+    results: str | Path | None = None,
+    timeout: int | None = None,
+    queue: bool | None = None,
     firesim_root: str | None = None,
     firesim_env: str | None = None,
     runner: FireSimRunner | None = None,
     runner_name: str | None = None,
 ) -> dict[str, Any]:
-    """Execute an ELF with a selected FireSim adapter, then parse and gate its UART.
+    """Prepare an ELF or collect external UART through the historical model API.
 
-    An out-of-tree adapter owns simulator staging, queue and environment policy.
-    An installed runner is selected by ``runner_name`` or
-    ``MERLIN_FIRESIM_RUNNER``. Direct ``runner=`` injection is for explicit
-    orchestration and tests. A checkout is never an implicit execution provider.
+    ``mode="prepare"`` requires output and an explicit Deployment. No numerical
+    verdict is produced. ``mode="collect"`` interprets the positional path as a
+    prepared package and requires results; original UART parsing and numerical
+    gates apply. Legacy execution keywords refuse before loading any provider.
     """
-    from ...common.paths import env as _env
+    from .firesim_runner import FireSimRunnerError, collect_uart, prepare_image
 
-    chipyard = _env("MERLIN_CHIPYARD", "/path/to/chipyard")
-    root = firesim_root or _env("FIRESIM_ROOT", f"{chipyard}/sims/firesim")
-    environment = firesim_env or _env("FIRESIM_ENV", f"{chipyard}/env.sh")
-    if runner is not None and runner_name is not None:
-        raise ValueError("pass runner or runner_name, not both")
-    selected = runner if runner is not None else select_runner(runner_name)
-    uart = selected(str(elf), firesim_root=root, firesim_env=environment, timeout=timeout, queue=queue)
-    if not isinstance(uart, str):
-        raise ZephyrModelError("FireSim runner must return captured UART text")
-    res = _parse_console(uart, 0)
+    if mode not in {"prepare", "collect"} or any(
+        value is not None for value in (timeout, queue, firesim_root, firesim_env, runner, runner_name)
+    ):
+        raise FireSimRunnerError(
+            "FireSim launch is externally managed; use mode='prepare' with output/deployment, "
+            "then mode='collect' with the prepared package and results; remove launch options"
+        )
+    if mode == "prepare":
+        if output is None or deployment is None or results is not None:
+            raise FireSimRunnerError("prepare requires output and deployment, without results")
+        if reference is not None or references is not None:
+            raise FireSimRunnerError("prepare cannot gate output; retain reference files through inputs")
+        prepared = prepare_image(elf, output=output, deployment=deployment, inputs=inputs)
+        return {
+            "status": "prepared",
+            "prepared": str(prepared.directory),
+            "request_sha256": prepared.request_sha256,
+            "execution": "external_operator_required",
+        }
+    if results is None or any(value is not None for value in (output, deployment, inputs)):
+        raise FireSimRunnerError("collect requires results and cannot change the prepared deployment or inputs")
+    if reference is not None and references is not None:
+        raise FireSimRunnerError("pass reference or references, not both")
+    uart, observed = collect_uart(elf, results=results)
+    res = _parse_console(uart, observed.reported_exit_code)
     refs = references if references is not None else reference
     if refs is not None:
         res.update(_gate(res["prefix"], refs))
+    res.update(
+        status="collected",
+        request_sha256=observed.request_sha256,
+        observation=str(observed.directory),
+        execution_authority="external_operator_report",
+    )
     return res
 
 
@@ -3423,7 +2983,6 @@ def build_and_run(
     backend: str = "rvv",
     rvv_hart: int = 0,
     harts: int = 2,
-    arena_mb: int = 64,
     reference: np.ndarray | None = None,
     references: dict | None = None,
     timeout: int = 3600,
@@ -3455,7 +3014,6 @@ def build_and_run(
         board=board,
         backend=backend,
         rvv_hart=rvv_hart,
-        arena_mb=arena_mb,
         cpus=max(harts, rvv_hart + 1),
         int8_compute=int8_compute,
         quant_passes=quant_passes,

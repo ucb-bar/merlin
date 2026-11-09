@@ -30,7 +30,8 @@ def test_e4m3_matches_the_existing_whole_model_decoder():
 
 
 def test_e5m2_decodes_its_own_layout_including_inf_nan():
-    dec = lambda u, f: float(fp8_to_f32(np.array([u], np.uint8), f)[0])
+    def dec(u, f):
+        return float(fp8_to_f32(np.array([u], np.uint8), f)[0])
     assert dec(0x3C, "fp8_e5m2") == 1.0  # e5m2 1.0 (exp 15, man 0)
     assert dec(0x38, "fp8_e4m3") == 1.0  # e4m3 1.0 (exp 7, man 0) — same byte, DIFFERENT value:
     assert dec(0x3C, "fp8_e4m3") != 1.0  #   0x3C is not 1.0 in e4m3
@@ -52,6 +53,20 @@ def test_unknown_format_fails_closed():
         canonical_fp8("bf16")  # not an fp8 format -> raise, never silently assume
     with pytest.raises(KeyError):
         canonical_float("garbage")  # unknown float format -> raise, never assume a default
+
+
+def test_bf16_container_widening_preserves_every_stored_bit():
+    from merlin.runtime.fp8_formats import codes_to_f32
+
+    codes = np.arange(1 << 16, dtype=np.uint16).reshape(256, 256)
+    expected = codes.astype(np.uint32) << 16
+    for containers in (codes, codes.view(np.int16), codes[:, ::-1]):
+        original = containers.tobytes()
+        result = codes_to_f32(containers, "bf16")
+        reference = expected[:, ::-1] if containers.strides[-1] < 0 else expected
+        assert result.dtype == np.float32 and result.shape == containers.shape
+        np.testing.assert_array_equal(result.view(np.uint32), reference)
+        assert containers.tobytes() == original
 
 
 # --- MX microscaling formats (fp6 e3m2, fp4 e2m1) + the E8M0 block scale ---------------------------------

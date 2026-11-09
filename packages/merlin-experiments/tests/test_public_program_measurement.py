@@ -345,7 +345,7 @@ def test_original_execution_observer_records_only_actual_python_dispatch(tmp_pat
 
 def test_numerical_native_dispatch_never_queries_or_runs_rtl(tmp_path, monkeypatch):
     """Routing spies supply no real compiler/engine/ELF or grade qualification."""
-    from merlin.compile import model_execution_inputs as M
+    from merlin.runtime import modelinputs as M
     from merlin.runtime import route_quality as Q
     from merlin.runtime.backends import base as B
     from merlin.targetgen import bundle_harness as H

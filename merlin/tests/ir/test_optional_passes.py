@@ -95,16 +95,19 @@ def test_a_selection_reaches_each_kind_of_switch(monkeypatch):
     assert fusion_guard.enabled() is True  # an explicit selection wins over the A/B variable
 
 
-def test_applied_scopes_the_selection_and_restores_the_environment():
+def test_applied_scopes_the_selection_without_mutating_environment(monkeypatch):
+    monkeypatch.setenv(OP.ENV, "fusion-guard")
     with OP.applied(OP.Selection.of(["sink-deallocs"])) as outer:
-        assert os.environ[OP.ENV] == "sink-deallocs" and outer.enable == {"sink-deallocs"}
+        assert os.environ[OP.ENV] == "fusion-guard"
+        assert OP.active() == outer and outer.enable == {"sink-deallocs", "fusion-guard"}
         with OP.applied(OP.Selection.of(disable=["sink-deallocs", "fusion-guard"])) as inner:
             assert inner.disable == {"sink-deallocs", "fusion-guard"} and not inner.enable
-        assert os.environ[OP.ENV] == "sink-deallocs"
-    assert OP.ENV not in os.environ
+            assert OP.active() == inner
+        assert OP.active() == outer
+    assert OP.active().enable == {"fusion-guard"}
     with pytest.raises(RuntimeError), OP.applied(OP.Selection.of(["sink-deallocs"])):
         raise RuntimeError("a failed build")
-    assert OP.ENV not in os.environ
+    assert os.environ[OP.ENV] == "fusion-guard" and OP.active().enable == {"fusion-guard"}
 
 
 def test_merlin_compile_lists_and_selects_passes(capsys, monkeypatch):
@@ -126,7 +129,7 @@ def test_merlin_compile_lists_and_selects_passes(capsys, monkeypatch):
     seen = {}
 
     def workflow(a, run):
-        seen["passes"] = os.environ.get(OP.ENV)
+        seen["passes"] = OP.active().spell()
         return {"status": "compiled"}
 
     monkeypatch.setattr(compile_cli, "_workflow", workflow)
@@ -142,7 +145,7 @@ def test_the_whole_model_builder_takes_lowering_passes_from_its_build_options(mo
     seen = {}
 
     def build(package_dir, **options):
-        seen["passes"] = os.environ.get(OP.ENV)
+        seen["passes"] = OP.active().spell()
         seen["options"] = options
         return {"notes": {}}
 
@@ -153,6 +156,100 @@ def test_the_whole_model_builder_takes_lowering_passes_from_its_build_options(mo
     assert "lowering_passes" not in seen["options"]
     assert record["notes"]["lowering_passes"] == "sink-deallocs,-fusion-guard"
     record = B.build("pkg", **common)
-    assert seen["passes"] is None and "lowering_passes" not in record["notes"]
+    assert seen["passes"] == "" and "lowering_passes" not in record["notes"]
     with pytest.raises(OP.PassSelectionError):
         B.build("pkg", lowering_passes=["no-such-pass"], **common)
+
+
+def test_concurrent_builds_keep_opposite_choices_and_child_environments_private(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from merlin.llvmlower import codegen_env
+
+    monkeypatch.setenv(OP.ENV, "exact-math-inline")
+    rendezvous = Barrier(2)
+
+    def build(enabled):
+        selection = OP.Selection.parse("fusion-guard" if enabled else "-fusion-guard")
+        with OP.applied(selection):
+            rendezvous.wait(timeout=10)
+            assert fusion_guard.enabled() is enabled
+            child = OP.child_environment()
+            assert OP.active(child).state("fusion-guard") is enabled
+            assert OP.active(child).state("exact-math-inline") is True
+            assert os.environ[OP.ENV] == "exact-math-inline"
+            assert codegen_env.snapshot()[OP.ENV] == child[OP.ENV]
+            assert codegen_env.cache_digest() == codegen_env.cache_digest(child)
+            digest = codegen_env.cache_digest()
+            rendezvous.wait(timeout=10)
+        assert OP.active().state("fusion-guard") is None
+        return digest
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        on, off = pool.submit(build, True), pool.submit(build, False)
+        assert on.result(timeout=20) != off.result(timeout=20)
+
+
+def test_child_environment_preserves_explicit_defaults_and_empty_scope():
+    base = {OP.ENV: "sink-deallocs", "OTHER_SETTING": "retained"}
+    assert OP.child_environment(base) == base
+    with OP.applied(OP.Selection()):
+        assert OP.active(base).enable == {"sink-deallocs"}
+        assert OP.child_environment(base) == {"OTHER_SETTING": "retained"}
+    assert base[OP.ENV] == "sink-deallocs"
+
+
+@pytest.mark.parametrize("route", ["ordinary", "retained", "callback"])
+def test_native_runner_exports_selection_to_real_child(route, monkeypatch, tmp_path):
+    import contextlib
+    import sys
+
+    from merlin.llvmlower import llvm_dialect_product as product
+    from merlin.llvmlower import source_stage_transport as transport
+
+    monkeypatch.setattr(product, "shared_compute_pool", lambda **_: contextlib.nullcontext())
+    script = tmp_path / "child.py"
+    script.write_text("import os\nprint(os.environ.get('MERLIN_PASSES', '<unset>'))\n")
+    command = [sys.executable, str(script)]
+    with OP.applied(OP.Selection.parse("sink-deallocs,-fusion-guard")):
+        if route == "retained":
+            result = product.SerialLLVMDialectRetention.prepare(tmp_path).run(
+                command, source=script, runner=script, dependencies=(), timeout=10
+            )
+        elif route == "callback":
+            # A failing native child must still see its invocation settings. It deliberately
+            # exits before the handshake, without claiming a successful scalar callback.
+            script.write_text(script.read_text() + "raise SystemExit(3)\n")
+            result = transport.run_command(
+                command,
+                directory=tmp_path,
+                callback=lambda *_: pytest.fail("unexpected callback"),
+                max_source_bytes=1000,
+                max_response_bytes=1000,
+                timeout=10,
+            )
+        else:
+            result = product.run_translation(
+                command,
+                timeout=10,
+                audit=None,
+                retention=None,
+                source=script,
+                runner=script,
+                dependencies=(),
+                scalar_stage=None,
+                scalar_carrier=None,
+            )
+        assert result.stdout.strip() == "sink-deallocs,-fusion-guard"
+    assert OP.ENV not in os.environ
+
+
+def test_device_compiler_worker_carries_selection(tmp_path):
+    from merlin.llvmlower.device_build_jobs import ArtifactCompiler
+
+    artifact = tmp_path / "input.mlir"
+    artifact.write_text("module {}")
+    with ArtifactCompiler(2) as compiler, OP.applied(OP.Selection.parse("-fusion-guard")):
+        future = compiler.submit(artifact, "input-identity", lambda: OP.active())
+        assert future.result(timeout=10).state("fusion-guard") is False

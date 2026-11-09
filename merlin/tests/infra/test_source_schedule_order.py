@@ -7,7 +7,7 @@ from test_dense_source import compile_source, source
 from test_pointwise_source import case, source_program
 from test_selected_dense_contracts import inputs
 
-from merlin.compile.scheduling.pointwise_source import compile_source_pointwise
+from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
 
 
 def test_dense_source_policy_reaches_inner_passes_and_keeps_actual_realization(tmp_path):

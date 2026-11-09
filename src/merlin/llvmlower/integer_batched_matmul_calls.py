@@ -99,7 +99,7 @@ def prepare_integer_batched_matmul_calls(
         module = batching.candidate.clone()
     reserved = {op.sym_name.data for op in module.body.block.ops if type(op) is func.FuncOp}
     plans = []
-    from merlin.compile.analysis.contraction_shapes import zero_initialised
+    from merlin.compiler.ir.contraction_shapes import zero_initialised
 
     for ordinal, op in enumerate(tuple(module.walk())):
         if type(op) is not GenericOp:

@@ -125,7 +125,9 @@ def test_composition_never_stacks_two_schedule_replace():
 def test_feature_fork_replaces_alternative_and_preserves_prerequisite(monkeypatch):
     from merlin.llvmlower import impr_features as I
 
-    monkeypatch.setattr(I, "_REGISTRY", dict(I._REGISTRY))
+    entries = dict(I._REGISTRY)
+    monkeypatch.setattr(I._FEATURES, "entries", entries)
+    monkeypatch.setattr(I, "_REGISTRY", entries)
     for name, kwargs in (
         ("test_proposer_choice_a", {"alternative_group": "test_proposer_schedule"}),
         ("test_proposer_choice_b", {"alternative_group": "test_proposer_schedule"}),
@@ -149,7 +151,9 @@ def test_feature_fork_replaces_alternative_and_preserves_prerequisite(monkeypatc
 def test_feature_fork_does_not_remove_implying_features_to_force_composition(monkeypatch):
     from merlin.llvmlower import impr_features as I
 
-    monkeypatch.setattr(I, "_REGISTRY", dict(I._REGISTRY))
+    entries = dict(I._REGISTRY)
+    monkeypatch.setattr(I._FEATURES, "entries", entries)
+    monkeypatch.setattr(I, "_REGISTRY", entries)
     for name, kwargs in (
         ("test_proposer_choice_a", {"alternative_group": "test_proposer_schedule"}),
         ("test_proposer_choice_b", {"alternative_group": "test_proposer_schedule"}),

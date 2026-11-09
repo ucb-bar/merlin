@@ -131,6 +131,8 @@ def test_every_lowering_runner_carries_the_rewrite_and_the_same_argv_gate():
     """`erase_self_copy` read as an inert lever for seven beam rounds because ONE runner variant
     drove the PassManager itself and quietly skipped it. Every variant must splice this prelude and
     read the same argv slot, and the caller must pass that slot."""
+    import ast
+
     from merlin.llvmlower import accum_microkernel, pipeline
 
     runners = [pipeline._RUNNER_SRC, pipeline._RUNNER_ACT_POLY_TAIL, accum_microkernel.run_source()]
@@ -140,11 +142,17 @@ def test_every_lowering_runner_carries_the_rewrite_and_the_same_argv_gate():
         assert "_MID_STAGES, _LATE_STAGES," in src, "a runner variant never runs the late stage"
         assert "_POST_OPENMP_STAGES" in src, "a runner variant skips the post-OpenMP stage"
     lowering = open(pipeline.__file__, encoding="utf-8").read()
-    assert "_concat_dps_gate, _grain_gate, _panel_parallel_gate," in lowering, (
-        "the argv slots are never passed")
-    assert ("_team_work_gate, _team_cap_gate, _coarsen_gate, _fold_broadcast_gate," in lowering
-            and "_named_broadcast_gate, _alloca_scope_gate]" in lowering), (
-        "the post-OpenMP argv slots are never passed")
+    function = next(node for node in ast.parse(lowering).body
+                    if isinstance(node, ast.FunctionDef) and node.name == "lower_to_llvm_ir")
+    command = next(node.value for node in ast.walk(function)
+                   if isinstance(node, ast.Assign) and isinstance(node.value, ast.List)
+                   and any(isinstance(target, ast.Name) and target.id == "command" for target in node.targets))
+    # command[0] is Python; runner argv[8:18] must retain these exact gate slots.
+    assert [ast.unparse(value) for value in command.elts[9:19]] == [
+        "_concat_dps_gate", "_grain_gate", "_panel_parallel_gate", "_team_work_gate",
+        "_team_cap_gate", "_coarsen_gate", "_fold_broadcast_gate", "_named_broadcast_gate",
+        "_alloca_scope_gate", "data_layout or ''",
+    ]
 
 
 def _run_stages_split(pipeline_text: str, late_labels: tuple[str, ...]) -> list:

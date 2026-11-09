@@ -6,9 +6,9 @@ owner: experiments
 last_verified: 2026-10-27
 related: [bubblewrap_argument_budget, fresh_campaign_launch]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/sandbox_pool.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/snapshot_execution.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/options.py
+  - src/merlin_experiments/phase1/feedback/sandbox_pool.py
+  - src/merlin_experiments/phase1/feedback/snapshot_execution.py
+  - src/merlin_experiments/phase1/options.py
   - packages/merlin-experiments/tests/test_compiler_sandbox_reuse.py
 ---
 

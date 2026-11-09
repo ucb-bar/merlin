@@ -39,7 +39,7 @@ def host_math_identity(policy: str) -> dict:
 def build_material(stage, target, label, submission, submission_sha256, settings, offload) -> dict:
     """Read build inputs once per build request, never once per recurrent input."""
     from merlin.common.paths import repo_root, runtime_dir
-    from merlin.compile.model_execution_inputs import strict_tree_sha256
+    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.llvmlower import toolchain
     from merlin.runtime.backends import spike
 

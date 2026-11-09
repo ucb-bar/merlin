@@ -6,15 +6,13 @@ import pytest
 from test_convolution_load_issue import law as load_law
 from test_counted_convolution import Integers
 
-from merlin.compile.scheduling.window_transfer import (
-    ConvolutionInputRetentionLaw,
-    ConvolutionOutputTile,
-    CountedConvolutionPlan,
-    Window2D,
-    emit_convolution_column_block,
-    emit_convolution_load_issue_column_block,
-    emit_convolution_tile,
-)
+from merlin.compiler.schedule.window_transfer import ConvolutionInputRetentionLaw
+from merlin.compiler.schedule.window_transfer import ConvolutionOutputTile
+from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan
+from merlin.compiler.schedule.window_transfer import Window2D
+from merlin.compiler.schedule.window_transfer import emit_convolution_column_block
+from merlin.compiler.schedule.window_transfer import emit_convolution_load_issue_column_block
+from merlin.compiler.schedule.window_transfer import emit_convolution_tile
 
 
 def law():

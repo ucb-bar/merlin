@@ -178,8 +178,8 @@ def test_immutable_coefficient_bytes_enable_same_values_without_specialization()
 
 
 def test_existing_registry_and_discovery_expose_explicit_source_api(monkeypatch):
-    from merlin.compile.scheduling.api_catalog import scheduling_capabilities
-    from merlin.compile.scheduling.library_sources import library_modules
+    from merlin.compiler.schedule.api_catalog import scheduling_capabilities
+    from merlin.compiler.schedule.library_sources import library_modules
     from merlin.llvmlower.contraction_row_slice import prepare_contraction_row_slices, selected
     from merlin.llvmlower.optional_passes import REGISTRY
 

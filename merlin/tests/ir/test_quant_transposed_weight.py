@@ -2,10 +2,10 @@
 
 import pytest
 
+from merlin.compiler.quantization.scope import captured_quantized_contraction
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.llvmlower.passes_quant_int import lower_contraction_int8
 from merlin.llvmlower.passes_xdsl import lower_bf16_matmul_f32acc
-from merlin.llvmlower.quant_scope import captured_quantized_contraction
 from merlin.runtime.backends.zephyr_model import _prepare_model_mlir
 from merlin.runtime.dispatch_runtime import _normalize_model_module
 from merlin.xdsl_dialects._common import text as mlir_text

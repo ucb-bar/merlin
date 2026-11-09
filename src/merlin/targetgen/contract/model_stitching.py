@@ -8,7 +8,7 @@ implementations must be supplied before a model can execute on a target.
 
 from __future__ import annotations
 
-from merlin.targetgen.application_graph import _program_graph
+from merlin.compiler.ir.graph import _program_graph
 
 SCHEMA = "merlin.model_stitching_inventory.v1"
 PLAN_SCHEMA = "merlin.model_composition_plan.v1"

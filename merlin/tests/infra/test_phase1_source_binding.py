@@ -133,6 +133,17 @@ def test_shared_inventory_and_fingerprint_have_one_owner(native_sources):
 
     assert runner.fingerprint is SI.fingerprint
     record = SI.record(**native_sources)
+    package = module_source_path("merlin_experiments").parent
+    for key, source in (
+        ("spec", package / "spec.py"),
+        ("development_package", module_source_path("merlin.development")),
+        ("spec_definition", module_source_path("merlin.development.definition")),
+        ("experiment_schema", package / "resources/experiment.schema.json"),
+    ):
+        assert record["inputs"]["phase1:startup:" + key] == {
+            "path": str(source.resolve()), "sha256": SI.fingerprint(source),
+        }
+    assert (package / "spec.py").resolve() != module_source_path("merlin.development.definition").resolve()
     command = {
         "env": {"MERLIN_REPO_ROOT": str(native_sources["repo"])},
         "entrypoint": str(native_sources["entrypoint"]),

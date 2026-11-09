@@ -7,7 +7,7 @@ import json
 import numpy as np
 
 from merlin.common import mlir_query as mq
-from merlin.verify.outline_ir import (
+from merlin.verification.outline_ir import (
     OutlineTransformReceipt,
     qualify_outline_receipt,
     verify_outline_transform,
@@ -48,9 +48,21 @@ def _actual_pair() -> tuple[bytes, bytes]:
 
 
 def test_real_outline_pass_has_byte_bound_structural_proof() -> None:
+    import hashlib
+    import pickle
+    from pathlib import Path
+
+    from merlin.verification import outline_ir as owner
+    from merlin.verify import outline_ir as legacy
+
+    assert legacy is owner
+    assert legacy.UnsupportedOutlineIR is owner.UnsupportedOutlineIR
     before, after = _actual_pair()
     receipt = verify_outline_transform(before, after)
     assert receipt.status == "verified", receipt.reason
+    assert receipt.verifier_sha256 == hashlib.sha256(Path(owner.__file__).read_bytes()).hexdigest()
+    assert receipt.__class__.__module__ == "merlin.verify.outline_ir"
+    assert pickle.loads(pickle.dumps(receipt)) == receipt
     assert receipt.source_sha256 != receipt.target_sha256
     assert receipt.source_graph_sha256 == receipt.target_graph_sha256
     assert receipt.input_types == ("tensor<2x2xi32>",) * 3

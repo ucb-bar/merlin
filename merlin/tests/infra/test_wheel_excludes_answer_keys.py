@@ -20,7 +20,7 @@ from merlin.common.paths import repo_root
 def release_archives(tmp_path_factory):
     root = repo_root()
     checkout = tmp_path_factory.mktemp("release-canary")
-    for name in ("setup.py", "pyproject.toml", "MANIFEST.in", "README.md"):
+    for name in ("setup.py", "pyproject.toml", "MANIFEST.in", "README.md", "LICENSE", "NOTICE"):
         shutil.copyfile(root / name, checkout / name)
     manifest = json.loads((root / "build_tools/package_resources.json").read_text())
     for name in ["build_tools/package_resources.json", *manifest["files"]]:

@@ -20,7 +20,7 @@ def rebind(device, *, source: Path, prepared: Path, work: Path, compilation=None
     source, prepared = Path(source).resolve(), Path(prepared).resolve()
     if source == prepared or device is None:
         return device
-    from merlin.compile.complete_group_routing import select_complete_group
+    from merlin.compiler.planning.complete import select_complete_group
 
     if (
         type(device) is not DeviceRouting

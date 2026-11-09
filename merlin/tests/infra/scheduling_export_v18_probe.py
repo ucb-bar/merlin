@@ -5,27 +5,26 @@ from dataclasses import replace
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, i64
 
-from merlin.compile.scheduling.block_schedule import Compute, Load, Preload, Store
-from merlin.compile.scheduling.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
-from merlin.compile.scheduling.dense_panel_pipeline import (
-    DensePanelOverlapAdmission,
-    DenseReadoutComputeAdmission,
-    DenseRetainedReductionAdmission,
-)
-from merlin.compile.scheduling.dense_readout_overlap import schedule_dense_readout_overlap
-from merlin.compile.scheduling.dense_segmented_pipeline import (
-    DenseSegmentedAdmission,
-    batch_dense_segmented_readouts,
-    schedule_dense_segmented_pipeline,
-)
-from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter
-from merlin.compile.scheduling.scf_commands import (
-    emit_scf_commands,
-    materialize_scf_commands,
-    unroll_small_command_loops,
-    verify_scf_commands,
-)
-from merlin.compile.scheduling.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
+from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+from merlin.compiler.schedule.compact_dense import DenseMemoryView
+from merlin.compiler.schedule.dense_panel_pipeline import DensePanelOverlapAdmission
+from merlin.compiler.schedule.dense_panel_pipeline import DenseReadoutComputeAdmission
+from merlin.compiler.schedule.dense_panel_pipeline import DenseRetainedReductionAdmission
+from merlin.compiler.schedule.dense_readout_overlap import schedule_dense_readout_overlap
+from merlin.compiler.schedule.dense_segmented_pipeline import DenseSegmentedAdmission
+from merlin.compiler.schedule.dense_segmented_pipeline import batch_dense_segmented_readouts
+from merlin.compiler.schedule.dense_segmented_pipeline import schedule_dense_segmented_pipeline
+from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
+from merlin.compiler.schedule.scf_commands import emit_scf_commands
+from merlin.compiler.schedule.scf_commands import materialize_scf_commands
+from merlin.compiler.schedule.scf_commands import unroll_small_command_loops
+from merlin.compiler.schedule.scf_commands import verify_scf_commands
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.sched.ir import Call, Const, Kernel, Loop, Var, as_expr
 from merlin.transforms.dense_planning import DenseProblem, DenseResources, dense_blocks

@@ -12,7 +12,7 @@ from math import prod
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, i8
 
-from merlin.compile.scheduling.window_transfer import Window2D
+from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.xdsl_dialects._common import text
 
 from .convolution_packing import emit_nhwc_window_panel

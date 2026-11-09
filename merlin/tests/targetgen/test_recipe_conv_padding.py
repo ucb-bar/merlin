@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import module_source_path
 
-_SOURCE = merlin_dir() / "python/merlin/targetgen/_recipe_quantizer.py"
+_SOURCE = module_source_path("merlin.targetgen._recipe_specs").with_name("_recipe_quantizer.py")
 _PROBE = r"""
 import importlib.util
 import json

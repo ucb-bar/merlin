@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from merlin.compile import completed_model_link as C
-from merlin.compile.model_execution_inputs import strict_tree_sha256
+from merlin.verification import completed_model as C
+from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.llvmlower.compilation_recipe import CompilationRecipe
 from merlin.model_check.chain_image_objects import completed_program
 

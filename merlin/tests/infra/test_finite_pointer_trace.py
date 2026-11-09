@@ -4,7 +4,7 @@ import pytest
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import i64
 
-from merlin.compile.scheduling.llvm_program import FnBuilderControlAdapter
+from merlin.compiler.schedule.llvm_program import FnBuilderControlAdapter
 from merlin.llvmlower.host_builder import PTR, FnBuilder
 from merlin.perf.finite_pointer_trace import ArgumentAddress, project_finite_pointer_trace
 

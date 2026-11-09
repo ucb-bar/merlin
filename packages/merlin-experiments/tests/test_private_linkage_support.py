@@ -15,7 +15,7 @@ from merlin_experiments.phase1.feedback import private_linkage_support as linkag
 
 from merlin.common import mlir_query as mq
 from merlin.common.digest import sha256_file
-from merlin.compile.model_execution_inputs import strict_tree_sha256
+from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.llvmlower import toolchain
 from merlin.llvmlower.compilation_recipe import FILENAME
 from merlin.mining.registry import load_rvv_package

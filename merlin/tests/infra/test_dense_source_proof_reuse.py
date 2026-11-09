@@ -6,9 +6,9 @@ from dataclasses import replace
 import pytest
 from test_compact_dense import ADAPTER, fixture, mutate
 
-from merlin.compile.scheduling import compact_verification as checks
-from merlin.compile.scheduling.block_schedule import Load
-from merlin.compile.scheduling.compact_dense import emit_compact_dense
+from merlin.compiler.schedule import compact_verification as checks
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.compact_dense import emit_compact_dense
 from merlin.sched.ir import Call, Loop
 from merlin.transforms.dense_planning import dense_blocks
 

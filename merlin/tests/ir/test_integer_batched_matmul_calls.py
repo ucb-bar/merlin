@@ -6,7 +6,7 @@ import subprocess
 import numpy as np
 from test_head_batching import source
 
-from merlin.compile.scheduling.dense_contracts import DenseLogicalPointerABI
+from merlin.compiler.schedule.dense_contracts import DenseLogicalPointerABI
 from merlin.llvmlower.abi import HostModel
 from merlin.llvmlower.borrowed_effects import BorrowedBufferEffects
 from merlin.llvmlower.integer_batched_matmul_calls import lower_integer_batched_matmul_program

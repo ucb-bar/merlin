@@ -6,7 +6,7 @@ import pytest
 from merlin_experiments.phase1.feedback import private_compilation_inputs as compilation
 from merlin_experiments.phase1.feedback import private_program_checks as checks
 
-from merlin.compile.model_execution_inputs import file_sha256
+from merlin.runtime.modelinputs import file_sha256
 from merlin.verify.host_compute_audit import HostComputeVeto
 
 

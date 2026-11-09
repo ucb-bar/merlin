@@ -91,6 +91,47 @@ The catalog's retained `gemmini-functional` definition is diagnostic. Its presen
 does not establish verified readiness. Phase 1 starts separately after release
 review and exact deployment qualification.
 
+## Inspect the optional compact migration candidate
+
+[`spec.yaml`](spec.yaml) is an explicitly selected, **unreviewed** v2 migration
+candidate. It retains the existing internal arithmetic, ordered readout policies,
+operation requests, restrictions and transfers. Its inline numerical definition
+is fully visible in the expansion. [`software-spec.yaml`](software-spec.yaml)
+remains the reviewed default and retained paper authority; adding the compact
+file does not select it for existing experiments or renew their evidence.
+
+```sh
+merlin inspect --spec examples/gemmini/target/spec.yaml --expand
+```
+
+The application preparation records moved to the optional
+[`../preparation.yaml`](../preparation.yaml): calibration, recovery, float islands
+and every original reviewed model variant, measurement and quality bar. Select
+that profile explicitly in Python. The example chooses the named
+`legacy_output_path_v1` compatibility policy to reproduce existing methodology
+derivation; it does not silently make that policy the default for new requests.
+
+```python
+from merlin.target.spec import load_spec
+from merlin.compiler.quantization.preparation import load_profile, select_recipe
+
+selected_spec = load_spec("examples/gemmini/target/spec.yaml")
+software_spec = selected_spec.software_spec()
+profile = load_profile("examples/gemmini/preparation.yaml")
+
+# These two inputs come from the ordinary selected-facts resolution and base
+# recipe derivation for this same software_spec, not from guessed hardware facts.
+recipe = select_recipe(
+    base_recipe, profile, derived_output_path, model="resnet50"
+)
+```
+
+`base_recipe` and `derived_output_path` above are caller-supplied derived inputs.
+The original `hardware` requests and `eligible_operations: from_facts` still need
+their normal evidence resolution. The profile's exact source identity travels
+with the resulting recipe. Unsupported readout realization stays underivable;
+this compact selection adds no TorchAO, device-execution or task-quality claim.
+
 For source production, RTL audits and finite numerical/build probes, use the
 [verification walkthrough](../verification/README.md). Those probes have one
 canonical home; their historical receipts retain their original paths and hashes.

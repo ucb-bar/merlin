@@ -16,7 +16,7 @@ from xdsl.dialects.linalg import ops as L
 from xdsl.ir.affine import AffineDimExpr, AffineMap
 from xdsl.rewriter import Rewriter
 
-from .row_normalization import local_type, row_input_specs
+from merlin.compiler.transforms.row_normalization_source import local_type, row_input_specs
 
 
 def _require(condition, reason):

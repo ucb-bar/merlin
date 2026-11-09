@@ -9,7 +9,6 @@ This does not prove descriptor preconditions, imported dependencies or effects.
 from __future__ import annotations
 
 import hashlib
-import os
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -18,6 +17,8 @@ from pathlib import Path
 from merlin.common import invocation_record as I
 from merlin.common.cpu_pool import shared_compute_pool
 from merlin.common.jsonio import canonical_json
+
+from .optional_passes import child_environment
 
 SCHEMA = "merlin.serial_llvm_dialect_product.v1"
 _TRANSLATE = "f.write(str(llvm.translate_module_to_llvmir(module.operation)))"
@@ -44,7 +45,7 @@ def run_translation(command, *, timeout, audit, retention, source, runner, depen
                 return retention.run(command, source=source, runner=runner, dependencies=dependencies, timeout=timeout)
         if scalar_stage is None:
             with shared_compute_pool(timeout_s=timeout):
-                return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+                return subprocess.run(command, capture_output=True, text=True, timeout=timeout, env=child_environment())
         from .source_stage_transport import run_command
 
         # This transport serves an invocation-local callback while the native
@@ -104,7 +105,7 @@ class SerialLLVMDialectRetention:
         return ordinary.replace(_TRANSLATE, printed + _TRANSLATE)
 
     def run(self, command, *, source, runner, dependencies, timeout):
-        environment = dict(os.environ)
+        environment = child_environment()
         with I.observe(
             self.directory,
             stage="serial_upstream_llvm_translation",

@@ -18,8 +18,9 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from merlin.common.paths import artifacts_dir  # noqa: E402
-from merlin.compile.host_lane import _isa_parts, require_host_isa  # noqa: E402
-from merlin.mining.registry import load_rvv_package  # noqa: E402
+from merlin.compiler.backend.isa import require_host_isa  # noqa: E402
+from merlin.compiler.backend.host import load_host_package  # noqa: E402
+from merlin.compiler.backend.isa import split_isa  # noqa: E402
 
 
 def mint(recipe_path: Path) -> Path:
@@ -41,7 +42,7 @@ def mint(recipe_path: Path) -> Path:
     march, host_isa = recipe.get("march"), recipe.get("host_isa")
     if not isinstance(march, str) or not isinstance(host_isa, str):
         raise ValueError("scalar host recipe requires explicit march and host_isa")
-    required = _isa_parts(march)[1]
+    required = split_isa(march)[1]
     if any(extension == "v" or extension.startswith(("zve", "zvl", "zv")) for extension in required):
         raise ValueError("scalar host recipe cannot request vector extensions")
     require_host_isa([f"-march={march}"], host_isa)
@@ -87,7 +88,7 @@ def mint(recipe_path: Path) -> Path:
         staging = Path(temporary)
         for name, payload in files.items():
             (staging / name).write_bytes(payload)
-        package = load_rvv_package(staging)
+        package = load_host_package(staging)
         if package.backend != "scalar" or package.dtype_strategy != dtype:
             raise ValueError("minted scalar host package failed loader validation")
         staging.rename(dest)

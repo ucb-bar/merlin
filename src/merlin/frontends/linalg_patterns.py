@@ -6,7 +6,7 @@ provenance labels or operation names cannot silently stand in for the body.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -321,7 +321,10 @@ def recognize_static_projected_pointwise(op) -> StaticProjectedPointwisePattern:
     )
 
 
-def _recognize_static_scalar_pointwise(op, shell: _StaticLinalgShell, *, allow_i32_add=False) -> StaticPointwisePattern:
+def _recognize_static_scalar_pointwise(
+    op, shell: _StaticLinalgShell, *, allow_i32_add=False,
+    additional_signatures: Mapping[str, tuple[tuple[str, ...], str]] | None = None,
+) -> StaticPointwisePattern:
     """Common closed scalar body for strict identity and opt-in projections."""
     from xdsl.dialects import arith
     from xdsl.dialects.linalg.ops import YieldOp
@@ -334,6 +337,8 @@ def _recognize_static_scalar_pointwise(op, shell: _StaticLinalgShell, *, allow_i
         raise InvalidLinalgPattern("pointwise body does not end in registered linalg.yield")
     scalar, yld = body
     signature = _POINTWISE_TYPES.get(scalar.name)
+    if signature is None and additional_signatures is not None:
+        signature = additional_signatures.get(scalar.name)
     if allow_i32_add and scalar.name == "arith.addi" and tuple(str(arg.type) for arg in args) == ("i32",) * 3:
         signature = (("i32", "i32"), "i32")
     if signature is None or type(scalar) not in tuple(arith.Arith.operations) or not type(scalar).has_trait(Pure):
@@ -361,6 +366,7 @@ def _recognize_static_scalar_pointwise(op, shell: _StaticLinalgShell, *, allow_i
         "arith.addf": {"fastmath"},
         "arith.subf": {"fastmath"},
         "arith.mulf": {"fastmath"},
+        "arith.divf": {"fastmath"},
         "arith.negf": {"fastmath"},
         "arith.addi": {"overflowFlags"},
         "arith.subi": {"overflowFlags"},

@@ -73,7 +73,7 @@ def test_actual_native_prepare_installs_inputs_before_continuation(monkeypatch, 
     # external execution. Workspace freezing and visibility remain original.
     from merlin_experiments.phase1 import session as S
     from merlin.targetgen.sandbox import bwrap as BW
-    from merlin.compile import model_execution_inputs
+    from merlin.runtime import modelinputs as model_execution_inputs
     from merlin_experiments.phase1.feedback import private_instruction_declaration
 
     path = Path(__file__).parent / "test_phase1_session.py"

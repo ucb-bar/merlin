@@ -89,8 +89,8 @@ def test_an_unpinned_lane_warns_rather_than_refusing():
     that has one package and no declaration, so an undeclared lane is a warning -- a DIFFERENT thing
     from a lane that is pinned and has drifted, which is refused."""
     # `default_package` reaches the pin name through `_verified_against_the_pinned_lane`, and both resolve
-    # it in merlin.compile.host_lane -- the module that defines it, and so the one to patch.
-    from merlin.compile import host_lane
+    # it in compiler.selection.host -- the defining module and actual patch owner.
+    from merlin.compiler.selection import host as host_lane
 
     monkey = pytest.MonkeyPatch()
     try:

@@ -125,14 +125,14 @@ def build(
     launch config's ``build_options`` entry like the rest, empty by default -- so a config that names
     none builds exactly as before -- and the selection is recorded in the result's ``notes``.
 
-    The compile-debugging keys (:mod:`merlin.compile.debug`) are ``build_options`` too, all empty by
+    The compile-debugging keys (:mod:`merlin.compiler.inspect`) are ``build_options`` too, all empty by
     default: ``only_groups`` builds a PARTIAL program (marked on its expectations, so every verdict and
     measurement refuses it), and ``trace_dir``/``dump_ir_after``/``dump_ir_before``/``stop_after`` keep a
     trace of the build. A build stopped at a stage produces no program, so here -- where a program is
     what the caller is owed -- the stop is a :class:`WholeModelBuildError` naming where the IR is.
     """
     from merlin.common.compile_trace import StopAfterStage
-    from merlin.compile import debug
+    from merlin.compiler import inspect as debug
     from merlin.llvmlower import optional_passes
     from merlin.perf import whole_model_build as WMB
 

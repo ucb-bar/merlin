@@ -5,7 +5,7 @@ status: current
 owner: runtime
 last_verified: 2026-10-12
 related: [getting_started, target_resolution, simulator_selection, phase0_specification]
-code_refs: [src/merlin/targetgen/gsim_emulator.py, src/merlin/runtime/backends/chipyard_rocc.py, build_tools/scripts/package_worker_inputs.py, packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py, packages/merlin-experiments/src/merlin_experiments/runner.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/preflight.py, packages/merlin-experiments/src/merlin_experiments/phase1/canary.py, packages/merlin-experiments/src/merlin_experiments/phase1/providers/codex_runtime.py]
+code_refs: [src/merlin/targetgen/gsim_emulator.py, src/merlin/runtime/backends/chipyard_rocc.py, build_tools/scripts/package_worker_inputs.py, src/merlin_experiments/phase0/rtl_intake.py, src/merlin_experiments/runner.py, src/merlin_experiments/cli.py, src/merlin_experiments/phase1/timing.py, src/merlin_experiments/phase1/preflight.py, src/merlin_experiments/phase1/canary.py, src/merlin_experiments/phase1/providers/codex_runtime.py]
 ---
 
 # Set up gSIM on a Linux worker
@@ -23,7 +23,7 @@ identify the simulator; execution controls qualify its selected use. See
 
 Install Python 3.12+, `uv`, Clang 19 or newer (the native Gemmini path has used Clang 23), GNU Make,
 Flex with `FlexLexer.h`, Bison and GMP development files. Follow [getting started](getting_started.md)
-to install Merlin and `packages/merlin-experiments` into a Python environment.
+to install Merlin with the `experiments` dependency extra into a Python environment.
 Set `MERLIN_REVISION` to the full source commit selected for the experiment:
 
 ```sh
@@ -32,8 +32,7 @@ cd merlin
 git checkout --detach "$MERLIN_REVISION"
 git rev-parse HEAD  # record and review the full source commit before freezing a run
 uv venv
-uv pip install -e '.[dev,xdsl,targetgen]'
-uv pip install -e packages/merlin-experiments
+uv pip install -e '.[dev,xdsl,targetgen,experiments]'
 ```
 
 Installing Python packages does not install LLVM/MLIR, CIRCT, the guest RISC-V compiler or model
@@ -83,8 +82,8 @@ bytes; retain the patch and the checkout with the resulting emulator.
 ## Build and select a new native model
 
 Supply the **complete selected** `TestHarness` FIRRTL, a matching Chipyard checkout with initialized
-TestChipIP and FESVR, the selected compiler and an unused output directory. Install Merlin core plus
-`merlin-experiments` in the Python used to run the builder. From the pinned gSIM checkout:
+TestChipIP and FESVR, the selected compiler and an unused output directory. Install
+`merlin[experiments]` in the Python used to run the builder. From the pinned gSIM checkout:
 
 ```sh
 /absolute/merlin-venv/bin/python chipyard_harness/build.py \

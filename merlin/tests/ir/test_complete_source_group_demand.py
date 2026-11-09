@@ -8,7 +8,7 @@ from fake_quant_layer import module as fake_quant_module
 from xdsl.dialects.builtin import ArrayAttr, StringAttr
 
 from merlin.common import mlir_query as mq
-from merlin.compile import complete_group_routing, route_before_build
+from merlin.compiler.planning import complete as complete_group_routing, model as route_before_build
 from merlin.llvmlower import device_offload
 from merlin.llvmlower.device_build import DeviceRouting
 from merlin.llvmlower.source_compute_groups import form_source_groups

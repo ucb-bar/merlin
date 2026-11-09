@@ -13,9 +13,10 @@ from math import prod
 from xdsl.dialects import tensor
 from xdsl.dialects.linalg.ops import GenericOp, YieldOp
 
-from merlin.compile.scheduling.fusion_semantics import ScalarGraph, UnsupportedElementwise
-from merlin.compile.scheduling.multioutput_fusion import read_source_multioutput
-from merlin.compile.scheduling.pointwise_source import read_pointwise_source
+from merlin.compiler.schedule.fusion_semantics import ScalarGraph
+from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
+from merlin.compiler.schedule.multioutput_fusion import read_source_multioutput
+from merlin.compiler.schedule.pointwise_source import read_pointwise_source
 from merlin.llvmlower.layout_conformance import _attribute, _metadata, layout_expression
 
 
@@ -186,7 +187,7 @@ def verify_source_recomputation(original, candidate, operations, permissions, bu
     ordered modular operations, captures, complete outputs and opaque effect
     epochs are reconstructed; hashes alone never establish repeated work.
     """
-    from .recomputation import RecomputationBudgets, RecomputationPermissions
+    from merlin.compiler.transforms.recomputation import RecomputationBudgets, RecomputationPermissions
 
     if type(permissions) is not RecomputationPermissions or type(budgets) is not RecomputationBudgets:
         raise ValueError("recomputation checking requires original typed permissions and bounds")

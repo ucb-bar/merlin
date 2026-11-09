@@ -473,7 +473,7 @@ def test_single_cap_preserves_every_other_baseline_field(tmp_path, field):
 
 
 def test_resource_ceiling_calculation_does_not_admit_invalid_storage_or_adapter(tmp_path):
-    from merlin.compile.scheduling.program_limits import AddressWindow
+    from merlin.compiler.schedule.program_limits import AddressWindow
 
     config, problem, _ = selection(tmp_path)
     contract = config.selected_contracts.dense

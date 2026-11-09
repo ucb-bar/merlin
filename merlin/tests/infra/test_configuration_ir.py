@@ -17,8 +17,9 @@ from test_selected_schedule_contracts import inputs
 from xdsl.dialects import arith, builtin, func
 from xdsl.ir import Block, Region
 
-from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection, verify_configuration_ir
-from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
+from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection
+from merlin.compiler.schedule.configuration_ir import verify_configuration_ir
+from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
 from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction
 from merlin.transforms.certificates import ir_text
 
@@ -311,8 +312,8 @@ def test_same_typed_scalar_rewiring_inside_opaque_region_refuses(tmp_path):
 def test_configuration_ir_executes_from_only_the_reviewed_shared_export(tmp_path):
     from test_shared_scheduling_export import review
 
-    from merlin.compile.scheduling.export import export_shared_scheduling
-    from merlin.compile.scheduling.library_sources import LIBRARY_MODULES
+    from merlin.compiler.schedule.export import export_shared_scheduling
+    from merlin.compiler.schedule.library_sources import LIBRARY_MODULES
 
     selection = configured(tmp_path)
     bundle = tmp_path / "library"

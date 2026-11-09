@@ -24,6 +24,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from merlin.compiler.ir.boundary import region_captures
+
 from .._common import HAS_XDSL
 from .outline import OutlineError, OutlineResult, _external_declarations, outline_dispatches
 
@@ -93,49 +95,6 @@ def _shape_dtype(t) -> tuple[list[int], str]:
     if isinstance(t, TensorType):
         return [int(d) for d in t.get_shape()], str(t.element_type)
     return [], str(t)
-
-
-def _region_captures(op) -> list:
-    """Values ``op``'s REGIONS read from the enclosing scope -- the operands ``op.operands`` omits.
-
-    ``op.operands`` is the op's own signature and nothing more: for ``scf.for`` that is
-    ``lb``/``ub``/``step``/``iter_args``. A tensor the loop BODY reads out of the enclosing scope is
-    not an operand of the loop at all, so a node built from ``op.operands`` alone understates what the
-    node reads -- and a memory planner fed that node computes a live range that ends before the last
-    read. It then hands those bytes to another buffer while the loop is still reading them: wrong
-    numbers, no diagnostic, and only on the input sizes that happen to collide.
-
-    A value is captured when it is used anywhere inside the regions (at any nesting depth) and is NOT
-    defined inside them -- i.e. it is neither the result of an inner op nor a block argument of any
-    inner block (a loop induction variable and an ``iter_args`` body argument are both block args, so
-    both are correctly internal). Same rule the outliner already applies in ``_free_values``; stated
-    once more here because this is a different question about the same structure.
-    """
-    internal: set[int] = set()
-    inner_ops: list = []
-    for region in op.regions:
-        for block in region.blocks:
-            for arg in block.args:
-                internal.add(id(arg))
-            for top in block.ops:
-                for sub in top.walk():
-                    inner_ops.append(sub)
-                    for res in sub.results:
-                        internal.add(id(res))
-                    for sub_region in sub.regions:
-                        for sub_block in sub_region.blocks:
-                            for sub_arg in sub_block.args:
-                                internal.add(id(sub_arg))
-    captured: list = []
-    seen: set[int] = set()
-    for sub in inner_ops:
-        for value in sub.operands:
-            key = id(value)
-            if key in internal or key in seen:
-                continue
-            seen.add(key)
-            captured.append(value)
-    return captured
 
 
 def _nested_call_symbols(op) -> list[str]:
@@ -310,7 +269,7 @@ def build_dispatch_program(outlined: OutlineResult, entry: str = "forward") -> D
                 "wrong prov.region_id) while verify_program still reports a valid DAG. Hoist the "
                 "call out of the region before building a dispatch program."
             )
-        captured = _region_captures(op) if op.regions else []
+        captured = region_captures(op) if op.regions else []
         kind = "const" if op.name == "arith.constant" else "intermediate"
         in_ids = resolve(op.operands, op)
         capture_ids = resolve(captured, op)

@@ -24,7 +24,7 @@ code_refs:
   - src/merlin/llvmlower/source_recomputation_policy.py
   - src/merlin/runtime/source_recomputation_build.py
   - merlin/tests/runtime/test_source_recomputation_build.py
-  - src/merlin/transforms/recomputation.py
+  - src/merlin/compiler/transforms/recomputation.py
   - src/merlin/transforms/recomputation_check.py
   - merlin/tests/gemmini/test_public_recomputation_execution.py
   - merlin/tests/gemmini/recomputation_host_work.py
@@ -365,7 +365,7 @@ operations must retain their existing observable expressions and opaque effect
 epochs. Invalid or stale issued plans refuse.
 
 ```python
-from merlin.transforms.recomputation import plan_source_recomputation
+from merlin.compiler.transforms.recomputation import plan_source_recomputation
 from merlin.llvmlower.source_recomputation import SourceRecomputationSelection
 from merlin.llvmlower.lower import lower_model
 
@@ -380,6 +380,11 @@ result = lower_model(
     source_recomputation=selection,
 )
 ```
+
+The implementation lives in `compiler/transforms/recomputation.py`. The old
+`merlin.transforms.recomputation` import aliases that same module for retained
+callers and records. The independent correspondence checker retains its current
+verification owner; it is not replaced by the candidate transformation.
 
 `comparison` is an optional original `OffloadCostDecision` from
 `compare_complete_offload_cost`. It must bind this exact source, context and

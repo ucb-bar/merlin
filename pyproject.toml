@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=70.1"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -14,6 +14,7 @@ description = "Compiler-centered framework for HW/SW abstraction exploration"
 requires-python = ">=3.12"
 readme = "README.md"
 license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "UCB-BAR" }]
 # PyYAML is used at runtime by the contracts/schemas/targetgen layers.
 dependencies = ["pyyaml", "numpy"]
@@ -36,8 +37,8 @@ targetgen = ["jsonschema"]
 # Semantic selection reads MLIR with xDSL, validates OOT descriptions against
 # JSON Schema, and solves declared local-memory placement with Z3.
 semantic-search = ["xdsl>=0.68", "jsonschema", "z3-solver"]
-# Board / simulator / RTL-cert flows (spike, verilator, K1, chipyard, clang-23, model2MLIR, …) have
-# NO PyPI deps — they resolve external toolchains via MERLIN_* env vars (see .env.example). This extra
+# Board / simulator / RTL-cert flows (spike, verilator, K1, chipyard, clang-23, model2MLIR, â€¦) have
+# NO PyPI deps â€” they resolve external toolchains via MERLIN_* env vars (see .env.example). This extra
 # exists as the documented install target + carries the bundled runtime-C sources' consumers; the
 # actual tools must be installed out of band.
 board = []
@@ -52,18 +53,34 @@ kernels-plots = ["matplotlib"]
 # worktree with --no-deps for coordinated unpublished changes.
 telemetry = ["aet @ git+https://github.com/ucb-bar/agentic-eval-tool.git@903d4def8995e4697c6f214cc26c60a5a38d0554"]
 # Triton kernel frontend (merlin.triton): a STOCK, UNMODIFIED triton wheel used read-only to turn a
-# @triton.jit function into TTIR. No GPU is needed — only the AST->TTIR frontend runs, never
+# @triton.jit function into TTIR. No GPU is needed â€” only the AST->TTIR frontend runs, never
 # triton.compile()'s backend stage chain. EXACT-pinned because triton's compiler-internal API
 # (ASTSource/make_ir) is not a stable public surface and moves between minor releases; the same
 # version is asserted by merlin.triton.toolchain.PINNED_TRITON (test_triton_toolchain keeps the two
 # in agreement, so there is one place to bump and no second lock file to drift).
 triton = ["triton==3.7.1"]
 
+# All workflow code ships in Merlin; extras select dependencies without importing engines.
+# Empty workflow extras keep lightweight DSE/mining selections discoverable.
+experiments = ["jsonschema>=4", "aet @ git+https://github.com/ucb-bar/agentic-eval-tool.git@903d4def8995e4697c6f214cc26c60a5a38d0554"]
+analysis = ["xdsl>=0.68", "jsonschema", "aet @ git+https://github.com/ucb-bar/agentic-eval-tool.git@903d4def8995e4697c6f214cc26c60a5a38d0554"]
+dse = []
+mining = []
+bedrock = ["merlin[experiments]", "boto3"]
+chia = ["merlin[experiments]", "chialoops @ https://github.com/ucb-bar/chia/archive/dd976318012f1a9807a339bb7856da157cd24f87.tar.gz"]
+plots = ["matplotlib"]
+compiler = ["xdsl>=0.68"]
+# Vector compilation uses the shared IR dependency. Install the RVV OOT provider
+# separately from the user-selected clone or generated package; it is not on PyPI.
+vector = ["xdsl>=0.68"]
+reconstruction = ["xdsl>=0.68", "z3-solver", "tree-sitter>=0.25,<0.26", "tree-sitter-c>=0.24,<0.24.2"]
+replay = ["merlin[verify,experiments,analysis]", "pytest"]
+
 [project.scripts]
 merlin = "merlin.cli:main"
 merlin-opt = "merlin.xdsl_dialects.opt:main"
-merlin-verify = "merlin.verify.cli:main"
-merlin-verify-lean = "merlin.verify.lean_cli:main"
+merlin-verify = "merlin.verification.cli:main"
+merlin-verify-lean = "merlin.verification.lean_cli:main"
 merlin-isa-generate = "merlin.targetgen.isa_codegen_cli:main"
 # What the generated-output root costs and why, plus the reclaim classes whose safety is a property
 # (an unreferenced store object, an abandoned input closure, a declared-regenerable cache) rather
@@ -82,7 +99,7 @@ merlin-target-tools = "merlin.targetgen.tool_cli:main"
 merlin-target-fetch = "merlin.targetgen.oot_fetch:main"
 merlin-onboard = "merlin.targetgen.onboard:main"
 merlin-target-publish = "merlin.targetgen.publish:main"
-# Search/mining campaign commands are owned by packages/merlin-mining.
+# Search/mining campaign commands keep their historical module identities.
 # What we understand of a target's assembly, which CCA facets it can populate, and what its
 # emitted code implies is worth trying. Repeatable because every number in it goes stale.
 merlin-asm-audit = "merlin.kernels.cli_asm:main"
@@ -92,9 +109,9 @@ merlin-surface = "merlin.kernels.cli_surface:main"
 # Offline, bit-exact bundle rewrite: store weights in the layout their consumer wants, so the
 # model stops re-laying-out weights on every inference. The analysis + rewrite already existed
 # and were tested; nothing could RUN them, so the *_pretransposed bundles on disk had been
-# hand-driven from a REPL. See packages/merlin-analysis/src/merlin/baselines/pretranspose_cli.py for the
+# hand-driven from a REPL. See src/merlin/baselines/pretranspose_cli.py for the
 # decided precedence against the conflicting `fuse_transpose_b` schedule lever.
-merlin-compile = "merlin.compile_cli:main"
+merlin-compile = "merlin.service_cli:compile_main"
 merlin-liveness = "merlin.liveness.cli:main"
 # Post-run only: verify one queue-owned warm FireSim run from content-bound logs. This command
 # never submits work or invokes FireSim; target/workload adapters supply the correctness policy.
@@ -103,12 +120,49 @@ merlin-firesim-receipt = "merlin.perf.firesim_receipt:main"
 merlin-deployment-check = "merlin.perf.deployment_admissibility:main"
 merlin-compile-kernel = "merlin.triton.cli:main"
 
+merlin-phase2-public-diagnostic = "merlin_experiments.phase2.public_diagnostic_launch:main"
+merlin-experiment = "merlin_experiments.cli:main"
+merlin-evaluation-cohort = "merlin.targetgen.evaluation_cohort:main"
+merlin-phase2-timing-study = "merlin_experiments.phase2.timing_study:main"
+merlin-phase2-normal-timing-study = "merlin_experiments.phase2.ordinary_timing_study:main"
+merlin-phase2-timing-readiness = "merlin_experiments.phase2.timing_domain_readiness:main"
+merlin-dse = "merlin_dse.cli:search_main"
+merlin-design-pressure = "merlin_dse.cli:pressure_main"
+merlin-dse-guidance = "merlin_dse.cli:guidance_main"
+merlin-kernel-reconstruct = "merlin.mining.reconstruction_cli:main"
+merlin-kernel-report = "merlin.mining.report:main"
+merlin-kernel-mine = "merlin.mining.mine:main"
+merlin-kernel-autotune = "merlin.mining.autotune:main"
+merlin-kernel-beam = "merlin.mining.beam_cli:main"
+merlin-kernel-opt = "merlin.mining.op_sweep:main"
+merlin-rvv-report = "merlin.mining.report:main"
+merlin-rvv-mine = "merlin.mining.mine:main"
+merlin-rvv-autotune = "merlin.mining.autotune:main"
+merlin-rvv-beam = "merlin.mining.beam_cli:main"
+merlin-rvv-opt = "merlin.mining.op_sweep:main"
+merlin-cca-route = "merlin.mining.route_report:main"
+merlin-compare = "merlin.compare.cli:main"
+merlin-bundle-pretranspose = "merlin.baselines.pretranspose_cli:main"
+merlin-recovery = "merlin.perf.recovery:main"
+
+[project.entry-points."merlin.backends"]
+"merlin.layout" = "merlin.compiler.backend.layout"
+"merlin.scalar" = "merlin.compiler.backend.scalar"
+"merlin.package" = "merlin.compiler.backend.package"
+
+[project.entry-points."merlin.runners"]
+"merlin.linux" = "merlin.runtime.linux"
+
+[project.entry-points."merlin.exact_offload_release"]
+reviewed_phase0 = "merlin_experiments.corpus.release:verify_exact_offload_binding"
+
 [tool.setuptools]
 package-dir = { "" = "src" }
 include-package-data = false
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["merlin", "merlin.*", "merlin_experiments", "merlin_experiments.*", "merlin_dse", "merlin_dse.*"]
 exclude = ["merlin._data", "merlin._data.*"]
 
 # Bundled read-only data (schemas + agent prompts) copied into merlin/_data at build time by the
@@ -125,10 +179,11 @@ merlin = [
     "runtime/portable_tanh.c",
     "runtime/portable_tanh.LICENSE",
     "runtime/portable_math.provenance.json",
-    "verify/lean/Merlin/*.lean",
+    "verification/lean/Merlin/*.lean",
     "semantic_compiler/egg_bridge/Cargo.toml",
     "semantic_compiler/egg_bridge/Cargo.lock",
     "semantic_compiler/egg_bridge/src/main.rs",
+    "semantic_compiler/constant_math.c",
     "capture/workload_roster.json",
     "kernels/ceiling_drivers/baremetal_support.c",
     "kernels/ceiling_drivers/common.h",
@@ -181,6 +236,11 @@ merlin = [
     "runtime/backends/xnnpack_host/xnn_gemm_shim.c",
 ]
 
+"merlin_experiments" = ["resources/*.json", "phase1/fresh10_profile_data.json", "phase1/author_skills/*/SKILL.md", "phase1/author_skills/*/scripts/*.py", "phase1/author_skills/*/reference/*.md"]
+"merlin_experiments.execution" = ["container_guardian.c"]
+"merlin.baselines" = ["executorch_spacemit_toolchain.cmake", "exo_kernels/autosched_bench.c", "exo_kernels/fgemm_nk.c", "exo_kernels/igemm_bench.c", "exo_kernels/igemm_nk.c", "exo_kernels/igemm_nk_bench.c", "exo_kernels/llama_glue.c", "exo_kernels/llama_glue_autosched.c", "exo_kernels/llama_glue_int8.c", "tvm_board/board_kernel_timer.cc", "tvm_board/board_runner.cc", "tvm_board/build_board_runner.sh"]
+"merlin.compare" = ["paper_k1_board_probe.c", "paper_model_abi_runner.c"]
+
 [tool.pytest.ini_options]
 testpaths = ["merlin/tests"]
 markers = [
@@ -190,7 +250,7 @@ markers = [
 ]
 # Per-test wall-clock ceiling (pytest-timeout, in [dev]). A test that blocks in a subprocess
 # (compile/sim/board that never returns when its external toolchain is mis/unconfigured) FAILS at
-# this bound instead of hanging the whole run — so `pytest merlin/tests` always completes. `signal`
+# this bound instead of hanging the whole run â€” so `pytest merlin/tests` always completes. `signal`
 # fires SIGALRM in the main thread, which interrupts a blocked subprocess.wait(). Generous so real
 # heavy compiles (e.g. whole-model lowering) finish well within it; only true hangs trip it.
 timeout = 900

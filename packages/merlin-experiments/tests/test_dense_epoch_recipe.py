@@ -82,7 +82,7 @@ def test_the_ordering_model_shows_the_race_a_dropped_drain_would_leave(recipe, t
     p, s, r0 = support.dense_view(SHAPES[0], caps)
     a = support.adapter()
     resources, block = recipe.two_window(p, s, r0, 8)
-    from merlin.compile.scheduling.dense_panel_pipeline import DensePanelOverlapAdmission
+    from merlin.compiler.schedule.dense_panel_pipeline import DensePanelOverlapAdmission
 
     admission = DensePanelOverlapAdmission(
         a.configuration_identity,

@@ -6,13 +6,13 @@ owner: merlin-experiments
 last_verified: 2026-10-08
 related: [docs/design/component_compiler_convergence.md]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/command_intake.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/accessor_intake.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/source_predicate_intake.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/software_intake.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_generation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_coverage.py
+  - src/merlin_experiments/phase0/rtl_intake.py
+  - src/merlin_experiments/phase0/command_intake.py
+  - src/merlin_experiments/phase0/accessor_intake.py
+  - src/merlin_experiments/phase0/source_predicate_intake.py
+  - src/merlin_experiments/phase0/software_intake.py
+  - src/merlin_experiments/phase0/component_generation.py
+  - src/merlin_experiments/phase0/component_coverage.py
   - src/merlin/targetgen/rtl/source_selection.py
   - src/merlin/targetgen/rtl/introspect.py
 ---

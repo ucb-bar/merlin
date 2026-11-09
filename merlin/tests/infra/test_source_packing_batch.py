@@ -22,7 +22,7 @@ from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.llvmlower import source_model
 from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
-from merlin.verify import host_call_alignment
+from merlin.verification import host_call_alignment as host_call_alignment
 
 
 class ProviderReached(RuntimeError):

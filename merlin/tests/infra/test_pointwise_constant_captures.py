@@ -4,8 +4,9 @@ import pytest
 from test_pointwise_source import source_program, source_text
 from xdsl.dialects import builtin
 
-from merlin.compile.scheduling.fusion_semantics import ScalarBudgetExceeded, UnsupportedElementwise
-from merlin.compile.scheduling.pointwise_source import read_pointwise_source
+from merlin.compiler.schedule.fusion_semantics import ScalarBudgetExceeded
+from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
+from merlin.compiler.schedule.pointwise_source import read_pointwise_source
 
 
 def read(operation, **controls):

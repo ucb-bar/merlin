@@ -770,7 +770,7 @@ def _readout_selector_for(
     by a check that had the declaration available the whole time. Generation is where this is cheap to
     find out.
     """
-    from merlin.verify.epilogue_applicability import selectors_applying
+    from merlin.verification.epilogue_applicability import selectors_applying
 
     readouts = _readout_selectors(binding)
     if not readouts:
@@ -848,7 +848,7 @@ def _resolve_output_dtype(
         if epilogue:
             _selectors = _readout_selectors(binding)
             if _selectors is not None:
-                from merlin.verify.epilogue_applicability import selectors_applying
+                from merlin.verification.epilogue_applicability import selectors_applying
 
                 routes = tuple(
                     route for route in _readout_routes(binding) if route.operand_role in available_operand_roles

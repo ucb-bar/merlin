@@ -9,7 +9,7 @@ from test_selected_dense_contracts import inputs
 from xdsl.dialects import builtin, func
 
 from merlin.common import mlir_query as mq
-from merlin.compile.scheduling.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import AddressWindow
 from merlin.llvmlower.prepared_model_transform import apply_prepared_model_transform
 from merlin.llvmlower.source_dense import SourceDenseLowering
 from merlin.llvmlower.source_model import bind_source_lowerings, source_provider_builder
@@ -100,7 +100,7 @@ def test_unavailable_dense_routes_preserve_exact_source_without_provider(tmp_pat
 
         import yaml
 
-        from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
+        from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
 
         selected = config.selected_contracts
         software = yaml.safe_load(selected.software_bytes)
@@ -174,7 +174,7 @@ def test_same_read_only_ssa_input_is_preserved_and_output_is_fresh(tmp_path):
 
 @pytest.mark.parametrize("input_kind", ["facts", "software"])
 def test_direct_dense_reader_rejects_stale_selected_inputs(tmp_path, input_kind):
-    from merlin.compile.scheduling.dense_source import read_source_dense
+    from merlin.compiler.schedule.dense_source import read_source_dense
 
     config, expected, _ = selection(tmp_path)
     _, operation = source((5, 14, 13), config.selected_contracts.dense.dtypes)
@@ -187,7 +187,7 @@ def test_direct_dense_reader_rejects_stale_selected_inputs(tmp_path, input_kind)
 
 
 def test_incorrect_actual_instruction_addresses_raise_before_backend_preparation(tmp_path):
-    from merlin.compile.scheduling.block_schedule import Load
+    from merlin.compiler.schedule.blocks import Load
 
     config, _, seen = selection(tmp_path)
     original = config.adapter.encode

@@ -5,9 +5,9 @@ status: current
 owner: merlin-experiments
 last_verified: 2026-10-08
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_execution_budget.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_coverage_plan.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/generation.py
+  - src/merlin_experiments/phase0/component_execution_budget.py
+  - src/merlin_experiments/phase0/component_coverage_plan.py
+  - src/merlin_experiments/phase0/generation.py
   - packages/merlin-experiments/tests/test_component_execution_budget.py
 ---
 

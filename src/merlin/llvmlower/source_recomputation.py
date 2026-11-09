@@ -22,8 +22,8 @@ from .source_multioutput import _callback, _check_callback
 _ISSUED = WeakKeyDictionary()
 
 if TYPE_CHECKING:
+    from merlin.compiler.transforms.recomputation import RecomputationPlan
     from merlin.perf.offload_profitability import OffloadCostDecision
-    from merlin.transforms.recomputation import RecomputationPlan
 
 
 @dataclass(frozen=True)
@@ -43,8 +43,8 @@ class SourceRecomputationSelection:
     comparison: OffloadCostDecision | None = None
 
     def __post_init__(self):
+        from merlin.compiler.transforms.recomputation import RecomputationPlan
         from merlin.perf.offload_profitability import OffloadCostDecision
-        from merlin.transforms.recomputation import RecomputationPlan
 
         if (
             type(self.plan) is not RecomputationPlan

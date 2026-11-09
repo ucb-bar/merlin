@@ -11,7 +11,8 @@ import time
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from merlin.compile.scheduling.dense_source import DenseSourceUnavailable, schedule_source_dense
+from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
+from merlin.compiler.schedule.dense_source import schedule_source_dense
 from merlin.frontends.linalg_mlir import parse_mlir_file
 from merlin.sched.isa import InstrDef, InstructionSet, Operand
 from merlin.transforms.dense_planning import DenseResources

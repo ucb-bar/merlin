@@ -23,7 +23,7 @@ import pytest
 from merlin_experiments.phase1.brokers import selfcheck_tuning as broker_tuning
 from merlin_experiments.phase1.context import InvocationContext
 
-from merlin.compile import tuning_knobs as K
+from merlin.compiler.selection import knobs as K
 
 BACKEND = """\
 import json, sys

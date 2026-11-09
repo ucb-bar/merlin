@@ -157,13 +157,20 @@ def extracted_phase1_sources(corpus_run, monkeypatch):
     installed.mkdir()
     original = paths.module_source_path
     owner = original("merlin_experiments")
-    for relative in ("__init__.py", "spec.py", "resources/legacy_entrypoints.json"):
+    for relative in ("__init__.py", "spec.py", "resources/legacy_entrypoints.json", "resources/experiment.schema.json"):
         destination = installed / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(owner.parent / relative, destination)
     shutil.copytree(
         original("merlin_experiments.phase1").parent, installed / "phase1", ignore=shutil.ignore_patterns("__pycache__")
     )
+    for module, relative in (
+        ("merlin.development", "development/__init__.py"),
+        ("merlin.development.definition", "development/definition.py"),
+    ):
+        destination = installed / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(original(module), destination)
     shutil.copyfile(original("merlin.targetgen.corpora"), installed / "corpora.py")
 
     def resolve(module):
@@ -171,6 +178,10 @@ def extracted_phase1_sources(corpus_run, monkeypatch):
             return installed / "__init__.py"
         if module == "merlin_experiments.spec":
             return installed / "spec.py"
+        if module == "merlin.development":
+            return installed / "development/__init__.py"
+        if module == "merlin.development.definition":
+            return installed / "development/definition.py"
         if module == "merlin_experiments.phase1":
             return installed / "phase1/__init__.py"
         if module.startswith("merlin_experiments.phase1."):
@@ -191,6 +202,9 @@ def extracted_phase1_sources(corpus_run, monkeypatch):
         "phase1/providers/codex_agent.py",
         "__init__.py",
         "spec.py",
+        "development/__init__.py",
+        "development/definition.py",
+        "resources/experiment.schema.json",
         "resources/legacy_entrypoints.json",
         "corpora.py",
         "new_member",
@@ -220,8 +234,11 @@ def test_extracted_phase1_source_closure_drift_refuses_resume(corpus_run, extrac
     assert (definition.parent / "calls").read_text() == "1"
 
 
-def test_native_phase1_startup_pins_require_exact_declared_entrypoint(corpus_run):
+def test_native_phase1_startup_pins_require_exact_declared_entrypoint(corpus_run, monkeypatch):
+    from merlin_experiments.phase1 import source_inputs
     from merlin_experiments.runner import _phase1_source_inputs
+    from merlin.target.spec import computation, instructions, signature
+    from merlin.targetgen import instruction_semantics as legacy
 
     definition, destination, _, _ = corpus_run
     plan = resolve_plan(load_spec(definition), run_dir=destination)
@@ -235,6 +252,34 @@ def test_native_phase1_startup_pins_require_exact_declared_entrypoint(corpus_run
         (harness / name).write_text("# synthetic startup identity\n")
     command = dict(command, entrypoint=str(entry))
     pins = _phase1_source_inputs(command)
+    assert legacy is instructions
+    for key, owner in (
+        ("instruction_model", instructions),
+        ("scalar_computation", computation),
+        ("instruction_signature", signature),
+    ):
+        assert pins[f"phase1:startup:{key}"] == str(Path(owner.__file__).resolve())
+    compatibility = Path(pins["phase1:startup:instruction_semantics"])
+    assert compatibility.name == "instruction_semantics.py" and compatibility.is_file()
+    assert compatibility != Path(legacy.__file__)
+    # The alias must retain the same missing/symlink refusal as other selected
+    # startup owners, even when find_spec now resolves its imported real owner.
+    private = definition.parent / "private-compatibility-source"
+    private.mkdir()
+    private_init = private / "__init__.py"
+    private_init.write_text("")
+    original_source = source_inputs._source
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            source_inputs,
+            "_source",
+            lambda module: private_init if module == "merlin.targetgen" else original_source(module),
+        )
+        with pytest.raises(SpecError, match="compatibility source is absent or symlinked"):
+            _phase1_source_inputs(command)
+        (private / "instruction_semantics.py").symlink_to(compatibility)
+        with pytest.raises(SpecError, match="compatibility source is absent or symlinked"):
+            _phase1_source_inputs(command)
     assert pins["phase1:startup:native:_common.py"] == str(harness / "_common.py")
     assert pins["phase1:startup:native:sandbox_toolchain.py"] == str(harness / "sandbox_toolchain.py")
     (harness / "_common.py").unlink()

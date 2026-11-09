@@ -5,7 +5,7 @@ status: current
 owner: ir
 last_verified: 2026-10-06
 related: [lowering_pipeline]
-code_refs: [src/merlin/llvmlower/impr_features.py, packages/merlin-mining/src/merlin/mining/wholemodel_proposer.py]
+code_refs: [src/merlin/llvmlower/impr_features.py, src/merlin/mining/wholemodel_proposer.py]
 ---
 
 # Compiler feature selection

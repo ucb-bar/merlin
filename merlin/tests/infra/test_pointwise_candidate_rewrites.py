@@ -11,13 +11,11 @@ from test_pointwise_source import source_program
 from test_readout_model_fusion import command, params
 from xdsl.dialects import builtin
 
-from merlin.compile.scheduling.fusion_semantics import UnsupportedElementwise
-from merlin.compile.scheduling.pointwise_source import (
-    PointwiseScheduleCandidate,
-    PointwiseScheduleRewrite,
-    compile_source_pointwise,
-)
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
+from merlin.compiler.schedule.pointwise_source import PointwiseScheduleCandidate
+from merlin.compiler.schedule.pointwise_source import PointwiseScheduleRewrite
+from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 
 
 def compose(candidate, context):

@@ -4,9 +4,9 @@ import subprocess
 
 import pytest
 
-from merlin.compile.model_execution_inputs import file_sha256
+from merlin.runtime.modelinputs import file_sha256
 from merlin.targetgen.rocc.decode import _parse_module
-from merlin.verify.host_call_alignment import inspect, value_alignment
+from merlin.verification.host_call_alignment import inspect, value_alignment
 
 
 def test_round_down_alignment_requires_the_same_original_ssa_numerator():

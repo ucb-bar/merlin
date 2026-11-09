@@ -8,7 +8,7 @@ from test_connected_spatial_host import fixture as staged_fixture
 from xdsl.dialects import func, memref
 from xdsl.dialects.builtin import FunctionType
 
-from merlin.compile.scheduling.spatial_readout import RoundedReadout
+from merlin.compiler.schedule.spatial_readout import RoundedReadout
 from merlin.llvmlower.connected_spatial import group_connected_spatial
 from merlin.llvmlower.connected_spatial_host import prepare_connected_spatial_host
 from merlin.llvmlower.requantization import f32

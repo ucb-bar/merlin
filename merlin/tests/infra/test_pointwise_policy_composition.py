@@ -16,12 +16,10 @@ from test_pointwise_source import execute as native_executor_fixture
 from test_pointwise_source import source_program
 
 from merlin.common.cpu_pool import shared_compute_pool
-from merlin.compile.scheduling.pointwise_source import (
-    PointwiseScheduleCandidate,
-    PointwiseScheduleRewrite,
-    compile_source_pointwise,
-)
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.pointwise_source import PointwiseScheduleCandidate
+from merlin.compiler.schedule.pointwise_source import PointwiseScheduleRewrite
+from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 
 
 def deduplicate_settings(candidate, context):

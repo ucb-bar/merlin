@@ -5,13 +5,11 @@ import pytest
 from test_compact_dense_bias import ADAPTER
 from test_dense_retained_reduction import inputs
 
-from merlin.compile.scheduling.compact_dense import DenseBiasSource
-from merlin.compile.scheduling.dense_panel_pipeline import (
-    schedule_dense_panel_pipeline,
-    verify_dense_retained_reduction,
-)
-from merlin.compile.scheduling.dense_panel_readout import batch_dense_panel_initializers
-from merlin.compile.scheduling.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.compact_dense import DenseBiasSource
+from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_panel_pipeline
+from merlin.compiler.schedule.dense_panel_pipeline import verify_dense_retained_reduction
+from merlin.compiler.schedule.dense_panel_readout import batch_dense_panel_initializers
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
 from merlin.sched.ir import Const, Loop, evaluate, instances
 
 

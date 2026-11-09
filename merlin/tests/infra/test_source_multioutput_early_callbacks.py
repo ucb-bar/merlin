@@ -3,7 +3,7 @@
 import pytest
 from test_source_multioutput_freshness import original_callbacks, selection, source
 
-from merlin.compile.scheduling import multioutput_fusion_check as checker
+from merlin.compiler.schedule import multioutput_fusion_check as checker
 from merlin.llvmlower.source_multioutput import discover_multioutput
 
 

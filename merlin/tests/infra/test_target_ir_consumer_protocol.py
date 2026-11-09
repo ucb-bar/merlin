@@ -9,7 +9,7 @@ import pytest
 from test_selected_schedule_contracts import inputs
 
 from merlin.common.digest import sha256_file
-from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection
 from merlin.targetgen import capsule_common as CC
 from merlin.targetgen.contract import schemas
 from merlin.targetgen.package_runtime import CertFailure

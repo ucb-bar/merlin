@@ -1,4 +1,4 @@
-"""Reject static operational imports from compiler core into optional distributions.
+"""Reject static operational imports from compiler core into logical research components.
 
 Only exact, function-scoped legacy compatibility adapters are exempt. This is not
 a sandbox or a proof about dynamic imports; cold-import and installed execution
@@ -9,7 +9,11 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _source_layout  # noqa: E402
 
 # Reviewed compatibility interfaces, not a general dependency-debt allowance.
 # Core operations never invoke these optional research entrypoints themselves.
@@ -33,12 +37,16 @@ def audit(root: Path) -> list[str]:
     owners: dict[str, str] = {}
     concrete: dict[str, Path] = {}
     errors = []
+    try:
+        components = _source_layout.logical_components(root)
+    except (OSError, ValueError, TypeError) as exc:
+        return [f"cannot read logical component inventory: {exc}"]
     for source in [core, *sorted((root / "packages").glob("*/src"))]:
-        owner = "core" if source == core else source.parent.name
         for path in sorted(source.rglob("*.py")):
             if "__pycache__" in path.parts:
                 continue
             name = _module(path.relative_to(source))
+            owner = _source_layout.component_owner(name, components)
             if name in concrete:
                 errors.append(f"duplicate source module {name}: {concrete[name]} and {path}")
             concrete[name] = path
@@ -49,6 +57,13 @@ def audit(root: Path) -> list[str]:
             while "." in name:
                 name = name.rpartition(".")[0]
                 owners.setdefault(name, owner)
+    for owner, fields in components.items():
+        for module in fields["modules"]:
+            if module not in concrete:
+                errors.append(f"stale logical component module: {owner}: {module}")
+        for prefix in fields["namespaces"]:
+            if not any(name == prefix or name.startswith(prefix + ".") for name in concrete):
+                errors.append(f"missing logical component namespace: {owner}: {prefix}")
 
     def optional_owner(name: str) -> str | None:
         while name:
@@ -60,10 +75,12 @@ def audit(root: Path) -> list[str]:
 
     for path in sorted(core.rglob("*.py")):
         module = _module(path.relative_to(core))
+        if _source_layout.component_owner(module, components) != "core":
+            continue
         package = module if path.name == "__init__.py" else module.rpartition(".")[0]
         relative = path.relative_to(root)
         try:
-            tree = ast.parse(path.read_text(), filename=str(relative))
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(relative))
         except SyntaxError as exc:
             errors.append(f"core dependency scan cannot parse {relative}: {exc}")
             continue
@@ -112,5 +129,5 @@ if __name__ == "__main__":
     for problem in problems:
         print(problem)
     if not problems:
-        print("core has no static operational imports from optional distributions")
+        print("core has no static operational imports from logical research components")
     raise SystemExit(bool(problems))

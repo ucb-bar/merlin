@@ -8,7 +8,7 @@ value semantics leave physical alias/lifetime decisions to bufferization.
 
 from __future__ import annotations
 
-from .host_tensor_rewrites import BROADCAST_SOURCE
+from merlin.compiler.transforms.host_broadcast import BROADCAST_SOURCE
 
 FEATURE = "hoist_broadcast_source_rsqrt"
 MARKER = "__merlin_broadcast_source_rsqrt_hoist__"
@@ -23,7 +23,7 @@ def _edit_pipeline(passes: list[str]) -> list[str]:
 
 
 def ensure_registered() -> str:
-    from .impr_features import ImprFeature, known, register
+    from .shared_feature_registry import ImprFeature, known, register
 
     if FEATURE not in known():
         register(

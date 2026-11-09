@@ -15,12 +15,10 @@ from xdsl.dialects import llvm
 from xdsl.parser import Parser
 
 from merlin.common.dense_float_ir import DenseFloatPrinter
-from merlin.compile.scheduling.configuration import (
-    ConfigurationAdapter,
-    ConfigurationEffects,
-    eliminate_redundant_configuration,
-    verify_configuration_rewrite,
-)
+from merlin.compiler.schedule.configuration import ConfigurationAdapter
+from merlin.compiler.schedule.configuration import ConfigurationEffects
+from merlin.compiler.schedule.configuration import eliminate_redundant_configuration
+from merlin.compiler.schedule.configuration import verify_configuration_rewrite
 from merlin.llvmlower import toolchain
 from merlin.llvmlower.host_transform_chain import (
     HostLLVMArtifact,

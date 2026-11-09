@@ -10,8 +10,8 @@ import copy
 from collections.abc import Mapping
 from typing import Any
 
+from merlin.compiler.quantization import capabilities as Q
 from merlin.targetgen import quant_methodology as M
-from merlin.targetgen import quant_recipe as Q
 
 SCHEMA = "numerical_recipe_policy_v1"
 _EXTENSIONS = ("accumulator_residual", "integer_mean", "projection_input_reuse", "operand_sum_grid")

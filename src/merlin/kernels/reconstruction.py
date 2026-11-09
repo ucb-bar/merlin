@@ -474,15 +474,14 @@ def make_dense_reconstruction_adapter(
     from xdsl.dialects import arith, func, tensor
     from xdsl.dialects.linalg.ops import FillOp, GenericOp
 
-    from merlin.compile.scheduling.compact_dense import emit_compact_dense, schedule_compact_dense
-    from merlin.compile.scheduling.compact_verification import verify_compact_dense
-    from merlin.compile.scheduling.library_sources import shared_library_sources
-    from merlin.compile.scheduling.schedule_ir import (
-        dense_schedule_text,
-        make_dense_schedule_plan,
-        parse_dense_schedule_plan,
-        read_dense_schedule_plan,
-    )
+    from merlin.compiler.schedule.compact_dense import emit_compact_dense
+    from merlin.compiler.schedule.compact_dense import schedule_compact_dense
+    from merlin.compiler.schedule.compact_verification import verify_compact_dense
+    from merlin.compiler.schedule.library_sources import shared_library_sources
+    from merlin.compiler.schedule.schedule_ir import dense_schedule_text
+    from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
+    from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
+    from merlin.compiler.schedule.schedule_ir import read_dense_schedule_plan
     from merlin.transforms.certificates import ir_digest
     from merlin.transforms.dense_ir import static_zero_integer_matmul_geometry
     from merlin.transforms.pipeline_policy import PolicyFacts, ShapePredicate
@@ -545,8 +544,8 @@ def make_dense_reconstruction_adapter(
             order = outer_orders[knobs["order"]]
             requests = loop_transform_sets[knobs["transforms"]]
             if knobs["retention"] != "none":
-                from merlin.compile.scheduling.dense_panel_pipeline import dense_retained_operand_hoists
-                from merlin.compile.scheduling.loop_schedule import propose_loop_transforms
+                from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_operand_hoists
+                from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
                 # Read a checked geometric proposal, then inspect the actual
                 # compact command nest. Motion requests remain ordinary schedule
                 # dialect operations, with the final independent checker intact.

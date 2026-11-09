@@ -6,22 +6,22 @@ owner: experiments
 last_verified: 2026-10-21
 related: [phase0_phase1_setup, phase2_cpu_timing_study, normal_search_feedback, neutral_runtime_tooling]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_observations.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_census.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_policy.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_fast_feedback.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_queue_calibration.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/queued_search_actions.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/public_program_measurement.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/search_configuration.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/search_resource_launch.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/evaluation_pool.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/search_coordinator.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/search_target.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/search_guidance.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/roofline_priority.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/functional_guard_execution.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/public_programs.py
+  - src/merlin_experiments/phase1/feedback/candidate_observations.py
+  - src/merlin_experiments/phase1/feedback/candidate_census.py
+  - src/merlin_experiments/phase2/ordinary_search_policy.py
+  - src/merlin_experiments/phase2/ordinary_fast_feedback.py
+  - src/merlin_experiments/phase2/ordinary_queue_calibration.py
+  - src/merlin_experiments/phase2/queued_search_actions.py
+  - src/merlin_experiments/phase2/public_program_measurement.py
+  - src/merlin_experiments/phase2/search_configuration.py
+  - src/merlin_experiments/phase2/search_resource_launch.py
+  - src/merlin_experiments/phase2/evaluation_pool.py
+  - src/merlin_experiments/phase2/search_coordinator.py
+  - src/merlin_experiments/phase2/search_target.py
+  - src/merlin_experiments/phase2/search_guidance.py
+  - src/merlin_experiments/phase2/roofline_priority.py
+  - src/merlin_experiments/phase2/functional_guard_execution.py
+  - src/merlin_experiments/phase0/public_programs.py
   - src/merlin/runtime/complete_call_timing.py
   - src/merlin/targetgen/public_program_timing.py
 ---

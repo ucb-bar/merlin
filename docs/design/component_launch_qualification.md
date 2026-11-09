@@ -5,15 +5,15 @@ status: current
 owner: merlin-experiments
 last_verified: 2026-10-09
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase1/component_qualification.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/component_witness.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/component_source_applicability.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/component_package_execution.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_launch.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_launch_inputs.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_runtime.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/authoring_cli.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/broker.py
+  - src/merlin_experiments/phase1/component_qualification.py
+  - src/merlin_experiments/phase1/component_witness.py
+  - src/merlin_experiments/phase1/component_source_applicability.py
+  - src/merlin_experiments/phase1/component_package_execution.py
+  - src/merlin_experiments/phase2/component_launch.py
+  - src/merlin_experiments/phase2/component_launch_inputs.py
+  - src/merlin_experiments/phase2/component_runtime.py
+  - src/merlin_experiments/phase2/authoring_cli.py
+  - src/merlin_experiments/phase2/broker.py
   - packages/merlin-experiments/tests/test_component_launch.py
   - packages/merlin-experiments/tests/test_component_qualification.py
   - packages/merlin-experiments/tests/test_component_source_applicability.py

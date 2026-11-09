@@ -4,7 +4,8 @@ import os
 import subprocess
 import sys
 
-from merlin.compile.scheduling.export import export_shared_scheduling, public_modules
+from merlin.compiler.schedule.export import export_shared_scheduling
+from merlin.compiler.schedule.export import public_modules
 
 
 def test_constant_panel_source_preparation_has_closed_sdk_export(tmp_path):

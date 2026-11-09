@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import pytest
 
-from merlin.compile.scheduling.tensor_storage import column_panel_storage
+from merlin.compiler.schedule.tensor_storage import column_panel_storage
 from merlin.perf.storage_encoding import GroupedAxesStorage
 from merlin.targetgen.contract.schemas import ContractViolation, validate_command_buffer
 

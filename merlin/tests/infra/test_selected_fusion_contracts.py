@@ -25,9 +25,10 @@ from test_readout_model_fusion import (
 )
 from test_readout_model_fusion import native as native
 
-from merlin.compile.scheduling.fusion_semantics import UnsupportedElementwise
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, compile_schedule
-from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
+from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import compile_schedule
+from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
 from merlin.sched.ir import Call, Const
 from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction
 
@@ -421,7 +422,7 @@ def test_scalar_equivalence_is_checked_from_selected_fused_output(tmp_path):
 
 
 def test_previously_resolved_contracts_cannot_survive_resolver_changes(tmp_path, monkeypatch):
-    from merlin.compile.scheduling import selected_contracts
+    from merlin.compiler.schedule import selected_contracts
     model = inputs(tmp_path)
     original = selected_contracts._resolver_sources
     monkeypatch.setattr(selected_contracts, "_resolver_sources", lambda: (*original(), ("modified", "0" * 64)))
@@ -430,7 +431,7 @@ def test_previously_resolved_contracts_cannot_survive_resolver_changes(tmp_path,
 
 
 def test_resolver_changes_during_selection_are_rejected(tmp_path, monkeypatch):
-    from merlin.compile.scheduling import selected_contracts
+    from merlin.compiler.schedule import selected_contracts
     sources, parse = selected_contracts._resolver_sources, selected_contracts._parse
     changed = False
     def current():

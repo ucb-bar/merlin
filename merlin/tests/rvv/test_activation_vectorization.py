@@ -55,7 +55,7 @@ def _build(features, bundle):
     from merlin.mining.apply import apply_rvv_package
 
     work = Path(tempfile.mkdtemp(prefix="test_act_"))
-    build = apply_rvv_package(_pkg(features), bundle, work, board="spike_riscv64", harts=1, arena_mb=64)
+    build = apply_rvv_package(_pkg(features), bundle, work, board="spike_riscv64", harts=1)
     return rvv.decode(str(work / "model.o")), build, work
 
 

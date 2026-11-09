@@ -5,7 +5,7 @@ status: current
 owner: experiments
 last_verified: 2026-10-12
 related: [verified_compiler_tooling, targetgen]
-code_refs: [build_tools/scripts/build_bwrap_argument_budget.py, packages/merlin-experiments/src/merlin/targetgen/sandbox/bwrap.py]
+code_refs: [build_tools/scripts/build_bwrap_argument_budget.py, src/merlin/targetgen/sandbox/bwrap.py]
 ---
 
 # Prepare an explicit bubblewrap argument budget

@@ -998,7 +998,7 @@ class PytorchRefSource:
         static_pt2e = _static_pt2e_model(op, scheme=scheme, recipe=recipe, already_quantized=already_quantized)
         recipe_sha256 = ""
         if recipe is not None:
-            from merlin.targetgen import quant_recipe as _recipe
+            from merlin.compiler.quantization import recipe as _recipe
 
             if recipe.get("status") != _recipe.DERIVED:
                 raise M2MUnavailable(
@@ -1915,7 +1915,7 @@ def _generic_form_linalg_summary(linalg_mlir: str) -> dict:
 
     from merlin.common import mlir_query as mq
     from merlin.common import quant_formats as qf
-    from merlin.compile.analysis import contraction_shapes as ks
+    from merlin.compiler.ir import contraction_shapes as ks
 
     module = mq.parse(linalg_mlir)
     shapes = {id(op): shape for op, shape in ks.observe_contractions(module)}
@@ -2706,7 +2706,7 @@ def derived_recipe(target: str | None, dtype: str) -> dict | None:
         return None
     try:
         from merlin.common import quant_formats as _qf
-        from merlin.targetgen import quant_recipe as _qr
+        from merlin.compiler.quantization import capabilities as _qr
 
         recipe = _qr.select(_qr.for_target(target))
         if recipe is None or recipe.status != _qr.DERIVED:

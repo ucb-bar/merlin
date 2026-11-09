@@ -97,7 +97,7 @@ def test_unavailable_fusion_preserves_dense_route_and_cpu_epilogue(tmp_path, rea
 
 
 def test_failed_fused_planning_retries_raw_dense_once(tmp_path, monkeypatch):
-    from merlin.compile.scheduling import dense_source
+    from merlin.compiler.schedule import dense_source
 
     config, _, seen = selection(tmp_path)
     module, _, _ = readout_source((3, 7, 5), config.selected_contracts.dense.dtypes)

@@ -14,6 +14,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from merlin.compiler.ir.boundary import free_values
+
 __all__ = [
     "AUTO",
     "CHUNK_PREFIX",
@@ -223,7 +225,7 @@ def chunk_forward(module, *, chunk_ops: int, function: str = "forward") -> int:
             for result in op.results:
                 if any(outside(use) for use in result.uses):
                     leave(result)
-        params = OL._free_values(chunk)
+        params = free_values(chunk)
         symbol = f"{CHUNK_PREFIX}{index}"
 
         kblock = Block(arg_types=[p.type for p in params])

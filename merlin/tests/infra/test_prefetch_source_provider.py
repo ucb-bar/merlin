@@ -16,10 +16,10 @@ from test_pointwise_async_source import case as async_case
 from test_pointwise_source_provider import Provider
 from test_private_copy_elimination import SPACES
 
-from merlin.compile.scheduling.pointwise_source import PointwiseBindings
-from merlin.compile.scheduling.program_limits import AddressWindow
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
-from merlin.compile.scheduling.temporary_storage import TemporaryObject
+from merlin.compiler.schedule.pointwise_source import PointwiseBindings
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.temporary_storage import TemporaryObject
 from merlin.sched.ir import Kernel, TensorArg
 
 QUALIFICATION = "reviewed-neutral-token-copy-integer-concurrent-envelope-v1"

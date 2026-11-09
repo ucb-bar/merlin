@@ -5,11 +5,11 @@ from dataclasses import dataclass
 from xdsl.dialects import arith, builtin, func
 from xdsl.ir import Block, Operation, Region
 
-from merlin.compile.scheduling.dense_contracts import DenseIntegerReadout
+from merlin.compiler.schedule.dense_contracts import DenseIntegerReadout
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.transforms.certificates import ir_text
 from merlin.transforms.dense_ir import checked_static_linalg_shell
-from merlin.verify.scalar_ir import verify_scalar_transform
+from merlin.verification.scalar_ir import verify_scalar_transform
 
 
 def _plain(operation):

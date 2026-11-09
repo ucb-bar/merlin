@@ -147,7 +147,7 @@ def close_records(records):
 def build_arm(tmp_path, *, enabled, fault=None, version=1, ordinary=False):
     from xdsl.parser import Parser
 
-    from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+    from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection
     from merlin.llvmlower import toolchain
     from merlin.targetgen import shared_pass_context, shared_pass_contract
     from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context

@@ -12,20 +12,18 @@ from xdsl.dialects import llvm, scf
 from xdsl.dialects.builtin import ModuleOp, i64
 from xdsl.printer import Printer
 
-from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter
-from merlin.compile.scheduling.operand_slots import (
-    PipelineOperand,
-    allocate_pipeline_operand_slots,
-    verify_pipeline_operand_slots,
-)
-from merlin.compile.scheduling.program_limits import AddressWindow, EncodedAccess
-from merlin.compile.scheduling.scf_commands import emit_scf_commands, materialize_scf_commands
-from merlin.compile.scheduling.temporary_storage import (
-    StorageAdapter,
-    StorageEffects,
-    StorageOptimizationUnavailable,
-    TemporaryObject,
-)
+from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
+from merlin.compiler.schedule.operand_slots import PipelineOperand
+from merlin.compiler.schedule.operand_slots import allocate_pipeline_operand_slots
+from merlin.compiler.schedule.operand_slots import verify_pipeline_operand_slots
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import EncodedAccess
+from merlin.compiler.schedule.scf_commands import emit_scf_commands
+from merlin.compiler.schedule.scf_commands import materialize_scf_commands
+from merlin.compiler.schedule.temporary_storage import StorageAdapter
+from merlin.compiler.schedule.temporary_storage import StorageEffects
+from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
+from merlin.compiler.schedule.temporary_storage import TemporaryObject
 from merlin.llvmlower.host_builder import FnBuilder
 from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, Var, evaluate, select
 from merlin.semantic_compiler.allocation_types import Reservation, StorageBank
@@ -235,7 +233,7 @@ def test_capacity_alias_alignment_and_premature_reuse_are_checked_on_actual_call
         allocate_pipeline_operand_slots(kernel, operands, (banks[0], replace(banks[1], capacity=36)), ADAPTER, **model)
         is None
     )
-    from merlin.compile.scheduling.operand_slots import _close
+    from merlin.compiler.schedule.operand_slots import _close
 
     actual = _close(result.kernel)
     body = list(actual.body)
@@ -254,7 +252,7 @@ def test_unsupported_rotation_retains_the_source_and_realized_mutations_fail():
     result = allocate((kernel, operands, banks, model))
     # A target rewrite may not silently change a source offset or remove a real
     # completion, even when the new address assignment itself still fits.
-    from merlin.compile.scheduling.operand_slots import _close
+    from merlin.compiler.schedule.operand_slots import _close
 
     actual = _close(result.kernel)
     call = actual.body[1]
@@ -269,7 +267,7 @@ def test_unsupported_rotation_retains_the_source_and_realized_mutations_fail():
 
 @pytest.mark.parametrize("kind", ["budget", "nested", "carried", "unknown", "missing_wait", "mutation"])
 def test_unknown_boundaries_and_incomplete_lifetimes_preserve_source(kind, monkeypatch):
-    import merlin.compile.scheduling.operand_slots as slots
+    import merlin.compiler.schedule.operand_slots as slots
 
     kernel, operands, banks, model = source()
     digest = kernel.digest()

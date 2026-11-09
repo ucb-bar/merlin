@@ -1,6 +1,8 @@
 # Python source
 
-`merlin/` is the canonical core package. Optional research distributions belong in
-`packages/`; experiment definitions belong in `experiments/`. The old
-`merlin/python/merlin` path is a migration symlink, never a second implementation.
-Preserve sandbox module identities and run the access-registry tests after moves.
+`merlin/`, `merlin_experiments/` and `merlin_dse/` are owned by one Merlin distribution.
+Compiler primitives remain independent of optional research workflows and heavy dependencies.
+Importing a package or inspecting definitions must not launch agents, simulators or hardware.
+Experiment definitions belong in `experiments/`; generated state belongs under `out/`.
+The old `merlin/python/merlin` path is a compatibility symlink, never a second implementation.
+Preserve logical access roles, source custody, command/import identities and frozen replay inputs.

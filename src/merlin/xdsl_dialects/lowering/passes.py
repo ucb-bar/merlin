@@ -129,7 +129,7 @@ NORMALIZATION_CATALOG: tuple[PassInfo, ...] = (
         "merlin-lower-quant-ext",
         "normalize",
         "dequantize_per_channel -> linalg.generic (i8 weights stay i8 in memory)",
-        "merlin.llvmlower.passes_xdsl.lower_quant_ext",
+        "merlin.compiler.quantization.linalg.lower_quant_ext",
         input_dialect="quant_ext",
         output_dialect="linalg",
         obligation=UNKNOWN,
@@ -138,7 +138,7 @@ NORMALIZATION_CATALOG: tuple[PassInfo, ...] = (
         "merlin-bf16-matmul-f32acc",
         "normalize",
         "bf16 linalg.matmul -> f32-accumulating generic + truncf (matches torch)",
-        "merlin.llvmlower.passes_xdsl.lower_bf16_matmul_f32acc",
+        "merlin.compiler.transforms.matmul.lower_bf16_matmul_f32acc",
         input_dialect="linalg",
         output_dialect="linalg",
         obligation=UNKNOWN,
@@ -235,7 +235,7 @@ CATALOG: tuple[PassInfo, ...] = (
         "merlin-add-c-interface",
         "edge",
         "attach llvm.emit_c_interface so each public func gets a ciface wrapper",
-        "merlin.llvmlower.passes_xdsl.add_c_interface",
+        "merlin.compiler.frontend.preprocess.add_c_interface",
         input_dialect="func",
         output_dialect="func",
         obligation="boundary materialization",
@@ -1077,7 +1077,8 @@ def run_dialect_plane(
     """
     if not HAS_XDSL:
         raise RuntimeError("xDSL is required for the dialect plane")
-    from ...llvmlower.passes_xdsl import add_c_interface
+    from merlin.compiler.frontend.preprocess import add_c_interface
+
     from .dispatch_program import build_dispatch_program, prune_dead_nodes, verify_program
     from .outline import outline_dispatches
     from .schedule_dispatch import partition_dispatches

@@ -6,7 +6,7 @@ owner: experiments
 last_verified: 2026-10-19
 related: [phase2_source_roles, phase2_development_sources, phase2_test_justification]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase0/development_composition_preflight.py
+  - src/merlin_experiments/phase0/development_composition_preflight.py
   - src/merlin/targetgen/oot_starterkit/plan.py
   - src/merlin/targetgen/bundle_pack.py
 ---

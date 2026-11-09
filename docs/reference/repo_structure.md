@@ -3,17 +3,18 @@ title: Repository structure
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-07
+last_verified: 2026-11-08
 related: [architecture, getting_started, storage]
 code_refs: [pyproject.toml, src/merlin, packages, experiments/catalog.yaml]
 ---
 
 # Repository structure
 
-Start at `experiments/catalog.yaml` to select a phase workflow. Shared compiler implementation
-lives in `src/merlin`; optional research implementation lives in independently installed
-distributions under `packages/`. The old `merlin/python/merlin` directory is a compatibility
-symlink to core, not the place to add new research modules.
+Start at `experiments/catalog.yaml` to select a phase workflow. All Merlin Python implementation
+ships in one `merlin` distribution from `src/`. Shared compiler, trusted evaluation and research
+workflows retain distinct logical owners; dependency extras enable optional engines rather than
+installing additional copies of the code. The old `merlin/python/merlin` directory is a compatibility
+symlink, not the place to add new modules.
 
 Read-only resource identity is independent of writable output roots.
 `merlin.common.paths.data_path` selects this implementation's actual source
@@ -26,12 +27,15 @@ as well as the Python package; Python import isolation alone does not identify
 the compiled runtime.
 
 ```
-src/merlin/    compiler IR, schedules, capture contracts, target/toolchain resolution, runtime, verification
+src/
+  merlin/             compiler, runtime, verification and logical research/evaluation owners
+  merlin_experiments/ phase orchestration, agent tooling, trusted grading and certification
+  merlin_dse/         typed design-space exploration interfaces
 packages/
-  merlin-experiments/ phase orchestration, agent tooling, trusted grading and certification
-  merlin-dse/         design-space exploration, design pressure and guidance
-  merlin-mining/      mining/search campaigns and tuning studies
-  merlin-analysis/    baselines, comparisons, reports and visualization
+  merlin-experiments/tests/ retained workflow and evaluation regression sources
+  merlin-dse/tests/         retained design-space exploration regressions
+  merlin-mining/tests/      retained mining/search regressions
+  merlin-timing/           independent measurement package and dependency environment
 experiments/
   catalog.yaml       experiment discovery: merlin experiment list
   definitions/       versioned phase definitions and explicitly non-runnable templates
@@ -68,9 +72,9 @@ target-specific. Shared scheduling representations and checks remain in core.
 
 | Paper concept | Implementation home | Execution and migration status |
 | --- | --- | --- |
-| Phase 0 — Hardware-Guided Test Generation | `packages/merlin-experiments/src/merlin_experiments/phase0/` | Installed phase-0 engine; no native controller required |
-| Phase 1 — Functional Compiler Generation | `packages/merlin-experiments/src/merlin_experiments/phase1/` | Installed `python -m merlin_experiments.phase1`; native baseline launcher delegates to the same controller; catalog/treatment migration remains in progress |
-| Phase 2 — Performance Optimization | `packages/merlin-experiments/src/merlin_experiments/phase2/` | Broker execution and evidence have canonical owners; large controllers remain in `merlin/experiments/gemmini_perf_bench/scripts/` pending extraction and target-policy separation |
+| Phase 0 — Hardware-Guided Test Generation | `src/merlin_experiments/phase0/` | Installed phase-0 engine; no native controller required |
+| Phase 1 — Functional Compiler Generation | `src/merlin_experiments/phase1/` | Installed `python -m merlin_experiments.phase1`; native baseline launcher delegates to the same controller; catalog/treatment migration remains in progress |
+| Phase 2 — Performance Optimization | `src/merlin_experiments/phase2/` | Reusable authoring, campaign and frozen-suite controllers live in `src/merlin_experiments/phase2/`; native compatibility launchers and target-specific study drivers retain their explicit checkout inputs |
 
 Within Phase 1, `tools/` holds public standalone clients, `providers/` runs agent
 transports, `brokers/` serves host-side tool requests, and `feedback/` owns trusted
@@ -92,7 +96,7 @@ review/sealing, and `admission.py` owns evaluated coverage and cohort selection.
 It is distinct from Phase 0's generation engine and from core-only contracts.
 
 Phase 1 post-hoc reporting lives in
-`packages/merlin-analysis/src/merlin/agentreport/phase1/`: `runs.py` reads run
+`src/merlin/agentreport/phase1/`: `runs.py` reads run
 evidence, `by_treatment.py` compares treatments, and `by_model.py` compares agent
 models. Readers take explicit target, run and report roots; they do not select a
 native experiment on import. Historical native reporting commands are CLI adapters.
@@ -104,15 +108,29 @@ and paper evaluation are consumers of phase results, not phase-engine code.
 
 | Task | Start here |
 | --- | --- |
-| Define or inspect phases 0, 1, 2 | `experiments/README.md`, then `packages/merlin-experiments/src/merlin_experiments/` |
-| Change shared compiler or scheduling behavior | `src/merlin/compile/`, `src/merlin/xdsl_dialects/`, `src/merlin/sched/` |
+| Define or inspect phases 0, 1, 2 | `experiments/README.md`, then `src/merlin_experiments/` |
+| Compile or run explicit inputs | `merlin.api.compile` / `merlin.api.run`, with an explicit backend / runner; [architecture](architecture.md) |
+| Change shared compiler or scheduling behavior | `src/merlin/compiler/{passes,transforms,schedule,lower}/`, `src/merlin/xdsl_dialects/`, `src/merlin/sched/`; historical `compile` imports retain compatibility aliases |
+| Find base scalar code and installed OOT lowering | `compiler/backend/scalar.py`, `compiler/lower/scalar/`, `compiler/lower/llvm/`; explicit OOT providers are selected through `compiler/backend/service.py` and `merlin.backends` |
+| Change saved-model input binding or readiness | `runtime/modelinputs.py`, `compiler/frontend/materialized.py`, `compiler/frontend/preflight.py` |
+| Change source routing, coverage or exported model interfaces | `compiler/planning/{model,complete,coverage}.py`, `compiler/partition/model.py` |
+| Change original host/source model builds | `model.py`, `compiler/build/{saved,modeloptions,owned,siblings,spatial}.py`; execution lives in `runtime/model.py` |
+| Change mesh execution or independent checks | `compiler/selection/mesh.py`, `runtime/mesh*.py`; independent algorithms live in `verification/{mesh,mesh_reference,model,completed_model,scalar_host}.py` |
 | Change target discovery or OOT contracts | `src/merlin/targetgen/`, `build_tools/upstreams/target_support.json` |
-| Change agent execution, tool brokers or final grading | `packages/merlin-experiments/src/merlin_experiments/phase1/` |
-| Change shared evaluator or sandbox implementations | `packages/merlin-experiments/src/merlin/targetgen/` |
-| Change research analysis or search | The owning `packages/merlin-{analysis,dse,mining}/src/` tree |
+| Change agent execution, tool brokers or final grading | `src/merlin_experiments/phase1/` |
+| Change frozen performance-suite orchestration | `src/merlin_experiments/phase2/{suite,suite_runtime,source_layout}.py`; retained native scripts are compatibility identities |
+| Change independent compiler verification | `src/merlin/verification/`; SMT/Lean algorithms and `lean/Merlin` mathematical sources live beside their owners |
+| Change shared evaluator or sandbox implementations | `src/merlin/targetgen/` |
+| Change research analysis or search | The logical owner under `src/merlin/{agentreport,compare,dse,dse_guidance,mining,perf,plotting}/` or `src/merlin_dse/` |
 | Locate outputs or determine whether cleanup is safe | `merlin storage report`, `merlin/contract/storage.yaml`, [storage guide](../guides/storage.md) |
 | Find a command's module and distribution | [Generated CLI reference](cli.md) |
 | Find tests | `merlin/tests/<subsystem>/`, plus focused `packages/*/tests/` |
+
+These are actual source owners, while the broader destination architecture remains
+a plan. Compatibility aliases under `src/merlin/compile/` do not duplicate their
+implementations. Source receipts bind the selected implementation and retained
+compatibility files; independent references and qualification keep their original
+authority. File relocation does not qualify a backend, simulator or platform.
 
 Use `merlin experiment runs --target TARGET --experiment EXPERIMENT` to discover
 stored phase orchestrations under the configured run root. Omit either filter to
@@ -127,13 +145,15 @@ optimization segments point to their recorded latest output, not the original
 planned directory. These are navigation pointers, not new certification or checks
 that historical output bytes are still present and valid.
 
-The optional distributions contribute uniquely owned modules to the `merlin.*` namespace.
-An import beginning with `merlin` does not imply core ownership. Core owns shared namespace
-initializers; extensions must not overwrite them. See the
-architecture and this ownership map for preserved identities and remaining
-checkout-dependent engines. Target support lives OOT where qualified; retained in-tree resources
-are not evidence that a staged OOT snapshot is an executable, certified compiler.
-Target-specific code in core or optional distributions is remaining migration debt,
+One distribution supplies the preserved `merlin.*`, `merlin_experiments.*` and `merlin_dse.*`
+imports. Logical component ownership is recorded in `build_tools/logical_components.json`;
+an import beginning with `merlin` does not imply shared compiler ownership or candidate access.
+Shared code must not acquire operational dependencies on research controllers or graders.
+Private references, grading, runtime masks and independent timing retain their existing authorities.
+See the architecture and this ownership map for remaining checkout-dependent engines.
+Target support lives OOT where qualified; retained in-tree resources are not evidence that a
+staged OOT snapshot is an executable, certified compiler.
+Target-specific code in shared or research components is remaining migration debt,
 not an exception to target independence. Architecture-class abstractions must expose
 their real capability assumptions; accelerator-specific tuning and errata belong OOT.
 

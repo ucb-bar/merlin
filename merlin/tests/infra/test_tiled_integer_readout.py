@@ -8,9 +8,13 @@ import pytest
 from test_compact_dense import encode, project
 from test_selected_dense_contracts import inputs, schedule
 
-from merlin.compile.scheduling.block_schedule import Compute, Load, Preload, Store
-from merlin.compile.scheduling.compact_verification import verify_compact_dense
-from merlin.compile.scheduling.dense_contracts import DenseTiledIntegerReadout, TiledIntegerStore
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.compact_verification import verify_compact_dense
+from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout
+from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
 from merlin.sched.ir import Const, evaluate, instances
 
 

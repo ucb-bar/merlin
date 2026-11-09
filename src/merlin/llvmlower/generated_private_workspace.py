@@ -12,7 +12,7 @@ from math import prod
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, i8, i64
 
-from merlin.compile.scheduling.dense_loaded_sum_composition import DenseLoadedSumComposition
+from merlin.compiler.schedule.dense_loaded_sum_composition import DenseLoadedSumComposition
 from merlin.xdsl_dialects._common import text
 from .fresh_tensor_writer import PrivateWorkspaceContract, validate_private_workspaces
 from .host_builder import PTR

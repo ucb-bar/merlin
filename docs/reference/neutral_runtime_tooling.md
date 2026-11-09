@@ -5,7 +5,7 @@ status: current
 owner: runtime
 last_verified: 2026-10-10
 related: [target_resolution, simulator_selection, gsim_worker_setup]
-code_refs: [src/merlin/runtime/backends/base.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/runtime/backends/chipyard_rocc_bound.py, src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/harness_render.py, src/merlin/targetgen/rocc/semantics.py, src/merlin/targetgen/rtl_checks_generic.py, src/merlin/targetgen/build_cache.py, packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_inventory.py]
+code_refs: [src/merlin/runtime/backends/base.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/runtime/backends/chipyard_rocc_bound.py, src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/harness_render.py, src/merlin/targetgen/rocc/semantics.py, src/merlin/targetgen/rtl_checks_generic.py, src/merlin/targetgen/build_cache.py, src/merlin_experiments/capture_execution/sealed_inventory.py]
 ---
 
 # Neutral contract-driven runtime tooling

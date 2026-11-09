@@ -6,12 +6,12 @@ owner: merlin-experiments
 last_verified: 2026-10-09
 related: [component_compiler_convergence, component_phase2_workflow]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_final_policy.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/protected_final_evaluation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/protected_final_observation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/physical_final_admission.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/protected_verifier_qualification.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/numerical_readback.py
+  - src/merlin_experiments/phase2/component_final_policy.py
+  - src/merlin_experiments/phase2/protected_final_evaluation.py
+  - src/merlin_experiments/phase2/protected_final_observation.py
+  - src/merlin_experiments/phase2/physical_final_admission.py
+  - src/merlin_experiments/phase2/protected_verifier_qualification.py
+  - src/merlin_experiments/phase2/numerical_readback.py
   - packages/merlin-experiments/tests/test_component_final_policy.py
   - packages/merlin-experiments/tests/test_protected_final_evaluation.py
   - packages/merlin-experiments/tests/test_protected_verifier_qualification.py

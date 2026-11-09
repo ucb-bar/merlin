@@ -381,7 +381,7 @@ def source_bound_group_buffers(entry, interface, *, binding=None, target=None):
                 or actual["target"] != selected_target):
             raise ValueError("connected interface differs from its original selected target")
         if binding is None:
-            from merlin.compile.mesh import _mesh_tile_binding
+            from merlin.compiler.selection.mesh import _mesh_tile_binding
             from .device_routing_placement import _accum_from_facts
 
             operand = entry.get("operand_dtype")
@@ -544,7 +544,7 @@ def _ask_package(
     except Exception as error:  # noqa: BLE001
         return _refuse(PACKAGE_FAILED, f"the package did not run: {type(error).__name__}: {error}")
     # The whole-model arm reads one artifact per group beside the work dir, in the model's order.
-    from merlin.verify.lean_emission_context import write_emitted_artifact
+    from merlin.verification.lean_emission_context import write_emitted_artifact
 
     write_emitted_artifact(Path(work) / f"{tag}.artifact.txt", _artifact)
     if record is not None:

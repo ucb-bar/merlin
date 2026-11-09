@@ -2,6 +2,6 @@
 
 import sys
 
-from merlin.compile.analysis import intrinsics_header as _implementation
+from merlin.analysis import intrinsics_header as _implementation
 
 sys.modules[__name__] = _implementation

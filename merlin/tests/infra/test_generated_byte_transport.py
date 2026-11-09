@@ -7,7 +7,7 @@ from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, i8
 from xdsl.parser import Parser
 
-from merlin.compile.scheduling.window_transfer import Window2D
+from merlin.compiler.schedule.window_transfer import Window2D
 from merlin.llvmlower.convolution_packing import emit_nhwc_window_panel
 from merlin.llvmlower.generated_byte_transport import recognize_nhwc_halo_transport
 from merlin.llvmlower.host_builder import PTR, FnBuilder

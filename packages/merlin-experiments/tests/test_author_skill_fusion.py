@@ -135,7 +135,7 @@ def test_every_named_library_symbol_and_parameter_resolves():
 
 
 def test_discovery_helper_pages_until_the_cursor_is_exhausted(skill, monkeypatch):
-    from merlin.compile import fusion_workflow as F
+    from merlin.compiler.planning import explore as F
 
     module = epilogue_program()
     whole = skill["fusion_opportunities"](module, {}, "a" * 64)
@@ -204,6 +204,6 @@ def test_scale_folding_and_bias_preload_refuse_rather_than_round():
 
 
 def test_schedule_fusion_is_a_declared_pass_before_storage():
-    from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+    from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 
     assert ScheduleBudgets().max_fusions > 0 and ScheduleBudgets(max_fusions=0).max_fusions == 0

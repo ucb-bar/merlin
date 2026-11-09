@@ -95,7 +95,7 @@ def test_complete_source_operands_outputs_numeric_and_abi_join_without_execution
 def test_direct_whole_operation_output_uses_original_typed_abi_without_product_capture_credit():
     from merlin_experiments.phase1.feedback.reference_capture_views import candidate_view
 
-    from merlin.compile.logical_abi import kernel_abi_from_commands
+    from merlin.compiler.ir.logical_abi import kernel_abi_from_commands
 
     cb = dict(abi_version="0.1", target="fixture", tensors=dict(
         image=dict(shape=[2, 7, 7, 2], dtype="i8", role="input"),

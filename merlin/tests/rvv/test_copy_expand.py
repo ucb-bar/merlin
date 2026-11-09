@@ -132,22 +132,22 @@ def test_no_feature_runs_the_pipeline_in_one_stage():
     assert seen[0] == "builtin.module(" + _upstream_pipeline() + ")"
 
 
-def test_mid_stage_window_stops_before_linalg_is_lowered():
+@pytest.mark.parametrize("pass_pipeline", [
+    _upstream_pipeline(),
+    "canonicalize,func.func(buffer-loop-hoisting),func.func(convert-linalg-to-loops),canonicalize,cse",
+])
+def test_mid_stage_window_stops_before_linalg_is_lowered(pass_pipeline):
     """A mid rewrite that EMITS linalg must run before convert-linalg-to-loops, in EVERY pipeline.
 
-    The scalar pipeline is the adversarial one: it puts convert-linalg-to-loops immediately after
-    buffer-loop-hoisting, so the old fixed k+3 window straddled it."""
-    passes = _upstream_pipeline().split(",")
-    k = next(i for i, p in enumerate(passes) if "buffer-loop-hoisting" in p)
-    j = next(i for i, p in enumerate(passes) if "convert-linalg-to-loops" in p)
-    assert j < k + 3, "fixture no longer exercises the clamp; pick another adversarial pipeline"
+    Check the current scalar pipeline and an adversarial pipeline with conversion
+    immediately after hoisting, where an unconditional k+3 window straddles it."""
 
     ns, seen = _stage_probe()
     calls: list[str] = []
     ns["_run_stages"](
         None,
         _EmptyModule(),
-        _upstream_pipeline(),
+        pass_pipeline,
         False,
         [("expand_memref_copy", lambda _c, _m: calls.append("ran") or 0)],
     )

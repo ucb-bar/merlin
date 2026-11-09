@@ -177,8 +177,9 @@ def execute(library, model, *, fault=0):
 
 def build(tmp_path, *, enabled=True, admitted=True, fault=None, native_fault=0, bits=64, big=False, alias=True):
     from merlin.common.invocation_record import verify
-    from merlin.compile.scheduling.copy_pipeline import CopyPipelinePolicy, copy_pipeline_motion
-    from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+    from merlin.compiler.schedule.copy_pipeline import CopyPipelinePolicy
+    from merlin.compiler.schedule.copy_pipeline import copy_pipeline_motion
+    from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.target_schedule import TargetScheduleSelection
 

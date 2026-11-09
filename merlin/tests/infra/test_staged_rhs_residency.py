@@ -5,19 +5,17 @@ from dataclasses import replace
 import pytest
 from test_staged_dense import contract, program
 
-from merlin.compile.scheduling.staged_dense import (
-    AccumulatorReadout,
-    CompletionFence,
-    ComputeConsume,
-    DescriptorIssue,
-    OperandLoad,
-    StagedDenseProblem,
-    StagedDenseRewrite,
-    eliminate_redundant_rhs_loads,
-    order_output_tiles_n_before_m,
-    rewrite_staged_dense,
-)
-from merlin.compile.scheduling.staged_rhs_residency import place_rhs_stripe
+from merlin.compiler.schedule.staged_dense import AccumulatorReadout
+from merlin.compiler.schedule.staged_dense import CompletionFence
+from merlin.compiler.schedule.staged_dense import ComputeConsume
+from merlin.compiler.schedule.staged_dense import DescriptorIssue
+from merlin.compiler.schedule.staged_dense import OperandLoad
+from merlin.compiler.schedule.staged_dense import StagedDenseProblem
+from merlin.compiler.schedule.staged_dense import StagedDenseRewrite
+from merlin.compiler.schedule.staged_dense import eliminate_redundant_rhs_loads
+from merlin.compiler.schedule.staged_dense import order_output_tiles_n_before_m
+from merlin.compiler.schedule.staged_dense import rewrite_staged_dense
+from merlin.compiler.schedule.staged_rhs_residency import place_rhs_stripe
 
 
 def apply(operations, problem, selected, functions):

@@ -5,7 +5,7 @@ status: current
 owner: experiments
 last_verified: 2026-10-23
 related: [gsim_worker_setup, neutral_runtime_tooling, phase0_specification, target_resolution]
-code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/targetgen/generalization_prompt.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_demand.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_preflight.py]
+code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/targetgen/generalization_prompt.py, src/merlin_experiments/cli.py, src/merlin_experiments/corpus/preparation.py, src/merlin_experiments/phase1/timing.py, src/merlin_experiments/phase1/feedback/private_source_demand.py, src/merlin_experiments/phase1/feedback/private_source_preflight.py]
 ---
 
 # Set up Phase 0 and Phase 1
@@ -17,8 +17,8 @@ development together; a separate frozen Phase 2 is not a prerequisite. Use
 launch and [terminal monitoring](experiment_dashboard.md) for its live view.
 Legacy target templates are not automatically the current launch configuration.
 
-Select and record an exact Merlin revision before preparing inputs. Install core
-and `merlin-experiments` from that revision, then qualify the selected tools and
+Select and record an exact Merlin revision before preparing inputs. Install
+`merlin[experiments]` from that revision, then qualify the selected tools and
 runtime on the execution worker. See [gSIM worker setup](gsim_worker_setup.md)
 for the simulator build and deployment procedure.
 

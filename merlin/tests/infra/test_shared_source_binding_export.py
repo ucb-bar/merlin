@@ -12,15 +12,14 @@ from types import SimpleNamespace
 import pytest
 
 from merlin.common.paths import repo_root
-from merlin.compile.scheduling.direct_source import bind_direct_source_contraction
-from merlin.compile.scheduling.export import (
-    PUBLIC_MODULES,
-    SOURCE_BINDING_MODULES,
-    export_shared_scheduling,
-    public_modules,
-)
-from merlin.compile.scheduling.library_sources import LIBRARY_MODULES, library_modules
-from merlin.compile.scheduling.source_tokens import llvm_tokens
+from merlin.compiler.schedule.direct_source import bind_direct_source_contraction
+from merlin.compiler.schedule.export import PUBLIC_MODULES
+from merlin.compiler.schedule.export import SOURCE_BINDING_MODULES
+from merlin.compiler.schedule.export import export_shared_scheduling
+from merlin.compiler.schedule.export import public_modules
+from merlin.compiler.schedule.library_sources import LIBRARY_MODULES
+from merlin.compiler.schedule.library_sources import library_modules
+from merlin.compiler.schedule.source_tokens import llvm_tokens
 from merlin.targetgen.compiler_library import CompilerLibraryError, CompilerLibrarySelection, freeze_compiler_library
 from merlin.targetgen.package_runtime import CertFailure, integrity_scan
 from merlin.targetgen.tool_profile_shared import _release_inventory, reviewed_shared_manifest

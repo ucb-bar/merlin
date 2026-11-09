@@ -13,17 +13,18 @@ from dataclasses import dataclass, replace
 from math import ceil, isfinite
 from typing import Any
 
+from merlin.compiler.quantization.contract import (
+    QuantizedEpilogueCandidate,
+    QuantizedEpilogueCapability,
+    QuantizedEpilogueContract,
+    canonical_sha256,
+)
 from merlin.perf.quantization_contract import (
     AccuracyPolicy,
     EpilogueAdmission,
     ExactEpilogueProof,
-    QuantizedEpilogueCandidate,
-    QuantizedEpilogueCapability,
-    QuantizedEpilogueContract,
     admit_epilogue,
-    canonical_sha256,
 )
-
 
 PLAN_SCHEMA = "target_neutral_quantized_region_plan_v1"
 RESIDUAL_SCHEMA = "target_neutral_global_quantization_domains_v2"

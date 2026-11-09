@@ -11,11 +11,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+from merlin.common.paths import merlin_dir, module_source_path
 from merlin_experiments import source_snapshot as SNAP
 from merlin_experiments.phase2 import corpus as P2_CORPUS
 from merlin_experiments.phase2 import development_feedback as DF
-
-from merlin.common.paths import merlin_dir, module_source_path
+from merlin_experiments.phase2 import suite_runtime as SUITE_RUNTIME
 
 SCRIPTS = merlin_dir() / "experiments/gemmini_perf_bench/scripts"
 sys.path.insert(0, str(SCRIPTS))
@@ -27,6 +28,9 @@ def _copy_managed_wrapper(root):
     wrapper = root / "source" / SUITE.SCRIPTS / "chia_agentic_perf_experiment.py"
     wrapper.parent.mkdir(parents=True)
     wrapper.write_text((SCRIPTS / wrapper.name).read_text())
+    envelope = root / "source/src/merlin_experiments/phase2/chia_envelope.py"
+    envelope.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(module_source_path("merlin_experiments.phase2.chia_envelope"), envelope)
 
 
 def test_suite_run_requires_endpoint_before_any_work(tmp_path, monkeypatch):
@@ -420,9 +424,14 @@ def test_bootstrap_imports_explicit_snapshot_not_enclosing_git(script, tmp_path)
     shutil.copyfile(module_source_path("merlin.common.paths"), package / "common/paths.py")
     shutil.copyfile(module_source_path("merlin.targetgen.corpora"), package / "targetgen/corpora.py")
     shutil.copyfile(
+        module_source_path("merlin.targetgen.capability_manifest"), package / "targetgen/capability_manifest.py"
+    )
+    shutil.copyfile(
         module_source_path("merlin.targetgen.target_experiment"), package / "targetgen/target_experiment.py"
     )
     for module, relative in (
+        ("merlin.development", "merlin/development/__init__.py"),
+        ("merlin.development.definition", "merlin/development/definition.py"),
         ("merlin_experiments", "merlin_experiments/__init__.py"),
         ("merlin_experiments.spec", "merlin_experiments/spec.py"),
         ("merlin_experiments.phase1", "merlin_experiments/phase1/__init__.py"),
@@ -431,6 +440,12 @@ def test_bootstrap_imports_explicit_snapshot_not_enclosing_git(script, tmp_path)
         destination = package.parent / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(module_source_path(module), destination)
+    (package / "targetgen/contract").mkdir()
+    (package / "targetgen/contract/__init__.py").write_text("")
+    shutil.copyfile(
+        module_source_path("merlin.targetgen.contract.readback_policy"),
+        package / "targetgen/contract/readback_policy.py",
+    )
     (package / "perf/workload_gen.py").write_text(
         "from types import SimpleNamespace\ndef tile_geometry(_): return SimpleNamespace(rows=2, cols=2)\n"
     )
@@ -447,8 +462,9 @@ def test_bootstrap_imports_explicit_snapshot_not_enclosing_git(script, tmp_path)
         env=env,
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
     )
+    assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == [str(root), str(package / "benchharness.py")]
 
 
@@ -562,7 +578,7 @@ def test_runtime_preflight_executes_every_member_and_refuses_bad_evidence(tmp_pa
     corpus = SimpleNamespace(capsules=members, capsules_sha256="d" * 64)
     functional = SimpleNamespace(digest="a" * 64, run_dir=tmp_path / "functional")
     baseline = tmp_path / "baseline"
-    monkeypatch.setattr(SUITE, "load_target_experiment", lambda _: SimpleNamespace(target="test"))
+    monkeypatch.setattr(SUITE_RUNTIME, "load_target_experiment", lambda _: SimpleNamespace(target="test"))
     monkeypatch.setattr(SUITE.FI, "inspect_stage_functional_run", lambda *_a, **_k: functional)
     monkeypatch.setattr(P2_CORPUS, "discover_performance_corpus", lambda *_a, **_k: corpus)
     monkeypatch.setattr(P2_CORPUS, "freeze_performance_corpus", lambda *_a: corpus)
@@ -571,7 +587,7 @@ def test_runtime_preflight_executes_every_member_and_refuses_bad_evidence(tmp_pa
     )
     monkeypatch.setattr(SUITE.PC, "materialize_perf_workspace", lambda *_a: baseline)
     monkeypatch.setattr(
-        SUITE,
+        SUITE_RUNTIME,
         "hash_tree",
         lambda _: {"sha256": "e" * 64 if failure == "baseline_mutation" else functional.digest},
     )
@@ -632,12 +648,12 @@ def test_runtime_preflight_does_not_run_an_unmeasured_functional_ancestor_for_ca
     corpus = SimpleNamespace(capsules=members, capsules_sha256="d" * 64)
     functional = SimpleNamespace(digest="a" * 64, run_dir=tmp_path / "functional")
     baseline = tmp_path / "baseline"
-    monkeypatch.setattr(SUITE, "load_target_experiment", lambda _: SimpleNamespace(target="test"))
+    monkeypatch.setattr(SUITE_RUNTIME, "load_target_experiment", lambda _: SimpleNamespace(target="test"))
     monkeypatch.setattr(SUITE.FI, "inspect_stage_functional_run", lambda *_a, **_k: functional)
     monkeypatch.setattr(P2_CORPUS, "discover_performance_corpus", lambda *_a, **_k: corpus)
     monkeypatch.setattr(P2_CORPUS, "freeze_performance_corpus", lambda *_a: corpus)
     monkeypatch.setattr(SUITE.PC, "materialize_perf_workspace", lambda *_a: baseline)
-    monkeypatch.setattr(SUITE, "hash_tree", lambda _: {"sha256": functional.digest})
+    monkeypatch.setattr(SUITE_RUNTIME, "hash_tree", lambda _: {"sha256": functional.digest})
     identities = [
         {"family": "f", "capsule": member.capsule, "program_arm": "candidate", "simulator": "gsim", "tier": "L3"}
         for member in members

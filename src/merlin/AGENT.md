@@ -9,14 +9,17 @@ The canonical, installed `merlin` Python package. See the repository ownership m
 
 - Shared compiler, scheduling dialects, capture contracts, target/toolchain resolution,
   generic runtime and verification primitives.
+- Research orchestration, analysis and grading under their existing import identities;
+  their dependencies and trusted access roles remain separate from compiler mechanisms.
 
 ## What does not belong here
 
-- Research orchestration, study-only analysis, agent grading or target-specific implementations.
+- Target-specific implementations, independently owned simulators and evaluators.
 - Generated artifacts (use `merlin.common.paths` and the configured `out/` root).
 
 ## Invariants
 
-- Optional distributions may extend declared namespace paths but must not overwrite core files.
+- One distribution owns every active Merlin implementation; no duplicate source trees.
+- Wheel membership never grants candidate access to graders, references or hidden inputs.
 - Keep shared primitives independent of optional workflows and heavy frontend imports.
 - Every subdirectory must also contain an AGENT.md.

@@ -123,7 +123,7 @@ class ProgramCatalog:
 
 def prepare(stage: Path, directory: Path, *, target: str) -> ProgramCatalog:
     """Prepare ``stage`` (a capture directory with ``model.mlir``) with and without device groups."""
-    from merlin.compile.complete_group_routing import routing
+    from merlin.compiler.planning.complete import routing
     from merlin.runtime.backends.zephyr_model import _prepare_model_mlir
 
     stage, directory = Path(stage), Path(directory)
@@ -394,7 +394,7 @@ def _dtype(value) -> str:
 def census(catalog: ProgramCatalog, *, refused: Mapping[str, str] | None = None) -> dict[str, Any]:
     """Every contraction of the original capture, classified ``device`` or ``host:<reason>``."""
     from merlin.frontends.linalg_mlir import parse_mlir_file
-    from merlin.llvmlower.quant_scope import captured_quantized_contraction
+    from merlin.compiler.quantization.scope import captured_quantized_contraction
 
     module = parse_mlir_file(catalog.stage / "model.mlir")
     routed: dict[str, dict[str, Any]] = {}

@@ -8,16 +8,25 @@ from test_compact_dense import mutate
 from test_compact_dense_bias import ADAPTER
 from test_dense_retained_reduction import inputs
 
-from merlin.compile.scheduling.block_schedule import Compute, InitializeAccumulator, Load, Preload, Store
-from merlin.compile.scheduling.compact_dense import DenseBiasSource, emit_compact_dense
-from merlin.compile.scheduling.dense_contracts import DenseTiledIntegerReadout, TiledIntegerStore
-from merlin.compile.scheduling.dense_panel_pipeline import (
-    DRAIN, DenseReadoutConfigurationSnapshot, DenseReadyReadoutAdmission,
-    dense_retained_compute_order, dense_retained_operand_hoists, schedule_dense_panel_pipeline,
-)
-from merlin.compile.scheduling.dense_ready_readout import dense_ready_input_choices, schedule_dense_ready_readout
-from merlin.compile.scheduling.loop_schedule import propose_loop_transforms
-from merlin.compile.scheduling.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import InitializeAccumulator
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.compact_dense import DenseBiasSource
+from merlin.compiler.schedule.compact_dense import emit_compact_dense
+from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout
+from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
+from merlin.compiler.schedule.dense_panel_pipeline import DenseReadoutConfigurationSnapshot
+from merlin.compiler.schedule.dense_panel_pipeline import DenseReadyReadoutAdmission
+from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_compute_order
+from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_operand_hoists
+from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_panel_pipeline
+from merlin.compiler.schedule.dense_ready_readout import dense_ready_input_choices
+from merlin.compiler.schedule.dense_ready_readout import schedule_dense_ready_readout
+from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
 from merlin.sched.ir import Call, evaluate, instances
 
 

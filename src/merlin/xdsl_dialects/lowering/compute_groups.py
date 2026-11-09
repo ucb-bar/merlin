@@ -38,8 +38,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from merlin.common import mlir_query as mq
-from merlin.compile.analysis import contraction_shapes as KS
-from merlin.llvmlower.quant_scope import value_preserving_input
+from merlin.compiler.ir import contraction_shapes as KS
+from merlin.compiler.quantization.scope import value_preserving_input
 from merlin.xdsl_dialects.lowering import contraction_coverage as CC
 
 from .generic_body import _CMPF_ORDERED as _CMPF_ORDERED

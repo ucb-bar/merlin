@@ -5,17 +5,11 @@ from dataclasses import replace
 import pytest
 from test_shared_input_schedule import source
 
-from merlin.compile.scheduling.projection_transfer_check import (
-    PhysicalProjectionTransfer as P,
-)
-from merlin.compile.scheduling.projection_transfer_check import (
-    VirtualProjectionTransfer as V,
-)
-from merlin.compile.scheduling.projection_transfer_check import (
-    verify_projection_transfers,
-)
-from merlin.compile.scheduling.projection_views import plan_shared_projection_views
-from merlin.compile.scheduling.shared_input_groups import find_shared_input_groups
+from merlin.compiler.schedule.projection_transfer_check import PhysicalProjectionTransfer as P
+from merlin.compiler.schedule.projection_transfer_check import VirtualProjectionTransfer as V
+from merlin.compiler.schedule.projection_transfer_check import verify_projection_transfers
+from merlin.compiler.schedule.projection_views import plan_shared_projection_views
+from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups
 from merlin.perf.finite_pointer_trace import ArgumentAddress as A
 
 
@@ -134,7 +128,7 @@ def test_changed_original_lhs_and_aliased_function_arguments_refuse():
 
 
 def test_expected_sequence_comes_from_real_counted_kernel_not_a_declared_shape():
-    from merlin.compile.scheduling.projection_transfer_check import source_projection_transfers
+    from merlin.compiler.schedule.projection_transfer_check import source_projection_transfers
     from merlin.sched.ir import Call, Const, Kernel, Loop, TensorArg, Var
 
     views, expected, observed, kwargs = fixture()

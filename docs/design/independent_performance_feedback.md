@@ -6,10 +6,10 @@ owner: merlin-experiments
 last_verified: 2026-10-09
 related: [component_compiler_convergence, component_phase2_workflow, beam_cca_architecture]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_generation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/sweeps.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_workflow.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_cca.py
+  - src/merlin_experiments/phase0/component_generation.py
+  - src/merlin_experiments/phase0/sweeps.py
+  - src/merlin_experiments/phase2/component_workflow.py
+  - src/merlin_experiments/phase2/component_cca.py
   - src/merlin/perf/phase2_analytical_provider.py
   - src/merlin/perf/phase2_calibration_bundle.py
   - src/merlin/perf/fast_estimate_validation.py

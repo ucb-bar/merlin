@@ -134,9 +134,9 @@ def test_mesh_verify_picks_the_oracle_from_the_endpoint_not_a_fixed_path():
     """The OOT-cert path is one endpoint's oracle, not every target's."""
     import inspect
 
-    from merlin import compile_cli
+    from merlin.verification.mesh import _mesh_verify
 
-    src = inspect.getsource(compile_cli._mesh_verify)
+    src = inspect.getsource(_mesh_verify)
     assert "_endpoint_of" in src, "the tile oracle must be chosen from the DERIVED endpoint"
     assert "_certify_tile_via_executor" in src, (
         "a non-OOT endpoint needs the shared endpoint-aware executor, not oot_runner.certify"
@@ -254,9 +254,9 @@ def test_the_strongest_gate_is_tried_first():
     carried the verdict — otherwise a tolerance pass is indistinguishable from an exact one."""
     import inspect
 
-    from merlin import compile_cli
+    from merlin.verification.mesh import _certify_tile_via_executor
 
-    src = inspect.getsource(compile_cli._certify_tile_via_executor)
+    src = inspect.getsource(_certify_tile_via_executor)
     assert src.index("_reference_on_datapath") < src.index("_accum_rel_tolerance"), (
         "the exact gate must be attempted before falling back to a tolerance"
     )

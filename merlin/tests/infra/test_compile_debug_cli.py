@@ -15,7 +15,7 @@ import pytest
 
 from merlin import compile_cli
 from merlin.common import compile_trace as T
-from merlin.compile import debug
+from merlin.compiler import inspect as debug
 from merlin.llvmlower import toolchain
 
 #: The fixture's real lowering runs its native MLIR passes through the compiler's Python; a test whose
@@ -61,8 +61,14 @@ def _args(*extra: str) -> list[str]:
 
 
 def test_list_stages_is_read_off_the_pipelines(capsys):
+    import importlib
+    import inspect
+
     from merlin.llvmlower import pipeline as P
 
+    assert importlib.import_module("merlin.compile.debug") is debug
+    assert Path(inspect.getsourcefile(debug.stage_rows)).resolve() == Path(debug.__file__).resolve()
+    assert Path(debug.__file__).parts[-2:] == ("compiler", "inspect.py")
     assert compile_cli.main(["--list-stages", "--json"]) == 0
     rows = json.loads(capsys.readouterr().out)
     stages = [row["stage"] for row in rows]

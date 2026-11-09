@@ -86,6 +86,8 @@ COMMON_SUBSTRATE_V14 = "merlin.common_compiler_substrate.v14"
 COMMON_SUBSTRATE_V15 = "merlin.common_compiler_substrate.v15"
 COMMON_SUBSTRATE_V16 = "merlin.common_compiler_substrate.v16"
 COMMON_SUBSTRATE_V17 = "merlin.common_compiler_substrate.v17"
+COMMON_SUBSTRATE_V18 = "merlin.common_compiler_substrate.v18"
+COMMON_SUBSTRATE_V19 = "merlin.common_compiler_substrate.v19"
 _SHARED_SUBSTRATES = {
     COMMON_SUBSTRATE_V6: 6,
     COMMON_SUBSTRATE_V7: 7,
@@ -99,6 +101,8 @@ _SHARED_SUBSTRATES = {
     COMMON_SUBSTRATE_V15: 22,
     COMMON_SUBSTRATE_V16: 23,
     COMMON_SUBSTRATE_V17: 24,
+    COMMON_SUBSTRATE_V18: 25,
+    COMMON_SUBSTRATE_V19: 26,
 }
 _ISA_SUBSTRATES = frozenset(
     {
@@ -117,6 +121,8 @@ _ISA_SUBSTRATES = frozenset(
         COMMON_SUBSTRATE_V15,
         COMMON_SUBSTRATE_V16,
         COMMON_SUBSTRATE_V17,
+        COMMON_SUBSTRATE_V18,
+        COMMON_SUBSTRATE_V19,
     }
 )
 _PY = "merlin/python/merlin/"
@@ -229,7 +235,8 @@ def substrate_inventory(version: str) -> tuple[tuple[str, ...], tuple[str, ...],
         automatic = (
             *AUTOMATIC_CHECKER_MODULES_V3,
             "merlin.targetgen.tool_profile_shared",
-            "merlin.compile.scheduling.export",
+            ("merlin.compiler.schedule.export" if version == COMMON_SUBSTRATE_V19
+             else "merlin.compile.scheduling.export"),
         )
         return namespaces, public, automatic
     raise ValueError("unknown common compiler substrate")
@@ -260,6 +267,8 @@ def _policy_version(version: str) -> str:
         COMMON_SUBSTRATE_V15: "3",
         COMMON_SUBSTRATE_V16: "3",
         COMMON_SUBSTRATE_V17: "3",
+        COMMON_SUBSTRATE_V18: "3",
+        COMMON_SUBSTRATE_V19: "3",
     }[version]
 
 
@@ -336,7 +345,7 @@ def common_tool_profile(
     arm: str, tools: tuple[str, ...], *, python_source_root: Path, version: str = COMMON_SUBSTRATE_V1
 ) -> dict:
     """Bind actual common source bytes and host-owned formal coverage declarations."""
-    from merlin.verify import lean_contract
+    from merlin.verification import lean_contract
 
     root = Path(python_source_root)
     if not root.is_absolute() or root.resolve() != root or not root.is_dir():
@@ -479,7 +488,7 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
         ):
             raise ValueError("automatic verifier source identity is malformed")
     policy = profile.get("proof_policy") or {}
-    from merlin.verify.lean_contract import coverage_policy_record
+    from merlin.verification.lean_contract import coverage_policy_record
 
     expected_policy = coverage_policy_record(version=_policy_version(profile["common_substrate"]))
     if (
@@ -502,7 +511,7 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
 
     policy_from_profile(profile)
     if profile["common_substrate"] in _ISA_SUBSTRATES:
-        from merlin.verify.lean_isa_semantics import validate_semantic_inputs
+        from merlin.verification.lean_isa_semantics import validate_semantic_inputs
 
         validate_semantic_inputs(profile.get("semantic_inputs"))
     return copy.deepcopy(profile)
@@ -671,7 +680,7 @@ def attach_common_substrate(
 
         profile[FIELD] = validate_policy(public_codegen_resource_policy)
     if version in _ISA_SUBSTRATES:
-        from merlin.verify.lean_isa_semantics import select_isa_semantics
+        from merlin.verification.lean_isa_semantics import select_isa_semantics
 
         profile["semantic_inputs"] = select_isa_semantics(
             software_spec_path=software_spec_path, facts_path=facts_path, target=target
@@ -766,6 +775,8 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V15,
         COMMON_SUBSTRATE_V16,
         COMMON_SUBSTRATE_V17,
+        COMMON_SUBSTRATE_V18,
+        COMMON_SUBSTRATE_V19,
     }:
         lines.append(
             "Shared dense scheduling is available as `merlin.transforms.dense_planning`: "
@@ -789,6 +800,8 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V15,
         COMMON_SUBSTRATE_V16,
         COMMON_SUBSTRATE_V17,
+        COMMON_SUBSTRATE_V18,
+        COMMON_SUBSTRATE_V19,
     }:
         lines.append(
             "Shared `merlin.compile.scheduling.block_schedule` provides checked synchronous "
@@ -822,6 +835,8 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V12, COMMON_SUBSTRATE_V13, COMMON_SUBSTRATE_V14, COMMON_SUBSTRATE_V15,
         COMMON_SUBSTRATE_V16,
         COMMON_SUBSTRATE_V17,
+        COMMON_SUBSTRATE_V18,
+        COMMON_SUBSTRATE_V19,
     ):
         catalog_call = (
             "scheduling_capabilities()"
@@ -852,6 +867,8 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V15,
         COMMON_SUBSTRATE_V16,
         COMMON_SUBSTRATE_V17,
+        COMMON_SUBSTRATE_V18,
+        COMMON_SUBSTRATE_V19,
     }:
         lines.append(
             "V19 additionally provides a source-checked final-K producer/readout frontier on the original "
@@ -859,14 +876,16 @@ def tool_profile_prompt(bundle: dict) -> str:
             "readiness capability, with original store snapshots/backpressure and a final full drain. "
             "It supplies no fixed-cycle spacing or loop-carried event ownership."
         )
-    if profile["common_substrate"] in (COMMON_SUBSTRATE_V15, COMMON_SUBSTRATE_V16, COMMON_SUBSTRATE_V17):
+    if profile["common_substrate"] in (
+        COMMON_SUBSTRATE_V15, COMMON_SUBSTRATE_V16, COMMON_SUBSTRATE_V17, COMMON_SUBSTRATE_V18, COMMON_SUBSTRATE_V19
+    ):
         lines.append(
             "V22 keeps every V21 scheduling API, including loop-carried completion events and "
             "effect-checked schedule composition. Operator-only kernel packages and access-policy "
             "grader/oracle modules are not part of this SDK; the CCA calls remain available "
             "through their staged broker clients."
         )
-    if profile["common_substrate"] == COMMON_SUBSTRATE_V17:
+    if profile["common_substrate"] in (COMMON_SUBSTRATE_V17, COMMON_SUBSTRATE_V18, COMMON_SUBSTRATE_V19):
         lines.append(
             "V24 additionally exposes source-checked shared-RHS sibling products through "
             "the scheduling dialect and the ordinary registered-pass A/B route. Bind original "
@@ -874,7 +893,23 @@ def tool_profile_prompt(bundle: dict) -> str:
             "ordering laws. Missing premises retain drains or decline; recheck emitted effects "
             "and complete numerical results before comparing whole-call cycles."
         )
+    if profile["common_substrate"] == COMMON_SUBSTRATE_V18:
+        lines.append(
+            "V25 preserves the V24 public APIs and closes their refactored implementation dependencies. "
+            "Earlier frozen releases retain their exact public and source inventories; selecting V25 "
+            "does not change independent verification or hardware qualification requirements."
+        )
+    if profile["common_substrate"] == COMMON_SUBSTRATE_V19:
+        lines.append(
+            "V26 uses canonical compiler.schedule, compiler.ir and compiler.selection owners. "
+            "Earlier SDK source selections remain immutable and require their archived environment; "
+            "this namespace migration grants no new target semantics or acceptance authority."
+        )
     for name in profile["treatment_tools"]:
         if name in _OPTIONAL_TOOLS:
             lines.append(f"- `{name}`: {TR.spec(name).blurb}")
-    return "\n".join(lines) + "\n"
+    result = "\n".join(lines) + "\n"
+    if profile["common_substrate"] == COMMON_SUBSTRATE_V19:
+        result = result.replace("merlin.compile.scheduling.block_schedule", "merlin.compiler.schedule.blocks")
+        result = result.replace("merlin.compile.scheduling", "merlin.compiler.schedule")
+    return result

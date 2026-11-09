@@ -4,6 +4,7 @@ import builtins
 
 import pytest
 
+from merlin.compiler.planning.contractions import catalog_source_contractions
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.kernels import shapes
 from merlin.system import offload
@@ -41,3 +42,26 @@ builtin.module {{
     monkeypatch.setattr(offload, "device_dtype_triples", lambda _: ((dtype, dtype, dtype),))
     monkeypatch.setattr(offload, "device_contraction_ranks", lambda _: (2,))
     assert bool(offload.offloadable_contractions(module, "synthetic")) is expected
+@pytest.mark.parametrize("native", [(), (("i8", "i8", "i32"),)])
+def test_source_catalog_does_not_claim_native_precision(native, monkeypatch):
+    module = parse_mlir_text("""builtin.module {
+      func.func @fixture(%a: tensor<2x2xf32>, %b: tensor<2x2xf32>,
+                         %c: tensor<2x2xf32>) -> tensor<2x2xf32> {
+        %z = arith.constant 0.0 : f32
+        %init = linalg.fill ins(%z : f32) outs(%c : tensor<2x2xf32>) -> tensor<2x2xf32>
+        %r = linalg.matmul ins(%a, %b : tensor<2x2xf32>, tensor<2x2xf32>)
+             outs(%init : tensor<2x2xf32>) -> tensor<2x2xf32>
+        func.return %r : tensor<2x2xf32>
+      }
+    }""")
+    monkeypatch.setattr(offload, "device_dtype_triples", lambda _: native)
+    monkeypatch.setattr(offload, "device_contraction_ranks", lambda _: (2,))
+    assert offload.offloadable_contractions(module, "synthetic") == []
+    source = ("f32", "f32", "f32")
+    selected = catalog_source_contractions(module, "synthetic", source)
+    assert len(selected) == bool(native)
+    assert offload.catalog_source_contractions(module, "synthetic", source) == selected
+    monkeypatch.setattr(offload, "device_contraction_ranks", lambda _: (3,))
+    assert catalog_source_contractions(module, "synthetic", source) == []
+    with pytest.raises(ValueError, match="explicit triple"):
+        catalog_source_contractions(module, "synthetic", ("f32", "", "f32"))

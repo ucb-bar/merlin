@@ -2,7 +2,7 @@
 
 import pytest
 
-from merlin.compile.owned_host_model import OwnedHostModelCompiler
+from merlin.compiler.build.owned import OwnedHostModelCompiler
 
 
 def fixture_service(tmp_path):
@@ -29,7 +29,8 @@ def fixture_service(tmp_path):
 def test_original_source_and_fixed_host_reach_ordinary_build(
     tmp_path, monkeypatch, require_all_groups, host_math, share_preparations, dense_views, op_profile
 ):
-    from merlin.compile import baremetal_model, route_before_build
+    from merlin import model as baremetal_model
+    from merlin.compiler.planning import model as route_before_build
     from merlin.llvmlower.device_offload import BY_GROUP
 
     service, candidate, capture = fixture_service(tmp_path)
@@ -109,7 +110,8 @@ def test_dense_input_view_choice_refuses_before_source_routing(tmp_path, choice)
 def test_original_pre_group_layout_policy_reaches_actual_device_route(tmp_path, monkeypatch):
     import yaml
 
-    from merlin.compile import baremetal_model, route_before_build
+    from merlin import model as baremetal_model
+    from merlin.compiler.planning import model as route_before_build
     from merlin.llvmlower.device_build import DeviceRouting
     from merlin.llvmlower.host_graph_policy import read_host_graph_policy
 
@@ -139,7 +141,8 @@ def test_original_pre_group_layout_policy_reaches_actual_device_route(tmp_path, 
 
 
 def test_existing_bounded_rne_request_reaches_original_host_builder(tmp_path, monkeypatch):
-    from merlin.compile import baremetal_model, route_before_build
+    from merlin import model as baremetal_model
+    from merlin.compiler.planning import model as route_before_build
 
     service, candidate, capture = fixture_service(tmp_path)
     monkeypatch.setattr(route_before_build, "plan_before_build", lambda *a, **kw: {
@@ -162,7 +165,8 @@ def test_existing_bounded_rne_request_reaches_original_host_builder(tmp_path, mo
 @pytest.mark.parametrize('kind', ['sibling_source', 'independent_heads'])
 def test_composed_source_keeps_original_layout_policy_and_ordinary_route(tmp_path, monkeypatch, kind):
     import yaml
-    from merlin.compile import baremetal_model, route_before_build
+    from merlin import model as baremetal_model
+    from merlin.compiler.planning import model as route_before_build
     from merlin.llvmlower.borrowed_effects import BorrowedBufferEffects
     from merlin.llvmlower.device_build import DeviceRouting
     from merlin.llvmlower.head_source_route import HeadBatchSourceRoute
@@ -193,7 +197,8 @@ def test_composed_source_keeps_original_layout_policy_and_ordinary_route(tmp_pat
 
 @pytest.mark.parametrize("name", ["host_roundeven", "host_elementwise_fusion"])
 def test_existing_host_codegen_choices_forward_only_true_and_refuse_nonbool(tmp_path, monkeypatch, name):
-    from merlin.compile import baremetal_model, route_before_build
+    from merlin import model as baremetal_model
+    from merlin.compiler.planning import model as route_before_build
 
     service, candidate, capture = fixture_service(tmp_path)
     route = object()

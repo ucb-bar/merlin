@@ -194,7 +194,7 @@ def _plan(value, start, count, consumer, loader, depth=0):
         return None
     offsets, sizes = rectangle
     if isinstance(op, GenericOp) and any(it.data.value == "reduction" for it in op.iterator_types):
-        from merlin.compile.scheduling.dense_source import read_zero_seeded_integer_matmul
+        from merlin.compiler.schedule.dense_source import read_zero_seeded_integer_matmul
 
         try:
             geometry = read_zero_seeded_integer_matmul(op, max_source_elements=1 << 31)

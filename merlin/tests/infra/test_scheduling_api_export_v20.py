@@ -6,9 +6,9 @@ import sys
 from pathlib import Path
 
 from merlin.common.paths import repo_root
-from merlin.compile.scheduling.api_catalog import scheduling_capabilities
-from merlin.compile.scheduling.export import public_modules
-from merlin.compile.scheduling.library_sources import library_modules
+from merlin.compiler.schedule.api_catalog import scheduling_capabilities
+from merlin.compiler.schedule.export import public_modules
+from merlin.compiler.schedule.library_sources import library_modules
 from merlin.targetgen.compiler_library import freeze_compiler_library
 from merlin.targetgen.tool_profile_shared import prepare_shared_source_release, reviewed_shared_manifest
 

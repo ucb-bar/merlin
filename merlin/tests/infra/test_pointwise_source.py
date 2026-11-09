@@ -13,15 +13,15 @@ from xdsl.context import Context
 from xdsl.dialects import arith, builtin, func, linalg
 from xdsl.parser import Parser
 
-from merlin.compile.scheduling.fusion_semantics import UnsupportedElementwise
-from merlin.compile.scheduling.pointwise_source import (
-    PointwiseBindings,
-    compile_source_pointwise,
-    read_pointwise_source,
-)
-from merlin.compile.scheduling.program_limits import AddressWindow, DecodedInstruction, ProgramLimits
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
-from merlin.compile.scheduling.temporary_storage import TemporaryObject
+from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
+from merlin.compiler.schedule.pointwise_source import PointwiseBindings
+from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
+from merlin.compiler.schedule.pointwise_source import read_pointwise_source
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import DecodedInstruction
+from merlin.compiler.schedule.program_limits import ProgramLimits
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.temporary_storage import TemporaryObject
 from merlin.sched.ir import Kernel, TensorArg
 
 
@@ -236,7 +236,7 @@ def test_invalid_order_is_rejected_before_emission(tmp_path):
 
 
 def test_final_source_checker_reconstructs_bytes_instead_of_trusting_the_schedule(tmp_path, monkeypatch):
-    from merlin.compile.scheduling import pointwise_source
+    from merlin.compiler.schedule import pointwise_source
 
     module, operation = source_program()
     kwargs = case(tmp_path)
@@ -343,7 +343,7 @@ def test_shifted_input_alias_is_not_an_exact_same_window_alias(tmp_path):
 
 @pytest.mark.parametrize("capacity,enabled", [(60, False), (59, False), (59, True)])
 def test_capacity_boundary_is_replanned_after_fusion(tmp_path, capacity, enabled):
-    from merlin.compile.scheduling.temporary_storage import StorageOptimizationUnavailable
+    from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
 
     module, operation = source_program()
     kwargs = case(tmp_path, mutate=lambda facts, software, fusion: facts.update(local_capacity=capacity))
@@ -357,7 +357,7 @@ def test_capacity_boundary_is_replanned_after_fusion(tmp_path, capacity, enabled
 
 
 def test_changed_shared_library_invalidates_the_source_result(tmp_path, monkeypatch):
-    from merlin.compile.scheduling import pointwise_source
+    from merlin.compiler.schedule import pointwise_source
 
     module, operation = source_program()
     result = compile_source_pointwise(module, operation, **case(tmp_path))

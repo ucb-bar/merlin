@@ -8,15 +8,14 @@ from test_compact_dense import ADAPTER, fixture, schedule
 from test_loop_schedule import SOURCE, trace
 from test_scf_commands import record
 
-from merlin.compile.scheduling.compact_dense import emit_compact_dense
-from merlin.compile.scheduling.compact_verification import verify_compact_dense
-from merlin.compile.scheduling.loop_schedule import propose_loop_transforms, tile_loop_nest_transforms
-from merlin.compile.scheduling.scf_commands import materialize_scf_commands
-from merlin.compile.scheduling.schedule_ir import (
-    dense_schedule_text,
-    make_dense_schedule_plan,
-    parse_dense_schedule_plan,
-)
+from merlin.compiler.schedule.compact_dense import emit_compact_dense
+from merlin.compiler.schedule.compact_verification import verify_compact_dense
+from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
+from merlin.compiler.schedule.loop_schedule import tile_loop_nest_transforms
+from merlin.compiler.schedule.scf_commands import materialize_scf_commands
+from merlin.compiler.schedule.schedule_ir import dense_schedule_text
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
 from merlin.sched.ir import Kernel, Loop, Ptr, TensorArg, Var, call, loop, select
 from merlin.sched.primitives import NotApplicable
 from merlin.transforms.dense_planning import dense_blocks

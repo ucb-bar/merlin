@@ -62,7 +62,7 @@ class CommonTransformService:
             raise ValueError("common transform authority cannot be an author-writable file")
         self.bundle_bytes = bundle_manifest.read_bytes()
         self.bundle = yaml.safe_load(self.bundle_bytes)
-        from merlin.verify.lean_contract import document_digest
+        from merlin.verification.lean_contract import document_digest
 
         self.bundle_identity = document_digest(self.bundle)
         self.profile = verify_tool_profile(self.bundle)
@@ -74,7 +74,7 @@ class CommonTransformService:
 
     def _verify(self) -> None:
         from merlin.common.paths import module_source_path
-        from merlin.verify.lean_contract import document_digest
+        from merlin.verification.lean_contract import document_digest
 
         if self.bundle_manifest.read_bytes() != self.bundle_bytes:
             raise ValueError("common transform bundle authority changed")
@@ -145,7 +145,7 @@ class CommonTransformService:
                 raise ValueError("shared compiler release manifest differs from the original profile")
 
     def _toolchain(self, work_root: Path):
-        from merlin.verify.lean_contract import LeanToolchain
+        from merlin.verification.lean_contract import LeanToolchain
 
         selection = self.profile["lean_toolchain"]
         if selection.get("selection") != "explicit_manifest":
@@ -217,7 +217,7 @@ class CommonTransformService:
         """Run trusted transforms and independently check each actual IR change."""
         from merlin.transforms.certificates import ir_text, parse_ir
         from merlin.transforms.pipeline import PipelineOptions, apply_common_pipeline
-        from merlin.verify.lean_checker import accepted_pipeline_receipt, verify_pipeline_change
+        from merlin.verification.lean_checker import accepted_pipeline_receipt, verify_pipeline_change
 
         if set(request) != {"schema", "source_ir", "options"} or request["schema"] != SCHEMA:
             raise ValueError("common transform request cannot select semantics, coverage or proof results")
@@ -399,9 +399,9 @@ class CommonTransformService:
             COMMON_SUBSTRATE_V14,
             COMMON_SUBSTRATE_V15,
         )
-        from merlin.verify.lean_checked import accepted_authored_receipt, verify_authored_transform
-        from merlin.verify.lean_contract import document_digest
-        from merlin.verify.lean_isa_semantics import reconstruct_isa_semantics
+        from merlin.verification.lean_checked import accepted_authored_receipt, verify_authored_transform
+        from merlin.verification.lean_contract import document_digest
+        from merlin.verification.lean_isa_semantics import reconstruct_isa_semantics
 
         if self.profile.get("common_substrate") not in {
             COMMON_SUBSTRATE_V3,

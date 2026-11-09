@@ -24,6 +24,8 @@ class NativeSourceModel:
     """One original native compilation; no provider discovery or runtime fallback."""
 
     def __init__(self, selections, *, targets):
+        from merlin.compiler.build import objects, process, shared
+
         self.transform, self.builder = bind_source_lowerings(selections, None, None, None)
         if targets != ("host",) or any(s.execution_domain != "host" for s in selections):
             raise ValueError("native shared source lowering supports only host-domain selections and targets=('host',)")
@@ -32,7 +34,11 @@ class NativeSourceModel:
         self.link_inputs = ()
         self.implementation_pins = tuple(
             (p.resolve(), sha256_file(p))
-            for p in (Path(__file__), Path(__file__).with_name("codegen.py"), Path(host_provider.__file__))
+            for p in (
+                Path(__file__), Path(__file__).with_name("codegen.py"), Path(host_provider.__file__),
+                Path(objects.__file__),
+                Path(process.__file__), Path(shared.__file__),
+            )
         )
 
     def lowering_layout(self, requested):

@@ -16,12 +16,12 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from merlin.verify.lean_emission_context import observe_emission
+from merlin.verification.lean_emission_context import observe_emission
 
 if TYPE_CHECKING:
     from aet.core.run_paths import RunPaths
 
-    from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+    from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection
 
 from .contract import schemas
 
@@ -38,7 +38,7 @@ def _target_consumer_record(pkg):
 
 
 def _configuration_selection_record(selection):
-    from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+    from merlin.compiler.schedule.configuration_ir import ConfigurationIRSelection
 
     if type(selection) is not ConfigurationIRSelection:
         raise ValueError("target configuration requires the original typed selection")
@@ -561,7 +561,7 @@ def run_entrypoints(
 
     owned_source = capsule.get("owned_host_source") is not None
     candidate_artifact_name = "candidate-" + fourth_output_name if owned_source else fourth_output_name
-    from merlin.compile import owned_shared_source
+    from merlin.compiler.build import siblings as owned_shared_source
     shared_source = owned_shared_source.selected(capsule)
     projection_validate = None
     if shared_source:
@@ -581,7 +581,7 @@ def run_entrypoints(
         if shared_source:
             emit_selected = owned_shared_source.emit_selected
         else:
-            from merlin.compile.owned_spatial_source import emit_selected
+            from merlin.compiler.build.spatial import emit_selected
 
         artifact, _ = emit_selected(
             capsule,

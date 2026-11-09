@@ -156,20 +156,79 @@ def test_no_public_module_names_a_withheld_package_even_lazily(staged):
 #: (ModuleNotFoundError naming the package) or records why a field is empty; none answers ``{}``.
 #: They are RVV host-lane flows that load mined schedule packages: the protected inputs themselves.
 KNOWN_OPERATOR_PATHS = {
-    "merlin.compile.host_lane": {"merlin.mining.registry", "merlin.mining.registry.DTYPE_STRATEGIES",
-                                 "merlin.mining.registry.load_rvv_package"},
+    # The registry loader moved into this canonical owner. Only its unchanged
+    # legacy policy path remains operator-only: mining is still physically
+    # withheld, and the paired child regression below requires a loud refusal.
+    "merlin.compiler.backend.host": {"merlin.mining.from_strategy",
+                                     "merlin.mining.from_strategy.microkernel_features"},
     "merlin.compile_cli": {"merlin.mining", "merlin.mining.k1", "merlin.mining.apply",
                            "merlin.mining.apply.blocking_risks", "merlin.mining.apply.shape_adapted_features",
-                           "merlin.mining.registry", "merlin.mining.registry.load_rvv_package",
-                           "merlin.compile.baremetal_model", "merlin.compile.baremetal_model.compile_saved_model"},
-    "merlin.compile.owned_host_model": {"merlin.compile.baremetal_model",
-                                        "merlin.compile.baremetal_model.compile_saved_model"},
-    "merlin.runtime.source_recomputation_build": {"merlin.compile.baremetal_model"},
+                           "merlin.model", "merlin.model.compile_saved_model"},
+    "merlin.compile.owned_host_model": {"merlin.model", "merlin.model.compile_saved_model"},
+    "merlin.runtime.source_recomputation_build": {"merlin.model"},
     "merlin.llvmlower.perop_blocks": {"merlin.mining.from_strategy",
-                                      "merlin.mining.from_strategy._rvv_blocking_lowers",
-                                      "merlin.mining.from_strategy._rvv_best_block"},
-    "merlin.targetgen.target_experiment": {"merlin.mining.registry", "merlin.mining.registry.load_rvv_package"},
+                                      "merlin.mining.from_strategy._codegen",
+                                      "merlin.mining.from_strategy.policy_source_record"},
 }
+
+
+_HOST_POLICY = r"""
+import importlib.abc, json, sys
+from types import SimpleNamespace
+root, refused = sys.argv[1], json.loads(sys.argv[2])
+attempts = []
+
+class Refuse(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):
+        if any(name == p or name.startswith(p + ".") for p in refused):
+            attempts.append(name)
+            raise ModuleNotFoundError("withheld from the public compiler: " + name, name=name)
+        return None
+
+sys.meta_path.insert(0, Refuse())
+sys.path.insert(0, root)
+from merlin.compiler.backend.host import resolve_features
+
+microkernel = {"MR": 2, "NR": 4, "KC": 8}
+knobs = {"microkernel": microkernel, "compiler_features": ["baseline"]}
+shapes, calls = ("explicit observed shape",), []
+
+def policy(spec, *, shapes):
+    calls.append((spec is microkernel, shapes))
+    return ["baseline", "selected-policy"]
+
+provider = SimpleNamespace(API_VERSION=1, microkernel_features=policy)
+features = resolve_features(knobs, {"target": "fixture"}, shapes, codegen_provider=provider)
+assert features == ["baseline", "selected-policy"]
+assert calls == [(True, shapes)]
+assert not attempts, attempts
+
+try:
+    resolve_features(knobs, {"target": "fixture"}, shapes)
+except ModuleNotFoundError as exc:
+    assert exc.name and exc.name.startswith("merlin.mining"), exc
+    assert "withheld from the public compiler" in str(exc), exc
+    legacy_error = exc.name
+else:
+    raise AssertionError("legacy policy unexpectedly resolved or silently returned features")
+assert attempts and not any(name == "merlin.mining" or name.startswith("merlin.mining.") for name in sys.modules)
+outside = [name for name, module in sys.modules.items()
+           if name.startswith("merlin") and getattr(module, "__file__", None)
+           and not str(module.__file__).startswith(root)]
+assert not outside, outside
+print(json.dumps({"selected_features": features, "legacy_refused": legacy_error,
+                  "withheld_attempts": attempts}))
+"""
+
+
+def test_relocated_host_policy_keeps_legacy_withheld_and_selected_provider_independent(staged):
+    assert not (staged.root / "merlin/mining").exists()
+    proc = _run_child(_HOST_POLICY, staged.root, json.dumps(refused_prefixes()), cwd=staged.root.parent)
+    assert proc.returncode == 0, proc.stderr[-4000:]
+    result = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert result["selected_features"] == ["baseline", "selected-policy"]
+    assert result["legacy_refused"].startswith("merlin.mining")
+    assert result["withheld_attempts"]
 
 
 _FUSION = r"""

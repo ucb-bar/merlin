@@ -6,9 +6,14 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from merlin.compile.scheduling.block_schedule import Compute, Load, Preload, Store
-from merlin.compile.scheduling.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
-from merlin.compile.scheduling.loop_schedule import LoopTransform
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
+from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+from merlin.compiler.schedule.compact_dense import DenseMemoryView
+from merlin.compiler.schedule.loop_schedule import LoopTransform
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.kernels.reconstruction import (
     MechanismObservation,
@@ -151,7 +156,7 @@ def test_dialect_plans_reconstruct_actual_reuse_and_exact_tailed_arithmetic(shap
 
 
 def test_composed_real_loop_transforms_survive_dialect_and_scf_consumer():
-    from merlin.compile.scheduling.scf_commands import materialize_scf_commands
+    from merlin.compiler.schedule.scf_commands import materialize_scf_commands
     selected = adapter((8, 6, 8), loop_transform_sets=((), (LoopTransform("unroll", ("outer_m",), factor=2),)))
     result = reconstruct(selected, ("schedule.loop_transformed",), max_candidates=8)
     successful = [p for p in result.paths if p.satisfied]
@@ -272,9 +277,9 @@ def test_unknown_cca_evidence_and_requested_metadata_never_establish_mechanisms(
 
 
 def test_library_split_and_reorder_composition_roundtrips_and_emits_same_arithmetic():
-    from merlin.compile.scheduling.compact_dense import emit_compact_dense
-    from merlin.compile.scheduling.loop_schedule import tile_loop_nest_transforms
-    from merlin.compile.scheduling.scf_commands import materialize_scf_commands
+    from merlin.compiler.schedule.compact_dense import emit_compact_dense
+    from merlin.compiler.schedule.loop_schedule import tile_loop_nest_transforms
+    from merlin.compiler.schedule.scf_commands import materialize_scf_commands
     from merlin.transforms.dense_planning import dense_blocks
     p = DenseProblem(8, 6, 16, 2, 3, 4, 1, 1, 4)
     r = DenseResources(512, 512, 1, 1, 1, partial_output_tiles=True, partial_output_blocks=True)
@@ -300,7 +305,7 @@ def test_library_split_and_reorder_composition_roundtrips_and_emits_same_arithme
 
 
 def test_operand_byte_accounting_is_recovered_from_actual_tailed_instructions():
-    from merlin.compile.scheduling.block_schedule import Load
+    from merlin.compiler.schedule.blocks import Load
     selected = adapter((5, 7, 9))
     result = reconstruct(selected)
     for path in result.paths:
@@ -320,7 +325,9 @@ def test_operand_byte_accounting_is_recovered_from_actual_tailed_instructions():
 
 
 def test_full_operand_retention_uses_checked_library_motion_and_actual_bytes():
-    from merlin.compile.scheduling.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
+    from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
+    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+    from merlin.compiler.schedule.compact_dense import DenseMemoryView
     problem = DenseProblem(4, 6, 32, 2, 3, 4, 1, 1, 4)
     resources = DenseResources(512, 512, 2, 2, 2, partial_output_tiles=True, partial_output_blocks=True)
     storage = DenseLoopStorage(DenseMemoryView("left", "left_store", 3, 0, 32),

@@ -9,15 +9,15 @@ from pathlib import Path
 import numpy as np
 
 from merlin.common.paths import repo_root
-from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.transforms.certificates import ir_text
-from merlin.transforms.dense_ir import static_zero_integer_matmul_geometry
-from merlin.transforms.pipeline_state import PipelineContext
-from merlin.transforms.recomputation import (
+from merlin.compiler.transforms.recomputation import (
     RecomputationBudgets,
     RecomputationPermissions,
     plan_source_recomputation,
 )
+from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.transforms.certificates import ir_text
+from merlin.transforms.dense_ir import static_zero_integer_matmul_geometry
+from merlin.transforms.pipeline_state import PipelineContext
 
 INPUTS = (
     ("x", (2, 5), "i8"),
@@ -107,7 +107,7 @@ def checked_plan():
 
 
 def test_mixed_width_host_fanout_and_reductions_are_admitted_without_rewriting_them():
-    from merlin.compile.scheduling.multioutput_fusion import read_source_multioutput
+    from merlin.compiler.schedule.multioutput_fusion import read_source_multioutput
     from merlin.llvmlower.layout_conformance import scalar_bodies
     from merlin.targetgen.capsule_source import model_op_demands_checked
 

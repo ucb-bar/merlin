@@ -5,7 +5,9 @@ import json
 import numpy as np
 import pytest
 
-from merlin.compile.baremetal_model import BaremetalModelError, _agreement, _full_references
+from merlin.model import BaremetalModelError
+from merlin.model import _agreement
+from merlin.model import _full_references
 
 
 def capture(tmp_path, *, change=None):

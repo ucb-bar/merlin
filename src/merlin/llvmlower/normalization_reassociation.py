@@ -117,7 +117,7 @@ def chunk_layer_norm_sums(
     from xdsl.ir.affine import AffineDimExpr, AffineMap
     from xdsl.rewriter import InsertPoint, Rewriter
 
-    from .passes_xdsl import carry_provenance
+    from merlin.compiler.ir.provenance import carry_provenance
 
     contract = StringAttr(f"chunk={chunk_size}; explicit reassociation; finite intermediates assumed")
     for op in list(module.walk()):

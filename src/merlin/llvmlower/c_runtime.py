@@ -34,7 +34,7 @@ from .weights_pack import load_safetensors_header
 if TYPE_CHECKING:
     from .entry_weight_projection import EntryWeightProjection
 
-DT_BYTES = {"f32": 4, "f64": 8, "bf16": 2, "f16": 2, "i64": 8, "i32": 4, "i16": 2, "i8": 1, "i1": 1}
+DT_BYTES = {"f32": 4, "f64": 8, "bf16": 2, "f16": 2, "i64": 8, "i32": 4, "i16": 2, "i8": 1, "i1": 1, "fp8_e4m3": 1}
 NP_OF = {
     "f32": np.float32,
     "f64": np.float64,
@@ -932,3 +932,14 @@ def generate(
             "argument_table_sha256": entry_projection.argument_table.identity,
         }
     return info
+
+
+def embed_array(arr: np.ndarray, dtype: str) -> str:
+    """Render C initializer values using the runtime's storage representation.
+
+    Floating values retain their signs and exceptional-value payloads. This
+    formats an explicitly supplied array; it reads no capture or runtime data.
+    """
+    if dtype not in C_OF:
+        raise ValueError(f"unsupported C array storage type: {dtype}")
+    return _embed_array(arr, dtype)

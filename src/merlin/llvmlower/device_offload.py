@@ -283,7 +283,8 @@ def rewrite_contractions_to_device(
     from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, StringAttr
     from xdsl.ir import Block, Region
 
-    from merlin.system.offload import catalog_source_contractions, device_dtype_triples, offloadable_contractions
+    from merlin.compiler.planning.contractions import catalog_source_contractions
+    from merlin.system.offload import device_dtype_triples, offloadable_contractions
 
     selection_record = None
     if offload_selection is not None:
@@ -755,8 +756,9 @@ def _rewrite_groups_to_device(
     from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, StringAttr
     from xdsl.ir import Region
 
-    from merlin.compile.analysis import contraction_shapes
-    from merlin.compile.analysis.contraction_shapes import ContractionShape, observe_contractions
+    from merlin.compiler.ir import contraction_shapes
+    from merlin.compiler.ir.contraction_shapes import ContractionShape
+    from merlin.compiler.ir.contraction_shapes import observe_contractions
     from merlin.system.offload import device_dtype_triples
     from merlin.xdsl_dialects.lowering import compute_groups as CG
     from merlin.xdsl_dialects.lowering import group_command as GC

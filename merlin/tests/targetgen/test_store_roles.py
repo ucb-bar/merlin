@@ -123,7 +123,7 @@ def test_the_real_targets_resolve_as_their_facts_say(target, operand, basis, acc
 
 
 def test_capacity_accepts_only_a_store_classified_against_a_second(monkeypatch):
-    from merlin.compile import capacity
+    from merlin.compiler.selection import capacity
     from merlin.targetgen.rtl import mlc_bridge
 
     monkeypatch.setattr(mlc_bridge, "discovered_capacities", lambda target: None)  # force the facts tier
@@ -230,7 +230,8 @@ def test_the_real_targets_accumulators_are_what_their_facts_say(target, kind):
 
 
 def test_the_schedule_pass_refuses_an_in_datapath_accumulator_by_name():
-    from merlin.compile.scheduling import BlockScheduleError, geometry_from_address_space
+    from merlin.compiler.schedule import BlockScheduleError
+    from merlin.compiler.schedule import geometry_from_address_space
 
     space = AS.derive_address_space("atlas")
     if space.stores_status != AS.DERIVED:
@@ -374,7 +375,7 @@ def test_atlas_as_its_declared_elaboration_derives_a_schedulable_address_space()
     import json
 
     from merlin.common.paths import merlin_dir
-    from merlin.compile.scheduling import geometry_from_address_space
+    from merlin.compiler.schedule import geometry_from_address_space
 
     doc = json.loads((merlin_dir() / "tests/data/block_schedule/atlas_declared_elaboration_facts.json").read_text())
     space = AS.derive_address_space("atlas_declared", facts=doc)

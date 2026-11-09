@@ -30,7 +30,7 @@ import test_selected_spill_contracts as spills  # noqa: E402
 import test_selected_storage_contracts as storage  # noqa: E402
 import test_spilled_pointwise_source as source_spills  # noqa: E402
 
-from merlin.compile.scheduling.library_sources import shared_library_sources  # noqa: E402
+from merlin.compiler.schedule.library_sources import shared_library_sources  # noqa: E402
 
 observations, completed = [], []
 current = None
@@ -152,7 +152,7 @@ def source_dense_from_export(path):
     from xdsl.dialects import arith, builtin, func, linalg, tensor
     from xdsl.parser import Parser
 
-    from merlin.compile.scheduling.dense_source import schedule_source_dense
+    from merlin.compiler.schedule.dense_source import schedule_source_dense
 
     context = Context()
     for dialect in (arith.Arith, builtin.Builtin, func.Func, linalg.Linalg, tensor.Tensor):
@@ -200,7 +200,7 @@ def source_rows_from_export(path):
     from xdsl.dialects import arith, builtin, func, linalg, math, scf, tensor
     from xdsl.parser import Parser
 
-    from merlin.compile.scheduling.row_softmax import compile_source_rows
+    from merlin.compiler.schedule.row_softmax import compile_source_rows
     from merlin.transforms.certificates import ir_text
 
     _, _, original, _, kwargs = case(path)
@@ -312,11 +312,12 @@ def shared_input_from_export(_path):
     from xdsl.dialects import arith, builtin, func, linalg, tensor
     from xdsl.parser import Parser
 
-    from merlin.compile.scheduling.block_schedule import Load
-    from merlin.compile.scheduling.compact_dense import DenseLoopStorage, DenseMemoryView
-    from merlin.compile.scheduling.shared_input_groups import find_shared_input_groups
-    from merlin.compile.scheduling.shared_input_schedule import schedule_shared_input
-    from merlin.compile.scheduling.shared_input_verification import verify_shared_input
+    from merlin.compiler.schedule.blocks import Load
+    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+    from merlin.compiler.schedule.compact_dense import DenseMemoryView
+    from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups
+    from merlin.compiler.schedule.shared_input_schedule import schedule_shared_input
+    from merlin.compiler.schedule.shared_input_verification import verify_shared_input
     from merlin.transforms.dense_planning import DenseResources
 
     context = Context(allow_unregistered=True)

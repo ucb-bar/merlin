@@ -19,14 +19,14 @@ from xdsl.ir.affine import AffineConstantExpr, AffineDimExpr, AffineMap
 from xdsl.rewriter import Rewriter
 from xdsl.utils.exceptions import VerifyException
 
-from merlin.llvmlower.automatic_host import prepare_automatic_host
-from merlin.transforms.row_normalization import (
+from merlin.compiler.transforms.row_normalization import (
     RowNormalizationGroup,
     RowNormalizationRewrite,
     emit_row_normalization,
     fuse_row_normalizations,
     match_row_normalization,
 )
+from merlin.llvmlower.automatic_host import prepare_automatic_host
 from merlin.transforms.row_normalization_check import verify_row_normalizations
 from merlin.xdsl_dialects._common import text
 
@@ -246,6 +246,73 @@ def test_ordinary_source_selection_and_explicit_ablation(tmp_path, monkeypatch):
     retained, report = prepare_automatic_rows(text(module((2, 113)), generic=True), serial=True)
     assert report["rewrites"] == 0 and "no closed normalization" in report["diagnostic"]
     assert report["source_candidates"] == {"row_state_not_smaller": 1}
+
+
+def test_canonical_owner_legacy_dispatch_and_actual_source_observations(tmp_path, monkeypatch):
+    import importlib
+    import pickle
+    from pathlib import Path
+
+    from merlin.compiler.transforms import row_normalization as owner
+    from merlin.compiler.transforms import row_normalization_source as source_owner
+    from merlin.llvmlower.automatic_rows import prepare_automatic_rows
+    from merlin.transforms import row_normalization_check as checker
+
+    legacy = importlib.import_module("merlin.transforms.row_normalization")
+    assert legacy is owner
+    assert legacy.match_row_normalization is source_owner.match_row_normalization
+    assert legacy.RowNormalizationGroup is source_owner.RowNormalizationGroup
+    assert checker.verify_row_normalizations.__module__ == "merlin.transforms.row_normalization_check"
+    for cls in (RowNormalizationGroup, RowNormalizationRewrite):
+        assert cls.__module__ == "merlin.transforms.row_normalization"
+        assert pickle.loads(pickle.dumps(cls)) is cls
+
+    # Exercise the real ordinary consumer through the historical patch binding.
+    emitted = []
+    original_emit = legacy.emit_row_normalization
+
+    def observe(group):
+        emitted.append(group.shape)
+        return original_emit(group)
+
+    monkeypatch.setattr(legacy, "emit_row_normalization", observe)
+    monkeypatch.setenv("MERLIN_AUTOMATIC_HOST_ROWS", "1")
+    source = text(module(), generic=True)
+    output, report = prepare_automatic_rows(source, serial=True)
+    assert output != source and emitted == [(8, 16, 19)] and report["rewrites"] == 1
+    paths = dict(owner.implementation_sources())
+    for name, path in paths.items():
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        assert report["library_sources_sha256"][name] == digest
+        assert report["realization"]["library_sources_sha256"][name] == digest
+    assert paths[owner.__name__] == Path(owner.__file__)
+    assert paths[source_owner.__name__] == Path(source_owner.__file__)
+    assert paths["merlin.transforms.row_normalization"] != paths[owner.__name__]
+
+    # Receipts observe explicit implementation files, not arbitrary loaded code.
+    # Mutate private copies only, then re-run actual checked preparation. Each
+    # algorithm/source-analysis/alias change must be visible in its own identity
+    # and in the pass context, while the retained source program is identical.
+    copies = {}
+    for name in (owner.__name__, source_owner.__name__, "merlin.transforms.row_normalization"):
+        copied = tmp_path / (name.replace(".", "/") + ".py")
+        copied.parent.mkdir(parents=True, exist_ok=True)
+        copied.write_bytes(paths[name].read_bytes())
+        copies[name] = copied
+    monkeypatch.setattr(owner, "__file__", str(copies[owner.__name__]))
+    monkeypatch.setattr(source_owner, "__file__", str(copies[source_owner.__name__]))
+    baseline_output, baseline = prepare_automatic_rows(source, serial=True)
+    for name, copied in copies.items():
+        original = copied.read_bytes()
+        copied.write_bytes(original + b"\n# private source observation control\n")
+        try:
+            changed_output, changed = prepare_automatic_rows(source, serial=True)
+            assert changed_output == baseline_output
+            assert changed["library_sources_sha256"][name] == hashlib.sha256(copied.read_bytes()).hexdigest()
+            assert changed["library_sources_sha256"][name] != baseline["library_sources_sha256"][name]
+            assert changed["realization"]["context"]["library"] != baseline["realization"]["context"]["library"]
+        finally:
+            copied.write_bytes(original)
 
 
 def test_equal_flat_offsets_with_out_of_bounds_coordinates_are_not_row_fibers():

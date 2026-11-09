@@ -6,7 +6,7 @@ import pytest
 import yaml
 
 from merlin.common.paths import repo_root
-from merlin.compile import logical_abi as public
+from merlin.compiler.ir import logical_abi as public
 from merlin.llvmlower.host_builder import FnBuilder
 
 

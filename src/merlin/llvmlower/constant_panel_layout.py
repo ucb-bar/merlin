@@ -5,7 +5,7 @@ The ordinary group's captured immutable prepack must supply the exact matrix;
 the existing blob/constant owner then binds its bit-preserving permutation.
 """
 
-from merlin.compile.scheduling.tensor_storage import column_panel_storage
+from merlin.compiler.schedule.tensor_storage import column_panel_storage
 
 REQUEST = "merlin.constant_panel_columns"
 MINIMUM_INPUT = "merlin.constant_panel_minimum_input_channels"

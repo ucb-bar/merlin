@@ -11,12 +11,13 @@ will actually run.
 from __future__ import annotations
 
 from merlin.runtime.backends import zephyr_model as zm
+from merlin.compiler.build.zephyr import memory
 
 _PORT_RAM_DEFAULT = 256 * 1024 * 1024
 
 
 def _sized(weights, peak=None, allocation=None):
-    return zm._ram_for_weights(weights, peak, allocation, default_ram_bytes=_PORT_RAM_DEFAULT)
+    return memory.ram_for_weights(weights, peak, allocation, default_ram_bytes=_PORT_RAM_DEFAULT)
 
 
 def _ll(tmp_path, body: str):

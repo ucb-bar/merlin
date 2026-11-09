@@ -10,10 +10,14 @@ from test_private_copy_elimination import SPACES, command
 from test_selected_storage_contracts import inputs as storage_inputs
 from test_selected_storage_contracts import native  # noqa: F401
 
-from merlin.compile.scheduling.program_limits import AddressWindow, DecodedInstruction, ProgramLimits
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, compile_schedule
-from merlin.compile.scheduling.spill_conformance import SpillClass
-from merlin.compile.scheduling.temporary_storage import StorageOptimizationUnavailable, TemporaryObject
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import DecodedInstruction
+from merlin.compiler.schedule.program_limits import ProgramLimits
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.schedule_pipeline import compile_schedule
+from merlin.compiler.schedule.spill_conformance import SpillClass
+from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
+from merlin.compiler.schedule.temporary_storage import TemporaryObject
 from merlin.sched.ir import Kernel, TensorArg
 from merlin.semantic_compiler.allocation_types import Reservation
 

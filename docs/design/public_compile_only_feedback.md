@@ -5,7 +5,7 @@ status: current
 owner: ir
 last_verified: 2026-10-14
 related: [verified_compiler_tooling, verified_compiler_roadmap, phase2_test_justification]
-code_refs: [packages/merlin-experiments/src/merlin_experiments/phase0/public_compile_sources.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compile_only.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py, packages/merlin-experiments/src/merlin_experiments/phase1/brokers/compiler_call_channel.py, packages/merlin-experiments/src/merlin_experiments/phase2/public_compile_only.py, src/merlin/targetgen/compile_only_execution.py, src/merlin/verify/lean_emission_chain.py]
+code_refs: [src/merlin_experiments/phase0/public_compile_sources.py, src/merlin_experiments/phase1/feedback/compile_only.py, src/merlin_experiments/phase1/feedback/compiler_profile_child.py, src/merlin_experiments/phase1/brokers/compiler_call_channel.py, src/merlin_experiments/phase2/public_compile_only.py, src/merlin/targetgen/compile_only_execution.py, src/merlin/verification/lean_emission_chain.py]
 ---
 
 # Public scale compilation through the original brokers

@@ -34,7 +34,7 @@ def test_owned_build_audit_binds_logical_input_copy_to_original_source(tmp_path,
     from merlin_experiments.phase1.feedback import private_device_audit, private_full_models
     from xdsl.dialects.builtin import ArrayAttr, StringAttr
 
-    from merlin.compile.model_execution_inputs import file_sha256
+    from merlin.runtime.modelinputs import file_sha256
     from merlin.targetgen import owned_host_model_execution as owned
     from merlin.xdsl_dialects.lowering import compute_groups as groups_api
 
@@ -521,7 +521,7 @@ def test_protected_engine_selection_uses_scoped_facts_without_changing_ambient(t
     import json
     import os
 
-    from merlin.compile import model_execution_inputs as inputs
+    from merlin.runtime import modelinputs as inputs
     from merlin.targetgen.owned_host_model_execution import _native_engine_for_facts
     from merlin.targetgen.rtl import facts as facts_api
 

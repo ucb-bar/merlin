@@ -174,7 +174,7 @@ def module_extents(groups: Sequence[CG.Group]) -> dict[int, tuple] | None:
     """The contraction-extent table of the one module ``groups`` were formed over, read ONCE, so a
     caller stating every group does not walk the whole module per group. ``None`` (each group reads
     its own) when the groups do not name one module."""
-    from merlin.compile.analysis.contraction_shapes import contraction_extents
+    from merlin.compiler.ir.contraction_shapes import contraction_extents
 
     modules = {
         id(module): module

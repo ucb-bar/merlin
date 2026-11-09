@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-from merlin.compile.model_execution_inputs import file_sha256
+from merlin.runtime.modelinputs import file_sha256
 from merlin.targetgen import owned_host_model_execution as owned
 from merlin.targetgen.source_composition_preferences import host_preparation
 

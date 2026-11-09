@@ -215,7 +215,7 @@ def real_resource_toolchain(tmp_path_factory):
         pytest.skip("explicit independently selected Lean toolchain unavailable")
     work = tmp_path_factory.mktemp("resource-geometry")
     selected = LeanToolchain.from_manifest(Path(manifest), work_root=work)
-    source = repo_root() / "src/merlin/verify/lean/Merlin/ResourceGeometry.lean"
+    source = repo_root() / "src/merlin/verification/lean/Merlin/ResourceGeometry.lean"
     product = work / "lib/Merlin/ResourceGeometry.olean"
     product.parent.mkdir(parents=True)
     before = file_digest(source)

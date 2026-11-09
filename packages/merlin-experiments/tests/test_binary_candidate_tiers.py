@@ -299,7 +299,7 @@ def test_suite_reaudit_uses_selected_adapter_policy_not_result(tmp_path, monkeyp
 @pytest.fixture
 def pinned_dispatch(pinned_l2, tmp_path, monkeypatch):
     """Real pinned readback/roster audit with explicitly synthetic ISA/build proofs."""
-    from merlin.compile import model_execution_inputs
+    from merlin.runtime import modelinputs as model_execution_inputs
     from merlin.llvmlower import toolchain
     from merlin.perf import compiler_plan_evidence
     from merlin.runtime.backends import base as backends

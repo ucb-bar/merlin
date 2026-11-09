@@ -1132,7 +1132,10 @@ def _resolve_seam(prefix: str, backend: str | None) -> _SeamSpec:
     return ("(unknown seam)", "unknown", True)
 
 
-def seam_location(target_seam: str, *, backend: str | None = None, oot_package: str | None = None) -> dict:
+def seam_location(
+    target_seam: str, *, backend: str | None = None, oot_package: str | None = None,
+    codegen_provider=None, support_target=None,
+) -> dict:
     """Resolve a route's ``target_seam`` to the concrete file + kind + whether new code is needed.
 
     ``backend`` selects backend-scoped seams; ``oot_package`` fills the ``<oot_package>`` placeholder in
@@ -1140,6 +1143,12 @@ def seam_location(target_seam: str, *, backend: str | None = None, oot_package: 
     treated as needing new code since the target location is not yet materialized)."""
     prefix = target_seam.split(":", 1)[0].strip()
     file, kind, needs_new = _resolve_seam(prefix, backend)
+    if prefix == "schedule" and (codegen_provider is not None or support_target is not None):
+        from merlin.mining.from_strategy import _codegen
+
+        provider = _codegen(codegen_provider, support_target=support_target)
+        file = str(provider.microkernel_policy_api().__file__)
+        kind, needs_new = "selected OOT transform-schedule policy", False
     if "<oot_package>" in file:
         if oot_package:
             file = file.replace("<oot_package>", str(oot_package).rstrip("/"))
@@ -1154,7 +1163,10 @@ def seam_location(target_seam: str, *, backend: str | None = None, oot_package: 
     }
 
 
-def escalation_ladder(axis: str, backend: str = "rvv", *, oot_package: str | None = None) -> list[dict]:
+def escalation_ladder(
+    axis: str, backend: str = "rvv", *, oot_package: str | None = None,
+    codegen_provider=None, support_target=None,
+) -> list[dict]:
     """The full FLAG->KNOB->HEURISTIC->PASS->CODEGEN ladder for one axis: every route weakest->strongest,
     each annotated with the concrete (backend-scoped, OOT-relative) seam to edit and whether it is
     forkable today. This is the "which section to modify, and what's the next stronger lever" answer."""
@@ -1164,7 +1176,8 @@ def escalation_ladder(axis: str, backend: str = "rvv", *, oot_package: str | Non
     )
     out = []
     for r in rs:
-        loc = seam_location(r.target_seam, backend=backend, oot_package=oot_package)
+        loc = seam_location(r.target_seam, backend=backend, oot_package=oot_package,
+                            codegen_provider=codegen_provider, support_target=support_target)
         out.append(
             {
                 "action_class": r.action_class,

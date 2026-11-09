@@ -93,6 +93,123 @@ def _derive(path, **kw):
     return QM.derive(_base(), METHODOLOGY, path, **kw)
 
 
+def _profile(*, policy="preserve_request_v1", **changes):
+    from merlin.compiler.quantization.preparation import SCHEMA, profile_from_mapping
+
+    return profile_from_mapping({
+        "schema": SCHEMA, "id": "application-policy", "compatibility_policy": policy,
+        "methodology": {**copy.deepcopy(METHODOLOGY), **changes},
+    })
+
+
+def test_methodology_compatibility_is_the_canonical_module_identity():
+    from merlin.compiler.quantization import methodology
+
+    assert QM is methodology
+
+
+def test_explicit_profile_preserves_requested_intent_or_requires_exact_alternative():
+    from merlin.compiler.quantization.preparation import PreparationAlternativeRequired, select_recipe
+
+    requested = _derive(_path())
+    profile = _profile()
+    unchanged = select_recipe(requested, profile, _path())
+    assert unchanged["preparation"]["changes"] == []
+    assert unchanged["recipe_sha256"] == QR.digest(unchanged)
+    coarser = _profile(scale_granularity="per_tensor")
+    with pytest.raises(PreparationAlternativeRequired) as refused:
+        select_recipe(requested, coarser, _path())
+    proposal = refused.value.proposal
+    assert "weight.granularity" in [row["field"] for row in proposal["changes"]]
+    assert proposal["requested_recipe_sha256"] == requested["recipe_sha256"]
+    selected = select_recipe(requested, coarser, _path(), alternative_sha256=proposal["alternative_sha256"])
+    assert selected["weight"]["granularity"] == "tensor"
+    assert selected["preparation"]["selected_alternative_sha256"] == proposal["alternative_sha256"]
+    with pytest.raises(ValueError, match="exact current proposal"):
+        select_recipe(requested, coarser, _path(scale={"columns_per_scale": 8}),
+                      alternative_sha256=proposal["alternative_sha256"])
+
+
+def test_profile_retains_complete_reviewed_model_policy_and_legacy_derivation():
+    from merlin.compiler.quantization.preparation import LEGACY_OUTPUT_PATH, select_recipe
+
+    base = _base()
+    base["recipe_sha256"] = QR.digest(base)
+    selected = select_recipe(base, _profile(policy=LEGACY_OUTPUT_PATH), _path(), model="decoder")
+    old = QM.derive(base, METHODOLOGY, _path(), model="decoder")
+    selected.pop("preparation")
+    selected["recipe_sha256"] = QR.digest(selected)
+    assert selected == old
+
+
+def test_profile_reopens_exact_source_bytes_and_preserves_full_variant_identity(tmp_path):
+    import json
+
+    from merlin.compiler.quantization.preparation import load_profile, select_recipe
+
+    source = tmp_path / "application.json"
+    document = _profile().document()
+    source.write_text(json.dumps(document), encoding="utf-8")
+    first = load_profile(source)
+    assert first.document()["methodology"]["model_variants"] == METHODOLOGY["model_variants"]
+    document["methodology"]["model_variants"][0]["measured_accuracy"]["top1_agreement"] = 0.84
+    source.write_text(json.dumps(document), encoding="utf-8")
+    second = load_profile(source)
+    assert first.raw != second.raw
+    with pytest.raises(ValueError, match="source bytes changed"):
+        select_recipe(_derive(_path()), first, _path())
+
+
+def test_profile_cannot_silently_drop_requested_gptq_or_dynamic_contract():
+    from merlin.compiler.quantization.preparation import PreparationAlternativeRequired, select_recipe
+
+    requested = QR.with_gptq_weights(_derive(_path()))
+    with pytest.raises(PreparationAlternativeRequired) as refused:
+        select_recipe(requested, _profile(), _path())
+    assert "weight.gptq" in [row["field"] for row in refused.value.proposal["changes"]]
+    # Legacy derive deliberately clears an unselected dynamic block. New policy
+    # must expose that as a distinct alternative instead of calling it preserved.
+    requested = _derive(_path(), model="decoder")
+    with pytest.raises(PreparationAlternativeRequired) as refused:
+        select_recipe(requested, _profile(), _path())
+    assert "dynamic" in [row["field"] for row in refused.value.proposal["changes"]]
+
+
+def test_profile_uses_existing_gptq_extension_and_retains_shared_sum_contracts():
+    from merlin.compiler.quantization.preparation import profile_from_mapping, select_recipe
+    from merlin.targetgen import _gptq
+
+    requested = QR.with_shared_grid_operand_sums(QR.with_gptq_weights(_derive(_path())))
+    profile = _profile().document()
+    profile["gptq_weights"] = dict(_gptq.DEFAULT_PARAMETERS)
+    selected = select_recipe(requested, profile_from_mapping(profile), _path())
+    assert selected["weight"] == requested["weight"]
+    assert selected["operand_sum_grid"] == requested["operand_sum_grid"]
+    assert selected["preparation"]["changes"] == []
+    assert selected["recovery"] == requested["recovery"]
+
+
+def test_profile_preserves_selected_dynamic_site_quality_and_static_planes():
+    from merlin.compiler.quantization.preparation import select_recipe
+
+    dynamic = QR.with_site_agreement(
+        QR.with_dynamic_contractions(_derive(_path())),
+        cosine_min=0.99, rel_rmse_max=0.05, basis="existing independently selected quality bar",
+    )[QR.DYNAMIC]
+    method = copy.deepcopy(METHODOLOGY)
+    method["model_variants"][0]["changes"]["dynamic"] = dynamic
+    profile = _profile(model_variants=method["model_variants"])
+    requested = QM.derive(_base(), method, _path(), model="decoder")
+    selected = select_recipe(requested, profile, _path(), model="decoder")
+    assert selected[QR.DYNAMIC] == dynamic
+    assert QR.site_agreement_of(selected) == QR.site_agreement_of(requested)
+    profile = _profile(model_variants=[_plane_variant()])
+    requested = QM.derive(_base(), profile.document()["methodology"], _path(), model="classifier")
+    selected = select_recipe(requested, profile, _path(), model="classifier")
+    assert selected[QR.STATIC_PLANES] == requested[QR.STATIC_PLANES]
+    assert selected["epilogue"]["bias"]["mode"] == "host_float"
+
+
 def test_the_reference_path_gives_column_group_scales_preloaded_biases_and_an_integer_epilogue():
     recipe = _derive(_path())
     assert recipe["status"] == QR.DERIVED and recipe["recipe_sha256"] == QR.digest(recipe)

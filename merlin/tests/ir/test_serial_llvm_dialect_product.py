@@ -345,5 +345,7 @@ def test_parallel_retention_is_explicitly_unsupported(tmp_path):
 def test_unselected_runner_emitter_is_unchanged():
     assert P.select_retention(Path("unused-work"), False, omp=False, scalar_stage=None) is None
     source = pipeline._select_runner("builtin.module()", frozenset(), emit=pipeline.EMIT_TRANSLATE)
-    assert "print_generic_op_form=True" not in source
-    assert pipeline.EMIT_TRANSLATE in source
+    # Other independently gated observers print generic IR too. Only the retained
+    # product emitter owns this file; their presence cannot imply retention ran.
+    assert "_retained = open(" not in source
+    assert source.count(pipeline.EMIT_TRANSLATE) == 1

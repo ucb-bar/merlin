@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-10-18
 related: [accumulator_load_order, capsule_phase_split]
-code_refs: [src/merlin/targetgen/rtl/output_epilogue.py, src/merlin/targetgen/output_path.py, src/merlin/xdsl_dialects/lowering/output_fusion.py, src/merlin/targetgen/capability_manifests.py, src/merlin/targetgen/readout_facet.py, src/merlin/xdsl_dialects/lowering/compute_groups.py, src/merlin/xdsl_dialects/lowering/group_exact_float.py, src/merlin/llvmlower/source_compute_groups.py, src/merlin/targetgen/conformance.py, src/merlin/targetgen/corpus_synth.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_full_models.py, merlin/schemas/target_contract.schema.yaml]
+code_refs: [src/merlin/targetgen/rtl/output_epilogue.py, src/merlin/targetgen/output_path.py, src/merlin/xdsl_dialects/lowering/output_fusion.py, src/merlin/targetgen/capability_manifests.py, src/merlin/targetgen/readout_facet.py, src/merlin/xdsl_dialects/lowering/compute_groups.py, src/merlin/xdsl_dialects/lowering/group_exact_float.py, src/merlin/llvmlower/source_compute_groups.py, src/merlin/targetgen/conformance.py, src/merlin/targetgen/corpus_synth.py, src/merlin_experiments/phase1/feedback/private_full_models.py, merlin/schemas/target_contract.schema.yaml]
 ---
 
 # Output-epilogue capabilities are derived, and fused only when exact

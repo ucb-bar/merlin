@@ -7,27 +7,27 @@ last_verified: 2026-10-15
 related: [adding_a_target, phase0_phase1_setup, capsule_bench, integrations, phase0_specification]
 code_refs:
   - experiments/catalog.yaml
-  - packages/merlin-experiments/src/merlin_experiments/phase0/__main__.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/generation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/writer.py
-  - packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py
-  - packages/merlin-experiments/src/merlin_experiments/corpus/release.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/freeze.py
-  - packages/merlin-experiments/src/merlin_experiments/runner.py
+  - src/merlin_experiments/phase0/__main__.py
+  - src/merlin_experiments/phase0/generation.py
+  - src/merlin_experiments/phase0/writer.py
+  - src/merlin_experiments/corpus/preparation.py
+  - src/merlin_experiments/corpus/release.py
+  - src/merlin_experiments/phase0/freeze.py
+  - src/merlin_experiments/runner.py
   - src/merlin/targetgen/corpus_spec.py
   - src/merlin/targetgen/group_capsule_entries.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/model_forms.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/form_perf.py
+  - src/merlin_experiments/phase0/model_forms.py
+  - src/merlin_experiments/phase0/form_perf.py
   - src/merlin/compile/analysis/compute_endpoints.py
   - src/merlin/perf/isa_prohibition.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/instruction_roles.py
+  - src/merlin_experiments/phase0/instruction_roles.py
 ---
 
 # Generating capsules for a target
 
 Phase 0 derives tests; it does not certify a compiler. Start with an experiment in
 [the catalog](../../experiments/catalog.yaml), not a script in a legacy corpus directory.
-Install Merlin and the optional `merlin-experiments` distribution. Select a reviewed
+Install Merlin with its `experiments` dependency extra. Select a reviewed
 execution contract and exact RTL facts. The ordinary
 [neutral runtime](../reference/neutral_runtime_tooling.md) consumes these as data,
 without executable target support. Provider-bound workflows separately record

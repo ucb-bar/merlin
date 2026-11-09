@@ -7,7 +7,7 @@ import subprocess
 import pytest
 
 from merlin.common.paths import repo_root
-from merlin.compile.scheduling.periodic_effects import check_drained_period
+from merlin.compiler.schedule.periodic_effects import check_drained_period
 from merlin.sched.ir import Const, Loop
 
 SPEC = importlib.util.spec_from_file_location("drained_example", repo_root() / "examples/compiler/drained_period.py")

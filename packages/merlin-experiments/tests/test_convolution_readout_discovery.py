@@ -3,7 +3,7 @@ import importlib
 import json
 
 from merlin.common.paths import repo_root
-from merlin.compile.scheduling.api_catalog import scheduling_capabilities
+from merlin.compiler.schedule.api_catalog import scheduling_capabilities
 from merlin_experiments.phase1 import operation_optimizations as operations
 from merlin_experiments.phase1 import optimization_suggestions as suggestions
 from merlin_experiments.phase1.feedback import case_declarations, mechanism_hints
@@ -22,8 +22,8 @@ def readout_row(selected):
 
 
 def test_capability_symbols_resolve_and_old_inventory_does_not_gain_capability():
-    from merlin.compile.scheduling.export import public_modules
-    from merlin.compile.scheduling.library_sources import library_modules
+    from merlin.compiler.schedule.export import public_modules
+    from merlin.compiler.schedule.library_sources import library_modules
 
     old = scheduling_capabilities(22)
     assert not any(c["name"] == "source_qualified_convolution_readout_epochs" for c in old["capabilities"])

@@ -6,9 +6,9 @@ last_verified: 2026-10-19
 owner: experiments
 related: [phase0_specification, generating_capsules, normal_search_feedback]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase2/test_justification.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/bottleneck_priority.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/corpus.py
+  - src/merlin_experiments/phase2/test_justification.py
+  - src/merlin_experiments/phase2/bottleneck_priority.py
+  - src/merlin_experiments/phase2/corpus.py
   - experiments/templates/phase0/performance.yaml
 ---
 

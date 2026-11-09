@@ -17,8 +17,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-for source in (ROOT / "src", ROOT / "packages/merlin-experiments/src"):
-    sys.path.insert(0, str(source))
+sys.path.insert(0, str(ROOT / "src"))
 
 from merlin.common.paths import repo_root  # noqa: E402
 from merlin.targetgen import capsule_common, capsule_golden, numeric_falsifiability  # noqa: E402

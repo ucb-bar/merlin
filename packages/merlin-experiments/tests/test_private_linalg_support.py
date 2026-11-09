@@ -14,7 +14,7 @@ from merlin_experiments.phase1.feedback import private_linalg_support as support
 from merlin_experiments.phase1.feedback import private_linked_source_preparation as preparation
 
 from merlin.common import mlir_query as mq
-from merlin.compile.model_execution_inputs import strict_tree_sha256
+from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.frontends.capture_normalization import normalize_capture_mlir
 from merlin.frontends.linalg_composite_math import recognize_static_composite_math_body
 from merlin.targetgen.host_capabilities import admit_host_operation

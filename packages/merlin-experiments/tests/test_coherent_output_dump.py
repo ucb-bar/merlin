@@ -949,7 +949,7 @@ def test_existing_backend_execution_seam_never_substitutes_incomplete_memory(
 def test_memory_engine_citation_rechecks_explicit_facts_and_selected_runner(
     selected_layout, tmp_path, monkeypatch, simulator, mutation
 ):
-    from merlin.compile import model_execution_inputs
+    from merlin.runtime import modelinputs as model_execution_inputs
     from merlin.targetgen import native_model_execution, oracle_policy
 
     _, _, _ = selected_layout

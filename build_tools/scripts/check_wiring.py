@@ -73,7 +73,7 @@ INSTRUMENTED = tuple(
     f"{prefix}/{package}"
     for prefix in ("src/merlin", "merlin/python/merlin")
     for package in ("perf", "targetgen", "verify")
-) + ("packages/merlin-experiments/src/merlin_experiments/evaluation",)
+) + ("src/merlin_experiments/evaluation",)
 #: Where a production importer may live.
 PRODUCTION = (*_source_layout.SOURCE_SCAN_ROOTS, "merlin/experiments", "merlin/targets", "build_tools")
 #: Where target workflows live since the layout consolidation moved them out of ``merlin/targets``.
@@ -378,7 +378,7 @@ def _console_script_symbols() -> set[str]:
 #: no file spells the three that only it reaches. Each dispatcher is declared with the constant it
 #: publishes, and the prefix is READ from its source, so renaming either cannot leave a stale copy here.
 PREFIX_DISPATCHERS = (
-    ("packages/merlin-experiments/src/merlin_experiments/phase2/claims/dispatch.py", "PREFLIGHT_PREFIX"),
+    ("src/merlin_experiments/phase2/claims/dispatch.py", "PREFLIGHT_PREFIX"),
 )
 
 

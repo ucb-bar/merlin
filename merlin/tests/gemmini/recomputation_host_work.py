@@ -16,7 +16,7 @@ from merlin.frontends import linalg_mlir
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.perf import address_loop_control, constant_control_cfg, host_cfg_activity, host_cfg_index
 from merlin.targetgen.oot_starterkit import llvm_context
-from merlin.verify import host_call_alignment
+from merlin.verification import host_call_alignment as host_call_alignment
 from merlin.xdsl_dialects.lowering import integer_constant_eval
 
 

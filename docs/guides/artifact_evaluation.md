@@ -11,10 +11,10 @@ code_refs:
   - build_tools/scripts/package_worker_inputs.py
   - examples/gemmini/phase1/launch/launch_phase1.py
   - examples/gemmini/phase1/launch/prepare_author_launch.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/prepare_author_library.py
+  - src/merlin_experiments/phase1/prepare_author_library.py
   - examples/gemmini/phase1/launch/resource_reservation.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/terminal.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/qualification_audit.py
+  - src/merlin_experiments/tracking/terminal.py
+  - src/merlin_experiments/tracking/qualification_audit.py
 ---
 
 # Joint compiler artifact evaluation
@@ -139,16 +139,16 @@ git clone https://github.com/ucb-bar/merlin.git merlin
 cd merlin
 git checkout --detach "${MERLIN_REVISION:?set the selected full release commit}"
 uv venv --python 3.12
-uv pip install -e '.[dev,xdsl,targetgen]'
-uv pip install -e packages/merlin-experiments -e packages/merlin-timing
+uv pip install -e '.[dev,xdsl,targetgen,experiments]'
+uv pip install -e packages/merlin-timing
 .venv/bin/merlin --help
 .venv/bin/merlin experiment list
 .venv/bin/python -m merlin_experiments.tracking.terminal --help
 ```
 
 These commands establish a development installation, not a locked experiment.
-Release acceptance must also build wheels and the sdist, install the core outside
-the checkout without research extras, and check wheel contents with
+Release acceptance must also build the main wheel and sdist, install Merlin outside
+the checkout without optional engine extras, and check wheel contents with
 `build_tools/scripts/check_distribution_layout.py`. Record resolved dependencies
 for each independently installed environment. Do not silently use editable
 packages from an existing worker to declare a clean installation successful.

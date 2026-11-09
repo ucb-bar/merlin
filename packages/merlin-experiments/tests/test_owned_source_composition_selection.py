@@ -153,7 +153,7 @@ def test_optional_prepack_without_hoistable_source_keeps_valid_baseline(tmp_path
 def test_saved_composition_reopens_actual_candidate_and_original_owner_instead_of_flat_join(
     tmp_path, share_preparations
 ):
-    from merlin.compile.model_execution_inputs import strict_tree_sha256
+    from merlin.runtime.modelinputs import strict_tree_sha256
 
     module, groups = source()
     package = tmp_path / "candidate"

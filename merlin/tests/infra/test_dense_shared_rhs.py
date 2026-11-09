@@ -5,14 +5,21 @@ from dataclasses import replace
 import pytest
 from test_compact_dense import ADAPTER, encode, project
 
-from merlin.compile.scheduling.block_schedule import Compute, Load, Preload, Store
-from merlin.compile.scheduling.compact_dense import DenseLoopStorage, DenseMemoryView
-from merlin.compile.scheduling.dense_contracts import DenseIntegerReadout
-from merlin.compile.scheduling.dense_panel_epochs import EPOCH_FLAGS, DensePanelEpochLaw
-from merlin.compile.scheduling.dense_panel_pipeline import DRAIN, DenseRetainedReductionAdmission
-from merlin.compile.scheduling.dense_shared_rhs import DenseRHSReuseLaw, schedule_dense_shared_rhs
-from merlin.compile.scheduling.dense_shared_rhs_check import verify_dense_shared_rhs
-from merlin.compile.scheduling.schedule_ir import parse_dense_schedule_plan
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+from merlin.compiler.schedule.compact_dense import DenseMemoryView
+from merlin.compiler.schedule.dense_contracts import DenseIntegerReadout
+from merlin.compiler.schedule.dense_panel_epochs import EPOCH_FLAGS
+from merlin.compiler.schedule.dense_panel_epochs import DensePanelEpochLaw
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
+from merlin.compiler.schedule.dense_panel_pipeline import DenseRetainedReductionAdmission
+from merlin.compiler.schedule.dense_shared_rhs import DenseRHSReuseLaw
+from merlin.compiler.schedule.dense_shared_rhs import schedule_dense_shared_rhs
+from merlin.compiler.schedule.dense_shared_rhs_check import verify_dense_shared_rhs
+from merlin.compiler.schedule.schedule_ir import parse_dense_schedule_plan
 from merlin.llvmlower.integer_readout import emit_exact_scalar_ir
 from merlin.sched.ir import Const, Loop, Ptr, as_expr, evaluate, instances
 from merlin.transforms.dense_planning import DenseProblem, DenseResources

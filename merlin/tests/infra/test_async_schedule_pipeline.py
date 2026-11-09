@@ -16,8 +16,8 @@ from test_selected_program_contracts import QUALIFICATION, inputs
 from test_selected_storage_contracts import compile_case
 from test_selected_storage_contracts import native as native_machine_fixture
 
-from merlin.compile.scheduling.program_limits import Continuation
-from merlin.compile.scheduling.temporary_storage import StorageOptimizationUnavailable
+from merlin.compiler.schedule.program_limits import Continuation
+from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
 
 
 @pytest.fixture

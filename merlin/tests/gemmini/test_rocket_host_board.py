@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from merlin.common.paths import repo_root
-from merlin.compile.host_lane import require_host_isa_dts
+from merlin.compiler.backend.isa import require_host_isa_dts
 from merlin.compile_cli import compile_rvv
 from merlin.runtime import boards
 from merlin.runtime.elf_audit import ElfAuditError, upload_bytes

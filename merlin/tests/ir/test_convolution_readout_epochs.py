@@ -5,12 +5,10 @@ import pytest
 from test_convolution_compute_epochs import plan
 from test_counted_convolution import Integers
 
-from merlin.compile.scheduling.convolution_exploration import emit_convolution_schedule
-from merlin.compile.scheduling.window_transfer import (
-    ConvolutionOutputTile,
-    ConvolutionReadoutEpochLaw,
-    emit_convolution_compute_epoch_column_block,
-)
+from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
+from merlin.compiler.schedule.window_transfer import ConvolutionOutputTile
+from merlin.compiler.schedule.window_transfer import ConvolutionReadoutEpochLaw
+from merlin.compiler.schedule.window_transfer import emit_convolution_compute_epoch_column_block
 
 
 def readout_law():

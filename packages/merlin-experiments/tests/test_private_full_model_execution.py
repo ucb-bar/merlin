@@ -185,7 +185,7 @@ def _as_list(value) -> list:
 def test_host_reference_uses_the_linked_programs_quantization_policy(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
-    from merlin.llvmlower.quant_scope import captured_quantized_contraction
+    from merlin.compiler.quantization.scope import captured_quantized_contraction
 
     package = tmp_path / "package"
     package.mkdir()
@@ -795,7 +795,7 @@ def selected_engine_budget(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
     from merlin.common import execution_deadline as D
-    from merlin.compile import model_execution_inputs as MI
+    from merlin.runtime import modelinputs as MI
     from merlin.runtime.backends import base
 
     state = SimpleNamespace(now=100.0, preparation_s=0.0, calls=[], checks=[])
@@ -871,7 +871,7 @@ def test_private_execution_uses_selected_process_ceiling(selected_engine_budget,
 
 
 def test_private_bound_gsim_applies_declared_cycles_to_selected_command(selected_engine_budget, monkeypatch):
-    from merlin.compile import model_execution_inputs as MI
+    from merlin.runtime import modelinputs as MI
     from merlin.runtime.backends import chipyard_rocc_bound as B
 
     state = selected_engine_budget
@@ -986,7 +986,7 @@ def test_expired_private_preparation_never_runs_or_passes(tmp_path, selected_eng
         policy__step={"deferred": "explicit fixture deferral"},
     )
     # Keep the prepared command's ELF pin equal to the actual static receipt.
-    from merlin.compile import model_execution_inputs as MI
+    from merlin.runtime import modelinputs as MI
 
     def prepare(elf, **kwargs):
         state.now += state.preparation_s

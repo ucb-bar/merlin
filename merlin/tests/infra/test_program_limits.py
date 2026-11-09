@@ -4,17 +4,15 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.scheduling.program_limits import (
-    AddressWindow,
-    BranchRule,
-    Continuation,
-    DecodedInstruction,
-    EncodedAccess,
-    EncodedBranch,
-    ProgramDecoder,
-    ProgramLimits,
-    finalize_program,
-)
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.program_limits import BranchRule
+from merlin.compiler.schedule.program_limits import Continuation
+from merlin.compiler.schedule.program_limits import DecodedInstruction
+from merlin.compiler.schedule.program_limits import EncodedAccess
+from merlin.compiler.schedule.program_limits import EncodedBranch
+from merlin.compiler.schedule.program_limits import ProgramDecoder
+from merlin.compiler.schedule.program_limits import ProgramLimits
+from merlin.compiler.schedule.program_limits import finalize_program
 
 
 def decode(data):

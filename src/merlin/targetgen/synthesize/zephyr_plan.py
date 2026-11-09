@@ -4,7 +4,7 @@ Required: target, module, devicetree, kconfig, driver_api, samples.
 
 Zephyr is a runtime *backend* for Merlin. The driver implements the Merlin-owned submit/wait/get_metrics
 API. Blocking mode comes first. A command-buffer tensor-resident target (the neutral toy_npu example is
-the family default) gets the concrete module (residency devicetree props + profiling/RTIO kconfig +
+the family default) gets the concrete module (residency devicetree props + profiling kconfig +
 sample); everything else gets a review-flagged skeleton. Keyed on the contract family, not a name.
 """
 
@@ -37,7 +37,7 @@ def _command_buffer_module(target: str, *, reviewed: bool) -> dict[str, Any]:
                 "command-queue-depth",
             ],
         },
-        "kconfig": {"symbols": [sym, sym + "_PROFILING", sym + "_RTIO"]},
+        "kconfig": {"symbols": [sym, sym + "_PROFILING"]},
         "driver_api": {
             "mode": "blocking",
             "functions": ["merlin_submit", "merlin_wait", "merlin_get_metrics"],

@@ -34,7 +34,7 @@ import check_no_target_name as _names  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG = "docs/design/joint_optimization_catalog.json"
-OUTPUT = "packages/merlin-experiments/src/merlin_experiments/phase1/author_skills/pass-library"
+OUTPUT = "src/merlin_experiments/phase1/author_skills/pass-library"
 TEST_ROOTS = ("merlin/tests", "packages")
 WITHHELD = "(withheld: names a specific target; derive it from your workspace facts)"
 #: Generic timing-model resource names, one per kind the hint mapping distinguishes.
@@ -93,8 +93,11 @@ def _first_sentence(doc: str | None) -> str:
     return text
 
 
-def _symbol(root: Path, path: str, symbol: str) -> dict:
+def _symbol(root: Path, path: str, symbol: str, seen=frozenset()) -> dict:
     """Signature and docstring of a top-level def/class (or a ``NAME = ...`` binding) in ``path``."""
+    if (path, symbol) in seen:
+        return {"status": "cyclic source export"}
+    seen = seen | {(path, symbol)}
     source = root / path
     try:
         tree = ast.parse(source.read_text(encoding="utf-8"))
@@ -128,7 +131,47 @@ def _symbol(root: Path, path: str, symbol: str) -> dict:
             }
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == symbol for t in node.targets):
             return {"status": "found", "kind": "binding", "signature": symbol, "doc": ""}
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if (alias.asname or alias.name) != symbol:
+                    continue
+                parts = Path(_module_relative(path)).with_suffix("").parts
+                prefix = parts[:-node.level] if node.level else ()
+                module = (*prefix, *(node.module or "").split("."))
+                imported = Path("src", *module).with_suffix(".py").as_posix()
+                if not (root / imported).is_file():
+                    continue
+                return _symbol(root, imported, alias.name, seen)
+    # Existing exact module aliases retain the owner's public objects unchanged.
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Name):
+            continue
+        if not any(ast.dump(target) == ast.dump(ast.parse('sys.modules[__name__] = None').body[0].targets[0])
+                   for target in node.targets):
+            continue
+        for statement in tree.body:
+            if not isinstance(statement, ast.ImportFrom):
+                continue
+            for alias in statement.names:
+                if alias.asname == node.value.id and not statement.level and statement.module:
+                    imported = Path('src', *statement.module.split('.'), alias.name).with_suffix('.py').as_posix()
+                    if (root / imported).is_file():
+                        return _symbol(root, imported, symbol, seen)
     return {"status": "symbol not found in current source"}
+
+
+def current_binding(compiler: dict, root: Path = ROOT) -> dict:
+    """Render current public owners without rewriting issued catalog records."""
+    from merlin.compiler.schedule.library_sources import canonical_module
+
+    result = dict(compiler)
+    module = canonical_module(result.get("module", ""))
+    if module != result.get("module"):
+        path = Path("src", *module.split(".")).with_suffix(".py").as_posix()
+        if not (root / path).is_file():
+            raise ValueError(f"current compiler owner is unavailable: {module}")
+        result.update(module=module, path=path)
+    return result
 
 
 def _test_files(root: Path) -> list[tuple[str, str]]:
@@ -204,7 +247,7 @@ def is_fusion(row: dict) -> bool:
 
 
 def _entry(row: dict, root: Path, files, forbidden) -> list[str]:
-    compiler = row.get("compiler") or {}
+    compiler = current_binding(row.get("compiler") or {}, root)
     module, symbol = compiler.get("module", ""), compiler.get("symbol", "")
     found = _symbol(root, compiler.get("path", ""), symbol)
     test = find_test(files, module, symbol, forbidden)

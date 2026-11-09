@@ -5,8 +5,10 @@ from dataclasses import replace
 import pytest
 from test_selected_dense_contracts import inputs
 
-from merlin.compile.scheduling.block_schedule import Compute, Load, Store
-from merlin.compile.scheduling.dense_contracts import DenseSchedulingUnavailable
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.dense_contracts import DenseSchedulingUnavailable
 from merlin.sched.ir import Const, Ptr
 
 
@@ -162,7 +164,7 @@ def test_v1_contract_and_encode_remain_integer_only(tmp_path):
 def test_v2_pointer_binding_is_consumed_by_existing_single_schedule(tmp_path):
     from test_selected_dense_contracts import schedule
 
-    from merlin.compile.scheduling.compact_dense import _static_calls
+    from merlin.compiler.schedule.compact_dense import _static_calls
 
     result = schedule(pointer_inputs(tmp_path))
     assert result is not None

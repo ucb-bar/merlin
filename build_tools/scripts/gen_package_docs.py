@@ -4,7 +4,7 @@ and lint package AGENT.md for staleness. Single source of truth = the code (mirr
 
 Usage:
   gen_package_docs.py            # (re)generate docs/reference/module_index.md
-  gen_package_docs.py --check    # exit 1 if the index is stale, or an AGENT.md is missing/stale
+  gen_package_docs.py --check    # exit 1 if the index or required package instructions are stale
 """
 
 from __future__ import annotations
@@ -29,6 +29,16 @@ STALE_PHRASES = (
     "todo stubs only at this stage",
     "placeholder modules with explicit todos",
 )
+
+
+def _inherits_instructions(rel: Path) -> bool:
+    """The new compiler tree inherits repository rules instead of generated boilerplate.
+
+    Existing scoped instructions remain checked wherever they exist. Legacy
+    packages retain their current requirements until their ownership is migrated.
+    Package navigation comes from the generated index, not instruction files.
+    """
+    return rel == Path("src/merlin/compiler") or Path("src/merlin/compiler") in rel.parents
 
 
 def _first_docline(init: Path) -> str:
@@ -112,18 +122,18 @@ def _check_agent_md(errors: list[str]) -> None:
         agent = init.parent / "AGENT.md"
         label = _source_layout.module_name(init, ROOT)
         if not agent.is_file():
-            errors.append(f"package {label}: missing AGENT.md")
-            continue
-        # The header names the package. Four survived a rename pointing at the old path -- mining/
-        # still called itself rvvgen -- which is exactly the kind of drift a reader believes.
-        want = rel.as_posix()
-        head = agent.read_text(encoding="utf-8").splitlines()[0]
-        if want not in head and _source_layout.policy_path(want) not in head:
-            errors.append(f"package {label}: AGENT.md header says {head.strip()!r}, not {want!r}")
-        low = agent.read_text(encoding="utf-8").lower()
-        for ph in STALE_PHRASES:
-            if ph in low:
-                errors.append(f"package {label}: stale AGENT.md phrase {ph!r}")
+            if not _inherits_instructions(rel):
+                errors.append(f"package {label}: missing AGENT.md")
+        else:
+            # Existing scoped trust and ownership instructions remain authoritative.
+            want = rel.as_posix()
+            head = agent.read_text(encoding="utf-8").splitlines()[0]
+            if want not in head and _source_layout.policy_path(want) not in head:
+                errors.append(f"package {label}: AGENT.md header says {head.strip()!r}, not {want!r}")
+            low = agent.read_text(encoding="utf-8").lower()
+            for ph in STALE_PHRASES:
+                if ph in low:
+                    errors.append(f"package {label}: stale AGENT.md phrase {ph!r}")
         # The package docstring is what the generated module index publishes, so the same phrases must
         # not survive there either. Until 2026-09-14 only AGENT.md was read, and two packages with dozens
         # of importers still told every reader of the index "Scaffold package. No real logic yet."
@@ -155,7 +165,7 @@ def main(argv: list[str]) -> int:
     created = 0
     for rel, init in _packages():
         agent = init.parent / "AGENT.md"
-        if not agent.is_file():
+        if not agent.is_file() and not _inherits_instructions(rel):
             agent.write_text(_gen_agent_md(rel), encoding="utf-8")
             created += 1
     print(f"wrote {INDEX.relative_to(ROOT)} ({len(_packages())} packages); generated {created} missing AGENT.md")

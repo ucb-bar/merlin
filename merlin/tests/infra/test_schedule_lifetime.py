@@ -6,23 +6,21 @@ from itertools import permutations
 import numpy as np
 import pytest
 
-from merlin.compile.scheduling.block_schedule import (
-    AXES,
-    NEST,
-    BlockScheduleError,
-    Compute,
-    Contraction,
-    ConvContraction,
-    Geometry,
-    Knobs,
-    Load,
-    Preload,
-    Store,
-    check_residency,
-    execute,
-    schedule_contraction,
-    schedule_convolution,
-)
+from merlin.compiler.schedule.blocks import AXES
+from merlin.compiler.schedule.blocks import NEST
+from merlin.compiler.schedule.blocks import BlockScheduleError
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Contraction
+from merlin.compiler.schedule.blocks import ConvContraction
+from merlin.compiler.schedule.blocks import Geometry
+from merlin.compiler.schedule.blocks import Knobs
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.blocks import check_residency
+from merlin.compiler.schedule.blocks import execute
+from merlin.compiler.schedule.blocks import schedule_contraction
+from merlin.compiler.schedule.blocks import schedule_convolution
 
 
 def _schedule():

@@ -1,19 +1,22 @@
 """Exact ordered source recomputation and complete-module mutation controls."""
 
+import importlib
+import pickle
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from xdsl.context import Context
 from xdsl.dialects import arith, builtin, func, linalg, tensor
 from xdsl.parser import Parser
 
-from merlin.transforms.certificates import ir_digest
-from merlin.transforms.pipeline_state import PipelineContext
-from merlin.transforms.recomputation import (
+from merlin.compiler.transforms.recomputation import (
     RecomputationBudgets,
     RecomputationPermissions,
     plan_source_recomputation,
 )
+from merlin.transforms.certificates import ir_digest
+from merlin.transforms.pipeline_state import PipelineContext
 from merlin.transforms.recomputation_check import verify_source_recomputation
 
 
@@ -91,6 +94,23 @@ def proposal(module=None, **kwargs):
         permissions(),
         budgets(**kwargs),
     )
+
+
+def test_canonical_owner_preserves_legacy_records_and_pins_actual_implementation():
+    canonical = importlib.import_module("merlin.compiler.transforms.recomputation")
+    legacy = importlib.import_module("merlin.transforms.recomputation")
+    assert legacy is canonical
+    assert legacy.plan_source_recomputation is plan_source_recomputation
+    assert legacy.RecomputationPermissions is RecomputationPermissions
+    for record in (permissions(), budgets()):
+        restored = pickle.loads(pickle.dumps(record))
+        assert type(restored) is type(record) and restored == record
+        assert type(record).__module__ == "merlin.transforms.recomputation"
+    owner = Path(canonical.__file__).resolve()
+    assert owner.parts[-3:] == ("compiler", "transforms", "recomputation.py")
+    issued = proposal()
+    assert owner in issued.implementation_paths()
+    assert str(owner) in dict(issued.record()["implementation_sources"])
 
 
 @pytest.mark.parametrize("width,shape", [(8, (3, 7)), (16, (2, 11)), (32, (1, 5))])
@@ -480,6 +500,11 @@ def test_selection_ids_use_same_owner_bytes_after_path_relocation(tmp_path, monk
     assert (second.baseline_selection_sha256, second.candidate_selection_sha256) == expected
     assert second.record()["implementation_sources"] != first._record["implementation_sources"]
     second.revalidate()
+    # The first pinned owner is the relocated canonical implementation. A
+    # changed copy must invalidate the issued plan without editing source code.
+    replacements[0].write_bytes(replacements[0].read_bytes() + b"\n# changed transform owner\n")
+    with pytest.raises(ValueError, match="implementation source changed"):
+        second.revalidate()
 
 
 def test_registry_does_not_retain_issued_plan_or_modules():

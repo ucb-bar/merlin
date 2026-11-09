@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 
 import pytest
 
@@ -18,6 +19,20 @@ def _gate():
 
 
 def _write(root, relative, text=""):
+    inventory = root / "build_tools/logical_components.json"
+    if inventory.is_file():
+        policy = json.loads(inventory.read_text())
+    else:
+        policy = {"schema": "merlin.logical_components.v1", "research": {
+            owner: {"namespaces": [], "modules": []} for owner in
+            ("merlin-experiments", "merlin-dse", "merlin-mining", "merlin-analysis")}}
+    parts = relative.split("/")
+    if parts[0] == "packages":
+        module = ".".join(parts[3:]).removesuffix(".py").removesuffix(".__init__")
+        if module not in policy["research"][parts[1]]["modules"]:
+            policy["research"][parts[1]]["modules"].append(module)
+    inventory.parent.mkdir(parents=True, exist_ok=True)
+    inventory.write_text(json.dumps(policy))
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
@@ -140,3 +155,35 @@ def test_optional_initializer_wins_over_implicit_core_namespace(tmp_path):
 
 def test_missing_source_tree_is_not_a_vacuous_pass(tmp_path):
     assert "has no Python sources" in _gate().audit(tmp_path)[0]
+
+
+def test_one_physical_root_does_not_erase_logical_research_ownership(tmp_path):
+    _write(tmp_path, "src/merlin/__init__.py")
+    _write(tmp_path, "src/merlin/research.py")
+    inventory = tmp_path / "build_tools/logical_components.json"
+    policy = json.loads(inventory.read_text())
+    policy["research"]["merlin-analysis"]["modules"] = ["merlin.research"]
+    inventory.write_text(json.dumps(policy))
+    _write(tmp_path, "src/merlin/core.py", "def compile():\n    import merlin.research\n")
+    errors = _gate().audit(tmp_path)
+    assert len(errors) == 1 and "optional merlin-analysis" in errors[0]
+    inventory.unlink()
+    assert "cannot read logical component inventory" in _gate().audit(tmp_path)[0]
+
+
+@pytest.mark.parametrize("fault", ["unknown-owner", "stale-module", "empty-namespace", "overlap"])
+def test_invalid_or_stale_logical_inventory_refuses(tmp_path, fault):
+    _write(tmp_path, "src/merlin/__init__.py")
+    inventory = tmp_path / "build_tools/logical_components.json"
+    policy = json.loads(inventory.read_text())
+    if fault == "unknown-owner":
+        policy["research"]["unknown"] = {"namespaces": [], "modules": []}
+    elif fault == "stale-module":
+        policy["research"]["merlin-analysis"]["modules"] = ["merlin.absent"]
+    elif fault == "empty-namespace":
+        policy["research"]["merlin-analysis"]["namespaces"] = ["merlin.absent"]
+    else:
+        policy["research"]["merlin-analysis"]["namespaces"] = ["merlin.research"]
+        policy["research"]["merlin-experiments"]["namespaces"] = ["merlin.research.child"]
+    inventory.write_text(json.dumps(policy))
+    assert _gate().audit(tmp_path)

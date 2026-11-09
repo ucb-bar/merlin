@@ -19,7 +19,7 @@ from merlin.targetgen.compiler_library import selected_library_record
 from merlin.targetgen.contract.build_service import BuildOnlyService
 from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor, prepare_linkage
 from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
-from merlin.verify.lean_emission_context import explicit_emission_transport
+from merlin.verification.lean_emission_context import explicit_emission_transport
 
 
 def _plain(path):
@@ -231,7 +231,7 @@ def compile_source_only(
 
         with selected_buffer_choices(cb, artifact, target=target, build_service=build_service):
             if emission_verification is not None:
-                from merlin.verify.lean_emission_chain import (
+                from merlin.verification.lean_emission_chain import (
                     check_emission_chain,
                     consume_emission_chain,
                     reread_emitted_product,
@@ -335,7 +335,7 @@ def compile_source_only(
         return report
     except Exception as error:
         if chain is not None:
-            from merlin.verify.lean_emission_chain import discard_emission_chain
+            from merlin.verification.lean_emission_chain import discard_emission_chain
 
             discard_emission_chain(chain)
         report.update(compilation_status="unavailable", failure={"type": type(error).__name__, "detail": str(error)})
@@ -418,7 +418,7 @@ def verify_compile_only_report(
         raise ValueError("compile-only original ABI binding changed")
     emission = report.get("emission_proof_chain", {"status": "not_selected"})
     if emission_verification is not None:
-        from merlin.verify.lean_emission_chain import reopen_emission_custody
+        from merlin.verification.lean_emission_chain import reopen_emission_custody
 
         reopen_emission_custody(
             emission,

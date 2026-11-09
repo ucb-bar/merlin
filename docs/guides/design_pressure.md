@@ -5,7 +5,7 @@ status: current
 owner: design_pressure
 last_verified: 2026-07-22
 related: [getting_started, dse, dse_guidance]
-code_refs: [packages/merlin-dse/src/merlin/design_pressure]
+code_refs: [src/merlin/design_pressure]
 ---
 
 # Design pressure (Workstream 3, part A)
@@ -30,13 +30,13 @@ Compute measurable pressures at several compiler cut points and recommend candid
 ## Cut points
 
 graph, linalg, loop, bufferized, dispatch, trace
-(`packages/merlin-dse/src/merlin/design_pressure/cutpoints/`).
+(`src/merlin/design_pressure/cutpoints/`).
 
 ## Metrics
 
 shape/dtype distribution, reuse count, mutability, lifetime intervals, pack/unpack count, layout
 conversions, intermediate write bytes, dispatch count, work per dispatch
-(`packages/merlin-dse/src/merlin/design_pressure/metrics/`).
+(`src/merlin/design_pressure/metrics/`).
 
 ## Expected recommendations (controlled examples)
 

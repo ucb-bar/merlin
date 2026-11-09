@@ -4,8 +4,10 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.scheduling.periodic_dense import build_periodic_staged_dense, verify_periodic_staged_dense
-from merlin.compile.scheduling.staged_dense import StagedDenseContract, StagedDenseProblem
+from merlin.compiler.schedule.periodic_dense import build_periodic_staged_dense
+from merlin.compiler.schedule.periodic_dense import verify_periodic_staged_dense
+from merlin.compiler.schedule.staged_dense import StagedDenseContract
+from merlin.compiler.schedule.staged_dense import StagedDenseProblem
 from merlin.sched.ir import Loop, as_expr, select
 from merlin.sched.ir.expr import free_vars
 from merlin.sched.ir.kernel import concretize, instances
@@ -166,7 +168,7 @@ def test_missing_capacity_or_ownership_refuses(premise):
 
 
 def test_prospective_inventory_keeps_all_frozen_versions_unchanged():
-    from merlin.compile.scheduling import library_sources as owners
+    from merlin.compiler.schedule import library_sources as owners
 
     assert owners.library_modules() == owners.LIBRARY_MODULES_V6
     for version in (6, 7, 8):

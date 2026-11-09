@@ -6,10 +6,10 @@ owner: merlin-experiments
 last_verified: 2026-10-19
 related: [phase2_corpus_search, spike_timing, shared_pass_phase2, ../design/phase2_capacity_cohort]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase2/public_diagnostic_launch.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_policy.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/calibration_validation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_capsule_feedback.py
+  - src/merlin_experiments/phase2/public_diagnostic_launch.py
+  - src/merlin_experiments/phase2/ordinary_search_policy.py
+  - src/merlin_experiments/phase2/calibration_validation.py
+  - src/merlin_experiments/phase2/ordinary_capsule_feedback.py
   - src/merlin/transforms/pipeline.py
 ---
 

@@ -7,14 +7,15 @@ import struct
 from dataclasses import replace
 
 import test_copy_pipeline as leaf
+from test_shared_pass_fusion_provider import verify_artifact_image
 from xdsl.context import Context
 from xdsl.dialects import arith, builtin
 from xdsl.parser import Parser
 from xdsl.printer import Printer
 
-from merlin.compile.scheduling.program_limits import DecodedInstruction, EncodedAccess, ProgramDecoder, ProgramLimits
-from merlin.compile.scheduling.schedule_pipeline import ScheduleEncoding
-from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
+from merlin.compiler.schedule.program_limits import DecodedInstruction, EncodedAccess, ProgramDecoder, ProgramLimits
+from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
+from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
 from merlin.sched.ir import Const, evaluate
 from merlin.targetgen.isa_dialect_gen import build_dialect, decode_instruction, encode_instruction
 
@@ -347,50 +348,4 @@ def runtime(model):
 
 
 def verify_artifact(selected_text, artifact, model):
-    """Independently join actual function operand DAG and actual encoded calls."""
-    from xdsl.dialects import llvm
-
-    from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
-
-    expected = image_from_target(selected_text, model)
-    module = Parser(make_llvm_context(), artifact).parse_module()
-    module.verify()
-    globals_ = [op for op in module.body.block.ops if isinstance(op, llvm.GlobalOp)]
-    definitions = [op for op in module.body.block.ops if isinstance(op, llvm.FuncOp) and op.body.blocks]
-    assert len(globals_) == 1 and len(definitions) == 1, "unrecognized emitted globals or function bodies"
-    global_ = globals_[0]
-    assert global_.sym_name.data == "fixture_commands"
-    assert bytes(x & 255 for x in global_.value.get_values()) == expected, (
-        "actual emitted call operands differ from selected IR"
-    )
-    definition = definitions[0]
-    assert definition.sym_name.data == "fixture_kernel" and len(definition.body.blocks) == 1
-    block = definition.body.block
-    values = dict(zip(block.args, ("spaces", "caps", "counts", "fault"), strict=True))
-    calls = []
-    for op in block.ops:
-        if isinstance(op, llvm.AddressOfOp):
-            values[op.result] = ("global", op.global_name.root_reference.data)
-        elif isinstance(op, llvm.ConstantOp):
-            values[op.result] = op.value.value.data
-        elif isinstance(op, llvm.CallOp):
-            assert op.callee is not None
-            calls.append((op.callee.root_reference.data, tuple(values[v] for v in op.operands)))
-            assert len(op.results) == 1
-            values[op.results[0]] = "status"
-        else:
-            assert isinstance(op, llvm.ReturnOp) and [values[v] for v in op.operands] == ["status"]
-    assert calls == [
-        (
-            "execute",
-            (
-                ("global", "fixture_commands"),
-                len(expected),
-                "spaces",
-                "caps",
-                "counts",
-                "fault",
-            ),
-        )
-    ]
-    return expected
+    return verify_artifact_image(image_from_target(selected_text, model), artifact)

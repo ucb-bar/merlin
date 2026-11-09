@@ -5,8 +5,9 @@ from test_convolution_spatial_output_groups import selected,run
 from test_convolution_input_first_use import law
 from test_convolution_rhs_residency import rhs_law
 from test_counted_convolution import Integers
-from merlin.compile.scheduling.convolution_exploration import emit_convolution_schedule,plan_convolution_storage_alternative
-from merlin.compile.scheduling.convolution_input_first_use import ConvolutionInputLead
+from merlin.compiler.schedule.convolution_exploration import emit_convolution_schedule
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_storage_alternative
+from merlin.compiler.schedule.convolution_input_first_use import ConvolutionInputLead
 
 
 def segmented():
@@ -67,7 +68,7 @@ def test_actual_rhs_overlap_refuses_before_target_preparation():
 
 
 def test_bank_deadlines_precede_late_first_bank_KY_order_without_prefilling_next_bank():
-    from merlin.compile.scheduling.convolution_input_first_use import PendingConvolutionInput
+    from merlin.compiler.schedule.convolution_input_first_use import PendingConvolutionInput
     s,_,rows,group,_,_=segmented()
     admission=replace(law(),lead=ConvolutionInputLead('bank_advance','neutral','TEST-ONLY-bank-resource',4,8,16,4,3,bank_rows=256,bank_count=4))
     owner=PendingConvolutionInput(s,group,rows,admission,image=0)

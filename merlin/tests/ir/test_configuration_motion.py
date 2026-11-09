@@ -2,10 +2,12 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.scheduling.configuration import ConfigurationAdapter, ConfigurationEffects
-from merlin.compile.scheduling.configuration_loop_cleanup import eliminate_counted_configuration
-from merlin.compile.scheduling.configuration_loops import hoist_loop_configuration
-from merlin.compile.scheduling.configuration_motion import promote_configuration_writes, verify_configuration_motion
+from merlin.compiler.schedule.configuration import ConfigurationAdapter
+from merlin.compiler.schedule.configuration import ConfigurationEffects
+from merlin.compiler.schedule.configuration_loop_cleanup import eliminate_counted_configuration
+from merlin.compiler.schedule.configuration_loops import hoist_loop_configuration
+from merlin.compiler.schedule.configuration_motion import promote_configuration_writes
+from merlin.compiler.schedule.configuration_motion import verify_configuration_motion
 from merlin.sched.ir import Call, Const, Kernel, Loop
 
 

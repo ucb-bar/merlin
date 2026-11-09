@@ -16,7 +16,7 @@ Target-appropriate semantics (they are genuinely different pipelines, not a fals
 
 Fail-closed + honest: a missing toolchain / board / sim yields a clear ``status`` (never a fake pass);
 correctness gates before any success is reported. This CLI only ORCHESTRATES the existing, tested API
-(``llvmlower.lower``, ``mining.k1``, ``mining.registry``, ``runtime.backends.zephyr_model``,
+(``llvmlower.lower``, ``mining.k1``, ``compiler.backend.host``, ``runtime.backends.zephyr_model``,
 ``targetgen.oot_runner``) — it adds no new compile logic.
 """
 
@@ -26,20 +26,23 @@ import json
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
+
+from merlin.compiler.backend.host import HOST_PRECISIONS as _RVV_DTYPES
 
 # The exact helpers historically extracted from this facade remain re-exported here, so
 # `merlin.compile_cli.<name>` keeps resolving for callers. New module APIs do not
 # export their private implementation through this facade. A re-export is a second binding: patching it
 # does not reach callers in the defining module, so tests patch a name where it is DEFINED
 # (enforced by merlin/tests/infra/test_compile_cli_patch_targets.py).
-from .compile.bundles import (  # noqa: F401 -- re-exported
+from .compiler.frontend.bundle import (  # noqa: F401 -- re-exported
     _IR_ELEMENT_ORDER,
     _IR_ELEMENT_SPELLING,
     _bundle_dir,
     _capture_python,
     ir_scalar_dtype,
 )
-from .compile.capacity import (  # noqa: F401 -- re-exported
+from .compiler.selection.capacity import (  # noqa: F401 -- re-exported
     _accumulator_capacity_elems,
     _capacity_fit_tile,
     _dtype_bits,
@@ -49,14 +52,14 @@ from .compile.capacity import (  # noqa: F401 -- re-exported
     capacity_fit,
     declared_primitive_tile,
 )
-from .compile.host_lane import (  # noqa: F401 -- re-exported
+from .compiler.selection.host import (  # noqa: F401 -- re-exported
     _DTYPE_STRATEGY,
     _verified_against_the_pinned_lane,
     default_package,
     host_lane_identity,
     host_lane_pin_name,
 )
-from .compile.mesh import (  # noqa: F401 -- re-exported
+from .runtime.mesh import (  # noqa: F401 -- re-exported
     _MESH_NTILE_WIDTH,
     _certify_tile_via_executor,
     _default_oot_package,
@@ -69,7 +72,7 @@ from .compile.mesh import (  # noqa: F401 -- re-exported
     run_matmul_on_mesh,
     tile_builder_op,
 )
-from .compile.mesh_backend import (  # noqa: F401 -- re-exported
+from .runtime.mesh_backend import (  # noqa: F401 -- re-exported
     _MESH_PKG_CACHE,
     _MESH_PKG_LOCK,
     _MESH_REFUSAL,
@@ -81,23 +84,20 @@ from .compile.mesh_backend import (  # noqa: F401 -- re-exported
     _requested_mesh_simulator,
     _resolve_oot_mesh_simulator,
 )
-from .compile.mesh_model import (  # noqa: F401 -- re-exported
+from .runtime.mesh_model import (  # noqa: F401 -- re-exported
     _int8_chain_policy,
     _int8_chain_reference,
     _int8_chain_step,
     run_int8_chain_on_mesh,
     run_whole_model_on_mesh,
 )
-from .compile.mesh_reference import (  # noqa: F401 -- re-exported
+from .verification.mesh_reference import (  # noqa: F401 -- re-exported
     _accum_rel_tolerance,
     _reference_on_datapath,
 )
-from .compile.model_preflight import preflight_model  # noqa: F401 -- re-exported
-from .compile.route_before_build import plan_before_build
+from merlin.compiler.frontend.preflight import preflight_model  # noqa: F401 -- re-exported
+from merlin.compiler.planning.model import plan_before_build
 
-# Workloads that ship as model2MLIR capture bundles (RVV whole-model path). Not exhaustive — any
-# workloads/<name> with a loader can be captured; this is the "known-good" convenience set for --list.
-_RVV_DTYPES = ("fp32", "int8", "fp16", "fp8")
 #: Where ``--run`` can put a compiled result.
 _RUNS = ("none", "host", "k1", "spike", "zephyr", "verilator", "gsim")
 
@@ -284,7 +284,7 @@ def compile_rvv(
     import numpy as np
 
     from .mining import k1
-    from .mining.registry import load_rvv_package
+    from .compiler.backend.host import load_host_package
     from .runtime.backends import zephyr_model as zm
 
     # ``timeout`` is the budget for the complete subprocess session.  The generated harness owns
@@ -368,7 +368,7 @@ def compile_rvv(
         raise FileNotFoundError(f"explicit capture bundle has neither model.mlir nor a version-2 session: {bundle}")
     _trace.artifact("capture", [bundle / "model.mlir"], pipeline="frontend")
     pkg_dir = package or default_package(dtype, bundle=bundle)
-    pkg = load_rvv_package(pkg_dir)
+    pkg = load_host_package(pkg_dir)
     package_backend = getattr(pkg, "backend", "rvv")
     work = Path(tempfile.mkdtemp(prefix=f"merlin_compile_{workload}_{dtype}_"))
     out: dict = {
@@ -553,7 +553,7 @@ def compile_rvv(
             out["reason"] = "targeted board host execution requires MERLIN_HOST_DTS for ISA verification"
             return out
         if selected_dts:
-            from .compile.host_lane import require_host_isa_dts
+            from .compiler.backend.isa import require_host_isa_dts
 
             try:
                 out["host_isa"] = require_host_isa_dts(
@@ -623,6 +623,10 @@ def compile_rvv(
             feats = narrowed
         out["binary"] = str(b["elf"])
         out["status"] = "compiled"
+        # A platform build is a separate operation from simulator execution.
+        # Preserve the OPU branch's explicit build-only Zephyr route.
+        if run == "zephyr":
+            return out
         if run == "verilator":
             sim = zm.verilator_sim(board=board)
             if sim is None:
@@ -1047,78 +1051,8 @@ def compile_model(
                     out["offload_refusal"] = str(refusal)
                     if out.get("status") in ("compiled", "ran", "verified"):
                         out["status"], out["reason"] = "zero_offload", str(refusal)
-            try:
-                # THE DECISION, NOT THE AUDIT. The census above asks each region on its own; this
-                # forms the groups a unit actually takes -- a contraction with the stages its
-                # readout absorbs -- and every other operation lands in a host region that carries
-                # the refusal that put it there. It is what an emission should be built from.
-                from .xdsl_dialects.lowering import compute_groups as _groups
-
-                _plan = _groups.plan(_mq.parse(linalg_mlir), target)
-                out["compute_groups"] = {
-                    "schema": _plan["schema"],
-                    "summary": _plan["summary"],
-                    "absorption_refusals": _plan["absorption_refusals"],
-                    "groups": _plan["groups"],
-                }
-            except Exception as e:  # noqa: BLE001 -- a planning gap must not fail a compile
-                out["compute_groups"] = {"error": f"{type(e).__name__}: {e}"}
-            try:
-                # WHAT LIES BETWEEN THE GROUPS: buffers that cross the host/device boundary, work
-                # that is constant and need not run per inference, the waits the program truly
-                # owes, and host work that could run while the device does.
-                from .xdsl_dialects.lowering import compute_groups as _groups
-                from .xdsl_dialects.lowering import stream_plan as _stream
-                from .xdsl_dialects.lowering.dispatch_program import build_dispatch_program
-                from .xdsl_dialects.lowering.outline import OutlineResult, outline_dispatches
-
-                # THE MODULE THE DEVICE ROUTE OUTLINED, when there is one. The route above already
-                # formed the groups and outlined them; outlining a second time would cost a whole
-                # second pass over the model AND let this plan describe a different dispatch table
-                # than the one the build was given.
-                _offload = _pre.get("offload")
-                if _offload is not None and _offload.module is not None:
-                    _outlined = OutlineResult(module=_offload.module, dispatches=list(_offload.dispatches))
-                else:
-                    _module = _mq.parse(linalg_mlir)
-                    _outlined = outline_dispatches(_module, groups=_groups.form_groups(_module, target))
-                _capture_source = (
-                    Path(capture_bundle) / "model.mlir" if capture_bundle
-                    else linalg_mlir if "\n" not in str(linalg_mlir) else None
-                )
-                _stored_args = _stream.weight_args_beside(_capture_source) if _capture_source else None
-                out["stream_plan"] = _stream.plan(
-                    build_dispatch_program(_outlined), _outlined.dispatches,
-                    weight_args=_stored_args or (),
-                )
-                out["stream_plan"]["stored_argument_binding"] = {
-                    "status": "selected_manifest" if _stored_args is not None else "unknown",
-                    "argument_indices": sorted(_stored_args or ()),
-                }
-            except Exception as e:  # noqa: BLE001 -- analysis only; never fails a compile
-                out["stream_plan"] = {"error": f"{type(e).__name__}: {e}"}
-            try:
-                # WHAT THE MODEL ASKS OF A BACKEND, in the form a unit runs it: each accelerator
-                # group restated as a device program (stored tensor on the right, a gathered
-                # convolution as the unit's own, the stages in readout order, the real multiplier).
-                # These are the entries the capsule generator builds from, so the layer a model
-                # needs and the capsule that certifies it are one statement. A group that cannot be
-                # restated is counted with its reason.
-                from .targetgen import group_capsule_entries as _group_capsules
-                from .xdsl_dialects.lowering import stream_plan as _stream_plan
-
-                _stated = _group_capsules.entries(
-                    target,
-                    _mq.parse(linalg_mlir),
-                    weight_args=_stream_plan.weight_args_beside(linalg_mlir),
-                    with_raw=False,
-                )
-                out["group_programs"] = {
-                    key: _stated[key]
-                    for key in ("schema", "accelerator_groups", "stated", "distinct", "unstated", "entries")
-                }
-            except Exception as e:  # noqa: BLE001 -- analysis only; never fails a compile
-                out["group_programs"] = {"error": f"{type(e).__name__}: {e}"}
+            # These describe the exact pre-build grouping; do not decide again after emission.
+            out.update(_pre.get("group_reports", {}))
             if mesh_verify:
                 # SEPARATE KEY. This used to overwrite out["mesh_execution"] -- the record of what
                 # happened to the MODEL -- with the synthetic tile certification, so a capstone reported
@@ -1236,7 +1170,8 @@ def compile_oot(
 
 def main(argv: list[str] | None = None) -> int:
     from .common.compile_trace import StopAfterStage
-    from .compile import command, debug
+    from .compile import command
+    from .compiler import inspect as debug
 
     ap = command.parser(_RVV_DTYPES, _RUNS, "k1", ("k1", "zephyr", "spike", "verilator"))
     a = ap.parse_args(argv)
@@ -1284,7 +1219,7 @@ def _dispatch(a, run: str, selection) -> dict:
 def _workflow(a, run: str) -> dict:
     """Dispatch to the workflow the arguments select."""
     if a.model_build:
-        from .compile.baremetal_model import compile_saved_model
+        from .model import compile_saved_model
 
         return compile_saved_model(
             capture=a.capture_bundle,
@@ -1301,7 +1236,7 @@ def _workflow(a, run: str) -> dict:
             rtl_facts=a.rtl_facts,
         )
     elif a.model_preflight:
-        from .compile.model_preflight import preflight_model
+        from merlin.compiler.frontend.preflight import preflight_model
 
         return preflight_model(a.capture_bundle, target=a.target, deployment_dtype=a.deployment_dtype)
     elif a.target == "rvv":

@@ -115,7 +115,7 @@ def host_compute_row(
     from xdsl.dialects import builtin, func, llvm
     from xdsl.parser import Parser
 
-    from merlin.verify import host_compute_audit as HA
+    from merlin.verification import host_compute_audit as HA
 
     try:
         context = Context(allow_unregistered=True)
@@ -195,7 +195,7 @@ def instruction_use(artifacts: Iterable[str], *, target: str) -> dict[str, Any]:
     different endpoint, or facts not derived) reports why it cannot be measured; it does not report
     that everything was used.
     """
-    from merlin.compile.analysis.rocc_commands import funct_table_for
+    from merlin.analysis.rocc_commands import funct_table_for
 
     table = funct_table_for(target)
     names, opcode = table.get("names"), table.get("custom_opcode")
@@ -517,7 +517,7 @@ def _apply_host_compute_veto_here(
     import json
     import os
 
-    from merlin.verify import host_compute_audit as HA
+    from merlin.verification import host_compute_audit as HA
 
     vetoed: list[dict[str, Any]] = []
     originals = {capsule["name"]: capsule for capsule in capsules or ()}

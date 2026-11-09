@@ -121,6 +121,7 @@ def test_scanners_cover_src_and_extensions_once(tmp_path, monkeypatch, name):
     gate = _gate(name)
     monkeypatch.setattr(gate, "ROOT", tmp_path)
     _write(tmp_path, "src/merlin/probe.py")
+    _write(tmp_path, "src/merlin_experiments/probe.py")
     _write(tmp_path, "packages/merlin-analysis/src/merlin_analysis/probe.py")
     _write(tmp_path, "packages/merlin-analysis/tests/test_probe.py")
     _write(tmp_path, "src/merlin/_data/copied.py")
@@ -128,7 +129,17 @@ def test_scanners_cover_src_and_extensions_once(tmp_path, monkeypatch, name):
     legacy.parent.mkdir(parents=True)
     legacy.symlink_to("../../src/merlin", target_is_directory=True)
     actual = [str(path) for path in gate._iter_targets(False)]
-    assert actual == ["src/merlin/probe.py", "packages/merlin-analysis/src/merlin_analysis/probe.py"]
+    assert actual == ["src/merlin/probe.py", "src/merlin_experiments/probe.py",
+                      "packages/merlin-analysis/src/merlin_analysis/probe.py"]
+
+
+def test_consolidated_research_namespace_keeps_exact_historical_debt_identity():
+    gate = _gate("_source_layout")
+    assert gate.policy_path("src/merlin_experiments/phase1/audit.py") == (
+        "packages/merlin-experiments/src/merlin_experiments/phase1/audit.py")
+    assert gate.policy_path("src/merlin_dse/cli.py") == "packages/merlin-dse/src/merlin_dse/cli.py"
+    assert gate.policy_path("src/merlin/targetgen/capsule_grade.py") == (
+        "merlin/python/merlin/targetgen/capsule_grade.py")
 
 
 def test_staged_renames_are_scanned_and_an_unreadable_index_still_fails(tmp_path, monkeypatch):
@@ -207,6 +218,25 @@ def test_package_docs_include_extensions_and_canonical_module_names(tmp_path, mo
     text = gate.gen_index()
     assert "| `merlin` | Core package. |" in text
     assert "| `merlin_analysis` | Optional reports. |" in text
+
+
+def test_compiler_navigation_does_not_require_instruction_boilerplate(tmp_path, monkeypatch):
+    gate = _gate("gen_package_docs")
+    monkeypatch.setattr(gate, "ROOT", tmp_path)
+    monkeypatch.setattr(gate, "INDEX", tmp_path / "module_index.md")
+    _write(tmp_path, "src/merlin/compiler/lower/scalar/__init__.py", '"""Scalar lowering."""\n')
+    _write(tmp_path, "src/merlin/legacy/__init__.py", '"""Retained legacy behavior."""\n')
+    errors = []
+    gate._check_agent_md(errors)
+    assert errors == ["package merlin.legacy: missing AGENT.md"]
+    gate.main([])
+    assert "merlin.compiler.lower.scalar" in gate.INDEX.read_text()
+    assert not (tmp_path / "src/merlin/compiler/lower/scalar/AGENT.md").exists()
+    assert (tmp_path / "src/merlin/legacy/AGENT.md").exists()
+    _write(tmp_path, "src/merlin/compiler/lower/scalar/AGENT.md", "# Wrong owner\n")
+    errors = []
+    gate._check_agent_md(errors)
+    assert len(errors) == 1 and "header says" in errors[0]
 
 
 def test_doc_freshness_follows_source_behind_legacy_alias(tmp_path, monkeypatch):

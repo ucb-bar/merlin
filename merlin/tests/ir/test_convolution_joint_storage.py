@@ -6,11 +6,11 @@ import pytest
 from test_convolution_rhs_residency import rhs_law
 from test_convolution_spatial_output_groups import run, selected
 
-from merlin.compile.scheduling.convolution_exploration import (
-    ConvolutionRhsPhaseLaw, convolution_storage_pass_space,
-    explore_convolution_schedules, plan_convolution_storage_alternative,
-    plan_convolution_schedule,
-)
+from merlin.compiler.schedule.convolution_exploration import ConvolutionRhsPhaseLaw
+from merlin.compiler.schedule.convolution_exploration import convolution_storage_pass_space
+from merlin.compiler.schedule.convolution_exploration import explore_convolution_schedules
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_storage_alternative
+from merlin.compiler.schedule.convolution_exploration import plan_convolution_schedule
 from merlin.transforms.pass_exploration import EmittedProgram
 from merlin.transforms.pipeline_state import PipelineContext
 
@@ -80,7 +80,7 @@ def test_registry_emits_explicit_rhs_column_choices():
 
 @pytest.mark.parametrize('pending_limit',[0,2])
 def test_rhs_frontier_prefetch_waits_for_last_batch_and_spatial_consumer(pending_limit):
-    from merlin.compile.scheduling.rolling_lookahead import RollingRhsFrontierAdmission
+    from merlin.compiler.schedule.rolling_lookahead import RollingRhsFrontierAdmission
     s,rows,phase,array,readout=fixture(accumulator_rows=64)
     # Multiple batches force the last-use guard to retain every earlier user.
     source=replace(s.source,plan=replace(s.source.plan,
@@ -178,7 +178,7 @@ def test_stale_original_layout_and_wrong_emitted_identity_refuse():
 
 
 def test_repeated_convolution_geometry_reuses_search_but_rechecks_and_emits_each_source():
-    from merlin.compile.scheduling.convolution_exploration import plan_convolution_schedule
+    from merlin.compiler.schedule.convolution_exploration import plan_convolution_schedule
     from merlin.transforms.pass_exploration import MappingProposalCache, MappingProposalKey
     import hashlib
     sha = lambda text: hashlib.sha256(text.encode()).hexdigest()

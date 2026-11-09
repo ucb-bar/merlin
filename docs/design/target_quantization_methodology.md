@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-10-18
 related: [output_epilogue_capabilities, accumulator_load_order]
-code_refs: [src/merlin/targetgen/quant_methodology.py, src/merlin/targetgen/quant_recipe.py, src/merlin/targetgen/_integer_epilogue.py, src/merlin/targetgen/_recipe_quantizer.py, src/merlin/targetgen/_recipe_observers.py, src/merlin/targetgen/_m2m_capture_artifacts.py, src/merlin/targetgen/quantization_spec.py, src/merlin/targetgen/output_path.py, src/merlin/xdsl_dialects/lowering/output_fusion.py, packages/merlin-experiments/src/merlin_experiments/phase0/capture_recipe.py, packages/merlin-experiments/src/merlin_experiments/phase0/requirements.py, examples/gemmini/target/software-spec.yaml]
+code_refs: [src/merlin/targetgen/quant_methodology.py, src/merlin/targetgen/quant_recipe.py, src/merlin/targetgen/_integer_epilogue.py, src/merlin/targetgen/_recipe_quantizer.py, src/merlin/targetgen/_recipe_observers.py, src/merlin/targetgen/_m2m_capture_artifacts.py, src/merlin/targetgen/quantization_spec.py, src/merlin/targetgen/output_path.py, src/merlin/xdsl_dialects/lowering/output_fusion.py, src/merlin_experiments/phase0/capture_recipe.py, src/merlin_experiments/phase0/requirements.py, examples/gemmini/target/software-spec.yaml]
 ---
 
 # A target's quantization methodology, applied to every model

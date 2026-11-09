@@ -241,7 +241,7 @@ def prewarm(artifact_text: str, *, target: str, work: Path) -> str:
     a prewarmed object is byte-for-byte the object that stage would have compiled itself.
     """
     from merlin.targetgen.contract.compile import llvm_mlir_to_object
-    from merlin.verify.lean_emission_context import requires_fresh_object
+    from merlin.verification.lean_emission_context import requires_fresh_object
 
     if requires_fresh_object(artifact_text):
         # The actual consumer must observe this pending traced object; a
@@ -285,7 +285,7 @@ def prewarm_async(artifact_text: str, *, target: str, jobs: int) -> Any:
     it is already cached (or the cache is off). One compile per key at a time, whoever asks."""
     from contextvars import copy_context
 
-    from merlin.verify.lean_emission_context import requires_fresh_object
+    from merlin.verification.lean_emission_context import requires_fresh_object
 
     if requires_fresh_object(artifact_text):
         return None

@@ -94,7 +94,7 @@ DEFAULT_PACKAGE = "out/artifacts/targets/rvv/hand_v0_int8"
 _DRIVER_SOURCES = (
     "build_tools/scripts/k1_lever_ablation.py",
     INSTRUMENT,
-    "packages/merlin-analysis/src/merlin/compare/et_campaign.py",
+    "src/merlin/compare/et_campaign.py",
     "merlin/python/merlin/llvmlower/impr_features.py",
     "merlin/python/merlin/mining/wholemodel_proposer.py",
 )

@@ -8,10 +8,13 @@ from test_compact_dense import ADAPTER
 from test_dense_retained_reduction import chosen, inputs
 from test_shared_input_schedule import source
 
-from merlin.compile.scheduling.block_schedule import Compute, Load, Preload, Store
-from merlin.compile.scheduling.projection_dense import bind_dense_projection
-from merlin.compile.scheduling.projection_views import plan_shared_projection_views
-from merlin.compile.scheduling.shared_input_groups import find_shared_input_groups
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.projection_dense import bind_dense_projection
+from merlin.compiler.schedule.projection_views import plan_shared_projection_views
+from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups
 from merlin.sched.ir import Call, evaluate, instances
 from merlin.transforms.dense_planning import dense_blocks
 
@@ -117,7 +120,7 @@ def test_crossing_or_unpartitioned_physical_rectangles_are_not_granted_member_id
 
 
 def test_original_member_coefficients_and_output_precision_cannot_be_replaced():
-    from merlin.compile.scheduling.dense_contracts import DenseTiledIntegerReadout
+    from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout
 
     module, views, problem, original = setup()
     views = replace(views, output_element_bytes=(1, 1, 1))

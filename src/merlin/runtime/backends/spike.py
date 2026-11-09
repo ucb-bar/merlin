@@ -102,9 +102,17 @@ def compile_command_buffer(cb: dict[str, Any], workdir: str | Path, harts: int =
     return elf
 
 
-def run_elf(elf: str | Path, harts: int = 4, isa: str = DEFAULT_ISA, timeout: int = 300) -> str:
+def run_elf(elf: str | Path, harts: int = 4, isa: str = DEFAULT_ISA, timeout: int = 300,
+            *, dram_base: int | None = None, mem_bytes: int | None = None) -> str:
     """Run the ELF on spike; returns raw console output."""
-    cmd = [str(spike_path()), f"--isa={isa}", f"-p{harts}", str(elf)]
+    if (dram_base is None) != (mem_bytes is None):
+        raise ValueError("Spike memory origin and size must be supplied together")
+    memory = []
+    if dram_base is not None:
+        if type(dram_base) is not int or dram_base < 0 or type(mem_bytes) is not int or mem_bytes <= 0:
+            raise ValueError("invalid Spike memory mapping")
+        memory = [f"-m{hex(dram_base)}:{hex(mem_bytes)}"]
+    cmd = [str(spike_path()), f"--isa={isa}", f"-p{harts}", *memory, str(elf)]
     from merlin.targetgen.rtl_engine_policy import simulation_runtime_slot
 
     with simulation_runtime_slot("spike", wait_timeout_s=timeout):

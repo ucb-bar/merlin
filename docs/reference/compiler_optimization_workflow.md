@@ -19,7 +19,7 @@ code_refs:
   - examples/compiler/connected_composition.py
   - src/merlin/targetgen/compiler_library_fork.py
   - src/merlin/targetgen/isa_dialect_gen.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/compiler_library.py
+  - src/merlin_experiments/phase1/compiler_library.py
   - build_tools/scripts/audit_compiler_integration.py
 ---
 

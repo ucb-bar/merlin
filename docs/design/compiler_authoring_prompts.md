@@ -9,10 +9,10 @@ code_refs:
   - src/merlin/targetgen/generalization_prompt.py
   - src/merlin/targetgen/generate_prompt.py
   - src/merlin/targetgen/tool_registry.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/task_staging.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/source_inputs.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/component_origin.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/stage_prompt.py
+  - src/merlin_experiments/phase1/task_staging.py
+  - src/merlin_experiments/phase1/source_inputs.py
+  - src/merlin_experiments/phase1/component_origin.py
+  - src/merlin_experiments/phase2/stage_prompt.py
   - packages/merlin-experiments/tests/test_general_compiler_prompts.py
 ---
 

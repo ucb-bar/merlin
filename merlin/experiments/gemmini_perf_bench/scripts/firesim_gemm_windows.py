@@ -674,6 +674,7 @@ def validation_policy(plan: dict[str, Any], *, policy_id: str) -> dict[str, Any]
     printed identically to a correct run's.  ``merlin.perf.firesim_batch`` refuses v1 for a cycle
     claim BY NAME for exactly that reason, so this is the only policy shape that can support one.
     """
+    from merlin.perf.firesim_batch import WINDOW_KIND_CONTIGUOUS
     from merlin.runtime.backends import base
 
     backend = base.get_backend(plan["target"])

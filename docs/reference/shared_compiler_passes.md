@@ -3,43 +3,43 @@ title: Shared compiler pass contracts
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-20
+last_verified: 2026-11-08
 related: [../design/shared_phase1_scheduling.md, ../guides/shared_offload_selection.md]
 code_refs:
   - src/merlin/transforms/pipeline.py
   - src/merlin/transforms/pipeline_state.py
-  - src/merlin/compile/scheduling/export.py
-  - src/merlin/compile/scheduling/library_sources.py
-  - src/merlin/compile/scheduling/compact_dense.py
-  - src/merlin/compile/scheduling/llvm_program.py
-  - src/merlin/compile/scheduling/window_transfer.py
-  - src/merlin/compile/scheduling/dense_source.py
+  - src/merlin/compiler/schedule/export.py
+  - src/merlin/compiler/schedule/library_sources.py
+  - src/merlin/compiler/schedule/compact_dense.py
+  - src/merlin/compiler/schedule/llvm_program.py
+  - src/merlin/compiler/schedule/window_transfer.py
+  - src/merlin/compiler/schedule/dense_source.py
   - src/merlin/llvmlower/shared_source_routing.py
-  - src/merlin/compile/scheduling/pointwise_source.py
+  - src/merlin/compiler/schedule/pointwise_source.py
   - src/merlin/llvmlower/group_profile_bindings.py
-  - src/merlin/compile/scheduling/compact_verification.py
-  - src/merlin/compile/scheduling/program_limits.py
+  - src/merlin/compiler/schedule/compact_verification.py
+  - src/merlin/compiler/schedule/program_limits.py
   - src/merlin/model_check/program_admission.py
   - src/merlin/targetgen/contract/elf_admission.py
-  - src/merlin/compile/scheduling/program_contracts.py
-  - src/merlin/compile/scheduling/temporary_storage.py
-  - src/merlin/compile/scheduling/device_spills.py
-  - src/merlin/compile/scheduling/spill_conformance.py
-  - src/merlin/compile/scheduling/spill_contracts.py
-  - src/merlin/compile/scheduling/copy_elimination.py
-  - src/merlin/compile/scheduling/schedule_pipeline.py
-  - src/merlin/compile/scheduling/fusion.py
-  - src/merlin/compile/scheduling/fusion_semantics.py
-  - src/merlin/compile/scheduling/row_softmax.py
-  - src/merlin/compile/scheduling/row_softmax_verification.py
-  - src/merlin/compile/scheduling/row_contracts.py
+  - src/merlin/compiler/schedule/program_contracts.py
+  - src/merlin/compiler/schedule/temporary_storage.py
+  - src/merlin/compiler/schedule/device_spills.py
+  - src/merlin/compiler/schedule/spill_conformance.py
+  - src/merlin/compiler/schedule/spill_contracts.py
+  - src/merlin/compiler/schedule/copy_elimination.py
+  - src/merlin/compiler/schedule/schedule_pipeline.py
+  - src/merlin/compiler/schedule/fusion.py
+  - src/merlin/compiler/schedule/fusion_semantics.py
+  - src/merlin/compiler/schedule/row_softmax.py
+  - src/merlin/compiler/schedule/row_softmax_verification.py
+  - src/merlin/compiler/schedule/row_contracts.py
   - src/merlin/llvmlower/cpu_softmax.py
   - src/merlin/llvmlower/source_rows.py
   - src/merlin/llvmlower/source_model.py
   - src/merlin/llvmlower/source_dense.py
   - src/merlin/llvmlower/convolution_routes.py
   - src/merlin/llvmlower/im2col_pack.py
-  - src/merlin/verify/host_packing_storage.py
+  - src/merlin/verification/packing.py
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/runtime/host_provider.py
   - src/merlin/runtime/backends/spike_model.py
@@ -49,8 +49,9 @@ code_refs:
   - src/merlin/llvmlower/automatic_rounding.py
   - src/merlin/llvmlower/destination_check.py
   - src/merlin/llvmlower/quant_round_check.py
-  - src/merlin/compile/scheduling/configuration.py
-  - src/merlin/transforms/row_normalization.py
+  - src/merlin/compiler/schedule/configuration.py
+  - src/merlin/compiler/transforms/row_normalization.py
+  - src/merlin/compiler/transforms/row_normalization_source.py
   - src/merlin/transforms/row_normalization_check.py
   - src/merlin/llvmlower/automatic_rows.py
   - src/merlin/model_check/full_build.py
@@ -64,13 +65,13 @@ code_refs:
   - src/merlin/common/proc.py
   - src/merlin/common/cpu_pool.py
   - src/merlin/sched/ir/integer_domain.py
-  - src/merlin/compile/scheduling/selected_contracts.py
-  - src/merlin/compile/scheduling/dense_contracts.py
-  - src/merlin/compile/scheduling/storage_contracts.py
-  - src/merlin/compile/scheduling/fusion_contracts.py
+  - src/merlin/compiler/schedule/selected_contracts.py
+  - src/merlin/compiler/schedule/dense_contracts.py
+  - src/merlin/compiler/schedule/storage_contracts.py
+  - src/merlin/compiler/schedule/fusion_contracts.py
   - src/merlin/semantic_compiler/allocation_types.py
   - src/merlin/semantic_compiler/allocate.py
-  - src/merlin/verify/lean_resource_geometry.py
+  - src/merlin/verification/lean_resource_geometry.py
 ---
 
 # Shared compiler pass contracts
@@ -442,14 +443,16 @@ the existing compiler-library contract.
 Export all seven shared scheduling families with:
 
 ```sh
-python -m merlin.compile.scheduling.export --shared-library --output-dir "$TMPDIR/shared-sdk"
+python -m merlin.compiler.schedule.export --shared-library --output-dir "$TMPDIR/shared-sdk"
 ```
 
-The destination must be empty and unlinked. The bundle contains 57 declared
-Python source owners plus `LICENSE` and `NOTICE`. All algorithm, checker and
-numerical implementation files are byte-identical to the ordinary compiler.
-Three explicitly recorded namespace initializers omit installed host
-orchestration and backend discovery. The manifest records exact membership,
+The destination must be empty and unlinked. Fresh exports select SDK26 and its
+canonical source owners. The manifest records the actual source and namespace
+roster, plus `LICENSE` and `NOTICE`; its module count is not a pass count. All
+algorithm, checker and numerical implementation files are byte-identical to the
+ordinary compiler. Explicitly recorded namespace initializers omit installed
+host orchestration and backend discovery. Historical SDK exports require an
+explicit frozen release and retain that release's exact membership and bytes. The manifest records exact membership,
 public leaf APIs, namespace replacements, observed external package versions
 and a deterministic library digest. Source/resource changes during export
 prevent completed manifest publication. Existing standalone dense exports keep
@@ -736,10 +739,10 @@ formats from the actual tensor types and scalar recurrence; a caller cannot
 replace those with a shape-only declaration.
 
 ```python
-from merlin.compile.scheduling.dense_source import (
+from merlin.compiler.schedule.dense_source import (
     DenseSourceUnavailable, schedule_source_dense,
 )
-from merlin.compile.scheduling.dense_contracts import DenseSchedulingUnavailable
+from merlin.compiler.schedule.dense_contracts import DenseSchedulingUnavailable
 
 try:
     compiled = schedule_source_dense(
@@ -1118,7 +1121,7 @@ and shared source hashes. Timing remains unknown without paired timing evidence.
 For an integration that supplies those public contracts:
 
 ```python
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, compile_schedule
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets, compile_schedule
 
 result = compile_schedule(
     source_kernel, private_objects, selected_banks, storage_adapter,
@@ -1628,7 +1631,7 @@ the original source route. Incorrect provider arithmetic or output raises a
 diagnostic; an infeasible schedule retains the existing scheduler diagnostic.
 
 ```python
-from merlin.compile.scheduling.pointwise_source import compile_source_pointwise
+from merlin.compiler.schedule.pointwise_source import compile_source_pointwise
 
 checked = compile_source_pointwise(
     module, operation, original_kernel, temporaries, adapter, encoding, limits,
@@ -1667,7 +1670,7 @@ run. Directly constructed physical readout calls obey the selected RTL element
 bound even if an implementation bypasses the emitter.
 
 ```python
-from merlin.compile.scheduling.pointwise_source import PointwiseScheduleRewrite
+from merlin.compiler.schedule.pointwise_source import PointwiseScheduleRewrite
 
 checked = compile_source_pointwise(
     module, operation, original_kernel, temporaries, adapter, encoding, limits,
@@ -2874,7 +2877,7 @@ separately.
 
 ### Explicit finite staged dense effects
 
-`merlin.compile.scheduling.staged_dense` adds the separate
+`merlin.compiler.schedule.staged_dense` adds the separate
 `merlin.staged_dense.v1` contract. It preserves dense-v1's original synchronous
 meaning. The new finite vocabulary distinguishes operand loads, independently
 proved zero initialization, descriptor issue, following compute consumption,
@@ -2906,7 +2909,7 @@ their original source membership and semantics.
 
 ### Counted panel readout batching
 
-`merlin.compile.scheduling.dense_panel_readout.batch_dense_panel_readouts`
+`merlin.compiler.schedule.dense_panel_readout.batch_dense_panel_readouts`
 accepts a checked `DensePanelPipelineResult` and an independently selected
 `DensePanelOverlapAdmission`. It groups pure readout loops under one completion
 boundary without expanding the loops or changing any data call or its order.

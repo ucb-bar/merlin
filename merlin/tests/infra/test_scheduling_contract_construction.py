@@ -6,10 +6,12 @@ import json
 import pytest
 import yaml
 
-from merlin.compile.scheduling.dense_contracts import DENSE_FIELDS, DENSE_POINTER_FIELDS, dense_contract_draft
-from merlin.compile.scheduling.selected_contracts import (
-    inspect_scheduling_draft, read_scheduling_contracts, scheduling_spec_draft,
-)
+from merlin.compiler.schedule.dense_contracts import DENSE_FIELDS
+from merlin.compiler.schedule.dense_contracts import DENSE_POINTER_FIELDS
+from merlin.compiler.schedule.dense_contracts import dense_contract_draft
+from merlin.compiler.schedule.selected_contracts import inspect_scheduling_draft
+from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
+from merlin.compiler.schedule.selected_contracts import scheduling_spec_draft
 from test_selected_dense_contracts import inputs
 
 

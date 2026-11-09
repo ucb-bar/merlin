@@ -44,7 +44,11 @@ class TestRoccDecodesAgainstDerivedFacts:
 
         src = inspect.getsource(RC)
         assert "custom_opcode" in src, "the opcode must be READ from the derived table"
-        assert "0x7b" not in src and "123" not in src, "a baked opcode value"
+        import ast
+
+        literals = [node.value for node in ast.walk(ast.parse(src)) if isinstance(node, ast.Constant)]
+        assert not any(type(value) is int and value == 123 for value in literals), "a baked opcode value"
+        assert not any(type(value) is str and value in {"0x7b", "123"} for value in literals), "a baked opcode token"
 
     def test_a_command_is_named_from_the_rtl_table(self, gemmini):
         _t, ep, word = gemmini

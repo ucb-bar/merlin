@@ -68,7 +68,7 @@ class FnBuilder:
         resolver. An explicit whole-program ABI remains the original caller's
         selection, never an inference from this builder.
         """
-        from merlin.compile.logical_abi import kernel_arg_order
+        from merlin.compiler.ir.logical_abi import kernel_arg_order
 
         names = kernel_arg_order(command_buffer, abi)
         builder = cls([PTR] * len(names))

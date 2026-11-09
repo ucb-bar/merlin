@@ -5,10 +5,15 @@ from dataclasses import replace
 import pytest
 from test_compact_dense import ADAPTER, encode, project
 
-from merlin.compile.scheduling.block_schedule import Compute, Load, Preload, Store
-from merlin.compile.scheduling.compact_dense import DenseLoopStorage, DenseMemoryView
-from merlin.compile.scheduling.compact_dense_group import DenseLHSReuseLaw, schedule_compact_dense_group
-from merlin.compile.scheduling.compact_dense_group_check import verify_compact_dense_group
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+from merlin.compiler.schedule.compact_dense import DenseMemoryView
+from merlin.compiler.schedule.compact_dense_group import DenseLHSReuseLaw
+from merlin.compiler.schedule.compact_dense_group import schedule_compact_dense_group
+from merlin.compiler.schedule.compact_dense_group_check import verify_compact_dense_group
 from merlin.sched.ir import Const, Loop, Ptr, as_expr, evaluate, instances
 from merlin.transforms.dense_planning import DenseProblem, DenseResources
 

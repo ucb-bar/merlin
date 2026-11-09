@@ -182,7 +182,7 @@ def test_explicit_public_board_still_requires_exact_native_config_and_dts(tmp_pa
         boards, "load_boards", lambda path: {"legacy": wrong, "wrong": wrong, "selected_native": matching}
     )
     monkeypatch.setattr(execution, "_selected_facts", lambda path, **kwargs: {"config": "current"})
-    from merlin.compile import model_execution_inputs as MI
+    from merlin.runtime import modelinputs as MI
 
     def selected_firrtl(path, *, target, config):
         if config != "current":

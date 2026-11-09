@@ -86,7 +86,7 @@ def _response(request, compiler, *, raw=None):
 
 
 def _live_fixture(tmp_path):
-    from merlin.compile import tuning_knobs
+    from merlin.compiler.selection import knobs as tuning_knobs
 
     fixture = _fixture(tmp_path)
     _write(tmp_path / "submission" / tuning_knobs.DECLARATION, dict(schema=tuning_knobs.SCHEMA,
@@ -194,7 +194,7 @@ def test_live_analysis_is_inert_without_the_original_selection(tmp_path):
 
 
 def test_removed_declaration_does_not_inherit_old_executable_alternatives(tmp_path):
-    from merlin.compile.tuning_knobs import DECLARATION
+    from merlin.compiler.selection.knobs import DECLARATION
 
     fixture, report = _live_fixture(tmp_path)
     (tmp_path / "submission" / DECLARATION).unlink()

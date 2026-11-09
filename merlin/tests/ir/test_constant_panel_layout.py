@@ -7,7 +7,7 @@ import pytest
 from xdsl.dialects.builtin import ModuleOp, TensorType, i8
 from xdsl.ir import Block
 
-from merlin.compile.scheduling.tensor_storage import column_panel_storage
+from merlin.compiler.schedule.tensor_storage import column_panel_storage
 from merlin.llvmlower.constant_panel_layout import (
     constant_panel_request, prepare_constant_panels, request_constant_panels,
 )

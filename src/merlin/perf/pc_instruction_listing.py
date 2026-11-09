@@ -12,8 +12,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from merlin.compile.analysis.disassembly import RawInsn, tokenize_text
-from merlin.compile.analysis.rocc_commands import audit_decoded, decode_stream
+from merlin.analysis.disassembly import RawInsn, tokenize_text
+from merlin.analysis.rocc_commands import audit_decoded, decode_stream
 
 
 @dataclass(frozen=True)

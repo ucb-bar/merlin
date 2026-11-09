@@ -5,9 +5,9 @@ status: current
 owner: merlin-experiments
 last_verified: 2026-10-08
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_integer_bounds.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_numerics.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/writer.py
+  - src/merlin_experiments/phase0/component_integer_bounds.py
+  - src/merlin_experiments/phase0/component_numerics.py
+  - src/merlin_experiments/phase0/writer.py
   - packages/merlin-experiments/tests/test_component_integer_bounds.py
 ---
 

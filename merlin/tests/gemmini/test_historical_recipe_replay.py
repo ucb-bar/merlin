@@ -42,3 +42,24 @@ def test_historical_replay_refuses_relative_and_unpinned_package(tmp_path: Path)
     unpinned = _check(str(tmp_path))
     assert unpinned.returncode != 0
     assert "differs from the historical pinned manifest" in unpinned.stderr
+
+
+def test_census_capability_report_does_not_require_caller_arguments_or_emit_workloads(monkeypatch, tmp_path):
+    import importlib.util
+
+    monkeypatch.syspath_prepend(str(CHECK.parent))
+    spec = importlib.util.spec_from_file_location("recipe_census_report", CHECK.with_name("census_workloads.py"))
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    row = {
+        "model_id": "source_model",
+        "M": 1,
+        "fits_without_cutting": "no",
+        "expressible": "yes",
+        "mac_share": 1.0,
+    }
+    report = module._capability_report([row], tmp_path / "census.json", tmp_path / "compiler", "a" * 64, 300)
+    assert "| source_model | 1 | 0/1 | 1/1 | 100.0% |" in report
+    assert "K is preserved on every row" in report
+    assert list(tmp_path.iterdir()) == []

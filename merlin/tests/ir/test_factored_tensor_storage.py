@@ -6,7 +6,8 @@ from math import prod
 
 import pytest
 
-from merlin.compile.scheduling.tensor_storage import FactoredTensorStorage, column_panel_storage
+from merlin.compiler.schedule.tensor_storage import FactoredTensorStorage
+from merlin.compiler.schedule.tensor_storage import column_panel_storage
 from merlin.perf.storage_encoding import GroupedAxesStorage
 from merlin.runtime.storage_binding import StorageBinding, StoragePrepackRequired, resolve_storage_bindings
 

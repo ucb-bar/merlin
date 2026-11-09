@@ -14,10 +14,10 @@ import subprocess
 
 import pytest
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import module_source_path
 from merlin.targetgen import quant_recipe as QR
 
-_DIR = merlin_dir() / "python/merlin/targetgen"
+_DIR = module_source_path("merlin.targetgen._recipe_specs").parent
 
 
 def _recipe() -> dict:

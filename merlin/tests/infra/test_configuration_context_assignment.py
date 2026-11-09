@@ -1,5 +1,6 @@
 import pytest
-from merlin.compile.scheduling.configuration_contexts import ConfigurationRequest,assign_configuration_contexts
+from merlin.compiler.schedule.configuration_contexts import ConfigurationRequest
+from merlin.compiler.schedule.configuration_contexts import assign_configuration_contexts
 
 def request(name,pitch):
     return ConfigurationRequest(name,(("stride",pitch),("scale",17),("width",8)))

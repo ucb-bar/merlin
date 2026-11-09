@@ -6,9 +6,9 @@ owner: merlin-experiments
 last_verified: 2026-10-08
 related: [component_execution_budget, component_integer_bounds, component_scale_generalization]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_graph_variants.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_graph_relations.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_coverage_inputs.py
+  - src/merlin_experiments/phase0/component_graph_variants.py
+  - src/merlin_experiments/phase0/component_graph_relations.py
+  - src/merlin_experiments/phase0/component_coverage_inputs.py
   - packages/merlin-experiments/tests/test_component_graph_variants.py
 ---
 

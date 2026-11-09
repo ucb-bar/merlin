@@ -6,40 +6,40 @@ owner: experiments
 last_verified: 2026-10-23
 related: [experiment_console, storage, reproducibility, artifact_evaluation, phase2_test_justification]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/discovery.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/model.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/serve.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/diagnose.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/placement.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/timeline.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/machine.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/console/sources/__init__.py
+  - src/merlin_experiments/tracking/console/discovery.py
+  - src/merlin_experiments/tracking/console/model.py
+  - src/merlin_experiments/tracking/console/serve.py
+  - src/merlin_experiments/tracking/console/diagnose.py
+  - src/merlin_experiments/tracking/console/placement.py
+  - src/merlin_experiments/tracking/console/sources/timeline.py
+  - src/merlin_experiments/tracking/console/sources/machine.py
+  - src/merlin_experiments/tracking/console/sources/__init__.py
   - packages/merlin-experiments/console/internal/ui/model.go
   - merlin/contract/compiler_stages.yaml
-  - packages/merlin-experiments/src/merlin_experiments/tracking/terminal.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/terminal_views.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/terminal_probe.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/terminal_metadata.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/records.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/html.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/text.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/__init__.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/views.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/live.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/tail.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/charts.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/phase0.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/phase0_html.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/activity.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/activity_html.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/phase1_detail.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/phase1_views.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/compiler.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/phase2_paired.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/phase2_views.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/resources.py
-  - packages/merlin-experiments/src/merlin_experiments/tracking/explorer.py
-  - packages/merlin-experiments/src/merlin_experiments/cli.py
+  - src/merlin_experiments/tracking/terminal.py
+  - src/merlin_experiments/tracking/terminal_views.py
+  - src/merlin_experiments/tracking/terminal_probe.py
+  - src/merlin_experiments/tracking/terminal_metadata.py
+  - src/merlin_experiments/tracking/records.py
+  - src/merlin_experiments/tracking/html.py
+  - src/merlin_experiments/tracking/text.py
+  - src/merlin_experiments/tracking/__init__.py
+  - src/merlin_experiments/tracking/views.py
+  - src/merlin_experiments/tracking/live.py
+  - src/merlin_experiments/tracking/tail.py
+  - src/merlin_experiments/tracking/charts.py
+  - src/merlin_experiments/tracking/phase0.py
+  - src/merlin_experiments/tracking/phase0_html.py
+  - src/merlin_experiments/tracking/activity.py
+  - src/merlin_experiments/tracking/activity_html.py
+  - src/merlin_experiments/tracking/phase1_detail.py
+  - src/merlin_experiments/tracking/phase1_views.py
+  - src/merlin_experiments/tracking/compiler.py
+  - src/merlin_experiments/tracking/phase2_paired.py
+  - src/merlin_experiments/tracking/phase2_views.py
+  - src/merlin_experiments/tracking/resources.py
+  - src/merlin_experiments/tracking/explorer.py
+  - src/merlin_experiments/cli.py
   - src/merlin/targetgen/target_index.py
   - merlin/contract/storage.yaml
 ---
@@ -105,7 +105,7 @@ merlin-experiment watch --task /path/to/campaign-task --legacy
 python -m merlin_experiments.tracking.terminal --task /path/to/campaign-task
 ```
 
-Install `packages/merlin-experiments` into the same environment as Merlin and
+Install `merlin[experiments]` into the selected environment and
 run on the Linux worker (for example through SSH). See the
 [artifact setup guide](artifact_evaluation.md) for a fresh machine. No browser,
 web service or additional terminal package is required. For a plain snapshot:

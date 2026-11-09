@@ -183,6 +183,80 @@ def test_explicit_selector_bypasses_provider_selector(synthetic_matrix):
     assert replace(matrix, select=explicit).selector() is explicit
 
 
+def test_matrix_offers_keep_unknown_cost_and_query_original_sites_once(synthetic_matrix):
+    from dataclasses import replace
+
+    from merlin.compiler.backend.proposal import MatrixExtension
+    from merlin.compiler.backend.proposal import MatrixRouting as CompilerMatrixRouting
+
+    assert MatrixRouting is CompilerMatrixRouting
+    matrix, _ = synthetic_matrix
+    first = SimpleNamespace(parallel=(64, 64), reduction=(32,))
+    second = SimpleNamespace(parallel=(64, 64), reduction=(32,))
+    queried = []
+
+    def original(operation):
+        queried.append(operation)
+        return operation is second
+
+    extension = MatrixExtension(replace(matrix, select=original))
+    assert extension.offers(first) == ()
+    offer, = extension.offers(second)
+    assert queried[0] is first and queried[1] is second and len(queried) == 2
+    assert offer.detail is second
+    assert (offer.owner, offer.unit) == (matrix.support_target, matrix.unit)
+    assert offer.estimated_cycles is None
+
+
+def test_matrix_preparation_uses_offers_without_changing_explicit_selection(synthetic_matrix, tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from merlin.compiler.backend.proposal import MatrixExtension
+
+    matrix, _ = synthetic_matrix
+    selected = []
+    offered = []
+
+    def original(shape):
+        selected.append(shape)
+        return False
+
+    original_offers = MatrixExtension.offers
+
+    def observe(self, operation):
+        result = original_offers(self, operation)
+        offered.append((operation, result))
+        return result
+
+    monkeypatch.setattr(MatrixExtension, "offers", observe)
+    prepared, _ = prepare_for_lowering(
+        _model(tmp_path), tmp_path, features=frozenset({OPU_MATMUL_NAME}),
+        blocking=False, matrix=replace(matrix, select=original),
+    )
+    assert len(offered) == len(selected) == 2
+    assert all(row[0] is selected[index] and row[1] == () for index, row in enumerate(offered))
+    assert "func.call @synthetic_matrix_call" not in prepared.read_text()
+    assert matrix.provider().load_signatures(tmp_path) == {}
+
+
+def test_matrix_offer_selector_refusal_propagates_before_rewrite(synthetic_matrix, tmp_path):
+    from dataclasses import replace
+
+    matrix, _ = synthetic_matrix
+    refusal = ValueError("selected policy refuses this source")
+
+    def original(shape):
+        raise refusal
+
+    with pytest.raises(ValueError) as raised:
+        prepare_for_lowering(
+            _model(tmp_path), tmp_path, features=frozenset({OPU_MATMUL_NAME}),
+            blocking=False, matrix=replace(matrix, select=original),
+        )
+    assert raised.value is refusal
+    assert not (tmp_path / "matrix_routing.json").exists()
+
+
 def test_matrix_provider_refuses_implicit_selection(synthetic_matrix, monkeypatch):
     from merlin.targetgen.plugins import PluginError
 
@@ -240,8 +314,17 @@ def test_build_refuses_unselected_matrix_before_output_or_native_work(tmp_path, 
     work = tmp_path / "uncreated-work"
     model = tmp_path / "absent-model"
     matrix = MatrixRouting(support_target="unselected_synthetic_provider", unit="fixture_unit", config="fixture_config")
+    options = {}
+    if backend_name == "zephyr_model":
+        from merlin.runtime import boards
+
+        # Satisfy the earlier explicit-board boundary so this checks the matrix
+        # provider refusal. No board build or hardware admission occurs here.
+        descriptor = SimpleNamespace(flow="zephyr", zephyr_default_ram_bytes=1, zephyr_link_limit_bytes=1)
+        monkeypatch.setattr(boards, "board", lambda name, **kwargs: descriptor)
+        options["board"] = "fixture_board"
     with pytest.raises(PluginError, match="explicit MERLIN_TARGET_PATH"):
-        getattr(backend, entry)(model, work, matrix=matrix)
+        getattr(backend, entry)(model, work, matrix=matrix, **options)
     assert not work.exists()
     assert not model.exists()
 

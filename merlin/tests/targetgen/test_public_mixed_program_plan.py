@@ -65,6 +65,19 @@ def _buffer():
     }
 
 
+def test_retained_backend_schema_cannot_weaken_shared_contract(tmp_path):
+    from merlin.common.paths import data_path
+
+    schema = tmp_path / "schema.json"
+    schema.write_bytes(data_path("contract", "schemas", "mixed_program_plan.schema.json").read_bytes())
+    expected = validate_mixed_program_plan(SOURCE, _buffer())
+    assert validate_mixed_program_plan(SOURCE, _buffer(), schema_path=schema) == expected
+    schema.write_text("{}", encoding="utf-8")
+    result = validate_mixed_program_plan(SOURCE, _buffer(), schema_path=schema)
+    assert not result["ok"]
+    assert "differs from the installed public" in result["findings"][0]
+
+
 def _split_output_tasks(*, writers: tuple[int, ...]) -> dict:
     cb = _buffer()
     plan = cb["params"]["global_program_plan"]

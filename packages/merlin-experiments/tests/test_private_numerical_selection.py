@@ -11,7 +11,7 @@ import yaml
 from merlin_experiments.phase1.feedback import private_full_model_execution as PFX
 from merlin_experiments.phase1.feedback import private_numerical_selection as Q
 
-from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
+from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
 
 
 @pytest.fixture

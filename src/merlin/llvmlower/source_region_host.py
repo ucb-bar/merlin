@@ -28,7 +28,7 @@ def outline_source_siblings(module):
     """
     from xdsl.dialects import func
 
-    from merlin.compile.scheduling.dense_source import read_zero_seeded_integer_matmul
+    from merlin.compiler.schedule.dense_source import read_zero_seeded_integer_matmul
     from merlin.llvmlower.source_region import outline_sibling_contractions
     from merlin.transforms.tensor_views import canonicalize_tensor_views
     from merlin.xdsl_dialects._common import text

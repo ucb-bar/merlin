@@ -10,8 +10,8 @@ code_refs:
   - src/merlin/kernels/cca_contract.py
   - src/merlin/kernels/action_catalog.py
   - src/merlin/kernels/trace.py
-  - packages/merlin-mining/src/merlin/mining/beam.py
-  - packages/merlin-mining/src/merlin/mining/wholemodel_proposer.py
+  - src/merlin/mining/beam.py
+  - src/merlin/mining/wholemodel_proposer.py
   - src/merlin/llvmlower/op_profile.py
   - build_tools/scripts/run_autonomous_beam_experiment.py
 ---

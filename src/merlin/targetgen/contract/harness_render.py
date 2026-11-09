@@ -30,45 +30,19 @@ from dataclasses import dataclass
 from math import prod
 from typing import Any
 
-from merlin.compile.logical_abi import (
-    Buffer as Buffer,
-)
-from merlin.compile.logical_abi import (
-    HarnessRenderError as HarnessRenderError,
-)
-from merlin.compile.logical_abi import (
-    LogicalAbi as LogicalAbi,
-)
-from merlin.compile.logical_abi import (
-    _ordered as _ordered,
-)
-from merlin.compile.logical_abi import (
-    _output_buffer as _output_buffer,
-)
-from merlin.compile.logical_abi import (
-    _produced as _produced,
-)
-from merlin.compile.logical_abi import (
-    _shape as _shape,
-)
-from merlin.compile.logical_abi import (
-    kernel_abi_from_commands as kernel_abi_from_commands,
-)
-from merlin.compile.logical_abi import (
-    kernel_arg_order as kernel_arg_order,
-)
-from merlin.compile.logical_abi import (
-    logical_abi as logical_abi,
-)
-from merlin.compile.logical_abi import (
-    logical_inputs as logical_inputs,
-)
-from merlin.compile.logical_abi import (
-    logical_interface as logical_interface,
-)
-from merlin.compile.logical_abi import (
-    logical_outputs as logical_outputs,
-)
+from merlin.compiler.ir.logical_abi import Buffer
+from merlin.compiler.ir.logical_abi import HarnessRenderError
+from merlin.compiler.ir.logical_abi import LogicalAbi
+from merlin.compiler.ir.logical_abi import _ordered
+from merlin.compiler.ir.logical_abi import _output_buffer
+from merlin.compiler.ir.logical_abi import _produced
+from merlin.compiler.ir.logical_abi import _shape
+from merlin.compiler.ir.logical_abi import kernel_abi_from_commands
+from merlin.compiler.ir.logical_abi import kernel_arg_order
+from merlin.compiler.ir.logical_abi import logical_abi
+from merlin.compiler.ir.logical_abi import logical_inputs
+from merlin.compiler.ir.logical_abi import logical_interface
+from merlin.compiler.ir.logical_abi import logical_outputs
 
 #: Backend modules conventionally expose their renderer's refusal as ``CodegenError``.
 CodegenError = HarnessRenderError

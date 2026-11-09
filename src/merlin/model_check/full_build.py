@@ -183,8 +183,13 @@ def _lowering_sources() -> dict[str, Path]:
         "merlin.model_check.full_build_identity",
         "merlin.model_check.full_build_inputs",
         "merlin.model_check.full_build_native",
-        "merlin.compile.baremetal_model",
-        "merlin.compile.model_execution_inputs",
+        "merlin.model",
+        "merlin.compiler.build.modeloptions",
+        "merlin.compiler.build.saved",
+        "merlin.compiler.backend.isa",
+        "merlin.runtime.model",
+        "merlin.verification.model",
+        "merlin.runtime.modelinputs",
         "merlin.frontends.linalg_mlir",
         "merlin.targetgen.rtl.facts",
         "merlin.common.invocation_record",
@@ -226,7 +231,7 @@ def _build_inputs(stage, submission, settings, directory, offload, weights_sourc
     and unknown files. Read existing selected/scoped facts without extraction.
     This is not a transitive provider, native resource or toolchain closure.
     """
-    from merlin.compile.model_execution_inputs import strict_tree_sha256
+    from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin.model_check.cache import TARGET_INPUTS
     from merlin.targetgen.rtl.facts import find_facts, load_facts
     from merlin.targetgen.target_registry import resolve
@@ -406,7 +411,7 @@ def _verify_relink(record: dict, stage: Path, *, inputs_current: bool = True) ->
 @I.timed_event("phase", "device routing")
 def _routing(target: str, stage: Path, submission: Path, model: str, settings: BuildSettings, admission):
     """The submission's device routing over every source-admitted group, or ``None`` (host only)."""
-    from merlin.compile.route_before_build import plan_before_build
+    from merlin.compiler.planning.model import plan_before_build
 
     try:
         plan = plan_before_build(
@@ -497,7 +502,7 @@ def _build(
     offload,
     weights_source=None,
 ):
-    from merlin.compile.baremetal_model import compile_saved_model
+    from merlin.model import compile_saved_model
     from merlin.model_check.full_build_identity import build_material, verified_recipe
 
     lookup_started = time.monotonic()
@@ -965,7 +970,7 @@ def run_host(elf: Path, *, timeout_s: float) -> tuple[bytes, float]:
 
 def read(console: bytes, stage: Path, build_hash: str) -> tuple[list[np.ndarray], dict[str, Any]]:
     """Every result of the forward (i1 as bool), its text metrics and its group profile."""
-    from merlin.compile.baremetal_model import read_full_outputs
+    from merlin.model import read_full_outputs
     from merlin.llvmlower.c_runtime import _out_specs
     from merlin.runtime.out_bin import binary_console_diagnostics
     from merlin.runtime.whole_model_readback import parse_group_profile

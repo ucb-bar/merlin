@@ -3,7 +3,7 @@
 import pytest
 import z3
 
-from merlin.compile.scheduling.compact_verification import _defined_exists
+from merlin.compiler.schedule.compact_verification import _defined_exists
 
 
 def equivalent(left, right):
@@ -62,12 +62,10 @@ def test_actual_four_band_panel_projection_fits_original_five_second_budget(shap
 
     from test_compact_dense import ADAPTER, fixture
 
-    from merlin.compile.scheduling.block_schedule import Load
-    from merlin.compile.scheduling.dense_panel_pipeline import (
-        DensePanelOverlapAdmission,
-        build_dense_panel_pipeline,
-        verify_dense_panel_pipeline,
-    )
+    from merlin.compiler.schedule.blocks import Load
+    from merlin.compiler.schedule.dense_panel_pipeline import DensePanelOverlapAdmission
+    from merlin.compiler.schedule.dense_panel_pipeline import build_dense_panel_pipeline
+    from merlin.compiler.schedule.dense_panel_pipeline import verify_dense_panel_pipeline
     from merlin.sched.ir import Loop
     from merlin.sched.primitives import Cursor, divide_loop, unroll
     from merlin.transforms.dense_planning import dense_blocks

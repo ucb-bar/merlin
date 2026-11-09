@@ -160,7 +160,7 @@ def fuse_round_clamp_convert(module, report_out: "dict | None" = None) -> int:
     from xdsl.dialects import arith
     from xdsl.dialects.builtin import FloatAttr, IntegerAttr, IntegerType
 
-    from .passes_xdsl import carry_provenance
+    from merlin.compiler.ir.provenance import carry_provenance
 
     report: dict = {} if report_out is None else report_out
     n = 0
@@ -231,9 +231,34 @@ def fuse_round_clamp_convert(module, report_out: "dict | None" = None) -> int:
 def ensure_registered() -> str:
     """Register the isolated rewrite and explicit vectorized composition. Idempotent."""
     from . import impr_features as F
+    from . import shared_feature_registry as _shared
+
+    ensure_shared_registered()
 
     if FEATURE in F.known() and VEC_FEATURE in F.known():
         return FEATURE
+    if FEATURE not in F.known():
+        F.register(_shared.get_shared_feature(FEATURE))
+    if VEC_FEATURE not in F.known():
+        F.register(
+            F.ImprFeature(
+                name=VEC_FEATURE,
+                action_class="PASS",
+                description=(
+                    "Explicit composition of `fuse_quantize_round_convert` with "
+                    "`vectorize_non_contraction_generics`. Use only when a post-codegen contraction "
+                    "census proves the broader schedule preserved the selected kernel."
+                ),
+                implies=frozenset({FEATURE, F.VEC_NONCONTRACTION_NAME}),
+            )
+        )
+    return FEATURE
+
+
+def ensure_shared_registered() -> str:
+    """Register only the generic quantization rewrite, without vector policy."""
+    from . import shared_feature_registry as F
+
     if FEATURE not in F.known():
         F.register(
             F.ImprFeature(
@@ -262,17 +287,5 @@ def ensure_registered() -> str:
                 ),
             )
         )
-    if VEC_FEATURE not in F.known():
-        F.register(
-            F.ImprFeature(
-                name=VEC_FEATURE,
-                action_class="PASS",
-                description=(
-                    "Explicit composition of `fuse_quantize_round_convert` with "
-                    "`vectorize_non_contraction_generics`. Use only when a post-codegen contraction "
-                    "census proves the broader schedule preserved the selected kernel."
-                ),
-                implies=frozenset({FEATURE, F.VEC_NONCONTRACTION_NAME}),
-            )
-        )
+
     return FEATURE

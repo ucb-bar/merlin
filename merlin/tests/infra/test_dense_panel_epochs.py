@@ -15,17 +15,21 @@ import pytest
 from test_compact_dense import ADAPTER
 from test_dense_panel_pipeline import setup
 
-from merlin.compile.scheduling.block_schedule import Compute, InitializeAccumulator, Load, Preload, Store
-from merlin.compile.scheduling.dense_panel_epochs import (
-    EPOCH_FLAGS,
-    DensePanelEpochLaw,
-    DensePanelEpochResult,
-    propose_dense_panel_epochs,
-    schedule_dense_panel_epochs,
-)
-from merlin.compile.scheduling.dense_panel_pipeline import DRAIN, _serial_projection, schedule_dense_panel_pipeline
-from merlin.compile.scheduling.dense_panel_readout import batch_dense_panel_readouts
-from merlin.compile.scheduling.schedule_ir import make_dense_schedule_plan
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import InitializeAccumulator
+from merlin.compiler.schedule.blocks import Load
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.blocks import Store
+from merlin.compiler.schedule.dense_panel_epochs import EPOCH_FLAGS
+from merlin.compiler.schedule.dense_panel_epochs import DensePanelEpochLaw
+from merlin.compiler.schedule.dense_panel_epochs import DensePanelEpochResult
+from merlin.compiler.schedule.dense_panel_epochs import propose_dense_panel_epochs
+from merlin.compiler.schedule.dense_panel_epochs import schedule_dense_panel_epochs
+from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
+from merlin.compiler.schedule.dense_panel_pipeline import _serial_projection
+from merlin.compiler.schedule.dense_panel_pipeline import schedule_dense_panel_pipeline
+from merlin.compiler.schedule.dense_panel_readout import batch_dense_panel_readouts
+from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
 from merlin.sched.ir import evaluate, instances
 from merlin.transforms.dense_planning import dense_blocks
 
@@ -46,7 +50,7 @@ def original(*, prefetch=True, issue_order="compute_then_prefetch", batch=False,
     if biased:
         from test_compact_dense_bias import ADAPTER as bias_adapter
 
-        from merlin.compile.scheduling.compact_dense import DenseBiasSource
+        from merlin.compiler.schedule.compact_dense import DenseBiasSource
 
         p, adapter, bias = replace(p, bias=True), bias_adapter, DenseBiasSource(p.n, "i32")
         b = next(x for x in dense_blocks(p, replace(r, max_k_blocks=1)) if (x.m, x.n) == (2, 2))
@@ -304,8 +308,8 @@ def test_one_option_on_the_dense_entry_emits_only_the_remaining_drains():
     from xdsl.dialects import llvm
     from xdsl.dialects.builtin import ModuleOp
 
-    from merlin.compile.scheduling.dense_ready_readout import schedule_dense_pipeline
-    from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter
+    from merlin.compiler.schedule.dense_ready_readout import schedule_dense_pipeline
+    from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
     from merlin.llvmlower.host_builder import FnBuilder
 
     p, r, s, b, a = setup()

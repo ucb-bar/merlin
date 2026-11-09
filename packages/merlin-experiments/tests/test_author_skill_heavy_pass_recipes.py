@@ -112,7 +112,7 @@ def test_readout_recipe_overlaps_readout_on_an_accumulator_bound_gemm():
 
 @pytest.mark.parametrize("shape", [(7, 4, 19), (7, 13, 19), (3, 7, 11)])
 def test_full_k_readout_recipe_accepts_one_tile_and_ragged_reductions(shape, monkeypatch):
-    from merlin.compile.scheduling import dense_ready_readout
+    from merlin.compiler.schedule import dense_ready_readout
 
     recipe = load_script(SKILL, "dense_readout_recipe")
     captured = []
@@ -290,7 +290,7 @@ def test_policy_keeps_the_incumbent_without_boundary_cases_or_with_a_stale_domai
 
 
 def test_every_registered_variant_compiles_through_the_single_dense_entry(policy_module, monkeypatch):
-    from merlin.compile.scheduling import dense_ready_readout
+    from merlin.compiler.schedule import dense_ready_readout
     from merlin.transforms.pipeline_policy import PipelinePolicy, execute_policy
 
     calls = []

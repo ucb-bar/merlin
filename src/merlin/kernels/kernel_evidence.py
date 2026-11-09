@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
-from merlin.compile.analysis.schedule_structure import (
+from merlin.analysis.schedule_structure import (
     CountedLoop,
     ScheduleAccess,
     ScheduleDependency,
@@ -527,8 +527,8 @@ def semantic_region_from_ir(
 
 def analyze_disassembly(text: str, *, table: Mapping, evidence: KernelEvidence, roles_of=None) -> ScheduleModel:
     """Use the existing tokenizer and the explicitly selected source-derived decoder."""
-    from merlin.compile.analysis.disassembly import tokenize_text
-    from merlin.compile.analysis.rocc_commands import audit_decoded, decode_stream
+    from merlin.analysis.disassembly import tokenize_text
+    from merlin.analysis.rocc_commands import audit_decoded, decode_stream
 
     if evidence.capture_kind != "static_disassembly" or "disassembly" not in evidence.kinds():
         raise ValueError("static analysis requires a pinned disassembly evidence input")

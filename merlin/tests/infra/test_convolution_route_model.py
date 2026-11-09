@@ -367,7 +367,7 @@ def actual_final_packing(work, built, provider, geometry, selection, *, panel):
     from pathlib import Path
 
     from merlin.llvmlower.borrowed_buffer_calls import read_borrowed_calls
-    from merlin.verify.host_packing_storage import (
+    from merlin.verification.packing import (
         PackingStorageRequest,
         PackingStorageUse,
         inspect_packing_storage_batch,

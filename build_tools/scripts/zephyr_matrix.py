@@ -51,7 +51,6 @@ for name in bundles:
             backend=backend,
             rvv_hart=hart,
             harts=max(2, n_harts),
-            arena_mb=192,
             n_harts=n_harts,
             iters=iters,
             warmup=warmup,

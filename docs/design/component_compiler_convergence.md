@@ -6,23 +6,23 @@ owner: experiments
 last_verified: 2026-10-09
 related: [agentic_experiment_integrity, capsule_phase_split, normal_search_feedback, phase0_specification]
 code_refs:
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_automatic.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_automatic_plan.py
+  - src/merlin_experiments/phase0/component_automatic.py
+  - src/merlin_experiments/phase0/component_automatic_plan.py
   - src/merlin/targetgen/frontend_use_def.py
   - src/merlin/targetgen/frontend_operator_effects.py
   - src/merlin/targetgen/torch_schema_observer.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_schema_intake.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/arithmetic_intake.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_arithmetic_obligations.py
+  - src/merlin_experiments/phase0/operator_schema_intake.py
+  - src/merlin_experiments/phase0/arithmetic_intake.py
+  - src/merlin_experiments/phase0/component_arithmetic_obligations.py
   - src/merlin/targetgen/rtl/hw_arithmetic.py
   - src/merlin/targetgen/compiler_library.py
   - src/merlin/targetgen/package_runtime.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_experiment.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/numerical_readback.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/component_final_policy.py
-  - packages/merlin-experiments/src/merlin_experiments/phase2/protected_final_evaluation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/resource_boundaries.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/component_semantic_basis.py
+  - src/merlin_experiments/phase2/component_experiment.py
+  - src/merlin_experiments/phase2/numerical_readback.py
+  - src/merlin_experiments/phase2/component_final_policy.py
+  - src/merlin_experiments/phase2/protected_final_evaluation.py
+  - src/merlin_experiments/phase0/resource_boundaries.py
+  - src/merlin_experiments/phase0/component_semantic_basis.py
 ---
 
 # Component-driven compiler convergence

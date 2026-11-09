@@ -93,6 +93,24 @@ def test_original_absolute_source_uses_closed_cwd_without_grader_tree(frozen):
     assert frozen.owner.reopen_selection(selected) == selected
 
 
+@pytest.mark.parametrize("implementation", ("objects", "process", "shared"))
+def test_changed_build_owner_invalidates_original_build_selection(tmp_path, monkeypatch, request, implementation):
+    owner = tmp_path / "object-command-owner.py"
+    original_source_path = B.module_source_path
+    module = f"merlin.compiler.build.{implementation}"
+    owner.write_bytes(original_source_path(module).read_bytes())
+    monkeypatch.setattr(
+        B, "module_source_path",
+        lambda name: owner if name == module else original_source_path(name),
+    )
+    frozen = request.getfixturevalue("frozen")
+    selected = selection(frozen, "object-owner")
+    assert str(owner) in {pin["path"] for pin in frozen.owner.verify()["owner_source_pins"]}
+    owner.write_bytes(owner.read_bytes() + b"\n# changed object command construction\n")
+    with pytest.raises(ValueError, match="original build tool or lookup owner changed"):
+        frozen.owner.reopen_selection(selected)
+
+
 def test_executed_storage_relocation_hits_and_relevant_changes_miss(frozen):
     first, second = selection(frozen, "one", storage=True), selection(frozen, "two", storage=True)
     assert first["key"] == second["key"]

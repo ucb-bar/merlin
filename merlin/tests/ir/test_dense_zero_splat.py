@@ -10,8 +10,10 @@ from test_selected_dense_contracts import inputs
 from xdsl.dialects import arith, builtin, func, tensor
 from xdsl.ir import Block, Region
 
-from merlin.compile import route_before_build as RB
-from merlin.compile.scheduling.dense_source import DenseSourceUnavailable, _problem, schedule_source_dense
+from merlin.compiler.planning import model as RB
+from merlin.compiler.schedule.dense_source import DenseSourceUnavailable
+from merlin.compiler.schedule.dense_source import _problem
+from merlin.compiler.schedule.dense_source import schedule_source_dense
 from merlin.llvmlower.fresh_tensor_writer import FreshTensorWriterContract, rewrite_fresh_tensor_writers
 from merlin.targetgen import routing
 from merlin.targetgen.capsule_source import model_op_demands_checked

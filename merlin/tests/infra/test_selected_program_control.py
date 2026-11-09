@@ -13,8 +13,10 @@ from test_selected_program_contracts import (
     native,  # noqa: F401
 )
 
-from merlin.compile.scheduling.program_limits import BranchRule, Continuation, finalize_program
-from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+from merlin.compiler.schedule.program_limits import BranchRule
+from merlin.compiler.schedule.program_limits import Continuation
+from merlin.compiler.schedule.program_limits import finalize_program
+from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 from merlin.sched.ir import Kernel
 
 
@@ -343,7 +345,7 @@ def test_final_word_addresses_are_checked_against_current_windows(tmp_path):
 
 
 def test_changed_resolver_inside_final_decode_is_stale(tmp_path, monkeypatch):
-    from merlin.compile.scheduling import selected_contracts
+    from merlin.compiler.schedule import selected_contracts
     model = inputs(tmp_path)
     selected, _kernel, _objects, _adapter, codec, _limits, _word, _length = model
     original = selected_contracts._resolver_sources
@@ -366,7 +368,7 @@ def test_current_final_controls_cannot_change_inside_decoder_callbacks(tmp_path,
     model = inputs(tmp_path)
     selected, _kernel, _objects, _adapter, codec, limits, _word, _length = model
     continuation = Continuation(QUALIFICATION, ("input", "output"), True, True, 16)
-    from merlin.compile.scheduling.program_limits import EncodedAccess
+    from merlin.compiler.schedule.program_limits import EncodedAccess
     outputs = (EncodedAccess("output", 0, 1),)
     def decode(data):
         result = codec.program_decoder.decode(data)
@@ -387,7 +389,7 @@ def test_current_final_controls_cannot_change_inside_decoder_callbacks(tmp_path,
 
 
 def test_final_checker_implementation_cannot_change_during_decode(tmp_path, monkeypatch):
-    from merlin.compile.scheduling import program_limits
+    from merlin.compiler.schedule import program_limits
     model = inputs(tmp_path)
     original = program_limits._library_sources
     changed = False

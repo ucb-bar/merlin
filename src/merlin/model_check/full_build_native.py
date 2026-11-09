@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from merlin.compile.model_execution_inputs import strict_tree_sha256
+from merlin.runtime.modelinputs import strict_tree_sha256
 from merlin.model_check import full_build as FB
 from merlin.model_check.full_build_identity import build_material, verified_recipe
 

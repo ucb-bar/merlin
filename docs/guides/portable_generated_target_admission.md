@@ -21,12 +21,12 @@ code_refs:
   - merlin/tests/gemmini/parameter_chain_reference.py
   - merlin/tests/gemmini/test_public_parameter_chain_execution.py
   - merlin/tests/ir/destination_forwarding_connected.mlir
-  - packages/merlin-experiments/src/merlin_experiments/phase0/rtl_intake.py
-  - packages/merlin-experiments/src/merlin_experiments/phase0/accessor_intake.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_instruction_declaration.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_instruction_coordinator.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/instruction_admission_preparation.py
-  - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/instruction_admission_facts.py
+  - src/merlin_experiments/phase0/rtl_intake.py
+  - src/merlin_experiments/phase0/accessor_intake.py
+  - src/merlin_experiments/phase1/feedback/private_instruction_declaration.py
+  - src/merlin_experiments/phase1/feedback/private_instruction_coordinator.py
+  - src/merlin_experiments/phase1/feedback/instruction_admission_preparation.py
+  - src/merlin_experiments/phase1/feedback/instruction_admission_facts.py
 ---
 
 # Portable generated-target instruction admission

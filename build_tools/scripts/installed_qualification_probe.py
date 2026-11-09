@@ -15,7 +15,7 @@ import os
 import sys
 import sysconfig
 import zipfile
-from importlib.metadata import entry_points
+from importlib.metadata import PackageNotFoundError, distribution, entry_points
 from pathlib import Path
 
 
@@ -43,6 +43,8 @@ sys.meta_path.insert(0, NoNative())
 
 
 _TEST_SOURCES = None
+_PACKAGE_NAMES = ("merlin", "merlin_experiments", "merlin_dse")
+_LEGACY_DISTRIBUTIONS = ("merlin-experiments", "merlin-analysis", "merlin-dse", "merlin-mining")
 
 
 def _unique_object(pairs):
@@ -86,8 +88,8 @@ def _read_test_roster():
             and len(digest) == 64
             and all(character in "0123456789abcdef" for character in digest)
         ), "archived test source identity is unsupported or repeated"
-        if name.startswith(("merlin.", "merlin_experiments.")):
-            assert name.startswith(("merlin.tests.", "merlin_experiments.tests.")), (
+        if any(name.startswith(package + ".") for package in _PACKAGE_NAMES):
+            assert any(name.startswith(package + ".tests.") for package in _PACKAGE_NAMES), (
                 "production modules cannot be archived tests"
             )
         assert source.is_file() and not source.is_symlink(), "archived test source is unavailable"
@@ -104,7 +106,7 @@ def assert_installed_origins(*, archived_tests=None):
     site = Path(sysconfig.get_path("purelib")).resolve()
     checked = []
     for name, module in tuple(sys.modules.items()):
-        if name in {"merlin", "merlin_experiments"} or name.startswith(("merlin.", "merlin_experiments.")):
+        if any(name == package or name.startswith(package + ".") for package in _PACKAGE_NAMES):
             filename = getattr(module, "__file__", None)
             if filename:
                 source = Path(filename).resolve()
@@ -122,8 +124,9 @@ def pytest_sessionstart(session):
     # importlib-mode collection can otherwise invent an archive-only parent
     # named merlin, hiding the installed compiler package from these tests.
     importlib.import_module("merlin")
-    if any(name.startswith("merlin_experiments.") for name in _TEST_SOURCES[2]):
-        importlib.import_module("merlin_experiments")
+    for package in _PACKAGE_NAMES[1:]:
+        if any(name.startswith(package + ".") for name in _TEST_SOURCES[2]):
+            importlib.import_module(package)
     assert_installed_origins(archived_tests=_TEST_SOURCES[2])
 
 
@@ -137,6 +140,13 @@ def pytest_sessionfinish(session, exitstatus):
 
 
 def probe(wheels, *, modules=(), required_modules=(), required_entry_points=()):
+    assert len(wheels) == 1, "qualification requires one main distribution wheel"
+    for name in _LEGACY_DISTRIBUTIONS:
+        try:
+            distribution(name)
+        except PackageNotFoundError:
+            continue
+        raise AssertionError("obsolete distribution remains installed: " + name)
     site = Path(sysconfig.get_path("purelib")).resolve()
     count = 0
     for wheel in wheels:

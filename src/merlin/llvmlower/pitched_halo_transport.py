@@ -10,7 +10,7 @@ from xdsl.dialects import llvm
 from xdsl.dialects.builtin import i1, i8, i64
 from xdsl.ir import SSAValue
 
-from merlin.compile.scheduling.window_transfer import Window2D
+from merlin.compiler.schedule.window_transfer import Window2D
 
 from .convolution_packing import _WindowBuilder
 from .host_builder import PTR, FnBuilder

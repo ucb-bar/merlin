@@ -5,7 +5,7 @@ status: current
 owner: experiments
 last_verified: 2026-10-08
 related: [component_scale_generalization, component_execution_budget, component_graph_variants]
-code_refs: [packages/merlin-experiments/src/merlin_experiments/phase0/component_compile_sources.py, packages/merlin-experiments/src/merlin_experiments/phase0/component_compile_plan.py, src/merlin/targetgen/component_program.py, src/merlin/targetgen/contract/compile_only.py]
+code_refs: [src/merlin_experiments/phase0/component_compile_sources.py, src/merlin_experiments/phase0/component_compile_plan.py, src/merlin/targetgen/component_program.py, src/merlin/targetgen/contract/compile_only.py]
 ---
 
 # Independent source-only coverage rosters

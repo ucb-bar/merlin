@@ -1030,7 +1030,7 @@ def command_stream(rows, decoder, *, max_steps=8_000_000, max_commands=1_000_000
     stream facts stay unknown with :data:`NO_STREAM`."""
     import inspect
 
-    from merlin.compile.analysis import riscv_machine
+    from merlin.analysis import riscv_machine
     from merlin.kernels import decoded_effects
 
     counts = getattr(riscv_machine, "finite_control_counts", None)
@@ -1068,8 +1068,8 @@ def stream_effects(analysis, structure, stream, *, evidence_id=None):
 
 def selected_geometry(target, facts):
     """Block edge, operand/accumulator rows and element widths from the selected RTL facts, or a reason."""
-    from merlin.compile.scheduling.block_schedule import BlockScheduleError
-    from merlin.compile.scheduling.derive import geometry_from_address_space
+    from merlin.compiler.schedule.blocks import BlockScheduleError
+    from merlin.compiler.schedule.derive import geometry_from_address_space
     from merlin.targetgen.address_space import accumulator_store, derive_address_space, operand_store
 
     if not target or facts is None:
@@ -1100,7 +1100,8 @@ def _family(shape):
 
 
 def _dense(shape, geometry):
-    from merlin.compile.scheduling.compact_dense import DenseLoopStorage, DenseMemoryView
+    from merlin.compiler.schedule.compact_dense import DenseLoopStorage
+    from merlin.compiler.schedule.compact_dense import DenseMemoryView
     from merlin.transforms.dense_planning import DenseProblem, DenseResources
 
     edge = geometry["block"]
@@ -1129,7 +1130,7 @@ def _dense(shape, geometry):
 
 
 def _m_panel(shape, geometry):
-    from merlin.compile.scheduling.dense_panel_pipeline import dense_m_panel_capacity
+    from merlin.compiler.schedule.dense_panel_pipeline import dense_m_panel_capacity
 
     problem, resources, storage = _dense(shape, geometry)
     mt, kt, nt = problem.tiles
@@ -1162,7 +1163,7 @@ def _m_panel(shape, geometry):
 
 
 def _segmented(shape, geometry):
-    from merlin.compile.scheduling.dense_segmented_pipeline import dense_segmented_blocks
+    from merlin.compiler.schedule.dense_segmented_pipeline import dense_segmented_blocks
 
     problem, resources, storage = _dense(shape, geometry)
     mt, kt, nt = problem.tiles
@@ -1184,7 +1185,7 @@ def _segmented(shape, geometry):
 
 
 def _convolution(shape, geometry):
-    from merlin.compile.scheduling.dense_rhs_residency import plan_dense_rhs_residency
+    from merlin.compiler.schedule.dense_rhs_residency import plan_dense_rhs_residency
 
     edge = geometry["block"]
     chunks = shape["kh"] * shape["kw"] * -(-shape["c"] // edge)
@@ -1267,7 +1268,7 @@ def _guarded_admission(route, shape, geometry, differences, structure):
 def applicability(reference, candidate, *, shape=None, geometry=None, geometry_reason=None, structure=None,
                   version=24):
     """Differences, routes per difference with admission, and missing capabilities. Never ranked."""
-    from merlin.compile.scheduling.api_catalog import capability_effects
+    from merlin.compiler.schedule.api_catalog import capability_effects
 
     differences = mechanism_differences(reference, candidate, structure=structure)
     routes = capability_effects(version)

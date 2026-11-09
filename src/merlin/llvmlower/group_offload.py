@@ -28,7 +28,7 @@ Nothing here knows a target. The device is a parameter; the entries are derived 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -111,6 +111,8 @@ class GroupOffload:
     host: tuple[HostRegion, ...] = ()
     refused: tuple[Refusal, ...] = ()
     notes: tuple[str, ...] = field(default_factory=tuple)
+    grouping: Any = field(default=None, repr=False, compare=False)
+    materialization_identity: str | None = field(default=None, repr=False)
 
     @property
     def accounted(self) -> int:
@@ -122,6 +124,23 @@ class GroupOffload:
 
     def census(self) -> dict[str, Any]:
         return census(self)
+
+    def require_grouping(self, grouping) -> None:
+        """Reopen this materialization's source decision and actual output bytes."""
+        if self.grouping is not grouping or self.device != grouping.target:
+            raise ValueError("offload materialization belongs to another group plan")
+        grouping.require_current(grouping.source, grouping.target, weight_args=grouping.weight_args)
+        if self.materialization_identity != _materialization_identity(self.module, self.dispatches):
+            raise ValueError("offload materialization changed after grouping")
+
+
+def _materialization_identity(module, dispatches) -> str:
+    from merlin.transforms.certificates import ir_digest
+
+    return json.dumps(
+        {"module": ir_digest(module), "dispatches": [asdict(info) for info in dispatches]},
+        sort_keys=True, separators=(",", ":"), allow_nan=False,
+    )
 
 
 def _symbol_of(dispatches, index: int) -> str | None:
@@ -139,6 +158,7 @@ def plan(
     select=None,
     oracle=None,
     model: str = "",
+    grouping=None,
 ) -> GroupOffload:
     """Route every closed compute group of ``module`` onto ``device``, one call per group.
 
@@ -156,7 +176,17 @@ def plan(
     from merlin.xdsl_dialects.lowering import group_command as GC
     from merlin.xdsl_dialects.lowering.outline import outline_dispatches
 
-    groups = CG.form_groups(module, device, oracle=oracle)
+    if grouping is None:
+        groups = CG.form_groups(module, device, oracle=oracle)
+    else:
+        from merlin.compiler.planning.groups import GroupPlan
+
+        if type(grouping) is not GroupPlan:
+            raise TypeError("offload materialization requires a live group plan")
+        grouping.require_current(module, device, weight_args=weight_args)
+        if oracle is not None and oracle is not grouping.oracle:
+            raise ValueError("offload cannot replace the group plan's selected oracle")
+        groups = grouping.groups
     outlined = outline_dispatches(module, groups=groups)
 
     calls: list[GroupCall] = []
@@ -209,6 +239,8 @@ def plan(
                 placement=str(group.placement),
             )
         )
+    if grouping is not None:
+        grouping.require_current(module, device, weight_args=weight_args)
     return GroupOffload(
         device=device,
         n_groups=len(groups),
@@ -217,6 +249,10 @@ def plan(
         calls=tuple(calls),
         host=tuple(host),
         refused=tuple(refused),
+        grouping=grouping,
+        materialization_identity=(
+            _materialization_identity(outlined.module, outlined.dispatches) if grouping is not None else None
+        ),
     )
 
 

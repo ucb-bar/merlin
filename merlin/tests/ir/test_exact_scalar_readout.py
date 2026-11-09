@@ -2,8 +2,9 @@
 import numpy as np
 import pytest
 
-from merlin.compile.scheduling.dense_contracts import DenseIntegerReadout
-from merlin.compile.scheduling.fusion_semantics import scalar_graph,ScalarBudgetExceeded
+from merlin.compiler.schedule.dense_contracts import DenseIntegerReadout
+from merlin.compiler.schedule.fusion_semantics import scalar_graph
+from merlin.compiler.schedule.fusion_semantics import ScalarBudgetExceeded
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.llvmlower.integer_readout import emit_exact_scalar_ir,emit_rational_scalar_ir,partition_column_scales
 from merlin.runtime.linalg_numpy import evaluate as evaluate_ir

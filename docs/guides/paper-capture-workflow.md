@@ -6,17 +6,17 @@ owner: compiler-evaluation
 last_verified: 2026-08-31
 related: [rvv_e2e, rvv_kernel_mining_methodology]
 code_refs:
-  - packages/merlin-analysis/src/merlin/compare/capture_workflow.py
-  - packages/merlin-analysis/src/merlin/compare/executorch_packages.py
-  - packages/merlin-analysis/src/merlin/compare/freeze.py
-  - packages/merlin-analysis/src/merlin/compare/paper_contract_registry.py
-  - packages/merlin-analysis/src/merlin/compare/paper_full_model_ablation.py
-  - packages/merlin-analysis/src/merlin/compare/paper_measurement_controller.py
-  - packages/merlin-analysis/src/merlin/compare/paper_k1_orchestrator.py
-  - packages/merlin-analysis/src/merlin/compare/paper_model_object_builder.py
-  - packages/merlin-analysis/src/merlin/compare/paper_merlin_mlir_producer.py
-  - packages/merlin-analysis/src/merlin/compare/paper_merlin_producers.py
-  - packages/merlin-analysis/src/merlin/compare/paper_session_abi.py
+  - src/merlin/compare/capture_workflow.py
+  - src/merlin/compare/executorch_packages.py
+  - src/merlin/compare/freeze.py
+  - src/merlin/compare/paper_contract_registry.py
+  - src/merlin/compare/paper_full_model_ablation.py
+  - src/merlin/compare/paper_measurement_controller.py
+  - src/merlin/compare/paper_k1_orchestrator.py
+  - src/merlin/compare/paper_model_object_builder.py
+  - src/merlin/compare/paper_merlin_mlir_producer.py
+  - src/merlin/compare/paper_merlin_producers.py
+  - src/merlin/compare/paper_session_abi.py
   - merlin/benchmarks/rvv_paper/study_v2.yaml
 ---
 
@@ -297,7 +297,7 @@ that can authenticate edited primary samples.
 
 ## Producer and measurement handoff
 
-`packages/merlin-analysis/src/merlin/compare/executorch_packages.py` owns the ExecuTorch handoff. Merlin packages
+`src/merlin/compare/executorch_packages.py` owns the ExecuTorch handoff. Merlin packages
 use the MRLNSES2-aware registry/freeze/controller path. Before paper inputs/reference are made
 available:
 

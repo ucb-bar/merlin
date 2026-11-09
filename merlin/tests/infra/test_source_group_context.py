@@ -31,7 +31,7 @@ def alternate_adapter_encode(operation):
 
 
 def configured(tmp_path):
-    from merlin.compile.scheduling.compact_dense_group_check import DenseLHSReuseLaw
+    from merlin.compiler.schedule.compact_dense_group_check import DenseLHSReuseLaw
     from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
     from merlin.llvmlower.source_dense_group import SourceDenseGrouping
 

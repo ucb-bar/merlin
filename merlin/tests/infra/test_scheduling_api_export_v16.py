@@ -8,8 +8,8 @@ import sys
 import pytest
 
 from merlin.common.paths import repo_root
-from merlin.compile.scheduling.export import public_modules
-from merlin.compile.scheduling.library_sources import library_modules
+from merlin.compiler.schedule.export import public_modules
+from merlin.compiler.schedule.library_sources import library_modules
 from merlin.targetgen.compiler_library import CompilerLibraryError, freeze_compiler_library
 from merlin.targetgen.tool_profile import (
     COMMON_SUBSTRATE_V9,

@@ -5,8 +5,9 @@ from dataclasses import dataclass, replace
 import pytest
 from test_compact_dense import ADAPTER, encode
 
-from merlin.compile.scheduling.block_schedule import Compute, Preload
-from merlin.compile.scheduling.dense_panel_pipeline import _collapse_compute_radices
+from merlin.compiler.schedule.blocks import Compute
+from merlin.compiler.schedule.blocks import Preload
+from merlin.compiler.schedule.dense_panel_pipeline import _collapse_compute_radices
 from merlin.sched.ir import Call, Expr, Kernel, Loop, Ptr, TensorArg, Var, check_structure, select
 from merlin.sched.ir.kernel import concretize, instances
 
@@ -72,7 +73,7 @@ def test_changed_pair_order_or_additional_effects_are_not_collapsed(edit):
 
 
 def test_completion_calls_never_enter_the_target_compute_decoder():
-    from merlin.compile.scheduling.dense_panel_pipeline import DRAIN
+    from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
 
     original = map_pair(sample(), lambda pair: (pair[0], Call(DRAIN, ())))
 
@@ -102,8 +103,8 @@ def test_checked_segmented_stripes_record_the_inverse_but_emit_original_commands
     from test_dense_segmented_pipeline import chosen, inputs
     from test_segmented_loop_transforms import consume
 
-    from merlin.compile.scheduling.dense_panel_pipeline import dense_panel_rhs_stripes
-    from merlin.compile.scheduling.loop_schedule import propose_loop_transforms
+    from merlin.compiler.schedule.dense_panel_pipeline import dense_panel_rhs_stripes
+    from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
 
     p, r, s, b, admission = inputs((4, 14, 8), 2)
     original = chosen(p, r, s, b, admission, issue_order="prefetch_rhs_between_columns")

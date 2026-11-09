@@ -8,7 +8,7 @@ import pytest
 import yaml
 from test_spatial_scratch_abi import fixture
 
-from merlin.compile.owned_spatial_source import _local_document, _route, emit, normalize_unused_void_asm_results
+from merlin.compiler.build.spatial import _local_document, _route, emit, normalize_unused_void_asm_results
 
 
 def test_original_document_pin_rejects_mutation_links_and_external_paths(tmp_path):
@@ -67,8 +67,8 @@ def test_route_decodes_data_and_rechecks_source_plan_identity_and_stack_budget()
 
 @pytest.mark.parametrize("damage", [None, "old_schema", "kind", "source", "plan", "capacity", "alignment", "unknown"])
 def test_prospective_packed_owner_uses_original_pins_and_exact_private_storage(damage):
-    from merlin.compile.scheduling.program_limits import AddressWindow
-    from merlin.compile.scheduling.spatial_producer import PackedSpatialProducerPlan
+    from merlin.compiler.schedule.program_limits import AddressWindow
+    from merlin.compiler.schedule.spatial_producer import PackedSpatialProducerPlan
 
     _, source_plan, writer, _ = fixture()
     plan = PackedSpatialProducerPlan(source_plan, 7, AddressWindow("original_packed", 0, 512), 64)
@@ -166,11 +166,7 @@ def _private_source(tmp_path):
 
 
 def test_private_source_intake_requires_scoped_exact_owner_selection(tmp_path):
-    from merlin.compile.owned_spatial_source import (
-        SpatialSourceDiagnostic,
-        _source_visibility_selected,
-        scoped_spatial_source_diagnostic,
-    )
+    from merlin.compiler.build.spatial import SpatialSourceDiagnostic, _source_visibility_selected, scoped_spatial_source_diagnostic
 
     declaration, raw = _private_source(tmp_path)
     assert not _source_visibility_selected(declaration, raw)
@@ -193,7 +189,7 @@ def test_private_source_intake_requires_scoped_exact_owner_selection(tmp_path):
 
 @pytest.mark.parametrize("mutation", ["wrong_pin", "public", "missing_model", "old_schema", "changed_document"])
 def test_private_source_selection_cannot_grant_unknown_or_changed_source(tmp_path, mutation):
-    from merlin.compile.owned_spatial_source import SpatialSourceDiagnostic
+    from merlin.compiler.build.spatial import SpatialSourceDiagnostic
 
     declaration, raw = _private_source(tmp_path)
     if mutation == "public":
