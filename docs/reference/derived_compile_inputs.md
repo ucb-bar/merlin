@@ -10,8 +10,10 @@ code_refs:
   - src/merlin/frontends/derived_compile_inputs.py
   - src/merlin/frontends/kernel_compile_inputs.py
   - src/merlin/xdsl_dialects/standard_tensor.py
+  - src/merlin/xdsl_dialects/standard_bufferization.py
   - merlin/tests/ir/test_derived_compile_inputs.py
   - merlin/tests/ir/test_kernel_compile_inputs.py
+  - merlin/tests/ir/test_standard_bufferization.py
 ---
 
 # Derived tensor compiler inputs
@@ -36,8 +38,12 @@ relations before an atomic publication. Unknown dependencies, unresolved calls,
 unregistered operations and malformed lineage refuse without publishing a stage.
 
 Standard parallel tensor operations have explicit xDSL bindings, including
-multi-axis/dynamic-bound syntax; recognizing their types grants no placement,
-write-independence, numerical or target-execution permission. The current derived
+multi-axis/dynamic-bound syntax. Standard buffer materialization retains compatible
+shapes/element types independently of memref layout and checks its result and
+writable/restrict attributes against native MLIR's rules. These bindings grant
+no aliasing, ownership, numerical or target-execution proof.
+
+The current derived
 staging profile requires static tensor entry arguments/results. Runtime scalar/
 dynamic signature admission and explicit effectful dependencies need separate
 profiles. Staging establishes byte custody and declared lineage; it does not

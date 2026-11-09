@@ -9,6 +9,8 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
 - `linalg_mlir.py` — xDSL parsing of linalg-on-tensors artifacts + matmul inventory (shapes, dtypes, weights resolved via the safetensors manifest, `prov.*` provenance).
   Its standard memref and bufferization dialect registrations admit prepared
   fresh borrowed writer wrappers without an unregistered custom-syntax fallback.
+  Standard materialization accepts compatible strided destinations with the same
+  shape/element rules and writable/restrict/result checks as native MLIR.
 - `facts.py` — lifting the inventory to contract-level reuse facts, driving the core pipeline with real model shapes, residency-variant DSE measurement.
 - `compile_inputs.py` stages compiler-only Torch captures and explicitly derived tensor models.
   `derived_compile_inputs.py` keeps parent FX and normalized TTIR correspondence separate,

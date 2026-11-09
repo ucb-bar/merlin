@@ -13,6 +13,9 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
 - `standard_tensor.py` binds standard `scf.forall`, `scf.forall.in_parallel` and
   `tensor.parallel_insert_slice` when upstream xDSL lacks them. These are standard
   operations, not target mapping or new Merlin semantics; native lowering owns complete legality.
+- `standard_bufferization.py` checks standard tensor materialization by compatible
+  shape/element types independently of memref layout, retaining upstream result
+  and access-attribute rules. The binding grants no aliasing or placement proof.
 - `ir_inspection.py` — read-only generic printer views with large dense tensor attributes
   referenced by separate raw-byte audit payloads. Type, shape and hash descriptors retain
   their interpretation without converting numeric values. The no-sink printer still

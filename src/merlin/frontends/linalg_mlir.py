@@ -85,11 +85,12 @@ def layout_to_buffer_type():
 
 @cache
 def layout_bufferization_dialect():
-    """Return upstream bufferization with one layout-capable checked operation."""
+    """Return standard bufferization with layout-independent checked relations."""
     from xdsl.dialects import bufferization, builtin
     from xdsl.ir import Dialect
     from xdsl.irdl import IRDLOperation, irdl_op_definition, operand_def, opt_prop_def, result_def
     from xdsl.utils.exceptions import VerifyException
+    from merlin.xdsl_dialects.standard_bufferization import MaterializeInDestinationOp
 
     @irdl_op_definition
     class LayoutToBufferOp(IRDLOperation):
@@ -110,7 +111,8 @@ def layout_bufferization_dialect():
                     and len(result.layout.strides) != len(result.get_shape())):
                 raise VerifyException("to_buffer strided layout must retain every ranked dimension")
 
-    return Dialect("bufferization", [LayoutToBufferOp if op is bufferization.ToBufferOp else op
+    return Dialect("bufferization", [LayoutToBufferOp if op is bufferization.ToBufferOp else
+                                    MaterializeInDestinationOp if op is bufferization.MaterializeInDestinationOp else op
                                      for op in bufferization.Bufferization.operations],
                    list(bufferization.Bufferization.attributes))
 
