@@ -17,7 +17,7 @@ import numpy as np
 import torch
 from safetensors.torch import load_file
 
-from compile_capsule import build_host_library, raw_bytes
+from compile_capsule import build_host_library, preflight_host_library, raw_bytes
 
 
 def main():
@@ -30,7 +30,20 @@ def main():
     parser.add_argument('--boundary-source', type=Path, required=True)
     parser.add_argument('--expected-boundary-source-sha256', required=True)
     parser.add_argument('--inputs', type=Path, required=True)
+    parser.add_argument('--functional-validation', action='store_true', help='enable validation-only execution-host math component text replacement')
+    parser.add_argument('--execution-host-math-archive', type=Path)
+    parser.add_argument('--execution-host-math-equivalence', type=Path)
+    parser.add_argument('--execution-host-math-rv64-output', type=Path)
     args = parser.parse_args()
+    math_selection = None
+    if (args.functional_validation or args.execution_host_math_archive
+            or args.execution_host_math_equivalence or args.execution_host_math_rv64_output):
+        if not (args.functional_validation and args.execution_host_math_archive
+                and args.execution_host_math_equivalence and args.execution_host_math_rv64_output):
+            parser.error('execution-host math requires functional-validation, archive, equality receipt and RV64 output together')
+        math_selection = dict(functional_validation=True, archive=args.execution_host_math_archive.resolve(),
+                              equivalence=args.execution_host_math_equivalence.resolve(),
+                              rv64_output=args.execution_host_math_rv64_output.resolve())
     root = args.compiled.resolve()
     if (root / 'compiled.json').exists():
         raise ValueError('execution publication already exists')
@@ -67,7 +80,7 @@ def main():
     manifest = json.loads((root / 'application/manifest.json').read_text())
     if manifest.get('schema') != 'merlin.semantic_application.v1':
         raise ValueError('standard application compilation did not complete')
-    interface = manifest['application_interface']
+    interface = preflight_host_library(manifest, execution_host_math=math_selection)
     arguments = [tensors[key] for key in source['input_keys']]
     if len(arguments) != len(interface['inputs']):
         raise ValueError('runtime inputs differ from standard application ABI')
@@ -94,7 +107,10 @@ def main():
         destination = package / path.relative_to('c-package')
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(root / 'application' / path, destination)
-    build_host_library(root / 'application', manifest, package=package)
+    if math_selection is None:
+        build_host_library(root / 'application', manifest, package=package)
+    else:
+        build_host_library(root / 'application', manifest, package=package, execution_host_math=math_selection)
     arrays = {key: (tensor.view(torch.uint16).numpy() if tensor.dtype == torch.bfloat16 else tensor.numpy())
               for key, tensor in tensors.items()}
     arrays.update({f'input_{i}': (tensor.view(torch.uint16).numpy() if tensor.dtype == torch.bfloat16 else tensor.numpy())
@@ -114,6 +130,11 @@ def main():
                   runtime_files={str(p.relative_to(root)): sha256(p.read_bytes()).hexdigest()
                                  for p in (package / 'shim.c', package / 'capsule.so')},
                   independent_comparison='PENDING')
+    if math_selection is not None:
+        selection = package / 'execution-host-math.json'
+        record['execution_host_math'] = json.loads(selection.read_text())
+        record['functional_validation_only'] = True
+        record['runtime_files'][str(selection.relative_to(root))] = sha256(selection.read_bytes()).hexdigest()
     (root / 'compiled.json').write_text(json.dumps(record, indent=2) + '\n')
     print(json.dumps({'status': 'PACKAGED', 'request_digest': manifest['request_digest']}))
 

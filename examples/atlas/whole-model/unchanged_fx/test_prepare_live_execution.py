@@ -14,6 +14,7 @@ import torch
 from safetensors.torch import save_file
 
 import prepare_live_execution as packaging
+from compile_capsule import build_host_library
 from merlin.compile.semantic_application import CompiledCRegion, _render
 from merlin.semantic_compiler.linalg_bridge import translate_linalg_text
 from merlin.xdsl_dialects.lowering.global_plan import (
@@ -127,6 +128,36 @@ def test_real_emitted_host_library_preserves_words_and_native_inventory(case):
     assert outgoing.tobytes() == incoming.tobytes()
 
 
+def test_selected_host_linkage_refuses_before_runtime_sources_or_cc(case):
+    linkage = [{"schema": "merlin.host_linkage_contract.v1",
+                "supplier": "selected_math_archive", "archive_sha256": "a" * 64,
+                "symbols": ["cosf", "sinf"]}]
+    case.manifest["application_interface"]["host_linkage"] = linkage
+    (case.application / "manifest.json").write_text(json.dumps(case.manifest))
+    with pytest.raises(ValueError, match="missing pinned-supplier linking") as error:
+        packaging.main()
+    assert "a" * 64 in str(error.value)
+    assert "cosf" in str(error.value) and "sinf" in str(error.value)
+    assert case.events == ["verify"]
+    assert not (case.root / "runtime").exists()
+    assert not (case.root / "compiled.json").exists()
+
+
+def test_direct_host_library_linkage_refuses_before_shim_or_cc(case, monkeypatch):
+    case.manifest["application_interface"]["host_linkage"] = [{
+        "schema": "merlin.host_linkage_contract.v1", "archive_sha256": "b" * 64,
+        "symbols": ["sinf"], "supplier": "selected_math_archive"}]
+    package = case.root / "unwritten-package"
+
+    def unexpected_compile(*args, **kwargs):
+        pytest.fail("linkage refusal must precede compiler invocation")
+
+    monkeypatch.setattr(packaging.subprocess, "run", unexpected_compile)
+    with pytest.raises(ValueError, match="selected host-platform execution support"):
+        build_host_library(case.application, case.manifest, package=package)
+    assert not package.exists()
+
+
 @pytest.mark.parametrize("corruption,reason", [
     ("staged", "staged source differs"),
     ("model", "staged source differs"),
@@ -152,3 +183,43 @@ def test_corrupt_or_unrelated_source_refuses_before_host_compilation(case, corru
     assert "cc" not in case.events
     assert not (case.root / "compiled.json").exists()
     assert not (case.root / "runtime").exists()
+
+
+@pytest.mark.parametrize("options", [
+    ["--functional-validation"],
+    ["--execution-host-math-rv64-output", "qualified.bin"],
+    ["--functional-validation", "--execution-host-math-archive", "unselected.a",
+     "--execution-host-math-equivalence", "receipt.json"],
+    ["--execution-host-math-archive", "unselected.a"],
+    ["--functional-validation", "--execution-host-math-archive", "unselected.a"],
+])
+def test_execution_host_selection_requires_explicit_complete_validation_choice(case, monkeypatch, options):
+    monkeypatch.setattr(packaging.sys, "argv", [*packaging.sys.argv, *options])
+    with pytest.raises(SystemExit) as error:
+        packaging.main()
+    assert error.value.code == 2
+    assert case.events == []
+    assert not (case.root / "runtime").exists()
+
+
+def test_complete_execution_host_choice_forwards_explicit_rv64_output(case, monkeypatch):
+    paths = dict(archive=Path('supplier.a'), equivalence=Path('receipt.json'), rv64_output=Path('qualified.bin'))
+    options = ['--functional-validation']
+    for name, path in paths.items():
+        options.extend(['--execution-host-math-' + name.replace('_', '-'), str(path)])
+    monkeypatch.setattr(packaging.sys, 'argv', [*packaging.sys.argv, *options])
+    observed = []
+
+    class PreflightObserved(Exception):
+        pass
+
+    def preflight(manifest, *, execution_host_math):
+        observed.append(execution_host_math)
+        raise PreflightObserved
+
+    monkeypatch.setattr(packaging, 'preflight_host_library', preflight)
+    with pytest.raises(PreflightObserved):
+        packaging.main()
+    assert observed == [dict(functional_validation=True, **{name: path.resolve() for name, path in paths.items()})]
+    assert case.events == ['verify']
+    assert not (case.root / 'runtime').exists()

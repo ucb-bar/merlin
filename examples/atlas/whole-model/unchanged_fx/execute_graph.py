@@ -57,6 +57,14 @@ def main():
         parser.error("qualification options require the qualified_native backend")
     root = args.compiled.resolve()
     record = json.loads((root / "compiled.json").read_text())
+    if record.get("functional_validation_only") and args.backend not in {"functional", "qualified_native"}:
+        raise ValueError("execution-host math package is functional validation only")
+    for member, expected in record.get("runtime_files", {}).items():
+        path = Path(member)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError("unsafe runtime publication member")
+        if sha256((root / path).read_bytes()).hexdigest() != expected:
+            raise ValueError("runtime publication member changed")
     arrays = dict(np.load(root / "tensors.npz", allow_pickle=False))
     for key, metadata in record["logical_source_tensors"].items():
         if sha256(arrays[key].tobytes()).hexdigest() != metadata["sha256"]:
@@ -154,6 +162,9 @@ def main():
                "outputs": [{"dtype": value.dtype.str, "shape": list(value.shape),
                             "sha256": sha256(value.tobytes()).hexdigest()} for value in outputs],
                "independent_comparison": "PENDING", "hardware_qualification": "PENDING"}
+    if record.get("execution_host_math"):
+        receipt["execution_host_math"] = record["execution_host_math"]
+        receipt["functional_validation_only"] = True
     (execution_root / "execution.json").write_text(json.dumps(receipt, indent=2) + "\n")
     print(json.dumps(receipt), flush=True)
 

@@ -1,0 +1,92 @@
+{
+  "schema": "atlas.diagnostic_application_precision.v20",
+  "source_sha256": "0f282ebe9dbb745009ab3a50a663a032da79aabce2de13c04283fd04b7215da5",
+  "target_identity": "atlas-rtl-0079c0541111197741a231c002e3843fa6f545b2:movement-mxu01-vpu-pack-tile-v24",
+  "contraction": {
+    "policy": "f32-scaled-e4m3-rne-positive-zero-ordered-bf16-mxu0-v1",
+    "operand_scale_exponents": [
+      0,
+      0
+    ]
+  },
+  "row_softmax": "bf16-tiled-row-softmax-ltr-fp32-rne-chop-rcp-lut-v1",
+  "host_support": [
+    "transpose",
+    "reshape",
+    "copy",
+    "gather",
+    "concat",
+    "embedding_lookup"
+  ],
+  "already_quantized": "atlas-already-quantized-e4m3-signed-exponents-mxu1-model47-v1",
+  "epilogues": [
+    "relu"
+  ],
+  "pointwise": "f32-to-bf16-bounded-pointwise-rne-chop-v1",
+  "reduction": "bf16-adjacent-fp32-tree-rne-seeded-tile-sum-ltr-chop-v1",
+  "pointwise_math": "f32-to-bf16-positive-denominator-lut-div-rsqrt-v1",
+  "sigmoid": "f32-to-bf16-bounded-sigmoid-exp-recip-v1",
+  "masked_softmax": "bf16-tiled-masked-row-softmax-zero-neginf-v1",
+  "host_predicates": [
+    "mask",
+    "select"
+  ],
+  "host_integer_ops": [
+    "i64_add",
+    "i64_sub",
+    "i64_cumsum",
+    "signed_i64_to_f32"
+  ],
+  "guarded_masked_softmax": "bf16-tiled-masked-row-softmax-empty-zero-v1",
+  "gelu": "f32-to-bf16-bounded-tanh-gelu-cube-chop-v1",
+  "host_float_casts": [
+    "f32_to_bf16",
+    "bf16_to_f32"
+  ],
+  "host_float_arithmetic": [
+    "f32_neg",
+    "bf16_neg",
+    "bf16_add",
+    "bf16_sub",
+    "f32_mul"
+  ],
+  "already_quantized_mask": "bf16-minfinite-zero-rowspan80-nonempty-v1",
+  "bf16_pointwise": "bf16-bounded-pointwise-rne-v1",
+  "source_exp": "f32-to-bf16-bounded32-exp-lut-v1",
+  "host_bf16_linear": "bf16-exact-product-f32-ltr-rne-bf16-rne-v1",
+  "host_unary_math": {
+    "schema": "merlin.compiled_unary_math.v1",
+    "policy": "selected-libm-rne-finite-v1",
+    "isa": "rv64gc",
+    "abi": "lp64d",
+    "effects": "enabled-fpu-rne-unobserved-flags-and-errno-v1",
+    "operations": [
+      "source_f32_cos_unqualified",
+      "source_f32_sin_unqualified"
+    ],
+    "linkage": {
+      "schema": "merlin.host_linkage_contract.v1",
+      "supplier": "selected_math_archive",
+      "archive_sha256": "0626df7b1ce6426945820fd03dbd6752931c7594676c94f2043d5673588d178b",
+      "symbols": [
+        "cosf",
+        "sinf"
+      ]
+    }
+  },
+  "host_preparation_scope": {
+    "policy": "integer-inputs-and-bound-constants-v1",
+    "constant_inputs": [
+      {
+        "node_id": "arg356",
+        "type": {
+          "shape": [
+            32
+          ],
+          "dtype": "f32",
+          "numerical_policy": "raw-bit-pattern"
+        }
+      }
+    ]
+  }
+}
