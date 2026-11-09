@@ -6,6 +6,13 @@ _KINDS = {"and": 2, "or": 14, "xor": 15, "add": 1, "max": 6, "min": 10, "umax": 
           "cas": "compare-exchange"}
 
 
+def _payload(info):
+    if "word_view" in info:
+        return "standard-memref-generic-integer-word-update-with-original-returned-old-value"
+    return ("standard-memref-generic-compare-exchange-with-original-returned-old-value" if info["operation"] == "cas"
+            else "standard-memref-atomic-rmw-with-original-returned-old-value")
+
+
 def checked_atomic_effects(admission, memory, records, buffers):
     profile = TYPED_EFFECT_PROFILE if admission.get("schema") == "t2m.memory-admission.v4" else EFFECT_PROFILE
     if (admission.get("effect_profile") != profile or memory.get("effect_profile") != profile
@@ -24,8 +31,15 @@ def checked_atomic_effects(admission, memory, records, buffers):
         candidates = [source[s] for s in access["source_ids"] if s in source]
         floating = isinstance(info, dict) and info.get("value_dtype") in ("f32", "f64")
         dtype = info.get("value_dtype") if floating else "i" + str(info.get("word_bits")) if isinstance(info, dict) else None
+        word = isinstance(info, dict) and "word_view" in info
+        expected_view = {"storage_dtype": "f" + str(info.get("word_bits")), "value_dtype": "i" + str(info.get("word_bits")),
+            "element_bits": info.get("word_bits"), "address_units": "equal-width-elements"} if word else None
+        if word:
+            dtype = expected_view["storage_dtype"]
         if (not isinstance(info, dict) or not candidates or any(c != info for c in candidates)
                 or buffer.get("dtype") != dtype
+                or word and (profile != TYPED_EFFECT_PROFILE or floating or info.get("operation") == "cas"
+                    or info.get("word_bits") not in (32, 64) or info["word_view"] != expected_view)
                 or floating and (profile != TYPED_EFFECT_PROFILE or info.get("operation") != "exch"
                     or dtype != "f" + str(info.get("word_bits")) or info.get("numeric_contract") != "bitwise-exchange")
                 or not floating and ("value_dtype" in info or "numeric_contract" in info)
@@ -43,8 +57,7 @@ def checked_atomic_effects(admission, memory, records, buffers):
                 or not isinstance(actual, dict) or any(actual.get(key) != value for key, value in info.items())
                 or actual.get("buffer") != buffer["name"] or not actual.get("source_ids")
                 or not set(actual["source_ids"]) & set(access["source_ids"])
-                or actual.get("payload") != ("standard-memref-generic-compare-exchange-with-original-returned-old-value"
-                    if info["operation"] == "cas" else "standard-memref-atomic-rmw-with-original-returned-old-value")
+                or actual.get("payload") != _payload(info)
                 or actual.get("effect_boundary") != "standard-execute-region-no-inline"
                 or actual.get("inactive_old_value") != ("zero-refinement-of-source-undefined-old-value"
                     if access["mask"] == "source-per-lane" else "no-inactive-lanes")):

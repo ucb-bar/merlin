@@ -144,3 +144,14 @@ def test_word_and_integer_atomic_features_compose_at_one_bufferization_seam():
     original = ["one-shot-bufferize{bufferize-function-boundaries}", "ownership-based-buffer-deallocation"]
     assert edit_pipeline(cas_pipeline(original)) == cas_pipeline(edit_pipeline(original))
     assert edit_pipeline(cas_pipeline(original)).count(MARKER) == 1
+
+
+def test_loop_destination_runner_preserves_the_word_atomic_seam():
+    from merlin.llvmlower.loop_tensor_destinations import PRELUDE as LOOP_PRELUDE, MARKER as LOOP_MARKER
+    observed = []
+    namespace = {"_run_stages": lambda *args: observed.append(args[2])}
+    exec(LOOP_PRELUDE, namespace)
+    namespace["_ltd_reuse"] = lambda *args: 0
+    tail = MARKER + ",one-shot-bufferize{bufferize-function-boundaries},ownership-based-buffer-deallocation"
+    namespace["_run_stages"](None, None, LOOP_MARKER + "," + tail, 0)
+    assert observed == [tail]

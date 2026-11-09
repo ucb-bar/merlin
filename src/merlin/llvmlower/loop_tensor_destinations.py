@@ -417,7 +417,7 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(), p
         raise ValueError('loop tensor destinations require one explicit pre-bufferization marker')
     head, _, tail = pipeline.partition(marker)
     head, tail = head.rstrip(','), tail.lstrip(',')
-    seam = tail.removeprefix('__merlin_integer_compare_exchange__,')
+    seam = tail.removeprefix('__merlin_integer_compare_exchange__,').removeprefix('__merlin_atomic_word_views__,')
     if not seam.startswith('one-shot-bufferize{') or 'one-shot-bufferize' in head:
         raise ValueError('loop tensor destinations must immediately precede one-shot bufferization')
     if 'buffer-hoisting' in head or 'convert-scf-to' in head:

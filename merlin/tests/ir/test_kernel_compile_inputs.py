@@ -511,7 +511,7 @@ def test_rehashed_invalid_isolated_word_chain_never_publishes(tmp_path, change):
     assert not target.exists()
 
 
-def atomic_fixture(root, change=None, *, cas=False, floating=False):
+def atomic_fixture(root, change=None, *, cas=False, floating=False, word=False):
     """Declaration custody only; the producer's real atomic tests own execution."""
     from xdsl.dialects.builtin import IntegerAttr, StringAttr, i64
     from merlin.xdsl_dialects._common import text
@@ -522,7 +522,7 @@ def atomic_fixture(root, change=None, *, cas=False, floating=False):
     spec = provenance["spec"]
     spec["grid"] = [2**30 + 1]
     for buffer in spec["buffers"]:
-        buffer["dtype"] = "f32" if floating else "i32"
+        buffer["dtype"] = "f32" if floating or word else "i32"
     info = {"operation": "add", "standard_kind": 1, "word_bits": 32, "source_order": "relaxed", "source_scope": "gpu",
         "logical_scope": "all-logical-programs-in-private-invocation", "standard_order": "acq_rel",
         "external_participants": "excluded-by-private-buffer-ABI"}
@@ -550,7 +550,15 @@ def atomic_fixture(root, change=None, *, cas=False, floating=False):
         admission.update(schema="t2m.memory-admission.v4", effect_profile=effect)
         provenance["normalized_operations"][0]["atomic"] = json.loads(encoded(info))
         provenance["memory"].update(effect_profile=effect, atomic_payload=json.loads(encoded([payload])))
-    module = parse_mlir_text((root / "model.mlir").read_text().replace("f32", "f32" if floating else "i32"))
+    if word:
+        info.update(operation="max", standard_kind=6, word_view={"storage_dtype": "f32", "value_dtype": "i32",
+            "element_bits": 32, "address_units": "equal-width-elements"})
+        payload.update(info, payload="standard-memref-generic-integer-word-update-with-original-returned-old-value")
+        effect = "private-invocation-typed-atomics-v2"
+        admission.update(schema="t2m.memory-admission.v4", effect_profile=effect)
+        provenance["normalized_operations"][0]["atomic"] = json.loads(encoded(info))
+        provenance["memory"].update(effect_profile=effect, atomic_payload=json.loads(encoded([payload])))
+    module = parse_mlir_text((root / "model.mlir").read_text().replace("f32", "f32" if floating or word else "i32"))
     entry = next(iter(module.ops))
     entry.attributes["prov.effect_profile"] = StringAttr(effect)
     entry.attributes["prov.memory_guard_bytes_per_result_element"] = IntegerAttr(24, i64)
@@ -646,6 +654,21 @@ def test_float_exchange_staging_binds_v4_contract_and_guard_cost(tmp_path, chang
         return
     manifest = stage_compile_inputs(source, target)
     assert manifest["payload_profile"] == "shared-source-word-buffer"
+    signature = json.loads((target / "signature.json").read_text())
+    assert signature["guard_storage_bytes_per_result_element"] == 24
+    assert (target / "source/memory-admission.json").read_bytes() == (source / "memory-admission.json").read_bytes()
+
+
+@pytest.mark.parametrize("change", [None, "protocol", "fragments", "cost", "order", "scope", "kind", "old-value", "once", "effect-intent", "profile"])
+def test_atomic_word_staging_binds_integer_updates_on_float_storage(tmp_path, change):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    atomic_fixture(source, change, word=True)
+    if change is not None:
+        with pytest.raises(ValueError):
+            stage_compile_inputs(source, target)
+        assert not target.exists()
+        return
+    stage_compile_inputs(source, target)
     signature = json.loads((target / "signature.json").read_text())
     assert signature["guard_storage_bytes_per_result_element"] == 24
     assert (target / "source/memory-admission.json").read_bytes() == (source / "memory-admission.json").read_bytes()
