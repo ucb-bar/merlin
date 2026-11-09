@@ -45,6 +45,8 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   V3 memory admission additionally retains the explicit private-invocation
   integer atomic contract, thirty-bit ownership fragments and source operation/
   scope/order/old-value inventory. Staging checks those declarations and costs;
+  CAS additionally retains i16/i32/i64 comparison/old-value facts, its unmasked
+  source access, and exact source versus memory opcode correspondence.
   it grants no atomic linearizability, race/initialization or target proof.
   It shares the guarded public ABI without granting source or numeric proof.
   `kernel_shape_abi.py` validates ABI v5's named runtime dimensions and logical

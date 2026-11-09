@@ -1,7 +1,8 @@
 """Byte-bound declared atomic effects; producer/execution proofs stay separate."""
 
 EFFECT_PROFILE = "private-invocation-integer-atomics-v1"
-_KINDS = {"and": 2, "or": 14, "xor": 15, "add": 1, "max": 6, "min": 10, "umax": 7, "umin": 11, "exch": 3}
+_KINDS = {"and": 2, "or": 14, "xor": 15, "add": 1, "max": 6, "min": 10, "umax": 7, "umin": 11, "exch": 3,
+          "cas": "compare-exchange"}
 
 
 def checked_atomic_effects(admission, memory, records, buffers):
@@ -10,7 +11,8 @@ def checked_atomic_effects(admission, memory, records, buffers):
             or not isinstance(admission.get("atomic_adaptations"), list)
             or admission["atomic_adaptations"] != memory.get("atomic_payload")):
         raise ValueError("atomic memory evidence lacks its explicit private-invocation effect contract")
-    source = {r["id"]: r.get("atomic") for r in records if r.get("opcode") == "tt.atomic_rmw"}
+    source = {r["id"]: r.get("atomic") for r in records if r.get("opcode") in ("tt.atomic_rmw", "tt.atomic_cas")}
+    opcodes = {r["id"]: r.get("opcode") for r in records}
     accesses = [a for a in admission["accesses"] if a["effect"] == "atomic-readwrite"]
     if len(accesses) != len(admission["atomic_adaptations"]):
         raise ValueError("atomic memory evidence does not account for every payload event")
@@ -20,8 +22,11 @@ def checked_atomic_effects(admission, memory, records, buffers):
         candidates = [source[s] for s in access["source_ids"] if s in source]
         if (not isinstance(info, dict) or not candidates or any(c != info for c in candidates)
                 or buffer.get("dtype") != "i" + str(info.get("word_bits"))
-                or info.get("word_bits") not in (32, 64)
+                or info.get("word_bits") not in ((16, 32, 64) if info.get("operation") == "cas" else (32, 64))
                 or info.get("operation") not in _KINDS or info.get("standard_kind") != _KINDS[info["operation"]]
+                or access.get("opcode") != ("tt.atomic_cas" if info["operation"] == "cas" else "tts.unstructured_atomic_rmw")
+                or any(opcodes[s] != ("tt.atomic_cas" if info["operation"] == "cas" else "tt.atomic_rmw") for s in access["source_ids"] if s in source)
+                or info["operation"] == "cas" and access.get("mask") != "unmasked"
                 or info.get("source_order") not in ("relaxed", "acquire", "release", "acq_rel")
                 or info.get("source_scope") not in ("gpu", "cta", "sys")
                 or info.get("standard_order") != "acq_rel"
@@ -31,7 +36,8 @@ def checked_atomic_effects(admission, memory, records, buffers):
                 or not isinstance(actual, dict) or any(actual.get(key) != value for key, value in info.items())
                 or actual.get("buffer") != buffer["name"] or not actual.get("source_ids")
                 or not set(actual["source_ids"]) & set(access["source_ids"])
-                or actual.get("payload") != "standard-memref-atomic-rmw-with-original-returned-old-value"
+                or actual.get("payload") != ("standard-memref-generic-compare-exchange-with-original-returned-old-value"
+                    if info["operation"] == "cas" else "standard-memref-atomic-rmw-with-original-returned-old-value")
                 or actual.get("effect_boundary") != "standard-execute-region-no-inline"
                 or actual.get("inactive_old_value") != ("zero-refinement-of-source-undefined-old-value"
                     if access["mask"] == "source-per-lane" else "no-inactive-lanes")):

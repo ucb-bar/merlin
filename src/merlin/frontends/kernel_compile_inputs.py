@@ -82,9 +82,9 @@ def _checked_memory_members(checked, provenance):
         inventory = {r["id"] for r in records}
         for access in admission["accesses"]:
             buffer = buffers.get(access.get("buffer"))
-            atomic = version3 and access.get("opcode") == "tts.unstructured_atomic_rmw"
+            atomic = version3 and access.get("opcode") in ("tts.unstructured_atomic_rmw", "tt.atomic_cas")
             write = access.get("opcode") in ("tts.store", "tts.scatter") or atomic
-            allowed = ("tts.load", "tts.store", "tts.gather", "tts.scatter") + (("tts.unstructured_atomic_rmw",) if version3 else ())
+            allowed = ("tts.load", "tts.store", "tts.gather", "tts.scatter") + (("tts.unstructured_atomic_rmw", "tt.atomic_cas") if version3 else ())
             if (buffer is None or access.get("opcode") not in allowed
                     or access.get("effect") != ("atomic-readwrite" if atomic else "write" if write else "read")
                     or write and buffer["effect"] == "read"

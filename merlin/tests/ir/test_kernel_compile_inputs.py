@@ -511,7 +511,7 @@ def test_rehashed_invalid_isolated_word_chain_never_publishes(tmp_path, change):
     assert not target.exists()
 
 
-def atomic_fixture(root, change=None):
+def atomic_fixture(root, change=None, *, cas=False):
     """Declaration custody only; the producer's real atomic tests own execution."""
     from xdsl.dialects.builtin import IntegerAttr, StringAttr, i64
     from merlin.xdsl_dialects._common import text
@@ -536,6 +536,13 @@ def atomic_fixture(root, change=None):
         guard_storage_bytes_per_output_element=24, ownership_protocol="sticky-complemented-atomic-participants-v1",
         effect_profile=effect, accesses=[access], atomic_adaptations=[payload])
     provenance["memory"].update(effect_profile=effect, atomic_payload=json.loads(encoded([payload])))
+    if cas:
+        info.update(operation="cas", standard_kind="compare-exchange")
+        access.update(opcode="tt.atomic_cas", mask="unmasked")
+        payload.update(info, inactive_old_value="no-inactive-lanes",
+            payload="standard-memref-generic-compare-exchange-with-original-returned-old-value")
+        provenance["normalized_operations"][0].update(opcode="tt.atomic_cas", atomic=json.loads(encoded(info)))
+        provenance["memory"]["atomic_payload"] = json.loads(encoded([payload]))
     module = parse_mlir_text((root / "model.mlir").read_text().replace("f32", "i32"))
     entry = next(iter(module.ops))
     entry.attributes["prov.effect_profile"] = StringAttr(effect)
@@ -550,6 +557,9 @@ def atomic_fixture(root, change=None):
     elif change == "once": payload["effect_boundary"] = "duplicable"
     elif change == "effect-intent": del entry.attributes["prov.effect_profile"]
     elif change == "profile": provenance["memory"]["effect_profile"] = "ordinary"
+    elif change == "cas-mask": access["mask"] = "source-per-lane"
+    elif change == "cas-source": provenance["normalized_operations"][0]["opcode"] = "tt.atomic_rmw"
+    elif change == "cas-access": access["opcode"] = "tts.unstructured_atomic_rmw"
     entry.attributes["prov.source_accesses"] = StringAttr(json.dumps(admission["accesses"]))
     model = text(module, generic=True).encode()
     provenance.update(spec=spec, mlir_sha256=record(model)["sha256"])
@@ -571,8 +581,9 @@ def test_atomic_staging_retains_v3_source_contract_and_thirty_bit_cost(tmp_path)
     assert (target / "source/memory-admission.json").read_bytes() == (source / "memory-admission.json").read_bytes()
 
 
+@pytest.mark.parametrize("opcode", ["tt.atomic_rmw", "tt.atomic_cas"])
 @pytest.mark.parametrize("change", [None, "ordinary", "lost-old-value", "fill", "lost-value"])
-def test_isolated_atomic_event_requires_effect_profile_value_and_old_result(tmp_path, change):
+def test_isolated_atomic_event_requires_effect_profile_value_and_old_result(tmp_path, change, opcode):
     from merlin.frontends.kernel_word_evidence import checked_word_stages
     source = tmp_path / "capture"
     word_fixture(source, isolated=True)
@@ -581,7 +592,7 @@ def test_isolated_atomic_event_requires_effect_profile_value_and_old_result(tmp_
     memory = provenance["memory"]
     memory["effect_profile"] = "private-invocation-integer-atomics-v1"
     binding = stage["events"]["bindings"][0]
-    binding.update(opcode="tt.atomic_rmw", input_types=["!tt.ptr<i32>", "tensor<2xi64>", "tensor<2xi32>"],
+    binding.update(opcode=opcode, input_types=["!tt.ptr<i32>", "tensor<2xi64>", "tensor<2xi32>"] + (["tensor<2xi32>"] if opcode == "tt.atomic_cas" else []),
                    result_types=["tensor<2xi32>"])
     if change == "ordinary": memory.pop("effect_profile")
     elif change == "lost-old-value": binding["result_types"] = []
@@ -594,6 +605,18 @@ def test_isolated_atomic_event_requires_effect_profile_value_and_old_result(tmp_
     else:
         with pytest.raises(ValueError, match="source/type inventory"):
             checked_word_stages(*args)
+
+
+@pytest.mark.parametrize("change", [None, "cas-mask", "cas-source", "cas-access"])
+def test_cas_staging_keeps_declared_comparison_operation_and_unmasked_access(tmp_path, change):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    atomic_fixture(source, change, cas=True)
+    if change is None:
+        assert stage_compile_inputs(source, target)["payload_profile"] == "shared-source-word-buffer"
+    else:
+        with pytest.raises(ValueError):
+            stage_compile_inputs(source, target)
+        assert not target.exists()
 
 
 @pytest.mark.parametrize("change", ["protocol", "fragments", "cost", "order", "scope", "kind", "old-value", "once", "effect-intent", "profile"])
