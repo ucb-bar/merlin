@@ -22,12 +22,13 @@ def _checked_memory_members(checked, provenance):
     profile = provenance.get("profile", "shared-functional-tensor")
     if profile == "shared-functional-tensor":
         return {}
-    if profile != "shared-functional-buffer":
+    guarded = profile == "shared-guarded-buffer"
+    if profile not in ("shared-functional-buffer", "shared-guarded-buffer"):
         raise ValueError("unsupported kernel memory evidence profile")
-    names = ("memory-witness.mlir", "memory-input.mlir", "memory-stage.mlir", "memory-stage.json")
+    names = ("memory-admission.json" if guarded else "memory-witness.mlir", "memory-input.mlir", "memory-stage.mlir", "memory-stage.json")
     copied = {name: checked(name) for name in names}
     memory = provenance.get("memory", {})
-    for name, key in ((names[0], "witness_sha256"), (names[1], "continuation_input_sha256"),
+    for name, key in ((names[0], "admission_sha256" if guarded else "witness_sha256"), (names[1], "continuation_input_sha256"),
                       (names[2], "continuation_output_sha256")):
         if memory.get(key) != hashlib.sha256(copied[name]).hexdigest():
             raise ValueError("kernel memory evidence differs from its provenance")
@@ -39,6 +40,33 @@ def _checked_memory_members(checked, provenance):
             or stage.get("artifacts", {}).get("source.ttir") != record(names[1])
             or stage.get("artifacts", {}).get("lowered.mlir") != record(names[2])):
         raise ValueError("kernel memory report does not bind its input/output")
+    if guarded:
+        admission, spec = json.loads(copied[names[0]]), provenance.get("spec")
+        if not isinstance(spec, dict) or not isinstance(spec.get("buffers"), list):
+            raise ValueError("guarded memory evidence lacks its logical buffer ABI")
+        arguments = ([{"kind": "extent", "buffer": b["name"]} for b in spec["buffers"]]
+            + [{"kind": kind, "buffer": b["name"]} for b in spec["buffers"] if b["effect"] != "read" for kind in ("owners", "visited")]
+            + [{"kind": "program"}])
+        if (admission.get("schema") != "t2m.memory-admission.v1"
+                or admission.get("strategy") != "runtime-guarded-private-output-state"
+                or admission.get("spec") != spec or admission.get("internal_arguments") != arguments
+                or admission.get("guarded_input_sha256") != record(names[1])["sha256"]
+                or admission.get("continuation_output_sha256") != record(names[2])["sha256"]
+                or admission.get("guard_storage_bytes_per_output_element") != 16
+                or admission.get("writable_reads") != "refused"
+                or admission.get("fresh_initialization") != "post-grid-complete-write-coverage"
+                or not isinstance(admission.get("accesses"), list)):
+            raise ValueError("guarded memory evidence has an inconsistent admission contract")
+        buffers = {b["name"]: b for b in spec["buffers"]}
+        inventory = {r["id"] for r in provenance.get("normalized_operations", provenance.get("source_operations", []))}
+        for access in admission["accesses"]:
+            buffer = buffers.get(access.get("buffer"))
+            write = access.get("opcode") in ("tts.store", "tts.scatter")
+            if (buffer is None or access.get("opcode") not in ("tts.load", "tts.store", "tts.gather", "tts.scatter")
+                    or access.get("effect") != ("write" if write else "read") or (buffer["effect"] == "read") == write
+                    or not access.get("source_ids") or any(s not in inventory for s in access["source_ids"])
+                    or not access.get("tile") or any(type(n) is not int or n <= 0 for n in access["tile"])):
+                raise ValueError("guarded memory access inventory differs from its source/effect contract")
     return copied
 
 
@@ -58,7 +86,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
             raise ValueError("kernel compiler member differs from receipt: " + name)
         return raw
 
-    if receipt.get("profile") not in ("shared-functional-tensor", "shared-functional-buffer"):
+    if receipt.get("profile") not in ("shared-functional-tensor", "shared-functional-buffer", "shared-guarded-buffer"):
         raise ValueError("unsupported standalone kernel profile")
     raw, ttir, spec_raw, provenance_raw = (checked(name) for name in
                                          ("model.mlir", "source.ttir", "spec.json", "provenance.json"))
@@ -148,6 +176,11 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
                  "inputs": abi(entry.function_type.inputs, inputs), "outputs": abi(entry.function_type.outputs, outputs),
                  "shape_scope": "runtime_scalar_bound_dimensions" if dynamic else "static_captured_signature", "capture_dtype": "typed-per-argument",
                  "input_mutability": "borrowed-immutable-tensors"}
+    if receipt["profile"] == "shared-guarded-buffer":
+        contract = entry.attributes.get("prov.memory_guard_bytes_per_result_element")
+        if not isinstance(contract, IntegerAttr) or contract.value.data != 16:
+            raise ValueError("guarded kernel lacks its declared scratch storage contract")
+        signature["guard_storage_bytes_per_result_element"] = 16
     if scalars:
         signature["scalar_abi"] = "native-by-value; invocation-data"
     # The native host's existing ABI names @forward. Record this symbol-only

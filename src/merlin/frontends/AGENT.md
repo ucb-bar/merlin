@@ -26,6 +26,10 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   The explicit shared-functional-buffer payload retains the public functional ABI,
   checks byte-bound memory witness/continuation relations and copies their compiler evidence.
   Both standalone and derived staging exclude evaluator values from that view.
+  The explicit shared-guarded-buffer profile copies a byte-bound runtime
+  admission report instead of a pure tensor witness. Standalone staging retains
+  its declared guard-storage cost in the compile signature. It checks declared
+  source/access/effect relations and grants no executable memory proof.
   `kernel_shape_abi.py` validates ABI v5's named runtime dimensions and logical
   ceil-divided grids. Standalone compile-signature v2 retains symbolic tensor
   dimensions and typed scalar bindings. Staging checks declared types/relations,

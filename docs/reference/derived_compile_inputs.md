@@ -107,3 +107,14 @@ Legacy signatures remain v1. The compiler view receives no evaluator arrays or
 example shape values. This declared-contract check does not establish that the
 program enforces its guards, covers its outputs or has qualified numerics;
 consumer lowering and repeated independent-shape execution remain separate.
+
+The explicit standalone `shared-guarded-buffer` profile replaces the pure tensor
+memory witness with `memory-admission.json`, retaining the same functional
+tensor/scalar boundary and standard memory payload. Staging checks the report's
+source/access/effect inventory, internal ABI layout, continuation hashes and
+declared 16-byte scratch cost per result element. It retains that cost in the
+compile signature for evaluator allocation accounting, and copies the report
+with the other compiler evidence. Evaluator values and references remain
+excluded. These are declared-contract and byte-custody checks, not a proof that
+the payload executes its guards or preserves source semantics. Actual host
+compilation and independent repeated-invocation checks remain separate.

@@ -263,3 +263,71 @@ def test_guarded_integer_scalar_profile_has_explicit_ranges(tmp_path, bounds):
         stage_compile_inputs(source, target)
         signature = json.loads((target / "signature.json").read_text())
         assert signature["inputs"][-1]["bounds"] == bounds
+
+
+def guarded_fixture(root, change=None):
+    """Protocol fixture only: staging does not prove executable guard semantics."""
+    receipt = capture_fixture(root)
+    spec = json.loads((root / "spec.json").read_text())
+    model = (root / "model.mlir").read_bytes().replace(b") {", b") attributes {prov.memory_guard_bytes_per_result_element = 16 : i64} {")
+    if change == "storage_attribute":
+        model = model.replace(b"16 : i64", b"8 : i64")
+    memory_input, memory_output = b"guarded upstream input", b"standard memory output"
+    admission = {"schema": "t2m.memory-admission.v1", "strategy": "runtime-guarded-private-output-state", "spec": spec,
+        "internal_arguments": ([{"kind": "extent", "buffer": b["name"]} for b in spec["buffers"]]
+            + [{"kind": k, "buffer": b["name"]} for b in spec["buffers"] if b["effect"] != "read" for k in ("owners", "visited")]
+            + [{"kind": "program"}]),
+        "guarded_input_sha256": record(memory_input)["sha256"], "continuation_output_sha256": record(memory_output)["sha256"],
+        "guard_storage_bytes_per_output_element": 16, "writable_reads": "refused",
+        "fresh_initialization": "post-grid-complete-write-coverage",
+        "accesses": [{"buffer": "out", "opcode": "tts.scatter", "effect": "write", "source_ids": ["normalized.0"], "tile": [8]}]}
+    if change == "layout":
+        admission["internal_arguments"].reverse()
+    elif change == "source":
+        admission["accesses"][0]["source_ids"] = ["unknown.0"]
+    elif change == "effect":
+        admission["accesses"][0]["buffer"] = "x"
+    elif change == "coverage":
+        admission["fresh_initialization"] = "unchecked"
+    elif change == "storage":
+        admission["guard_storage_bytes_per_output_element"] = 0
+    files = {"model.mlir": model, "memory-input.mlir": memory_input, "memory-stage.mlir": memory_output,
+        "memory-admission.json": encoded(admission), "memory-stage.json": encoded({"schema": "t2m.triton-shared-stage.v1",
+            "stage": "memory-ir", "stage_completed": True, "artifacts": {
+                "source.ttir": record(memory_input), "lowered.mlir": record(memory_output)}})}
+    provenance = json.loads((root / "provenance.json").read_text())
+    provenance.update(profile="shared-guarded-buffer", mlir_sha256=record(model)["sha256"], memory={
+        "admission_sha256": record(files["memory-admission.json"])["sha256"],
+        "continuation_input_sha256": record(memory_input)["sha256"], "continuation_output_sha256": record(memory_output)["sha256"]})
+    files["provenance.json"] = encoded(provenance)
+    for name, raw in files.items():
+        (root / name).write_bytes(raw)
+        receipt["artifacts"][name] = record(raw)
+    receipt["profile"] = "shared-guarded-buffer"
+    (root / "capture_receipt.json").write_bytes(encoded(receipt))
+
+
+def test_guarded_memory_staging_retains_evidence_and_scratch_without_evaluator(tmp_path, monkeypatch):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    guarded_fixture(source)
+    original_read = Path.read_bytes
+    def read(path):
+        if path.name in ("inputs.npz", "golden.npy", "extra.npz", "execution.json"):
+            raise AssertionError("guarded memory staging accessed evaluator data")
+        return original_read(path)
+    monkeypatch.setattr(Path, "read_bytes", read)
+    manifest = stage_compile_inputs(source, target)
+    assert manifest["payload_profile"] == "shared-guarded-buffer"
+    signature = json.loads((target / "signature.json").read_text())
+    assert signature["guard_storage_bytes_per_result_element"] == 16
+    assert (target / "source/memory-admission.json").read_bytes() == (source / "memory-admission.json").read_bytes()
+    assert b"EVALUATOR" not in b"".join((target / name).read_bytes() for name in manifest["members"])
+
+
+@pytest.mark.parametrize("change", ["layout", "source", "effect", "coverage", "storage", "storage_attribute"])
+def test_rehashed_inconsistent_guarded_contract_never_publishes(tmp_path, change):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    guarded_fixture(source, change)
+    with pytest.raises(ValueError, match="guarded"):
+        stage_compile_inputs(source, target)
+    assert not target.exists()
