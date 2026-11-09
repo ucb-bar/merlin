@@ -129,7 +129,7 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path) -> di
             "signature.json": _sha(signature_raw),
             **{name: _sha(value) for name, value in copied.items()},
         },
-        "excluded_evaluator_members": ["inputs.npz", "inputs.json", "golden.npy", "golden.json", "extra.npz"],
+        "excluded_evaluator_members": ["inputs.npz", "inputs.json", "golden.npy", "goldens.npz", "golden.json", "extra.npz"],
     }
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))

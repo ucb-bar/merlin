@@ -35,7 +35,8 @@ def capture_fixture(root):
                   "mlir_sha256": digest, "source_sha256": record(ttir)["sha256"]}
     parent_files = {"model.mlir": parent_model, "frontend-trace.json": encoded({"status": "complete", "mlir": record(parent_model)}),
                     "weights.safetensors": b"declared parameter bytes", "weights.safetensors.manifest.json": b'{}',
-                    "inputs.npz": b"EVALUATOR INPUTS", "golden.npy": b"EVALUATOR GOLDEN"}
+                    "inputs.npz": b"EVALUATOR INPUTS", "golden.npy": b"EVALUATOR GOLDEN",
+                    "goldens.npz": b"EVALUATOR TUPLE REFERENCES"}
     parent = {"schema": "m2m.capture-receipt.v1", "materialized_abi": {"complete": True, "inputs": 1},
               "artifacts": {name: record(raw) for name, raw in parent_files.items()}}
     files = {"model.mlir": SOURCE, "parent/capture_receipt.json": encoded(parent),
@@ -66,7 +67,7 @@ def test_derived_staging_preserves_both_graphs_and_excludes_evaluator_values_and
     read = Path.read_bytes
 
     def guarded(path):
-        if path.name in ("inputs.npz", "golden.npy", "execution.json"):
+        if path.name in ("inputs.npz", "golden.npy", "goldens.npz", "execution.json"):
             raise AssertionError("compiler accessed evaluator data")
         return read(path)
 
@@ -83,7 +84,7 @@ def test_derived_staging_preserves_both_graphs_and_excludes_evaluator_values_and
         assert hashlib.sha256((staged / name).read_bytes()).hexdigest() == digest
     data = b"".join((staged / name).read_bytes() for name in manifest["members"])
     assert b"EVALUATOR" not in data
-    for name in ("inputs.npz", "golden.npy", "execution.json"):
+    for name in ("inputs.npz", "golden.npy", "goldens.npz", "execution.json"):
         assert receipt["artifacts"][name]["sha256"].encode() not in data
 
 
