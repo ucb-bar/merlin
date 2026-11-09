@@ -1,0 +1,38 @@
+---
+title: Derived tensor compiler inputs
+kind: reference
+status: current
+owner: compiler
+last_verified: 2026-11-08
+related: [architecture]
+code_refs:
+  - src/merlin/frontends/compile_inputs.py
+  - src/merlin/frontends/derived_compile_inputs.py
+  - src/merlin/xdsl_dialects/standard_tensor.py
+  - merlin/tests/ir/test_derived_compile_inputs.py
+---
+
+# Derived tensor compiler inputs
+
+`stage_compile_inputs` accepts the existing `m2m.capture-receipt.v1` path and an
+explicit `t2m.bound-model-receipt.v1` derived-model path. It publishes a
+`merlin.compile-inputs.v1` directory with `source_profile: derived-tensor-model`.
+The latter retains a static typed `forward` program, weights and argument
+manifest, signature, original parent source/FX trace, TTIR implementations/specs,
+and `merlin.derived-source-correspondence.v1` derivation evidence.
+
+The original FX trace remains under `source/parent/`; it is not relabeled as
+correspondence for the transformed model. A compiler-only projection of the
+parent receipt binds selected source members. Evaluator arrays, goldens,
+execution reports and their digests are absent from the compiler view. All
+selected files are checked against the producer receipt and their parent/kernel
+relations before an atomic publication. Unknown dependencies, unresolved calls,
+unregistered operations and malformed lineage refuse without publishing a stage.
+
+Standard parallel tensor operations have explicit xDSL bindings, including
+multi-axis/dynamic-bound syntax; recognizing their types grants no placement,
+write-independence, numerical or target-execution permission. The current derived
+staging profile requires static tensor entry arguments/results. Runtime scalar/
+dynamic signature admission and explicit effectful dependencies need separate
+profiles. Staging establishes byte custody and declared lineage; it does not
+establish complete source closure, semantic equivalence or compiled correctness.

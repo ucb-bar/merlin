@@ -10,6 +10,9 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
 - `_common.py` (shared enums/guards), `contract.py`, `schedule.py`, `interface.py`, `runtime.py`, `dse.py`.
 - `_common.text` prints dense floating constants as raw-byte strings so xDSL and
   upstream MLIR retain bit patterns, including infinities, NaN payloads and signed zeros.
+- `standard_tensor.py` binds standard `scf.forall`, `scf.forall.in_parallel` and
+  `tensor.parallel_insert_slice` when upstream xDSL lacks them. These are standard
+  operations, not target mapping or new Merlin semantics; native lowering owns complete legality.
 - `ir_inspection.py` — read-only generic printer views with large dense tensor attributes
   referenced by separate raw-byte audit payloads. Type, shape and hash descriptors retain
   their interpretation without converting numeric values. The no-sink printer still
