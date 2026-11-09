@@ -35,7 +35,7 @@ def _cas_walk(operation):
 def _cas_source(symbol, width):
     import json
     return '''module {
-      func.func private @SYMBOL(%buffer: memref<?xiWIDTH>, %index: index, %comparison: iWIDTH, %value: iWIDTH) -> iWIDTH {
+      func.func private @SYMBOL(%buffer: memref<?xiWIDTH>, %index: index, %comparison: iWIDTH, %value: iWIDTH) -> iWIDTH attributes {llvm.linkage = #llvm.linkage<internal>} {
         %bytes = arith.constant BYTES : index
         %base = memref.extract_aligned_pointer_as_index %buffer : memref<?xiWIDTH> -> index
         %offset = arith.muli %index, %bytes : index

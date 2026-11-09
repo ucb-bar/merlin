@@ -52,7 +52,7 @@ with ir.Context() as ctx:
         assert _cas_rewrite(ctx,module)==1
         passmanager.PassManager.parse('builtin.module(canonicalize,cse)').run(module.operation)
         assert len(_cas_checked_calls(module))==1
-        if sys.argv[2] in ('order','bytes','visibility'):
+        if sys.argv[2] in ('order','bytes','visibility','linkage'):
             helper=_CAS_GENERATED[0]
             if sys.argv[2]=='order':
                 atomic=next(op for op in _cas_walk(helper) if op.name=='llvm.cmpxchg')
@@ -60,8 +60,10 @@ with ir.Context() as ctx:
             elif sys.argv[2]=='bytes':
                 constant=next(op for op in _cas_walk(helper) if op.name=='arith.constant')
                 constant.attributes['value']=ir.IntegerAttr.get(ir.IndexType.get(),16)
-            else:
+            elif sys.argv[2]=='visibility':
                 helper.attributes['sym_visibility']=ir.StringAttr.get('public')
+            else:
+                helper.attributes['llvm.linkage']=ir.Attribute.parse('#llvm.linkage<external>')
             module.operation.verify()
             assert not _cas_checked_calls(module)
             print('REFUSED current mutated helper')
@@ -84,6 +86,10 @@ with ir.Context() as ctx:
                 assert sum(op.name=='llvm.cmpxchg' for op in _cas_walk(module.operation))==1
                 assert not any(op.name=='memref.generic_atomic_rmw' for op in _cas_walk(module.operation))
                 module.operation.verify()
+                passmanager.PassManager.parse('builtin.module(expand-strided-metadata,lower-affine,finalize-memref-to-llvm,convert-func-to-llvm,convert-arith-to-llvm,reconcile-unrealized-casts)').run(module.operation)
+                helpers=[op.operation for op in module.body.operations if op.operation.name=='llvm.func'
+                         and ir.StringAttr(op.attributes['sym_name']).value.startswith('__merlin_atomic_cas_')]
+                assert len(helpers)==1 and str(helpers[0].attributes['linkage'])=='#llvm.linkage<internal>'
                 print('RESTORED exact typed helper')
 ''')
     process = subprocess.run([str(compiler_python()), str(script), str(original), mode], text=True,
@@ -111,7 +117,7 @@ def test_nested_symbol_tables_do_not_inherit_root_helper_binding(tmp_path):
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
-@pytest.mark.parametrize("mode", ["order", "bytes", "visibility", "declaration"])
+@pytest.mark.parametrize("mode", ["order", "bytes", "visibility", "linkage", "declaration"])
 def test_borrowing_permission_requires_current_complete_helper_and_declaration(tmp_path, mode):
     assert "REFUSED" in run(tmp_path, source(), mode)
 

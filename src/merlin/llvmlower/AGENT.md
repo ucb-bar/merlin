@@ -39,6 +39,8 @@ checks. Borrowing grants reconstruct the complete current private body and call
 types under direct root-function symbol scope; names/provenance grant nothing.
 The native pointer/index round-trip requires the qualified default 64-bit ABI;
 narrower index conversion and explicit layout/triple overrides grant no support.
+Internal LLVM linkage is part of the exact helper binding; MLIR private symbol
+visibility alone cannot prevent native symbol interposition.
 
 Mixed borrowed composition retains distinct live ordinary descriptor and plural
 writer owners for one exact source epoch. Disjoint ABI rows, original effect

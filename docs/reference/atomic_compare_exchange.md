@@ -39,6 +39,9 @@ and performs one standard LLVM cmpxchg with acq_rel success/acquire failure
 ordering. It allocates nothing, releases nothing, and returns no pointer or
 buffer. All code remains in the compiled module; no external implementation
 or device runtime supplies the operation.
+The helper also carries explicit internal LLVM linkage. MLIR private symbol
+visibility alone does not make a translated LLVM symbol non-interposable;
+native tests inspect the actual converted LLVM function linkage.
 
 The pinned ownership deallocator rejects scalar-result regions without
 RegionBranchOpInterface, including MemRef's generic atomic region. Its effect
