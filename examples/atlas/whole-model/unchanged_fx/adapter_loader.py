@@ -13,6 +13,9 @@ ATLAS_INPUTS_SAFETENSORS at its original boundary tensor archive. Also select
 ATLAS_BOUNDARY_SOURCE_JSON and its frozen ATLAS_EXPECTED_BOUNDARY_SOURCE_SHA256.
 Only the saved tensor words and their authenticated ABI are read; the decoder
 executes directly from the reconstructed source modules, without a saved graph.
+For a head-only attempt, select ATLAS_CAPTURE_BOUNDARY=head with its authenticated
+norm-output archive and source receipt. The current live external adapter may
+refuse this all-host boundary because it contains no native calls.
 An authenticated six-input cache boundary selects the existing tensor-cache
 append semantics and returns hidden state, updated K, and updated V.
 """
@@ -107,6 +110,37 @@ def layer0_boundary(model, inputs, source, *, tensor_record):
     return boundary, arguments
 
 
+def head_boundary(model, inputs, source, *, tensor_record):
+    """Select the original BF16 head with authenticated saved activation words."""
+    import torch
+    from torch import nn
+
+    if source.get("kind") != "head" or source.get("input_keys") != ["input_0"]:
+        raise ValueError("head requires one original norm-output boundary")
+    if set(inputs) != set(source["tensors"]):
+        raise ValueError("head boundary archive tensor roster differs")
+    if any(tensor_record(value) != source["tensors"][key] for key, value in inputs.items()):
+        raise ValueError("head boundary tensor words differ")
+    hidden = inputs["input_0"]
+    if hidden.dtype != torch.bfloat16 or hidden.ndim != 3 or hidden.shape[-1] != model.config.hidden_size:
+        raise ValueError("head boundary requires rank-three BF16 hidden states")
+
+    class Head(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.model = nn.Module()
+            self.model.lm_head = model.lm_head
+
+        def forward(self, hidden):
+            return self.model.lm_head(hidden)
+
+    boundary = Head().eval()
+    state = list(boundary.named_parameters()) + list(boundary.named_buffers())
+    if {name: tensor_record(value) for name, value in state} != source["parameters"]:
+        raise ValueError("live head parameters differ from selected source boundary")
+    return boundary, (hidden,)
+
+
 def get_model_and_inputs():
     import algos
     import fx_export
@@ -157,12 +191,13 @@ def get_model_and_inputs():
         if set(inputs) != {"input_ids"} or inputs["input_ids"].dtype != torch.int64:
             raise ValueError("input archive must contain only int64 input_ids")
         arguments = (inputs["input_ids"],)
-    elif selected == "layer0":
+    elif selected in {"layer0", "head"}:
         source_path = raw_capture.checked_path(os.environ["ATLAS_BOUNDARY_SOURCE_JSON"])
         source_bytes = source_path.read_bytes()
         if sha256(source_bytes).hexdigest() != os.environ["ATLAS_EXPECTED_BOUNDARY_SOURCE_SHA256"]:
             raise ValueError("selected boundary source receipt digest differs")
-        boundary, arguments = layer0_boundary(model, inputs, json.loads(source_bytes),
+        selector = layer0_boundary if selected == "layer0" else head_boundary
+        boundary, arguments = selector(model, inputs, json.loads(source_bytes),
                                               tensor_record=raw_capture.tensor_record)
     else:
         raise ValueError(f"unsupported live capture boundary: {selected}")

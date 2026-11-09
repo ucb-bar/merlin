@@ -52,6 +52,6 @@ def build_precision_policy(kind, source_hash, *, reduction_policy, softmax_mask_
             policy["host_float_arithmetic"] += ["bf16_neg", "bf16_add", "bf16_sub"]
             policy["source_exp"] = SOURCE_EXP_POLICY
     if kind == "head":
-        from merlin.compile.c_bf16_linear import POLICY as HOST_BF16_LINEAR_POLICY
+        from merlin.compile.c_bf16_linear import SOURCE_POLICY as HOST_BF16_LINEAR_POLICY
         policy["host_bf16_linear"] = HOST_BF16_LINEAR_POLICY
     return policy
