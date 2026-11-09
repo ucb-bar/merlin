@@ -11,6 +11,8 @@ code_refs:
   - src/merlin/llvmlower/deployable_ir.py
   - src/merlin/llvmlower/kernel_backend.py
   - src/merlin/runtime/outlined_chain.py
+  - src/merlin/runtime/prepared_staged_kernel.py
+  - merlin/runtime/c/merlin_staged_kernel.h
   - merlin/runtime/c/merlin_descriptors.c
 ---
 
@@ -89,6 +91,41 @@ if operation attributes, properties, types or complete region bodies differ.
 Named/custom assembly can omit extension metadata or reconstruct a named
 operation's standard body; it is not a lossless code-identity format. The shared
 printer default and ordinary monolithic compiler path are unchanged.
+
+## Explicit prepared staged kernels
+
+The Python builder optionally accepts
+`prepared_staged_kernels={dispatch_index: PreparedStagedKernel(...)}`. This is
+an explicit provider selection, separate from the ordinary compiled entry. The
+provider binds the complete canonical generic source hash, exact header/object
+bytes, callback symbols, state type/size/alignment and active worker slots.
+A mismatched or unavailable selection refuses; it never silently falls back to
+an integrated-packing implementation. This option has no CLI flag yet and does
+not enable an offload policy or whole-model placement.
+
+The provider owns source equivalence, target context and instruction requirements,
+preparation and synchronous compute/finish semantics. Its `prepare` and `finish`
+callbacks execute on the declared controller. Only selected pinned workers invoke
+`compute`. Ordinary unselected entries retain their compiled memref ABI. The
+common invocation reuses checked argument tables, capacities and descriptors,
+plus the immutable sequence and worker roster. Its backing arrays remain live
+through finish and the external worker join.
+
+All declared provider metadata and scratch are reserved in the same whole-chain
+workspace budget as tensor intermediates, with no lifetime reuse. Generated C
+checks actual state size/alignment and callback signatures. Providers must put
+every mutable scratch object in that state; hidden buffers, implicit teams and
+asynchronous work escaping this contract are unsupported. Platform stacks,
+executable, context and library memory need separate admission. A byte-bound
+object and successful source build alone establish neither numerical equivalence
+nor device completion or hardware correctness.
+
+Providers constructing positive pitched leaf views can reuse
+`merlin_prepare_strided_descriptor`: it transactionally checks extents, strides,
+offset, element alignment, accessed span, allocation capacity/address range and
+metadata separation before using the same rank-exact descriptor packing. Bounds
+do not establish injectivity, writable access or noalias/restrict permissions;
+those remain explicit source/provider ownership obligations.
 
 ## Link a platform driver
 

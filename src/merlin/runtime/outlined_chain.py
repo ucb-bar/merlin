@@ -7,6 +7,7 @@ the existing staged runtime controls every fresh, monotonically sequenced team.
 
 from __future__ import annotations
 
+import json
 import math
 
 from merlin.llvmlower.deployable_outline import DeployableChain
@@ -37,7 +38,13 @@ def _views(views, positions) -> list[str]:
 
 
 def render_outlined_chain(
-    plan: DeployableChain, kernel_entries: tuple[str, ...], *, roles: StagedRoles, prefix="merlin_chain"
+    plan: DeployableChain,
+    kernel_entries: tuple[str, ...],
+    *,
+    roles: StagedRoles,
+    prefix="merlin_chain",
+    prepared_kernels=None,
+    provider_state_layout=None,
 ) -> dict:
     """Render C source/header; target facts/threads/ISA and data stay explicit inputs."""
     if (
@@ -61,6 +68,11 @@ def render_outlined_chain(
         raise ValueError("complete model argument/result roster required")
     if len(roles.compute_harts) != plan.worker_count:
         raise ValueError("compiled role policy must match the plan's worker count")
+    prepared_kernels = {} if prepared_kernels is None else dict(prepared_kernels)
+    provider_state_layout = {} if provider_state_layout is None else dict(provider_state_layout)
+    from merlin.runtime.prepared_staged_kernel import verify_selection
+
+    verify_selection(plan, prepared_kernels, provider_state_layout)
     signatures = {}
     for entry, step in zip(kernel_entries, plan.dispatches, strict=True):
         signature = tuple((specs[bid].shape, specs[bid].dtype) for bid in step["inputs"] + step["outputs"])
@@ -72,11 +84,21 @@ def render_outlined_chain(
     if not 1 <= arity <= 4096:
         raise ValueError("kernel descriptor arity exceeds the runtime contract")
     p = prefix
+    provider_fields = ""
+    if prepared_kernels:
+        provider_fields = f"""
+  merlin_arg_t prepared_arguments[{arity}];
+  void *prepared_data[{arity}];
+  size_t prepared_capacities[{arity}];
+  void *provider_states[{n}];
+  merlin_staged_kernel_invocation invocation;
+"""
     header = f"""/* Generated closed outlined-chain ABI. */
 #ifndef {p.upper()}_H
 #define {p.upper()}_H
 #include "merlin_model.h"
 #include "merlin_staged.h"
+{'#include "merlin_staged_kernel.h"' if prepared_kernels else ""}
 #define {p.upper()}_DISPATCHES {n}
 #define {p.upper()}_WORKSPACE_BYTES {plan.workspace_bytes}u
 typedef struct {{
@@ -97,6 +119,7 @@ typedef struct {{
   merlin_staged_report observations[{n}];
   merlin_staged_hooks platform_hooks;
   void *platform;
+{provider_fields}
 }} {p}_context;
 typedef void (*{p}_launch_fn)(void *, merlin_staged_team *);
 typedef int (*{p}_join_fn)(void *, merlin_staged_team *);
@@ -130,7 +153,20 @@ static int overlap(const void*a,size_t an,const void*b,size_t bn) {{
 }}
 '''
     ]
-    for entry, step in dict(zip(kernel_entries, plan.dispatches, strict=True)).items():
+    for index, kernel in sorted(prepared_kernels.items()):
+        source.append("#include " + json.dumps(str(kernel.header)))
+        source.append(f'_Static_assert(sizeof({kernel.state_type})<={kernel.state_bytes},"prepared state budget");')
+        source.append(
+            f'_Static_assert(_Alignof({kernel.state_type})<={kernel.state_alignment},"prepared state alignment");'
+        )
+        for field in ("prepare", "compute", "finish"):
+            source.append(
+                f"_Static_assert(_Generic(&{getattr(kernel, field)},"
+                f'merlin_staged_kernel_{field}_fn:1,default:0),"prepared callback ABI");'
+            )
+    for index, (entry, step) in enumerate(zip(kernel_entries, plan.dispatches, strict=True)):
+        if index in prepared_kernels:
+            continue
         count = len(step["inputs"]) + len(step["outputs"])
         source.append(f"extern void _mlir_ciface_{entry}({','.join(['void*'] * count)});")
     source.append(f"static int model_init(void*x) {{ {p}_context*c=x; if(!controller(c))return -101;")
@@ -176,6 +212,8 @@ static int overlap(const void*a,size_t an,const void*b,size_t bn) {{
     for i, buffer in enumerate(plan.buffers):
         if buffer.workspace_offset is not None:
             source.append(f"    c->buffers[{i}]=c->workspace+{buffer.workspace_offset};")
+    for index, slot in sorted(provider_state_layout.items()):
+        source.append(f"    c->provider_states[{index}]=c->workspace+{slot['offset']};")
     source.append(f"    for(unsigned i=0;i<{workers};i++)c->kernel_calls[i]=0;")
     source.append("    c->initialized=1;\n  }\n  if(!c->initialized || c->prepared)return -111;")
     source.append(f"  for(unsigned i=0;i<{workers};i++)c->calls_before[i]=c->kernel_calls[i];\n  return 0;\n}}")
@@ -199,19 +237,47 @@ static int overlap(const void*a,size_t an,const void*b,size_t bn) {{
         source.append("    const size_t capacities[]={" + ",".join(str(specs[bid].bytes) for bid in ordered) + "};")
         source.append(
             f"    if(merlin_prepare_descriptors(arguments,{len(ordered)},data,capacities,"
-            "c->descriptors,c->descriptor_ptrs))return -113;\n    break;\n  }"
+            "c->descriptors,c->descriptor_ptrs))return -113;"
         )
+        if index in prepared_kernels:
+            kernel = prepared_kernels[index]
+            mask = sum(1 << s for s in kernel.worker_slots)
+            source.append(
+                "    memcpy(c->prepared_arguments,arguments,sizeof arguments);"
+                "memcpy(c->prepared_data,data,sizeof data);"
+                "memcpy(c->prepared_capacities,capacities,sizeof capacities);"
+            )
+            source.append(
+                "    c->invocation=(merlin_staged_kernel_invocation){MERLIN_STAGED_KERNEL_ABI_VERSION,"
+                f"{len(step['inputs'])},{len(step['outputs'])},{len(ordered)},"
+                "c->prepared_arguments,c->prepared_data,c->prepared_capacities,c->descriptor_ptrs,"
+                f"c->team.config.sequence,{workers},{mask},c->team.config.worker_harts}};"
+            )
+            source.append(f"    memset(c->provider_states[{index}],0,{kernel.state_bytes});")
+            source.append(
+                f"    int result={kernel.prepare}(c->provider_states[{index}],&c->invocation);if(result)return result;"
+            )
+        source.append("    break;\n  }")
     source.append("  default:return -114;\n  }\n  c->prepared=1;return 0;\n}")
-    source.append(
-        f"static const unsigned assigned_workers[{n}]={{{','.join(str(s['worker_slot']) for s in plan.dispatches)}}};"
-    )
+    masks = [
+        sum(1 << s for s in prepared_kernels[i].worker_slots) if i in prepared_kernels else 1 << s["worker_slot"]
+        for i, s in enumerate(plan.dispatches)
+    ]
+    source.append(f"static const unsigned assigned_masks[{n}]={{{','.join(map(str, masks))}}};")
     source.append(f"static int compute(void*x,unsigned slot) {{ {p}_context*c=x;")
     source.append(
         f"  if(slot>={workers} || self_hart(c)!=c->team.config.worker_harts[slot] || "
         f"c->active_dispatch>={n} || !c->prepared)return -115;"
     )
-    source.append("  if(slot!=assigned_workers[c->active_dispatch])return 0;\n  switch(c->active_dispatch) {")
+    source.append("  if(!(assigned_masks[c->active_dispatch]&(1u<<slot)))return 0;\n  switch(c->active_dispatch) {")
     for index, (entry, step) in enumerate(zip(kernel_entries, plan.dispatches, strict=True)):
+        if index in prepared_kernels:
+            kernel = prepared_kernels[index]
+            source.append(
+                f"  case {index}: {{int status={kernel.compute}(c->provider_states[{index}],&c->invocation,slot);"
+                "if(status)return status;break;}"
+            )
+            continue
         count = len(step["inputs"]) + len(step["outputs"])
         source.append(
             f"  case {index}: _mlir_ciface_{entry}("
@@ -226,8 +292,16 @@ static int overlap(const void*a,size_t an,const void*b,size_t bn) {{
     )
     source.append(
         f"  for(unsigned i=0;i<{workers};i++)if(c->kernel_calls[i]!=c->calls_before[i]+"
-        "(i==assigned_workers[c->active_dispatch]))return -118;"
+        "!!(assigned_masks[c->active_dispatch]&(1u<<i)))return -118;"
     )
+    if prepared_kernels:
+        source.append("  switch(c->active_dispatch) {")
+        for index, kernel in sorted(prepared_kernels.items()):
+            source.append(
+                f"  case {index}: {{int status={kernel.finish}(c->provider_states[{index}],&c->invocation);"
+                "if(status)return status;break;}"
+            )
+        source.append("  default:break;\n  }")
     source.append(f"  if(c->active_dispatch=={n - 1}) {{")
     source.extend(_views(plan.trailing_views, positions))
     for index, buffer in enumerate(results):
@@ -281,6 +355,9 @@ static int overlap(const void*a,size_t an,const void*b,size_t bn) {{
             "sequence_policy": "strictly increasing fresh quiescent team per dispatch",
             "arithmetic_sites": len(plan.dispatches),
             "workspace_bytes": plan.workspace_bytes,
+            "prepared_staged_kernels": {str(i): k.record() for i, k in prepared_kernels.items()},
+            "provider_state_layout": provider_state_layout,
+            "effective_worker_masks": masks,
             "full_model_admission": False,
             "physical_busy": None,
         },

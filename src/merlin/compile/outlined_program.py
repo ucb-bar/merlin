@@ -29,6 +29,7 @@ def build_outlined_program(
     vectorize: bool = False,
     codegen_target: str = "rvv",
     prefix: str = "merlin_chain",
+    prepared_staged_kernels=None,
 ) -> dict:
     """Compile isolated kernels and emit a real C staged chain, default-off.
 
@@ -42,7 +43,7 @@ def build_outlined_program(
     from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.llvmlower import deployable_ir, deployable_outline, kernel_backend, toolchain
     from merlin.llvmlower.portable_math import cache_token
-    from merlin.runtime import outlined_chain
+    from merlin.runtime import outlined_chain, prepared_staged_kernel
 
     if type(vectorize) is not bool:
         raise ValueError("explicit boolean vectorization selection required")
@@ -73,8 +74,24 @@ def build_outlined_program(
             workspace_budget_bytes=workspace_budget_bytes,
             alignment_bytes=alignment_bytes,
         )
+        prepared_staged_kernels = {} if prepared_staged_kernels is None else dict(prepared_staged_kernels)
+        plan, state_layout = prepared_staged_kernel.reserve_states(
+            plan, prepared_staged_kernels, budget_bytes=workspace_budget_bytes
+        )
+        prepared_staged_kernel.verify_selection(plan, prepared_staged_kernels, state_layout)
         (output / "outlined.mlir").write_text(deployable_ir.checked_generic_text(plan.outlined.module))
-        (output / "plan.json").write_text(json.dumps(plan.to_dict(), indent=2) + "\n")
+        plan_record = {**plan.to_dict(), "provider_state_layout": state_layout}
+        plan_record["effective_worker_slots"] = {
+            str(index): list(prepared_staged_kernels[index].worker_slots)
+            if index in prepared_staged_kernels
+            else [step["worker_slot"]]
+            for index, step in enumerate(plan.dispatches)
+        }
+        if prepared_staged_kernels:
+            plan_record["arithmetic_policy"] = (
+                "explicit selected worker callbacks; provider owns source-equivalent output partition"
+            )
+        (output / "plan.json").write_text(json.dumps(plan_record, indent=2) + "\n")
         identity = {
             "compiler": str(toolchain.clang()),
             "compiler_sha256": sha256_file(toolchain.clang()),
@@ -84,13 +101,34 @@ def build_outlined_program(
             "portable_math_policy": cache_token(),
             "compiler_owner_sha256": {
                 str(Path(module.__file__)): sha256_file(module.__file__)
-                for module in (deployable_ir, deployable_outline, kernel_backend)
+                for module in (deployable_ir, deployable_outline, kernel_backend, prepared_staged_kernel)
             },
         }
-        cache, builds, mappings, entries = {}, [], [], []
-        for step in plan.dispatches:
+        cache, builds, mappings, entries, prepared_builds = {}, [], [], [], {}
+        for index, step in enumerate(plan.dispatches):
             kernel = deployable_outline.canonical_kernel(plan.outlined.module, step["symbol"])
             key = deployable_outline.kernel_code_key(kernel, identity)
+            if index in prepared_staged_kernels:
+                selected = prepared_staged_kernels[index]
+                work = output / ("prepared_" + str(index))
+                work.mkdir()
+                (work / "source.mlir").write_text(deployable_ir.checked_generic_text(kernel))
+                record = {**selected.record(), "canonical_code_key": key, "state_layout": state_layout[index]}
+                (work / "prepared.json").write_text(json.dumps(record, indent=2) + "\n")
+                prepared_builds[index] = record
+                entries.append(selected.compute)
+                mappings.append(
+                    {
+                        "source_symbol": step["symbol"],
+                        "provenance": step["provenance"],
+                        "entry": selected.compute,
+                        "entry_kind": "prepared_staged_callbacks",
+                        "canonical_code_key": key,
+                        "worker_slots": list(selected.worker_slots),
+                        "prepared_record": str(work / "prepared.json"),
+                    }
+                )
+                continue
             if key not in cache:
                 entry = prefix + "_kernel_" + str(len(cache))
                 function = next(op for op in kernel.body.block.ops if op.name == "func.func")
@@ -120,7 +158,14 @@ def build_outlined_program(
                     "object_sha256": built["object_sha256"],
                 }
             )
-        emitted = outlined_chain.render_outlined_chain(plan, tuple(entries), roles=roles, prefix=prefix)
+        emitted = outlined_chain.render_outlined_chain(
+            plan,
+            tuple(entries),
+            roles=roles,
+            prefix=prefix,
+            prepared_kernels=prepared_staged_kernels,
+            provider_state_layout=state_layout,
+        )
         header, driver = output / (prefix + ".h"), output / (prefix + ".c")
         header.write_text(emitted["header"])
         driver.write_text(emitted["source"])
@@ -135,6 +180,8 @@ def build_outlined_program(
                 "merlin_descriptor_internal.h",
             )
         ]
+        if prepared_staged_kernels:
+            support.append(runtime / "merlin_staged_kernel.h")
         source_pins = {
             str(path): sha256_file(path)
             for path in (
@@ -146,24 +193,40 @@ def build_outlined_program(
                 Path(deployable_ir.__file__),
                 Path(kernel_backend.__file__),
                 Path(outlined_chain.__file__),
+                Path(prepared_staged_kernel.__file__),
                 Path(__file__),
             )
         }
+        for selected in prepared_staged_kernels.values():
+            selected.verify(worker_count=plan.worker_count)
+            source_pins.update(selected.input_sha256)
+        for work in (output / ("prepared_" + str(index)) for index in prepared_staged_kernels):
+            for path in work.iterdir():
+                source_pins[str(path)] = sha256_file(path)
         if source.read_bytes() != raw:
             raise ValueError("source graph changed during outlined compilation")
         report.update(
             {
                 "status": "built",
                 "dispatches": len(plan.dispatches),
-                "unique_kernels": len(builds),
+                "unique_kernels": len(builds) + len(prepared_builds),
                 "plan": str(output / "plan.json"),
                 "driver": str(driver),
                 "header": str(header),
                 "kernel_builds": builds,
+                "prepared_kernel_builds": prepared_builds,
+                "link_objects": list(
+                    dict.fromkeys(
+                        [v["object"] for v in builds]
+                        + [str(p) for v in prepared_staged_kernels.values() for p in v.objects]
+                    )
+                ),
                 "source_to_kernel": mappings,
                 "runtime_sources": [str(runtime / "merlin_staged.c"), str(runtime / "merlin_descriptors.c")],
                 "runtime_include_directory": str(runtime),
                 "workspace_bytes": plan.workspace_bytes,
+                "workspace_budget_bytes": workspace_budget_bytes,
+                "provider_state_layout": state_layout,
                 "driver_metadata": emitted["metadata"],
                 "input_sha256": source_pins,
                 "target_link_and_execution": "explicit caller platform recipe required",

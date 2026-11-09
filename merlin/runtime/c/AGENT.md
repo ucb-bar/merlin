@@ -69,6 +69,12 @@ The **Merlin C runtime**: a generic, data-driven driver that executes a compiled
 
 ## Interfaces
 
+`merlin_staged_kernel.h` defines optional prepared-provider invocation metadata.
+Argument/capacity/descriptor backing and opaque provider state stay live until
+finish and the external worker join. Callbacks are synchronous, with preparation
+and finish on the controller and arithmetic only on selected workers. Source
+equivalence, target context and device completion are separate provider proofs.
+
 - Input: the generated `merlin_arg_t[]` table (`MERLIN_ARGS`), the weight blob, `MERLIN_INPUT_PTR`, an output buffer.
 - The descriptor struct layout matches MLIR's `memref<...>` lowering exactly: `{allocated, aligned, offset, sizes[rank], strides[rank]}`. Do not change it without matching `convert-memref-to-llvm`.
 - Driven end to end by `merlin/python/merlin/runtime/backends/spike_model.py` (build → run → verify).

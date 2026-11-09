@@ -41,6 +41,17 @@ typedef struct {
 void merlin_invoke(void **descriptor_ptrs);
 typedef void (*merlin_invoke_fn_t)(void **descriptor_ptrs);
 
+/* Checked rank-exact positive pitched view. offset/strides are in elements.
+ * Metadata storage must be separate from data and source layout arrays. Reject
+ * negative/zero strides, overflow, misalignment or an accessed byte beyond the
+ * declared allocation. No writes on refusal. This constructs metadata only;
+ * it grants no injectivity, restrict/noalias, ownership or writable permission.
+ */
+int merlin_prepare_strided_descriptor(void *base, size_t capacity_bytes,
+                                      int element_bytes, int rank, int64_t offset,
+                                      const int64_t *sizes, const int64_t *strides,
+                                      merlin_descriptor_t *descriptor);
+
 /* Prepare rank-exact dense descriptors without invoking arithmetic. The caller
  * supplies already resolved data pointers and capacities, with private descriptor
  * storage. kind/weight offsets are not interpreted by this explicit-pointer API.

@@ -58,3 +58,7 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
   controller/worker driver; no parent forward is compiled. Code reuse requires
   exact canonical IR and lowering identity, never equal shapes/signatures.
   All attributes remain in the initial key; source/FQN mappings remain separate.
+  Explicit prepared staged selections replace only named dispatch ordinals after
+  source/byte verification. Their opaque state counts against the whole-chain
+  budget. Unselected compiled entries retain their normal ABI; no implicit
+  integrated-packing or other provider fallback is permitted.

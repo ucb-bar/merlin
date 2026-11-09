@@ -119,4 +119,5 @@ def test_baremetal_runtime_source_closure_is_publicly_packaged():
         "merlin/runtime/c/merlin_model.h",
         "merlin/runtime/c/merlin_staged.c",
         "merlin/runtime/c/merlin_staged.h",
+        "merlin/runtime/c/merlin_staged_kernel.h",
     } <= files

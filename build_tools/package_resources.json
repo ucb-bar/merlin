@@ -107,6 +107,7 @@
     "merlin/runtime/c/merlin_socinit_zephyr.c",
     "merlin/runtime/c/merlin_staged.c",
     "merlin/runtime/c/merlin_staged.h",
+    "merlin/runtime/c/merlin_staged_kernel.h",
     "merlin/runtime/c/monotone_bit_polynomial.h",
     "merlin/runtime/c/omp_static_schedule.h",
     "merlin/runtime/c/ordered_fma_bounds.h",

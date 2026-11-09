@@ -167,7 +167,7 @@ def test_render_binds_role_policy_and_only_compute_invokes_arithmetic():
     assert "_mlir_ciface_k0(c->descriptor_ptrs" in compute
     for section in (
         source.split("static int model_init", 1)[1].split("static int prepare", 1)[0],
-        source.split("static int prepare", 1)[1].split("static const unsigned assigned_workers", 1)[0],
+        source.split("static int prepare", 1)[1].split("static int compute", 1)[0],
         source.split("static int finish", 1)[1],
     ):
         assert "_mlir_ciface_" not in section

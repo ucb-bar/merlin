@@ -95,3 +95,9 @@ the per-backend adapters under `backends/`.
   must acknowledge quiescence and external joins before fresh sequenced teams.
   Inputs are immutable and unique intermediate storage spans the whole chain;
   unsupported views/effects refuse rather than executing model math on a controller.
+- `prepared_staged_kernel` binds explicitly selected source-equivalent provider
+  callbacks to exact source/header/object bytes and bounded typed state. Reserve
+  all provider metadata/scratch within the same lifetime arena, verify source
+  identity and every interval, and never fall back after explicit selection.
+  Target context, numerical equivalence and synchronous completion stay provider
+  obligations; controller prepare/finish and worker-only compute stay distinct.
