@@ -2,6 +2,143 @@
 
 The pinned model2MLIR revision `e445587543bf9b84e6ee1371414f2202f2533d9c` is available from [reed-nicolas/model2MLIR, branch feat/tinyllama](https://github.com/reed-nicolas/model2MLIR/tree/feat/tinyllama) until its upstream PR merges. The software verifier retains the canonical upstream origin: clone `https://github.com/ucb-bar/model2MLIR.git`, add `https://github.com/reed-nicolas/model2MLIR.git` as a named remote, fetch `feat/tinyllama`, and check out the pinned revision.
 
+## Live capture and the standard application compiler
+
+The existing application front door is `merlin targetgen native-compile --application`.
+It stages the capture's own IR and parameters, selects the installed provider's
+`application_adapter`, and calls Merlin's semantic region planner and the provider's
+`compile_region`. Saved FX boundary extraction is not required by that planner.
+`merlin compile --model-build` is the separate host-baseline ELF workflow; its CLI
+does not expose device placement. See the shared
+[application workflow](../../../../docs/guides/whole_model_on_accelerator.md).
+
+After a worker capture with `--materialize-bundle --already-quantized --quant-adapter
+atlas_fp8`, the existing compiler commands are:
+
+```sh
+nice -n 10 merlin targetgen stage-capture --capture "$LIVE_CAPTURE" \
+  --precision-policy "$PRECISION_POLICY" --out "$STAGED"
+nice -n 10 merlin targetgen native-compile --engine merlin_native --support atlas \
+  --snapshot "$SNAPSHOT" --target-source "$ATLAS_ROOT" --compile-inputs "$STAGED" \
+  --application --already-quantized --application-parameters external \
+  --application-name capsule --application-memory-bytes 536870912 \
+  --io-memory-bytes 67108864 --abi auto --mode diagnostic --out "$COMPILED/application"
+nice -n 10 merlin targetgen native-verify --engine merlin_native --support atlas \
+  --snapshot "$SNAPSHOT" --target-source "$ATLAS_ROOT" --compile-inputs "$STAGED" \
+  --application --already-quantized --application-parameters external \
+  --io-memory-bytes 67108864 --mode diagnostic --artifact "$COMPILED/application" \
+  --out "$COMPILED/application-verified.json"
+```
+
+The precision policy explicitly selects the original arithmetic and binds the
+capture's source SHA-256. Search, allocation, proof, and tool limits retain their
+defaults. The worker now carries finite BF16 scalar/splat words exactly, including
+signed zero. Standard-path decoder-0 prefill64 compilation, artifact verification, and
+independent exactness pass for the fixed saved activation words: all 131,072 BF16
+output words match the independent reference through both plain functional and
+qualified execution. Decode65 also matches all 35,328 BF16 hidden and updated
+K/V words through both plain and qualified execution, using authenticated
+independent parent cache words. These are fixed-input decoder checks; whole-model end-to-end
+compilation and execution remain separate.
+
+For this already-quantized route, `stage="original"` deliberately identifies the
+selected authenticated native ExportedProgram as the original numeric source.
+The worker enables that snapshot only with an explicit external adapter and an
+already-quantized exported graph. There is no floating original graph to attest,
+and this receipt makes no float-to-quantized equivalence claim.
+
+For a decoder-0 capture, `adapter_loader.py` selects
+`ATLAS_CAPTURE_BOUNDARY=layer0`, with `ATLAS_INPUTS_SAFETENSORS` pointing at the
+saved-boundary activation tensor archive and `ATLAS_BOUNDARY_SOURCE_JSON` plus its
+previously frozen `ATLAS_EXPECTED_BOUNDARY_SOURCE_SHA256`. Do not derive this
+expected digest from that same file during the capture run. The graph and
+parameters are reconstructed and captured live; the activation words are saved
+boundary inputs. This establishes a decoder-level route, not complete end-to-end
+model capture and execution. The latter requires the whole-model capture.
+An authenticated six-input cache boundary uses the existing tensor-cache append
+semantics and returns hidden state, updated K, and updated V. Neither path loads
+a saved graph. Loader and staging tests do not establish generated exactness.
+
+To capture and stage either decoder-0 phase, select the independently authenticated
+boundary receipt and its saved activation archive. Set the frozen boundary digest
+before selecting capture files. Use separate fresh destinations for prefill64 and
+decode65; run one native compile at a time.
+
+```sh
+TOOLS=examples/atlas/whole-model/unchanged_fx
+export ATLAS_CAPTURE_BOUNDARY=layer0
+export ATLAS_BOUNDARY_SOURCE_JSON="$BOUNDARY_SOURCE"
+export ATLAS_EXPECTED_BOUNDARY_SOURCE_SHA256="$FROZEN_BOUNDARY_SOURCE_SHA256"
+export ATLAS_INPUTS_SAFETENSORS="$BOUNDARY_TENSORS"
+export ATLAS_EXPORT_DIR="$BUNDLE/export" ATLAS_ARCHITECTURE="$ARCHITECTURE"
+export ATLAS_EXPECTED_CONTRACT_SHA256="$CONTRACT_SHA"
+export ATLAS_EXPECTED_POLICY_SHA256="$POLICY_SHA"
+nice -n 10 "$COMPILER_PYTHON" -m merlin.targetgen._m2m_capture_worker \
+  --loader "$TOOLS/adapter_loader.py" --dtype bf16 --out "$LIVE_CAPTURE" \
+  --materialize-bundle --already-quantized --quant-adapter atlas_fp8 \
+  --contract "$BUNDLE/export/manifest.json" --policy "$BUNDLE/export/policy.json" \
+  --expected-contract-sha256 "$CONTRACT_SHA" --expected-policy-sha256 "$POLICY_SHA"
+nice -n 10 "$COMPILER_PYTHON" "$TOOLS/live_precision.py" \
+  --capture "$LIVE_CAPTURE" --kind layer0 --out "$PRECISION_POLICY"
+```
+
+Use the stage and native-compile commands above, with `--out
+"$COMPILED/application"`. Build a source-pinned snapshot through `merlin targetgen
+native-build --engine merlin_native --support atlas --io-memory-bytes 67108864
+--cargo-target-dir "$CARGO_TARGET" --source-revision "$MERLIN_REVISION" --out
+"$SNAPSHOT"`. The standalone policy selector reuses the saved-boundary example's
+existing arithmetic policy construction; it never exports or compiles a graph.
+
+After successful standard compilation, package only its emitted C for the
+existing example runtime. This command replays `native-verify`, checks the live
+capture/staged identity and saved activation words, and builds the host shim
+outside the authenticated native application inventory:
+
+```sh
+nice -n 10 "$COMPILER_PYTHON" "$TOOLS/prepare_live_execution.py" \
+  --compiled "$COMPILED" --capture "$LIVE_CAPTURE" --staged "$STAGED" \
+  --snapshot "$SNAPSHOT" --atlas-root "$ATLAS_ROOT" \
+  --boundary-source "$BOUNDARY_SOURCE" \
+  --expected-boundary-source-sha256 "$FROZEN_BOUNDARY_SOURCE_SHA256" \
+  --inputs "$BOUNDARY_TENSORS"
+nice -n 10 "$MODEL_PYTHON" "$TOOLS/execute_graph.py" \
+  --compiled "$COMPILED" --atlas-root "$ATLAS_ROOT" --model-root "$MODEL_ROOT" \
+  --backend functional --max-instructions 1000000 --compact-trace \
+  --execution-output "$EXECUTION"
+```
+
+The pinned model requires a compatible model interpreter, independently of the
+compiler interpreter. Add both `$ATLAS_ROOT` and `$ATLAS_ROOT/python` to its import
+path. Execution publishes `EXECUTED_UNCOMPARED`; authenticate the same-shape
+independent reference and use `cache_composition.compare_outputs` to establish
+exact word equality. A decode run driven by saved cache input words does not
+establish generated parent-cache continuity. For decode65 comparison, authenticate
+the independent oracle's `inputs.json`, parent reference/expected-array hashes,
+and raw `runtime_inputs.npz` words. Use the existing
+`composition.verify_stage_inputs` check and pass its preserved cache words with
+`execute_graph.py --input-overrides VERIFIED_CACHE_INPUTS.npz`. Captured framework
+cache words cannot substitute for the independent parent cache.
+
+The existing qualified execution implementation may be selected explicitly with
+`--backend qualified_native --native-qualification "$MATH_QUALIFICATION"
+--memory-qualification "$MEMORY_QUALIFICATION" --native-cache "$NATIVE_CACHE"`.
+It verifies pinned arithmetic and memory receipts before execution, preserves
+program/control instructions and the same per-launch instruction limit, and
+records the changed arithmetic implementation. The prefill64 plain and qualified
+runs agree exactly on output words, launch counts, and executed instructions.
+
+Whole-model planning still refuses unqualified f32 contractions in rotary
+preparation and the widened head. The existing host BF16 head policy does not
+currently admit the widened-f32 source form; its product rounding is different.
+The shared host sine/cosine path requires an explicitly selected library, host,
+and numerical/effect contract. Those admissions remain open. The decoder checks
+above do not qualify complete end-to-end whole-model capture or execution.
+
+The saved-boundary tools below are regeneration and regression aids. Their
+historical qualification does not qualify the live application path.
+
+## Saved-boundary regression details
+
 These scripts extract, compile, and execute the 22 decoder layers, final normalization, and LM head of the fixed-shape TinyLlama export while preserving original parameter bytes. Source embedding lookup, masks, and rotary inputs are captured from the source graph for the initial boundary. This is a functional bringup path, and timing, hardware qualification, independent exactness, and quality require separate evidence.
 
 Run `extract_capsules.py --bundle BUNDLE --output REGIONS --whole-model --threads 2` in an environment with the original `atlas_fx_ops` registration and PyTorch export support. The extractor verifies bundle hashes, replays the source fixture, copies each region's authored FX nodes, checks lifted tensors against the source export, and records source boundary names and ordered producer links. The region manifest records any authored alias between final normalization and the head. Each new regional capture archives inherited capture identities and an authenticated source-node map in `source.json.parent_capture`, then starts a fresh local capture namespace.
@@ -54,13 +191,13 @@ After capture, staging, signature, and every original tensor payload have been a
 
 For live model reconstruction, use `adapter_loader.py` with the generic capture worker and `--already-quantized --quant-adapter atlas_fp8 --contract EXPORT/manifest.json --policy EXPORT/policy.json`, plus the two expected SHA-256 flags. Set `ATLAS_EXPORT_DIR`, `ATLAS_ARCHITECTURE`, and `ATLAS_INPUTS_SAFETENSORS`, and supply the same frozen hashes through `ATLAS_EXPECTED_CONTRACT_SHA256` and `ATLAS_EXPECTED_POLICY_SHA256`. The loader constructs the architecture on the meta device, installs authenticated raw codes, exponents, and ordinary tensors, and exports inside the original native-site context without loading a saved source program.
 
-Validation provenance: adapter validation uses a regenerated bundle at source revision `a6a1aa4fef1106fc12f0ea4afc035310a2d4b7ff` that passes `verify_bundle`; it does not use the original artifact files. A capture observer saves the live loader's returned native export, from which validation extracts 24 boundaries and runs `compile_capsule.py --adapter-export`. This saved-boundary route is the qualified compilation route. The live capture worker's `linalg.mlir` is not consumed by the regional compiler; connecting those two entry points remains open work. Graph lineage links the routes, and serialized trace provenance differences remain recorded. Compilation manifests can differ in `native_snapshot_sha256` and `pointwise_lowering_source_sha256` even when executable, launch, and parameter bytes match.
+Validation provenance: historical adapter validation uses a regenerated bundle at source revision `a6a1aa4fef1106fc12f0ea4afc035310a2d4b7ff` that passes `verify_bundle`; it does not use the original artifact files. That validation saved the live loader's native export, extracted 24 boundaries, and ran `compile_capsule.py --adapter-export`. The live decoder route above instead consumes the worker's own IR through standard staging and application compilation, with live graph and parameter capture driven by saved-boundary activation words. Complete whole-model capture, compilation, and execution remain a separate end-to-end gate. Retain trace and compilation provenance differences even when executable, launch, and parameter bytes match.
 
 Layer-0 compilation is load-sensitive under the unchanged 30-second per-tool wall inherited from the Atlas binding. Prefill64 sizing has taken about 23 seconds on a quiet host. A timeout is a failed compile; retain the failure receipt and retry under lower load without raising the limit.
 
-## Run layer 0
+## Saved-boundary layer0 regression and regeneration
 
-Use matching `feat/tinyllama` branches of atlas-mlir, Merlin, and [model2MLIR](https://github.com/reed-nicolas/model2MLIR/tree/feat/tinyllama). Install the standalone `atlas_fp8` package from the atlas-mlir checkout with `python -m pip install -e "$ATLAS_ROOT/adapter"`. The matching model2MLIR head is `e445587543bf9b84e6ee1371414f2202f2533d9c`, also pinned in `merlin/contract/software_pins.yaml`. Retain the selected atlas-mlir and Merlin branch SHAs beside each run receipt; documentation commits can advance these draft branch heads. These are draft branches, and the live adapter capture is separate from the qualified saved-boundary route below.
+Use matching `feat/tinyllama` branches of atlas-mlir, Merlin, and [model2MLIR](https://github.com/reed-nicolas/model2MLIR/tree/feat/tinyllama). Install the standalone `atlas_fp8` package from the atlas-mlir checkout with `python -m pip install -e "$ATLAS_ROOT/adapter"`. The matching model2MLIR head is `e445587543bf9b84e6ee1371414f2202f2533d9c`, also pinned in `merlin/contract/software_pins.yaml`. Retain the selected atlas-mlir and Merlin branch SHAs beside each run receipt; documentation commits can advance these draft branch heads. These are draft branches; distinguish live decoder captures driven by saved activation words from the saved-graph regression route below and from complete whole-model capture.
 
 Regenerate from Loren's [atlas-torchao exporter](https://github.com/ucb-ee290c/atlas-torchao/blob/a6a1aa4fef1106fc12f0ea4afc035310a2d4b7ff/docs/algos/howto-model-to-fx-graph.md) at `a6a1aa4fef1106fc12f0ea4afc035310a2d4b7ff`, with the pinned checkpoint and calibration data. Run these commands in that checkout with a fresh `$BUNDLE`:
 
