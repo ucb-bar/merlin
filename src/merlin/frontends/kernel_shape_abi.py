@@ -18,8 +18,6 @@ def validate_dimensions(spec, buffers, scalars):
                 names.add(size)
             elif type(size) is not int or size <= 0:
                 raise ValueError("kernel dimensions require positive integers or named scalar bindings")
-        if any(isinstance(n, str) for n in shape) and len(shape) != 1:
-            raise ValueError("dynamic multidimensional kernel admission requires another profile")
     bounds = {s["name"]: s.get("bounds") for s in scalars}
     grid = spec.get("grid", [1])
     if not isinstance(grid, list) or not 1 <= len(grid) <= 3:

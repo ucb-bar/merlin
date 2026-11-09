@@ -30,6 +30,8 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   ceil-divided grids. Standalone compile-signature v2 retains symbolic tensor
   dimensions and typed scalar bindings. Staging checks declared types/relations,
   excludes example sizes and grants no memory, shape-guard or numeric proof.
+  Named dimensions may occur on multiple axes with mixed static extents; dense
+  stride/address and ownership proofs remain the producer's responsibility.
 - `linalg_math_patterns.py` — source-only, closed unary f32 sine/cosine/exponential/roundeven
   scalar-region checks; each operation requires its own explicit declaration. No host admission,
   selected math implementation or numerical-equivalence claim follows. Scalar-literal power refuses.

@@ -146,14 +146,15 @@ def test_plain_runtime_scalar_staging_retains_type_without_tensor_mutability(tmp
     assert "bufferization.writable" not in entry.arg_attrs.data[-1].data
 
 
-def dynamic_fixture(root):
+def dynamic_fixture(root, shape=("n",)):
     receipt = scalar_fixture(root)
-    model = (root / "model.mlir").read_bytes().replace(b"tensor<2xf32>", b"tensor<?xf32>").replace(b"%alpha: f32", b"%n: i32")
+    tensor_type = ("tensor<" + "x".join("?" if isinstance(d, str) else str(d) for d in shape) + "xf32>").encode()
+    model = (root / "model.mlir").read_bytes().replace(b"tensor<2xf32>", tensor_type).replace(b"%alpha: f32", b"%n: i32")
     spec = json.loads((root / "spec.json").read_text())
     spec.update(schema="t2m.shared-tensor-abi.v5", grid=[{"dimension": "n", "divisor": 8}],
                 runtime_scalars=[{"name": "n", "dtype": "i32", "source_arg": 1, "bounds": [0, 13]}])
     for buffer in spec["buffers"]:
-        buffer["shape"] = ["n"]
+        buffer["shape"] = list(shape)
     provenance = json.loads((root / "provenance.json").read_text())
     provenance.update(spec=spec, mlir_sha256=record(model)["sha256"])
     manifest = json.loads((root / "weights.safetensors.manifest.json").read_text())
@@ -166,9 +167,10 @@ def dynamic_fixture(root):
     return receipt
 
 
-def test_runtime_shape_staging_retains_symbol_bindings_without_reading_examples(tmp_path, monkeypatch):
+@pytest.mark.parametrize("shape", [("n",), (2, "n", 3), ("n", "n")])
+def test_runtime_shape_staging_retains_symbol_bindings_without_reading_examples(tmp_path, monkeypatch, shape):
     source, target = tmp_path / "capture", tmp_path / "compiler"
-    dynamic_fixture(source)
+    dynamic_fixture(source, shape)
     original_read = Path.read_bytes
     def read(path):
         if path.name in ("inputs.npz", "golden.npy", "extra.npz", "execution.json"):
@@ -179,7 +181,7 @@ def test_runtime_shape_staging_retains_symbol_bindings_without_reading_examples(
     signature = json.loads((target / "signature.json").read_text())
     assert signature["schema"] == "merlin.compile-signature.v2"
     assert signature["shape_scope"] == "runtime_scalar_bound_dimensions"
-    assert signature["inputs"][0]["shape"] == signature["outputs"][0]["shape"] == ["n"]
+    assert signature["inputs"][0]["shape"] == signature["outputs"][0]["shape"] == list(shape)
     assert signature["inputs"][-1] == {"shape": [], "dtype": "i32", "kind": "scalar", "scalar": "n", "bounds": [0, 13]}
 
 

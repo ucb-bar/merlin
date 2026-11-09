@@ -98,7 +98,7 @@ accepts ranked or unranked sources while checking element type, memory space,
 size/stride/offset and dynamic operand segments. These bindings preserve the
 upstream raw-buffer representation without changing loop-carried SSA types.
 
-Standalone ABI v5 additionally admits named rank-one runtime dimensions and
+Standalone ABI v5 additionally admits named dense runtime dimensions and
 logical ceil-divided grid expressions over bounded nonnegative integer scalars.
 Its `merlin.compile-signature.v2` retains symbolic shapes and named scalar
 bindings for input checks and result allocation. Actual input/result dimensions
