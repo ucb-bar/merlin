@@ -58,14 +58,17 @@ def checked_word_stages(stage, source, output, memory, inventory):
         if not isinstance(binding, dict):
             raise ValueError("source-word event binding must be an object")
         name = binding.get("symbol")
+        atomic = binding.get("opcode") == "tt.atomic_rmw"
         if (not isinstance(name, str) or not name or name in symbols
-                or binding.get("opcode") not in ("tt.load", "tt.store")
+                or binding.get("opcode") not in ("tt.load", "tt.store", "tt.atomic_rmw")
                 or not isinstance(binding.get("source_ids"), list) or not binding["source_ids"]
                 or any(not isinstance(s, str) or s not in inventory for s in binding["source_ids"])
                 or any(not isinstance(binding.get(key), list) or any(type(t) is not str for t in binding[key])
                        for key in ("input_types", "result_types"))
                 or len(binding["input_types"]) < 2
-                or len(binding["result_types"]) != (1 if binding["opcode"] == "tt.load" else 0)
+                or len(binding["result_types"]) != (0 if binding["opcode"] == "tt.store" else 1)
+                or atomic and (memory.get("effect_profile") != "private-invocation-integer-atomics-v1"
+                               or len(binding["input_types"]) not in (3, 4) or binding.get("fill") != "unchanged")
                 or binding.get("fill") not in ("unchanged", "source-mask-select-after-zero-filled-load")):
             raise ValueError("source-word event binding differs from the declared source/type inventory")
         symbols.add(name)

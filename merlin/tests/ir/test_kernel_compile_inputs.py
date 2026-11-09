@@ -571,6 +571,31 @@ def test_atomic_staging_retains_v3_source_contract_and_thirty_bit_cost(tmp_path)
     assert (target / "source/memory-admission.json").read_bytes() == (source / "memory-admission.json").read_bytes()
 
 
+@pytest.mark.parametrize("change", [None, "ordinary", "lost-old-value", "fill", "lost-value"])
+def test_isolated_atomic_event_requires_effect_profile_value_and_old_result(tmp_path, change):
+    from merlin.frontends.kernel_word_evidence import checked_word_stages
+    source = tmp_path / "capture"
+    word_fixture(source, isolated=True)
+    stage = json.loads((source / "word-stage.json").read_text())
+    provenance = json.loads((source / "provenance.json").read_text())
+    memory = provenance["memory"]
+    memory["effect_profile"] = "private-invocation-integer-atomics-v1"
+    binding = stage["events"]["bindings"][0]
+    binding.update(opcode="tt.atomic_rmw", input_types=["!tt.ptr<i32>", "tensor<2xi64>", "tensor<2xi32>"],
+                   result_types=["tensor<2xi32>"])
+    if change == "ordinary": memory.pop("effect_profile")
+    elif change == "lost-old-value": binding["result_types"] = []
+    elif change == "fill": binding["fill"] = "source-mask-select-after-zero-filled-load"
+    elif change == "lost-value": binding["input_types"].pop()
+    args = (stage, (source / "word-input.mlir").read_bytes(), (source / "word-tensor.mlir").read_bytes(), memory,
+            {record["id"] for record in provenance["normalized_operations"]})
+    if change is None:
+        checked_word_stages(*args)
+    else:
+        with pytest.raises(ValueError, match="source/type inventory"):
+            checked_word_stages(*args)
+
+
 @pytest.mark.parametrize("change", ["protocol", "fragments", "cost", "order", "scope", "kind", "old-value", "once", "effect-intent", "profile"])
 def test_rehashed_inconsistent_atomic_contract_never_publishes(tmp_path, change):
     source, target = tmp_path / "capture", tmp_path / "compiler"
