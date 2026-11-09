@@ -149,6 +149,34 @@ if HAS_XDSL:
             for fp8_type in _FP8_BY_NAME.values():
                 based.setdefault(type(fp8_type), BaseAttr(type(fp8_type)))
 
+    def register_fp8_bitcast_constraints() -> None:
+        """Complete the existing float constraint hook for Arith's copied union.
+
+        BitcastOp captures a separate flattened AnyOf at class definition time,
+        so updating AnyFloatConstr alone does not reach it. Only union nodes
+        already admitting F32 gain FP8; shape and equal-bitwidth verification
+        remain the upstream operation's responsibility.
+        """
+        from xdsl.dialects.arith import BitcastOp
+        from xdsl.dialects.builtin import ContainerOf, Float32Type
+        from xdsl.irdl.constraints import AnyOf, BaseAttr, SingleOf
+
+        def visit(constraint):
+            if isinstance(constraint, SingleOf):
+                visit(constraint.constr)
+            elif isinstance(constraint, ContainerOf):
+                visit(constraint.elem_constr)
+            elif isinstance(constraint, AnyOf):
+                if Float32Type in constraint._based_constrs:
+                    for fp8_type in _FP8_BY_NAME.values():
+                        constraint._based_constrs.setdefault(type(fp8_type), BaseAttr(type(fp8_type)))
+                for child in constraint.attr_constrs:
+                    visit(child)
+
+        definition = BitcastOp.get_irdl_definition()
+        for _, argument in (*definition.operands, *definition.results):
+            visit(argument.constr)
+
     # Install the hook as a side effect of importing the kit, so any parse path that touches
     # merlin's xDSL dialects (interface load, make_context, roundtrip) can read fp8 capsules.
     register_fp8_types()
@@ -161,4 +189,7 @@ else:  # pragma: no cover - exercised only when xDSL is absent
         return
 
     def register_fp8_float_constraints() -> None:
+        return
+
+    def register_fp8_bitcast_constraints() -> None:
         return

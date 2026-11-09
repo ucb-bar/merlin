@@ -126,10 +126,10 @@ class CompilationRecipe:
     def completed_product(self, product: Path, *, kind: str) -> None:
         """Record a completed compiler product without labeling IR as a binary.
 
-        The legacy executable record is unchanged. Intermediate LLVM IR and
+        The legacy executable record is unchanged. Intermediate MLIR, LLVM IR and
         objects need their own normal codegen/link qualification afterwards.
         """
-        if kind not in {"executable", "object", "llvm_ir"}:
+        if kind not in {"executable", "object", "llvm_ir", "mlir"}:
             raise ValueError("explicit supported compilation product kind required")
         if not self.record["commands"] or any(command["status"] != "returned" for command in self.record["commands"]):
             raise ValueError("compilation has no complete successful command sequence")

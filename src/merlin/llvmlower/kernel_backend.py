@@ -20,6 +20,7 @@ them ``RTLD_LOCAL`` (no trampoline needed at this arity), so their shared
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -128,6 +129,7 @@ def compile_deployable_kernel(
     extra_cflags: tuple[str, ...],
     vectorize: bool = False,
     codegen_target: str = "rvv",
+    fp8_scalar_codec=None,
 ) -> dict:
     """Compile one closed tensor kernel for the explicit LP64 compute-worker ABI.
 
@@ -167,8 +169,20 @@ def compile_deployable_kernel(
     if observation["index_bits"] != 64 or not observation["data_layout"].startswith("e"):
         raise ValueError("deployable descriptors require observed little-endian LP64/index64 lowering")
     work = Path(workdir)
+    lowered_source = checked_generic_text(kernel_module)
+    selected_codec = None
+    if fp8_scalar_codec is not None:
+        from .fp8_scalar_codec import has_fp8_casts, legalize_file, scoped_codec
+
+        fp8_scalar_codec.validate()
+        if has_fp8_casts(kernel_module):
+            source = work / "codec-input.mlir"
+            work.mkdir(parents=True, exist_ok=False)
+            source.write_text(lowered_source)
+            selected_codec = scoped_codec(fp8_scalar_codec, work / "codec-scope", prefix=entry)
+            lowered_source = legalize_file(source, work / "codec-model", selected_codec).read_text()
     result = lower_model(
-        checked_generic_text(kernel_module),
+        lowered_source,
         work,
         targets=(),
         vectorize=vectorize,
@@ -179,7 +193,24 @@ def compile_deployable_kernel(
         data_layout=observation["data_layout"],
         index_bits=64,
     )
-    llvm = result.ll_path.read_text()
+    selected_ll = result.ll_path
+    if selected_codec is not None:
+        from .host_llvm_helpers import link_and_inline
+
+        selected_ll = link_and_inline(
+            selected_ll,
+            work / "codec-linked",
+            helpers=(selected_codec.helper_ir,),
+            required_inlined_symbols=tuple(
+                name
+                for name, direction in (
+                    (selected_codec.encode_symbol, "encode"),
+                    (selected_codec.decode_symbol, "decode"),
+                )
+                if json.loads((work / "codec-model/report.json").read_text())["casts"][direction]
+            ),
+        )
+    llvm = selected_ll.read_text()
     if any(
         token in llvm
         for token in ("@malloc(", "@calloc(", "@realloc(", "@aligned_alloc(", "@free(", "__kmpc_", "alloca ")
@@ -196,14 +227,30 @@ def compile_deployable_kernel(
     pointer_args = [item.strip().split()[0] for item in wrapper[0][len(wrapper_prefix) :].split(")", 1)[0].split(",")]
     if actual != expected or pointer_args != ["ptr"] * len(ranks):
         raise ValueError("emitted kernel ABI disagrees with rank-exact descriptor contract")
-    obj = codegen.compile_ll(result.ll_path, work / "kernel.o", extra_flags=extra_cflags)
+    obj = codegen.compile_ll(selected_ll, work / "kernel.o", extra_flags=extra_cflags)
+    codec_inputs = {}
+    if selected_codec is not None:
+        from . import host_llvm_helpers, late_quant_rne
+
+        codec_inputs.update(selected_codec.validate()["input_sha256"])
+        codec_inputs.update(
+            {
+                str(path): sha256_file(path)
+                for directory in (work / "codec-scope", work / "codec-model", work / "codec-linked")
+                for path in directory.rglob("*")
+                if path.is_file()
+            }
+        )
+        codec_inputs.update(
+            {str(Path(owner.__file__)): sha256_file(owner.__file__) for owner in (host_llvm_helpers, late_quant_rne)}
+        )
     return {
         "entry": entry,
         "ciface_entry": "_mlir_ciface_" + entry,
         "object": str(obj),
         "object_sha256": sha256_file(obj),
-        "llvm": str(result.ll_path),
-        "llvm_sha256": sha256_file(result.ll_path),
+        "llvm": str(selected_ll),
+        "llvm_sha256": sha256_file(selected_ll),
         "source_ir_sha256": hashlib.sha256(checked_generic_text(kernel_module).encode()).hexdigest(),
         "source_serialization": "checked_generic_operation_form",
         "argument_ranks": ranks,
@@ -214,6 +261,8 @@ def compile_deployable_kernel(
         "heap_allocations": False,
         "LLVM_stack_allocations": False,
         "OpenMP": False,
+        "fp8_scalar_codec": None if selected_codec is None else selected_codec.validate(),
+        "codec_input_sha256": codec_inputs,
     }
 
 

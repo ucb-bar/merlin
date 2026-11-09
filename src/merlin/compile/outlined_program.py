@@ -35,6 +35,7 @@ def build_outlined_program(
     packing_tile_budget_bytes: int | None = None,
     frozen_inputs=None,
     analysis_workspace_budget_bytes: int | None = None,
+    fp8_scalar_codec=None,
     runtime_header_driver: str | Path | None = None,
 ) -> dict:
     """Compile isolated kernels and emit a real C staged chain, default-off.
@@ -79,7 +80,17 @@ def build_outlined_program(
         "parent_forward_compiled": False,
     }
     try:
-        module = parse_mlir_text(raw.decode())
+        selected_source = source
+        if fp8_scalar_codec is not None:
+            from merlin.llvmlower import fp8_encode_fusion
+
+            selected_source = fp8_encode_fusion.fuse_clamped_encoders(source, output / "fp8-source", fp8_scalar_codec)
+            report["fp8_source_preparation"] = {
+                "selected_source": str(selected_source),
+                "selected_sha256": sha256_file(selected_source),
+                "source_report": str(output / "fp8-source/report.json"),
+            }
+        module = parse_mlir_text(selected_source.read_text())
         plan = deployable_outline.plan_deployable_chain(
             module,
             worker_slots=worker_slots,
@@ -169,6 +180,22 @@ def build_outlined_program(
                 for module in (deployable_ir, deployable_outline, kernel_backend, prepared_staged_kernel, outline_owner)
             },
         }
+        if fp8_scalar_codec is not None:
+            from merlin.llvmlower import fp8_scalar_codec as codec_owner
+
+            if type(fp8_scalar_codec) is not codec_owner.BoundedE4M3FNCodec:
+                raise ValueError("explicit bounded scalar codec required")
+
+            identity["fp8_scalar_codec"] = fp8_scalar_codec.validate()
+            identity["codec_symbol_scope"] = "exact_defined_function_global_alpha_rename_per_emitted_entry_v1"
+            identity["compiler_owner_sha256"][str(Path(codec_owner.__file__))] = sha256_file(codec_owner.__file__)
+            identity["compiler_owner_sha256"][str(Path(fp8_encode_fusion.__file__))] = sha256_file(
+                fp8_encode_fusion.__file__
+            )
+            identity["codec_tools"] = {
+                str(path): sha256_file(path)
+                for path in (toolchain.llvm_opt(), toolchain.llvm_link(), toolchain.llvm_install() / "bin" / "mlir-opt")
+            }
         if data_preparation:
             from merlin.llvmlower import deployable_packing
 
@@ -215,6 +242,7 @@ def build_outlined_program(
                     extra_cflags=compute_cflags,
                     vectorize=vectorize,
                     codegen_target=codegen_target,
+                    **({} if fp8_scalar_codec is None else {"fp8_scalar_codec": fp8_scalar_codec}),
                 )
                 (work / "source.mlir").write_text(deployable_ir.checked_generic_text(kernel))
                 built["canonical_code_key"] = key
@@ -282,10 +310,27 @@ def build_outlined_program(
                 Path(__file__),
             )
         }
+        from merlin.llvmlower import outlined_guards
+        from merlin.xdsl_dialects.lowering import dispatch_program
+
+        for owner in (outlined_guards, dispatch_program):
+            source_pins[str(Path(owner.__file__))] = sha256_file(owner.__file__)
+        if fp8_scalar_codec is not None:
+            source_pins.update(identity["fp8_scalar_codec"]["input_sha256"])
+            source_pins.update(identity["codec_tools"])
+            source_pins[str(Path(codec_owner.__file__))] = sha256_file(codec_owner.__file__)
+            source_pins[str(Path(fp8_encode_fusion.__file__))] = sha256_file(fp8_encode_fusion.__file__)
+            source_pins.update(
+                {str(path): sha256_file(path) for path in (output / "fp8-source").rglob("*") if path.is_file()}
+            )
         for built in builds:
             if sha256_file(built["object"]) != built["object_sha256"]:
                 raise ValueError("ordinary kernel object changed before build closure")
             source_pins[built["object"]] = built["object_sha256"]
+            for path, digest in built.get("codec_input_sha256", {}).items():
+                if sha256_file(path) != digest:
+                    raise ValueError("scalar codec input changed before build closure")
+                source_pins[path] = digest
         if numeric_runtime is not None:
             for path, digest in numeric_runtime["input_sha256"].items():
                 if sha256_file(path) != digest:

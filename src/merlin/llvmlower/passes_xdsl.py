@@ -611,12 +611,17 @@ def fix_bool_fptosi(module) -> int:
 
 
 def add_c_interface(module) -> int:
-    """Mark public funcs with llvm.emit_c_interface; returns count marked."""
+    """Mark public definitions; private/external callbacks retain their ABI."""
     from xdsl.dialects.builtin import UnitAttr
+    from xdsl.dialects.func import FuncOp
 
     n = 0
     for op in module.walk():
-        if op.name == "func.func":
+        if (
+            isinstance(op, FuncOp)
+            and op.body.blocks
+            and (op.sym_visibility is None or op.sym_visibility.data == "public")
+        ):
             op.attributes["llvm.emit_c_interface"] = UnitAttr()
             n += 1
     return n
