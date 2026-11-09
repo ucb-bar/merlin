@@ -167,8 +167,17 @@ def _verify_record(record):
         if file_sha256(Path(pin["path"])) != pin["sha256"]:
             raise ValueError("native compiled receipt changed")
         receipt = _read(pin["path"])
-        if receipt.get("inputs", {}).get("host_elementwise_fusion", False) is not record.get(
-            "host_elementwise_fusion", False
+        # Both original producer formats encode an unfused build by omitting the true-only marker.
+        # Actual source, invocation and linked-product identities are independently reopened above/below.
+        inputs = receipt.get("inputs")
+        if not isinstance(inputs, dict):
+            raise ValueError("native compiled receipt has no actual build input selection")
+        compiled_fusion = inputs["host_elementwise_fusion"] if "host_elementwise_fusion" in inputs else False
+        recorded_fusion = record["host_elementwise_fusion"] if "host_elementwise_fusion" in record else False
+        if (
+            type(compiled_fusion) is not bool
+            or type(recorded_fusion) is not bool
+            or compiled_fusion is not recorded_fusion
         ):
             raise ValueError("native compiled host fusion selection changed")
         if (
@@ -387,7 +396,8 @@ def _producer(path, record, invocation):
         revalidation.verify_producer(path, record, invocation)
         return
     call = IR.verify(invocation)
-    fusion = record.get("host_elementwise_fusion", False)
+    # This schema omits the marker for an unfused producer, and pins the original invocation.
+    fusion = record["host_elementwise_fusion"] if "host_elementwise_fusion" in record else False
     if type(fusion) is not bool:
         raise ValueError("native static partition has an invalid host fusion selection")
     if (

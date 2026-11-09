@@ -38,10 +38,18 @@ SCALE_PROBE_FLAG = "--scale-probe"
 
 
 def _case_row(case):
+    derivation = json.loads(case.derivation_json)
+    variant = derivation.get("variant")
+    if "variant" not in derivation:
+        # The actual public source producer predates named interventions. Both
+        # retained and geometric source cases explicitly belong to its base route.
+        variant = (
+            "original" if derivation.get("basis") in {"retained_public_source", "geometric_tensor_types"} else "unknown"
+        )
     return {
         "member": case.member,
         "scale": case.scale,
-        "variant": json.loads(case.derivation_json).get("variant", "original"),
+        "variant": variant,
         "source_sha256": hashlib.sha256(case.source_ir.encode()).hexdigest(),
         "original_abi_sha256": hashlib.sha256(
             json.dumps(case.original_abi.record(), sort_keys=True).encode()

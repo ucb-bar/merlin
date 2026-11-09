@@ -12,9 +12,10 @@ import shlex
 import sys
 from pathlib import Path
 
-from merlin_experiments.phase1 import conformance as C
+import pytest
 
 from merlin.common.paths import repo_root
+from merlin_experiments.phase1 import conformance as C
 
 sys.path.insert(0, str(repo_root() / "merlin" / "experiments" / "capsule_bench" / "harness"))
 from merlin_experiments.phase1 import authoring as LOOP  # noqa: E402
@@ -854,7 +855,7 @@ def test_a_composed_command_still_yields_its_python_evidence(tmp_path):
 
     The extractor accepted only a bare, uncomposed `python -c` or a lone heredoc, so a wrapper or a
     `;` made the RTL discovery invisible and five arm-4 checks reported False."""
-    sub = _submission(tmp_path, {"backend.py": "import ast\n"})
+    _submission(tmp_path, {"backend.py": "import ast\n"})
     tp = _transcript(
         tmp_path / "t.jsonl",
         [
@@ -922,3 +923,14 @@ def test_a_selfcheck_that_produced_no_report_is_not_evidence(tmp_path):
         outputs={0: "python3 agent_selfcheck.py --capsules all"},
     )
     assert C._full_selfcheck(C._tool_calls(tp)) is False
+
+
+@pytest.mark.parametrize("policy", [None, {}, {"compiler_access": "selected_library"}])
+def test_replay_requires_recorded_compiler_policy(tmp_path, policy):
+    import yaml
+
+    if policy is not None:
+        (tmp_path / "environment.yaml").write_text(yaml.safe_dump({"run_config": policy}))
+    with pytest.raises(SystemExit) as exc:
+        C.main([str(tmp_path), "--arm", "merlin_assisted", "--endpoint", "test", "--tool", "test"])
+    assert exc.value.code == 2

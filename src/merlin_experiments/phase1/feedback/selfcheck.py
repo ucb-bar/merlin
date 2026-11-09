@@ -42,9 +42,8 @@ from merlin_experiments.phase1.context import (
     readback_kwargs,
     resolve_context,
 )
+from merlin_experiments.phase1.feedback import package_rejection, performance_brief, scratch_retention, selfcheck_notes
 from merlin_experiments.phase1.feedback import qa as _qc
-from . import selfcheck_progress as SP
-from .result_details import compact_document
 from merlin_experiments.phase1.feedback.candidate_observations import _shape_coverage, diagnostics_cli
 from merlin_experiments.phase1.feedback.dispatch import REQUIRED_SIM
 from merlin_experiments.phase1.feedback.selfcheck_results import (
@@ -80,16 +79,16 @@ from merlin_experiments.phase1.feedback.selfcheck_selection import (
     selection_note,
     tier_engines,
 )
+from merlin_experiments.phase1.feedback.selfcheck_selection import select_tiers as select_tiers
 from merlin_experiments.phase1.feedback.selfcheck_selectors import (
     _previously_failing as _previously_failing,
 )
 from merlin_experiments.phase1.feedback.selfcheck_selectors import select_capsules
 from merlin_experiments.phase1.timing import barrier_measurements
-from merlin_experiments.phase1.feedback import package_rejection, performance_brief, scratch_retention, selfcheck_notes
 
 from ..compiler_library import selected_child
-
-from merlin_experiments.phase1.feedback.selfcheck_selection import select_tiers as select_tiers
+from . import selfcheck_progress as SP
+from .result_details import compact_document
 
 
 def _strip_build_state(root: Path) -> None:
@@ -167,7 +166,10 @@ def _atomic_json(path: Path, doc: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     try:
-        tmp.write_text(json.dumps(compact_document(doc, workspace=Path.cwd(), namespace="selfcheck"), sort_keys=True), encoding="utf-8")
+        tmp.write_text(
+            json.dumps(compact_document(doc, workspace=Path.cwd(), namespace="selfcheck"), sort_keys=True),
+            encoding="utf-8",
+        )
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
@@ -673,6 +675,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         return unavailable(a.out)
     if a.capsules.startswith("panel:") and a.suite == "core":  # one request per shape class (shape_panel)
         from .shape_panel import cli as panel
+
         return panel(argv, a, context=context, run=main, root=a.capsules_root or capsules_root, contract=contract)
     if a.suite == "programs":
         from .public_programs import cli
@@ -724,14 +727,25 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                     return _shape_coverage(Path(request.submission), request.out, context=context, contract=contract)
                 if request.model_layers:
                     return _model_layers(
-                        Path(request.submission), request.out, timeout=request.timeout,
-                        workers=request.workers, capsules=request.capsules, context=context,
-                        contract=contract, artifact_root=request.artifact_root or None)
+                        Path(request.submission),
+                        request.out,
+                        timeout=request.timeout,
+                        workers=request.workers,
+                        capsules=request.capsules,
+                        context=context,
+                        contract=contract,
+                        artifact_root=request.artifact_root or None,
+                    )
                 if request.offload_census:
                     return _offload_census(
-                        Path(request.submission), request.out, context=context,
-                        capsules_root=capsules_root, contract=contract,
-                        timeout=request.timeout, workers=request.workers)
+                        Path(request.submission),
+                        request.out,
+                        context=context,
+                        capsules_root=capsules_root,
+                        contract=contract,
+                        timeout=request.timeout,
+                        workers=request.workers,
+                    )
 
         return private_cli(a, diagnostics)
 
@@ -877,17 +891,21 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             from .rolling_model_gate import prepare as prepare_rolling_gate
 
             rolling, rolling_complete = prepare_rolling_gate(
-                context=context, contract=contract, source=sub, runs=runs_root, graded_root=capsules_root)
+                context=context, contract=contract, source=sub, runs=runs_root, graded_root=capsules_root
+            )
             if rolling is not None:
                 if want is None or set(want) & set(rolling.gate.models):
                     rolling.load()
                 previous_completion = completion
+
                 def completed_with_prerequisites(row):
                     rolling_complete(row)
                     if previous_completion is not None:
                         previous_completion(row)
+
                 completion = completed_with_prerequisites
             from contextlib import nullcontext
+
             with rolling.observing() if rolling is not None else nullcontext():
                 _score = CG.grade(
                     str(sub),
@@ -926,7 +944,8 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             "build_failed": True,
             "failure_plane": f.get("plane"),
             "failure_category": f.get("category"),
-            "detail": f.get("detail"), **package_rejection.namespace_hint(f),
+            "detail": f.get("detail"),
+            **package_rejection.namespace_hint(f),
             "note": selfcheck_notes.package_failure_note(f),
         }
         txt = json.dumps(compact_document(out, workspace=Path.cwd(), namespace="selfcheck"), indent=2)
@@ -1002,7 +1021,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             rows.append(row)
             npass += int(row["pass"])
             ncert += int(certified)
-            nscreened += int(row.get("screened_only", False))
+            nscreened += int(row.get("screened_only") is True)
             continue
         _tier_results = d.get("tiers") or {}
         tiers = {t: (v or {}).get("status") for t, v in _tier_results.items()}
@@ -1098,9 +1117,12 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             from .candidate_build_views import publish_feedback, registry_root
 
             linked_view = publish_feedback(
-                workspace=Path.cwd(), public_root=(out_dir / name).absolute(),
-                private_root=registry_root(a.compiler_bundle_manifest), generated=gen.absolute(),
-                compiler=sub.absolute(), compiler_snapshot_sha256=original_compiler_sha,
+                workspace=Path.cwd(),
+                public_root=(out_dir / name).absolute(),
+                private_root=registry_root(a.compiler_bundle_manifest),
+                generated=gen.absolute(),
+                compiler=sub.absolute(),
+                compiler_snapshot_sha256=original_compiler_sha,
             )
         tr = {}
         try:
@@ -1121,12 +1143,15 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         }
         if linked_view is not None:
             row["candidate_build_view"] = linked_view
-        carried_from = (d.get("tier_reuse") or {}).get("carried_from") if isinstance(d.get("tier_reuse"), dict) else None
+        carried_from = (
+            (d.get("tier_reuse") or {}).get("carried_from") if isinstance(d.get("tier_reuse"), dict) else None
+        )
         if isinstance(carried_from, str) and carried_from.startswith("carried from ") and len(carried_from) <= 160:
             row["carried_from"] = carried_from  # a seeded grade's pass, carried in full (merlin.targetgen.seeded_grade)
         from . import joint_physical_correctness, tier_boundary_join
-        if name in joint_physical_correctness.roster() and bar_used in {'L2', 'L3'}:
-            row['tier_boundary'] = tier_boundary_join.optional_observation(cr, tier=bar_used)
+
+        if name in joint_physical_correctness.roster() and bar_used in {"L2", "L3"}:
+            row["tier_boundary"] = tier_boundary_join.optional_observation(cr, tier=bar_used)
         if combined:
             # The evidence behind a certified verdict is small and is the point of this selection.
             row["certified"] = certified
@@ -1222,6 +1247,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         observations.append(dict(row=row, root=gen, result=d, compiler=sub, capsule=_original))
         rows.append(row)
     from .joint_performance_batch import attach_all
+
     attach_all(observations, context=context, request_deadline=request_deadline)
     n_result = len(rows)
     try:

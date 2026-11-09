@@ -81,11 +81,12 @@ def case_admission(generated, *, case):
     root = Path(generated) / "invocations"
     if not root.is_dir():
         return {"status": "unavailable", "reason": "no retained compiler invocations", "records": []}
-    calls = []
+    calls, unavailable = [], []
     for record in sorted(root.glob("*/invocation.json"))[: MAX_INVOCATIONS * 4]:
         try:
             document = json.loads(record.read_bytes()[:MAX_STDERR_BYTES])
-        except (OSError, ValueError):
+        except (OSError, ValueError) as error:
+            unavailable.append({"stage": "invocation_record", "error_type": type(error).__name__})
             continue
         if not isinstance(document, dict) or document.get("stage") not in COMPILER_STAGES:
             continue
@@ -95,7 +96,8 @@ def case_admission(generated, *, case):
         try:
             with stderr.open("rb") as stream:
                 text = stream.read(MAX_STDERR_BYTES).decode("utf-8", errors="replace")
-        except OSError:
+        except OSError as error:
+            unavailable.append({"stage": stage, "error_type": type(error).__name__})
             continue
         rows, lost = parse_admission_stream(text)
         dropped += lost
@@ -129,7 +131,8 @@ def case_admission(generated, *, case):
                 dropped += 1
     records = list(merged.values())
     return {
-        "status": "reported" if records else "none_reported",
+        "status": "unavailable" if unavailable else "reported" if records else "none_reported",
+        **({"unavailable": unavailable} if unavailable else {}),
         "records": records,
         "admitted_apis": sorted({r["api"] for r in records if r["admitted"]}),
         "refused_apis": sorted({r["api"] for r in records if not r["admitted"]}),
@@ -390,7 +393,8 @@ def census(artifact_text, *, target):
             row["static_sites"] += 1
             row["dynamic"] = add(row["dynamic"], executions)
             label = _width(instruction)
-            row["widths"][label] = row["widths"].get(label, 0) + (executions if type(executions) is int else 0)
+            previous = row["widths"][label] if label in row["widths"] else 0
+            row["widths"][label] = add(previous, executions)
     return {
         "fences": fences,
         "transfers": dict(sorted(transfers.items())),

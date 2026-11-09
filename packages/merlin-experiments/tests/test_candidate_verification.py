@@ -4,6 +4,7 @@ The selected decoder is replaced by a synthetic role roster and operand protocol
 ``lowered.llvm.mlir`` holds a synthetic decoded trace, so these tests exercise the verdict,
 storage, sweep, path and transport logic without target facts.
 """
+
 import json
 import shutil
 import subprocess
@@ -12,20 +13,35 @@ import time
 from pathlib import Path
 
 import pytest
+
 from merlin_experiments.phase1.brokers import selfcheck as broker
 from merlin_experiments.phase1.feedback import candidate_verification as V
 from merlin_experiments.phase1.feedback import reference_bank
 from merlin_experiments.phase1.tools import selfcheck as client
 
-ROLES = {"LD": ["operand_load"], "LD2": ["operand_load"], "W": ["weight_load"], "MM": ["accumulate"],
-         "ST": ["readout", "commit"]}
-PROTOCOL = dict(address_field=dict(field="addr"), roles=dict(classes={
-    "LD": dict(fields=[dict(name="dst", bundle="b", field="addr", operand="rs2")]),
-    "LD2": dict(fields=[dict(name="dst", bundle="b", field="addr", operand="rs2")]),
-    "W": dict(fields=[dict(name="w", bundle="b", field="addr", operand="rs1")]),
-}))
-DECODER = dict(target="synthetic", semantics=object(), structure=dict(instruction_roles=ROLES),
-               decoder_inputs=[dict(path="synthetic", sha256="0" * 64)])
+ROLES = {
+    "LD": ["operand_load"],
+    "LD2": ["operand_load"],
+    "W": ["weight_load"],
+    "MM": ["accumulate"],
+    "ST": ["readout", "commit"],
+}
+PROTOCOL = dict(
+    address_field=dict(field="addr"),
+    roles=dict(
+        classes={
+            "LD": dict(fields=[dict(name="dst", bundle="b", field="addr", operand="rs2")]),
+            "LD2": dict(fields=[dict(name="dst", bundle="b", field="addr", operand="rs2")]),
+            "W": dict(fields=[dict(name="w", bundle="b", field="addr", operand="rs1")]),
+        }
+    ),
+)
+DECODER = dict(
+    target="synthetic",
+    semantics=object(),
+    structure=dict(instruction_roles=ROLES),
+    decoder_inputs=[dict(path="synthetic", sha256="0" * 64)],
+)
 STRUCTURE = dict(instruction_roles=ROLES, operand_protocol=PROTOCOL)
 
 
@@ -37,8 +53,9 @@ def trace(*rows):
     return {"instructions": list(rows), "summary": {"counted_loops": {"basis": "synthetic", "functions": []}}}
 
 
-RELOADING = trace(site("LD", 4, dst=0), site("W", 1, w=64), site("MM", 2), site("W", 1, w=80), site("MM", 2),
-                  site("ST", 1))
+RELOADING = trace(
+    site("LD", 4, dst=0), site("W", 1, w=64), site("MM", 2), site("W", 1, w=80), site("MM", 2), site("ST", 1)
+)
 RETAINING = trace(site("LD", 4, dst=0), site("W", 1, w=64), site("MM", 2), site("MM", 2), site("ST", 1))
 
 
@@ -75,8 +92,9 @@ def test_applied_retention_reduces_proved_loads_per_compute(tmp_path, selected):
     row = full(tmp_path, reply)["pairs"][0]
     assert row["intervention_applied"]["status"] == V.APPLIED
     assert row["intervention_applied"]["evidence"]["after"]["value"]["retained"] == 1
-    assert row["traffic_reduced"] == dict(status="reduced", before=1.5, after=1.25,
-                                          basis="proved dynamic loads per compute")
+    assert row["traffic_reduced"] == dict(
+        status="reduced", before=1.5, after=1.25, basis="proved dynamic loads per compute"
+    )
     assert row["traffic_delta"]["per_role"]["weight_load"]["dynamic_delta"] == -1
     assert row["numerically_correct"]["status"] == "unknown"
 
@@ -84,12 +102,33 @@ def test_applied_retention_reduces_proved_loads_per_compute(tmp_path, selected):
 def test_identical_stream_is_an_emitted_fallback_even_when_correct(tmp_path, selected):
     before = case(tmp_path, "selfcheck_out/requests/a/G_mm", RELOADING)
     after = case(tmp_path, "selfcheck_out/requests/b/G_mm", RELOADING)
-    saved = tmp_path / 'artifacts' / 'after.json'
+    saved = tmp_path / "artifacts" / "after.json"
     saved.parent.mkdir()
-    saved.write_text(json.dumps(dict(submission_sha256="1" * 64, per_capsule=[dict(
-        capsule="G_mm", **{"pass": True}, numerical_execution_passed=True, numeric_consistency_passed=True)])))
-    row = full(tmp_path, run(tmp_path, before, after, mechanism="operand_retention",
-                             verdicts=[(Path('artifacts') / 'after.json').as_posix()]))["pairs"][0]
+    saved.write_text(
+        json.dumps(
+            dict(
+                submission_sha256="1" * 64,
+                per_capsule=[
+                    dict(
+                        capsule="G_mm",
+                        **{"pass": True},
+                        numerical_execution_passed=True,
+                        numeric_consistency_passed=True,
+                    )
+                ],
+            )
+        )
+    )
+    row = full(
+        tmp_path,
+        run(
+            tmp_path,
+            before,
+            after,
+            mechanism="operand_retention",
+            verdicts=[(Path("artifacts") / "after.json").as_posix()],
+        ),
+    )["pairs"][0]
     assert row["numerically_correct"]["status"] == "correct"
     assert row["intervention_applied"]["status"] == V.FALLBACK
     assert row["intervention_applied"]["reason"] == "emitted_stream_identical_to_before"
@@ -132,21 +171,38 @@ def test_sweep_table_pairs_by_capsule_and_reports_blockers_without_extrapolation
     capsules = tmp_path / "public"
     for name, (m, k, n) in dict(G_a=(4, 8, 8), G_b=(1, 8, 8), G_c=(64, 4096, 64)).items():
         (capsules / name).mkdir(parents=True)
-        (capsules / name / "capsule.yaml").write_text(json.dumps(dict(
-            operation=dict(op="matmul"), inputs=[dict(name="A", role="input", shape=[m, k], dtype="i8"),
-                                                 dict(name="W", role="weight", shape=[k, n], dtype="i8")])))
-    refusal = [dict(schema="s.v1", requested_pipeline="retained", selected_pipeline="compact",
-                    pipeline_refusal="single product has no retained operand reuse")]
+        (capsules / name / "capsule.yaml").write_text(
+            json.dumps(
+                dict(
+                    operation=dict(op="matmul"),
+                    inputs=[
+                        dict(name="A", role="input", shape=[m, k], dtype="i8"),
+                        dict(name="W", role="weight", shape=[k, n], dtype="i8"),
+                    ],
+                )
+            )
+        )
+    refusal = [
+        dict(
+            schema="s.v1",
+            requested_pipeline="retained",
+            selected_pipeline="compact",
+            pipeline_refusal="single product has no retained operand reuse",
+        )
+    ]
     for name in ("G_a", "G_b"):
         case(tmp_path, "selfcheck_out/requests/old/" + name, RELOADING)
     case(tmp_path, "selfcheck_out/requests/new/G_a", RETAINING)
     case(tmp_path, "selfcheck_out/requests/new/G_b", RELOADING, receipts=refusal)
     case(tmp_path, "selfcheck_out/requests/new2/G_c", RETAINING)
-    value = dict(operation="verify", path="selfcheck_out/requests/old",
-                 candidate=dict(path="selfcheck_out/requests/new"), mechanism="operand_retention",
-                 sweep=["selfcheck_out/requests/new", "selfcheck_out/requests/new2"])
-    reply = V.handle(value, base={}, workspace=tmp_path, capsules_root=capsules,
-                     facts=_facts(tmp_path, capacity=4096))
+    value = dict(
+        operation="verify",
+        path="selfcheck_out/requests/old",
+        candidate=dict(path="selfcheck_out/requests/new"),
+        mechanism="operand_retention",
+        sweep=["selfcheck_out/requests/new", "selfcheck_out/requests/new2"],
+    )
+    reply = V.handle(value, base={}, workspace=tmp_path, capsules_root=capsules, facts=_facts(tmp_path, capacity=4096))
     sweep = full(tmp_path, reply)["sweep"]
     rows = {row["capsule"]: row for row in sweep["rows"]}
     assert rows["G_a"]["intervention_applied"]["status"] == V.APPLIED
@@ -164,31 +220,47 @@ def test_sweep_table_pairs_by_capsule_and_reports_blockers_without_extrapolation
 
 def _facts(root, *, capacity):
     path = root / "facts.json"
-    path.write_text(json.dumps(dict(facts=dict(memory_address_spaces=[dict(name="local", banks=1, depth=1,
-                                                                             bytes=capacity)]))))
+    path.write_text(
+        json.dumps(dict(facts=dict(memory_address_spaces=[dict(name="local", banks=1, depth=1, bytes=capacity)])))
+    )
     return path
 
 
-@pytest.mark.parametrize("path", ["reference-kernels/x", "cca-evidence/bank.json", "../selfcheck_out/x",
-                                  "/etc/passwd", "variants", "qa/cases", "selfcheck_out/link/G_mm"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "reference-kernels/x",
+        "cca-evidence/bank.json",
+        "../selfcheck_out/x",
+        "/etc/passwd",
+        "variants",
+        "qa/cases",
+        "selfcheck_out/link/G_mm",
+    ],
+)
 def test_non_owned_paths_are_refused_before_reading(tmp_path, selected, path):
     (tmp_path / "selfcheck_out").mkdir()
     (tmp_path / "elsewhere").mkdir()
     (tmp_path / "selfcheck_out/link").symlink_to(tmp_path / "elsewhere")
     after = case(tmp_path, "selfcheck_out/requests/b/G_mm", RELOADING)
-    request = dict(action="reference-analysis", reference_analysis=dict(
-        operation="verify", path=path, candidate=dict(path=after)))
-    reply = V.broker_response(request, workspace=tmp_path, facts=None, compiler_sha256="0" * 64, rid="r",
-                              started_ns=time.time_ns())
+    request = dict(
+        action="reference-analysis", reference_analysis=dict(operation="verify", path=path, candidate=dict(path=after))
+    )
+    reply = V.broker_response(
+        request, workspace=tmp_path, facts=None, compiler_sha256="0" * 64, rid="r", started_ns=time.time_ns()
+    )
     assert reply["status"] == "unknown" and reply["reason"] in ("verify_requires_owned_path", "verify_input_missing")
 
 
 def test_verify_is_served_only_in_a_bank_arm(tmp_path, monkeypatch):
     monkeypatch.setattr(reference_bank, "selected_pin", lambda: None)
-    request = dict(action="reference-analysis", reference_analysis=dict(
-        operation="verify", path="selfcheck_out/a", candidate=dict(path="selfcheck_out/b")))
-    reply = broker._reference_analysis_response(request, workspace=tmp_path, facts=None, compiler_sha256="0" * 64,
-                                                rid="r", started_ns=time.time_ns())
+    request = dict(
+        action="reference-analysis",
+        reference_analysis=dict(operation="verify", path="selfcheck_out/a", candidate=dict(path="selfcheck_out/b")),
+    )
+    reply = broker._reference_analysis_response(
+        request, workspace=tmp_path, facts=None, compiler_sha256="0" * 64, rid="r", started_ns=time.time_ns()
+    )
     # Outside a bank arm verify is refused like every other reference-analysis operation.
     assert reply["status"] == "denied" and reply["reason"] == "reference_guidance_disabled"
     assert reply["official"] is False
@@ -208,9 +280,24 @@ def test_copied_client_reaches_verify_through_the_broker(tmp_path, selected):
     shutil.copyfile(client.__file__, shim)
     channel = tmp_path / ".qa_channel"
     channel.mkdir()
-    argv = [sys.executable, str(shim), "--reference-analysis", "verify", "--before", before, "--after", after,
-            "--mechanism", "operand_retention", "--sweep", "selfcheck_out/requests/b", "--wait-budget", "10",
-            "--baseline", "selfcheck_out/requests/a"]
+    argv = [
+        sys.executable,
+        str(shim),
+        "--reference-analysis",
+        "verify",
+        "--before",
+        before,
+        "--after",
+        after,
+        "--mechanism",
+        "operand_retention",
+        "--sweep",
+        "selfcheck_out/requests/b",
+        "--wait-budget",
+        "10",
+        "--baseline",
+        "selfcheck_out/requests/a",
+    ]
     process = subprocess.Popen(argv, cwd=tmp_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         deadline, requests = time.monotonic() + 10, []
@@ -224,8 +311,9 @@ def test_copied_client_reaches_verify_through_the_broker(tmp_path, selected):
         assert request["reference_analysis"]["sweep"] == ["selfcheck_out/requests/b"]
         assert request["reference_analysis"]["baseline"] == "selfcheck_out/requests/a"
         rid = request["request_id"]
-        response = broker._reference_analysis_response(request, workspace=tmp_path, facts=None,
-                                                       compiler_sha256="0" * 64, rid=rid, started_ns=time.time_ns())
+        response = broker._reference_analysis_response(
+            request, workspace=tmp_path, facts=None, compiler_sha256="0" * 64, rid=rid, started_ns=time.time_ns()
+        )
         (channel / f"resp_{rid}.json").write_text(json.dumps(response))
         (channel / f"done_{rid}").write_text("ok")
         stdout, stderr = process.communicate(timeout=20)
@@ -245,12 +333,18 @@ def test_copied_client_reaches_verify_through_the_broker(tmp_path, selected):
 def test_client_refuses_verify_flags_without_verify(tmp_path):
     shim = tmp_path / "agent_selfcheck.py"
     shutil.copyfile(client.__file__, shim)
-    done = subprocess.run([sys.executable, str(shim), "--before", "selfcheck_out/a"], cwd=tmp_path,
-                          capture_output=True, text=True, timeout=30)
+    done = subprocess.run(
+        [sys.executable, str(shim), "--before", "selfcheck_out/a"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
     assert done.returncode == 2 and "require --reference-analysis verify" in done.stderr
 
 
 # --- stream facts, regression flags, seed baseline and identical emitted code ----------------------
+
 
 def _observed(value):
     return dict(status="observed", value=value, scope="proved_dynamic_command_stream", evidence=[])
@@ -258,14 +352,25 @@ def _observed(value):
 
 def _stream(input_cols, weight_overlap, band_run):
     return dict(
-        role_transfer_width=_observed(dict(by_role=dict(
-            input=[dict(rows=4, cols=input_cols, count=64 // input_cols, elements=4 * input_cols)],
-            weight=[dict(rows=4, cols=16, count=8, elements=64)]))),
+        role_transfer_width=_observed(
+            dict(
+                by_role=dict(
+                    input=[dict(rows=4, cols=input_cols, count=64 // input_cols, elements=4 * input_cols)],
+                    weight=[dict(rows=4, cols=16, count=8, elements=64)],
+                )
+            )
+        ),
         operand_buffering=_observed(dict(by_role=dict(weight=dict(disjoint=2, alternating=True)))),
-        issue_overlap=_observed(dict(loads_with_compute_before_barrier=dict(weight=dict(count=weight_overlap,
-                                                                                       total=8)),
-                                     compute_run_median=band_run, output_group_extent=dict(rows=4, cols=16),
-                                     compute_run_between_load_bands=band_run, loads_per_compute_run=0.25)))
+        issue_overlap=_observed(
+            dict(
+                loads_with_compute_before_barrier=dict(weight=dict(count=weight_overlap, total=8)),
+                compute_run_median=band_run,
+                output_group_extent=dict(rows=4, cols=16),
+                compute_run_between_load_bands=band_run,
+                loads_per_compute_run=0.25,
+            )
+        ),
+    )
 
 
 @pytest.fixture
@@ -277,8 +382,10 @@ def streams(monkeypatch):
         for key, value in table.items():
             if key in evidence_id:
                 return value
-        return {name: dict(status="unknown", reason="no_proved_command_stream") for name in
-                ("role_transfer_width", "operand_buffering", "issue_overlap")}
+        return {
+            name: dict(status="unknown", reason="no_proved_command_stream")
+            for name in ("role_transfer_width", "operand_buffering", "issue_overlap")
+        }
 
     monkeypatch.setattr(V, "stream_facts", facts)
     return table
@@ -299,10 +406,14 @@ def test_preload_is_counted_apart_from_data_movement(tmp_path, selected):
 def test_regression_flags_against_before_and_seed_baseline(tmp_path, selected, streams):
     case(tmp_path, "selfcheck_out/requests/seed/G_mm", RELOADING)
     before = case(tmp_path, "selfcheck_out/requests/a/G_mm", RETAINING)
-    after = case(tmp_path, "selfcheck_out/requests/b/G_mm", trace(site("LD", 6, dst=0), site("W", 1, w=64),
-                                                                    site("MM", 4), site("ST", 1)))
-    streams.update({"requests/seed": _stream(16, 6, 64), "requests/a": _stream(16, 6, 64),
-                    "requests/b": _stream(4, 0, 256)})
+    after = case(
+        tmp_path,
+        "selfcheck_out/requests/b/G_mm",
+        trace(site("LD", 6, dst=0), site("W", 1, w=64), site("MM", 4), site("ST", 1)),
+    )
+    streams.update(
+        {"requests/seed": _stream(16, 6, 64), "requests/a": _stream(16, 6, 64), "requests/b": _stream(4, 0, 256)}
+    )
     reply = run(tmp_path, before, after, baseline="selfcheck_out/requests/seed")
     row = full(tmp_path, reply)["pairs"][0]
     for flags in (row["regressions"], row["against_baseline"]["regressions"]):
@@ -337,8 +448,9 @@ def test_sweep_marks_rows_whose_emitted_code_is_the_seed_or_before(tmp_path, sel
     assert region["counts"] == dict(fell_back=1, emitted_new_code=1, unknown=0)
     assert region["observed_values_by_axis"]["A[0]"] == dict(fell_back=[48], emitted_new_code=[16])
     assert "none" in region["extrapolation"]
-    assert {r["capsule"]: r["fell_back_to_seed_or_before"] for r in reply["report"]["sweep"]["rows"]} == \
-        dict(G_m16=False, G_m48=True)
+    assert {r["capsule"]: r["fell_back_to_seed_or_before"] for r in reply["report"]["sweep"]["rows"]} == dict(
+        G_m16=False, G_m48=True
+    )
 
 
 def test_baseline_must_be_an_owned_path(tmp_path, selected):
@@ -352,8 +464,13 @@ def test_baseline_must_be_an_owned_path(tmp_path, selected):
 def test_copied_client_sends_the_baseline(tmp_path):
     shim = tmp_path / "agent_selfcheck.py"
     shutil.copyfile(client.__file__, shim)
-    done = subprocess.run([sys.executable, str(shim), "--baseline", "selfcheck_out/seed"], cwd=tmp_path,
-                          capture_output=True, text=True, timeout=30)
+    done = subprocess.run(
+        [sys.executable, str(shim), "--baseline", "selfcheck_out/seed"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
     assert done.returncode == 2 and "--baseline" in done.stderr
 
 
@@ -364,12 +481,23 @@ def test_further_regression_flags_are_feature_detected(tmp_path, selected, strea
         host_issue_rate=_observed(dict(rate=rate)),
         reconfiguration=_observed(dict(config_per_block=config, placement="hoisted")),
         local_capacity_use=_observed(dict(rows=32, capacity=64, same_bank_halves=same)),
-        dram_contiguity=_observed(dict(contiguous=contiguous)), epilogue_placement=_observed(dict(on_accelerator=on)))
-    streams.update({"requests/a": dict(_stream(16, 6, 64), **further(0.5, 1, False, True, True)),
-                    "requests/b": dict(_stream(16, 6, 64), **further(0.25, 2, True, False, False))})
+        dram_contiguity=_observed(dict(contiguous=contiguous)),
+        epilogue_placement=_observed(dict(on_accelerator=on)),
+    )
+    streams.update(
+        {
+            "requests/a": dict(_stream(16, 6, 64), **further(0.5, 1, False, True, True)),
+            "requests/b": dict(_stream(16, 6, 64), **further(0.25, 2, True, False, False)),
+        }
+    )
     flags = full(tmp_path, run(tmp_path, before, after))["pairs"][0]["regressions"]
-    for name in ("issue_rate_regressed", "reconfiguration_increased", "bank_conflict_introduced", "contiguity_lost",
-                 "epilogue_moved_off_accelerator"):
+    for name in (
+        "issue_rate_regressed",
+        "reconfiguration_increased",
+        "bank_conflict_introduced",
+        "contiguity_lost",
+        "epilogue_moved_off_accelerator",
+    ):
         assert flags[name]["status"] is True, name
     assert flags["capacity_underused"]["status"] is False
     streams.clear()
@@ -379,17 +507,31 @@ def test_further_regression_flags_are_feature_detected(tmp_path, selected, strea
 
 def _attributed(operands, hit):
     """Deriver layout: one movement role whose loads are attributed to ``operands`` ({operand: cols})."""
+
     def width(cols):
         return dict(transfers=4, shapes=[dict(rows=4, cols=cols, count=4, elements=4 * cols)])
 
     return dict(
-        role_transfer_width=_observed(dict(data_movement=dict(operand_load=dict(
-            transfers=4 * len(operands), shapes=[s for c in operands.values() for s in width(c)["shapes"]],
-            by_operand={k: width(c) for k, c in operands.items()})))),
+        role_transfer_width=_observed(
+            dict(
+                data_movement=dict(
+                    operand_load=dict(
+                        transfers=4 * len(operands),
+                        shapes=[s for c in operands.values() for s in width(c)["shapes"]],
+                        by_operand={k: width(c) for k, c in operands.items()},
+                    )
+                )
+            )
+        ),
         operand_buffering=dict(status="unknown", reason="no_proved_command_stream"),
-        issue_overlap=_observed(dict(loads=4 * len(operands), loads_with_compute_before_barrier=hit,
-                                     by_operand={k: dict(loads=4, loads_with_compute_before_barrier=hit)
-                                                 for k in operands})))
+        issue_overlap=_observed(
+            dict(
+                loads=4 * len(operands),
+                loads_with_compute_before_barrier=hit,
+                by_operand={k: dict(loads=4, loads_with_compute_before_barrier=hit) for k in operands},
+            )
+        ),
+    )
 
 
 def test_verify_compares_at_role_level_when_operand_attribution_differs():
@@ -402,18 +544,24 @@ def test_verify_compares_at_role_level_when_operand_attribution_differs():
     assert flags["width_narrowed"]["status"] is True and flags["overlap_regressed"]["status"] is True
     same = V.stream_changes(before, dict(before, evidence_id="after"))
     assert not any(r.get("attribution") == "role_level_fallback" for r in same)
-    assert {r.get("attribution") for r in same if r["role"] in ("a0", "a1", "operand_load:a0", "operand_load:a1")} \
-        == {"argument_register"}
+    assert {r.get("attribution") for r in same if r["role"] in ("a0", "a1", "operand_load:a0", "operand_load:a1")} == {
+        "argument_register"
+    }
 
 
 # --- verify through the real client: entry symbol, the author's own object, host compile, stream mechanisms ---
 
+
 def test_a_declared_stream_mechanism_is_judged_from_the_proved_streams():
     def build(emitted, proved, overlap):
         # The static IR site list is the same on every build: loop structure alone differs.
-        return dict(stream=dict(status="decoded", sha256="same-sites"), effects={}, emitted_sha256=emitted,
-                    proved_stream_sha256=proved,
-                    stream_facts=dict(issue_overlap=_observed(dict(loads_with_compute_before_barrier=overlap))))
+        return dict(
+            stream=dict(status="decoded", sha256="same-sites"),
+            effects={},
+            emitted_sha256=emitted,
+            proved_stream_sha256=proved,
+            stream_facts=dict(issue_overlap=_observed(dict(loads_with_compute_before_barrier=overlap))),
+        )
 
     applied = V._applied(build("e1", "p1", 0.25), build("e2", "p2", 1.0), "issue_overlap")
     assert applied["status"] == V.APPLIED and applied["evidence"]["basis"] == "stream_facts"
@@ -425,14 +573,22 @@ def test_a_declared_stream_mechanism_is_judged_from_the_proved_streams():
     unproved = V._applied(build("e1", "p1", 0.25), build("e2", None, 1.0), "issue_overlap")
     assert unproved["status"] == V.UNKNOWN and "not established on both builds" in unproved["reason"]
     # Static mechanisms keep the IR-order identity check.
-    assert V._applied(build("e1", "p1", 0.25), build("e2", "p2", 1.0), "operand_retention")["reason"] == \
-        "emitted_stream_identical_to_before"
+    assert (
+        V._applied(build("e1", "p1", 0.25), build("e2", "p2", 1.0), "operand_retention")["reason"]
+        == "emitted_stream_identical_to_before"
+    )
     assert {"prefetch_distance", "issue_overlap", "output_group_extent"} <= set(V.mechanisms())
 
 
 def test_object_recipe_reads_the_declared_entry_and_kernel_flags():
-    document = dict(harness_abi=dict(entry_symbol="entry_fn"), toolchain=dict(build=dict(
-        kernel_stack_frame=dict(entry_symbol="entry_fn"), cflags=["-march=rv64x", "-mabi=lp64x", "-O2", "-g"])))
+    document = dict(
+        harness_abi=dict(entry_symbol="entry_fn"),
+        toolchain=dict(
+            build=dict(
+                kernel_stack_frame=dict(entry_symbol="entry_fn"), cflags=["-march=rv64x", "-mabi=lp64x", "-O2", "-g"]
+            )
+        ),
+    )
     recipe = V.object_recipe(document, "synthetic")
     assert recipe["entry_symbol"] == "entry_fn" and recipe["flags"] == ["-march=rv64x", "-mabi=lp64x"]
     assert V.object_recipe({})["entry_symbol"] is None
@@ -440,6 +596,7 @@ def test_object_recipe_reads_the_declared_entry_and_kernel_flags():
 
 def test_build_stream_prefers_the_elf_then_one_owned_object_then_the_emitted_ir(tmp_path, monkeypatch):
     seen = []
+
     def elf_stream(entry, decoder, symbol):
         seen.append((entry[1], symbol))
         return None, "r"
@@ -453,8 +610,10 @@ def test_build_stream_prefers_the_elf_then_one_owned_object_then_the_emitted_ir(
     files = V._files(case_dir, "selfcheck_out/G_mm")
     assert files[V.OBJECT][1] == "selfcheck_out/G_mm/kernel.norelax.o"
     _, _, source = V._build_stream(files, b"{}", {}, "entry_fn", None)
-    assert source["kind"] == "owned_relocatable_object" and seen[-1] == ("selfcheck_out/G_mm/kernel.norelax.o",
-                                                                          "entry_fn")
+    assert source["kind"] == "owned_relocatable_object" and seen[-1] == (
+        "selfcheck_out/G_mm/kernel.norelax.o",
+        "entry_fn",
+    )
     (case_dir / "other.o").write_bytes(b"\x7fELF")
     files = V._files(case_dir, "selfcheck_out/G_mm")
     assert V.OBJECT not in files and files[V.OBJECTS_AMBIGUOUS] == ["kernel.norelax.o", "other.o"]
@@ -468,13 +627,14 @@ def test_emitted_ir_is_compiled_host_side_without_relaxation(tmp_path, monkeypat
 
     log = tmp_path / "argv.log"
     tool = tmp_path / "tool"
-    tool.write_text(f"#!/bin/sh\necho \"$@\" >> {log}\nfor last; do :; done\necho x > \"$last\"\n")
+    tool.write_text(f'#!/bin/sh\necho "$@" >> {log}\nfor last; do :; done\necho x > "$last"\n')
     tool.chmod(0o755)
     monkeypatch.setattr(toolchain, "clang", lambda: tool)
     monkeypatch.setattr(toolchain, "mlir_translate", lambda: tool)
     monkeypatch.setattr(V, "_elf_stream", lambda entry, decoder, symbol: ([dict(seq=0)], None))
-    stream, reason, source = V._compiled_stream(b"module {}", {}, "entry_fn",
-                                                dict(flags=["-march=rv64x", "-mabi=lp64x"]))
+    stream, reason, source = V._compiled_stream(
+        b"module {}", {}, "entry_fn", dict(flags=["-march=rv64x", "-mabi=lp64x"])
+    )
     assert stream == [dict(seq=0)] and reason is None and source["kind"] == "host_compiled_lowered_mlir"
     translate, compile_line = log.read_text().splitlines()
     assert translate.startswith("--mlir-to-llvmir")
@@ -488,8 +648,20 @@ def test_client_sends_the_candidate_symbol_with_verify(tmp_path):
     channel = tmp_path / ".qa_channel"
     channel.mkdir()
     (tmp_path / "submission").mkdir()
-    argv = [sys.executable, str(shim), "--reference-analysis", "verify", "--before", "selfcheck_out/a",
-            "--after", "selfcheck_out/b", "--candidate-symbol", "entry_fn", "--wait-budget", "5"]
+    argv = [
+        sys.executable,
+        str(shim),
+        "--reference-analysis",
+        "verify",
+        "--before",
+        "selfcheck_out/a",
+        "--after",
+        "selfcheck_out/b",
+        "--candidate-symbol",
+        "entry_fn",
+        "--wait-budget",
+        "5",
+    ]
     process = subprocess.Popen(argv, cwd=tmp_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         deadline, requests = time.monotonic() + 10, []
@@ -508,8 +680,14 @@ def test_client_sends_the_candidate_symbol_with_verify(tmp_path):
 
 def test_undeclared_change_is_judged_on_stream_mechanisms_measured_on_both_builds():
     def build(emitted, proved, facts):
-        return dict(evidence_id=emitted, stream=dict(status="decoded", sha256=emitted), effects={},
-                    emitted_sha256=emitted, proved_stream_sha256=proved, stream_facts=facts)
+        return dict(
+            evidence_id=emitted,
+            stream=dict(status="decoded", sha256=emitted),
+            effects={},
+            emitted_sha256=emitted,
+            proved_stream_sha256=proved,
+            stream_facts=facts,
+        )
 
     seed = build("e0", "p0", _attributed(dict(a0=16, a1=16), 0.0))
     applied = V._applied(seed, build("e1", "p1", _attributed(dict(a0=16, a1=16), 1.0)), None)
@@ -530,3 +708,12 @@ def test_undeclared_change_is_judged_on_stream_mechanisms_measured_on_both_build
     assert blind["status"] == V.UNKNOWN and "no proved command stream on after" in blind["reason"]
     assert V._applied(seed, build("e1", "p0", {}), None)["reason"] == "proved_command_stream_identical_to_before"
     assert V._applied(seed, build("e0", "p1", {}), None)["reason"] == "emitted_stream_identical_to_before"
+
+
+def test_present_role_without_count_is_unknown_and_absent_role_is_zero():
+    from merlin_experiments.phase1.feedback.candidate_effects import _ratio
+
+    complete = {"accumulate": {"dynamic": 2}, "operand_load": {"dynamic": 4}}
+    assert _ratio(complete, "dynamic")["loads_per_compute"] == 2
+    complete["weight_load"] = {}
+    assert _ratio(complete, "dynamic")["status"] == "unknown"

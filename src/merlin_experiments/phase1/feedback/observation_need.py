@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import fcntl
 import json
+import logging
 import math
 import os
 from contextlib import contextmanager
@@ -98,7 +99,7 @@ def record(structural, observation, *, path: Path | None = None) -> None:
         with _locked(path) as document:
             document["observations"] = [*document["observations"], {"work": amount, "seconds": seconds}][-_KEEP:]
     except (OSError, ValueError, TypeError, KeyError):
-        pass
+        logging.getLogger(__name__).warning("Observation work ledger update unavailable", exc_info=True)
 
 
 def fit(*, path: Path | None = None) -> dict | None:
@@ -109,8 +110,10 @@ def fit(*, path: Path | None = None) -> dict | None:
     points = sorted(
         (float(r["work"]), float(r["seconds"]))
         for r in rows
-        if type(r.get("work")) in (int, float) and type(r.get("seconds")) in (int, float)
-        and r["work"] > 0 and r["seconds"] > 0
+        if type(r.get("work")) in (int, float)
+        and type(r.get("seconds")) in (int, float)
+        and r["work"] > 0
+        and r["seconds"] > 0
     )
     if len(points) < _MIN_OBSERVATIONS:
         return None

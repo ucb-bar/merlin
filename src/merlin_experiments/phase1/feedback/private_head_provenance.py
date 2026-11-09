@@ -190,6 +190,14 @@ def join_heads(
         raise ValueError("head source omitted unmatched required accelerator work")
     if _text(module) != before:
         raise ValueError("head source audit modified original source")
+    # Sibling-component receipts do not declare these head-specific summary
+    # counts. Their independent source coverage is checked above; an unavailable
+    # aggregate stays unknown rather than treating that component as zero work.
+    product_counts = [
+        len(c["members"]) if c.get("schema") == "merlin.original_head_family.v1" else c.get("matrix_invocations")
+        for c in components
+    ]
+    batch_calls = [c.get("batch_abi_calls") for c in components]
     return {
         "schema": "merlin.original_head_source_composition.v1",
         "source_ir_sha256": _sha(before),
@@ -200,11 +208,8 @@ def join_heads(
         "required_source_groups": source["eligible_groups"],
         "original_source_denominator_unchanged": True,
         "unmatched_source_routed_normally": True,
-        "matrix_products": sum(
-            len(c["members"]) if c.get("schema") == "merlin.original_head_family.v1" else c.get("matrix_invocations", 0)
-            for c in components
-        ),
-        "batch_abi_calls": sum(c.get("batch_abi_calls", 0) for c in components),
+        "matrix_products": sum(product_counts) if all(type(n) is int for n in product_counts) else None,
+        "batch_abi_calls": sum(batch_calls) if all(type(n) is int for n in batch_calls) else None,
         "shared_input_components": sum(
             c["schema"] == "merlin.original_sibling_source_composition.v1" for c in components
         ),
@@ -250,7 +255,11 @@ def source_metrics(assigned, source, composition):
         if row is None or row["group"] != component["physical_group"] or component["raw_output_elements"] != h * m * n:
             raise ValueError("head source has no complete independently checked invocation roster")
         for member in members:
-            original_m, original_k, original_n = member.get("geometry_m_k_n", [m, k, n])
+            # Legacy homogeneous head families state one geometry for every
+            # member. The independently derived original contraction below must
+            # still match it; per-member dimensions are mandatory for row views.
+            geometry = member["geometry_m_k_n"] if "geometry_m_k_n" in member else [m, k, n]
+            original_m, original_k, original_n = geometry
             if source["source_group_contractions"].get(member["source_group"]) != {
                 "parallel": [original_m, original_n],
                 "reduction": [original_k],
@@ -259,7 +268,8 @@ def source_metrics(assigned, source, composition):
                 raise ValueError("head source per-invocation budget changed")
         ids = tuple(r["source_group"] for r in members)
         result[row["group"]] = ids
-        whole = component.get("whole_batch", False)
+        # Only a component explicitly declaring whole-batch lowering enters that ABI check.
+        whole = component["whole_batch"] if "whole_batch" in component else False
         if (
             type(whole) is not bool
             or whole

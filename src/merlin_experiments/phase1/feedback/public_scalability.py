@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -123,7 +124,7 @@ def _observed_result(row):
     return observed
 
 
-from ..joint_model_activation import grade_model_scope, admit_grade
+from ..joint_model_activation import admit_grade, grade_model_scope
 
 
 def _grade(
@@ -153,8 +154,13 @@ def _grade(
     names = all_names if names is None else set(names)
     if not names or not names <= all_names:
         raise ValueError("public scalability request names unknown or empty cases")
-    grade_environment = admit_grade(candidate=submission, source_sha256=candidate, output=output,
-        kind="public_scalability", identity={"suite":before,"names":sorted(names)})
+    grade_environment = admit_grade(
+        candidate=submission,
+        source_sha256=candidate,
+        output=output,
+        kind="public_scalability",
+        identity={"suite": before, "names": sorted(names)},
+    )
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     cases = root / "cases"
@@ -188,6 +194,7 @@ def _grade(
         generated = output / "runs" / "runs" / CR.suite_for(context.target) / name / "generated"
         performance_started = time.monotonic()
         from .joint_performance import environment_scope
+
         with environment_scope(grade_environment):
             attach_performance(
                 row,
@@ -240,7 +247,7 @@ def _grade(
             deadline=request_deadline,
         )
     except Exception:  # noqa: BLE001 -- advisory feedback never changes a grade
-        pass
+        logging.getLogger(__name__).warning("Optional abstraction feedback unavailable; grade unchanged", exc_info=True)
     result = {
         "schema": "merlin.phase1.public_scalability.v1",
         "required": True,
@@ -430,11 +437,16 @@ def cli(args, *, context):
     # Both keep their issued qualification, results and timing records; the build trees go.
     scratch_retention.raw_runs(private / "profile")
     scratch_retention.raw_runs(private / "scalability")
-    with (private / "grader.log").open("w") as log, redirect_stdout(log), redirect_stderr(log), selfcheck_execution(
-        args.compiler_bundle_manifest,
-        context=context,
-        submission=Path(args.submission),
-        work_root=private / "profile",
+    with (
+        (private / "grader.log").open("w") as log,
+        redirect_stdout(log),
+        redirect_stderr(log),
+        selfcheck_execution(
+            args.compiler_bundle_manifest,
+            context=context,
+            submission=Path(args.submission),
+            work_root=private / "profile",
+        ),
     ):
         result = grade(
             args.submission,

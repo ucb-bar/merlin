@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from contextlib import contextmanager
@@ -19,7 +20,12 @@ def measure(name, document=None, *, events=None):
         elapsed = round(time.perf_counter() - started, 6)
         if isinstance(document, dict):
             timings = document.setdefault("host_stage_timings_s", {})
-            timings[name] = round(timings.get(name, 0) + elapsed, 6)
+            # First completed interval initializes this stage; subsequent intervals accumulate.
+            if name in timings:
+                elapsed_total = timings[name] + elapsed
+            else:
+                elapsed_total = elapsed
+            timings[name] = round(elapsed_total, 6)
         if events is not None:
             try:
                 path = Path(events)
@@ -28,4 +34,6 @@ def measure(name, document=None, *, events=None):
                 with path.open("a") as stream:
                     stream.write(json.dumps(event, separators=(",", ":")) + "\n")
             except OSError:
-                pass  # profiling cannot replace the grade or its original error
+                logging.getLogger(__name__).warning(
+                    "Host stage timing event unavailable; original grade/error unchanged", exc_info=True
+                )

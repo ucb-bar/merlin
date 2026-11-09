@@ -220,6 +220,10 @@ def _conv_entry_signature_matches(emitted, symbol, row):
     buffers = emitted.get("call_buffers", {}).get(symbol)
     if emitted.get("granularity") != "group" or not isinstance(entry, Mapping) or entry.get("op") != "conv2d":
         return False
+    # The conv2d entry language defines NHWC, one group and unit dilation when
+    # those optional mathematical parameters are omitted. Normalize that syntax
+    # before comparing the actual typed ABI; no hardware/producer facts are filled.
+    entry = {"layout": "NHWC", "groups": 1, "dilation": [1, 1], **entry}
     epilogue = entry.get("epilogue", [])
     if epilogue not in (
         [],
@@ -230,9 +234,9 @@ def _conv_entry_signature_matches(emitted, symbol, row):
         ["bias_add", "acc_scale", "relu"],
     ):
         return False
-    if entry.get("layout", "NHWC") != "NHWC":
+    if entry["layout"] != "NHWC":
         return False
-    if entry.get("groups", 1) != 1 or type(entry.get("groups", 1)) is not int:
+    if entry["groups"] != 1 or type(entry["groups"]) is not int:
         return False
     biased = "bias_add" in epilogue
     if not isinstance(buffers, list) or len(buffers) != (4 if biased else 3):
@@ -286,7 +290,7 @@ def _conv_entry_signature_matches(emitted, symbol, row):
             return False
     if (h, w, ci) != (entry["Himg"], entry["Wimg"], entry["ci"]):
         return False
-    stride, padding, dilation = entry.get("stride"), entry.get("padding"), entry.get("dilation", [1, 1])
+    stride, padding, dilation = entry.get("stride"), entry.get("padding"), entry["dilation"]
     for values, length, minimum in ((stride, 2, 1), (padding, 4, 0), (dilation, 2, 1)):
         if (
             not isinstance(values, list)

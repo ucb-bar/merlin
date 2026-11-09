@@ -99,6 +99,19 @@ def _synthetic_source_demand(raw, normalized, groups, *, linked=None):
     return record
 
 
+def test_absent_raw_source_denominator_is_unknown_even_when_unresolved_is_zero():
+    from merlin_experiments.phase1.feedback.private_source_demand import _raw_reconciliation_complete
+
+    complete = {"n_raw_undetermined_regions": 0, "n_unresolved_raw_regions": 0}
+    assert _raw_reconciliation_complete(complete)
+    for absent_or_invalid in (
+        {"n_unresolved_raw_regions": 0},
+        {**complete, "n_raw_undetermined_regions": False},
+        {**complete, "n_raw_undetermined_regions": -1},
+    ):
+        assert not _raw_reconciliation_complete(absent_or_invalid)
+
+
 def test_private_capture_binds_sealed_and_compiler_tree_algorithms_independently(tmp_path):
     from merlin.runtime.modelinputs import strict_tree_sha256
     from merlin_experiments.capture_execution import sealed_m2m

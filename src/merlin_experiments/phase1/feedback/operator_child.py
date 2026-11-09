@@ -44,7 +44,10 @@ _LOCK = threading.RLock()
 
 
 def enabled():
-    choice = os.environ.get(ENV, "0")
+    # This environment switch is opt-in configuration, never execution evidence.
+    choice = os.environ.get(ENV)
+    if choice is None:
+        return False
     if choice not in ("", "0", "1"):
         raise ValueError(f"{ENV} requires 0 or 1")
     return choice == "1"

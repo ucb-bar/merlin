@@ -133,7 +133,7 @@ def static_profile(trace: dict, roles: dict) -> dict:
     summary = (trace.get("summary") or {}).get("counted_loops") or {}
     return {
         "basis": "static instruction sites of the decoded stream, in program order",
-        "multiplicity": summary.get("instruction_multiplicity", "static_sites"),
+        "multiplicity": summary.get("instruction_multiplicity", "unknown"),
         "instructions": len(instructions),
         "fences": fences,
         "boundary_fences": boundary,

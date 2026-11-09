@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import secrets
 import struct
@@ -75,8 +76,10 @@ def _directory(path):
             try:
                 os.mkdir(part, mode=0o700, dir_fd=fd)
             except FileExistsError:
-                pass
-            following = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                # Admit an existing component only by opening the actual ordinary directory.
+                following = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            else:
+                following = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
             os.close(fd)
             fd = following
         yield fd
@@ -90,16 +93,19 @@ def _write(path, raw):
     with _directory(path.parent) as parent:
         temporary = ".candidate-build-" + secrets.token_hex(16)
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
+        published = False
         try:
             with os.fdopen(fd, "wb") as stream:
                 stream.write(raw)
                 stream.flush()
             os.replace(temporary, path.name, src_dir_fd=parent, dst_dir_fd=parent)
+            published = True
         finally:
-            try:
-                os.unlink(temporary, dir_fd=parent)
-            except FileNotFoundError:
-                pass
+            if not published:
+                try:
+                    os.unlink(temporary, dir_fd=parent)
+                except FileNotFoundError:
+                    logging.getLogger(__name__).warning("unpublished candidate temporary leaf already absent")
     # If a public ancestor moved during publication, refuse the lost locator.
     _read(path, dict(path=str(path), sha256=hashlib.sha256(raw).hexdigest(), size_bytes=len(raw)))
 
@@ -366,7 +372,7 @@ def analyze(value, pin, *, workspace, bundle_manifest, facts, contract, target, 
             path=label,
             format="disassembly",
             symbol=record["entry"]["symbol"],
-            instruction_offset=value.get("instruction_offset", 0),
+            **({"instruction_offset": value["instruction_offset"]} if "instruction_offset" in value else {}),
         ),
         raw=payloads["binary"],
         pin=dict(binary, path=label),

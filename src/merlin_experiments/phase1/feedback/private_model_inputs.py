@@ -173,7 +173,7 @@ def _recipe_derivation(
 
         from .private_numerical_recipe import recompute
 
-        quantization = json.loads(artifacts.get("software/quantization-contract.json", b"{}"))
+        quantization = json.loads(artifacts["software/quantization-contract.json"])
         method = (evidence.software_spec.get("quantization") or {}).get("methodology")
         output_path = quant_methodology.output_path_of(evidence.contract)
         if (quantization.get("methodology") or {}).get("declaration") != method or (

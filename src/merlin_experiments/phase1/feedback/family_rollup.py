@@ -35,6 +35,7 @@ no ``re``, no target name.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -123,8 +124,8 @@ def _refresh_currency(workspace, rows):
 
             try:
                 source = hash_tree(Path(workspace) / "submission")["sha256"]
-            except OSError:
-                pass
+            except OSError as error:
+                logging.getLogger(__name__).warning("family source currency unavailable: %s", type(error).__name__)
         reconcile.label(rows.values(), reach=reach, source=source)
         if not reach and not source:
             for row in rows.values():
@@ -134,17 +135,32 @@ def _refresh_currency(workspace, rows):
 
 def _slim(row: dict) -> dict:
     """The fields this module reads (a merged grade holds every case's full row)."""
-    keep = {key: row[key] for key in ("capsule", "status", "pass", "tiers", "barrier_tier", "barrier_cycles",
-                                     "numerical_execution_passed")
-            if key in row}
+    keep = {
+        key: row[key]
+        for key in (
+            "capsule",
+            "status",
+            "pass",
+            "tiers",
+            "barrier_tier",
+            "barrier_cycles",
+            "numerical_execution_passed",
+        )
+        if key in row
+    }
     if isinstance(row.get("graded"), dict):
         keep["graded"] = dict(row["graded"])
     performance = row.get("performance")
     if isinstance(performance, dict):
         keep["performance"] = {
             key: performance[key]
-            for key in ("status", "complete_event_accounting", "estimated_whole_soc_cycles", "structural_roofline",
-                        "scoped_resource_feedback")
+            for key in (
+                "status",
+                "complete_event_accounting",
+                "estimated_whole_soc_cycles",
+                "structural_roofline",
+                "scoped_resource_feedback",
+            )
             if key in performance
         }
     return keep
@@ -167,8 +183,12 @@ def _selfcheck_digest(workspace):
     from ..brokers.selfcheck import _DIGEST_IGNORES, _submission_digest
 
     root = Path(workspace) / "submission"
-    return stat_memo.cached("family-selfcheck-source", str(root.absolute()),
-        lambda: stat_memo.tree_signature(root, skip_names=_DIGEST_IGNORES), lambda: _submission_digest(root))
+    return stat_memo.cached(
+        "family-selfcheck-source",
+        str(root.absolute()),
+        lambda: stat_memo.tree_signature(root, skip_names=_DIGEST_IGNORES),
+        lambda: _submission_digest(root),
+    )
 
 
 def _selfcheck_index(path):
@@ -181,17 +201,23 @@ def _selfcheck_index(path):
         document = _load(path)
         if not isinstance(document, dict):
             return None
-        out = {key: document.get(key) for key in ("selfcheck_request_id", "submission_sha256",
-               "selfcheck_submission", "graded_at_unix_ns")}
+        out = {
+            key: document.get(key)
+            for key in ("selfcheck_request_id", "submission_sha256", "selfcheck_submission", "graded_at_unix_ns")
+        }
         out["variant"] = bool(document.get("variant"))
-        out["rows"] = [{"capsule": row.get("capsule"), "detail": dict(row["detail"])}
-                       if isinstance(row.get("detail"), dict) else _slim(row)
-                       for row in document.get("cases") or document.get("per_capsule") or ()
-                       if isinstance(row, dict)]
+        out["rows"] = [
+            {"capsule": row.get("capsule"), "detail": dict(row["detail"])}
+            if isinstance(row.get("detail"), dict)
+            else _slim(row)
+            for row in document.get("cases") or document.get("per_capsule") or ()
+            if isinstance(row, dict)
+        ]
         return out
 
-    return stat_memo.cached("family-selfcheck-index", str(path.absolute()),
-                            lambda: stat_memo.file_signature(path), read)
+    return stat_memo.cached(
+        "family-selfcheck-index", str(path.absolute()), lambda: stat_memo.file_signature(path), read
+    )
 
 
 def _selfcheck_inputs(workspace, digest):
@@ -201,10 +227,14 @@ def _selfcheck_inputs(workspace, digest):
     for path in sorted(channel.glob("resp_*.json")):
         index = _selfcheck_index(path)
         rid = path.stem.removeprefix("resp_")
-        if (not isinstance(index, dict) or index.get("selfcheck_request_id") != rid
-                or index.get("submission_sha256") != digest or index.get("variant")
-                or index.get("selfcheck_submission") != "submission"
-                or type(index.get("graded_at_unix_ns")) is not int):
+        if (
+            not isinstance(index, dict)
+            or index.get("selfcheck_request_id") != rid
+            or index.get("submission_sha256") != digest
+            or index.get("variant")
+            or index.get("selfcheck_submission") != "submission"
+            or type(index.get("graded_at_unix_ns")) is not int
+        ):
             continue
         paths = [path, channel / f"req_{rid}.json", channel / f"done_{rid}"]
         for row in index["rows"]:
@@ -216,8 +246,11 @@ def _selfcheck_inputs(workspace, digest):
                 paths = None
                 break
             detail = root / relative
-            if (detail.is_symlink() or not detail.resolve().is_relative_to(root / "qa" / "cases")
-                    or detail.name != f"{sha}.json"):
+            if (
+                detail.is_symlink()
+                or not detail.resolve().is_relative_to(root / "qa" / "cases")
+                or detail.name != f"{sha}.json"
+            ):
                 paths = None
                 break
             paths.append(detail)
@@ -241,8 +274,9 @@ def _selfcheck_signature(paths):
 def selfcheck_identity(workspace):
     """Cheap source/completion identity for readiness consumers; repaired details invalidate it too."""
     digest = _selfcheck_digest(workspace)
-    return digest, tuple((str(path), _selfcheck_signature(paths))
-                         for path, _, paths in _selfcheck_inputs(workspace, digest))
+    return digest, tuple(
+        (str(path), _selfcheck_signature(paths)) for path, _, paths in _selfcheck_inputs(workspace, digest)
+    )
 
 
 def _selfcheck_projection(path, index):
@@ -251,10 +285,15 @@ def _selfcheck_projection(path, index):
 
     rid = index["selfcheck_request_id"]
     request = _load(path.with_name(f"req_{rid}.json"))
-    if (not isinstance(request, dict) or request.get("action")
-            or request.get("compile_only") or request.get("candidate_diagnostics")
-            or request.get("caller_layout") or request.get("tuning_overrides")
-            or request.get("submission", "submission") != "submission"):
+    if (
+        not isinstance(request, dict)
+        or request.get("action")
+        or request.get("compile_only")
+        or request.get("candidate_diagnostics")
+        or request.get("caller_layout")
+        or request.get("tuning_overrides")
+        or ("submission" in request and request["submission"] != "submission")
+    ):
         return {}
     rows = {}
     for compact in index["rows"]:
@@ -265,8 +304,12 @@ def _selfcheck_projection(path, index):
         if not isinstance(name, str) or not name or verdict(row) == "unchecked":
             continue
         row = _slim(row)
-        row["graded"] = dict(currency=reconcile.CURRENT, graded_source_sha256=index["submission_sha256"],
-                             graded_at_unix_ns=index["graded_at_unix_ns"], selfcheck_request_id=rid)
+        row["graded"] = dict(
+            currency=reconcile.CURRENT,
+            graded_source_sha256=index["submission_sha256"],
+            graded_at_unix_ns=index["graded_at_unix_ns"],
+            selfcheck_request_id=rid,
+        )
         rows[name] = row
     return rows
 
@@ -282,9 +325,12 @@ def selfcheck_rows(workspace) -> dict:
     for path, index, paths in _selfcheck_inputs(workspace, digest):
         if not path.with_name(f"done_{index['selfcheck_request_id']}").is_file():
             continue
-        observed = stat_memo.cached("family-selfcheck-projection", (str(path.absolute()), digest),
+        observed = stat_memo.cached(
+            "family-selfcheck-projection",
+            (str(path.absolute()), digest),
             lambda paths=paths: _selfcheck_signature(paths),
-            lambda path=path, index=index: _selfcheck_projection(path, index))
+            lambda path=path, index=index: _selfcheck_projection(path, index),
+        )
         for name, row in observed.items():
             if name not in rows or _completed_at(row) > _completed_at(rows[name]):
                 rows[name] = row
@@ -296,8 +342,12 @@ def readiness_rows(workspace) -> dict:
     graded = grade_rows(workspace)
     for name, row in selfcheck_rows(workspace).items():
         held = graded.get(name)
-        if (held is None or reconcile.is_older(held) or verdict(held) == "unchecked"
-                or _completed_at(row) >= _completed_at(held)):
+        if (
+            held is None
+            or reconcile.is_older(held)
+            or verdict(held) == "unchecked"
+            or _completed_at(row) >= _completed_at(held)
+        ):
             graded[name] = row
     return graded
 
@@ -375,8 +425,12 @@ def _evidence_entry(name: str, row: dict) -> dict | None:
     bound, limiter = _bound(roofline or {})
     entry = {"test_case": name, "cycles": cycles, "evidence": label}
     if bound is not None and cycles >= bound:
-        entry.update(roofline_bound_cycles=round(bound, 1), bound_by=limiter, gap_ratio=round(cycles / bound, 2),
-                     headroom_cycles=round(cycles - bound, 1))
+        entry.update(
+            roofline_bound_cycles=round(bound, 1),
+            bound_by=limiter,
+            gap_ratio=round(cycles / bound, 2),
+            headroom_cycles=round(cycles - bound, 1),
+        )
     dominant = _dominant_resource(row.get("performance") or {})
     if dominant is not None:
         entry["dominant_modeled_resource"] = dominant
@@ -394,8 +448,19 @@ def _brief_entries(brief) -> dict:
     return out
 
 
-_TOP_FIELDS = ("test_case", "cycles", "evidence", "roofline_bound_cycles", "bound_by", "gap_ratio",
-               "headroom_cycles", "dominant_modeled_resource", "fence_overlap", "capacity_use", "suggested_mechanisms")
+_TOP_FIELDS = (
+    "test_case",
+    "cycles",
+    "evidence",
+    "roofline_bound_cycles",
+    "bound_by",
+    "gap_ratio",
+    "headroom_cycles",
+    "dominant_modeled_resource",
+    "fence_overlap",
+    "capacity_use",
+    "suggested_mechanisms",
+)
 
 
 # --- construction routes ---------------------------------------------------------------------------------
@@ -420,8 +485,9 @@ def construction_routes(entry: dict) -> list[dict]:
         except OSError:
             text = ""
         composed = sorted(module.rpartition(".")[2] for module in modules if module and module in text)
-        ranked.append((-len(composed), index, {"recipe": mechanism["id"], "use": mechanism.get("use"),
-                                               "composes": composed}))
+        ranked.append(
+            (-len(composed), index, {"recipe": mechanism["id"], "use": mechanism.get("use"), "composes": composed})
+        )
     return [item for *_, item in sorted(ranked, key=lambda r: r[:2])]
 
 
@@ -445,8 +511,19 @@ def _response_rows(rows) -> dict:
 
 
 class _Case:
-    __slots__ = ("name", "family", "shape", "klass", "status", "role", "primary", "entry", "timed", "older",
-                 "older_status")
+    __slots__ = (
+        "name",
+        "family",
+        "shape",
+        "klass",
+        "status",
+        "role",
+        "primary",
+        "entry",
+        "timed",
+        "older",
+        "older_status",
+    )
 
 
 def _cases(workspace, rows, brief, edge):
@@ -508,21 +585,27 @@ def build(workspace=None, *, rows=(), brief=None, edge=None) -> dict | None:
     groups: dict[str, list] = {}
     for case in cases:
         groups.setdefault(case.family, []).append(case)
-    families = sorted((_family(f, members, entries.get(f)) for f, members in groups.items()),
-                      key=lambda r: (-r["large"], -r["cases"], r["family"]))
+    families = sorted(
+        (_family(f, members, entries.get(f)) for f, members in groups.items()),
+        key=lambda r: (-r["large"], -r["cases"], r["family"]),
+    )
     bundles = _bundles(cases, entries)
     ready_untimed = sorted(c.name for c in cases if c.status == "pass" and c.primary and not c.timed)
     return {
         "schema": SCHEMA,
         "advisory_only": True,
-        "scope": ("cases per operation family (each case's declaration); correct = current-source numerics (L2) "
-                  "in completed grades or baseline selfchecks, overlaid with this response's rows; "
-                  "older results remain separate; large = large or connected workload roles; "
-                  "timed = complete cycle evidence (gSIM measurement or complete timing-model estimate)"),
-        "how_to_use": ("A passing case is ready for performance work now: each bundle of passing cases sharing a "
-                       "family and shape class names one representative to optimize and its siblings as the "
-                       "held-out check (--panel). Failing cases keep their correctness step beside it; neither "
-                       "waits for the other, and no family has to finish first."),
+        "scope": (
+            "cases per operation family (each case's declaration); correct = current-source numerics (L2) "
+            "in completed grades or baseline selfchecks, overlaid with this response's rows; "
+            "older results remain separate; large = large or connected workload roles; "
+            "timed = complete cycle evidence (gSIM measurement or complete timing-model estimate)"
+        ),
+        "how_to_use": (
+            "A passing case is ready for performance work now: each bundle of passing cases sharing a "
+            "family and shape class names one representative to optimize and its siblings as the "
+            "held-out check (--panel). Failing cases keep their correctness step beside it; neither "
+            "waits for the other, and no family has to finish first."
+        ),
         "families": families,
         "bundles": bundles,
         "bundle_count": len(bundles),
@@ -596,8 +679,9 @@ def _bundles(cases, entries) -> list[dict]:
             "timed": sum(1 for c in members if c.timed),
             "headroom_cycles": (rep.entry or {}).get("headroom_cycles"),
             # The other performance targets: large or connected passing members with headroom.
-            "targets": [c.name for c in members[1:] if c.primary and ((c.entry or {}).get("headroom_cycles") or 0) > 0
-                        ][:KEEP],
+            "targets": [c.name for c in members[1:] if c.primary and ((c.entry or {}).get("headroom_cycles") or 0) > 0][
+                :KEEP
+            ],
         }
         if rep.entry is not None and (rep.entry.get("headroom_cycles") or 0) > 0:
             bundle["top"] = {key: rep.entry[key] for key in _TOP_FIELDS if key in rep.entry}
@@ -624,7 +708,7 @@ def family_line(families) -> str:
     for record in families:
         text = f"{record['label']} {record['correct']}/{record['cases']} ({record['timed']} timed)"
         if record.get("failing_count") or record.get("unchecked_count"):
-            text += f" [{record.get('failing_count', 0)} failed, {record.get('unchecked_count', 0)} unchecked]"
+            text += f" [{record.get('failing_count', 'unknown')} failed, {record.get('unchecked_count', 'unknown')} unchecked]"
         if record.get("correct_older_version"):
             text += f" ({record['correct_older_version']} passed on an older version)"
         parts.append(text)
@@ -697,5 +781,17 @@ def attach(brief, rows, *, workspace=None) -> dict | None:
     return found
 
 
-__all__ = ["KEY", "SCHEMA", "attach", "build", "bundle_line", "construction_routes",
-           "correctness_text", "describe", "family_line", "family_of", "preferred_cases", "verdict"]
+__all__ = [
+    "KEY",
+    "SCHEMA",
+    "attach",
+    "build",
+    "bundle_line",
+    "construction_routes",
+    "correctness_text",
+    "describe",
+    "family_line",
+    "family_of",
+    "preferred_cases",
+    "verdict",
+]

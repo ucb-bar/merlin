@@ -45,6 +45,7 @@ files and the response's own evidence are read; no private reference or measurem
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from . import mechanism_hints
@@ -55,13 +56,17 @@ KEY = "next_steps"
 LIMIT = 5
 LINE_BYTES = 1000
 BLOCK_BYTES = 5600
-HEADER = ("next steps (advisory; one choice per case or bundle by value, large and connected headroom first; a passing "
-          "case's performance step never waits for other cases; detail: optimization_next):")
+HEADER = (
+    "next steps (advisory; one choice per case or bundle by value, large and connected headroom first; a passing "
+    "case's performance step never waits for other cases; detail: optimization_next):"
+)
 #: How a step is judged: estimates (complete timing model, else the calibrated fast estimate) decide.
-DECIDE_ON_ESTIMATES = ("decide on cycle estimates (the complete timing model where it ran, else the calibrated "
-                       "fast estimate, each labelled with its evidence kind): prefer the change the estimate "
-                       "favors and revert if a later measurement disagrees; Spike numerics and final required "
-                       "gSIM gates unchanged")
+DECIDE_ON_ESTIMATES = (
+    "decide on cycle estimates (the complete timing model where it ran, else the calibrated "
+    "fast estimate, each labelled with its evidence kind): prefer the change the estimate "
+    "favors and revert if a later measurement disagrees; Spike numerics and final required "
+    "gSIM gates unchanged"
+)
 #: Step kinds that are not a mechanism choice: a passing representative to time, a family's cases left.
 OTHER_KINDS = ("measure", "finish_correctness")
 #: Facets that can remove a per-tile drain, and the words a catalogue entry uses for one.
@@ -94,10 +99,14 @@ class Context:
 
         rows = [load_row(row, workspace=self.workspace) for row in rows or ()]
         self.selection = mechanism_hints.with_source_evidence(
-            mechanism_hints.load_selection(self.workspace), self.workspace)
+            mechanism_hints.load_selection(self.workspace), self.workspace
+        )
         self.inventory = inventory_script()
-        self.imports = (self.selection.get('source_imports', {}) if self.selection
-                        else self.inventory.imported_modules(self.workspace / "submission"))
+        self.imports = (
+            self.selection.get("source_imports", {})
+            if self.selection
+            else self.inventory.imported_modules(self.workspace / "submission")
+        )
         self.knobs = _knobs(self.workspace / "submission")
         from ..workload_roles import workspace_roles
 
@@ -113,8 +122,8 @@ class Context:
         from . import idle_performance, idle_tuning
 
         self.tuning_progress = idle_tuning.matching_progress(
-            idle_performance._load(self.workspace / idle_tuning.LEDGER),
-            {**(document or {}), "cases": list(rows or ())})
+            idle_performance._load(self.workspace / idle_tuning.LEDGER), {**(document or {}), "cases": list(rows or ())}
+        )
 
     def imported(self, api: str) -> bool:
         module, _, symbol = str(api or "").partition(":")
@@ -218,7 +227,7 @@ def _plain(entry: dict) -> tuple[str, str, tuple, tuple]:
     if facets is not None:
         activity = dominant.get("modeled_activity") if isinstance(dominant, dict) else None
         unit = mechanism_hints.storage_unit(name)
-        text = f"{_FACET_CLASS.get(facets, 'a resource')} is the busiest modeled resource ({name}"
+        text = f"{_FACET_CLASS[facets] if facets in _FACET_CLASS else 'an unclassified resource'} is the busiest modeled resource ({name}"
         text += f", {round(100 * activity)}% activity)" if isinstance(activity, int | float) else ")"
         return text, "resource", facets, ((unit,) if unit else ())
     bound = entry.get("bound_by")
@@ -265,17 +274,20 @@ def mechanism_candidates(selection, facets, words, mode: str, states: dict) -> l
         specific = sum(1 for k, v in requirements.items() if k.startswith("workload.") and v == "supported")
         order = mechanism_hints.FENCE_MECHANISMS
         generic = order.index(row["id"]) if row.get("id") in order else len(order)
-        observed = mechanism_hints.opportunity({**row, 'requirements': requirements}, selection or {})
+        observed = mechanism_hints.opportunity({**row, "requirements": requirements}, selection or {})
         from .operand_traffic import CONV_ORDER, region, route_kind
 
         traffic_order = 0
         if mode == "operand_traffic" and region(states) == "convolution":
-            traffic_order = CONV_ORDER.get(route_kind(row, convolution=True), 2)
+            # Unlisted advisory routes follow the two preferred reuse routes.
+            kind = route_kind(row, convolution=True)
+            traffic_order = CONV_ORDER[kind] if kind in CONV_ORDER else max(CONV_ORDER.values()) + 1
         elif mode == "operand_traffic":
-            traffic_order = {"array_retention": 0, "wide_loads": 1}.get(route_kind(row), 2)
+            kind = route_kind(row)
+            traffic_order = 0 if kind == "array_retention" else 1 if kind == "wide_loads" else 2
         rank = (
             traffic_order,
-            bool(observed['source_call_sites']),
+            bool(observed["source_call_sites"]),
             not named,
             bool(unconfirmed),
             bool(workload),
@@ -285,8 +297,9 @@ def mechanism_candidates(selection, facets, words, mode: str, states: dict) -> l
             facets.index(row["family"]),
             index,
         )
-        out.append({"row": row, "rank": rank, "unconfirmed": unconfirmed, "applies_if": workload,
-                    "opportunity": observed})
+        out.append(
+            {"row": row, "rank": rank, "unconfirmed": unconfirmed, "applies_if": workload, "opportunity": observed}
+        )
     out.sort(key=lambda item: item["rank"])
     return out
 
@@ -312,7 +325,13 @@ def _suite(name: str, ctx: Context, default: str) -> str:
 
 
 def _check(name: str, variant: str, suite: str) -> str:
-    route = {"scalability": "--suite scalability", "programs": "--suite programs"}.get(suite, "--sim spike")
+    # Core self-checks use Spike; named model suites use their explicit route.
+    if suite in ("scalability", "programs"):
+        route = "--suite " + suite
+    elif suite == "core":
+        route = "--sim spike"
+    else:
+        raise ValueError("unknown self-check suite")
     return f"python agent_selfcheck.py --submission variants/{variant} --capsules {name} {route} --wait-budget 5"
 
 
@@ -387,28 +406,34 @@ def choose(entry: dict, ctx: Context, *, suite: str = "core", reuse: bool = True
                 + _check(name, variant, suite)
             )
         else:
-            notes.append("imported; runtime use unconfirmed" if ctx.imported(pick['api'])
-                         else "not imported by submission/")
-            notes.append(pick['opportunity']['opportunity_status'])
+            notes.append(
+                "imported; runtime use unconfirmed" if ctx.imported(pick["api"]) else "not imported by submission/"
+            )
+            notes.append(pick["opportunity"]["opportunity_status"])
             apply = ab_command(name, _variant(ident), suite, mechanism=ident, workspace=ctx.workspace)
-            if pick['opportunity']['source_call_sites']:
-                apply = 'tune a distinct legal setting or inspect emitted-route coverage, then ' + apply
-            elif pick['opportunity']['opportunity_status'] == 'applicability_unknown':
-                apply = 'check source/effect prerequisites first, then ' + apply
+            if pick["opportunity"]["source_call_sites"]:
+                apply = "tune a distinct legal setting or inspect emitted-route coverage, then " + apply
+            elif pick["opportunity"]["opportunity_status"] == "applicability_unknown":
+                apply = "check source/effect prerequisites first, then " + apply
             if not ctx.knobs and not (ctx.tuning_progress or {}).get("declared_candidates"):
                 from .idle_tuning import construction_task
 
                 construction = construction_task(ctx.workspace)
-                notes.append("construct shared source/effect adapter + SAME emitter"
-                             if construction["kind"] == "bind_source_effects" else
-                             "declare finite legal alternatives in TUNING_KNOBS.json")
+                notes.append(
+                    "construct shared source/effect adapter + SAME emitter"
+                    if construction["kind"] == "bind_source_effects"
+                    else "declare finite legal alternatives in TUNING_KNOBS.json"
+                )
         if pick["unconfirmed"]:
             notes.append("capability unconfirmed: " + ", ".join(pick["unconfirmed"][:2]))
         if pick["applies_if"]:
             notes.append("applies if " + ", ".join(pick["applies_if"][:2]))
         read = f"{ctx.skills}/pass-library/reference/{row.get('family')}.md"
-        route = next((r for r in operand_traffic.library_routes(selection, convolution=True) if r["id"] == ident),
-                     None) if conv_traffic else None
+        route = (
+            next((r for r in operand_traffic.library_routes(selection, convolution=True) if r["id"] == ident), None)
+            if conv_traffic
+            else None
+        )
         if route is not None:  # its opened capabilities stay in related_library_routes; the line is bounded
             read = f"{ctx.skills}/{route['recipe']}"
         choice = f"{ident} ({pick['api']}; {'; '.join(notes)})"
@@ -443,10 +468,15 @@ def choose(entry: dict, ctx: Context, *, suite: str = "core", reuse: bool = True
         "read": read,
         "alternatives": len(choices) - 1,
         "evaluation": DECIDE_ON_ESTIMATES,
-        **(pick['opportunity'] if pick['kind'] == 'mechanism' else {}),
-        **({"operand_traffic": traffic,
-            "related_library_routes": operand_traffic.library_routes(selection, convolution=conv_traffic)}
-           if traffic else {}),
+        **(pick["opportunity"] if pick["kind"] == "mechanism" else {}),
+        **(
+            {
+                "operand_traffic": traffic,
+                "related_library_routes": operand_traffic.library_routes(selection, convolution=conv_traffic),
+            }
+            if traffic
+            else {}
+        ),
         **({"fence_step": fence_step} if fence_step is not None else {}),
         **({"construction_task": construction} if construction is not None else {}),
     }
@@ -468,15 +498,23 @@ def _capability_steps(ctx, suite):
             continue
         route = routes[0]
         pending = [key for key, value in route["requirements"].items() if value != "supported"]
-        yield dict(test_case=name, kind="mechanism", choice=route["id"], api=route["api"],
-                   bottleneck="capability refusal; inspect an existing checked library route",
-                   choice_text=f"{route['id']} ({route['api']}; capability/effect law still required)",
-                   apply=ab_command(name, _variant(route["id"]), _suite(name, ctx, suite),
-                                    mechanism=route["id"], workspace=ctx.workspace),
-                   read=f"{ctx.skills}/{route['recipe']}", alternatives=len(routes) - 1,
-                   capability_refusal=refusal, prerequisites=route["prerequisites"],
-                   unresolved_requirements=pending,
-                   evaluation="advisory route; ordinary source, numerical and timing gates unchanged")
+        yield dict(
+            test_case=name,
+            kind="mechanism",
+            choice=route["id"],
+            api=route["api"],
+            bottleneck="capability refusal; inspect an existing checked library route",
+            choice_text=f"{route['id']} ({route['api']}; capability/effect law still required)",
+            apply=ab_command(
+                name, _variant(route["id"]), _suite(name, ctx, suite), mechanism=route["id"], workspace=ctx.workspace
+            ),
+            read=f"{ctx.skills}/{route['recipe']}",
+            alternatives=len(routes) - 1,
+            capability_refusal=refusal,
+            prerequisites=route["prerequisites"],
+            unresolved_requirements=pending,
+            evaluation="advisory route; ordinary source, numerical and timing gates unchanged",
+        )
         return  # One construction hint cannot consume the whole performance block.
 
 
@@ -503,7 +541,7 @@ def line(step: dict, index: int | None = None) -> str:
 
 def _held_out(bundle: dict | None) -> str | None:
     """The bundle's siblings as the A/B's held-out check: the panel command and how many share the class."""
-    if not bundle or bundle.get("passing", 0) < 2:
+    if not bundle or type(bundle.get("passing")) is not int or bundle["passing"] < 2:
         return None
     where = bundle.get("panel") or "the siblings"
     return f"{where} ({bundle['passing'] - 1} passing {bundle['label']} siblings)"
@@ -515,10 +553,15 @@ def _measure(bundle: dict, ctx: Context) -> dict:
 
     name = bundle["representative"]
     suite = _suite(name, ctx, "core")
-    command = (f"python agent_selfcheck.py --suite {suite} --capsules {name}" if suite in ("scalability", "programs")
-               else GSIM_COMMAND.format(name=name))
-    text = (f"{name}: passes ({bundle['label']}, {bundle['passing']} passing), no cycles yet -> time it first; "
-            "idle timing takes bundle representatives first")
+    command = (
+        f"python agent_selfcheck.py --suite {suite} --capsules {name}"
+        if suite in ("scalability", "programs")
+        else GSIM_COMMAND.format(name=name)
+    )
+    text = (
+        f"{name}: passes ({bundle['label']}, {bundle['passing']} passing), no cycles yet -> time it first; "
+        "idle timing takes bundle representatives first"
+    )
     return {"kind": "measure", "test_case": name, "text": text, "apply": command, "bundle": bundle["label"]}
 
 
@@ -526,13 +569,17 @@ def _correctness(record: dict, ctx: Context) -> dict:
     """A family's cases left to finish, and the library route that builds them fast from the start."""
     from . import family_rollup
 
-    left = record["left"][:family_rollup.NAMED]
+    left = record["left"][: family_rollup.NAMED]
     suites = {_suite(name, ctx, "core") for name in left}
     suite = suites.pop() if len(suites) == 1 else "core"
     route = f" --suite {suite}" if suite in ("scalability", "programs") else ""
-    step = {"kind": "finish_correctness", "test_case": left[0] if left else record["family"],
-            "family": record["family"], "text": family_rollup.correctness_text(record),
-            "apply": f"python agent_selfcheck.py{route} --capsules {','.join(left)}"}
+    step = {
+        "kind": "finish_correctness",
+        "test_case": left[0] if left else record["family"],
+        "family": record["family"],
+        "text": family_rollup.correctness_text(record),
+        "apply": f"python agent_selfcheck.py{route} --capsules {','.join(left)}",
+    }
     if record.get("construction"):
         step["read"] = f"{ctx.skills}/" + record["construction"][0]["recipe"].replace("/", "/scripts/", 1)
     from . import reference_construction
@@ -624,11 +671,14 @@ def block(document: dict, rows, brief, *, workspace=None, families=None, context
         if "reference_construction" not in step:
             reference_construction.attach(step, ctx, suite=suite)
     progress = ctx.tuning_progress
-    summary = (f" idle sweep: {progress['ready_baselines']} ready baselines, "
-               f"{progress['declared_candidates']} candidates, "
-               f"{progress['outstanding_candidate_cases']} candidate/case checks outstanding, "
-               f"{progress['requests_in_flight']} requests in flight ({progress['status']})."
-               if progress else "")
+    summary = (
+        f" idle sweep: {progress['ready_baselines']} ready baselines, "
+        f"{progress['declared_candidates']} candidates, "
+        f"{progress['outstanding_candidate_cases']} candidate/case checks outstanding, "
+        f"{progress['requests_in_flight']} requests in flight ({progress['status']})."
+        if progress
+        else ""
+    )
     lines = [HEADER + summary]
     for index, step in enumerate(steps, 1):
         text = line(step, index)
@@ -642,8 +692,13 @@ def block(document: dict, rows, brief, *, workspace=None, families=None, context
     lines = _reference_lines(lines, kept, (families or {}).get("reference_lines") or {})
     if isinstance(families, dict):
         _bundle_lines(families, kept)
-    return {"schema": SCHEMA, "advisory_only": True, "lines": lines, "steps": kept,
-            **({"idle_sweep_progress": progress} if progress else {})}
+    return {
+        "schema": SCHEMA,
+        "advisory_only": True,
+        "lines": lines,
+        "steps": kept,
+        **({"idle_sweep_progress": progress} if progress else {}),
+    }
 
 
 def _reference_lines(lines: list[str], steps: list[dict], references: dict) -> list[str]:
@@ -657,8 +712,11 @@ def _reference_lines(lines: list[str], steps: list[dict], references: dict) -> l
         extras = ((step or {}).get("reference_construction") or {}).get("lines", [])
         if extras and step.get("api"):
             references_used = step["reference_construction"]["references"]
-            extras = [f"reference target: close expert mechanism/perf gap; test {step['choice']} via {step['api']} "
-                      f"against {references_used[0]['id']}; derive a shape/resource rule", *extras[1:]]
+            extras = [
+                f"reference target: close expert mechanism/perf gap; test {step['choice']} via {step['api']} "
+                f"against {references_used[0]['id']}; derive a shape/resource rule",
+                *extras[1:],
+            ]
         if not extras:
             extras = references.get((step or {}).get("test_case"), ()) if step is not None else ()
             if extras and step.get("api"):
@@ -696,8 +754,9 @@ def attach(document: dict, rows, brief, *, workspace=None, families=None, contex
         if found is not None:
             document[KEY] = found
     except Exception:  # noqa: BLE001 -- advisory only
-        pass
+        logging.getLogger(__name__).warning("Optimization advice unavailable", exc_info=True)
     from . import reference_experiments
+
     reference_experiments.attach(document)
 
 

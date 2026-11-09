@@ -135,7 +135,9 @@ def _raw_hardware_joins(operations, verdicts, source_operations, capability, bin
 
 
 def _raw_reconciliation_complete(receipt):
-    raw = receipt.get("n_raw_undetermined_regions", 0)
+    raw = receipt.get("n_raw_undetermined_regions")
+    if type(raw) is not int or raw < 0:
+        return False
     record = receipt.get("raw_hardware_reconciliation")
     if record is None:
         return raw == 0 and receipt.get("n_unresolved_raw_regions") == 0

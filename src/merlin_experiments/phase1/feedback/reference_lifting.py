@@ -41,7 +41,14 @@ def _source_summary(raw, format, offset, limit, *, symbol="", locator=None):
             raise ValueError("analysis_symbol_not_unique")
     elif (locator or {}).get("lines"):
         start, end = locator["lines"]
-        functions = [row for row in functions if start <= row.get("line", 0) and row.get("end_line", end + 1) <= end]
+        functions = [
+            row
+            for row in functions
+            if type(row.get("line")) is int
+            and type(row.get("end_line")) is int
+            and start <= row["line"]
+            and row["end_line"] <= end
+        ]
         if not functions:
             raise ValueError("analysis_region_empty")
     elif (locator or {}).get("address_range"):

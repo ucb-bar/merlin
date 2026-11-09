@@ -31,10 +31,12 @@ MIN_PAIRS = 5
 #: Newest response files read per channel; older pairs describe compilers long gone.
 MAX_FILES = 600
 _MAX_FILE_BYTES = 16 << 20
-USE = ("Legacy measured/model ratios are descriptive program-pair diagnostics, not a tuned timing "
-       "runtime or a qualification claim. Rank variants using complete same-provider and same-ROI "
-       "cycles. Request small/medium gSIM witnesses only through the existing physical policy "
-       "for an unresolved mechanism; large performance workloads remain Spike-only in development.")
+USE = (
+    "Legacy measured/model ratios are descriptive program-pair diagnostics, not a tuned timing "
+    "runtime or a qualification claim. Rank variants using complete same-provider and same-ROI "
+    "cycles. Request small/medium gSIM witnesses only through the existing physical policy "
+    "for an unresolved mechanism; large performance workloads remain Spike-only in development."
+)
 
 
 def _positive(value) -> bool:
@@ -43,6 +45,7 @@ def _positive(value) -> bool:
 
 def _rows(path: Path) -> list[tuple]:
     """``(name, digest, modeled, measured, limiter)`` rows of one response file (cached by stat)."""
+
     def parse():
         try:
             if path.is_symlink() or not path.is_file() or path.stat().st_size > _MAX_FILE_BYTES:
@@ -119,9 +122,17 @@ def pairs(workspace) -> list[dict]:
         if name not in families:
             families[name] = semantic_family(workspace, name)
         limiter = limiters.get(key)
-        out.append({"test_case": name, "execution_digest": key[1], "modeled": modeled[key], "measured": measured[key],
-                    "ratio": measured[key] / modeled[key], "family": families[name],
-                    "bound_class": None if limiter is None else ("compute" if limiter == "compute" else "memory requests")})
+        out.append(
+            {
+                "test_case": name,
+                "execution_digest": key[1],
+                "modeled": modeled[key],
+                "measured": measured[key],
+                "ratio": measured[key] / modeled[key],
+                "family": families[name],
+                "bound_class": None if limiter is None else ("compute" if limiter == "compute" else "memory requests"),
+            }
+        )
     return out
 
 
@@ -131,8 +142,12 @@ def _fit(ratios: list[float]) -> dict:
         q1, median, q3 = statistics.quantiles(ratios, n=4, method="inclusive")
     else:
         q1, median, q3 = ratios[0], statistics.median(ratios), ratios[-1]
-    return {"n": len(ratios), "median_measured_over_modeled": round(median, 3),
-            "interquartile": [round(q1, 3), round(q3, 3)], "spread": round(q3 - q1, 3)}
+    return {
+        "n": len(ratios),
+        "median_measured_over_modeled": round(median, 3),
+        "interquartile": [round(q1, 3), round(q3, 3)],
+        "spread": round(q3 - q1, 3),
+    }
 
 
 def fit(found: list[dict], *, min_pairs: int = MIN_PAIRS) -> dict:
@@ -148,10 +163,17 @@ def fit(found: list[dict], *, min_pairs: int = MIN_PAIRS) -> dict:
     for (level, name), ratios in groups.items():
         levels[level][name] = _fit(ratios) if len(ratios) >= min_pairs else {"n": len(ratios), "status": "uncalibrated"}
     from .model_accuracy import legacy_card
-    return {"schema": SCHEMA, "pairs": len(found), "min_pairs": min_pairs, "levels": levels,
-            "accuracy_card": legacy_card(found), "qualification_issued": False,
-            "basis": "same test case and same execution_digest; measured = gSIM L3 barrier cycles",
-            "use": USE}
+
+    return {
+        "schema": SCHEMA,
+        "pairs": len(found),
+        "min_pairs": min_pairs,
+        "levels": levels,
+        "accuracy_card": legacy_card(found),
+        "qualification_issued": False,
+        "basis": "same test case and same execution_digest; measured = gSIM L3 barrier cycles",
+        "use": USE,
+    }
 
 
 def calibration(workspace) -> dict | None:
@@ -160,8 +182,9 @@ def calibration(workspace) -> dict | None:
     return fit(found) if found else None
 
 
-def apply(modeled_cycles, calibrated: dict | None, *, family: str | None = None,
-          bound_class: str | None = None) -> dict | None:
+def apply(
+    modeled_cycles, calibrated: dict | None, *, family: str | None = None, bound_class: str | None = None
+) -> dict | None:
     """A labelled calibrated estimate for one modeled value, from the most specific calibrated level."""
     if calibrated is None or not _positive(modeled_cycles):
         return None
@@ -173,10 +196,20 @@ def apply(modeled_cycles, calibrated: dict | None, *, family: str | None = None,
             return {
                 "calibrated_estimate": round(modeled_cycles * fitted["median_measured_over_modeled"]),
                 "calibrated_interval": [round(modeled_cycles * low), round(modeled_cycles * high)],
-                "model_confidence": {"level": level, "group": name, "pairs": fitted["n"],
-                                     "median_measured_over_modeled": fitted["median_measured_over_modeled"],
-                                     "spread": fitted["spread"]},
-                "calibration_label": "estimate: Spike model scaled by this run's measured/modeled pairs; not a measurement",
+                "model_confidence": {
+                    "level": level,
+                    "group": name,
+                    "pairs": fitted["n"],
+                    "median_measured_over_modeled": fitted["median_measured_over_modeled"],
+                    "spread": fitted["spread"],
+                },
+                "calibration_label": (
+                    "estimate: Spike model scaled by this run's measured/modeled pairs; "
+                    # Keep the observation boundary visible beside this estimate.
+                    "not a measurement"
+                ),
             }
-    return {"model_confidence": {"status": "uncalibrated", "pairs": calibrated.get("pairs", 0)},
-            "calibration_label": "no calibrated level has enough same-executable gSIM pairs; confirm on gSIM"}
+    return {
+        "model_confidence": {"status": "uncalibrated", "pairs": calibrated.get("pairs")},
+        "calibration_label": "no calibrated level has enough same-executable gSIM pairs; confirm on gSIM",
+    }

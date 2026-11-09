@@ -31,7 +31,9 @@ ENV = "MERLIN_ORIGINAL_EMISSION_PROCESSES"
 
 
 def enabled():
-    choice = os.environ.get(ENV, "0")
+    choice = os.environ.get(ENV)
+    if choice is None:
+        return False  # Explicit opt-in; absence never enables the child process.
     if choice not in ("", "0", "1"):
         raise ValueError(f"{ENV} requires 0 or 1")
     return choice == "1"

@@ -97,7 +97,7 @@ def numerics(rows: list[dict], verdict: dict) -> dict:
     for row in rows:
         ok = _status((row.get("tiers") or {}).get("L2")) == "pass"
         passing += ok
-        counts = by_cohort.setdefault(membership.get(row["capsule"], "other") if membership else "all", [0, 0])
+        counts = by_cohort.setdefault(membership.get(row["capsule"]) or "other" if membership else "all", [0, 0])
         counts[0] += ok
         counts[1] += 1
     carried = sum(row.get("status") == "carried" for row in verdict.get("per_capsule") or () if isinstance(row, dict))
@@ -299,9 +299,13 @@ def _top(block: dict, context=None, *, guidance: bool = True) -> list[dict]:
             "gap_to_roofline": entry.get("gap_ratio"),
             "bound_by": entry.get("bound_by"),
             "busiest_unit": busiest,
-            "mechanisms": ([
-                m.get("id") for m in entry.get("suggested_mechanisms") or () if isinstance(m, dict) and m.get("id")
-            ][:MECHANISMS] if guidance else []),
+            "mechanisms": (
+                [m.get("id") for m in entry.get("suggested_mechanisms") or () if isinstance(m, dict) and m.get("id")][
+                    :MECHANISMS
+                ]
+                if guidance
+                else []
+            ),
         }
         fence = entry.get("fence_overlap") if isinstance(entry.get("fence_overlap"), dict) else {}
         if fence.get("fence_per_tile"):
@@ -431,9 +435,7 @@ def build(
             "by_label": compared.get("by_label"),
             "detail": f"{DETAIL}.reference_baselines and each entry's reference_baselines",
         }
-    headline["top_headroom"] = _top(
-        block, _next_steps(workspace, verdict) if guidance else None, guidance=guidance
-    )
+    headline["top_headroom"] = _top(block, _next_steps(workspace, verdict) if guidance else None, guidance=guidance)
     families = _families(workspace, verdict)
     if families:
         headline["families"] = families
@@ -520,8 +522,10 @@ def render(headline) -> list[str]:
         )
     families = headline.get("families") if isinstance(headline.get("families"), dict) else {}
     if families.get("ready_bundles"):
-        lines.append("Ready for performance now (passing cases bundled by family and shape class: optimize the first "
-                     "case, check its siblings; no case waits for the rest of its family):")
+        lines.append(
+            "Ready for performance now (passing cases bundled by family and shape class: optimize the first "
+            "case, check its siblings; no case waits for the rest of its family):"
+        )
         lines += [f"- {text}" for text in families["ready_bundles"]]
     if families.get("cases_left"):
         lines.append("Correctness left, beside the performance work (build on the named library route):")

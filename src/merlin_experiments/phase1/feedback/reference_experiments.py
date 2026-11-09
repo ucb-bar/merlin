@@ -367,7 +367,9 @@ def _task_packet_identity(packet, task_id):
 
 
 def _request_limit(packet):
-    return 32 * len(packet.get("source_packet_identities", [packet["identity"]]))
+    return 32 * len(
+        (packet["source_packet_identities"] if "source_packet_identities" in packet else [packet["identity"]])
+    )
 
 
 def _journal_limit(packet):
@@ -590,7 +592,11 @@ def record_analysis(report, *, workspace, compiler_sha256):
 
     packet, context = _load(selected)
     workspace = Path(workspace).absolute()
-    submission = workspace / context.get("baseline", {}).get("submission", "submission")
+    # Omitted author workspace selection names the fixed submission directory;
+    # its actual current digest is still required immediately below.
+    baseline = context.get("baseline") or {}
+    submission_name = baseline["submission"] if "submission" in baseline else "submission"
+    submission = workspace / submission_name
     if _submission_digest(submission) != compiler_sha256:
         return dict(status="prior_only", reason="current_compiler_context_requires_rebinding", requests=[])
     fresh = copy.deepcopy(context)
@@ -1025,7 +1031,7 @@ def project(document=None, *, current_compiler_sha256=None):
     elif observed_requests and not no_effect:
         lines.append("required evidence: inspect the executed mechanism and paired complete-region performance.")
     elif not no_effect:
-        action = (task.get("next_action") or {}).get("action", "acquire new evidence")
+        action = (task.get("next_action") or {}).get("action") or "acquire new evidence (no specific action supplied)"
         lines.append("required evidence: " + _text(action))
     lines.append(
         "acceptance: executable mechanism checks, unchanged numerics, comparable complete-region cycles, "
@@ -1155,10 +1161,9 @@ def observe_result(request, document, *, base_compiler_sha256):
             metadata.get(key) != planned.get(key) for key in ("task_id", "packet_identity", "context_identity")
         ):
             return None
-        if (
-            request.get("submission", "submission") != planned.get("submission", "submission")
-            or planned.get("baseline_compiler_sha256", base_compiler_sha256) != base_compiler_sha256
-        ):
+        if (request["submission"] if "submission" in request else "submission") != (
+            planned["submission"] if "submission" in planned else "submission"
+        ) or planned.get("baseline_compiler_sha256", base_compiler_sha256) != base_compiler_sha256:
             return None
 
         def flag(name):
@@ -1175,7 +1180,9 @@ def observe_result(request, document, *, base_compiler_sha256):
         actual_sim = document.get("sim") or request.get("sim")
         if not isinstance(expected_sim, str) or actual_sim != expected_sim:
             return None
-        if request.get("suite", "core") != (planned.get("suite") or flag("--suite") or "core"):
+        # The self-check request protocol selects core unless an explicit suite is authored.
+        suite = request["suite"] if "suite" in request else "core"
+        if suite != (planned.get("suite") or flag("--suite") or "core"):
             return None
         expected_tiers = planned.get("tiers") or flag("--tiers")
         if expected_tiers is not None and request.get("tiers") != expected_tiers:
@@ -1232,7 +1239,7 @@ def observe_result(request, document, *, base_compiler_sha256):
             settings_sha256=planned["settings_sha256"],
             capsule=capsule,
             sim=actual_sim,
-            suite=request.get("suite", "core"),
+            suite=suite,
             tiers=request.get("tiers"),
             observations=observations,
             emitted_program=_emitted_program(document, capsule=capsule, compiler_sha256=executed_source),

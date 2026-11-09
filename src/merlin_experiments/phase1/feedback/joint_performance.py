@@ -46,7 +46,6 @@ def capsule_identity(capsule):
     return document_sha256({k: v for k, v in (capsule or {}).items() if k != "__dir__"})
 
 
-
 def selected_capsule(selection, capsule):
     """Resolve only the native execution-ceiling overlay to a pinned source.
 
@@ -77,6 +76,7 @@ def selected_capsule(selection, capsule):
 def _policy_sources(capsule):
     """Bounded lookup in the native owner's sibling policy snapshot only."""
     import yaml
+
     directory = capsule.get("__dir__")
     name = capsule.get("name")
     if not directory or not isinstance(name, str) or Path(name).name != name:
@@ -99,6 +99,7 @@ def _policy_sources(capsule):
         if isinstance(document, dict):
             yield document
 
+
 def _read(pin):
     path = Path(pin["path"])
     before = F.pin(path, max_bytes=16 << 20)
@@ -119,8 +120,14 @@ def selected():
     value = _read(pin)
     if value.get("schema") != SCHEMA:
         raise ValueError("unsupported joint performance selection")
+    # These are optional execution budgets, not observation evidence. Resolve
+    # their public policy once here; all downstream consumers use this selection.
+    if "per_request_seconds" not in value:
+        value["per_request_seconds"] = 30
+    if "per_observation_seconds" not in value:
+        value["per_observation_seconds"] = value["per_request_seconds"]
     for key in ("per_request_seconds", "per_observation_seconds"):
-        budget = value.get(key, 30)
+        budget = value[key]
         if type(budget) not in (int, float) or not 0 < budget <= 900:
             raise ValueError("joint performance observation budget must be in (0, 900]")
     return pin, value
@@ -128,7 +135,7 @@ def selected():
 
 def deadline(timeout):
     selection = selected()
-    return time.monotonic() + min(timeout, selection[1].get("per_request_seconds", 30)) if selection else 0
+    return time.monotonic() + min(timeout, selection[1]["per_request_seconds"]) if selection else 0
 
 
 def observation_budget(request_deadline):
@@ -143,7 +150,7 @@ def observation_budget(request_deadline):
     if choice is None:
         return 0
     value = choice[1]
-    per_case = value.get("per_observation_seconds", value.get("per_request_seconds", 30))
+    per_case = value["per_observation_seconds"]
     return max(0.0, min(per_case, request_deadline - time.monotonic()))
 
 
@@ -168,11 +175,16 @@ def _runtime(pin, *, facts_pin=None):
     # Every pricing update gets a new selection and runtime identity. No inherited
     # historical coefficient digest is implicitly approved by this adapter.
     runtime = freeze_runtime(
-        review_id=spec["review_id"], functional_argv=tuple(spec["functional_argv"]),
-        observer=Path(spec["observer"]), disassembler=Path(spec["disassembler"]),
-        model_path=Path(spec["model"]), source_manifest=Path(spec["source_manifest"]),
-        libraries=tuple(map(Path, spec["libraries"])), dependencies=tuple(map(Path, spec["dependencies"])),
-        entry_symbol=spec["entry_symbol"], completion_symbol=spec["completion_symbol"],
+        review_id=spec["review_id"],
+        functional_argv=tuple(spec["functional_argv"]),
+        observer=Path(spec["observer"]),
+        disassembler=Path(spec["disassembler"]),
+        model_path=Path(spec["model"]),
+        source_manifest=Path(spec["source_manifest"]),
+        libraries=tuple(map(Path, spec["libraries"])),
+        dependencies=tuple(map(Path, spec["dependencies"])),
+        entry_symbol=spec["entry_symbol"],
+        completion_symbol=spec["completion_symbol"],
         timing_selection=spec["timing_selection"],
         observation_resource_protocol=COUNT_OBSERVATION_900S_PROTOCOL,
     )
@@ -191,7 +203,8 @@ def structural_feedback(selection, capsule, *, target):
     if member and member.get("capsule_sha256") != capsule_identity(capsule):
         raise ValueError("joint roofline geometry belongs to different capsule bytes")
     return R.partial_roofline(
-        member.get("contractions"), machine,
+        member.get("contractions"),
+        machine,
         logical_read_bytes=member.get("logical_read_bytes"),
         logical_write_bytes=member.get("logical_write_bytes"),
     )
@@ -250,7 +263,7 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
         from . import observation_need as ON
 
         need = ON.need_seconds(structural)
-        budget = min(remaining_s, selection.get("per_request_seconds", 30))
+        budget = min(remaining_s, selection["per_request_seconds"])
         if need is not None and need > budget and request_deadline is not None:
             budget = max(budget, min(need, request_deadline - time.monotonic()))
         if not passed:
@@ -274,16 +287,23 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
             model_review = runtime.review_id
             ceiling = ON.protocol_ceiling(runtime)
             if need is not None and ceiling is not None and need > ceiling:
-                reason = (f"observation needs ~{need} s, beyond the selected count runtime's own bound "
-                          f"({ceiling} s for its two commands)")
+                reason = (
+                    f"observation needs ~{need} s, beyond the selected count runtime's own bound "
+                    f"({ceiling} s for its two commands)"
+                )
             else:
                 stage = "same_elf_observation"
                 report, observation = _observe(
-                    root, context=context, compiler=compiler, runtime=runtime, result=result, capsule=capsule,
+                    root,
+                    context=context,
+                    compiler=compiler,
+                    runtime=runtime,
+                    result=result,
+                    capsule=capsule,
                     remaining_s=budget,
                 )
                 ON.record(structural, observation)
-                reason = observation.get("reason", "native timing is provisional pending independent qualification")
+                reason = observation.get("reason")
                 if observation.get("provider_reason"):
                     # The provider's own stated refusal (host paths already scrubbed by the observer).
                     unavailable_detail = str(observation["provider_reason"])[:240]
@@ -296,6 +316,7 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
             raise ValueError("joint selection changed during observation")
         stage = "request_model_binding"
         from ..joint_model_activation import request_binding
+
         request_model = request_binding(environment())
     except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
         report = None
@@ -308,8 +329,16 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
             from merlin.common.path_scrub import scrub_host_paths
 
             unavailable_detail = scrub_host_paths(str(error))[:240]
-    row["performance"] = seed["performance"] if seed is not None else project(
-        report, observation, structural, selection_sha256=pin["sha256"], reason=reason,
+    row["performance"] = (
+        seed["performance"]
+        if seed is not None
+        else project(
+            report,
+            observation,
+            structural,
+            selection_sha256=pin["sha256"],
+            reason=reason,
+        )
     )
     row["performance"]["capsule_sha256"] = capsule_identity(source_capsule if source_capsule is not None else capsule)
     row["performance"]["staged_capsule_sha256"] = capsule_identity(capsule)
@@ -335,20 +364,34 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
         # timing-model estimate stays preferred and also calibrates it (:mod:`.fast_estimate`).
         from . import fast_estimate
 
-        fast_estimate.attach(row["performance"], root, structural,
-                             facts_sha256=(selection.get("facts") or {}).get("sha256"))
-    row["performance"]["request_model_binding"] = (dict(
-        channel=request_model["channel"], request_id=request_model["request_id"],
-        request_sha256=request_model["request_sha256"],
-        selection_sha256=(request_model["selection"] or {}).get("sha256"),
-        accepted_record_sha256=(request_model["accepted_record"] or {}).get("sha256"),
-        activation_warning=request_model["activation_warning"],
-    ) if request_model else None)
+        fast_estimate.attach(
+            row["performance"], root, structural, facts_sha256=(selection.get("facts") or {}).get("sha256")
+        )
+    row["performance"]["request_model_binding"] = (
+        dict(
+            channel=request_model["channel"],
+            request_id=request_model["request_id"],
+            request_sha256=request_model["request_sha256"],
+            selection_sha256=(request_model["selection"] or {}).get("sha256"),
+            accepted_record_sha256=(request_model["accepted_record"] or {}).get("sha256"),
+            activation_warning=request_model["activation_warning"],
+        )
+        if request_model
+        else None
+    )
     row["performance"]["structural_comparison_binding"] = {
-        key: row["performance"].get(key) for key in (
-            "capsule_sha256", "facts_sha256", "selection_sha256", "model_sha256",
-            "comparison_domain_sha256", "scope_sha256")}
+        key: row["performance"].get(key)
+        for key in (
+            "capsule_sha256",
+            "facts_sha256",
+            "selection_sha256",
+            "model_sha256",
+            "comparison_domain_sha256",
+            "scope_sha256",
+        )
+    }
     from .joint_performance_priority import project as search_priority
+
     row["performance"]["search_priority"] = search_priority(result, row["performance"])
     if seed is not None:
         if seed.get("compiler_diagnostics") is not None:
@@ -356,12 +399,17 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
         return
     try:
         from .joint_diagnostics_feedback import attach as attach_diagnostics
+
         attach_diagnostics(row, root, report=report, observation=observation, result=result, compiler=compiler)
     except (OSError, ValueError, KeyError, TypeError, RuntimeError):
-        row["compiler_diagnostics"] = {"status": "UNKNOWN", "reason": "diagnostic projection unavailable",
-                                       "promotion_authority": False}
+        row["compiler_diagnostics"] = {
+            "status": "UNKNOWN",
+            "reason": "diagnostic projection unavailable",
+            "promotion_authority": False,
+        }
     try:
         from ..joint_calibration_service import register
+
         if source_capsule is not None:
             register(row, root, result=result, compiler=compiler, capsule=source_capsule)
     except (OSError, ValueError, KeyError, TypeError, RuntimeError):
@@ -369,29 +417,39 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
         row["performance"]["calibration_registration"] = "unavailable"
 
 
-
 def _seed_timing(root, epoch, selection, pin, source_capsule, result):
     """A seeded run's carried model cycles for exactly this executable (:mod:`.seed_timing`), else None."""
     from . import seed_timing
 
     run_dir = seed_timing._run_dir()
-    if (run_dir is None or not (run_dir / seed_timing.TIMING_DIR).is_dir() or not epoch.get("runtime")
-            or result.get("owned_host_native_execution") is not None or not isinstance(source_capsule, dict)):
+    if (
+        run_dir is None
+        or not (run_dir / seed_timing.TIMING_DIR).is_dir()
+        or not epoch.get("runtime")
+        or result.get("owned_host_native_execution") is not None
+        or not isinstance(source_capsule, dict)
+    ):
         return None
     runtime = _runtime(epoch["runtime"], facts_pin=selection["facts"])
-    key = {"capsule_sha256": capsule_identity(source_capsule), "selection_sha256": pin["sha256"],
-           "model_sha256": F.digest(runtime.model_path), "facts_sha256": selection["facts"]["sha256"],
-           "timing_epoch": epoch["epoch"]}
+    key = {
+        "capsule_sha256": capsule_identity(source_capsule),
+        "selection_sha256": pin["sha256"],
+        "model_sha256": F.digest(runtime.model_path),
+        "facts_sha256": selection["facts"]["sha256"],
+        "timing_epoch": epoch["epoch"],
+    }
     return seed_timing.carried(original_executable(root), capsule=str(source_capsule.get("name")), key=key)
 
 
 def original_executable(root):
     from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
+
     root = F.canonical(Path(root))
     elf = F.canonical(root / PACKAGE_ELF_NAME)
     if not elf.is_file():
         raise ValueError("original native producer executable is unavailable")
     return elf
+
 
 def _observe(root, *, context, compiler, runtime, remaining_s, result=None, capsule=None):
     from merlin.targetgen.target_experiment import load_target_experiment
@@ -406,6 +464,7 @@ def _observe(root, *, context, compiler, runtime, remaining_s, result=None, caps
     owned_scope = None
     if (result or {}).get("owned_host_native_execution") is not None:
         from ...phase2.owned_model_observation import prepare
+
         owned_scope = prepare(result, target=context.target, evidence_root=root / "owned_scope_review")
         elf = owned_scope.elf
     else:
@@ -424,14 +483,18 @@ def _observe(root, *, context, compiler, runtime, remaining_s, result=None, caps
     # These self-contained capsule ELFs embed their complete stimulus. The input
     # identity is explicitly ELF-bound, not a fabricated external tensor hash.
     observation = OBS.observe(
-        elf, runtime=runtime, policy=policy, directory=root / "joint_timing",
-        input_sha256=elf_before["sha256"], remaining_s=remaining_s, numerical_pass=True,
+        elf,
+        runtime=runtime,
+        policy=policy,
+        directory=root / "joint_timing",
+        input_sha256=elf_before["sha256"],
+        remaining_s=remaining_s,
+        numerical_pass=True,
         **({"owned_scope": owned_scope} if owned_scope is not None else {}),
     )
     observation["input_identity_basis"] = "self-contained numerically checked ELF, including embedded stimulus"
     report = _read(observation["report"]) if observation.get("status") == "observed" else None
-    if (F.pin(elf, max_bytes=elf_bound) != elf_before
-            or hash_tree(compiler)["sha256"] != candidate):
+    if F.pin(elf, max_bytes=elf_bound) != elf_before or hash_tree(compiler)["sha256"] != candidate:
         raise ValueError("candidate changed during joint observation")
     runtime.verify()
     if report is not None:

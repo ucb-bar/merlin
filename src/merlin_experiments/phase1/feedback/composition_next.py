@@ -141,9 +141,12 @@ def grouped_source(name, workspace):
         return None
     path = folder / filename
     root = Path(workspace).absolute()
-    if (any(part.is_symlink() for part in (path, *path.parents) if part.is_relative_to(root))
-            or not path.resolve().is_relative_to(root.resolve())
-            or not path.is_file() or path.stat().st_size > 4 << 20):
+    if (
+        any(part.is_symlink() for part in (path, *path.parents) if part.is_relative_to(root))
+        or not path.resolve().is_relative_to(root.resolve())
+        or not path.is_file()
+        or path.stat().st_size > 4 << 20
+    ):
         return None
     try:
         observed = source_view(path.read_bytes())
@@ -151,14 +154,25 @@ def grouped_source(name, workspace):
         return None
     if not observed["groups"]:
         return None
-    return dict(input=observed["input"], products=observed["products"],
-        outputs=observed["outputs"], argument_order=observed["argument_order"],
-        groups=[dict(rhs=row["rhs"], members=len(row["members"]),
-            outputs=[member["output"] for member in row["members"]],
-            shapes=[member["shape"] for member in row["members"]],
-            readouts=[member["readout_attributes"] for member in row["members"]])
-            for row in observed["groups"][:8]], omitted_groups=max(0, len(observed["groups"]) - 8),
-        status="observed_source", emitted_mechanism="unknown")
+    return dict(
+        input=observed["input"],
+        products=observed["products"],
+        outputs=observed["outputs"],
+        argument_order=observed["argument_order"],
+        groups=[
+            dict(
+                rhs=row["rhs"],
+                members=len(row["members"]),
+                outputs=[member["output"] for member in row["members"]],
+                shapes=[member["shape"] for member in row["members"]],
+                readouts=[member["readout_attributes"] for member in row["members"]],
+            )
+            for row in observed["groups"][:8]
+        ],
+        omitted_groups=max(0, len(observed["groups"]) - 8),
+        status="observed_source",
+        emitted_mechanism="unknown",
+    )
 
 
 def _row_status(rows: dict, names) -> str:
@@ -199,7 +213,7 @@ def pointer(name: str, signals: dict, *, workspace: Path, imports, rows: dict, h
             "evidence": list(signals[rid])[:3],
             "symbol": route["symbol"],
             "imported_by_submission": found,
-            "catalog_rows": {row: (rows.get(row) or {}).get("status", "catalog_unavailable") for row in route["rows"]},
+            "catalog_rows": {row: (rows.get(row) or {}).get("status", "unknown") for row in route["rows"]},
             "next": script.next_command(route, skills),
             "skills": list(route["skills"]),
         }
@@ -270,7 +284,9 @@ def request_advice(name: str, signals: dict, inventory, declaration, *, row: dic
         " | host layout/storage requests require original software permissions; "
         "missing permission keeps original code; "
         "layout is deferred for selected head/sibling composition"
-        if any(m["option"] in {"propagate_layouts", "reuse_intermediate_storage"} for m in matches) else "")
+        if any(m["option"] in {"propagate_layouts", "reuse_intermediate_storage"} for m in matches)
+        else ""
+    )
     line = (
         f"source_composition.json options this case may use: {shown} | request: write {script.REQUEST_FILE} "
         f"{json.dumps(example, separators=(',', ':'))} | then re-run this check and read the row's "
@@ -340,8 +356,9 @@ def annotate(document: dict, rows, brief, *, workspace=None, context=None) -> in
             found = pointer(
                 name, signals, workspace=workspace, imports=imports, rows=rows_cache, host_flag=name in flagged
             )
-            request = (request_advice(name, signals, inventory, declaration, row=row, workspace=workspace)
-                       if primary else None)
+            request = (
+                request_advice(name, signals, inventory, declaration, row=row, workspace=workspace) if primary else None
+            )
             if found is None and request is None:
                 continue
             target = advice.get(name)

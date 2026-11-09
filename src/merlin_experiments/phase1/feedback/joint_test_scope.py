@@ -62,27 +62,40 @@ def select(root, *, submission, curriculum=None, additional_cases=None):
             doc.get("name") != name or doc.get("label") not in {"public", "dev"} or name in held
         ):
             raise ValueError("additional development capsule is not its selected public case")
-        if doc.get("label", "public") not in {"public", "dev"} or path.parent.name in held:
+        if ("label" in doc and doc["label"] not in {"public", "dev"}) or path.parent.name in held:
             continue
-        scope = doc.get("performance_scope", "scored")
-        if scope not in PERFORMANCE_SCOPES:
+        scope = doc.get("performance_scope")
+        if "performance_scope" in doc and scope not in PERFORMANCE_SCOPES:
             raise ValueError(f"{name}: performance_scope must be one of {PERFORMANCE_SCOPES}")
         if scope == "excluded":
             declared_excluded.add(name)
         family = str((doc.get("operation") or {}).get("op") or doc.get("kind") or "unknown")
-        volume = sum(math.prod(x.get("shape", ())) for x in doc.get("inputs", ())
-                     if all(type(d) is int and d > 0 for d in x.get("shape", ())))
+        volume = sum(
+            math.prod(x.get("shape", ()))
+            for x in doc.get("inputs", ())
+            if all(type(d) is int and d > 0 for d in x.get("shape", ()))
+        )
         from ..capability_inventory import _digest
         from ..workload_roles import classify
-        original = set(state['policy'].get('correctness_curriculum', {}).get('original_capsules', ()))
-        witnesses = set(state['policy'].get('gsim', {}).get('witness_capsules', ()))
-        member = dict(name=name, source_sha256=_digest({k: v for k, v in doc.items() if k != '__dir__'}),
-                      cohort=('original_correctness' if name in original else 'scalability_performance'
-                              if name in additional_cases else 'calibration' if name in witnesses
-                              else 'public_development'),
-                      declared_operation=(doc.get('operation') or {}).get('op'),
-                      input_tensors=doc.get('inputs', ()))
-        search_roles[name] = classify(member, selection=state['policy'].get('workload_roles'))['workload_role']
+
+        original = set(state["policy"].get("correctness_curriculum", {}).get("original_capsules", ()))
+        witnesses = set(state["policy"].get("gsim", {}).get("witness_capsules", ()))
+        member = dict(
+            name=name,
+            source_sha256=_digest({k: v for k, v in doc.items() if k != "__dir__"}),
+            cohort=(
+                "original_correctness"
+                if name in original
+                else "scalability_performance"
+                if name in additional_cases
+                else "calibration"
+                if name in witnesses
+                else "public_development"
+            ),
+            declared_operation=(doc.get("operation") or {}).get("op"),
+            input_tensors=doc.get("inputs", ()),
+        )
+        search_roles[name] = classify(member, selection=state["policy"].get("workload_roles"))["workload_role"]
         records.append((family, volume, path.parent.name, path.parent))
     if not records:
         raise ValueError("joint automatic development selection is empty")
@@ -145,8 +158,8 @@ def select(root, *, submission, curriculum=None, additional_cases=None):
                 raise ValueError("unknown impact families")
             families = set(requested)
             reason = "author-declared affected families; advisory selection only"
-    except (OSError, ValueError, TypeError):
-        pass
+    except (OSError, ValueError, TypeError) as error:
+        reason = f"unknown impact: hint unavailable ({type(error).__name__}); representative semantic-family smoke"
     if chosen is None:
         chosen = []
         for family in sorted(families):
@@ -258,7 +271,7 @@ def annotate(verdict, selection):
         {
             "scope": "compiler_package",
             "plane": failure.get("plane"),
-            "detail": str(failure.get("detail", "package rejected before capsule execution"))[:600],
+            "detail": str(failure["detail"])[:600] if failure.get("detail") is not None else None,
         }
         if failure
         else None
@@ -275,7 +288,7 @@ def annotate(verdict, selection):
             else None
         ),
         "performance_model_confidence": "consult selected versioned per-capsule feedback; unknown here",
-        "execution_status": selection.get("execution_status", "see_per_capsule_results"),
+        "execution_status": selection.get("execution_status"),
         "artifact": "qa/verdict.json",
     }
     if selection.get("curriculum"):
@@ -322,7 +335,10 @@ def annotate(verdict, selection):
     from .joint_performance_priority import summarize as performance_priority
 
     verdict["feedback_brief"]["performance_priority"] = performance_priority(
-        verdict.get("per_capsule", ()), cohorts=selection.get("performance_cohorts", {}), roles=selection.get("workload_roles"))
+        verdict.get("per_capsule", ()),
+        cohorts=selection.get("performance_cohorts", {}),
+        roles=selection.get("workload_roles"),
+    )
     if selection["scope"] == "smoke":
         if verdict.get("all_pass") is True:
             verdict["all_pass"] = None

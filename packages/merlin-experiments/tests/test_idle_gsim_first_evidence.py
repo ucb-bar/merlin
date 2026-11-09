@@ -1,13 +1,21 @@
 """The idle gSIM lane gives every family first evidence early and keeps long jobs in the long lane."""
 
+import json
+
 from merlin_experiments.phase1 import joint_gsim_measurement as M
 from merlin_experiments.phase1.feedback import idle_gsim as G
 from merlin_experiments.phase1.feedback import performance_brief as PB
 
 
 def _entry(name, family, work, *, evidence, headroom):
-    return {"capsule": name, "family": family, "work_cycles": work, "timing_evidence": evidence,
-            "headroom_cycles": headroom, "measured_before": False}
+    return {
+        "capsule": name,
+        "family": family,
+        "work_cycles": work,
+        "timing_evidence": evidence,
+        "headroom_cycles": headroom,
+        "measured_before": False,
+    }
 
 
 def test_smallest_untimed_case_per_family_leads_then_headroom_order():
@@ -33,8 +41,7 @@ def test_candidates_classify_untimed_cases_and_their_family_from_declared_work()
         "large": {"elf_sha256": "b", "structural_roofline": {**roofline, "useful_macs": 1 << 30}},
     }
     model = {"classes": {"all": {"overhead_cycles": 0.0, "factor": 2.0, "margin": 1.5}}, "worst_ratio": 3.0}
-    ranked = G.candidates(["large", "small"], {"large": "pass", "small": "pass"}, {}, "d",
-                          records=records, model=model)
+    ranked = G.candidates(["large", "small"], {"large": "pass", "small": "pass"}, {}, "d", records=records, model=model)
     # Headroom alone would put "large" first; the smallest untimed case of the family leads instead.
     assert [c["capsule"] for c in ranked] == ["small", "large"]
     assert not ranked[0]["timing_evidence"] and ranked[0]["family"] == "compute"
@@ -60,8 +67,23 @@ def test_a_job_long_relative_to_pending_smaller_work_uses_only_the_long_lane():
 
 def test_brief_says_unknown_timing_is_missing_evidence_and_how_to_measure_one_case(tmp_path):
     rows = [{"capsule": "untimed", "tiers": {"L2": {"status": "pass"}}, "performance": {"status": "UNKNOWN"}}]
+    (tmp_path / "PUBLIC_CAPABILITIES.json").write_text(
+        json.dumps(
+            {
+                "schema": "merlin.public_capability_inventory.v1",
+                "members": {"untimed": {"workload_role": "correctness"}},
+            }
+        )
+    )
     brief = PB.build(rows, workspace=tmp_path)
     unknown = brief["unknown_timing"]
     assert "missing evidence" in unknown["meaning"]
     assert unknown["commands"] == ["python agent_selfcheck.py --capsules untimed --sim gsim --wait-budget 5"]
     assert "--attach" in unknown["how_to_measure"]
+
+
+def test_missing_workload_role_withholds_a_direct_gsim_command(tmp_path):
+    rows = [{"capsule": "untimed", "tiers": {"L2": {"status": "pass"}}, "performance": {"status": "UNKNOWN"}}]
+    brief = PB.build(rows, workspace=tmp_path)
+    assert "commands" not in brief["unknown_timing"]
+    assert "missing evidence" in brief["unknown_timing"]["meaning"]

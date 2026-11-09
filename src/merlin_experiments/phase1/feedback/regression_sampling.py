@@ -188,7 +188,8 @@ def rotating_cover(docs: dict, eligible, recency: dict) -> list[str]:
 
     axes = {n: capsule_axes(docs.get(n) or {}) for n in sorted(eligible)}
     uncovered = set().union(*axes.values()) if axes else set()
-    order = sorted(axes, key=lambda n: (-recency.get(n, 0), n))
+    # A case absent from this scheduler history has never been selected (grade zero).
+    order = sorted(axes, key=lambda n: (-recency[n] if n in recency else 0, n))
     chosen: list[str] = []
     while uncovered:
         best = max(order, key=lambda n: len(axes[n] & uncovered))  # first maximum: least recent wins ties

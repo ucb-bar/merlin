@@ -158,7 +158,7 @@ def _select(value, bank):
     """One admitted unit (and optional occurrence) named by unit ID or a cca-evidence/ path."""
     units = {unit["kernel_id"]: unit for unit in bank["units"]}
     entry, path, region = value.get("entry") or "", value.get("path") or "", value.get("region") or ""
-    if value.get("member") or value.get("format", "auto") != "auto" or value.get("instruction_offset", 0):
+    if value.get("member") or ("format" in value and value["format"] != "auto") or value.get("instruction_offset"):
         raise ValueError("invalid_analysis_request")
     unit = units.get(entry) if entry else None
     if entry and unit is None:
@@ -237,7 +237,9 @@ def _extents(analysis):
 
 
 def _inventory(value, root, bank, pin):
-    offset, limit = value.get("offset", 0), value.get("limit", 8)
+    # Optional request paging over the already byte-pinned inventory.
+    page = {"offset": 0, "limit": 8, **value}
+    offset, limit = page["offset"], page["limit"]
     units = sorted(bank["units"], key=lambda unit: unit["kernel_id"])
     path = value.get("path") or GRANT
     if path not in (GRANT, RAW):
@@ -329,7 +331,9 @@ def _cca(root, bank, occurrence, analysis):
 
 def _lift(value, root, bank, pin, *, compare=False):
     unit, occurrences = _select(value, bank)
-    offset, limit = (0, 1) if compare else (value.get("offset", 0), value.get("limit", 8))
+    # Compare admits exactly one region; ordinary lift defaults to the first bounded page.
+    page = {"offset": 0, "limit": 8, **value}
+    offset, limit = (0, 1) if compare else (page["offset"], page["limit"])
     if compare and len(occurrences) != 1:
         raise ValueError("analysis_compare_requires_one_region")
     regions, ccas = [], []

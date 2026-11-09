@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import logging
 import os
 import secrets
 from pathlib import Path
@@ -66,8 +67,9 @@ def _archive(path):
 
 
 @contextlib.contextmanager
-def active_full_selfcheck(*, ws, process, request, source_sha256, public, context, contract, bundle_manifest, sim,
-                         dispatcher_pid=None):
+def active_full_selfcheck(
+    *, ws, process, request, source_sha256, public, context, contract, bundle_manifest, sim, dispatcher_pid=None
+):
     """Publish only an actual ordinary full-ladder worker launched by this broker."""
     path, record = None, None
     try:
@@ -77,7 +79,7 @@ def active_full_selfcheck(*, ws, process, request, source_sha256, public, contex
         from .selfcheck import _adapters, _target_sim_via
 
         ordinary = (
-            request.get("capsules", "all") == "all"
+            ("capsules" not in request or request["capsules"] == "all")
             and not request.get("caller_layout")
             and not request.get("action")
             and not any(request.get(k) for k in FORWARDED_PROBES)
@@ -103,8 +105,11 @@ def active_full_selfcheck(*, ws, process, request, source_sha256, public, contex
                 dispatcher = _identity(dispatcher_pid) if dispatcher_pid is not None else None
                 manager = _identity(dispatcher["parent"] if dispatcher is not None else os.getppid())
                 parent = dispatcher if dispatcher is not None else manager
-                if (worker["parent"] == broker["pid"] and broker["parent"] == parent["pid"]
-                        and (dispatcher is None or dispatcher["parent"] == manager["pid"])):
+                if (
+                    worker["parent"] == broker["pid"]
+                    and broker["parent"] == parent["pid"]
+                    and (dispatcher is None or dispatcher["parent"] == manager["pid"])
+                ):
                     path = _marker(ws, create=True)
                     if path is not None:
                         record = {
@@ -135,15 +140,14 @@ def active_full_selfcheck(*, ws, process, request, source_sha256, public, contex
             try:
                 if _read(path) == record:
                     path.unlink()
-            except (OSError, ValueError):
-                pass
+            except (OSError, ValueError) as error:
+                logging.getLogger(__name__).warning("foreground marker cleanup unavailable: %s", type(error).__name__)
 
 
 def _live_process_chain(record):
     """Reopen every original process hop; dead/reparented owners grant no priority."""
     manager, broker, worker = (record[key] for key in ("manager", "broker", "worker"))
-    if (manager != _identity(os.getpid()) or broker != _identity(broker["pid"])
-            or worker != _identity(worker["pid"])):
+    if manager != _identity(os.getpid()) or broker != _identity(broker["pid"]) or worker != _identity(worker["pid"]):
         return False
     parent = manager
     dispatcher = record.get("dispatcher")
@@ -203,14 +207,15 @@ class BackgroundGuard:
         self.deferred = None
         self.finish_bounded_snapshot = finish_bounded_snapshot
         self._components = None
-        selected = os.environ.get('MERLIN_BACKGROUND_FINISH_SNAPSHOT', '0')
-        if selected not in {'0', '1'}:
-            raise ValueError('MERLIN_BACKGROUND_FINISH_SNAPSHOT must be 0 or 1')
+        selected = os.environ.get("MERLIN_BACKGROUND_FINISH_SNAPSHOT")
+        if selected is not None and selected not in {"0", "1"}:
+            raise ValueError("MERLIN_BACKGROUND_FINISH_SNAPSHOT must be 0 or 1")
         # Legacy selection remains accepted; every grade now finishes its snapshot.
 
     def bind_snapshot(self, candidate):
         """Bind reach and reconciliation identity to the copied compiler, never live edits."""
         from .promotion import submission_digests
+
         candidate = Path(candidate)
         if candidate.name != "submission":
             raise ValueError("background dependency binding requires original submission snapshot")
@@ -241,6 +246,7 @@ class BackgroundGuard:
         """
         if self.finish_bounded_snapshot:
             from .. import joint_control
+
             stop = joint_control.stop_reason()
             if stop is not None:
                 return stop
@@ -254,8 +260,7 @@ class BackgroundGuard:
         Only a label: admission continues, and each case is reconciled when published.
         """
         current = source_digest(self.ws)
-        if (self.source is not None
-                and current is not None and current != self.source):
+        if self.source is not None and current is not None and current != self.source:
             self.deferred = "background source superseded"
         return self.deferred
 

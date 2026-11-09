@@ -4,10 +4,12 @@ Public channel responses are never recovery authority. This journal lives beside
 private source snapshots and retains the verified launch identity, not a digest
 recomputed from the author's subsequently edited source.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -28,18 +30,33 @@ def _encoded(value) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
 
 
-def persist(ws: Path, job_id: str, verdict: dict, *, identity: str, source_digest: str,
-            source_identity_verified: bool, cert_tier: str, instrument: str | None) -> Path:
+def persist(
+    ws: Path,
+    job_id: str,
+    verdict: dict,
+    *,
+    identity: str,
+    source_digest: str,
+    source_identity_verified: bool,
+    cert_tier: str,
+    instrument: str | None,
+) -> Path:
     """Persist only an actually completed, source-verified promoted job."""
     if not source_identity_verified or not isinstance(source_digest, str) or not source_digest:
         raise ValueError("completion has no verified launch source")
     if identity != f"submission:{source_digest}" and not promotion._valid_execution(identity):
         raise ValueError("completion identity does not bind its verified source or execution")
     record = {
-        "schema": "private_promotion_completion_v1", "workspace": str(ws.resolve()),
-        "job_id": job_id, "identity": identity, "source_digest": source_digest,
-        "source_identity_verified": True, "cert_tier": cert_tier, "instrument": instrument,
-        "verdict": verdict, "verdict_sha256": hashlib.sha256(_encoded(verdict)).hexdigest(),
+        "schema": "private_promotion_completion_v1",
+        "workspace": str(ws.resolve()),
+        "job_id": job_id,
+        "identity": identity,
+        "source_digest": source_digest,
+        "source_identity_verified": True,
+        "cert_tier": cert_tier,
+        "instrument": instrument,
+        "verdict": verdict,
+        "verdict_sha256": hashlib.sha256(_encoded(verdict)).hexdigest(),
     }
     path = _store(ws) / (hashlib.sha256(job_id.encode()).hexdigest() + ".json")
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -59,8 +76,9 @@ def persist(ws: Path, job_id: str, verdict: dict, *, identity: str, source_diges
     return path
 
 
-def recover(ws: Path, *, cert_tier: str, instrument: str | None, log=None,
-            recovered_results: dict | None = None) -> list[str]:
+def recover(
+    ws: Path, *, cert_tier: str, instrument: str | None, log=None, recovered_results: dict | None = None
+) -> list[str]:
     """Replay protected completions; duplicate/unknown identities remain recorder no-ops."""
     recorded = []
     for path in sorted(_store(ws).glob("*.json")):
@@ -68,30 +86,45 @@ def recover(ws: Path, *, cert_tier: str, instrument: str | None, log=None,
             if path.is_symlink() or not path.is_file():
                 continue
             record = json.loads(path.read_bytes())
-            if (record.get("schema") != "private_promotion_completion_v1"
-                    or record.get("workspace") != str(ws.resolve())
-                    or record.get("cert_tier") != cert_tier or record.get("instrument") != instrument
-                    or record.get("source_identity_verified") is not True):
+            if (
+                record.get("schema") != "private_promotion_completion_v1"
+                or record.get("workspace") != str(ws.resolve())
+                or record.get("cert_tier") != cert_tier
+                or record.get("instrument") != instrument
+                or record.get("source_identity_verified") is not True
+            ):
                 continue
             identity, digest = record.get("identity"), record.get("source_digest")
             job_id = record.get("job_id")
-            if (not isinstance(job_id, str) or not job_id
-                    or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_" for c in job_id)
-                    or path.name != hashlib.sha256(job_id.encode()).hexdigest() + ".json"):
+            if (
+                not isinstance(job_id, str)
+                or not job_id
+                or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_" for c in job_id)
+                or path.name != hashlib.sha256(job_id.encode()).hexdigest() + ".json"
+            ):
                 continue
             if not isinstance(digest, str) or not digest:
                 continue
             if identity != f"submission:{digest}" and not promotion._valid_execution(identity):
                 continue
             verdict = record["verdict"]
-            if (not isinstance(verdict, dict)
-                    or hashlib.sha256(_encoded(verdict)).hexdigest() != record.get("verdict_sha256")):
+            if not isinstance(verdict, dict) or hashlib.sha256(_encoded(verdict)).hexdigest() != record.get(
+                "verdict_sha256"
+            ):
                 continue
-            recorded.extend(promotion.record_cert(ws, verdict, cert_tier, log, identity=identity,
-                                                 source_identity_verified=True, request=job_id))
+            recorded.extend(
+                promotion.record_cert(
+                    ws, verdict, cert_tier, log, identity=identity, source_identity_verified=True, request=job_id
+                )
+            )
             if recovered_results is not None:
                 recovered_results[job_id] = verdict
-        except (OSError, ValueError, KeyError, TypeError):
-            # A corrupt/unbound journal member authorizes nothing and cannot block ordinary work.
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            # Unreadable protected evidence cannot authorize replay or block ordinary work.
+            message = f"completion recovery skipped an unreadable journal: {type(error).__name__}"
+            if log is not None:
+                print(message, file=log, flush=True)
+            else:
+                logging.getLogger(__name__).warning(message)
             continue
     return recorded

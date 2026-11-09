@@ -50,7 +50,7 @@ def select(document, spec, row, *, target, programs):
     if manifest.get("schema") != B.MANIFEST_SCHEMA or manifest.get("target") != target:
         raise ValueError("selected host-math bundle names a different schema or target")
     seal = manifest.get("seal") or {}
-    sums_name = Path(seal.get("sums", "SHA256SUMS"))
+    sums_name = Path(seal["sums"])
     if sums_name.is_absolute() or ".." in sums_name.parts or not is_sha256(seal.get("sums_sha256")):
         raise ValueError("selected host-math bundle has no valid seal")
     sums = read(root / sums_name, seal["sums_sha256"])
@@ -99,7 +99,20 @@ def select(document, spec, row, *, target, programs):
         contract = receipt.get("numeric_contract") or {}
         if receipt.get("schema") != "merlin.model_check.reference_numeric_contract.v1":
             raise ValueError("selected numerical contract has a different schema")
-        actual_policy = (contract.get("host_math") or {}).get("policy", "native")
+        # The original strict-float numerical contract encodes native arithmetic
+        # by omitting host_math; portable policies always declare it explicitly.
+        # Only that known version may use this representation.
+        if "host_math" not in contract:
+            from merlin.runtime.linalg_numpy import NUMERIC_CONTRACT_VERSION
+
+            if contract.get("version") != NUMERIC_CONTRACT_VERSION:
+                raise ValueError("selected native reference has no recognized numerical contract")
+            actual_policy = "native"
+        else:
+            math_contract = contract["host_math"]
+            if not isinstance(math_contract, dict) or not isinstance(math_contract.get("policy"), str):
+                raise ValueError("selected reference has no explicit host-math policy")
+            actual_policy = math_contract["policy"]
         if actual_policy != policy or receipt.get("outputs_sha256") != expected[name]:
             raise ValueError("selected models host math differs from sealed reference policy/output identity")
         if policy != "native":

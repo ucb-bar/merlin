@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -192,7 +193,10 @@ def grade_kernels(run_dir, workspace):
         runs = work / ("fruns_" + token) / "runs"
         try:
             benches = sorted(path for path in runs.iterdir() if path.is_dir())
-        except OSError:
+        except OSError as error:
+            logging.getLogger(__name__).warning(
+                "CCA completed-grade build inventory unavailable: %s", type(error).__name__
+            )
             continue
         for bench in benches:
             path = bench / case / "generated" / _KERNEL
@@ -216,7 +220,8 @@ def latest_cycles(workspace, *, limit=8 << 20):
     for line in text.splitlines():
         try:
             row = json.loads(line)
-        except ValueError:
+        except ValueError as error:
+            logging.getLogger(__name__).warning("CCA timing history row unreadable: %s", type(error).__name__)
             continue
         if isinstance(row, dict) and isinstance(row.get("test_case"), str) and type(row.get("cycles")) is int:
             out[row["test_case"]] = row["cycles"]

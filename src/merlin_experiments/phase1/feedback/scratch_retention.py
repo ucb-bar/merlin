@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import functools
 import json
+import logging
 import os
 import shutil
 import sys
@@ -76,7 +77,7 @@ def say(message: str) -> None:
     try:
         print(message, flush=True)
     except (OSError, ValueError):
-        pass
+        logging.getLogger(__name__).warning("Scratch retention stdout unavailable", exc_info=True)
 
 
 def min_free_bytes() -> int:
@@ -182,7 +183,9 @@ def _remove_tree(path: Path) -> int:
                 try:
                     entry.rmdir()
                 except OSError:
-                    pass
+                    logging.getLogger(__name__).warning(
+                        "Scratch directory retained after cleanup failure", exc_info=True
+                    )
     try:
         path.rmdir()
     except OSError:
@@ -212,6 +215,9 @@ def slim_tree(root, *, citing: tuple[Path, ...] = (), keep_command_buffers: bool
             stat = here.stat()
             times[here] = (stat.st_atime_ns, stat.st_mtime_ns)
         except OSError:
+            logging.getLogger(__name__).warning(
+                "Scratch retention could not inspect or restore a directory/file", exc_info=True
+            )
             continue
         if (here / "capsule_result.json").is_file() and _paid_rtl_evidence(here):
             directories[:] = []
@@ -236,6 +242,9 @@ def slim_tree(root, *, citing: tuple[Path, ...] = (), keep_command_buffers: bool
             try:
                 size = entry.lstat().st_size
             except OSError:
+                logging.getLogger(__name__).warning(
+                    "Scratch retention could not inspect or restore a directory/file", exc_info=True
+                )
                 continue
             if entry.is_symlink() or Path(name).suffix in BULK_SUFFIXES or size > KEEP_FILE_BYTES:
                 freed += _remove(entry)
@@ -243,7 +252,9 @@ def slim_tree(root, *, citing: tuple[Path, ...] = (), keep_command_buffers: bool
         try:
             os.utime(directory, ns=(atime, mtime))
         except OSError:
-            pass
+            logging.getLogger(__name__).warning(
+                "Scratch retention could not inspect or restore a directory/file", exc_info=True
+            )
     return freed
 
 
@@ -276,7 +287,7 @@ def slim_once(root, *, scope: str, citing: tuple[Path, ...] = (), keep_command_b
         )
         os.utime(root, ns=(stat.st_atime_ns, stat.st_mtime_ns))
     except OSError:
-        pass
+        logging.getLogger(__name__).warning("Scratch retention marker unavailable; next pass may retry", exc_info=True)
     return freed
 
 
@@ -369,6 +380,7 @@ def prune_superseded_grades(run_dir, workspace=None, *, keep_newest: int = KEEP_
         try:
             document = json.loads(entry.read_text())
         except (OSError, ValueError):
+            logging.getLogger(__name__).warning("Grade owner unreadable; retaining its scratch", exc_info=True)
             continue
         if isinstance(document, dict) and str(document.get("token")) == entry.stem:
             records[entry.stem] = document

@@ -35,6 +35,7 @@ Advisory only: it imposes no threshold and changes no status. No ``re``, no targ
 from __future__ import annotations
 
 import json
+import logging
 import math
 from pathlib import Path
 
@@ -56,9 +57,7 @@ def _ints(shape) -> tuple[int, ...] | None:
 
 def _tensors(declaration: dict) -> dict[str, dict]:
     return {
-        t["name"]: t
-        for t in declaration.get("inputs") or ()
-        if isinstance(t, dict) and isinstance(t.get("name"), str)
+        t["name"]: t for t in declaration.get("inputs") or () if isinstance(t, dict) and isinstance(t.get("name"), str)
     }
 
 
@@ -242,8 +241,14 @@ def model_domain(performance):
     """Comparable model/facts/scope/capsule identities, never an instruction count."""
     if not isinstance(performance, dict) or performance.get("complete_event_accounting") is not True:
         return None
-    keys = ("selection_sha256", "model_sha256", "facts_sha256", "comparison_domain_sha256",
-            "scope_sha256", "capsule_sha256")
+    keys = (
+        "selection_sha256",
+        "model_sha256",
+        "facts_sha256",
+        "comparison_domain_sha256",
+        "scope_sha256",
+        "capsule_sha256",
+    )
     pins = tuple(performance.get(k) for k in keys)
     if any(not isinstance(p, str) or len(p) != 64 or any(c not in "0123456789abcdef" for c in p) for p in pins):
         return None
@@ -288,6 +293,7 @@ def _ledger(workspace) -> list[dict]:
         try:
             row = json.loads(line)
         except ValueError:
+            logging.getLogger(__name__).warning("Ignoring malformed shape-history row", exc_info=True)
             continue
         if isinstance(row, dict) and isinstance(row.get("test_case"), str):
             rows.append(row)
@@ -342,8 +348,11 @@ def compare(name: str, cycles, kind, best: dict, klass: str, *, domain=None) -> 
     if kind not in RANKABLE or type(cycles) not in (int, float) or not cycles > 0:
         return {"best_cycles": None, "ratio_vs_best": None, "verdict": f"{NO_EVIDENCE} ({klass})"}
     if kind in ("calibrated_model", "provisional_model") and domain is None:
-        return {"best_cycles": None, "ratio_vs_best": None,
-                "verdict": f"missing complete model/facts/scope identity ({klass})"}
+        return {
+            "best_cycles": None,
+            "ratio_vs_best": None,
+            "verdict": f"missing complete model/facts/scope identity ({klass})",
+        }
     earlier = best.get((name, kind) if kind in ("gsim_measured", "fast_estimate") else (name, kind, domain))
     if earlier is None:
         return {
@@ -358,8 +367,10 @@ def compare(name: str, cycles, kind, best: dict, klass: str, *, domain=None) -> 
     if kind == "fast_estimate":
         from .fast_estimate import COMPLETE_ESTIMATE_ADVICE, ORDER_BLIND
 
-        reading += (f" ({ORDER_BLIND}); if the variants differ in transfer widths, overlap, issue order or "
-                    f"prefetch, {COMPLETE_ESTIMATE_ADVICE}")
+        reading += (
+            f" ({ORDER_BLIND}); if the variants differ in transfer widths, overlap, issue order or "
+            f"prefetch, {COMPLETE_ESTIMATE_ADVICE}"
+        )
     return {"best_cycles": earlier["cycles"], "ratio_vs_best": ratio, "verdict": reading}
 
 
@@ -398,9 +409,7 @@ def vs_best_line(observations, workspace, *, target: str | None = None) -> str |
                 parts.append(f"{klass}: no earlier comparable {kind} cycles ({name})")
             else:
                 parts.append(f"{klass}: {NO_EVIDENCE} ({name}, {kind or 'no timing'})")
-    return "vs best per class (cycles / fewest earlier cycles of the same case and evidence kind): " + "; ".join(
-        parts
-    )
+    return "vs best per class (cycles / fewest earlier cycles of the same case and evidence kind): " + "; ".join(parts)
 
 
 __all__ = [

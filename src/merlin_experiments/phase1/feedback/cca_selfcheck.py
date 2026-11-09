@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -230,8 +231,8 @@ def _selfcheck_record(
     if complete:
         try:
             _write_json(Path(cache_dir) / f"record-{key[:32]}.json", record)
-        except OSError:
-            pass
+        except OSError as error:
+            logging.getLogger(__name__).warning("CCA selfcheck cache not written: %s", type(error).__name__)
     return record
 
 

@@ -34,6 +34,7 @@ grade: any failure is logged and dropped. The console tails it when present and 
 from __future__ import annotations
 
 import json
+import logging
 import time
 from pathlib import Path
 
@@ -64,9 +65,18 @@ def _evidence_fields(cycles, roofline: dict, performance: dict) -> dict:
     if dominant is not None:
         fields["dominant_modeled_resource"] = dominant
     if isinstance(performance, dict) and performance:
-        fields["performance_identity"] = {key: performance.get(key) for key in (
-            "complete_event_accounting", "selection_sha256", "model_sha256", "facts_sha256",
-            "comparison_domain_sha256", "scope_sha256", "capsule_sha256")}
+        fields["performance_identity"] = {
+            key: performance.get(key)
+            for key in (
+                "complete_event_accounting",
+                "selection_sha256",
+                "model_sha256",
+                "facts_sha256",
+                "comparison_domain_sha256",
+                "scope_sha256",
+                "capsule_sha256",
+            )
+        }
     return fields
 
 
@@ -204,7 +214,9 @@ class Recorder:
         for pair in model_calibration.pairs(workspace):
             name = pair["test_case"]
             # The pair of the current loop-tier executable, else of the certified one, else any.
-            rank = {d: i for i, d in enumerate(self.current.get(name, ())) if d}.get(pair["execution_digest"], 9)
+            # Current loop/certificate executions rank before other actual recorded pairs.
+            current = {d: i for i, d in enumerate(self.current.get(name, ())) if d}
+            rank = current[pair["execution_digest"]] if pair["execution_digest"] in current else 9
             if name in self.current and (name not in newest or rank < newest[name][0]):
                 newest[name] = (rank, pair)
         newest = {name: pair for name, (_, pair) in newest.items()}
@@ -282,6 +294,7 @@ def _last_rows(path: Path) -> dict:
             try:
                 row = json.loads(line)
             except ValueError:
+                logging.getLogger(__name__).warning("Ignoring malformed performance-history row", exc_info=True)
                 continue
             if isinstance(row, dict) and row.get("schema") == SCHEMA and isinstance(row.get("test_case"), str):
                 last[(row["test_case"], row.get("kind"))] = row

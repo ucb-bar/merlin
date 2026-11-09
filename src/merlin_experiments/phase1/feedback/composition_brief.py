@@ -94,7 +94,8 @@ def build(record, *, tiers=None):
         "propagate_layouts",
         "reuse_intermediate_storage",
     ):
-        requested = preferences.get(name, False) is True if request_available else None
+        # Optional opt-ins: absence means no request, not evidence of application.
+        requested = (name in preferences and preferences[name] is True) if request_available else None
         selected = (
             selection.get("whole_head_batches") == "source_selected_not_qualified"
             if name == "whole_head_batches"
@@ -103,15 +104,20 @@ def build(record, *, tiers=None):
             else selection.get("status") == "source_selected_not_qualified"
             and selection.get("kind") != "independent_heads"
             if name == "shared_input_siblings"
-            else isinstance((inputs.get("device") or {}).get({
-                "propagate_layouts": "pre_group_layout", "reuse_intermediate_storage": "intermediate_storage"
-            }[name]), dict)
+            else isinstance(
+                (inputs.get("device") or {}).get(
+                    {"propagate_layouts": "pre_group_layout", "reuse_intermediate_storage": "intermediate_storage"}[
+                        name
+                    ]
+                ),
+                dict,
+            )
             if name in {"propagate_layouts", "reuse_intermediate_storage"}
             else inputs.get(name) == {"host_isa": "rv64gc", "combine_clamp": True}
             if name == "host_bounded_rne"
             else inputs.get(name) == {"host_isa": "rv64gc", "abi": "lp64d", "symbol": "roundevenf"}
             if name == "host_roundeven"
-            else inputs.get(name, False) is True
+            else name in inputs and inputs[name] is True
         )
         features[name] = {
             "requested": requested,
@@ -148,9 +154,14 @@ def build(record, *, tiers=None):
             report, digest = item
             try:
                 require_report(report, require_combined=True)
-                bounded.update(status="applied", report_sha256=digest,
-                               effects={"proven_original_chains": len(report["routes"]),
-                                        "historical_observer_permissions_imported": False})
+                bounded.update(
+                    status="applied",
+                    report_sha256=digest,
+                    effects={
+                        "proven_original_chains": len(report["routes"]),
+                        "historical_observer_permissions_imported": False,
+                    },
+                )
             except ValueError:
                 bounded["status"] = "applied_evidence_unavailable"
     for name, schema in (
@@ -209,8 +220,10 @@ def build(record, *, tiers=None):
             feature.update(status="applied" if count else "selected_no_rewrite", effects=effects, report_sha256=digest)
         except (KeyError, TypeError, ValueError):
             feature["status"] = "applied_evidence_unavailable"
-    for name, schema in (("propagate_layouts", "merlin.host_graph_optimization.v1"),
-                         ("reuse_intermediate_storage", "merlin.host_intermediate_storage.v1")):
+    for name, schema in (
+        ("propagate_layouts", "merlin.host_graph_optimization.v1"),
+        ("reuse_intermediate_storage", "merlin.host_intermediate_storage.v1"),
+    ):
         feature = features[name]
         chosen = (selection.get("host_preparation") or {}).get(name) or {}
         if chosen.get("status") == "deferred":
@@ -226,8 +239,12 @@ def build(record, *, tiers=None):
         if actual.get("status") not in {"applied", "unchanged"}:
             feature["status"] = "applied_evidence_unavailable"
             continue
-        feature.update(status=actual["status"], reason=actual.get("reason"), report_sha256=digest,
-                       permissions_admitted=chosen.get("permissions_admitted"))
+        feature.update(
+            status=actual["status"],
+            reason=actual.get("reason"),
+            report_sha256=digest,
+            permissions_admitted=chosen.get("permissions_admitted"),
+        )
         if name == "propagate_layouts":
             layout = report.get("layout") or {}
             effects = {key: _number(layout.get(key)) for key in ("before_transpose_bytes", "after_transpose_bytes")}
@@ -240,7 +257,8 @@ def build(record, *, tiers=None):
             known = {"no_single_free", "multiple_frees", "raw_pointer_escapes", "descriptor_escapes", "in_loop"}
             if isinstance(reasons, dict):
                 feature["allocation_refusals"] = {
-                    key: reasons[key] for key in sorted(known & reasons.keys())
+                    key: reasons[key]
+                    for key in sorted(known & reasons.keys())
                     if _number(reasons[key]) is not None and reasons[key] > 0
                 }
             feature["storage_metric_scope"] = "compiled_allocation_intervals_not_runtime_peak_or_cycles"
@@ -249,7 +267,11 @@ def build(record, *, tiers=None):
     composition = (record.get("source_device_join") or {}).get("composition") or {}
     schema = composition.get("schema")
     if schema in {"merlin.original_sibling_source_composition.v1", "merlin.original_sibling_source_components.v1"}:
-        components = composition.get("components", [composition])
+        # The v1 single-component record is itself the component; the roster schema
+        # requires an explicit components field and cannot invent a member.
+        components = (
+            [composition] if schema == "merlin.original_sibling_source_composition.v1" else composition["components"]
+        )
         ordinary = composition.get("ordinary_joined_groups", {})
         features["shared_input_siblings"].update(
             status="applied",
@@ -264,10 +286,14 @@ def build(record, *, tiers=None):
             },
         )
     elif schema == "merlin.original_head_source_composition.v1":
-        head_components = [c for c in composition.get("components", [])
-                           if c.get("schema") == "merlin.original_head_family.v1"]
-        sibling_components = [c for c in composition.get("components", [])
-                              if c.get("schema") == "merlin.original_sibling_source_composition.v1"]
+        head_components = [
+            c for c in composition.get("components", []) if c.get("schema") == "merlin.original_head_family.v1"
+        ]
+        sibling_components = [
+            c
+            for c in composition.get("components", [])
+            if c.get("schema") == "merlin.original_sibling_source_composition.v1"
+        ]
         features["independent_heads"].update(
             status="applied",
             selected=True,
@@ -276,25 +302,39 @@ def build(record, *, tiers=None):
                 "matrix_products": _number(composition.get("matrix_products")),
                 "batch_abi_calls": _number(composition.get("batch_abi_calls")),
                 "accelerator_execution_count_reduced": False,
-                "whole_batch_kernel_calls": sum(c.get("kernel_invocations", 0) for c in head_components
-                                                 if c.get("whole_batch") is True),
+                "whole_batch_kernel_calls": (
+                    sum(c["kernel_invocations"] for c in head_components if c.get("whole_batch") is True)
+                    if all(
+                        type(c.get("kernel_invocations")) is int
+                        for c in head_components
+                        if c.get("whole_batch") is True
+                    )
+                    else None
+                ),
             },
         )
         if head_components and all(c.get("whole_batch") is True for c in head_components):
             features["whole_head_batches"].update(
-                status="applied", selected=True,
-                effects={"kernel_calls": len(head_components),
-                         "matrix_products": sum(c["matrix_invocations"] for c in head_components),
-                         "mathematical_products_reduced": False})
+                status="applied",
+                selected=True,
+                effects={
+                    "kernel_calls": len(head_components),
+                    "matrix_products": sum(c["matrix_invocations"] for c in head_components),
+                    "mathematical_products_reduced": False,
+                },
+            )
         if sibling_components:
             features["shared_input_siblings"].update(
-                status="applied", selected=True,
-                effects={"components": len(sibling_components),
-                         "composed_original_groups": sum(len(c["members"]) for c in sibling_components),
-                         "physical_composed_calls": len(sibling_components),
-                         "unmatched_original_groups": len(composition.get("ordinary_joined_groups", {})),
-                         "original_source_denominator_unchanged":
-                         composition.get("original_source_denominator_unchanged") is True},
+                status="applied",
+                selected=True,
+                effects={
+                    "components": len(sibling_components),
+                    "composed_original_groups": sum(len(c["members"]) for c in sibling_components),
+                    "physical_composed_calls": len(sibling_components),
+                    "unmatched_original_groups": len(composition.get("ordinary_joined_groups", {})),
+                    "original_source_denominator_unchanged": composition.get("original_source_denominator_unchanged")
+                    is True,
+                },
             )
     observed = {
         tier: row["operation_profile"]
@@ -324,23 +364,40 @@ def build(record, *, tiers=None):
             for tier, value in observed.items()
         }
     group_observations = {
-        tier: row["group_profile"] for tier, row in (tiers or {}).items()
+        tier: row["group_profile"]
+        for tier, row in (tiers or {}).items()
         if isinstance(row, dict) and isinstance(row.get("group_profile"), dict)
     }
     if group_observations:
         features["group_profile"].update(
-            status="observed" if any(row.get("status") == "observed" for row in group_observations.values())
+            status="observed"
+            if any(row.get("status") == "observed" for row in group_observations.values())
             else "observations_unavailable",
-            observations={tier: {key: row[key] for key in (
-                "status", "unit", "timing_qualified", "performance_ranking_eligible", "instrumented",
-                "executions", "group_counter_ticks", "between_group_counter_ticks", "total_counter_ticks",
-                "largest_groups", "scope") if key in row} for tier, row in group_observations.items()},
+            observations={
+                tier: {
+                    key: row[key]
+                    for key in (
+                        "status",
+                        "unit",
+                        "timing_qualified",
+                        "performance_ranking_eligible",
+                        "instrumented",
+                        "executions",
+                        "group_counter_ticks",
+                        "between_group_counter_ticks",
+                        "total_counter_ticks",
+                        "largest_groups",
+                        "scope",
+                    )
+                    if key in row
+                }
+                for tier, row in group_observations.items()
+            },
         )
     selected_route = (
         "independent_heads_and_shared_input_siblings"
         if schema == "merlin.original_head_source_composition.v1" and sibling_components
-        else
-        "independent_heads"
+        else "independent_heads"
         if schema == "merlin.original_head_source_composition.v1"
         else "shared_input_siblings"
         if schema in {"merlin.original_sibling_source_composition.v1", "merlin.original_sibling_source_components.v1"}

@@ -271,10 +271,10 @@ def record(
                 claimed,
                 {
                     "operation": BF16_BUCKETIZE_COUNT_OPERATION
-                    if pattern.get("input_dtype", "f32") == "bf16"
+                    if pattern.get("input_dtype") == "bf16"
                     else BUCKETIZE_COUNT_OPERATION,
                     "shape": pattern["input_shape"],
-                    "ordered_types": [pattern.get("input_dtype", "f32"), "f32", "i64", "i64"],
+                    "ordered_types": [pattern.get("input_dtype"), "f32", "i64", "i64"],
                     "boundary_count": pattern["boundary_count"],
                     "right": pattern["right"],
                     "comparison": pattern["comparison"],

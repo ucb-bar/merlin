@@ -49,8 +49,10 @@ SCHEMA = "merlin.selfcheck_performance_brief.v1"
 LIMIT = 12
 #: Entries in the utilization ranking.
 UTILIZATION_LIMIT = 6
-RANKED_LIST = ("Primary workload ranking and separate control diagnostics: qa/latest_completed_grade.json -> "
-               "feedback_brief.performance_priority.development_headroom (qa/verdict.json while current).")
+RANKED_LIST = (
+    "Primary workload ranking and separate control diagnostics: qa/latest_completed_grade.json -> "
+    "feedback_brief.performance_priority.development_headroom (qa/verdict.json while current)."
+)
 
 
 def _passes(row: dict) -> bool:
@@ -88,9 +90,11 @@ def _evidence(row: dict, *, model_first: bool = False):
 
 
 def _modeled(performance: dict) -> bool:
-    return (performance.get("status") in ("PROVISIONAL", "QUALIFIED")
-            and performance.get("complete_event_accounting") is True
-            and _positive(performance.get("estimated_whole_soc_cycles")))
+    return (
+        performance.get("status") in ("PROVISIONAL", "QUALIFIED")
+        and performance.get("complete_event_accounting") is True
+        and _positive(performance.get("estimated_whole_soc_cycles"))
+    )
 
 
 def _mixed_sources(rows) -> bool:
@@ -123,30 +127,48 @@ def _schedule_activity(performance):
     scoped = performance.get("scoped_resource_feedback") or {}
     activity = scoped.get("source_actor_activity") or {}
     cycles = performance.get("estimated_whole_soc_cycles")
-    if (activity.get("schema") != "merlin.scoped_source_actor_feedback.v1"
-            or activity.get("status") != "modeled" or not _positive(cycles)
-            or activity.get("estimated_cycles_same_window") != cycles
-            or any(not performance.get(key) or activity.get(key) != performance[key]
-                   or scoped.get(key) != performance[key]
-                   for key in ("model_sha256", "elf_sha256", "scope_sha256"))):
+    if (
+        activity.get("schema") != "merlin.scoped_source_actor_feedback.v1"
+        or activity.get("status") != "modeled"
+        or not _positive(cycles)
+        or activity.get("estimated_cycles_same_window") != cycles
+        or any(
+            not performance.get(key) or activity.get(key) != performance[key] or scoped.get(key) != performance[key]
+            for key in ("model_sha256", "elf_sha256", "scope_sha256")
+        )
+    ):
         return None
+
     def fraction(value):
         return type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 1
+
     names = {"execute.feed", "reader.slot_residency", "writer.state", "writer.slot_residency"}
-    actors = {row["name"]: row["active_fraction"] for row in activity.get("actors", [])
-              if row.get("name") in names and row.get("availability") == "modeled"
-              and fraction(row.get("active_fraction"))}
-    overlaps = [{key: row[key] for key in ("left", "right", "fraction_of_window")}
-                for row in activity.get("overlaps", [])
-                if row.get("left") in actors and row.get("right") in actors
-                and row.get("availability") == "modeled" and fraction(row.get("fraction_of_window"))][:4]
+    actors = {
+        row["name"]: row["active_fraction"]
+        for row in activity.get("actors", [])
+        if row.get("name") in names and row.get("availability") == "modeled" and fraction(row.get("active_fraction"))
+    }
+    overlaps = [
+        {key: row[key] for key in ("left", "right", "fraction_of_window")}
+        for row in activity.get("overlaps", [])
+        if row.get("left") in actors
+        and row.get("right") in actors
+        and row.get("availability") == "modeled"
+        and fraction(row.get("fraction_of_window"))
+    ][:4]
     if not actors:
         return None
-    return {"basis": "same-ROI modeled source service and finite-credit residency; not physical PE occupancy",
-            "active_fraction": actors, "overlap_fraction": overlaps, "additive": False,
-            "next_action": ("Inspect legal storage/completion boundaries when active phases do not overlap; "
-                            "compare complete cycles after an actual shared-pass alternative. "
-                            "Zero overlap alone establishes neither legality nor profitability.")}
+    return {
+        "basis": "same-ROI modeled source service and finite-credit residency; not physical PE occupancy",
+        "active_fraction": actors,
+        "overlap_fraction": overlaps,
+        "additive": False,
+        "next_action": (
+            "Inspect legal storage/completion boundaries when active phases do not overlap; "
+            "compare complete cycles after an actual shared-pass alternative. "
+            "Zero overlap alone establishes neither legality nor profitability."
+        ),
+    }
 
 
 def _role_summary(passing, entries, roles):
@@ -157,7 +179,7 @@ def _role_summary(passing, entries, roles):
     groups = {}
     for row in passing:
         name = str(row.get("capsule") or row.get("name") or "")
-        role = (roles or {}).get(name, "unclassified")
+        role = (roles or {}).get(name) or "unclassified"
         if role not in ROLES:
             role = "unclassified"
         entry = observed.get(name)
@@ -175,9 +197,11 @@ def _role_summary(passing, entries, roles):
         result.append(item)
     return {
         "scope": "passing cases in this response; not cumulative campaign coverage",
-        "basis": ("Separate workload roles and evidence kinds. Useful compute-ceiling attainment, "
-                  "not physical PE occupancy. Medians describe this sample, not speedup or model accuracy. "
-                  "Timing without usable roofline evidence is unavailable here."),
+        "basis": (
+            "Separate workload roles and evidence kinds. Useful compute-ceiling attainment, "
+            "not physical PE occupancy. Medians describe this sample, not speedup or model accuracy. "
+            "Timing without usable roofline evidence is unavailable here."
+        ),
         "groups": result,
     }
 
@@ -195,8 +219,11 @@ def build(rows, *, workspace=None, artifact_root=None, debuggable: bool = True, 
     passing = [row for row in rows or () if isinstance(row, dict) and _passes(row)]
     if not passing:
         return None
-    selection = (context.selection if context is not None else mechanism_hints.with_source_evidence(
-        mechanism_hints.load_selection(workspace), workspace))
+    selection = (
+        context.selection
+        if context is not None
+        else mechanism_hints.with_source_evidence(mechanism_hints.load_selection(workspace), workspace)
+    )
     if not modern_advice("catalog_advice"):
         selection = None
     from ..workload_roles import PRIMARY, workspace_roles
@@ -245,13 +272,27 @@ def build(rows, *, workspace=None, artifact_root=None, debuggable: bool = True, 
         reading = _reading(entry)
         if reading:
             entry["reading"] = reading
-        suggested = (mechanism_hints.hints(case_selection, dominant=dominant, bound_by=limiter)
-                     if roles.get(name) in PRIMARY else [])
+        suggested = (
+            mechanism_hints.hints(case_selection, dominant=dominant, bound_by=limiter)
+            if roles.get(name) in PRIMARY
+            else []
+        )
         if suggested:
             entry["mechanism_basis"] = suggested[0].get("why")
             entry["suggested_mechanisms"] = [
-                {key: hint.get(key) for key in ("id", "api", "facet", "workload_check", "opportunity_status",
-                                              "source_call_sites", "prerequisites", "next_action")}
+                {
+                    key: hint.get(key)
+                    for key in (
+                        "id",
+                        "api",
+                        "facet",
+                        "workload_check",
+                        "opportunity_status",
+                        "source_call_sites",
+                        "prerequisites",
+                        "next_action",
+                    )
+                }
                 for hint in suggested
             ]
         if label.startswith("modeled"):
@@ -269,18 +310,20 @@ def build(rows, *, workspace=None, artifact_root=None, debuggable: bool = True, 
             entry["inspect"] = command
         entries.append(entry)
     role_summary = _role_summary(passing, entries, roles)
-    diagnostics = [entry for entry in entries if roles.get(entry['test_case']) not in PRIMARY]
-    entries = [entry for entry in entries if roles.get(entry['test_case']) in PRIMARY]
+    diagnostics = [entry for entry in entries if roles.get(entry["test_case"]) not in PRIMARY]
+    entries = [entry for entry in entries if roles.get(entry["test_case"]) in PRIMARY]
     for entry in diagnostics:
-        entry['workload_role'] = roles.get(entry['test_case'], 'unclassified')
-        entry['optimization_status'] = ('classification_needed' if entry['workload_role'] == 'unclassified'
-                                        else 'diagnostic_only')
+        entry["workload_role"] = roles.get(entry["test_case"]) or "unclassified"
+        entry["optimization_status"] = (
+            "classification_needed" if entry["workload_role"] == "unclassified" else "diagnostic_only"
+        )
     entries.sort(key=lambda e: (-e["headroom_cycles"], -e["gap_ratio"], e["test_case"]))
     by_name = {str(row.get("capsule") or row.get("name") or ""): row for row in passing}
     for entry in entries[:LIMIT] + diagnostics[:LIMIT]:
         entry["evidence_kind"] = shape_classes.evidence_kind(entry["evidence"])
-        use = capacity_use.for_case(entry["test_case"], by_name.get(entry["test_case"]) or {}, workspace,
-                                    artifact_root=artifact_root)
+        use = capacity_use.for_case(
+            entry["test_case"], by_name.get(entry["test_case"]) or {}, workspace, artifact_root=artifact_root
+        )
         if use is not None:
             entry["capacity_use"] = use
     baselines = reference_baselines.load(workspace)
@@ -290,33 +333,45 @@ def build(rows, *, workspace=None, artifact_root=None, debuggable: bool = True, 
 
     versus_seed = seed_timing.annotate(entries + diagnostics, by_name)
     brief = {
-        "schema": SCHEMA, "advisory_only": True,
-        "note": ("Performance of primary-role passing test cases in this request, largest headroom first. "
-                 "Controls retain diagnostics without routine tuning; missing roles require classification. "
-                 "The objective "
-                 "is fewer cycles for the same results. Array utilization here is useful compute-ceiling "
-                 "attainment, not physical PE occupancy. Resource values describe model reservations, "
-                 "not a proven bottleneck. Suggested mechanisms match resource diagnostics, mechanisms "
-                 "naming its unit first (OPTIMIZATION_SUGGESTIONS.json); compare variants on the same cases "
-                 "by cycles before keeping one. " + RANKED_LIST),
-        "counts": {"passing": len(passing), "with_evidence": len(entries) + len(diagnostics),
-                   "without_evidence": len(missing)},
+        "schema": SCHEMA,
+        "advisory_only": True,
+        "note": (
+            "Performance of primary-role passing test cases in this request, largest headroom first. "
+            "Controls retain diagnostics without routine tuning; missing roles require classification. "
+            "The objective "
+            "is fewer cycles for the same results. Array utilization here is useful compute-ceiling "
+            "attainment, not physical PE occupancy. Resource values describe model reservations, "
+            "not a proven bottleneck. Suggested mechanisms match resource diagnostics, mechanisms "
+            "naming its unit first (OPTIMIZATION_SUGGESTIONS.json); compare variants on the same cases "
+            "by cycles before keeping one. " + RANKED_LIST
+        ),
+        "counts": {
+            "passing": len(passing),
+            "with_evidence": len(entries) + len(diagnostics),
+            "without_evidence": len(missing),
+        },
         "largest_headroom": entries[:LIMIT],
         "diagnostic_controls": diagnostics[:LIMIT],
         "diagnostic_control_count": len(diagnostics),
         "workload_role_summary": role_summary,
     }
     if not modern_advice("catalog_advice"):
-        brief["note"] = ("Primary-role passing cases ranked by complete-call cycle headroom; "
-                         "controls retain diagnostics. Array attainment and resource reservations "
-                         "are modeled diagnostics, not measured occupancy or optimization proof. " + RANKED_LIST)
-    classified = PRIMARY | {'correctness', 'calibration', 'diagnostic_control'}
+        brief["note"] = (
+            "Primary-role passing cases ranked by complete-call cycle headroom; "
+            "controls retain diagnostics. Array attainment and resource reservations "
+            "are modeled diagnostics, not measured occupancy or optimization proof. " + RANKED_LIST
+        )
+    classified = PRIMARY | {"correctness", "calibration", "diagnostic_control"}
     unclassified = sorted(name for name in by_name if roles.get(name) not in classified)
     if unclassified:
-        brief['classification_needed'] = {
-            'count': len(unclassified), 'cases': unclassified[:LIMIT],
-            'action': ('Select source-bound workload roles in the public role manifest before performance exploration; '
-                       'retain correctness checks.')}
+        brief["classification_needed"] = {
+            "count": len(unclassified),
+            "cases": unclassified[:LIMIT],
+            "action": (
+                "Select source-bound workload roles in the public role manifest before performance exploration; "
+                "retain correctness checks."
+            ),
+        }
     utilized = sorted(
         (e for e in entries if "array_utilization_pct" in e),
         key=lambda e: (e["array_utilization_pct"], -e["headroom_cycles"], e["test_case"]),
@@ -325,25 +380,37 @@ def build(rows, *, workspace=None, artifact_root=None, debuggable: bool = True, 
         brief["lowest_utilization"] = [
             {
                 key: e[key]
-                for key in ("test_case", "array_utilization_pct", "cycles", "evidence", "evidence_kind",
-                            "dominant_modeled_resource")
+                for key in (
+                    "test_case",
+                    "array_utilization_pct",
+                    "cycles",
+                    "evidence",
+                    "evidence_kind",
+                    "dominant_modeled_resource",
+                )
                 if key in e
             }
             for e in utilized[:UTILIZATION_LIMIT]
         ]
     from .shape_panel import evidence as cycles_of
 
-    observed = [(name, found[0], found[2], row.get("performance"))
-                for name, row in by_name.items() if roles.get(name) in PRIMARY and (found := cycles_of(row))[0]]
+    observed = [
+        (name, found[0], found[2], row.get("performance"))
+        for name, row in by_name.items()
+        if roles.get(name) in PRIMARY and (found := cycles_of(row))[0]
+    ]
     line = shape_classes.vs_best_line(observed, workspace)
     if line:
         brief["vs_best_per_class"] = line
     fence_bound = fence_overlap.summary(
-        {name: block for name, block in fences.items() if roles.get(name) in PRIMARY}, selection)
+        {name: block for name, block in fences.items() if roles.get(name) in PRIMARY}, selection
+    )
     if fence_bound is not None:
         if not modern_advice("catalog_advice"):
-            fence_bound["note"] = ("Fences and static overlap describe emitted order; compare "
-                                    "legal authored alternatives on the same cases by complete-call cycles.")
+            fence_bound["note"] = (
+                "Fences and static overlap describe emitted order; compare "
+                "legal authored alternatives on the same cases by complete-call cycles."
+            )
         brief["fence_bound"] = fence_bound
     if compared is not None:
         brief["reference_baselines"] = {**compared, "line": reference_baselines.headline_line(compared)}
@@ -358,14 +425,16 @@ def build(rows, *, workspace=None, artifact_root=None, debuggable: bool = True, 
             brief["structural_exploration"] = {
                 "cases": sorted(set(structural))[:LIMIT],
                 "basis": "candidate selection for investigation; no cycle or speedup claim",
-                "action": ("Continue optimization while timing coverage is repaired. Use legal pass/schedule "
-                           "alternatives and inspect their emitted products: operand traffic and reloads, "
-                           "packing frequency, storage lifetimes, tile coverage, completion boundaries and "
-                           "CPU work. Retain alternatives with different resource tradeoffs; check affected "
-                           "Spike numerics and independent shapes/tails. See "
-                           "cycle-model-and-gsim. Each passing case's calibrated fast estimate (evidence kind "
-                           "fast_estimate) ranks it until a complete estimate arrives: decide on it and revert "
-                           "if a later measurement disagrees. Large cases do not acquire gSIM permission."),
+                "action": (
+                    "Continue optimization while timing coverage is repaired. Use legal pass/schedule "
+                    "alternatives and inspect their emitted products: operand traffic and reloads, "
+                    "packing frequency, storage lifetimes, tile coverage, completion boundaries and "
+                    "CPU work. Retain alternatives with different resource tradeoffs; check affected "
+                    "Spike numerics and independent shapes/tails. See "
+                    "cycle-model-and-gsim. Each passing case's calibrated fast estimate (evidence kind "
+                    "fast_estimate) ranks it until a complete estimate arrives: decide on it and revert "
+                    "if a later measurement disagrees. Large cases do not acquire gSIM permission."
+                ),
                 "performance_qualification": False,
             }
         brief["unknown_timing"] = unknown_timing(missing, roles)
@@ -383,27 +452,45 @@ def build(rows, *, workspace=None, artifact_root=None, debuggable: bool = True, 
             "action": "Compare one legal alternative on this shape class and neighbors; inspect emitted effects.",
             "mechanisms": entry.get("suggested_mechanisms", [])[:4],
             "skill": "shape-schedule-selection",
-            "signals": {key: entry[key] for key in (
-                "cycles", "evidence", "evidence_kind", "array_utilization_pct",
-                "roofline_bound_cycles", "gap_ratio", "dominant_modeled_resource", "seed_cycles", "vs_seed",
-                "capacity_use", "reading", "schedule_activity") if key in entry},
+            "signals": {
+                key: entry[key]
+                for key in (
+                    "cycles",
+                    "evidence",
+                    "evidence_kind",
+                    "array_utilization_pct",
+                    "roofline_bound_cycles",
+                    "gap_ratio",
+                    "dominant_modeled_resource",
+                    "seed_cycles",
+                    "vs_seed",
+                    "capacity_use",
+                    "reading",
+                    "schedule_activity",
+                )
+                if key in entry
+            },
         }
     for name in sorted(missing):
         if len(advice) >= LIMIT or roles.get(name) not in PRIMARY:
             continue
         advice[name] = {
             "basis": "timing unavailable; no performance ranking",
-            "action": ("Keep the incumbent and explore a legal alternative using traffic, reuse and completion "
-                       "structure; check emitted effects and numerics. Repair timing before claiming a speedup."),
+            "action": (
+                "Keep the incumbent and explore a legal alternative using traffic, reuse and completion "
+                "structure; check emitted effects and numerics. Repair timing before claiming a speedup."
+            ),
             "mechanisms": (fences.get(name) or {}).get("suggested_mechanisms", [])[:4],
             "skill": "explore-schedules",
         }
         # Storage/reuse evidence comes from facts and emitted artifacts and does
         # not need a complete timing estimate. Keep the same bounded row budget.
-        use = capacity_use.for_case(name, by_name.get(name) or {}, workspace,
-                                    artifact_root=artifact_root)
-        signals = {"timing_status": "unavailable", "array_utilization_pct": None,
-                   "basis": "structural evidence; no elapsed-cycle utilization"}
+        use = capacity_use.for_case(name, by_name.get(name) or {}, workspace, artifact_root=artifact_root)
+        signals = {
+            "timing_status": "unavailable",
+            "array_utilization_pct": None,
+            "basis": "structural evidence; no elapsed-cycle utilization",
+        }
         if use is not None:
             signals["capacity_use"] = use
         if fences.get(name) is not None:
@@ -441,19 +528,24 @@ def unknown_timing(missing, roles) -> dict:
     performance = [n for n in names if roles is not None and roles.get(n) in PRIMARY]
     direct = [n for n in names if (roles or {}).get(n) in ("correctness", "calibration", "diagnostic_control")]
     out = {
-        "meaning": ("UNKNOWN timing is missing evidence, not a measured loss or a refusal of the variant. A "
-                    "variant whose timing is UNKNOWN is still a candidate; decide on its calibrated fast "
-                    "estimate (performance.fast_estimate, with its error band) and revert if a complete "
-                    "estimate or measurement later disagrees."),
-        "how_to_measure": ("Performance is compared on the Spike cycle model by default (self-checks, "
-                           "--sweep, --panel, variants). Where the model reports UNKNOWN, request gSIM "
-                           "cycles for one named case per request: `"
-                           + GSIM_COMMAND.format(name="NAME") + "`, then collect it with `--attach ID`. "
-                           "This admits required correctness cases under their own gSIM budget. To compare "
-                           "a variant, obtain a supported complete-scope observation of the primary workload. "
-                           "Control measurements "
-                           "serve correctness/calibration diagnostics, not routine performance tuning or a "
-                           "substitute performance result for a larger workload."),
+        "meaning": (
+            "UNKNOWN timing is missing evidence, not a measured loss or a refusal of the variant. A "
+            "variant whose timing is UNKNOWN is still a candidate; decide on its calibrated fast "
+            "estimate (performance.fast_estimate, with its error band) and revert if a complete "
+            "estimate or measurement later disagrees."
+        ),
+        "how_to_measure": (
+            "Performance is compared on the Spike cycle model by default (self-checks, "
+            "--sweep, --panel, variants). Where the model reports UNKNOWN, request gSIM "
+            "cycles for one named case per request: `"
+            + GSIM_COMMAND.format(name="NAME")
+            + "`, then collect it with `--attach ID`. "
+            "This admits required correctness cases under their own gSIM budget. To compare "
+            "a variant, obtain a supported complete-scope observation of the primary workload. "
+            "Control measurements "
+            "serve correctness/calibration diagnostics, not routine performance tuning or a "
+            "substitute performance result for a larger workload."
+        ),
     }
     if direct:
         out["commands"] = [GSIM_COMMAND.format(name=n) for n in direct[:LIMIT]]
@@ -467,14 +559,17 @@ def _reading(entry: dict) -> str | None:
     utilization, dominant = entry.get("array_utilization_pct"), entry.get("dominant_modeled_resource")
     busy = None
     if isinstance(dominant, dict) and _positive(dominant.get("modeled_activity")):
-        busy = (f"{dominant.get('name')} has "
-                f"{round(100 * dominant['modeled_activity'], 1)}% modeled reservation activity")
+        busy = (
+            f"{dominant.get('name')} has {round(100 * dominant['modeled_activity'], 1)}% modeled reservation activity"
+        )
     fence = entry.get("fence_overlap") or {}
     if utilization is None and busy is None:
         return fence.get("reading") if fence.get("fence_per_tile") else None
-    parts = [f"useful compute-ceiling attainment is {utilization}% over {entry['cycles']} cycles"
-             if utilization is not None
-             else f"{entry['cycles']} cycles"]
+    parts = [
+        f"useful compute-ceiling attainment is {utilization}% over {entry['cycles']} cycles"
+        if utilization is not None
+        else f"{entry['cycles']} cycles"
+    ]
     if busy is not None:
         parts.append(f"{busy}; inspect dependencies and stalls before attributing a bottleneck")
     else:
@@ -490,17 +585,23 @@ def _bound_class(limiter: str | None) -> str | None:
 
 def _summary(calibrated: dict) -> dict:
     """The calibration levels that have a ratio, compactly, with the rule for using them."""
-    levels = {level: {name: fitted for name, fitted in groups.items() if "median_measured_over_modeled" in fitted}
-              for level, groups in (calibrated.get("levels") or {}).items()}
-    return {"pairs": calibrated.get("pairs"), "basis": calibrated.get("basis"),
-            "levels": {level: groups for level, groups in levels.items() if groups}, "use": calibrated.get("use"),
-            "accuracy_card": calibrated.get("accuracy_card"), "qualification_issued": False}
+    levels = {
+        level: {name: fitted for name, fitted in groups.items() if "median_measured_over_modeled" in fitted}
+        for level, groups in (calibrated.get("levels") or {}).items()
+    }
+    return {
+        "pairs": calibrated.get("pairs"),
+        "basis": calibrated.get("basis"),
+        "levels": {level: groups for level, groups in levels.items() if groups},
+        "use": calibrated.get("use"),
+        "accuracy_card": calibrated.get("accuracy_card"),
+        "qualification_issued": False,
+    }
 
 
 def attach(document: dict, rows, **kwargs) -> dict:
     """Add ``performance_brief`` to a response in place; any failure leaves the response unchanged."""
     from ..author_profiles import modern_advice
-
     from . import next_steps
 
     if not modern_advice("performance_diagnostics"):
@@ -508,7 +609,7 @@ def attach(document: dict, rows, **kwargs) -> dict:
     guidance = modern_advice("catalog_advice")
 
     try:
-        context = next_steps.Context(kwargs.get('workspace'), document, rows) if guidance else None
+        context = next_steps.Context(kwargs.get("workspace"), document, rows) if guidance else None
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         context = None
     try:
@@ -523,8 +624,9 @@ def attach(document: dict, rows, **kwargs) -> dict:
         from . import library_pass
 
         # Adds the matching library pass and its paste-ready A/B to each ranked case's advice.
-        library_pass.annotate(rows, brief, workspace=kwargs.get("workspace"), suite=library_pass.suite_of(document),
-                              context=context)
+        library_pass.annotate(
+            rows, brief, workspace=kwargs.get("workspace"), suite=library_pass.suite_of(document), context=context
+        )
     # Composition routes for chain cases and source_composition.json options for model and program cases,
     # beside the library pass; cases without ranked advice get them on their own row.
     if guidance:
@@ -552,8 +654,10 @@ def attach(document: dict, rows, **kwargs) -> dict:
 
 
 #: The brief's note once the response is lean: where the advice that left the response lives.
-LEAN_NOTE = ("Primary-role passing cases, largest headroom first; advisory. Per-case advice: each case's detail "
-             "file (cases[].detail.path -> optimization_next). Ranked list: " + RANKED_LIST.partition(": ")[2])
+LEAN_NOTE = (
+    "Primary-role passing cases, largest headroom first; advisory. Per-case advice: each case's detail "
+    "file (cases[].detail.path -> optimization_next). Ranked list: " + RANKED_LIST.partition(": ")[2]
+)
 
 
 def lean(document: dict) -> dict:

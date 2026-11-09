@@ -16,6 +16,7 @@ the current submission; the next published grade replaces the notice.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path, PurePosixPath
 
 OUTSIDE = "outside public namespace"
@@ -54,9 +55,11 @@ def namespace_hint(failure) -> dict:
         return {}
     hint = {
         "rejected_path": relative,
-        "rule": ("Every module under submission/compiler_library must live in one of the selected mutable "
-                 "namespaces; a module elsewhere rejects the whole package before any test case runs. Move "
-                 "or rename it into an allowed namespace (check the spelling of the package directory)."),
+        "rule": (
+            "Every module under submission/compiler_library must live in one of the selected mutable "
+            "namespaces; a module elsewhere rejects the whole package before any test case runs. Move "
+            "or rename it into an allowed namespace (check the spelling of the package directory)."
+        ),
     }
     namespaces = _mutable_namespaces()
     if namespaces:
@@ -86,13 +89,20 @@ def publish_notice(workspace, verdict: dict) -> dict:
         # a failure already fixed would mislead more than it helps.
         if relative is None or not (Path(workspace) / "submission" / DIRECTORY / relative).exists():
             return verdict
-        publish(Path(workspace) / "qa" / "verdict.json", {NOTICE: {
-            **enrich({"package_failure": dict(failure)})["package_failure"],
-            "source_sha256": verdict.get("graded_source_sha256"),
-            "graded_at": verdict.get("graded_at"),
-            "note": "a newer snapshot is being graded; this earlier snapshot was rejected before any test "
+        publish(
+            Path(workspace) / "qa" / "verdict.json",
+            {
+                NOTICE: {
+                    **enrich({"package_failure": dict(failure)})["package_failure"],
+                    "source_sha256": verdict.get("graded_source_sha256"),
+                    "graded_at": verdict.get("graded_at"),
+                    "note": "a newer snapshot is being graded; this earlier snapshot was rejected before any test "
                     "case ran, and the rejected source is still present",
-        }})
+                }
+            },
+        )
     except (ImportError, OSError, ValueError):
-        pass  # the archive keeps the rejection; a notice is advisory
+        logging.getLogger(__name__).warning(
+            "Package rejection notice unavailable; archived refusal retained", exc_info=True
+        )
     return verdict

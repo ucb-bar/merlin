@@ -136,11 +136,19 @@ def progress_snapshot(cb_root: Path, *, expected: int, started_ns: int, cache: d
             provisional.append({"capsule": case.name, "status": "running", "numerics": status, "final": False})
     counts: dict[str, int] = {}
     for row in rows:
-        counts[row["status"]] = counts.get(row["status"], 0) + 1
+        status = row["status"]
+        if status not in counts:
+            counts[status] = 1
+        else:
+            counts[status] += 1
     numerics: dict[str, int] = {}
     for row in (*rows, *provisional):
         if row.get("numerics") in _NUMERIC_STATUSES:
-            numerics[row["numerics"]] = numerics.get(row["numerics"], 0) + 1
+            status = row["numerics"]
+            if status not in numerics:
+                numerics[status] = 1
+            else:
+                numerics[status] += 1
     return {
         "status": "running",
         "started_at_unix_ns": int(started_ns),

@@ -59,34 +59,43 @@ def render(inventory, latest, previous=None):
     members = inventory["members"]
     rows = _rows(latest, members)
     prior = _rows(previous or {}, members)
-    source = latest.get('graded_candidate_sha256') or latest.get('graded_source_sha256')
-    lines = ['# Joint compiler progress', '',
-             'Build one compiler by semantic capability; preserve correct behavior while improving performance.',
-             'These are per-case recorded observations, not automatically current-source qualification.',
-             "Merged rows can describe different sources; each row's `graded` records its identity.",
-             f"Compiler snapshot: `{_text(source or 'unavailable', 64)}`.", '',
-             "Current pass counts only rows reconciled as `current` (the bytes the case reaches are unchanged "
-             "since its grade); an `older_version` row is evidence for the older source it names.", '',
-             '| Public class | Observed / required | Reported pass | Current pass | L2 pass | L3 pass |',
-             '|---|---:|---:|---:|---:|---:|']
-    cohorts = sorted({row['cohort'] for row in members.values()})
+    source = latest.get("graded_candidate_sha256") or latest.get("graded_source_sha256")
+    lines = [
+        "# Joint compiler progress",
+        "",
+        "Build one compiler by semantic capability; preserve correct behavior while improving performance.",
+        "These are per-case recorded observations, not automatically current-source qualification.",
+        "Merged rows can describe different sources; each row's `graded` records its identity.",
+        f"Compiler snapshot: `{_text(source or 'unavailable', 64)}`.",
+        "",
+        "Current pass counts only rows reconciled as `current` (the bytes the case reaches are unchanged "
+        "since its grade); an `older_version` row is evidence for the older source it names.",
+        "",
+        "| Public class | Observed / required | Reported pass | Current pass | L2 pass | L3 pass |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    cohorts = sorted({row["cohort"] for row in members.values()})
     for cohort in cohorts:
         names = {name for name, member in members.items() if member["cohort"] == cohort}
         seen = [rows[name] for name in names if name in rows]
-        lines.append(f"| {_text(cohort)} | {len(seen)} / {len(names)} | "
-                     f"{sum(row.get('status') == 'pass' for row in seen)} | "
-                     f"{sum(row.get('status') == 'pass' and not reconcile.is_older(row) for row in seen)} | "
-                     f"{sum(_tier(row, 'L2') for row in seen)} | {sum(_tier(row, 'L3') for row in seen)} |")
-    if any('workload_role' in member for member in members.values()):
-        lines += ['', '| Search role | Cases | Reported pass |', '|---|---:|---:|']
-        for role in sorted({m.get('workload_role', 'unclassified') for m in members.values()}):
-            names = [n for n, m in members.items() if m.get('workload_role', 'unclassified') == role]
+        lines.append(
+            f"| {_text(cohort)} | {len(seen)} / {len(names)} | "
+            f"{sum(row.get('status') == 'pass' for row in seen)} | "
+            f"{sum(row.get('status') == 'pass' and not reconcile.is_older(row) for row in seen)} | "
+            f"{sum(_tier(row, 'L2') for row in seen)} | {sum(_tier(row, 'L3') for row in seen)} |"
+        )
+    if any("workload_role" in member for member in members.values()):
+        lines += ["", "| Search role | Cases | Reported pass |", "|---|---:|---:|"]
+        for role in sorted({m.get("workload_role", "unknown") for m in members.values()}):
+            names = [n for n, m in members.items() if m.get("workload_role", "unknown") == role]
             lines.append(f"| {role} | {len(names)} | {sum(rows.get(n, {}).get('status') == 'pass' for n in names)} |")
-        lines += ['', 'Small controls provide correctness and mechanism diagnostics; no routine performance tuning.']
+        lines += ["", "Small controls provide correctness and mechanism diagnostics; no routine performance tuning."]
     else:
-        lines += ['', 'Workload classification needed: no performance ranking or routine tuning '
-                  'without selected roles.']
-    lines += ['', 'Missing tier records remain unobserved; reported passes do not manufacture L3 evidence.', '']
+        lines += [
+            "",
+            "Workload classification needed: no performance ranking or routine tuning without selected roles.",
+        ]
+    lines += ["", "Missing tier records remain unobserved; reported passes do not manufacture L3 evidence.", ""]
     groups = defaultdict(list)
     old_keys = {_failure_key(row, members[name]) for name, row in prior.items() if row.get("status") != "pass"}
     regressions = []
@@ -107,38 +116,49 @@ def render(inventory, latest, previous=None):
             f"{len(groups[key])} cases; examples {examples}."
         )
     if not groups:
-        lines.append('No failures recorded in the observed public subset; unobserved cases still need execution.')
-    lines += [f'{len(groups)} failure families total. Completed rows remain in `qa/latest_completed_grade.json`.',
-              '`failure_clusters` in both verdict files groups failing cases by one shared redacted failure, '
-              'with member names, one detail and a reproduce command: each cluster is a unit a helper can take.',
-              'If you edit while a grade runs, `qa/verdict.json` waits for a grade of current bytes; the newest '
-              'completed result for every test case (rows, ranked headroom, gate reasons) is in '
-              '`qa/latest_completed_grade.json`: a case a newer grade did not run keeps its last result, and '
-              "each row's `graded` names the source digest it describes.",
-              f'`qa/{SUMMARY_FILENAME}` lists those rows one line per test case, with the failure clusters; '
-              'read it before querying the full file.', '',
-              '## Performance work', '',
-              'Performance is part of every change, not a final phase. `performance_priority.development_headroom` '
-              'in `qa/verdict.json` ranks only primary-role passing test cases by cycles above their roofline bounds; '
-              'work the '
-              'largest headroom alongside correctness. Calibration cases diagnose unresolved model mechanisms.',
-              'Passing code may be improved through reusable passes and shape/resource policies. '
-              'Retain a working checkpoint and check affected semantic boundaries before merging.',
-              'Use qualified tuned timing within its supported domain; otherwise label estimates provisional. '
-              'Compare whole-call timing, preparation, host work, traffic and storage as well as the roofline.',
-              'Idle CPUs time each `variants/<name>/` that differs from `submission/` and each value of a knob '
-              f'declared in `submission/{TUNING_DECLARATION}` on the cases with the most headroom; results '
-              f'appear in `{TUNING_LEDGER}` and the self-check `performance_brief`.']
+        lines.append("No failures recorded in the observed public subset; unobserved cases still need execution.")
+    lines += [
+        f"{len(groups)} failure families total. Completed rows remain in `qa/latest_completed_grade.json`.",
+        "`failure_clusters` in both verdict files groups failing cases by one shared redacted failure, "
+        "with member names, one detail and a reproduce command: each cluster is a unit a helper can take.",
+        "If you edit while a grade runs, `qa/verdict.json` waits for a grade of current bytes; the newest "
+        "completed result for every test case (rows, ranked headroom, gate reasons) is in "
+        "`qa/latest_completed_grade.json`: a case a newer grade did not run keeps its last result, and "
+        "each row's `graded` names the source digest it describes.",
+        f"`qa/{SUMMARY_FILENAME}` lists those rows one line per test case, with the failure clusters; "
+        "read it before querying the full file.",
+        "",
+        "## Performance work",
+        "",
+        "Performance is part of every change, not a final phase. `performance_priority.development_headroom` "
+        "in `qa/verdict.json` ranks only primary-role passing test cases by cycles above their roofline bounds; "
+        "work the "
+        "largest headroom alongside correctness. Calibration cases diagnose unresolved model mechanisms.",
+        "Passing code may be improved through reusable passes and shape/resource policies. "
+        "Retain a working checkpoint and check affected semantic boundaries before merging.",
+        "Use qualified tuned timing within its supported domain; otherwise label estimates provisional. "
+        "Compare whole-call timing, preparation, host work, traffic and storage as well as the roofline.",
+        "Idle CPUs time each `variants/<name>/` that differs from `submission/` and each value of a knob "
+        f"declared in `submission/{TUNING_DECLARATION}` on the cases with the most headroom; results "
+        f"appear in `{TUNING_LEDGER}` and the self-check `performance_brief`.",
+    ]
     from .joint_performance_priority import summarize
 
-    cohorts = {lane: [name for name, member in members.items() if member['cohort'] == cohort]
-               for lane, cohort in [('primary', 'scalability_performance'),
-                                    ('correctness_regression', 'original_correctness'),
-                                    ('calibration_diagnostics', 'calibration')]}
-    ranked = summarize(list(rows.values()), cohorts=cohorts,
-                       roles={name: member.get("workload_role", "unclassified") for name, member in members.items()})
-    for group in ranked['comparison_groups'][:3]:
-        lane = 'qualified' if group['qualified'] else 'provisional_diagnostics'
+    cohorts = {
+        lane: [name for name, member in members.items() if member["cohort"] == cohort]
+        for lane, cohort in [
+            ("primary", "scalability_performance"),
+            ("correctness_regression", "original_correctness"),
+            ("calibration_diagnostics", "calibration"),
+        ]
+    }
+    ranked = summarize(
+        list(rows.values()),
+        cohorts=cohorts,
+        roles={name: member.get("workload_role", "unknown") for name, member in members.items()},
+    )
+    for group in ranked["comparison_groups"][:3]:
+        lane = "qualified" if group["qualified"] else "provisional_diagnostics"
         if not group[lane]:
             continue
         row = group[lane][0]
@@ -185,7 +205,7 @@ def build_if_selected(run_dir, workspace, *, errata=(), notes_stale=False):
         live = completed if isinstance(completed, dict) and completed.get("per_capsule") else live
     if isinstance(live, dict) and (not records or live != records[-1]):
         records.append(live)
-    completed = _read(Path(workspace) / 'qa' / COMPLETED_FILENAME)
+    completed = _read(Path(workspace) / "qa" / COMPLETED_FILENAME)
     if isinstance(completed, dict) and isinstance(completed.get(POINTER), dict):
         records.append(completed)
     latest = records[-1] if records else {}
@@ -213,25 +233,32 @@ def refresh_completed(workspace, document):
     from .reference_experiments import brief_lines
 
     workspace = Path(workspace)
-    inventory = _read(workspace / 'PUBLIC_CAPABILITIES.json')
-    if (not isinstance(inventory, dict)
-            or inventory.get('schema') != 'merlin.public_capability_inventory.v1'
-            or not isinstance(inventory.get('members'), dict) or not inventory['members']):
+    inventory = _read(workspace / "PUBLIC_CAPABILITIES.json")
+    if (
+        not isinstance(inventory, dict)
+        or inventory.get("schema") != "merlin.public_capability_inventory.v1"
+        or not isinstance(inventory.get("members"), dict)
+        or not inventory["members"]
+    ):
         return False
-    path = workspace / 'qa/round_brief.md'
-    existing = path.read_text() if path.is_file() else ''
+    path = workspace / "qa/round_brief.md"
+    existing = path.read_text() if path.is_file() else ""
     pointer = document.get(POINTER) or {}
-    prefix, marker, prior = existing.partition('# Joint compiler progress')
+    prefix, marker, prior = existing.partition("# Joint compiler progress")
     prefix = prefix if marker else _leading_resume_note(existing)
-    ledger_marker = '\n## Compiler approach ledger'
+    ledger_marker = "\n## Compiler approach ledger"
     _, has_ledger, ledger = prior.partition(ledger_marker)
     reference = "\n".join(brief_lines(workspace))
-    text = (prefix + (reference + "\n" if reference else "") + render(inventory, document)
-            + f"\nCompleted-grade token: `{_text(pointer.get('token', 'unavailable'))}`. "
-            + f"Read `qa/{SUMMARY_FILENAME}` for per-case source/tier identities.\n")
+    text = (
+        prefix
+        + (reference + "\n" if reference else "")
+        + render(inventory, document)
+        + f"\nCompleted-grade token: `{_text(pointer.get('token', 'unknown'))}`. "
+        + f"Read `qa/{SUMMARY_FILENAME}` for per-case source/tier identities.\n"
+    )
     if has_ledger:
         text += ledger_marker + ledger
-    temporary = path.with_suffix('.next.md')
+    temporary = path.with_suffix(".next.md")
     temporary.write_text(text)
     temporary.replace(path)
     return True

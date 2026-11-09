@@ -407,6 +407,7 @@ def test_revalidation_record_binds_original_and_actual_receipt_fusion(selected, 
         replay._verify_record(record)
 
 
+@pytest.mark.timeout(0)  # The checker owns this test's real SIGALRM; the parent run remains bounded.
 def test_trusted_checker_timeout_refuses_and_restores_alarm(monkeypatch, tmp_path):
     from merlin_experiments.phase1.feedback import private_instruction_coordinator
 

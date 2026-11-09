@@ -251,12 +251,14 @@ def compare(before, after, *, mechanism=None, verdicts=None):
         for role in sorted(set(before["traffic"]["per_role"]) | set(after["traffic"]["per_role"])):
             b, a = before["traffic"]["per_role"].get(role, {}), after["traffic"]["per_role"].get(role, {})
             d = dict(
-                static_before=b.get("static_sites", 0),
-                static_after=a.get("static_sites", 0),
-                dynamic_before=b.get("dynamic", 0) if b else 0,
-                dynamic_after=a.get("dynamic", 0) if a else 0,
+                static_before=b.get("static_sites") if role in before["traffic"]["per_role"] else 0,
+                static_after=a.get("static_sites") if role in after["traffic"]["per_role"] else 0,
+                dynamic_before=b.get("dynamic") if role in before["traffic"]["per_role"] else 0,
+                dynamic_after=a.get("dynamic") if role in after["traffic"]["per_role"] else 0,
             )
-            d["static_delta"] = d["static_after"] - d["static_before"]
+            d["static_delta"] = (
+                d["static_after"] - d["static_before"] if None not in (d["static_before"], d["static_after"]) else None
+            )
             known = None not in (d["dynamic_before"], d["dynamic_after"])
             d["dynamic_delta"] = d["dynamic_after"] - d["dynamic_before"] if known else None
             delta[role] = d
@@ -533,7 +535,7 @@ def broker_response(
             base,
             status="unknown",
             reason=code,
-            next_action=GAPS.get(code, "Check owned paths, the selected decoder inputs and bounds."),
+            next_action=(GAPS[code] if code in GAPS else "Check owned paths, the selected decoder inputs and bounds."),
             gap=dict(kind="evidence_or_adapter_gap", code=code, retryable=False, detail=str(error)[:300]),
         )
     document = _decorate_response(

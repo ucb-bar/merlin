@@ -411,7 +411,7 @@ def _native(capture, pins, arity, *, isa, decoder):
         isa_sha256=document_digest(isa),
         model_identity=model.identity,
         command_counts={k: v for k, v in counts.items() if k != "FENCE"},
-        fence_count=counts.get("FENCE", 0),
+        fence_count=sum(count for kind, count in counts.items() if kind == "FENCE"),
         count_basis="decoded_original_raw_issue_records",
         executed_region="unknown",
         operand_projection="host_selected_decoder" if decoder else "unknown",

@@ -17,16 +17,19 @@ def assess(body, programs, *, mode, shape_counts):
         problems.append("model metrics unavailable")
     if mode == "fast":
         gates = body.get("gates") or {}
-        if any((gates.get(name) or {}).get("status") != "pass"
-               or (gates.get(name) or {}).get("partial", False)
-               for name in ("build", "kernel_exact", "model_numerics")):
+        if any(
+            (gates.get(name) or {}).get("status") != "pass"
+            or ("partial" in (gates.get(name) or {}) and gates[name]["partial"] is not False)
+            or (name == "kernel_exact" and (gates.get(name) or {}).get("partial") is not False)
+            for name in ("build", "kernel_exact", "model_numerics")
+        ):
             problems.append("sealed kernel build, exactness or model gate incomplete")
     for program in programs:
         item = observed.get(program, {})
         build, census = item.get("build") or {}, item.get("census") or {}
         kernels = item.get("kernels") or []
         device, denominator = census.get("device"), census.get("denominator")
-        if (type(device) is not int or type(denominator) is not int or not 0 <= device <= denominator):
+        if type(device) is not int or type(denominator) is not int or not 0 <= device <= denominator:
             problems.append(f"{program}: invalid offload census")
         if device and not any(isinstance(k, dict) and isinstance(k.get("source_region_id"), str) for k in kernels):
             problems.append(f"{program}: original kernel identities unavailable")
@@ -37,8 +40,12 @@ def assess(body, programs, *, mode, shape_counts):
             ):
                 problems.append(f"{program}: linked whole-model Spike execution incomplete")
             continue
-        if (type(build.get("built")) is not int or build["built"] < 0
-                or build.get("refused") != 0 or any(k.get("status") != "pass" for k in kernels)):
+        if (
+            type(build.get("built")) is not int
+            or build["built"] < 0
+            or build.get("refused") != 0
+            or any(k.get("status") != "pass" for k in kernels)
+        ):
             problems.append(f"{program}: kernel compilation or replay incomplete")
         if not device:
             continue
@@ -48,9 +55,11 @@ def assess(body, programs, *, mode, shape_counts):
             problems.append(f"{program}: sealed shape variants unavailable")
             continue
         cases = varied[0].get("kernels") or []
-        if (not cases or any(k.get("status") != "pass" or type(k.get("cases")) is not int
-                             or k["cases"] <= 0 for k in cases)
-                or sum(k.get("cases", 0) for k in cases) != expected):
+        if (
+            not cases
+            or any(k.get("status") != "pass" or type(k.get("cases")) is not int or k["cases"] <= 0 for k in cases)
+            or sum(k["cases"] for k in cases) != expected
+        ):
             problems.append(f"{program}: sealed shape variant replay incomplete")
     return observed, problems
 
@@ -58,7 +67,9 @@ def assess(body, programs, *, mode, shape_counts):
 def rtl_requirement_satisfied(record):
     """An explicit unrequested model RTL gate needs its honest empty status."""
     if record.get("rtl_required") is False:
-        return (record.get("rtl_status") == "not_requested" and record.get("rtl") == []
-                and record.get("rtl_complete") is False)
-    return (record.get("rtl_complete") is True
-            and record.get("unique_kernel_count") == len(record.get("rtl") or []))
+        return (
+            record.get("rtl_status") == "not_requested"
+            and record.get("rtl") == []
+            and record.get("rtl_complete") is False
+        )
+    return record.get("rtl_complete") is True and record.get("unique_kernel_count") == len(record.get("rtl") or [])

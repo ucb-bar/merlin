@@ -241,7 +241,7 @@ def phase_completion(
     else:
         n_trace = scope.get("n_instruction_trace_capsules")
         n_model = scope.get("n_model_execution_capsules")
-        n_host = scope.get("n_provided_host_capsules", 0)
+        n_host = scope.get("n_provided_host_capsules")
         if any(not isinstance(v, int) or isinstance(v, bool) or v < 0 for v in (n_trace, n_model, n_host)):
             reasons.append("structural_evidence_scope_counts_malformed")
         else:
@@ -746,10 +746,12 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     required_full_programs = PFM.program_requirements_for(context.descriptor)
     required_loader_env = PFM.loader_env_requirements_for(context.descriptor)
     overlap = False
+    # Scheduling preference only: absence retains the historical enabled policy.
+    overlap_choice = os.environ.get("MERLIN_FORMAL_OVERLAP_PRIVATE")
     if (
         imported is None
         and a.validation_scope == "full"
-        and os.environ.get("MERLIN_FORMAL_OVERLAP_PRIVATE", "1") == "1"
+        and (overlap_choice is None or overlap_choice == "1")
         and "MERLIN_COMPUTE_CPUS" in os.environ
         and not a.skip_hidden
         and required_full_models
@@ -819,8 +821,8 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                     for stream in (sys.stdout, sys.stderr):
                         try:
                             stream.flush()
-                        except (OSError, ValueError):
-                            pass  # The exit status alone carries the child's verdict.
+                        except (OSError, ValueError) as error:
+                            os.write(2, f"formal child stream flush failed: {type(error).__name__}\n".encode())
                     os._exit(status)
         else:
             hid = (
@@ -973,7 +975,11 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                                     execution_gate,
                                     target=context.target,
                                     static_out=run_dir / "grading_private_full_models",
-                                    max_workers=int(os.environ.get("MERLIN_PRIVATE_EXECUTION_WORKERS", "1")),
+                                    max_workers=(
+                                        int(os.environ["MERLIN_PRIVATE_EXECUTION_WORKERS"])
+                                        if "MERLIN_PRIVATE_EXECUTION_WORKERS" in os.environ
+                                        else 1
+                                    ),
                                 )
                             except Exception as exc:  # noqa: BLE001 -- an execution refusal is an incomplete gate
                                 private_execution = PFX.not_run(execution_gate, f"{type(exc).__name__}: {exc}")
@@ -1067,6 +1073,9 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         public_resources_complete = bool(
             public_resources_complete and exact_tree_record(pkg)["sha256"] == public_resources.get("candidate_sha256")
         )
+    # An undeclared optional scalability check is not requested. A declared one
+    # requires its actual passing datum; missing evidence cannot count as pass.
+    scalability_complete = "public_scalability" not in pub or pub["public_scalability"].get("passed") is True
     formal_grade_complete = bool(
         public_phase["formal_complete"]
         and hidden_phase["formal_complete"]
@@ -1074,7 +1083,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         and private_execution_complete
         and model_check_complete
         and public_resources_complete
-        and pub.get("public_scalability", {}).get("passed", True) is True
+        and scalability_complete
     )
     completion_failures = [
         *(f"public:{reason}" for reason in public_phase["completion_failures"]),
@@ -1083,11 +1092,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         *([] if private_execution_complete else ["private_full_model_execution:incomplete"]),
         *([] if model_check_complete else ["model_check_official:incomplete"]),
         *([] if public_resources_complete else ["public_codegen_resources:incomplete"]),
-        *(
-            []
-            if pub.get("public_scalability", {}).get("passed", True) is True
-            else ["public_spike_scalability:incomplete"]
-        ),
+        *([] if scalability_complete else ["public_spike_scalability:incomplete"]),
     ]
 
     # --- process metrics (from launcher), env, run_manifest ---
@@ -1209,12 +1214,12 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "| Model | Sealed numerical status |",
         "| --- | --- |",
         *[
-            f"| {model} | {(model_check_official.get('models') or {}).get(model, {}).get('status', 'unavailable')} |"
+            f"| {model} | {(model_check_official.get('models') or {}).get(model, {}).get('status', 'unknown')} |"
             for model in required_full_models
         ],
-        f"| Model kernel RTL | {model_check_official.get('rtl_status', 'unavailable')} |",
+        f"| Model kernel RTL | {model_check_official.get('rtl_status', 'unknown')} |",
         "",
-        f"- whole-model validation: {model_check_official.get('whole_model_status', 'unavailable')}",
+        f"- whole-model validation: {model_check_official.get('whole_model_status', 'unknown')}",
         f"- integrity: {manifest['integrity_status']} (exempt={manifest['integrity_exempt']})",
         f"- public/dev: functional_pass={manifest['public_dev']['functional_pass']} "
         f"passed={manifest['public_dev']['passed']} highest_tier={manifest['public_dev']['highest_tier']}",

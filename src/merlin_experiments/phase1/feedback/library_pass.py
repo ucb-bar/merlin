@@ -118,7 +118,8 @@ def bottleneck(entry: dict, selection, *, deprioritize=()) -> tuple[str, list[di
     fence = entry.get("fence_overlap") if isinstance(entry.get("fence_overlap"), dict) else {}
     if fence.get("fence_per_tile"):
         found, _ = mechanism_hints.fence_hints(
-            selection, why="a full-device fence after nearly every output tile serializes tiles",
+            selection,
+            why="a full-device fence after nearly every output tile serializes tiles",
             deprioritize=deprioritize,
         )
         text = f"fence-bound ({fence.get('fences')} fences, {fence.get('tiles_per_fence')} output tiles per fence)"
@@ -131,22 +132,26 @@ def bottleneck(entry: dict, selection, *, deprioritize=()) -> tuple[str, list[di
     ratio, allowed = reads.get("ratio"), reads.get("capacity_bound_ratio")
     if isinstance(ratio, int | float) and isinstance(allowed, int | float) and ratio > allowed * (1 + HEADROOM_SHARE):
         text = f"operand re-streaming (reads {ratio}x the compulsory bytes; local capacity allows ~{allowed}x)"
-        return text, mechanism_hints.hints(selection, bound_by="read requests", words=RESTREAM_WORDS,
-                                          why=text, deprioritize=deprioritize)
+        return text, mechanism_hints.hints(
+            selection, bound_by="read requests", words=RESTREAM_WORDS, why=text, deprioritize=deprioritize
+        )
     dominant = entry.get("dominant_modeled_resource")
     facets = mechanism_hints.resource_facets((dominant or {}).get("name")) if isinstance(dominant, dict) else None
     if facets is not None:
         unit = mechanism_hints.storage_unit(dominant["name"])
         text = (
-            f"{_FACET_CLASS.get(facets, 'resource')} (busiest modeled resource {dominant['name']}, "
+            f"{_FACET_CLASS[facets]} (busiest modeled resource {dominant['name']}, "
             f"{_pct(dominant.get('modeled_activity'))} modeled activity" + (f", {unit}" if unit else "") + ")"
         )
-        return text, mechanism_hints.hints(selection, dominant=dominant, bound_by=entry.get("bound_by"),
-                                          deprioritize=deprioritize)
+        return text, mechanism_hints.hints(
+            selection, dominant=dominant, bound_by=entry.get("bound_by"), deprioritize=deprioritize
+        )
     bound = entry.get("bound_by")
     if mechanism_hints.bound_facets(bound) is not None:
-        return (f"{bound} roofline bound (no resource diagnostic)", mechanism_hints.hints(
-            selection, bound_by=bound, deprioritize=deprioritize))
+        return (
+            f"{bound} roofline bound (no resource diagnostic)",
+            mechanism_hints.hints(selection, bound_by=bound, deprioritize=deprioritize),
+        )
     return None
 
 
@@ -161,13 +166,29 @@ def ab_command(case: str, variant: str, suite: str, *, mechanism: str, workspace
     The preparation tool refuses missing hooks, unchanged products and a
     disconnected manifest emitter; copying a submission alone is not an A/B.
     """
-    route = {"scalability": "--suite scalability", "programs": "--suite programs --sim spike"}.get(suite, "--sim spike")
+    routes = {"core": "--sim spike", "scalability": "--suite scalability", "programs": "--suite programs --sim spike"}
+    if suite not in routes:
+        raise ValueError("library pass comparison requires a declared public suite")
+    route = routes[suite]
     script = f"{skill_root(workspace)}/{SKILL}/scripts/apply_library_pass.py"
-    prepare = shlex.join([
-        "python", script, "--submission", "submission", "--variant", f"variants/{variant}",
-        "--adapter", "tools/library_pass_adapter.py", "--mechanism", mechanism,
-        "--case", case, "--receipt", f"ab/{variant}-application.json",
-    ])
+    prepare = shlex.join(
+        [
+            "python",
+            script,
+            "--submission",
+            "submission",
+            "--variant",
+            f"variants/{variant}",
+            "--adapter",
+            "tools/library_pass_adapter.py",
+            "--mechanism",
+            mechanism,
+            "--case",
+            case,
+            "--receipt",
+            f"ab/{variant}-application.json",
+        ]
+    )
     return (
         f"{prepare} && python agent_selfcheck.py --submission {shlex.quote(f'variants/{variant}')} "
         f"--capsules {shlex.quote(case)} {route} --wait-budget 5"
@@ -202,10 +223,14 @@ def block(
     case = entry.get("test_case")
     if (roles or {}).get(case) not in PRIMARY:
         return None
-    if (not isinstance(case, str) or not case or suite not in ("core", "scalability", "programs")
-            or not has_headroom(entry)):
+    if (
+        not isinstance(case, str)
+        or not case
+        or suite not in ("core", "scalability", "programs")
+        or not has_headroom(entry)
+    ):
         return None
-    if selection and 'source_calls' not in selection:
+    if selection and "source_calls" not in selection:
         selection = mechanism_hints.with_source_evidence(selection, workspace)
     selection = mechanism_hints.for_case(selection, case, workspace)
     script = inventory_script()
@@ -223,8 +248,14 @@ def block(
     shown = mechanisms[:PER_LINE]
     # The A/B starts from the first shown mechanism with no unchecked workload prerequisite, so it does not
     # begin with a pass whose workload the case may not have; the order shown stays the hints' own.
-    first = next((hint for hint in shown if hint['opportunity_status'] in ('candidate', 'missing_adapter')
-                  and not workload.get(hint.get("id"))), shown[0])
+    first = next(
+        (
+            hint
+            for hint in shown
+            if hint["opportunity_status"] in ("candidate", "missing_adapter") and not workload.get(hint.get("id"))
+        ),
+        shown[0],
+    )
     named, fields = [], []
     for hint in shown:
         module, _, symbol = str(hint.get("api") or "").partition(":")
@@ -243,8 +274,17 @@ def block(
                 "facet": hint.get("facet"),
                 "imported_by_submission": imported,
                 "application_status": "unknown; neither imports nor source calls establish runtime execution",
-                **{key: hint[key] for key in ('opportunity_status', 'source_call_sites', 'observation_basis',
-                                              'prerequisites', 'next_action', 'recipe')},
+                **{
+                    key: hint[key]
+                    for key in (
+                        "opportunity_status",
+                        "source_call_sites",
+                        "observation_basis",
+                        "prerequisites",
+                        "next_action",
+                        "recipe",
+                    )
+                },
                 "applies_if": unchecked,
             }
         )
@@ -268,19 +308,28 @@ def block(
             f"{measured} | bottleneck: {text} | library: {', '.join(named)} | "
             f"next: {first['next_action']} | A/B after prerequisites: {check} | then: {compare} | "
             f"read: {SKILL}, {reference}"
-            + (" | unresolved effect/capability contracts: "
-               + ", ".join(str(row["id"]) for row in unconfirmed[:2]) if unconfirmed else "")
+            + (
+                " | unresolved effect/capability contracts: " + ", ".join(str(row["id"]) for row in unconfirmed[:2])
+                if unconfirmed
+                else ""
+            )
         ),
         "evidence_kind": kind,
         "bottleneck": text,
         "mechanisms": fields,
         "related_capability_unconfirmed": unconfirmed,
         "unconfirmed_action": "establish the named effect/capability contracts before applying those mechanisms",
-        "ab": {"variant": f"variants/{variant}", "mechanism": first.get("id"), "check": check, "compare": compare,
-               "adapter": "tools/library_pass_adapter.py", "application_status": "not_run",
-               "requires": "authored adapter, executed registered pipeline and changed manifest-emitted product",
-               "missing_adapter_action": "construct the generic prepare/source hooks described in ab-library-pass; "
-                                         "do not grade an unchanged copy"},
+        "ab": {
+            "variant": f"variants/{variant}",
+            "mechanism": first.get("id"),
+            "check": check,
+            "compare": compare,
+            "adapter": "tools/library_pass_adapter.py",
+            "application_status": "not_run",
+            "requires": "authored adapter, executed registered pipeline and changed manifest-emitted product",
+            "missing_adapter_action": "construct the generic prepare/source hooks described in ab-library-pass; "
+            "do not grade an unchanged copy",
+        },
         "skill": SKILL,
         "reference": reference,
         "basis": "advisory: the bottleneck is a diagnostic hypothesis; keep the pass when its cycle estimate "
@@ -300,11 +349,14 @@ def annotate(rows, brief, *, workspace=None, suite: str | None, context=None) ->
         return 0
     try:
         workspace = Path(workspace) if workspace is not None else Path.cwd()
-        selection = (context.selection if context is not None else mechanism_hints.with_source_evidence(
-            mechanism_hints.load_selection(workspace), workspace))
+        selection = (
+            context.selection
+            if context is not None
+            else mechanism_hints.with_source_evidence(mechanism_hints.load_selection(workspace), workspace)
+        )
         if not selection:
             return 0
-        imports = selection.get('source_imports', {})
+        imports = selection.get("source_imports", {})
         by_name = {str(r.get("capsule") or r.get("name") or ""): r for r in rows or () if isinstance(r, dict)}
         written = 0
         for entry in brief.get("largest_headroom") or ():
@@ -315,8 +367,13 @@ def annotate(rows, brief, *, workspace=None, suite: str | None, context=None) ->
             row = by_name.get(name) or {}
             roofline = (row.get("performance") or {}).get("structural_roofline") if isinstance(row, dict) else None
             found = block(
-                entry, selection=selection, suite=suite, imports=imports, workspace=workspace, roofline=roofline,
-                roles=context.roles if context is not None else None
+                entry,
+                selection=selection,
+                suite=suite,
+                imports=imports,
+                workspace=workspace,
+                roofline=roofline,
+                roles=context.roles if context is not None else None,
             )
             if found:
                 target[KEY] = found

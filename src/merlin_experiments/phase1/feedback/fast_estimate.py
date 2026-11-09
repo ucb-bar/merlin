@@ -37,9 +37,11 @@ from __future__ import annotations
 
 import fcntl
 import json
+import logging
 import math
 import os
 import statistics
+from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -55,11 +57,15 @@ _MAX_TRACE_BYTES = 32 << 20
 #: The coarse grid of the fit: 0 and 2**(i/2) cycles; the fine pass searches 2**(j/8) around the best.
 _COARSE = (0.0, *(2.0 ** (i / 2) for i in range(-4, 25)))
 #: What the estimate cannot see; repeated verbatim wherever it is offered as evidence.
-ORDER_BLIND = ("order-blind: counts commands and fences only; blind to transfer size, load/compute overlap, "
-               "issue order and prefetch")
+ORDER_BLIND = (
+    "order-blind: counts commands and fences only; blind to transfer size, load/compute overlap, "
+    "issue order and prefetch"
+)
 #: What to do when two estimates cannot rank a pair of variants.
-COMPLETE_ESTIMATE_ADVICE = ("obtain a complete Spike timing-model estimate of both variants before deciding; "
-                            "the fast estimate stays a diagnostic for this pair")
+COMPLETE_ESTIMATE_ADVICE = (
+    "obtain a complete Spike timing-model estimate of both variants before deciding; "
+    "the fast estimate stays a diagnostic for this pair"
+)
 
 
 def _positive(value) -> bool:
@@ -77,7 +83,7 @@ def census(trace) -> dict | None:
     from .fence_overlap import _is_fence
 
     commands = fences = sites = unproved = 0
-    families: dict[str, int] = {}
+    families: Counter[str] = Counter()
     stream = hashlib.sha256()
     for row in trace.get("instructions") or ():
         if not isinstance(row, dict):
@@ -92,20 +98,37 @@ def census(trace) -> dict | None:
         # The ordered stream as decoded: class, executions and operand encodings, so a reordered,
         # re-overlapped or re-sized program differs here even where its counts are equal.
         operands = [row.get(slot) if isinstance(row.get(slot), dict) else None for slot in ("rs1", "rs2")]
-        stream.update(json.dumps([row.get("class"), row.get("funct"), runs, row.get("decoded"),
-                                  [{k: o.get(k) for k in ("raw", "kind", "known_bits")} if o else None
-                                   for o in operands]], sort_keys=True, default=str).encode() + b"\n")
+        stream.update(
+            json.dumps(
+                [
+                    row.get("class"),
+                    row.get("funct"),
+                    runs,
+                    row.get("decoded"),
+                    [{k: o.get(k) for k in ("raw", "kind", "known_bits")} if o else None for o in operands],
+                ],
+                sort_keys=True,
+                default=str,
+            ).encode()
+            + b"\n"
+        )
         if fence:
             fences += runs
         else:
             commands += runs
             family = from_isa_class(str(row.get("class") or "")) or "other"
-            families[family] = families.get(family, 0) + runs
+            families[family] += runs
     if not sites:
         return None
-    return {"commands": commands, "fences": fences, "sites": sites, "unproved_sites": unproved,
-            "complete": unproved == 0, "families": dict(sorted(families.items())),
-            "stream_sha256": stream.hexdigest()}
+    return {
+        "commands": commands,
+        "fences": fences,
+        "sites": sites,
+        "unproved_sites": unproved,
+        "complete": unproved == 0,
+        "families": dict(sorted(families.items())),
+        "stream_sha256": stream.hexdigest(),
+    }
 
 
 def trace_for(root) -> dict | None:
@@ -145,7 +168,8 @@ def _score(points, per_command, per_fence) -> float:
 def fit(points) -> dict | None:
     """Fit ``c_cmd``/``c_fence`` to ``(floor, commands, fences, complete cycles)`` points (module docstring)."""
     points = [
-        (float(b or 0.0), int(c), int(f), float(y)) for b, c, f, y in points
+        (float(b or 0.0), int(c), int(f), float(y))
+        for b, c, f, y in points
         if type(c) is int and type(f) is int and c >= 0 and f >= 0 and _positive(y) and (b is None or b >= 0)
     ]
     if len(points) < MIN_PAIRS:
@@ -155,8 +179,11 @@ def fit(points) -> dict | None:
     fine = lambda v: (0.0,) if v == 0 else tuple(v * 2.0 ** (j / 8) for j in range(-4, 5))  # noqa: E731
     best = min(((_score(points, a, b), a, b) for a in fine(a0) for b in fine(b0)), key=lambda t: (t[0], t[1], t[2]))
     error, per_command, per_fence = best
-    ratios = sorted(y / _price(b, c, f, per_command, per_fence) for b, c, f, y in points
-                    if _price(b, c, f, per_command, per_fence) > 0)
+    ratios = sorted(
+        y / _price(b, c, f, per_command, per_fence)
+        for b, c, f, y in points
+        if _price(b, c, f, per_command, per_fence) > 0
+    )
     quantile = lambda q: ratios[min(len(ratios) - 1, int(q * (len(ratios) - 1) + 0.5))]  # noqa: E731
     return {
         "cycles_per_command": round(per_command, 4),
@@ -164,9 +191,13 @@ def fit(points) -> dict | None:
         "pairs": len(points),
         "median_abs_log_error": round(error, 4),
         # complete / estimated over the calibration pairs: the band an estimate carries.
-        "ratio_quantiles": {"p10": round(quantile(0.10), 3), "p25": round(quantile(0.25), 3),
-                            "p50": round(quantile(0.50), 3), "p75": round(quantile(0.75), 3),
-                            "p90": round(quantile(0.90), 3)},
+        "ratio_quantiles": {
+            "p10": round(quantile(0.10), 3),
+            "p25": round(quantile(0.25), 3),
+            "p50": round(quantile(0.50), 3),
+            "p75": round(quantile(0.75), 3),
+            "p90": round(quantile(0.90), 3),
+        },
     }
 
 
@@ -204,15 +235,20 @@ def record(structural, counted, cycles, *, facts_sha256=None, path: Path | None 
         path = _ledger_path() if path is None else path
         if path is None:
             return
-        pair = {"floor": floor(structural), "commands": counted["commands"], "fences": counted["fences"],
-                "cycles": cycles, "facts_sha256": facts_sha256}
+        pair = {
+            "floor": floor(structural),
+            "commands": counted["commands"],
+            "fences": counted["fences"],
+            "cycles": cycles,
+            "facts_sha256": facts_sha256,
+        }
         with _locked(path) as document:
             document["pairs"] = [*document["pairs"], pair][-_KEEP:]
             same = [p for p in document["pairs"] if p.get("facts_sha256") == facts_sha256]
             fitted = fit([(p.get("floor"), p.get("commands"), p.get("fences"), p.get("cycles")) for p in same])
             document.setdefault("fits", {})[str(facts_sha256)] = fitted
-    except (OSError, ValueError, TypeError, KeyError):
-        pass
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        logging.getLogger(__name__).warning("fast estimate calibration pair not recorded: %s", type(error).__name__)
 
 
 def _seed(facts_sha256) -> dict | None:
@@ -235,10 +271,12 @@ def calibration(facts_sha256, *, path: Path | None = None) -> dict | None:
         try:
             document = json.loads(path.read_text(encoding="utf-8"))
             fitted = ((document or {}).get("fits") or {}).get(str(facts_sha256))
-            if isinstance(fitted, dict) and fitted.get("pairs", 0) >= MIN_PAIRS:
+            if isinstance(fitted, dict) and type(fitted.get("pairs")) is int and fitted["pairs"] >= MIN_PAIRS:
                 return dict(fitted, source="this run's complete timing-model estimates")
-        except (OSError, ValueError, AttributeError):
-            pass
+        except (OSError, ValueError, AttributeError) as error:
+            logging.getLogger(__name__).warning(
+                "run fast estimate calibration unavailable; checking seed: %s", type(error).__name__
+            )
     return _seed(facts_sha256)
 
 
@@ -248,8 +286,7 @@ def estimate(counted, structural, calibrated) -> dict:
     if counted is None:
         return dict(block, reason="no decoded instruction stream with accelerator commands for this case")
     if calibrated is None:
-        return dict(block, census=counted,
-                    reason="no fast-estimate calibration for the selected hardware facts yet")
+        return dict(block, census=counted, reason="no fast-estimate calibration for the selected hardware facts yet")
     bound = floor(structural)
     per_command, per_fence = calibrated["cycles_per_command"], calibrated["cycles_per_fence"]
     cycles = _price(bound, counted["commands"], counted["fences"], per_command, per_fence)
@@ -257,9 +294,11 @@ def estimate(counted, structural, calibrated) -> dict:
         return dict(block, census=counted, reason="census and roofline state no work to price")
     band = calibrated.get("ratio_quantiles") or {}
     issue = counted["commands"] * per_command
-    terms = {"structural_floor_cycles": round(bound, 1) if bound else None,
-             "command_issue_cycles": round(issue, 1),
-             "fence_drain_cycles": round(counted["fences"] * per_fence, 1)}
+    terms = {
+        "structural_floor_cycles": round(bound, 1) if bound else None,
+        "command_issue_cycles": round(issue, 1),
+        "fence_drain_cycles": round(counted["fences"] * per_fence, 1),
+    }
     return dict(
         block,
         status="ESTIMATED",
@@ -271,11 +310,21 @@ def estimate(counted, structural, calibrated) -> dict:
         terms=terms,
         census=counted,
         lower_bound=not counted["complete"],
-        calibration={key: calibrated.get(key) for key in (
-            "cycles_per_command", "cycles_per_fence", "pairs", "median_abs_log_error", "ratio_quantiles", "source")},
-        basis=("max(structural floor, commands x per-command issue) + fences x per-fence drain, calibrated "
-               "against complete Spike timing-model estimates; an estimate with a band, not a measurement; "
-               + ORDER_BLIND),
+        calibration={
+            key: calibrated.get(key)
+            for key in (
+                "cycles_per_command",
+                "cycles_per_fence",
+                "pairs",
+                "median_abs_log_error",
+                "ratio_quantiles",
+                "source",
+            )
+        },
+        basis=(
+            "max(structural floor, commands x per-command issue) + fences x per-fence drain, calibrated "
+            "against complete Spike timing-model estimates; an estimate with a band, not a measurement; " + ORDER_BLIND
+        ),
         order_blind=True,
         blind_to=["transfer size", "load/compute overlap", "issue order", "prefetch"],
     )
@@ -286,8 +335,13 @@ def for_case(root, structural, *, facts_sha256, path: Path | None = None) -> dic
     try:
         return estimate(census(trace_for(root)), structural, calibration(facts_sha256, path=path))
     except (OSError, ValueError, TypeError, KeyError, ZeroDivisionError) as error:
-        return {"schema": SCHEMA, "evidence_kind": EVIDENCE_KIND, "status": "UNKNOWN", "cycles": None,
-                "reason": "fast estimate unavailable: " + type(error).__name__}
+        return {
+            "schema": SCHEMA,
+            "evidence_kind": EVIDENCE_KIND,
+            "status": "UNKNOWN",
+            "cycles": None,
+            "reason": "fast estimate unavailable: " + type(error).__name__,
+        }
 
 
 def attach(performance: dict, root, structural, *, facts_sha256, path: Path | None = None) -> None:
@@ -305,8 +359,13 @@ def attach(performance: dict, root, structural, *, facts_sha256, path: Path | No
 
         decide_on_fast_estimate((performance.get("feedback_brief") or {}).get("outcomes"), performance["fast_estimate"])
     except (OSError, ValueError, TypeError, KeyError, ZeroDivisionError, AttributeError) as error:
-        performance["fast_estimate"] = {"schema": SCHEMA, "evidence_kind": EVIDENCE_KIND, "status": "UNKNOWN",
-                                        "cycles": None, "reason": "fast estimate unavailable: " + type(error).__name__}
+        performance["fast_estimate"] = {
+            "schema": SCHEMA,
+            "evidence_kind": EVIDENCE_KIND,
+            "status": "UNKNOWN",
+            "cycles": None,
+            "reason": "fast estimate unavailable: " + type(error).__name__,
+        }
 
 
 def cycles_of(performance) -> int | None:
@@ -346,8 +405,13 @@ def ranking(baseline, candidate) -> dict:
     """
     left, right = _block(baseline), _block(candidate)
     unknown = {"status": "UNKNOWN", "candidate_to_baseline_ratio": None, "order_blind": ORDER_BLIND}
-    if not (left and right and left.get("status") == right.get("status") == "ESTIMATED"
-            and _positive(left.get("cycles")) and _positive(right.get("cycles"))):
+    if not (
+        left
+        and right
+        and left.get("status") == right.get("status") == "ESTIMATED"
+        and _positive(left.get("cycles"))
+        and _positive(right.get("cycles"))
+    ):
         return dict(unknown, reason="both variants need an ESTIMATED fast estimate")
     a, b = left.get("census") or {}, right.get("census") or {}
     reason = None
@@ -356,22 +420,24 @@ def ranking(baseline, candidate) -> dict:
     elif a.get("families") is not None and b.get("families") is not None:
         fa, fb = a["families"], b["families"]
         compute = {k for k in (*fa, *fb) if k not in ("movement", "synchronization", "other")}
-        same_compute = all(fa.get(k, 0) == fb.get(k, 0) for k in compute)
-        if same_compute and fa.get("movement", 0) != fb.get("movement", 0):
+        # These are complete counts from census(), whose omitted family has zero commands.
+        same_compute = all((fa[k] if k in fa else 0) == (fb[k] if k in fb else 0) for k in compute)
+        if same_compute and (fa["movement"] if "movement" in fa else 0) != (fb["movement"] if "movement" in fb else 0):
             reason = "same compute commands, different number of transfer commands: transfer sizes differ"
         elif fa == fb and a.get("fences") != b.get("fences"):
             reason = "same commands, different fences: drain, overlap and prefetch structure differs"
         elif fa == fb and a.get("fences") == b.get("fences") and a.get("stream_sha256") != b.get("stream_sha256"):
-            reason = ("same command and fence counts, different command stream: issue order, overlap or "
-                      "operands differ")
+            reason = "same command and fence counts, different command stream: issue order, overlap or operands differ"
     elif a.get("commands") == b.get("commands") and a.get("fences") == b.get("fences"):
         reason = "same command and fence counts; the estimate cannot distinguish these variants"
     if reason is not None:
         return dict(unknown, status="NOT_RANKABLE", reason=reason, recommendation=COMPLETE_ESTIMATE_ADVICE)
-    return {"status": "RANKABLE_WITH_CAVEAT",
-            "candidate_to_baseline_ratio": round(right["cycles"] / left["cycles"], 4),
-            "order_blind": ORDER_BLIND,
-            "reason": "the variants differ in counts the estimate prices; it remains " + ORDER_BLIND}
+    return {
+        "status": "RANKABLE_WITH_CAVEAT",
+        "candidate_to_baseline_ratio": round(right["cycles"] / left["cycles"], 4),
+        "order_blind": ORDER_BLIND,
+        "reason": "the variants differ in counts the estimate prices; it remains " + ORDER_BLIND,
+    }
 
 
 __all__ = [

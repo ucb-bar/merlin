@@ -10,6 +10,7 @@ import json
 import subprocess
 import time
 import zipfile
+from collections import Counter
 from pathlib import Path, PurePosixPath
 
 from . import candidate_verification, reference_bank, reference_experiments
@@ -174,9 +175,11 @@ def _compare(left, right, expert, ours, *, observation_fields=()):
             unknowns=[dict(reason="selected_instruction_decoder_unavailable")],
         )
     )
-    ref_counts, cand_counts = ref["selected_decode"]["counts"], cand["selected_decode"]["counts"]
+    # Both complete instruction censuses were admitted above; absent instruction kinds have zero sites.
+    ref_counts = Counter(ref["selected_decode"]["counts"])
+    cand_counts = Counter(cand["selected_decode"]["counts"])
     command_mix = {
-        name: dict(reference=ref_counts.get(name, 0), candidate=cand_counts.get(name, 0))
+        name: dict(reference=ref_counts[name], candidate=cand_counts[name])
         for name in sorted(ref_counts.keys() | cand_counts.keys())
         if ref_counts.get(name) or cand_counts.get(name)
     }
@@ -288,7 +291,19 @@ def handle(
             validate_path(schedule)
             if bank_pin is None:
                 raise ValueError("bank_operation_requires_cca_bank_arm")
-        operation, format = value.get("operation"), value.get("format", "auto")
+        # This is an authored analysis selector: omitted format/page/location options
+        # select automatic detection and the first bounded page, not observed facts.
+        value = {
+            "format": "auto",
+            "offset": 0,
+            "limit": 8,
+            "instruction_offset": 0,
+            "symbol": "",
+            "entry": "",
+            "region": "",
+            **value,
+        }
+        operation, format = value.get("operation"), value["format"]
         observation_fields = value.get("observation_fields", [])
         if (
             not isinstance(observation_fields, list)
@@ -298,7 +313,7 @@ def handle(
             and operation != "compare"
         ):
             raise ValueError("invalid_analysis_request")
-        offset, limit = value.get("offset", 0), value.get("limit", 8)
+        offset, limit = value["offset"], value["limit"]
         if (
             operation not in ("inventory", "lift", "candidate", "compare", "applicability")
             or format not in _FORMATS
@@ -309,27 +324,30 @@ def handle(
         ):
             raise ValueError("invalid_analysis_operation_or_page")
         for key in ("symbol", "entry", "region"):
-            if not isinstance(value.get(key, ""), str) or len(value.get(key, "")) > 512:
+            if not isinstance(value[key], str) or len(value[key]) > 512:
                 raise ValueError("invalid_analysis_request")
-        if type(value.get("instruction_offset", 0)) is not int or value.get("instruction_offset", 0) < 0:
+        if type(value["instruction_offset"]) is not int or value["instruction_offset"] < 0:
             raise ValueError("invalid_analysis_request")
         other = value.get("candidate")
         if operation in ("compare", "applicability") and other is None and schedule is not None:
             pass  # the top-down schedule alone is the candidate side
         elif operation in ("compare", "applicability"):
+            # The candidate has the same optional selector defaults, but its path is mandatory.
+            if isinstance(other, dict):
+                other = {"format": "auto", "symbol": "", "region": "", "instruction_offset": 0, "offset": 0, **other}
             if (
                 not isinstance(other, dict)
                 or set(other) - {"path", "format", "symbol", "offset", "region", "instruction_offset"}
                 or not isinstance(other.get("path"), str)
-                or other.get("format", "auto") not in _FORMATS
-                or not isinstance(other.get("symbol", ""), str)
-                or len(other.get("symbol", "")) > 512
-                or not isinstance(other.get("region", ""), str)
-                or len(other.get("region", "")) > 512
-                or type(other.get("instruction_offset", 0)) is not int
-                or other.get("instruction_offset", 0) < 0
-                or type(other.get("offset", 0)) is not int
-                or other.get("offset", 0) < 0
+                or other["format"] not in _FORMATS
+                or not isinstance(other["symbol"], str)
+                or len(other["symbol"]) > 512
+                or not isinstance(other["region"], str)
+                or len(other["region"]) > 512
+                or type(other["instruction_offset"]) is not int
+                or other["instruction_offset"] < 0
+                or type(other["offset"]) is not int
+                or other["offset"] < 0
             ):
                 raise ValueError("invalid_analysis_request")
         elif other or operation == "candidate" and value.get("entry"):
@@ -391,7 +409,7 @@ def handle(
             return _response(base, packet, left, compiler_sha256, workspace=workspace)
         path, label = _path(
             workspace,
-            value.get("path", "reference-kernels"),
+            (value["path"] if "path" in value else "reference-kernels"),
             candidate=operation == "candidate",
             reference_root=reference_root,
         )
@@ -464,7 +482,7 @@ def handle(
             base,
             status="unknown",
             reason=code,
-            next_action=_GAPS.get(code, "Check admitted paths, format, parser/ISA dependencies and bounds."),
+            next_action=_GAPS[code],
             gap=dict(
                 kind="evidence_or_adapter_gap",
                 code=code,

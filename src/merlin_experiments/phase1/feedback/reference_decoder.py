@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import resource
 import subprocess
@@ -215,7 +216,9 @@ def _protocol_decoder_structure(selection):
         try:
             result["operand_layout_roster"] = layout_field_roster(sidecar)
         except (KeyError, TypeError, AttributeError):
-            pass  # no derivable roster: the consumer reports it as not supplied
+            logging.getLogger(__name__).warning(
+                "Selected operand layout roster unavailable; remains unknown", exc_info=True
+            )
     return result
 
 

@@ -97,7 +97,8 @@ def run(*, run_dir, descriptor, submission, original_partition, out, host_elemen
         Path(path).absolute() for path in (run_dir, descriptor, submission, original_partition, out)
     )
     original = json.loads(products_api.ordinary(original_partition).read_bytes())
-    original_fusion = original.get("host_elementwise_fusion", False)
+    # Original partition receipts emit host_elementwise_fusion only when enabled.
+    original_fusion = original["host_elementwise_fusion"] if "host_elementwise_fusion" in original else False
     if type(original_fusion) is not bool or original_fusion is not host_elementwise_fusion:
         raise ValueError("static revalidation changed the original host fusion selection")
     owner = profile.functional_service(run_dir)
@@ -206,11 +207,12 @@ def _verify_record(record):
     ):
         raise ValueError("static revalidation has no bounded fresh trusted checker preparation")
     old = json.loads(products_api.reopen(retained["original_partition"]).read_bytes())
-    fusion = record.get("host_elementwise_fusion", False)
+    # Revalidation and its original partition retain the same true-only producer marker.
+    fusion = record["host_elementwise_fusion"] if "host_elementwise_fusion" in record else False
     if (
         type(fusion) is not bool
-        or type(old.get("host_elementwise_fusion", False)) is not bool
-        or fusion is not old.get("host_elementwise_fusion", False)
+        or type((old["host_elementwise_fusion"] if "host_elementwise_fusion" in old else False)) is not bool
+        or fusion is not (old["host_elementwise_fusion"] if "host_elementwise_fusion" in old else False)
     ):
         raise ValueError("static revalidation changed the original host fusion selection")
     if (
@@ -231,7 +233,9 @@ def _verify_record(record):
         products_api.reopen(identity)
     for program, result in retained["linked_policy_observations"].items():
         receipt = json.loads(products_api.reopen(record["receipts"][program]).read_bytes())
-        if receipt["inputs"].get("host_elementwise_fusion", False) is not fusion:
+        if (
+            receipt["inputs"]["host_elementwise_fusion"] if "host_elementwise_fusion" in receipt["inputs"] else False
+        ) is not fusion:
             raise ValueError("retained compiled host fusion selection changed")
         emissions = retained["compiler_emission_observations"][program]
         if not isinstance(emissions, list):
@@ -334,7 +338,11 @@ def verify_producer(path, record, invocation):
             "model": record["selected_model"],
             "candidate_tree_sha256": record["candidate_tree_sha256"],
             "original_partition_sha256": record["retained_product_revalidation"]["original_partition"]["sha256"],
-            **({"host_elementwise_fusion": True} if record.get("host_elementwise_fusion", False) else {}),
+            **(
+                {"host_elementwise_fusion": True}
+                if (record["host_elementwise_fusion"] if "host_elementwise_fusion" in record else False)
+                else {}
+            ),
         }
         or not any(pin.get("path") == str(path) and pin.get("sha256") == file_sha256(path) for pin in call["outputs"])
     ):

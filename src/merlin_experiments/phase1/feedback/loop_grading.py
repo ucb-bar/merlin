@@ -29,7 +29,6 @@ from merlin_experiments.phase1.context import InvocationContext, readback_kwargs
 from merlin_experiments.phase1.feedback import completed_grade, package_rejection
 from merlin_experiments.phase1.feedback import joint_test_scope as JTS
 from merlin_experiments.phase1.feedback import lifecycle as FL
-from merlin_experiments.phase1.feedback.stage_timing import measure
 
 # Re-exported: grade() looks these up through THIS module's globals at call time, so replacing
 # loop_grading.<name> (as the tests do) replaces the probe a grade runs.
@@ -39,6 +38,7 @@ from merlin_experiments.phase1.feedback.loop_probes import (
     _shape_skip_reason,
     _skip_shape_generalization,
 )
+from merlin_experiments.phase1.feedback.stage_timing import measure
 
 from ..joint_model_activation import admit_grade, grade_model_scope
 
@@ -274,8 +274,8 @@ def grade(
 
     def publish_progress(row):
         # A separate redacted stream cannot replace the final corpus verdict.
-        from .qualification_summary import summarize
         from .author_disclosure import project
+        from .qualification_summary import summarize
 
         progress_rows[row["capsule"]] = row
         qualification = summarize(list(progress_rows.values()))
@@ -284,28 +284,34 @@ def grade(
         temporary = progress_path.with_suffix(".tmp")
         temporary.write_text(
             json.dumps(
-                project({
-                    "schema": "merlin.phase1.grade_progress.v1",
-                    "state": "running",
-                    "all_pass": None,
-                    "certified_complete": False,
-                    "graded_source_sha256": snapshot_digest,
-                    "snapshot_current": current,
-                    "count_scope": "immutable_snapshot",
-                    "current_source_n_passed": sum(r.get("status") == "pass" for r in progress_rows.values())
-                    if current
-                    else None,
-                    "n_completed": len(progress_rows),
-                    "n_passed": sum(r.get("status") == "pass" for r in progress_rows.values()),
-                    "n_execution_passed": qualification["execution_passed"],
-                    # Seeded grades: passes carried in full from the seed run, labelled per row.
-                    **({"n_carried_passed": carried} if (carried := sum(
-                        bool(r.get("carried_from")) for r in progress_rows.values())) else {}),
-                    "qualification_summary": qualification,
-                    "per_capsule": list(progress_rows.values()),
-                    "updated_at": _dt.datetime.now(_dt.UTC).isoformat(),
-                    "scope": "completed redacted rows; final shape, model and certification gates remain pending",
-                }, workspace=ws),
+                project(
+                    {
+                        "schema": "merlin.phase1.grade_progress.v1",
+                        "state": "running",
+                        "all_pass": None,
+                        "certified_complete": False,
+                        "graded_source_sha256": snapshot_digest,
+                        "snapshot_current": current,
+                        "count_scope": "immutable_snapshot",
+                        "current_source_n_passed": sum(r.get("status") == "pass" for r in progress_rows.values())
+                        if current
+                        else None,
+                        "n_completed": len(progress_rows),
+                        "n_passed": sum(r.get("status") == "pass" for r in progress_rows.values()),
+                        "n_execution_passed": qualification["execution_passed"],
+                        # Seeded grades: passes carried in full from the seed run, labelled per row.
+                        **(
+                            {"n_carried_passed": carried}
+                            if (carried := sum(bool(r.get("carried_from")) for r in progress_rows.values()))
+                            else {}
+                        ),
+                        "qualification_summary": qualification,
+                        "per_capsule": list(progress_rows.values()),
+                        "updated_at": _dt.datetime.now(_dt.UTC).isoformat(),
+                        "scope": "completed redacted rows; final shape, model and certification gates remain pending",
+                    },
+                    workspace=ws,
+                ),
                 indent=2,
             )
             + "\n"
@@ -345,7 +351,10 @@ def grade(
 
         public = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
         background_guard = BackgroundGuard(ws, public, inputs, source_digest(ws), finish_bounded_snapshot=JTS.focused())
-        raw = os.environ.get("MERLIN_BACKGROUND_GRADE_WORKERS", "0")
+        raw = os.environ.get("MERLIN_BACKGROUND_GRADE_WORKERS")
+        if raw is None:
+            # No optional worker selection means no background worker pool.
+            raw = "0"
         if not raw.isascii() or not raw.isdecimal() or not 0 <= int(raw) <= 64:
             raise ValueError("MERLIN_BACKGROUND_GRADE_WORKERS must be an integer between 0 and 64")
         background_workers = int(raw)
@@ -388,8 +397,13 @@ def grade(
             snapshot_digest = hash_tree(cand)["sha256"]
         if background_guard is not None:
             background_guard.bind_snapshot(cand)
-        admit_grade(candidate=cand, source_sha256=snapshot_digest,
-                    output=run_dir, kind="full", identity={"label":label,"scratch_key":_key})
+        admit_grade(
+            candidate=cand,
+            source_sha256=snapshot_digest,
+            output=run_dir,
+            kind="full",
+            identity={"label": label, "scratch_key": _key},
+        )
         from .construction_plan import require_ready as require_construction_plan
 
         require_construction_plan(cand)
@@ -903,8 +917,9 @@ def fast_grade(
 
     require_construction_plan(cand)
     snapshot_digest = hash_tree(cand)["sha256"]
-    grade_environment = admit_grade(candidate=cand, source_sha256=snapshot_digest,
-        output=run_dir, kind="loop", identity={"tick":tick})
+    grade_environment = admit_grade(
+        candidate=cand, source_sha256=snapshot_digest, output=run_dir, kind="loop", identity={"tick": tick}
+    )
     background_guard.bind_snapshot(cand)
     fruns = run_dir / "_qa_work" / f"fruns_{tick}"
     te = load_target_experiment(inputs.context.descriptor)
@@ -1025,7 +1040,11 @@ def fast_grade(
         published_cases.update(row["capsule"] for row in rows)
         try:
             completed_grade.record_rows(
-                ws, rows, tick, graded_source_sha256=snapshot_digest, graded_at=_dt.datetime.now(_dt.UTC).isoformat(),
+                ws,
+                rows,
+                tick,
+                graded_source_sha256=snapshot_digest,
+                graded_at=_dt.datetime.now(_dt.UTC).isoformat(),
                 reach_sha256=background_guard.reach_identity(),
             )
         except (OSError, ValueError, TypeError, KeyError) as error:
@@ -1033,6 +1052,7 @@ def fast_grade(
 
     def process_completed(row):
         from .joint_performance import environment_scope
+
         with environment_scope(grade_environment):
             return _process_completed(row)
 
@@ -1277,7 +1297,9 @@ def write_verdict(path: Path, verdict: dict, *, expect=None) -> dict | None:
         from .visible_model_gate import publish
 
         return publish_live(
-            path.parent.parent, lambda: publish(path, verdict, expect=expect), default=verdict if expect is None else None
+            path.parent.parent,
+            lambda: publish(path, verdict, expect=expect),
+            default=verdict if expect is None else None,
         )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(verdict, indent=2))

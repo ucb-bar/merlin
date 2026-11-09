@@ -41,12 +41,23 @@ def test_group_profile_is_compact_diagnostic_not_performance(tmp_path):
     r = record(tmp_path)
     r["source_composition_selection"]["preferences"]["group_profile"] = True
     r["build"]["inputs"]["group_profile"] = True
-    result = build(r, tiers={"L2": {"group_profile": {
-        "status": "observed", "unit": "counter_ticks", "timing_qualified": False,
-        "performance_ranking_eligible": False, "group_counter_ticks": 20,
-        "between_group_counter_ticks": 12, "total_counter_ticks": 32,
-        "private_path": str(tmp_path),
-    }}})
+    result = build(
+        r,
+        tiers={
+            "L2": {
+                "group_profile": {
+                    "status": "observed",
+                    "unit": "counter_ticks",
+                    "timing_qualified": False,
+                    "performance_ranking_eligible": False,
+                    "group_counter_ticks": 20,
+                    "between_group_counter_ticks": 12,
+                    "total_counter_ticks": 32,
+                    "private_path": str(tmp_path),
+                }
+            }
+        },
+    )
     feature = result["features"]["group_profile"]
     assert feature["requested"] and feature["selected"] and feature["status"] == "observed"
     assert feature["observations"]["L2"]["between_group_counter_ticks"] == 12
@@ -80,16 +91,29 @@ def test_storage_feedback_exposes_actual_barriers_without_private_allocations(tm
     r = record(tmp_path)
     r["source_composition_selection"]["preferences"]["reuse_intermediate_storage"] = True
     r["build"]["inputs"]["device"] = {"intermediate_storage": {"original_policy": True}}
-    report = pin(tmp_path / "storage-report.json", {
-        "schema": "merlin.host_intermediate_storage.v1",
-        "automatic_selection": {"status": "applied", "reason": None},
-        "arena": {"bound": 3, "refused": 2, "arena_bytes": 256, "naive_total_bytes": 384,
-                  "refusals": {"raw_pointer_escapes": 1, "in_loop": 1,
-                               "private_allocation_name": 7, "multiple_frees": True},
-                  "placements": [{"allocation": "private_buffer"}]}},
+    report = pin(
+        tmp_path / "storage-report.json",
+        {
+            "schema": "merlin.host_intermediate_storage.v1",
+            "automatic_selection": {"status": "applied", "reason": None},
+            "arena": {
+                "bound": 3,
+                "refused": 2,
+                "arena_bytes": 256,
+                "naive_total_bytes": 384,
+                "refusals": {
+                    "raw_pointer_escapes": 1,
+                    "in_loop": 1,
+                    "private_allocation_name": 7,
+                    "multiple_frees": True,
+                },
+                "placements": [{"allocation": "private_buffer"}],
+            },
+        },
     )
-    r["build"]["output"]["compilation_recipe"] = pin(tmp_path / "recipe.json", {
-        "preparation": {"intermediate_storage_report": report}})
+    r["build"]["output"]["compilation_recipe"] = pin(
+        tmp_path / "recipe.json", {"preparation": {"intermediate_storage_report": report}}
+    )
     feature = build(r)["features"]["reuse_intermediate_storage"]
     assert feature["status"] == "applied"
     assert feature["allocation_refusals"] == {"in_loop": 1, "raw_pointer_escapes": 1}
@@ -119,13 +143,19 @@ def test_head_priority_does_not_pretend_sibling_mode_applied(tmp_path):
 
 def test_verified_joint_composition_reports_both_actual_modes(tmp_path):
     r = record(tmp_path)
-    r["source_device_join"] = {"composition": {
-        "schema": "merlin.original_head_source_composition.v1",
-        "components": [{"schema": "merlin.original_head_family.v1"},
-                       {"schema": "merlin.original_sibling_source_composition.v1", "members": [{}, {}]}],
-        "matrix_products": 2, "batch_abi_calls": 1, "ordinary_joined_groups": {3: 6},
-        "original_source_denominator_unchanged": True,
-    }}
+    r["source_device_join"] = {
+        "composition": {
+            "schema": "merlin.original_head_source_composition.v1",
+            "components": [
+                {"schema": "merlin.original_head_family.v1"},
+                {"schema": "merlin.original_sibling_source_composition.v1", "members": [{}, {}]},
+            ],
+            "matrix_products": 2,
+            "batch_abi_calls": 1,
+            "ordinary_joined_groups": {3: 6},
+            "original_source_denominator_unchanged": True,
+        }
+    }
     summary = build(r)
     assert summary["selected_route"] == "independent_heads_and_shared_input_siblings"
     for name in ("independent_heads", "shared_input_siblings"):
@@ -199,18 +229,39 @@ def test_bounded_rne_application_requires_original_pinned_source_report(tmp_path
     r["source_composition_selection"]["preferences"]["host_bounded_rne"] = True
     r["build"]["inputs"]["host_bounded_rne"] = {"host_isa": "rv64gc", "combine_clamp": True}
     assert build(r)["features"]["host_bounded_rne"]["status"] == "applied_evidence_unavailable"
-    proof = pin(tmp_path / "rne-proof.json", {
-        "schema": "merlin_late_bounded_rne_v1", "host_isa": "rv64gc", "combine_clamp": True,
-        "legalizer_sha256": hashlib.sha256(Path(late_quant_rne.__file__).read_bytes()).hexdigest(),
-        "routes": [{"source_form": "bounded_roundeven_conversion"}],
-    })
-    r["build"]["output"]["compilation_recipe"] = pin(tmp_path / "recipe.json", {
-        "preparation": {"host_bounded_rne": proof},
-    })
+    proof = pin(
+        tmp_path / "rne-proof.json",
+        {
+            "schema": "merlin_late_bounded_rne_v1",
+            "host_isa": "rv64gc",
+            "combine_clamp": True,
+            "legalizer_sha256": hashlib.sha256(Path(late_quant_rne.__file__).read_bytes()).hexdigest(),
+            "routes": [{"source_form": "bounded_roundeven_conversion"}],
+        },
+    )
+    r["build"]["output"]["compilation_recipe"] = pin(
+        tmp_path / "recipe.json",
+        {
+            "preparation": {"host_bounded_rne": proof},
+        },
+    )
     feature = build(r)["features"]["host_bounded_rne"]
     assert feature["requested"] and feature["selected"] and feature["status"] == "applied"
     assert feature["effects"] == {
-        "proven_original_chains": 1, "historical_observer_permissions_imported": False,
+        "proven_original_chains": 1,
+        "historical_observer_permissions_imported": False,
     }
     (tmp_path / "rne-proof.json").write_text("{}")
     assert build(r)["features"]["host_bounded_rne"]["status"] == "applied_evidence_unavailable"
+
+
+def test_missing_whole_batch_call_count_stays_unknown(tmp_path):
+    r = record(tmp_path)
+    r["source_device_join"] = {
+        "composition": {
+            "schema": "merlin.original_head_source_composition.v1",
+            "components": [{"schema": "merlin.original_head_family.v1", "whole_batch": True, "matrix_invocations": 2}],
+        }
+    }
+    result = build(r)
+    assert result["features"]["independent_heads"]["effects"]["whole_batch_kernel_calls"] is None

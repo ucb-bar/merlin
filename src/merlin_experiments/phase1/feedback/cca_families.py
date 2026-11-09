@@ -32,6 +32,7 @@ never raises into a grade. No target name, regex or opcode literal."""
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import time
@@ -272,8 +273,8 @@ def _lifted(path, digest, *, pin, target, decoder, decoder_files, structure, cac
     )
     try:
         _write_json(cache, dict(elf_sha256=digest, regions=regions))
-    except OSError:
-        pass  # an unwritable cache costs a re-lift, never the section
+    except OSError as error:
+        logging.getLogger(__name__).warning("CCA lift cache not written: %s", type(error).__name__)
     return regions, False
 
 

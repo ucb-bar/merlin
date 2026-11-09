@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 from pathlib import Path
 
 SCHEMA = "merlin.tuning_knob_candidates.v1"
@@ -180,7 +181,8 @@ def scan(root) -> dict:
             if path.stat().st_size > MAX_FILE_BYTES:
                 continue
             tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"), filename=str(path))
-        except (OSError, SyntaxError, ValueError):
+        except (OSError, SyntaxError, ValueError) as error:
+            logging.getLogger(__name__).warning("knob scan unavailable for %s: %s", path, error)
             continue
         module = _Module(path.relative_to(root).as_posix())
         module.visit(tree)
@@ -266,7 +268,8 @@ def cached_scan(root) -> dict:
         try:
             stat = path.stat()
             stamp.append((str(path), stat.st_mtime_ns, stat.st_size))
-        except OSError:
+        except OSError as error:
+            logging.getLogger(__name__).warning("knob cache stamp unavailable for %s: %s", path, error)
             continue
     key, stamp = str(root.resolve()), tuple(stamp)
     hit = _CACHE.get(key)

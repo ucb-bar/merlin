@@ -46,7 +46,10 @@ def stream_changes(before, after):
         return dict(derived_effects=dict(facts=build.get("stream_facts") or {}))
 
     rows = _stream_rows(
-        record(before), record(after), before.get("evidence_id", "before"), after.get("evidence_id", "after")
+        record(before),
+        record(after),
+        before.get("evidence_id", "unattributed"),
+        after.get("evidence_id", "unattributed"),
     )
     return [{k: v for k, v in row.items() if k not in ("evidence", "basis")} for row in rows]
 
@@ -79,17 +82,17 @@ def regressions(before, after, changes=None):
     """Facts, not advice: traffic per compute rose, overlap fell, or a role's transfers narrowed."""
     changes = stream_changes(before, after) if changes is None else changes
     ratio = [((b.get("traffic") or {}).get("ratios") or {}).get("dynamic") or {} for b in (before, after)]
-    traffic = {}
+    traffic_changes = {}
     for key in ("data_movement_loads_per_compute", "preloads_per_compute"):
         b, a = (r.get(key) for r in ratio)
-        traffic[key] = (
+        traffic_changes[key] = (
             dict(status="unknown", reason="dynamic loads per compute not proved on both builds")
             if None in (b, a)
             else dict(status=a > b, before=b, after=a)
         )
-    statuses = [v["status"] for v in traffic.values()]
+    statuses = [v["status"] for v in traffic_changes.values()]
     traffic_flag = dict(
-        status="unknown" if "unknown" in statuses and True not in statuses else True in statuses, **traffic
+        status="unknown" if "unknown" in statuses and True not in statuses else True in statuses, **traffic_changes
     )
     width = [r for r in changes if r["effect"] == "role_transfer_width"]
     overlap = [r for r in changes if r["effect"] == "issue_overlap"]
@@ -112,8 +115,10 @@ def regressions(before, after, changes=None):
             [r for r in changes if r["effect"] == "prefetch_compute_ahead"], "prefetch_compute_ahead unknown"
         ),
         **{
-            flag: _flag([r for r in changes if r["effect"] in effects], effects[0] + " not reported", change=change)
-            for flag, effects, change in _EXTRA_FLAGS
+            flag: _flag(
+                [r for r in changes if r["effect"] in effect_names], effect_names[0] + " not reported", change=change
+            )
+            for flag, effect_names, change in _EXTRA_FLAGS
         },
         basis="after relative to the compared build; a regression flag states a fact, not a cause",
     )

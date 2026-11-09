@@ -530,7 +530,7 @@ class AnswerAudit:
         outside its grants. Everything else the sandbox shows (system and toolchain trees) is public.
         Unknown: the operand's location cannot be told, so no exemption applies.
         """
-        path = self._operand_path(word, workspace, roots.get("relative", True))
+        path = self._operand_path(word, workspace, roots.get("relative") is True)
         if path is None:
             return "unknown"
         if _private_tmp(path):

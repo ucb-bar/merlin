@@ -34,8 +34,10 @@ def _analyze(
     candidate_build_manifest=None,
     _operand_decoder,
 ):
+    # Optional authored selector defaults; never copied into the resulting evidence report.
+    value = {"path": "reference-kernels", "format": "auto", "offset": 0, "limit": 8, "instruction_offset": 0, **value}
     entry = None if candidate else _entry(value)
-    label = "reference-kernels/" + entry["file"] if entry else value.get("path", "reference-kernels")
+    label = "reference-kernels/" + entry["file"] if entry else value["path"]
     path, label = _path(workspace, label, candidate=candidate, reference_root=reference_root)
     raw, pin = _read(path, label, allow_elf=True)
     from merlin.analysis.artifact_reader import PinnedELF
@@ -81,13 +83,15 @@ def _analyze_open(
     candidate_build_manifest=None,
     _operand_decoder,
 ):
+    # Direct callers may omit request paging and format options. These select work, not evidence.
+    value = {"format": "auto", "offset": 0, "limit": 8, "instruction_offset": 0, **value}
     member = value.get("member")
     if member:
         raw = _member(raw, member)
         pin = dict(
             path=label + "#" + member, sha256=hashlib.sha256(raw).hexdigest(), size_bytes=len(raw), container=pin
         )
-    format = value.get("format", "auto")
+    format = value["format"]
     if format == "auto":
         suffix = Path(member or label).suffix.lower()
         format = (
@@ -113,7 +117,7 @@ def _analyze_open(
                 format = "command_buffer"
             elif isinstance(document, dict) and document.get("schema") == "merlin.candidate_build_view.v1":
                 format = "candidate_build"
-    offset, limit = (value.get("offset", 0), 1 if compare else value.get("limit", 8))
+    offset, limit = (value["offset"], 1 if compare else value["limit"])
     locator = entry.get("locator", {}) if entry else {}
     symbol = value.get("symbol") or locator.get("function", "")
     ccas = []
@@ -221,20 +225,20 @@ def _analyze_open(
         from .reference_mechanisms import selected_lanes
 
         lanes, lane_status, lane_inputs = selected_lanes(facts=facts, target=target)
+        # Legacy artifact-view requests select the public kernel_entry ABI when no symbol is authored.
+        entry_symbol = document["entry_symbol"] if "entry_symbol" in document else "kernel_entry"
         report = artifact_views(
             source_mlir=inputs["source"],
             command_buffer=inputs["command_buffer"],
             emitted_mlir=inputs["emitted"],
-            entry_symbol=document.get("entry_symbol", "kernel_entry"),
+            entry_symbol=entry_symbol,
             reduction_lanes=lanes,
             **{key: decoder[key] for key in ("semantics", "target", "decoder_inputs") if key in decoder},
         )
         report["source"]["mechanism_observations"].update(reduction_geometry=lane_status, selected_inputs=lane_inputs)
         from .reference_capture_views import candidate_view
 
-        projected, cca = candidate_view(
-            inputs, entry_symbol=document.get("entry_symbol", "kernel_entry"), decoder=decoder
-        )
+        projected, cca = candidate_view(inputs, entry_symbol=entry_symbol, decoder=decoder)
         return (dict(report, input=pin, artifact_inputs=input_pins, captured_reference_axes=projected), cca)
     if format == "command_buffer":
         from merlin.perf.command_buffer_diagnostics import representation_activity
@@ -348,7 +352,7 @@ def _analyze_open(
             ccas=ccas,
             mapped_symbol=entry is not None and (not value.get("symbol")),
             region=value.get("region", ""),
-            instruction_offset=value.get("instruction_offset", 0),
+            instruction_offset=value["instruction_offset"],
             summary_only=value.get("operation") == "inventory",
             decoder=_operand_decoder(contract, facts, target, descriptor=descriptor, include_structure=True),
         )
@@ -407,7 +411,7 @@ def _representation_bundle(
         )
         if report.get("input", {}).get("sha256") != selected["sha256"]:
             raise ValueError("analysis_artifact_pin_mismatch")
-        if report.get("total", 1) != 1 and (not (selected.get("region") or selected.get("symbol"))):
+        if report.get("total") != 1 and (not (selected.get("region") or selected.get("symbol"))):
             raise ValueError("analysis_compare_requires_one_region")
         reports[role], ccas[role] = (report, cca)
     result = dict(

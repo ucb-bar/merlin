@@ -5,6 +5,7 @@ import os
 import time
 
 import pytest
+
 from merlin_experiments.phase1.feedback import idle_performance as I
 from merlin_experiments.phase1.feedback import performance_headroom as H
 from merlin_experiments.phase1.feedback import scratch_retention
@@ -15,24 +16,47 @@ def _run(tmp_path, cohort=("big", "small", "never"), passing=("big", "small", "n
     (ws / ".qa_channel").mkdir(parents=True)
     (ws / "submission").mkdir()
     (run / "qa_history").mkdir(parents=True)
-    roles = {name: 'large_kernel' for name in cohort}
-    (ws / 'PUBLIC_CAPABILITIES.json').write_text(json.dumps({
-        'schema': 'merlin.public_capability_inventory.v1',
-        'members': {name: {'workload_role': role, 'selfcheck_suite': 'scalability'}
-                    for name, role in roles.items()}}))
-    verdict = {"joint_test_selection": {"performance_cohorts": {"primary": list(cohort)}, 'workload_roles': roles},
-               "per_capsule": [{"capsule": n, "tiers": {"L2": "pass" if n in passing else "fail"}} for n in cohort]}
+    roles = {name: "large_kernel" for name in cohort}
+    (ws / "PUBLIC_CAPABILITIES.json").write_text(
+        json.dumps(
+            {
+                "schema": "merlin.public_capability_inventory.v1",
+                "members": {
+                    name: {"workload_role": role, "selfcheck_suite": "scalability"} for name, role in roles.items()
+                },
+            }
+        )
+    )
+    verdict = {
+        "joint_test_selection": {"performance_cohorts": {"primary": list(cohort)}, "workload_roles": roles},
+        "per_capsule": [{"capsule": n, "tiers": {"L2": "pass" if n in passing else "fail"}} for n in cohort],
+    }
     (run / "qa_history" / "verdict_fast_1.json").write_text(json.dumps(verdict))
     return ws, run
 
 
 def _response(ws, rid, digest, cycles, *, variant=False):
-    cases = [{"capsule": name, "performance": {"estimated_whole_soc_cycles": c,
-                                               "structural_roofline": {"structural_compute_floor_cycles": 10}}}
-             for name, c in cycles.items()]
-    (ws / ".qa_channel" / f"resp_{rid}.json").write_text(json.dumps(
-        {"submission_sha256": digest, "graded_at_unix_ns": len(rid), "variant": variant,
-         "selfcheck_submission": "submission", "cases": cases}))
+    cases = [
+        {
+            "capsule": name,
+            "performance": {
+                "estimated_whole_soc_cycles": c,
+                "structural_roofline": {"structural_compute_floor_cycles": 10},
+            },
+        }
+        for name, c in cycles.items()
+    ]
+    (ws / ".qa_channel" / f"resp_{rid}.json").write_text(
+        json.dumps(
+            {
+                "submission_sha256": digest,
+                "graded_at_unix_ns": len(rid),
+                "variant": variant,
+                "selfcheck_submission": "submission",
+                "cases": cases,
+            }
+        )
+    )
 
 
 @pytest.fixture
@@ -88,7 +112,7 @@ def test_a_request_is_a_labelled_detached_scalability_check_at_the_lowest_useful
     assert measurer.tick(grading=False) == "submitted"
     (request,) = (ws / ".qa_channel").glob("req_op_idle_*.json")
     body = json.loads(request.read_text())
-    rid = request.name[len("req_"):-len(".json")]
+    rid = request.name[len("req_") : -len(".json")]
     assert body["request_id"] == rid and body["origin"] == I.ORIGIN == broker.IDLE_ORIGIN
     assert rid.startswith(broker.IDLE_REQUEST_PREFIX)
     assert body["suite"] == "scalability" and body["sim"] == "spike" and body["submission_sha256"] == "d1"
@@ -126,8 +150,9 @@ def test_work_is_sized_from_free_capacity(tmp_path, monkeypatch, open_gates):
 
 
 def test_only_cases_without_an_estimate_of_the_current_source_are_requested(tmp_path, open_gates):
-    ws, run = _run(tmp_path, cohort=("big", "small", "fresh", "never", "failing"),
-                   passing=("big", "small", "fresh", "never"))
+    ws, run = _run(
+        tmp_path, cohort=("big", "small", "fresh", "never", "failing"), passing=("big", "small", "fresh", "never")
+    )
     _response(ws, "3_9_x", "old", {"big": 900, "small": 50})
     _response(ws, "3_99_y", "d1", {"fresh": 70})
     _response(ws, "3_999_z", "d1", {"never": 5}, variant=True)  # a variant never describes submission/
@@ -142,8 +167,9 @@ def test_headroom_uses_self_check_estimates_and_marks_older_source(tmp_path):
     ws, _ = _run(tmp_path)
     _response(ws, "3_9_x", "old", {"big": 900})
     _response(ws, "3_99_y", "new", {"small": 50})
-    verdict = {"per_capsule": [{"capsule": "big", "tiers": {"L2": "pass"}},
-                               {"capsule": "small", "tiers": {"L2": "pass"}}]}
+    verdict = {
+        "per_capsule": [{"capsule": "big", "tiers": {"L2": "pass"}}, {"capsule": "small", "tiers": {"L2": "pass"}}]
+    }
     block = H.build(ws, verdict)
     by_name = {e["test_case"]: e for e in block["largest_headroom"]}
     assert by_name["big"]["evidence"].startswith("modeled") and by_name["big"]["measured_on_earlier_source"]
@@ -153,13 +179,22 @@ def test_headroom_uses_self_check_estimates_and_marks_older_source(tmp_path):
 def test_a_joined_certificate_for_the_current_executable_is_current(tmp_path):
     ws, _ = _run(tmp_path)
     (ws / "qa").mkdir()
-    row = {"capsule": "big", "barrier_cycles": 400, "execution_digest": "e_old",
-           "performance": {"structural_roofline": {"structural_compute_floor_cycles": 100}}}
+    row = {
+        "capsule": "big",
+        "barrier_cycles": 400,
+        "execution_digest": "e_old",
+        "performance": {"structural_roofline": {"structural_compute_floor_cycles": 100}},
+    }
     (ws / ".qa_channel" / "simresp_1.json").write_text(json.dumps({"sim": "gsim", "per_capsule": [row]}))
     l2 = {"status": "pass", "execution_digest": "e_new", "components": {"c": "2"}}
     l3 = {"status": "pass", "execution_digest": "e_old", "components": {"c": "1"}}
-    state = {"big": {"L2": l2, "L3": l3, "<certs>": {"L3": {
-        "e_old": l3, "e_new": {"status": "joined", "execution_digest": "e_new"}}}}}
+    state = {
+        "big": {
+            "L2": l2,
+            "L3": l3,
+            "<certs>": {"L3": {"e_old": l3, "e_new": {"status": "joined", "execution_digest": "e_new"}}},
+        }
+    }
     (ws / "qa" / "tier_state.json").write_text(json.dumps(state))
     (entry,) = H.build(ws, {"per_capsule": [{"capsule": "big", "tiers": {"L2": "pass"}}]})["largest_headroom"]
     assert entry["evidence"].startswith("measured") and "measured_on_earlier_source" not in entry
@@ -181,24 +216,24 @@ def test_an_admitting_grade_keeps_its_reserve_but_does_not_stop_measurement(tmp_
 
 
 def test_new_model_refreshes_same_compiler_after_a_previous_request(tmp_path, monkeypatch, open_gates):
-    ws, run = _run(tmp_path, cohort=('big',), passing=('big',))
-    selected = ['model-selection-1']
-    monkeypatch.setattr(I, '_selection_identity', lambda: selected[0])
+    ws, run = _run(tmp_path, cohort=("big",), passing=("big",))
+    selected = ["model-selection-1"]
+    monkeypatch.setattr(I, "_selection_identity", lambda: selected[0])
     measurer, clock = _measurer(ws, run)
-    assert measurer.tick(grading=False) == 'submitted'
-    (request,) = (ws / '.qa_channel').glob('req_op_idle_*.json')
-    rid = request.name[len('req_'):-len('.json')]
-    _response(ws, rid, 'd1', {'big': 100})
-    answer = ws / '.qa_channel' / f'resp_{rid}.json'
+    assert measurer.tick(grading=False) == "submitted"
+    (request,) = (ws / ".qa_channel").glob("req_op_idle_*.json")
+    rid = request.name[len("req_") : -len(".json")]
+    _response(ws, rid, "d1", {"big": 100})
+    answer = ws / ".qa_channel" / f"resp_{rid}.json"
     doc = json.loads(answer.read_text())
-    doc['cases'][0]['performance']['selection_sha256'] = selected[0]
+    doc["cases"][0]["performance"]["selection_sha256"] = selected[0]
     answer.write_text(json.dumps(doc))
-    assert I.estimates(ws / '.qa_channel', selection_sha256=selected[0])['big']
-    selected[0] = 'model-selection-2'
-    assert I.estimates(ws / '.qa_channel', selection_sha256=selected[0]) == {}
-    clock[0] += I.knob('MERLIN_IDLE_PERF_INTERVAL_S')
-    assert measurer.tick(grading=False) == 'submitted'
-    assert len(list((ws / '.qa_channel').glob('req_op_idle_*.json'))) == 2
+    assert I.estimates(ws / ".qa_channel", selection_sha256=selected[0])["big"]
+    selected[0] = "model-selection-2"
+    assert I.estimates(ws / ".qa_channel", selection_sha256=selected[0]) == {}
+    clock[0] += I.knob("MERLIN_IDLE_PERF_INTERVAL_S")
+    assert measurer.tick(grading=False) == "submitted"
+    assert len(list((ws / ".qa_channel").glob("req_op_idle_*.json"))) == 2
     assert json.loads(answer.read_text()) == doc  # retained old-model evidence is immutable
 
 
@@ -206,14 +241,14 @@ def test_idle_model_identity_reads_latest_owner_selection_without_environment_mu
     from merlin_experiments.phase1 import joint_control, joint_model_activation
     from merlin_experiments.phase1.feedback import joint_performance as P
 
-    pin = dict(path='/owner/current-selection.json', sha256='a' * 64)
-    monkeypatch.setenv(joint_control.ENV, '/owner/campaign.json')
-    monkeypatch.setenv(P.ENV, json.dumps(dict(path='/owner/initial.json', sha256='b' * 64)))
-    monkeypatch.setattr(joint_model_activation, 'current', lambda path: pin)
+    pin = dict(path="/owner/current-selection.json", sha256="a" * 64)
+    monkeypatch.setenv(joint_control.ENV, "/owner/campaign.json")
+    monkeypatch.setenv(P.ENV, json.dumps(dict(path="/owner/initial.json", sha256="b" * 64)))
+    monkeypatch.setattr(joint_model_activation, "current", lambda path: pin)
     seen = []
-    monkeypatch.setattr(P, '_read', lambda selected: seen.append(selected))
+    monkeypatch.setattr(P, "_read", lambda selected: seen.append(selected))
     initial = P.environment()
-    assert I._selection_identity() == pin['sha256']
+    assert I._selection_identity() == pin["sha256"]
     assert seen == [pin] and P.environment() == initial
 
 
@@ -221,10 +256,15 @@ def _declared_dense(ws, dimensions):
     path = ws / "PUBLIC_CAPABILITIES.json"
     document = json.loads(path.read_text())
     for name, (m, k, n) in dimensions.items():
-        document["members"][name].update(declared_operation="matmul", family="contraction",
-            selfcheck_suite="scalability", input_tensors=[
-            {"name": "A", "role": "input", "shape": [m, k], "dtype": "i8"},
-            {"name": "B", "role": "weight", "shape": [k, n], "dtype": "i8"}])
+        document["members"][name].update(
+            declared_operation="matmul",
+            family="contraction",
+            selfcheck_suite="scalability",
+            input_tensors=[
+                {"name": "A", "role": "input", "shape": [m, k], "dtype": "i8"},
+                {"name": "B", "role": "weight", "shape": [k, n], "dtype": "i8"},
+            ],
+        )
     path.write_text(json.dumps(document))
 
 
@@ -259,8 +299,9 @@ def test_largest_dense_gets_sole_idle_slot_before_gsim_and_tuning(tmp_path, monk
 def test_early_allowance_survives_source_edits_then_normal_coverage_resumes(tmp_path, monkeypatch, open_gates):
     names = ("small", "medium", "largest", "second")
     ws, run = _run(tmp_path, cohort=names, passing=names)
-    _declared_dense(ws, {"small": (2, 2, 2), "medium": (4, 4, 4),
-                         "largest": (1024, 1024, 1024), "second": (512, 512, 512)})
+    _declared_dense(
+        ws, {"small": (2, 2, 2), "medium": (4, 4, 4), "largest": (1024, 1024, 1024), "second": (512, 512, 512)}
+    )
     monkeypatch.setattr(I, "free_slots", lambda environ=None: 1)
     selected, digest = ["model-1"], ["d1"]
     monkeypatch.setattr(I, "_selection_identity", lambda: selected[0])
@@ -293,8 +334,9 @@ def test_early_allowance_survives_source_edits_then_normal_coverage_resumes(tmp_
 
 
 @pytest.mark.parametrize("numerical_pass", [True, False])
-def test_early_dense_slot_requires_l2_and_does_not_credit_failed_timing(tmp_path, monkeypatch, open_gates,
-                                                                      numerical_pass):
+def test_early_dense_slot_requires_l2_and_does_not_credit_failed_timing(
+    tmp_path, monkeypatch, open_gates, numerical_pass
+):
     names = ("small", "largest", "second")
     ws, run = _run(tmp_path, cohort=names, passing=("small", "second"))
     _declared_dense(ws, {"small": (2, 2, 2), "largest": (1024, 1024, 1024), "second": (512, 512, 512)})
@@ -318,9 +360,17 @@ def _completed_l2(ws, rid, *, status="pass", complete=True, stamp=1):
     channel = ws / ".qa_channel"
     digest = _submission_digest(ws / "submission")
     (channel / f"req_{rid}.json").write_text(json.dumps(dict(submission="submission")))
-    (channel / f"resp_{rid}.json").write_text(json.dumps(dict(
-        selfcheck_request_id=rid, selfcheck_submission="submission", submission_sha256=digest,
-        graded_at_unix_ns=stamp, per_capsule=[dict(capsule="large", tiers=dict(L2=status))])))
+    (channel / f"resp_{rid}.json").write_text(
+        json.dumps(
+            dict(
+                selfcheck_request_id=rid,
+                selfcheck_submission="submission",
+                submission_sha256=digest,
+                graded_at_unix_ns=stamp,
+                per_capsule=[dict(capsule="large", tiers=dict(L2=status))],
+            )
+        )
+    )
     if complete:
         (channel / f"done_{rid}").write_text("ok")
     return digest
@@ -353,8 +403,9 @@ def test_selfcheck_only_readiness_invalidates_both_idle_caches_and_source_edits_
     assert readiness() == ({}, frozenset(), [])
 
 
-def test_current_selfcheck_gets_early_slot_without_any_grade_and_only_on_public_scalability(tmp_path, monkeypatch,
-                                                                                        open_gates):
+def test_current_selfcheck_gets_early_slot_without_any_grade_and_only_on_public_scalability(
+    tmp_path, monkeypatch, open_gates
+):
     ws, run = _run(tmp_path, cohort=("small", "large", "core"), passing=())
     _declared_dense(ws, {"small": (2, 2, 2), "large": (1024, 1024, 1024), "core": (2048, 2048, 2048)})
     (ws / "submission/backend.py").write_text("import json\n")
@@ -381,8 +432,11 @@ def test_current_selfcheck_gets_early_slot_without_any_grade_and_only_on_public_
 
 def _author_request(ws, rid, capsules, *, claimed_s_ago=None):
     channel = ws / ".qa_channel"
-    (channel / f"req_{rid}.json").write_text(json.dumps(
-        {"deadline_unix_ns": 2**62, "capsules": capsules, "submission": "variants/v", "suite": "scalability"}))
+    (channel / f"req_{rid}.json").write_text(
+        json.dumps(
+            {"deadline_unix_ns": 2**62, "capsules": capsules, "submission": "variants/v", "suite": "scalability"}
+        )
+    )
     if claimed_s_ago is not None:
         marker = channel / f"claimed_{rid}"
         marker.write_text("{}")
@@ -390,8 +444,7 @@ def _author_request(ws, rid, capsules, *, claimed_s_ago=None):
         os.utime(marker, (at, at))
 
 
-def test_a_long_running_author_check_without_progress_does_not_keep_idle_cpus_shut(tmp_path, monkeypatch,
-                                                                                   open_gates):
+def test_a_long_running_author_check_without_progress_does_not_keep_idle_cpus_shut(tmp_path, monkeypatch, open_gates):
     # Measured on two live runs: variant checks publish no progress record while they run, so counting
     # each claimed one as "about to lease" (26 and 2**20 CPUs on 20-CPU pools) shut this lane for hours.
     names = tuple(f"c{i}" for i in range(6))
@@ -405,30 +458,36 @@ def test_a_long_running_author_check_without_progress_does_not_keep_idle_cpus_sh
     assert I.queued(ws / ".qa_channel")["author_cases"] == 3
     measurer, _ = _measurer(ws, run)
     assert measurer.tick(grading=False) == "submitted"
-    sizes = [len(json.loads(p.read_text())["capsules"].split(","))
-             for p in (ws / ".qa_channel").glob("req_op_idle_*.json")]
+    sizes = [
+        len(json.loads(p.read_text())["capsules"].split(",")) for p in (ws / ".qa_channel").glob("req_op_idle_*.json")
+    ]
     assert sum(sizes) == 8 - 3
 
 
-def test_timing_yields_to_higher_priority_waiters_and_is_retried_when_cpus_are_idle(tmp_path, monkeypatch,
-                                                                                  open_gates):
+def test_timing_yields_to_higher_priority_waiters_and_is_retried_when_cpus_are_idle(tmp_path, monkeypatch, open_gates):
     names = tuple(f"c{i}" for i in range(8))
     ws, run = _run(tmp_path, cohort=names, passing=names)
     channel = ws / ".qa_channel"
     monkeypatch.setattr(I, "free_slots", lambda environ=None: 8)
     measurer, clock = _measurer(ws, run)
     assert measurer.tick(grading=False) == "submitted"
-    timing = sorted(channel.glob("req_op_idle_*.json"),
-                    key=lambda p: json.loads(p.read_text())["requested_at_unix_ns"])
+    timing = sorted(channel.glob("req_op_idle_*.json"), key=lambda p: json.loads(p.read_text())["requested_at_unix_ns"])
     assert len(timing) == 2
     others = []
     for origin in (I.TUNING_ORIGIN, I.GSIM_ORIGIN):  # their lanes keep their own rules
-        rid = I.submit(channel, ["c0"], "d1", origin=origin, prefix=I.REQUEST_PREFIX, timeout=60,
-                       extra={"sim": "gsim"} if origin == I.GSIM_ORIGIN else None)
+        rid = I.submit(
+            channel,
+            ["c0"],
+            "d1",
+            origin=origin,
+            prefix=I.REQUEST_PREFIX,
+            timeout=60,
+            extra={"sim": "gsim"} if origin == I.GSIM_ORIGIN else None,
+        )
         others.append(channel / f"req_{rid}.json")
     started = time.time() - I.CLAIM_GRACE_S - 1
     for path in [*timing, *others]:  # the broker started every request a while ago
-        marker = channel / ("claimed_" + path.name[len("req_"):-len(".json")])
+        marker = channel / ("claimed_" + path.name[len("req_") : -len(".json")])
         marker.write_text("{}")
         os.utime(marker, (started, started))
     newest = json.loads(timing[1].read_text())["capsules"].split(",")
@@ -443,8 +502,11 @@ def test_timing_yields_to_higher_priority_waiters_and_is_retried_when_cpus_are_i
     monkeypatch.setattr(I, "free_slots", lambda environ=None: 4)
     clock[0] += I.knob("MERLIN_IDLE_PERF_INTERVAL_S")
     assert measurer.tick(grading=False) == "submitted"
-    retried = [json.loads(p.read_text()) for p in channel.glob("req_op_idle_*.json")
-               if json.loads(p.read_text())["origin"] == I.ORIGIN and p != timing[0]]
+    retried = [
+        json.loads(p.read_text())
+        for p in channel.glob("req_op_idle_*.json")
+        if json.loads(p.read_text())["origin"] == I.ORIGIN and p != timing[0]
+    ]
     assert len(retried) == 1 and sorted(retried[0]["capsules"].split(",")) == sorted(newest)
     assert retried[0]["sim"] == "spike"  # timing never asks for gSIM
 
@@ -452,8 +514,10 @@ def test_timing_yields_to_higher_priority_waiters_and_is_retried_when_cpus_are_i
 def test_contention_counts_only_waiters_ranked_above_idle_timing(tmp_path, monkeypatch):
     from merlin.common import cpu_pool
 
-    keys = [(level, 1, 2, 3, "n") for level in (cpu_pool.AUTHOR, cpu_pool.GRADE, cpu_pool.PREPARATION,
-                                                cpu_pool.AUXILIARY, cpu_pool.VERIFICATION)]
+    keys = [
+        (level, 1, 2, 3, "n")
+        for level in (cpu_pool.AUTHOR, cpu_pool.GRADE, cpu_pool.PREPARATION, cpu_pool.AUXILIARY, cpu_pool.VERIFICATION)
+    ]
     free = [()]
     monkeypatch.setattr(cpu_pool, "_shared_compute_selection", lambda environ: ((0, 1), tmp_path))
     monkeypatch.setattr(cpu_pool, "_free_cpus", lambda root, cpus, fresh=False: free[0])
@@ -472,3 +536,10 @@ def test_untimed_cases_are_timed_largest_declared_work_first(tmp_path):
     cohort, l2 = I._cohort_l2(I._verdicts(run))
     work = I._declared_work(ws, cohort)
     assert I.select(cohort, l2, {}, "d1", set(), limit=4, work=work) == ["largest", "middle", "small", "undeclared"]
+
+
+def test_missing_request_deadline_and_timeout_cannot_invent_live_window(tmp_path):
+    request = tmp_path / "request.json"
+    request.write_text("{}")
+    with pytest.raises(ValueError, match="explicit deadline"):
+        I._deadline_s({}, request)

@@ -280,6 +280,8 @@ def _response(base, packet, report, compiler_sha256, *, workspace=None):
 
 
 _GAPS = {
+    "analysis_dependency_unavailable": "Check admitted paths, format, parser/ISA dependencies and bounds.",
+    "analysis_input_unavailable_invalid_or_unsupported": "Check admitted paths, format, parser/ISA dependencies and bounds.",
     "analysis_capture_selection_invalid": "Reopen the original host-pinned CCA capture selection "
     "and its reviewed observer.",
     "analysis_capture_source_mismatch": "The selected capture belongs to different source/function bytes or tensor "

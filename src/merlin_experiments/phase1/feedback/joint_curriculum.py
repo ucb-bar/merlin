@@ -11,6 +11,7 @@ import fcntl
 import json
 import os
 import time
+from collections import Counter
 from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
@@ -144,6 +145,9 @@ def plan(records, *, policy, attempts, passed, hint=(), limit=None):
         raise ValueError("curriculum preview limit must be positive")
     if len(records) > 2048:
         raise ValueError("curriculum exceeds bounded admitted roster")
+    # A sparse histogram of actual admissions has zero events for unseen cases;
+    # it is scheduling history, never correctness or execution evidence.
+    attempts = Counter(attempts)
     names = {r[2] for r in records}
     configured = policy.get("correctness_curriculum", {}).get("original_capsules")
     from ..joint_control import held_capsules
@@ -170,7 +174,7 @@ def plan(records, *, policy, attempts, passed, hint=(), limit=None):
     ranked = sorted(
         (r for r in records if r[2] in unresolved),
         key=lambda r: (
-            attempts.get(r[2], 0),
+            attempts[r[2]],
             r[2] not in witnesses,
             r[2] not in original,
             r[2] not in preferred,
@@ -187,7 +191,7 @@ def plan(records, *, policy, attempts, passed, hint=(), limit=None):
                 correctness=(
                     "matched_spike_pass" if passed.get(n) == "spike_correctness" else "pending_matching_spike_pass"
                 ),
-                question=questions.get(n, "selected witness; unresolved question required"),
+                question=questions.get(n),
                 physical_status="unknown_until_exact_ELF_input_config_scope_and_model_join",
                 dispatch_authorized=False,
             )
@@ -212,9 +216,17 @@ def plan(records, *, policy, attempts, passed, hint=(), limit=None):
         if configured is not None
         else "all_selected_core_conservatively",
         witness_prerequisites=witness_rows,
-        physical_rule="cheap source/structural/numerical Spike first; required original gSIM correctness is separate from selective calibration questions and fit qualification",
-        parallel_large_spike="independent source cases remain available concurrently; no global correctness sweep blocks them",
-        correctness_scope="L0/L1/L2 Spike prerequisites only; original required L3/gSIM obligations remain unchanged and unsatisfied by this report",
+        physical_rule=(
+            "cheap source/structural/numerical Spike first; required original gSIM correctness is "
+            "separate from selective calibration questions and fit qualification"
+        ),
+        parallel_large_spike=(
+            "independent source cases remain available concurrently; no global correctness sweep blocks them"
+        ),
+        correctness_scope=(
+            "L0/L1/L2 Spike prerequisites only; original required L3/gSIM obligations remain "
+            "unchanged and unsatisfied by this report"
+        ),
         full_coverage_required=True,
         certified_complete=False,
     )
@@ -332,10 +344,15 @@ class Progress:
 
                 self.sampling = decide(ledger, names=sorted(self.paths), policy=policy, hint=hint, **sampling_inputs)
             for name in self.paths:
-                entry = ledger["members"].get(name, {})
+                if name not in ledger["members"]:
+                    # No admission event exists for this selected case. Preview
+                    # must not persist a member or claim execution took place.
+                    attempts[name] = 0
+                    continue
+                entry = ledger["members"][name]
                 if self.ownership_keys[name] in ledger.get("in_flight", {}):
                     active.add(name)
-                attempts[name] = entry.get("admissions", entry.get("attempts", 0))
+                attempts[name] = entry["admissions"] if "admissions" in entry else entry["attempts"]
                 if self.identity is None or not entry.get("passes"):
                     continue
                 saved = entry["passes"].get(self.keys[name])
@@ -382,8 +399,7 @@ class Progress:
         witnesses = set(policy.get("gsim", {}).get("witness_capsules", ()))
         preferred = set(hint)
         self.priorities = {
-            r[2]: (attempts.get(r[2], 0), r[2] not in witnesses, r[2] not in original, r[2] not in preferred)
-            for r in chosen
+            r[2]: (attempts[r[2]], r[2] not in witnesses, r[2] not in original, r[2] not in preferred) for r in chosen
         }
         report["fairness_basis"] = "actual scheduler admissions; queued and preflight-blocked members are not attempts"
         report["admitted_this_snapshot"] = sorted(self.admitted)
@@ -397,7 +413,7 @@ class Progress:
                 correctness="matched_spike_pass"
                 if passed.get(n) == "spike_correctness"
                 else "pending_matching_spike_pass",
-                question=questions.get(n, "selected witness; unresolved question required"),
+                question=questions.get(n),
                 physical_status="unknown_until_exact_ELF_input_config_scope_and_model_join",
                 dispatch_authorized=False,
             )
@@ -430,7 +446,9 @@ class Progress:
                 raise RuntimeError("capsule already owned by a live or undrained snapshot")
             active[key] = {"owner": self.owner, "pid": os.getpid(), "capsule": name}
             entry = ledger["members"].setdefault(name, {"attempts": 0, "passes": {}})
-            entry["admissions"] = entry.get("admissions", entry.get("attempts", 0)) + 1
+            if "admissions" not in entry:
+                entry["admissions"] = entry["attempts"]
+            entry["admissions"] = entry["admissions"] + 1
         self.admitted.add(name)
 
     def priority(self, capsule):

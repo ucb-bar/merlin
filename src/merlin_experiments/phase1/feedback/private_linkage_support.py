@@ -361,7 +361,7 @@ def link_compiled(
         host_isa=inputs["host_isa"],
         simulator_isa=inputs["simulator_isa"],
         linked_build=linked_build,
-        host_math_policy=inputs.get("host_math_policy", "native"),
+        host_math_policy=inputs["host_math_policy"],
     )
 
 

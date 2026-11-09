@@ -117,7 +117,7 @@ def signal(entry, states, selection=None):
     census = fence.get("dynamic") or {}
     if _number(census.get("loads")) and _number(census.get("output_stores")) and census["output_stores"] > 0:
         found["loads_per_output_tile"] = round(census["loads"] / census["output_stores"], 2)
-        found["load_count_basis"] = census.get("basis", "executed command census")
+        found["load_count_basis"] = census.get("basis") or "unknown census basis"
     density = "low fence density (" if dense else "convolution region ("
     reading = (
         f"{density}{found['fences_per_output_tile']} fences/output tile, {found['count_basis']}); "

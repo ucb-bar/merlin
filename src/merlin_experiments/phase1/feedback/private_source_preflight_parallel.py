@@ -171,7 +171,13 @@ def preflight(
     for index, (name, worker) in enumerate(zip(roster, observed, strict=True)):
         if worker.get("returncode") != 0:
             passed = False
-            rows.append({"model": name, "status": "fail", "reason": worker.get("error", "source worker refused")})
+            rows.append(
+                {
+                    "model": name,
+                    "status": "fail",
+                    "reason": worker.get("error") or "source worker refused without an error detail",
+                }
+            )
             continue
         call = IR.verify(Path(worker["invocation"]))
         path = Path(worker["report"])

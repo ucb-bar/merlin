@@ -15,6 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
+
 from merlin_experiments.phase1 import oot_history
 from merlin_experiments.phase1.feedback import capsule_certification as C
 from merlin_experiments.phase1.feedback import certification as CERT
@@ -36,7 +37,11 @@ def score(package, count, *, functional=False, hidden=False):
         "model_execution_all_pass": True,
         "provided_host_execution_all_pass": True,
         "structural_evidence_all_pass": True,
-        "structural_evidence_scope": {"n_instruction_trace_capsules": count, "n_model_execution_capsules": 0},
+        "structural_evidence_scope": {
+            "n_instruction_trace_capsules": count,
+            "n_model_execution_capsules": 0,
+            "n_provided_host_capsules": 0,
+        },
         "highest_tier": "L2" if functional else "L3",
         "tier_reached": {"L2": count, "L3": 0 if functional else count},
         "pass_evidence": {"rtl_backed": 0 if functional else count},
@@ -471,7 +476,7 @@ def test_actual_authoring_execution_config_capsule_scope_never_starts_visible_mo
             }
         )
     )
-    context = SimpleNamespace(target="gemmini", descriptor=descriptor)
+    context = SimpleNamespace(target="gemmini", descriptor=descriptor, repo=tmp_path)
     interval = eval(
         compile(ast.Expression(expression), "<actual ExecutionConfig>", "eval"),
         {"a": options, "context": context, "EX": EX},

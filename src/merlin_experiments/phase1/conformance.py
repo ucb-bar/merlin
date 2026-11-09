@@ -172,8 +172,7 @@ def _tool_calls(tpath: Path) -> list[ToolCall]:
     results: dict[str, dict] = {}
     result_positions = {}
     execution_context = next(
-        (e.get("conformance_context") for e in events
-         if e.get("type") == "system" and e.get("subtype") == "init"), None
+        (e.get("conformance_context") for e in events if e.get("type") == "system" and e.get("subtype") == "init"), None
     )
     for position, e in enumerate(events):
         if e.get("type") != "user":
@@ -215,21 +214,31 @@ def _tool_calls(tpath: Path) -> list[ToolCall]:
                         result_text=_content_text(result.get("content")) if result is not None else "",
                         start_event=position,
                         end_event=result_positions.get(tool_id),
-                        execution_context=(execution_context if isinstance(execution_context, dict)
-                                           or execution_context is None else {"invalid": True}),
+                        execution_context=(
+                            execution_context
+                            if isinstance(execution_context, dict) or execution_context is None
+                            else {"invalid": True}
+                        ),
                     )
                 )
     from . import conformance_sources as sources
 
     out = [replace(call, execution_context=sources.validate_context(call.execution_context)) for call in out]
     attributed = sources.attribute(out, unwrap=_unwrap_shell, tokenize=_shell_tokens)
-    return [replace(call, discovery_calls=frozenset().union(*(
-        sources.discovery(source, {**(call.execution_context or {}), "command_cwd": evidence.cwd})
-        for source in evidence.sources
-    )), source_attribution=evidence.reason, source_mutation=any(
-        sources.mutates_submission(source)
-        for source in evidence.sources
-    )) for call, evidence in zip(out, attributed)]
+    return [
+        replace(
+            call,
+            discovery_calls=frozenset().union(
+                *(
+                    sources.discovery(source, {**(call.execution_context or {}), "command_cwd": evidence.cwd})
+                    for source in evidence.sources
+                )
+            ),
+            source_attribution=evidence.reason,
+            source_mutation=any(sources.mutates_submission(source) for source in evidence.sources),
+        )
+        for call, evidence in zip(out, attributed)
+    ]
 
 
 def _exec_str(call: ToolCall) -> str:
@@ -491,9 +500,18 @@ def _discovery_calls(call: ToolCall) -> frozenset[str]:
     from . import conformance_sources as sources
 
     evidence = sources.attribute([call], unwrap=_unwrap_shell, tokenize=_shell_tokens)[0]
-    return frozenset().union(*(sources.discovery(source, {
-        **(sources.validate_context(call.execution_context) or {}), "command_cwd": evidence.cwd,
-    }) for source in evidence.sources))
+    return frozenset().union(
+        *(
+            sources.discovery(
+                source,
+                {
+                    **(sources.validate_context(call.execution_context) or {}),
+                    "command_cwd": evidence.cwd,
+                },
+            )
+            for source in evidence.sources
+        )
+    )
 
 
 def _cca_evidence(call: ToolCall, *, script: str, subcommand: str, api: str) -> bool:
@@ -665,8 +683,14 @@ def _is_selfcheck_report(result: str) -> bool:
 
 
 def compute(
-    tpath: Path, sub_dir: Path, arm: str, endpoint_kind: str, *, resolved_tools: Iterable[str] | None = None,
-    compiler_access: str = "selected_library", compiler_execution: str = "profile_strict_v1",
+    tpath: Path,
+    sub_dir: Path,
+    arm: str,
+    endpoint_kind: str,
+    *,
+    resolved_tools: Iterable[str] | None = None,
+    compiler_access: str = "selected_library",
+    compiler_execution: str = "profile_strict_v1",
     author_profile: str = "",
 ) -> dict:
     """Compute the conformance verdict for one round. Returns a dict with per-check booleans (or None when
@@ -686,16 +710,20 @@ def compute(
     profile = resolve_author_profile(author_profile)
     if profile is not None and compiler_execution != "snapshot_external_v1":
         raise ValueError("versioned author workflow requires isolated snapshot execution")
-    if profile is not None or (compiler_access == "full_compiler"
-                               and compiler_execution == "snapshot_external_v1"):
+    if profile is not None or (compiler_access == "full_compiler" and compiler_execution == "snapshot_external_v1"):
         return {
-            "conformant": True, "checks": {}, "regex_hits": [], "vendored_regex_files": [],
-            "arm": arm, "endpoint_kind": endpoint_kind,
+            "conformant": True,
+            "checks": {},
+            "regex_hits": [],
+            "vendored_regex_files": [],
+            "arm": arm,
+            "endpoint_kind": endpoint_kind,
             "resolved_tools": sorted(str(t) for t in resolved_tools) if resolved_tools is not None else None,
             "arm4_tooling_required": False,
             "workflow_policy": "author_profile_guidance_v1" if profile else "full_compiler_guidance_v1",
             **({"author_profile": profile.name} if profile else {}),
-            "compiler_access": compiler_access, "compiler_execution": compiler_execution,
+            "compiler_access": compiler_access,
+            "compiler_execution": compiler_execution,
             "qualification_authority": False,
             "scope": "No mandatory tool-use or discovery-order workflow; independent grading still required.",
         }
@@ -786,8 +814,8 @@ def compute(
         if mutation_idx is not None and checks["arm4_discovery_before_submission_mutation"]:
             mutation_start = calls[mutation_idx].start_event
             checks["arm4_discovery_before_submission_mutation"] = all(
-                calls[i].end_event is not None and mutation_start is not None
-                and calls[i].end_event < mutation_start for i in discovery
+                calls[i].end_event is not None and mutation_start is not None and calls[i].end_event < mutation_start
+                for i in discovery
             )
     else:
         checks["arm4_cca_bijection_used"] = None
@@ -871,13 +899,24 @@ def main(argv=None) -> int:
     # Replay the recorded treatment, never an ambient caller's source grant.
     try:
         import yaml
+
         recorded = yaml.safe_load((run_dir / "environment.yaml").read_text()) or {}
         config = recorded.get("run_config") or {}
-    except (OSError, ValueError):
-        config = {}
-    verdict = compute(tpath, run_dir / "submission", arm, endpoint, resolved_tools=resolved_tools,
-                      compiler_access=config.get("compiler_access", "selected_library"),
-                      compiler_execution=config.get("compiler_execution", "profile_strict_v1"))
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        ap.error(f"cannot replay recorded compiler policy: {exc}")
+    if not isinstance(config, dict) or any(
+        not isinstance(config.get(key), str) or not config[key] for key in ("compiler_access", "compiler_execution")
+    ):
+        ap.error("recorded run_config requires explicit compiler_access and compiler_execution")
+    verdict = compute(
+        tpath,
+        run_dir / "submission",
+        arm,
+        endpoint,
+        resolved_tools=resolved_tools,
+        compiler_access=config["compiler_access"],
+        compiler_execution=config["compiler_execution"],
+    )
     print(json.dumps(verdict, indent=2))
     bad = failing_checks(verdict)
     if bad:

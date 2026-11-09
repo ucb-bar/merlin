@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from . import qa as _qc
+
+if TYPE_CHECKING:
+    from ..context import InvocationContext
 
 
 def _successful_expected_refusal(result: dict) -> bool:
@@ -92,13 +97,19 @@ def _public_candidate_emission_failure(result: dict) -> dict | None:
         stderr = detail[:2000].partition("\nSTDERR:")[2]
         symbols = []
         for line in stderr.splitlines():
-            for marker, end in (("undefined reference to `", "'"),
-                                ("undefined reference to '", "'"), ("undefined symbol: ", " ")):
+            for marker, end in (
+                ("undefined reference to `", "'"),
+                ("undefined reference to '", "'"),
+                ("undefined symbol: ", " "),
+            ):
                 symbol = line.partition(marker)[2].partition(end)[0].strip()
-                if (0 < len(symbol) <= 128 and symbol.isascii()
-                        and (symbol[0].isalpha() or symbol[0] in "_.$")
-                        and all(character.isalnum() or character in "_.$@" for character in symbol)
-                        and symbol not in symbols):
+                if (
+                    0 < len(symbol) <= 128
+                    and symbol.isascii()
+                    and (symbol[0].isalpha() or symbol[0] in "_.$")
+                    and all(character.isalnum() or character in "_.$@" for character in symbol)
+                    and symbol not in symbols
+                ):
                     symbols.append(symbol)
         if symbols:
             hint = "Linker undefined symbols: " + ", ".join(symbols[:4])
@@ -222,7 +233,8 @@ def _log_telemetry(out: dict, capsules_arg: str) -> None:
     try:
         from merlin_experiments.phase1.brokers.selfcheck_sources import LABEL_ENV, SUBMISSION
 
-        t0 = float(os.environ.get("SELFCHECK_T0", "0") or 0)
+        origin = os.environ.get("SELFCHECK_T0")
+        t0 = float(origin) if origin else None
         rows = out.get("per_capsule") or []
         line = {
             "wall_offset_s": round(_t.time() - t0, 1) if t0 else None,
@@ -239,14 +251,16 @@ def _log_telemetry(out: dict, capsules_arg: str) -> None:
             "n_passed": out.get("n_passed"),
             "n_capsules": out.get("n_capsules"),
             "all_pass": out.get("all_pass"),
-            "build_failed": out.get("build_failed", False),
-            "no_results": out.get("no_results", False),
+            "build_failed": out.get("build_failed"),
+            "no_results": out.get("no_results"),
             "failing": [r["capsule"] for r in rows if not r.get("pass")],
         }
         with open(log_path, "a") as lf:
             lf.write(json.dumps(line) + "\n")
     except Exception:
-        pass
+        logging.getLogger(__name__).warning(
+            "Optional self-check telemetry unavailable; verdict unchanged", exc_info=True
+        )
 
 
 def _gated_without_result_rows(

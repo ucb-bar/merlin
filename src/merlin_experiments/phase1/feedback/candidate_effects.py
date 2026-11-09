@@ -57,7 +57,9 @@ def traffic(rows, roles):
 
 
 def _ratio(per_role, key):
-    loads = [per_role.get(role, {}).get(key, 0) for role in MOVEMENT_IN]
+    # This census contains every observed role. An absent role has zero sites;
+    # a present role without its count is unproved rather than zero.
+    loads = [per_role[role].get(key) if role in per_role else 0 for role in MOVEMENT_IN]
     compute = per_role.get(COMPUTE, {}).get(key)
     if any(value is None for value in loads) or compute is None:
         return dict(loads_per_compute=None, status="unknown", reason="unproved_execution_count")

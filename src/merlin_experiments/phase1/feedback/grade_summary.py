@@ -117,8 +117,8 @@ def render(document: dict) -> str:
     section = document.get(CLUSTERS) if isinstance(document.get(CLUSTERS), dict) else None
     clusters = (section or {}).get("clusters") or []
     lines.append(
-        f"## {CLUSTERS}: {(section or {}).get('clusters_total', 0)} total, "
-        f"{(section or {}).get('failing_test_cases', 0)} failing test cases"
+        f"## {CLUSTERS}: {(section or {}).get('clusters_total', 'unknown')} total, "
+        f"{(section or {}).get('failing_test_cases', 'unknown')} failing test cases"
     )
     for index, cluster in enumerate(clusters, 1):
         signature = f"{cluster.get('failure_plane')}/{cluster.get('failure_category')}"

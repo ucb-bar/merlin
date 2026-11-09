@@ -145,7 +145,8 @@ def _program_entry(entry: Any, where: str) -> dict[str, Any]:
     references = entry.get("integer_reference") or []
     if not isinstance(references, list):
         raise ExecutionGateError(f"{where}: integer_reference is a list of capture file names")
-    required = entry.get("require_integer_reference", False)
+    # Author policy: integer references are opt-in, with explicit host tolerances required otherwise.
+    required = entry["require_integer_reference"] if "require_integer_reference" in entry else False
     if type(required) is not bool or (required and not references):
         raise ExecutionGateError(f"{where}: require_integer_reference is a boolean that needs a named reference")
     max_cycles = entry.get("max_cycles")
@@ -170,10 +171,12 @@ def _program_entry(entry: Any, where: str) -> dict[str, Any]:
     board = entry.get("board")
     if board is not None and (not isinstance(board, str) or not board):
         raise ExecutionGateError(f"{where}: board names one board of the selected catalog")
-    profile = entry.get("group_profile", True)
+    # Profiling is enabled unless the authored build policy explicitly disables it.
+    profile = entry["group_profile"] if "group_profile" in entry else True
     if type(profile) is not bool:
         raise ExecutionGateError(f"{where}: group_profile is a boolean")
-    bitcode = entry.get("host_llvm_bitcode", False)
+    # Retaining bitcode is an optional build product, not a proof claim.
+    bitcode = entry["host_llvm_bitcode"] if "host_llvm_bitcode" in entry else False
     if type(bitcode) is not bool:
         raise ExecutionGateError(f"{where}: host_llvm_bitcode is a boolean")
     budget = entry.get("device_ir_budget")
@@ -227,7 +230,8 @@ def gate_for(descriptor: str | Path, *, required_programs: Mapping[str, Sequence
         return None
     if not isinstance(section, Mapping) or set(section) - {"required", "programs"}:
         raise ExecutionGateError("private full-model execution declaration is malformed")
-    required = section.get("required", True)
+    # Declaring this gate makes it required unless the operator explicitly opts out.
+    required = section["required"] if "required" in section else True
     if type(required) is not bool:
         raise ExecutionGateError("private full-model execution 'required' must be a boolean")
     programs = section.get("programs")
@@ -254,7 +258,7 @@ def build_options(gate: Mapping[str, Any]) -> dict[str, dict[str, dict[str, Any]
         if "engine" in entry:
             out.setdefault(model, {})[program] = {
                 "readback": "full",
-                "group_profile": bool(entry.get("group_profile", True)),
+                "group_profile": entry["group_profile"],
             }
             if entry.get("board") is not None:
                 out[model][program]["board"] = entry["board"]

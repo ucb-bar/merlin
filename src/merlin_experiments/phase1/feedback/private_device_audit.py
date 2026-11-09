@@ -188,7 +188,7 @@ def audit_built_device_host_compute(
             for group in report.get("groups", []):
                 if group.get("verdict") == "clean":
                     continue
-                problems = group.get("activity_problems") or [group.get("why", "no proof detail")]
+                problems = group.get("activity_problems") or [group.get("why") or "proof detail unavailable"]
                 reasons.append(str(group.get("symbol")) + ": " + "; ".join(map(str, problems[-8:])))
             from .private_program_checks import ProgramCheckFailure
 

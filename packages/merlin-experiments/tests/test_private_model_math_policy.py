@@ -14,7 +14,9 @@ from merlin.runtime.host_math import host_math_recipe
 from merlin_experiments.phase1.feedback import private_model_math_policy as P
 
 
-def _fixture(tmp_path, *, policy="portable_exp_trig", own=None, receipt_policy=None, receipt=True):
+def _fixture(
+    tmp_path, *, policy="portable_exp_trig", own=None, receipt_policy=None, receipt=True, contract_mutation=None
+):
     root = tmp_path / "bundle"
     root.mkdir(parents=True)
     config = {
@@ -49,6 +51,8 @@ def _fixture(tmp_path, *, policy="portable_exp_trig", own=None, receipt_policy=N
                 "scalar_source_sha256": sha256(math.source.encode()).hexdigest(),
                 "compile_flags": list(math.compile_flags),
             }
+        if contract_mutation is not None:
+            contract_mutation(contract)
         sidecar = output.with_name("reference_numeric_contract.json")
         sidecar.write_text(
             json.dumps(
@@ -110,6 +114,14 @@ def test_native_legacy_and_unreceipted_native_do_not_claim_reference_proofs(tmp_
     assert P.select({}, tmp_path / "absent", {}, target="owned", programs=())["policy"] == "native"
     selected = _select(_fixture(tmp_path, policy="native", receipt=False))
     assert selected["reference_receipts_verified"] == 0
+
+
+@pytest.mark.parametrize("mutate", [lambda c: c.pop("version"), lambda c: c.update(host_math={})])
+def test_sealed_receipt_cannot_invent_a_native_numeric_contract(tmp_path, mutate):
+    # The bundle is freshly sealed after mutation: byte custody alone must not
+    # turn a missing numerical contract/policy into established native semantics.
+    with pytest.raises(ValueError):
+        _select(_fixture(tmp_path, policy="native", contract_mutation=mutate))
 
 
 @pytest.mark.parametrize("kind", ["policy", "missing", "config", "unknown", "program"])

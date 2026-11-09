@@ -56,7 +56,13 @@ def _read(pin_record: dict) -> dict:
 
 def verify_scope(scope: str, environment: dict) -> None:
     """A new argv cannot downgrade a full run or reinterpret historical evidence."""
-    if scope not in SCOPES or environment.get("validation_scope", "full") != scope:
+    # Historical run environments predate the scope field and describe full runs.
+    # They may be replayed as full only; absence never admits capsule-only scope.
+    admitted_scope = environment.get("validation_scope")
+    if admitted_scope is None and "validation_scope" not in environment:
+        if scope == "full":
+            return
+    if scope not in SCOPES or admitted_scope != scope:
         raise ValueError("validation scope differs from the admitted run; start a fresh run")
 
 
@@ -215,7 +221,10 @@ def _phase(run_dir: Path, name: str, *, descriptor: Path, frozen: dict, hidden_p
         ):
             raise ValueError("capsule row lacks actual required-tier numeric certification")
     refusals = sum(row.get("validated_refusal") is True for row in rows)
-    if refusals != (score.get("expected_refusal_scope") or {}).get("n_validated_refusals", 0):
+    refusal_scope = score.get("expected_refusal_scope")
+    # Older graders without refusal support cannot have validated refusal rows.
+    expected_refusals = 0 if refusal_scope is None else refusal_scope.get("n_validated_refusals")
+    if refusals != expected_refusals:
         raise ValueError("capsule row refusal applicability differs from the selected grader")
     environment = yaml.safe_load((run_dir / "environment.yaml").read_bytes())
     scope = environment.get("task_scope") or {}

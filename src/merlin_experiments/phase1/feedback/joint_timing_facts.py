@@ -34,14 +34,22 @@ def verify(alignment, facts, model):
         values = [_at(facts, path) for path in selectors]
         if any(type(v) is not int or not 0 < v < 2**63 for v in values):
             raise ValueError("timing mapping needs positive extracted integer facts")
-        divisor = row.get("unit_divisor", 1)
-        if type(divisor) is not int or divisor not in (1, 8):
-            raise ValueError("timing mapping only supports identity or bit-to-byte conversion")
-        expected = Fraction(math.prod(values), divisor)
+        expected = Fraction(math.prod(values))
+        # An absent conversion leaves the extracted product in its original units.
+        # An explicit conversion must be admitted independently.
+        if "unit_divisor" in row:
+            divisor = row["unit_divisor"]
+            if type(divisor) is not int or divisor not in (1, 8):
+                raise ValueError("timing mapping only supports identity or bit-to-byte conversion")
+            expected /= divisor
         actual = _at(model, row["model_path"])
         if type(actual) not in (int, float) or actual != expected:
             raise ValueError("selected timing model contradicts extracted facts at " + str(row["model_path"]))
         checked.append(dict(model_path=row["model_path"], value=actual, role=row["role"]))
-    return dict(status="consistent", checked=checked, timing_qualified=False,
-                unsupported=alignment.get("unsupported", []),
-                fit_from_measurement=alignment.get("fit_from_measurement", []))
+    return dict(
+        status="consistent",
+        checked=checked,
+        timing_qualified=False,
+        unsupported=alignment.get("unsupported", []),
+        fit_from_measurement=alignment.get("fit_from_measurement", []),
+    )

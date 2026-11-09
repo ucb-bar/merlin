@@ -7,11 +7,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from merlin_experiments.phase1.feedback import abstraction_feedback as A
-from merlin_experiments.phase1.feedback import public_scalability
 
 from merlin.common import invocation_record
 from merlin.common.paths import repo_root
+from merlin_experiments.phase1.feedback import abstraction_feedback as A
+from merlin_experiments.phase1.feedback import public_scalability
 
 REFUSE = (
     "from merlin.compile.scheduling.dense_panel_epochs import schedule_dense_panel_epochs as s\n"
@@ -28,8 +28,15 @@ def _environment():
 
 
 def _compile_call(generated, stage, code):
-    invocation_record.run([sys.executable, "-B", "-c", code], directory=generated, stage=stage,
-                          capture_output=True, text=True, env=_environment(), check=True)
+    invocation_record.run(
+        [sys.executable, "-B", "-c", code],
+        directory=generated,
+        stage=stage,
+        capture_output=True,
+        text=True,
+        env=_environment(),
+        check=True,
+    )
 
 
 def test_compiler_stderr_records_reach_the_case_row(tmp_path):
@@ -42,7 +49,7 @@ def test_compiler_stderr_records_reach_the_case_row(tmp_path):
     report = A.case_admission(generated, case="PUBLIC_CASE")
     assert report["status"] == "reported"
     (row,) = report["records"]
-    assert row["api"] == "merlin.compile.scheduling.dense_panel_epochs.schedule_dense_panel_epochs"
+    assert row["api"] == "merlin.compiler.schedule.dense_panel_epochs.schedule_dense_panel_epochs"
     assert row["case"] == "PUBLIC_CASE" and row["admitted"] is False
     assert "typed epoch law" in row["failed_premise"]
     assert row["fallback_route"].startswith("caller-selected original route")
@@ -153,8 +160,9 @@ def test_sweep_builds_only_named_shapes_from_the_public_template(tmp_path, monke
 
     cases = _public_suite(tmp_path)
     read = []
-    monkeypatch.setattr(emit, "parse_interface_mlir",
-                        lambda text: read.append(text) or {"tensors": {"A": {"shape": [16, 64]}}})
+    monkeypatch.setattr(
+        emit, "parse_interface_mlir", lambda text: read.append(text) or {"tensors": {"A": {"shape": [16, 64]}}}
+    )
     monkeypatch.setattr(emit, "emit_interface_mlir", lambda cb: json.dumps(cb, sort_keys=True))
     for name in ("load_package", "integrity_scan", "build_package"):
         monkeypatch.setattr(P, name, lambda *a, **k: object())
@@ -177,13 +185,21 @@ def test_sweep_builds_only_named_shapes_from_the_public_template(tmp_path, monke
         return cb
 
     context = SimpleNamespace(target="example")
-    common_args = dict(submission=tmp_path / "submission", public_cases=cases, allowed_templates={"PUBLIC_DENSE"},
-                       resize=resize, contract="c", context=context, timeout=60)
+    common_args = dict(
+        submission=tmp_path / "submission",
+        public_cases=cases,
+        allowed_templates={"PUBLIC_DENSE"},
+        resize=resize,
+        contract="c",
+        context=context,
+        timeout=60,
+    )
     for template in ("HIDDEN_DENSE", "../../heldout-suite/cases/HIDDEN_DENSE"):
         with pytest.raises(ValueError, match="public"):
             A.coverage_sweep(template=template, shapes=[{"m": 24}], output=tmp_path / "refused", **common_args)
-    result = A.coverage_sweep(template="PUBLIC_DENSE", shapes=[{"m": 24}, {"m": 64}], output=tmp_path / "out",
-                              **common_args)
+    result = A.coverage_sweep(
+        template="PUBLIC_DENSE", shapes=[{"m": 24}, {"m": 64}], output=tmp_path / "out", **common_args
+    )
     assert read == ["public template\n"]
     assert [b["tensors"]["A"]["shape"] for b in built] == [[24, 64], [64, 64]]
     assert [row["label"] for row in result["shapes"]] == ["sweep-00", "sweep-01"]
@@ -196,5 +212,32 @@ def test_sweep_builds_only_named_shapes_from_the_public_template(tmp_path, monke
     synthetic = (tmp_path / "out" / "cases" / "sweep-01" / "capsule.yaml").read_text()
     assert "sweep-01" in synthetic and "64" in synthetic
     with pytest.raises(ValueError, match="1 to 6"):
-        A.coverage_sweep(template="PUBLIC_DENSE", shapes=[{"m": m} for m in range(1, 8)],
-                         output=tmp_path / "many", **common_args)
+        A.coverage_sweep(
+            template="PUBLIC_DENSE", shapes=[{"m": m} for m in range(1, 8)], output=tmp_path / "many", **common_args
+        )
+
+
+@pytest.mark.parametrize("invalid_record", [True, False])
+def test_missing_compiler_evidence_is_unavailable_not_none_reported(tmp_path, invalid_record):
+    root = tmp_path / "invocations" / "call"
+    root.mkdir(parents=True)
+    (root / "invocation.json").write_text("{" if invalid_record else json.dumps({"stage": "emit_analysis_bundle"}))
+    result = A.case_admission(tmp_path, case="case")
+    assert result["status"] == "unavailable"
+    assert result["records"] == []
+    assert result["unavailable"][0]["error_type"] == ("JSONDecodeError" if invalid_record else "FileNotFoundError")
+
+
+def test_transfer_width_keeps_an_unproved_count_unknown(monkeypatch):
+    from merlin.targetgen import semantic_families
+    from merlin.targetgen.rocc import decode
+
+    monkeypatch.setattr(
+        decode,
+        "decode_text",
+        lambda *a, **k: {"instructions": [{"class": "move", "executions": None}, {"class": "move", "executions": 2}]},
+    )
+    monkeypatch.setattr(semantic_families, "from_isa_class", lambda k: "movement")
+    monkeypatch.setattr(A, "_width", lambda row: "same_width")
+    result = A.census("synthetic", target="fixture")
+    assert result["transfers"]["move"]["widths"]["same_width"] is None

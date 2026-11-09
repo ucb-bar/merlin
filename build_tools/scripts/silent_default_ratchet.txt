@@ -111,17 +111,11 @@ packages/merlin-experiments/src/merlin_experiments/phase1/feedback/qa.py::_liven
 packages/merlin-experiments/src/merlin_experiments/phase1/feedback/qa.py::run::get-default::n_declined
 packages/merlin-experiments/src/merlin_experiments/phase1/feedback/qa.py::run::get-default::n_not_measured
 packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck_selectors.py::_previously_failing::swallowed-error::OSError
-packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::_log_telemetry::swallowed-error::Exception
 packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::_strip_build_state::swallowed-error::Exception
-packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::_progress_snapshot::swallowed-error::OSError/ValueError
 packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::_model_layers::swallowed-error::Exception
 packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::main::swallowed-error::Exception
 packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::main::swallowed-error::Exception~2
 packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::main::swallowed-error::Exception~3
-packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::_progress_snapshot::get-default::status
-packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::_log_telemetry::get-default::build_failed
-packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::_log_telemetry::get-default::no_results
-packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::_log_telemetry::get-default::SELFCHECK_T0
 packages/merlin-experiments/src/merlin_experiments/phase2/whole_model_measured/gates.py::coverage_assessment::get-default::g
 packages/merlin-experiments/src/merlin_experiments/phase2/whole_model_measured/gates.py::coverage_gate::get-default::g
 packages/merlin-experiments/src/merlin_experiments/phase2/whole_model_measured/gates.py::coverage_assessment::get-default::g~2

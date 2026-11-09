@@ -55,6 +55,7 @@ import ast
 import json
 import os
 import time
+from collections import Counter
 from pathlib import Path
 
 from ..brokers import selfcheck_sources as sources
@@ -78,11 +79,11 @@ _EMPTY_RESULT_ATTEMPTS = 2
 #: Optional caps, each an environment override (name: default; 0 = no cap). Work is sized from the free
 #: CPUs the idle measurer saw.
 KNOBS = {
-    "MERLIN_IDLE_TUNE_MAX_CASES": 3,         # cases per experiment: a representative and its first siblings
-    "MERLIN_IDLE_TUNE_MAX_REQUESTS": 0,      # experiments in flight (0: as many as free CPUs fit)
-    "MERLIN_IDLE_TUNE_MAX_PER_SOURCE": 0,    # experiments started for one submission digest (0: no cap)
-    "MERLIN_IDLE_TUNE_MAX_CANDIDATES": 0,    # knob values and newest variants considered (0: every one)
-    "MERLIN_IDLE_TUNE_TIMEOUT_S": 1800,      # wall-time timeout each experiment request declares
+    "MERLIN_IDLE_TUNE_MAX_CASES": 3,  # cases per experiment: a representative and its first siblings
+    "MERLIN_IDLE_TUNE_MAX_REQUESTS": 0,  # experiments in flight (0: as many as free CPUs fit)
+    "MERLIN_IDLE_TUNE_MAX_PER_SOURCE": 0,  # experiments started for one submission digest (0: no cap)
+    "MERLIN_IDLE_TUNE_MAX_CANDIDATES": 0,  # knob values and newest variants considered (0: every one)
+    "MERLIN_IDLE_TUNE_TIMEOUT_S": 1800,  # wall-time timeout each experiment request declares
 }
 #: Experiments shown in one brief; the ledger keeps every one.
 BRIEF_LIMIT = 12
@@ -98,19 +99,23 @@ _IGNORED_PARTS = frozenset({"build", "__pycache__", ".git", "selfcheck_out"})
 # removes it only after actual emission validation and the success receipt.
 LIBRARY_PASS_PENDING_PREFIX = ".library-pass-pending-"
 
-OFFER = ("Idle reserved CPUs time candidate changes on the passing performance bundles with the most "
-         "headroom: each variants/<name>/ that differs from submission/, and each value of a knob your "
-         "compiler declares in submission/TUNING_KNOBS.json ({\"schema\": \"merlin.tuning_knobs.v1\", "
-         "\"settings_file\": <JSON object file in submission/ your compiler reads>, \"knobs\": {name: "
-         "{\"values\": [...], \"mechanism\": <catalogue id>}}}), set only in a private copy. Expose a "
-         "mechanism choice as a knob or keep it in a variant to have it timed while you work. To time many "
-         "candidates at once on chosen cases: python agent_selfcheck.py --sweep variants/a,variants/b "
-         "--knob NAME=V1,V2 --bundle REPRESENTATIVE (or --capsules X,Y).")
-NOTE = ("Advisory: Spike timing model estimates of submission/ and of a candidate on the same cases, "
-        "same model and timing epoch. Each result names its baseline digest, age and status (current; "
-        "older_source: submission/ moved on but no newer estimate shows the case's emission changed; "
-        "superseded: it did). Nothing was applied to submission/; adopt a change by making it there. Not a "
-        "grade or certificate.")
+OFFER = (
+    "Idle reserved CPUs time candidate changes on the passing performance bundles with the most "
+    "headroom: each variants/<name>/ that differs from submission/, and each value of a knob your "
+    'compiler declares in submission/TUNING_KNOBS.json ({"schema": "merlin.tuning_knobs.v1", '
+    '"settings_file": <JSON object file in submission/ your compiler reads>, "knobs": {name: '
+    '{"values": [...], "mechanism": <catalogue id>}}}), set only in a private copy. Expose a '
+    "mechanism choice as a knob or keep it in a variant to have it timed while you work. To time many "
+    "candidates at once on chosen cases: python agent_selfcheck.py --sweep variants/a,variants/b "
+    "--knob NAME=V1,V2 --bundle REPRESENTATIVE (or --capsules X,Y)."
+)
+NOTE = (
+    "Advisory: Spike timing model estimates of submission/ and of a candidate on the same cases, "
+    "same model and timing epoch. Each result names its baseline digest, age and status (current; "
+    "older_source: submission/ moved on but no newer estimate shows the case's emission changed; "
+    "superseded: it did). Nothing was applied to submission/; adopt a change by making it there. Not a "
+    "grade or certificate."
+)
 
 # Names other modules and tests read.
 _comparable = R.comparable
@@ -123,12 +128,15 @@ def knob(name: str, environ=None) -> int:
 
 
 def enabled(environ=None) -> bool:
-    return (os.environ if environ is None else environ).get(ENV, "1").strip() != "0"
+    """Idle advice is enabled unless the operator explicitly opts out."""
+    raw = (os.environ if environ is None else environ).get(ENV)
+    return raw is None or raw.strip() != "0"
 
 
 # ---------------------------------------------------------------------------------------------
 # Which cases
 # ---------------------------------------------------------------------------------------------
+
 
 def baseline(known: dict, name: str, digest: str):
     """``(cycles, performance, passed)`` of ``name``'s newest estimate of ``digest``, else ``None``."""
@@ -148,15 +156,20 @@ def headroom_cases(cohort, l2: dict, known: dict, *, limit: int | None = None) -
             continue
         rows = known.get(name) or ()
         if not rows:
-            untimed.append({"test_case": name, "cycles": None, "headroom": 0.0, "bound_by": None,
-                            "dominant": None})
+            untimed.append({"test_case": name, "cycles": None, "headroom": 0.0, "bound_by": None, "dominant": None})
             continue
         performance = rows[0][2]
         cycles = performance["estimated_whole_soc_cycles"]
         bound, limiter = _bound(performance.get("structural_roofline") or {})
-        found.append({"test_case": name, "cycles": cycles, "bound_by": limiter,
-                      "headroom": cycles - bound if bound is not None and cycles >= bound else 0.0,
-                      "dominant": _dominant_resource(performance)})
+        found.append(
+            {
+                "test_case": name,
+                "cycles": cycles,
+                "bound_by": limiter,
+                "headroom": cycles - bound if bound is not None and cycles >= bound else 0.0,
+                "dominant": _dominant_resource(performance),
+            }
+        )
     found.sort(key=lambda case: (-case["headroom"], -case["cycles"], case["test_case"]))
     found += untimed
     return found if limit is None else found[:limit]
@@ -170,14 +183,23 @@ def ready_cases(cohort, l2: dict, known: dict, digest: str, *, limit: int) -> li
         if current is None or not current[2]:
             continue
         cycles, performance, _ = current
-        if (not _positive(cycles) or performance.get("status") not in ("PROVISIONAL", "CALIBRATED")
-                or performance.get("complete_event_accounting") is not True):
+        if (
+            not _positive(cycles)
+            or performance.get("status") not in ("PROVISIONAL", "CALIBRATED")
+            or performance.get("complete_event_accounting") is not True
+        ):
             continue
         bound, limiter = _bound(performance.get("structural_roofline") or {})
-        found.append({"test_case": name, "cycles": cycles, "bound_by": limiter,
-                      "model": tuple((key, performance.get(key)) for key in _MODEL_KEYS),
-                      "headroom": cycles - bound if bound is not None and cycles >= bound else 0.0,
-                      "dominant": _dominant_resource(performance)})
+        found.append(
+            {
+                "test_case": name,
+                "cycles": cycles,
+                "bound_by": limiter,
+                "model": tuple((key, performance.get(key)) for key in _MODEL_KEYS),
+                "headroom": cycles - bound if bound is not None and cycles >= bound else 0.0,
+                "dominant": _dominant_resource(performance),
+            }
+        )
     found.sort(key=lambda case: (-case["headroom"], -case["cycles"], case["test_case"]))
     return found[:limit]
 
@@ -208,6 +230,7 @@ def bundles_of(rollup, cohort, l2: dict, known: dict) -> list[dict]:
 # ---------------------------------------------------------------------------------------------
 # Which candidates
 # ---------------------------------------------------------------------------------------------
+
 
 def _catalogue(selection) -> list[dict]:
     rows = (selection or {}).get("all_mechanisms") or ()
@@ -261,12 +284,15 @@ def changed_mechanisms(submission: Path, variant: Path, selection) -> list[str]:
         before = other.read_bytes() if other is not None else b""
         if data != before:
             added |= _imports(data) - _imports(before)
-    hosted: dict[str, int] = {}
+    hosted = Counter()
     for row in rows:
-        hosted[row["api"]] = hosted.get(row["api"], 0) + 1
+        hosted[row["api"]] += 1
     # A symbol import names its mechanism; a module import only when the module hosts just that one.
-    return [row["id"] for row in rows if (row["api"], row.get("symbol")) in added
-            or (hosted[row["api"]] == 1 and (row["api"], None) in added)]
+    return [
+        row["id"]
+        for row in rows
+        if (row["api"], row.get("symbol")) in added or (hosted[row["api"]] == 1 and (row["api"], None) in added)
+    ]
 
 
 def _variant_names(workspace: Path, cap: int | None = None) -> list[str]:
@@ -281,7 +307,8 @@ def _variant_names(workspace: Path, cap: int | None = None) -> list[str]:
                 continue
             try:
                 found.append((path.stat().st_mtime, path.name))
-            except OSError:
+            except OSError as error:
+                scratch_retention.say(f"[idle-tune] variant discovery unavailable: {type(error).__name__}: {error}")
                 continue
     names = [name for _, name in sorted(found, reverse=True)]
     return names[:cap] if cap else names
@@ -306,33 +333,48 @@ def construction_task(workspace: Path) -> dict:
         return dict(
             kind="declare_alternatives",
             action="Keep alternative authored compiler implementations in immutable variants/ folders, "
-                   "or declare finite legal settings in submission/TUNING_KNOBS.json consumed by the "
-                   "same compiler. Compare alternatives on the same selected cases.",
+            "or declare finite legal settings in submission/TUNING_KNOBS.json consumed by the "
+            "same compiler. Compare alternatives on the same selected cases.",
             qualification="All alternatives retain the original numerical, instruction and timing checks; "
-                          "a candidate or setting alone is not qualification.",
+            "a candidate or setting alone is not qualification.",
         )
     from .library_pass import skill_root
 
     package = Path(workspace) / sources.SUBMISSION
     selected = idle_performance._load(package / "LIBRARY_PASS_SELECTION.json") or {}
-    relative = selected.get("adapter", "tools/library_pass_adapter.py") if isinstance(selected, dict) else ""
+    relative = selected.get("adapter") if isinstance(selected, dict) else ""
     path = Path(relative) if isinstance(relative, str) and relative else None
-    present = (path is not None and not path.is_absolute() and ".." not in path.parts
-               and (package / path).is_file() and not (package / path).is_symlink())
+    # Discover the documented author template separately from a declared binding.
+    if "adapter" not in selected and (package / "tools/library_pass_adapter.py").is_file():
+        path = Path("tools/library_pass_adapter.py")
+    present = (
+        path is not None
+        and not path.is_absolute()
+        and ".." not in path.parts
+        and (package / path).is_file()
+        and not (package / path).is_symlink()
+    )
     kind = "declare_alternatives" if present else "bind_source_effects"
-    action = ("Expose finite legal settings in submission/TUNING_KNOBS.json, consumed by the SAME "
-              "manifest emitter; registered actions must reach changed emitted products."
-              if present else
-              "Construct the authored source/effect adapter: prepare/source for apply_library_pass, "
-              "or binding/identity/evaluate for the parallel recipe. Reuse one terminal target encoder "
-              "and real completion; evaluation owns original numerics and selected complete ROI cycles.")
-    return dict(kind=kind, action=action, adapter_discovery="file_present_mapping_unconfirmed" if present
-                else "no_declared_library_pass_adapter_found", command=(
-        f"python {skill_root(workspace)}/heavy-pass-recipes/scripts/parallel_schedule_recipe.py "
-        "--adapter AUTHORED_OWNER.py --library submission/compiler_library --facts SELECTED_FACTS.json "
-        "--shape M,K,N --max-in-flight 2 --output schedule-sweep-NEW"),
+    action = (
+        "Expose finite legal settings in submission/TUNING_KNOBS.json, consumed by the SAME "
+        "manifest emitter; registered actions must reach changed emitted products."
+        if present
+        else "Construct the authored source/effect adapter: prepare/source for apply_library_pass, "
+        "or binding/identity/evaluate for the parallel recipe. Reuse one terminal target encoder "
+        "and real completion; evaluation owns original numerics and selected complete ROI cycles."
+    )
+    return dict(
+        kind=kind,
+        action=action,
+        adapter_discovery="file_present_mapping_unconfirmed" if present else "no_declared_library_pass_adapter_found",
+        command=(
+            f"python {skill_root(workspace)}/heavy-pass-recipes/scripts/parallel_schedule_recipe.py "
+            "--adapter AUTHORED_OWNER.py --library submission/compiler_library --facts SELECTED_FACTS.json "
+            "--shape M,K,N --max-in-flight 2 --output schedule-sweep-NEW"
+        ),
         qualification="Replace placeholders with original source geometry and selected facts. The target "
-        "adapter uses ordinary shared leases/broker; neutral compilation is not numerics or timing.")
+        "adapter uses ordinary shared leases/broker; neutral compilation is not numerics or timing.",
+    )
 
 
 def _api(selection, mechanism_ids) -> str | None:
@@ -364,6 +406,7 @@ def _request_cases(body: dict) -> list[str]:
 # The tuner
 # ---------------------------------------------------------------------------------------------
 
+
 class IdleTuner:
     """Owned by an :class:`.idle_performance.IdleMeasurer`, which sizes and starts what it proposes."""
 
@@ -378,8 +421,9 @@ class IdleTuner:
         self._rollup: tuple | None = None
         self.bundles: list[dict] = []
         saved = idle_performance._load(self.workspace / LEDGER)
-        self._history = ((saved.get("comparison_history") or saved.get("experiments") or [])
-                         if isinstance(saved, dict) else [])
+        self._history = (
+            (saved.get("comparison_history") or saved.get("experiments") or []) if isinstance(saved, dict) else []
+        )
 
     # -- inputs -----------------------------------------------------------------------------------
 
@@ -398,8 +442,13 @@ class IdleTuner:
         root = self.workspace / sources.VARIANTS / name
         if root.is_symlink() or not root.is_dir():
             raise OSError(f"no variant {name}")
-        fingerprint = tuple(sorted((p.relative_to(root).as_posix(), p.stat().st_size, p.stat().st_mtime_ns)
-                                   for p in root.rglob("*") if p.is_file() and not p.is_symlink()))
+        fingerprint = tuple(
+            sorted(
+                (p.relative_to(root).as_posix(), p.stat().st_size, p.stat().st_mtime_ns)
+                for p in root.rglob("*")
+                if p.is_file() and not p.is_symlink()
+            )
+        )
         memo = self._variant_memo.get(name)
         if memo is not None and memo[0] == fingerprint:
             return memo[1]
@@ -434,22 +483,38 @@ class IdleTuner:
         for path in channel.glob("req_*.json"):
             if path.name not in self._bodies:
                 body = idle_performance._load(path)
-                self._bodies[path.name] = None if not isinstance(body, dict) else {
-                    "label": body.get("submission") or sources.SUBMISSION, "sha": body.get("submission_sha256"),
-                    "suite": body.get("suite", "core"),
-                    "cases": _request_cases(body), "overrides": body.get(tuning_knobs.REQUEST_KEY),
-                    "timed": (body.get("suite") == "scalability" or
-                              body.get("suite", "core") in {"core", "programs"}
-                              and body.get("sim") == "spike"),
-                    "requested_at": body.get("requested_at_unix_ns") or 0,
-                    "deadline": idle_performance._deadline_s(body, path),
-                    "operator": path.name.startswith("req_" + REQUEST_PREFIX),
-                    "experiment": body.get("tuning_experiment") if isinstance(
-                        body.get("tuning_experiment"), dict) else None}
+                suite_declared = isinstance(body, dict) and "suite" in body
+                if isinstance(body, dict) and "suite" not in body:
+                    # The public broker protocol admits omitted suite as core.
+                    # Keep its declaration state distinct from an explicit core request.
+                    body = {**body, "suite": "core", "suite_declared": False}
+                self._bodies[path.name] = (
+                    None
+                    if not isinstance(body, dict)
+                    else {
+                        "label": body.get("submission") or sources.SUBMISSION,
+                        "sha": body.get("submission_sha256"),
+                        "suite": body["suite"],
+                        "suite_declared": suite_declared,
+                        "cases": _request_cases(body),
+                        "overrides": body.get(tuning_knobs.REQUEST_KEY),
+                        "timed": (
+                            body.get("suite") == "scalability"
+                            or body["suite"] in {"core", "programs"}
+                            and body.get("sim") == "spike"
+                        ),
+                        "requested_at": body.get("requested_at_unix_ns") or 0,
+                        "deadline": idle_performance._deadline_s(body, path),
+                        "operator": path.name.startswith("req_" + REQUEST_PREFIX),
+                        "experiment": body.get("tuning_experiment")
+                        if isinstance(body.get("tuning_experiment"), dict)
+                        else None,
+                    }
+                )
             body = self._bodies[path.name]
             if body is None:
                 continue
-            rid = path.name[len("req_"):-len(".json")]
+            rid = path.name[len("req_") : -len(".json")]
             answered = (channel / f"resp_{rid}.json").exists()
             out.append({**body, "rid": rid, "answered": answered, "live": not answered and now <= body["deadline"]})
         return out
@@ -463,28 +528,43 @@ class IdleTuner:
             if json.dumps({change["knob"]: change["value"]}, sort_keys=True) in guided_overrides:
                 continue
             mechanisms = [change["mechanism"]] if change["mechanism"] else []
-            found.append({"kind": "knob", "key": R.knob_key({change["knob"]: change["value"]}),
-                          "overrides": {change["knob"]: change["value"]}, "settings_file": change["settings_file"],
-                          "current": change["current"], "mechanisms": mechanisms,
-                          "label": change["mechanism"] or f"knob {change['knob']}"})
+            found.append(
+                {
+                    "kind": "knob",
+                    "key": R.knob_key({change["knob"]: change["value"]}),
+                    "overrides": {change["knob"]: change["value"]},
+                    "settings_file": change["settings_file"],
+                    "current": change["current"],
+                    "mechanisms": mechanisms,
+                    "label": change["mechanism"] or f"knob {change['knob']}",
+                }
+            )
         for name in _variant_names(self.workspace, cap):
             try:
                 sha = self.variant_digest(name)
-            except (OSError, ValueError):
+            except (OSError, ValueError) as error:
+                scratch_retention.say(f"[idle-tune] candidate digest unavailable: {type(error).__name__}: {error}")
                 continue
             if sha == digest:
                 continue  # identical bytes time identically
             if (digest, name, sha) not in self._mechanism_memo:
                 try:
                     self._mechanism_memo[(digest, name, sha)] = changed_mechanisms(
-                        self.workspace / sources.SUBMISSION, self.workspace / sources.VARIANTS / name, selection)
+                        self.workspace / sources.SUBMISSION, self.workspace / sources.VARIANTS / name, selection
+                    )
                 except OSError:
                     self._mechanism_memo[(digest, name, sha)] = []
             mechanisms = self._mechanism_memo[(digest, name, sha)]
-            found.append({"kind": "variant", "key": f"variant:{name}", "name": name, "sha256": sha,
-                          "mechanisms": mechanisms,
-                          "label": ", ".join(mechanisms) or f"author variant {name} (no newly imported "
-                                                              "catalogue mechanism)"})
+            found.append(
+                {
+                    "kind": "variant",
+                    "key": f"variant:{name}",
+                    "name": name,
+                    "sha256": sha,
+                    "mechanisms": mechanisms,
+                    "label": ", ".join(mechanisms) or f"author variant {name} (no newly imported catalogue mechanism)",
+                }
+            )
         return found[:cap] if cap else found
 
     def _reference_candidates(self, digest: str) -> tuple[list[dict], set[str]]:
@@ -506,12 +586,14 @@ class IdleTuner:
                 continue  # Other protocols remain author requests; this lane only owns Spike scalability.
             try:
                 overrides = tuning_knobs._overrides(
-                    {tuning_knobs.REQUEST_KEY: request.get("tuning_overrides")}, declared)
-            except ValueError:
+                    {tuning_knobs.REQUEST_KEY: request.get("tuning_overrides")}, declared
+                )
+            except ValueError as error:
+                scratch_retention.say(f"[idle-tune] reference candidate refused: {error}")
                 continue
-            if (request.get("settings") != {**current, **overrides}
-                    or all(name in current and tuning_knobs.same_value(current[name], value)
-                           for name, value in overrides.items())):
+            if request.get("settings") != {**current, **overrides} or all(
+                name in current and tuning_knobs.same_value(current[name], value) for name, value in overrides.items()
+            ):
                 continue
             capsule = request.get("capsule")
             if not isinstance(capsule, str) or not capsule:
@@ -524,14 +606,21 @@ class IdleTuner:
             if identity in seen:
                 continue
             seen.add(identity)
-            found.append({
-                "kind": "knob", "key": R.knob_key(overrides),
-                "overrides": overrides, "settings_file": declared["settings_file"],
-                "current": current, "mechanisms": [], "test_cases": [capsule],
-                "label": "controlled reference experiment " + request["task_id"],
-                "reference_experiment": {name: request[name] for name in
-                    ("task_id", "request_id", "packet_identity", "context_identity")},
-            })
+            found.append(
+                {
+                    "kind": "knob",
+                    "key": R.knob_key(overrides),
+                    "overrides": overrides,
+                    "settings_file": declared["settings_file"],
+                    "current": current,
+                    "mechanisms": [],
+                    "test_cases": [capsule],
+                    "label": "controlled reference experiment " + request["task_id"],
+                    "reference_experiment": {
+                        name: request[name] for name in ("task_id", "request_id", "packet_identity", "context_identity")
+                    },
+                }
+            )
         return found, covered
 
     # -- what was tried ---------------------------------------------------------------------------
@@ -556,8 +645,11 @@ class IdleTuner:
 
             def other_model(case):
                 row = rows.get(case)
-                return (selection is not None and row is not None
-                        and row["performance"].get("selection_sha256") != selection)
+                return (
+                    selection is not None
+                    and row is not None
+                    and row["performance"].get("selection_sha256") != selection
+                )
 
             if label.startswith(sources.VARIANTS + "/") and not request["operator"]:
                 authored.setdefault(label.partition("/")[2], set()).update(cases)
@@ -579,30 +671,36 @@ class IdleTuner:
         """Count missing case results only for the corrected, exact source/model route."""
         parsed = {item["request_id"]: item for item in R.scan(channel, self._responses)}
         identities = {identity(candidate, digest, selection) for candidate in candidates}
-        counts = {}
+        counts = Counter()
         for request in self._requests(channel):
             experiment = request["experiment"] or {}
-            if (not request["answered"] or experiment.get("base_sha256") != digest
-                    or experiment.get("public_suite") != request["suite"]):
+            if (
+                not request["answered"]
+                or experiment.get("base_sha256") != digest
+                or experiment.get("public_suite") != request["suite"]
+            ):
                 continue  # Legacy wrong-suite refusals do not exhaust a corrected route.
             candidate = experiment.get("candidate")
             candidate = candidate if isinstance(candidate, dict) else {}
-            expected = list(identity(candidate, digest, selection)) if candidate.get("kind") in {
-                "knob", "variant"} and candidate.get("key") else None
-            if (experiment.get("identity") != expected or expected is None
-                    or tuple(expected) not in identities):
+            expected = (
+                list(identity(candidate, digest, selection))
+                if candidate.get("kind") in {"knob", "variant"} and candidate.get("key")
+                else None
+            )
+            if experiment.get("identity") != expected or expected is None or tuple(expected) not in identities:
                 continue
             returned = {row["test_case"] for row in (parsed.get(request["rid"]) or {}).get("rows") or ()}
             for case in request["cases"]:
                 if case not in returned:
                     key = (candidate["key"], case, request["suite"])
-                    counts[key] = counts.get(key, 0) + 1
+                    counts[key] += 1
         return counts
 
     # -- proposals --------------------------------------------------------------------------------
 
-    def plan(self, channel: Path, digest: str, cohort, l2: dict, known: dict, *, selection=None,
-             limit: int | None = None) -> list[dict]:
+    def plan(
+        self, channel: Path, digest: str, cohort, l2: dict, known: dict, *, selection=None, limit: int | None = None
+    ) -> list[dict]:
         """Untried candidate-bundle pairs in value order: ``{candidate, cases, bundle, ...}``."""
         if not enabled():
             return []
@@ -613,8 +711,15 @@ class IdleTuner:
         if not bundles:
             return []
         cap = knob("MERLIN_IDLE_TUNE_MAX_PER_SOURCE")
-        if cap and sum(1 for r in self._requests(channel) if r["operator"] and (r["experiment"] or {}).get(
-                "base_sha256") == digest) >= cap:
+        if (
+            cap
+            and sum(
+                1
+                for r in self._requests(channel)
+                if r["operator"] and (r["experiment"] or {}).get("base_sha256") == digest
+            )
+            >= cap
+        ):
             return []
         catalogue = mechanism_hints.load_selection(self.workspace)
         candidates = self.candidates(digest, catalogue)
@@ -629,15 +734,30 @@ class IdleTuner:
             if "reference_experiment" not in candidate:
                 continue
             names = candidate["test_cases"]
-            if (len(names) > per_case or any(name not in ready for name in names)
-                    or any((candidate["key"], name) in knobs for name in names)
-                    or any(empty.get((candidate["key"], name, "scalability"), 0) >= _EMPTY_RESULT_ATTEMPTS
-                           for name in names)
-                    or len({ready[name]["model"] for name in names}) != 1):
+            if (
+                len(names) > per_case
+                or any(name not in ready for name in names)
+                or any((candidate["key"], name) in knobs for name in names)
+                or any(empty[candidate["key"], name, "scalability"] >= _EMPTY_RESULT_ATTEMPTS for name in names)
+                or len({ready[name]["model"] for name in names}) != 1
+            ):
                 continue
-            pairs.append((-3, -1, order, {"candidate": candidate, "cases": names,
-                          "bundle": "selected reference experiment", "suggested": [],
-                          "relevance": 3, "model": selection, "suite": "scalability"}))
+            pairs.append(
+                (
+                    -3,
+                    -1,
+                    order,
+                    {
+                        "candidate": candidate,
+                        "cases": names,
+                        "bundle": "selected reference experiment",
+                        "suggested": [],
+                        "relevance": 3,
+                        "model": selection,
+                        "suite": "scalability",
+                    },
+                )
+            )
         for index, bundle in enumerate(bundles):
             cases = [bundle["representative"], *bundle["siblings"]][:per_case]
             groups = _case_groups(self.workspace, cases)
@@ -654,14 +774,29 @@ class IdleTuner:
                 if suggested & set(candidate["mechanisms"]):
                     relevant = max(relevant, 1)
                 for suite, members in groups:
-                    remaining = [case for case in members if case in untried
-                                 and empty.get((candidate["key"], case, suite), 0) < _EMPTY_RESULT_ATTEMPTS]
+                    remaining = [
+                        case
+                        for case in members
+                        if case in untried and empty[candidate["key"], case, suite] < _EMPTY_RESULT_ATTEMPTS
+                    ]
                     if not remaining:
                         continue
-                    pairs.append((-relevant, index, order, {
-                        "candidate": candidate, "cases": remaining, "bundle": bundle["label"],
-                        "suggested": sorted(str(s) for s in suggested if s), "relevance": relevant,
-                        "model": selection, "suite": suite}))
+                    pairs.append(
+                        (
+                            -relevant,
+                            index,
+                            order,
+                            {
+                                "candidate": candidate,
+                                "cases": remaining,
+                                "bundle": bundle["label"],
+                                "suggested": sorted(str(s) for s in suggested if s),
+                                "relevance": relevant,
+                                "model": selection,
+                                "suite": suite,
+                            },
+                        )
+                    )
         pairs.sort(key=lambda item: item[:3])
         return [job for *_, job in pairs[:limit]]
 
@@ -672,8 +807,12 @@ class IdleTuner:
         performance = rows[0][2]
         _, limiter = _bound(performance.get("structural_roofline") or {})
         case_selection = mechanism_hints.for_case(catalogue, name, self.workspace)
-        return {hint.get("id") for hint in mechanism_hints.hints(
-            case_selection, dominant=_dominant_resource(performance), bound_by=limiter)}
+        return {
+            hint.get("id")
+            for hint in mechanism_hints.hints(
+                case_selection, dominant=_dominant_resource(performance), bound_by=limiter
+            )
+        }
 
     def in_flight(self, channel: Path) -> int:
         return sum(1 for r in self._requests(channel) if r["operator"] and r["live"])
@@ -684,19 +823,29 @@ class IdleTuner:
         if "reference_experiment" in candidate and names != candidate["test_cases"]:
             raise ValueError("reference experiments require their exact selected cases")
         groups = _case_groups(self.workspace, names)
-        if len(groups) != 1 or groups[0][0] != job.get("suite", "scalability"):
+        if len(groups) != 1 or groups[0][0] != job["suite"]:
             raise ValueError("idle tuning request must use its declared public case suite")
         suite = groups[0][0]
         catalogue = mechanism_hints.load_selection(self.workspace)
-        public = {key: candidate[key] for key in ("kind", "key", "name", "sha256", "overrides", "settings_file",
-                                                   "current") if key in candidate}
-        experiment = {"schema": EXPERIMENT_SCHEMA, "base_sha256": digest, "candidate": public,
-                      "test_cases": names, "mechanism": candidate["label"], "origin": "idle_tuning",
-                      "bundle": job.get("bundle"), "mechanism_ids": candidate["mechanisms"],
-                      "api": _api(catalogue, candidate["mechanisms"]),
-                      "public_suite": suite,
-                      "suggested_for_these_cases": job.get("suggested") or [],
-                      "identity": list(identity(candidate, digest, job.get("model")))}
+        public = {
+            key: candidate[key]
+            for key in ("kind", "key", "name", "sha256", "overrides", "settings_file", "current")
+            if key in candidate
+        }
+        experiment = {
+            "schema": EXPERIMENT_SCHEMA,
+            "base_sha256": digest,
+            "candidate": public,
+            "test_cases": names,
+            "mechanism": candidate["label"],
+            "origin": "idle_tuning",
+            "bundle": job.get("bundle"),
+            "mechanism_ids": candidate["mechanisms"],
+            "api": _api(catalogue, candidate["mechanisms"]),
+            "public_suite": suite,
+            "suggested_for_these_cases": job.get("suggested") or [],
+            "identity": list(identity(candidate, digest, job.get("model"))),
+        }
         if "reference_experiment" in candidate:
             experiment["reference_experiment"] = candidate["reference_experiment"]
         extra = {"tuning_experiment": experiment, "suite": suite}
@@ -708,18 +857,25 @@ class IdleTuner:
             target = candidate["sha256"]
         else:
             extra[tuning_knobs.REQUEST_KEY] = candidate["overrides"]
-        rid = idle_performance.submit(channel, names, target, origin=ORIGIN, prefix=REQUEST_PREFIX,
-                                      timeout=timeout or knob("MERLIN_IDLE_TUNE_TIMEOUT_S"), extra=extra)
+        rid = idle_performance.submit(
+            channel,
+            names,
+            target,
+            origin=ORIGIN,
+            prefix=REQUEST_PREFIX,
+            timeout=timeout or knob("MERLIN_IDLE_TUNE_TIMEOUT_S"),
+            extra=extra,
+        )
         scratch_retention.say(f"[idle-tune] {candidate['key']} on {job.get('bundle')}: {', '.join(names)}")
         return rid
 
     # -- publication ------------------------------------------------------------------------------
 
-    def progress(self, channel: Path, digest: str, known: dict, *, cohort=None, l2=None,
-                 candidates=None) -> dict:
+    def progress(self, channel: Path, digest: str, known: dict, *, cohort=None, l2=None, candidates=None) -> dict:
         """Current source/model readiness, independent from retained historical rankings."""
         if cohort is None:
             from ..workload_roles import PRIMARY, workspace_roles
+
             cohort = [n for n, role in (workspace_roles(self.workspace) or {}).items() if role in PRIMARY]
         if l2 is None:
             l2 = {n: "pass" for n in cohort}
@@ -741,22 +897,41 @@ class IdleTuner:
         empty = self._empty_attempts(channel, digest, None, candidates=candidates)
         for selection in coverage:
             empty.update(self._empty_attempts(channel, digest, selection, candidates=candidates))
-        deferred = sum(count >= _EMPTY_RESULT_ATTEMPTS and name in {case["test_case"] for case in ready}
-                       for (_candidate, name, _suite), count in empty.items())
+        deferred = sum(
+            count >= _EMPTY_RESULT_ATTEMPTS and name in {case["test_case"] for case in ready}
+            for (_candidate, name, _suite), count in empty.items()
+        )
         models = [dict(model) for model in dict.fromkeys(c["model"] for c in ready)]
-        return dict(source_sha256=digest, ready_baselines=len(ready), declared_candidates=len(candidates),
-                    outstanding_candidate_cases=remaining, requests_in_flight=live,
-                    model_domains=models[:4], retry_deferred_candidate_cases=deferred,
-                    retry_note=("Missing case results remain unknown; retries resume after source/model changes."
-                                if deferred else None),
-                    status=("running" if live else "waiting_baseline" if not ready
-                        else "retry_deferred" if remaining and deferred >= remaining
-                        else "ready" if remaining else "complete_declared_work"
-                        if candidates else "construction_required"),
-                    **({"construction_task": construction_task(self.workspace)} if not candidates else {}))
+        return dict(
+            source_sha256=digest,
+            ready_baselines=len(ready),
+            declared_candidates=len(candidates),
+            outstanding_candidate_cases=remaining,
+            requests_in_flight=live,
+            model_domains=models[:4],
+            retry_deferred_candidate_cases=deferred,
+            retry_note=(
+                "Missing case results remain unknown; retries resume after source/model changes." if deferred else None
+            ),
+            status=(
+                "running"
+                if live
+                else "waiting_baseline"
+                if not ready
+                else "retry_deferred"
+                if remaining and deferred >= remaining
+                else "ready"
+                if remaining
+                else "complete_declared_work"
+                if candidates
+                else "construction_required"
+            ),
+            **({"construction_task": construction_task(self.workspace)} if not candidates else {}),
+        )
 
-    def refresh(self, channel: Path, digest: str, known: dict, *, cohort=None, l2=None,
-                progress_known=None) -> list[dict]:
+    def refresh(
+        self, channel: Path, digest: str, known: dict, *, cohort=None, l2=None, progress_known=None
+    ) -> list[dict]:
         """Publish every result with its baseline label, and the ranked view."""
         if not enabled():
             return []
@@ -765,7 +940,8 @@ class IdleTuner:
         for name in sorted({p["candidate"].get("name") for p in parsed if p["candidate"]["kind"] == "variant"}):
             try:
                 variant_digests[name] = self.variant_digest(name)
-            except (OSError, ValueError):
+            except (OSError, ValueError) as error:
+                scratch_retention.say(f"[idle-tune] variant freshness unavailable: {type(error).__name__}: {error}")
                 continue  # a removed variant's results stay, marked as no longer current
         found = R.records(parsed, known, digest, variant_digests=variant_digests)
         self._history = R.retain(self._history, found, known, digest, variant_digests)
@@ -774,14 +950,30 @@ class IdleTuner:
             for name in [bundle["representative"], *bundle["siblings"]]:
                 member.setdefault(name, bundle["label"])
         counts = {status: sum(r.get("baseline_status") == status for r in found) for status in R.STATUSES}
-        document = {"schema": SCHEMA, "advisory_only": True, "promotion_authority": False,
-                    "source_sha256": digest, "note": NOTE, "offer": offer(), "counts": counts,
-                    "ranked_candidates": R.by_candidate(found), "ranked_cases": R.by_case(found, member),
-                    "bundles": [{"label": b["label"], "representative": b["representative"],
-                                 "siblings": b["siblings"][:LEDGER_SIBLINGS]} for b in self.bundles[:LEDGER_BUNDLES]],
-                    "experiments": found, "comparison_history": self._history,
-                    "progress": self.progress(channel, digest, known if progress_known is None else progress_known,
-                                              cohort=cohort, l2=l2)}
+        document = {
+            "schema": SCHEMA,
+            "advisory_only": True,
+            "promotion_authority": False,
+            "source_sha256": digest,
+            "note": NOTE,
+            "offer": offer(),
+            "counts": counts,
+            "ranked_candidates": R.by_candidate(found),
+            "ranked_cases": R.by_case(found, member),
+            "bundles": [
+                {
+                    "label": b["label"],
+                    "representative": b["representative"],
+                    "siblings": b["siblings"][:LEDGER_SIBLINGS],
+                }
+                for b in self.bundles[:LEDGER_BUNDLES]
+            ],
+            "experiments": found,
+            "comparison_history": self._history,
+            "progress": self.progress(
+                channel, digest, known if progress_known is None else progress_known, cohort=cohort, l2=l2
+            ),
+        }
         text = json.dumps(document, sort_keys=True, default=str)
         stable = json.dumps(_without_ages(document), sort_keys=True, default=str)
         now = time.monotonic()
@@ -801,18 +993,26 @@ def _without_ages(document: dict) -> dict:
             rows.append(record)
         return rows
 
-    return {**document, "experiments": strip(document["experiments"]),
-            "comparison_history": strip(document.get("comparison_history") or []), "ranked_cases": None}
+    return {
+        **document,
+        "experiments": strip(document["experiments"]),
+        "comparison_history": strip(document.get("comparison_history") or []),
+        "ranked_cases": None,
+    }
 
 
 # ---------------------------------------------------------------------------------------------
 # Publication in the self-check brief
 # ---------------------------------------------------------------------------------------------
 
+
 def matching_progress(ledger, document: dict) -> dict | None:
     """Do not show another source/model epoch's queue as this reply's work."""
-    if (not isinstance(ledger, dict) or not isinstance(document.get("submission_sha256"), str)
-            or ledger.get("source_sha256") != document["submission_sha256"]):
+    if (
+        not isinstance(ledger, dict)
+        or not isinstance(document.get("submission_sha256"), str)
+        or ledger.get("source_sha256") != document["submission_sha256"]
+    ):
         return None
     progress = ledger.get("progress")
     if not isinstance(progress, dict) or progress.get("source_sha256") != document["submission_sha256"]:
@@ -820,8 +1020,11 @@ def matching_progress(ledger, document: dict) -> dict | None:
     domains = progress.get("model_domains") or ()
     for row in document.get("cases") or document.get("per_capsule") or ():
         performance = row.get("performance") if isinstance(row, dict) else None
-        if isinstance(performance, dict) and domains and not any(
-                all(performance.get(key) == model.get(key) for key in _MODEL_KEYS) for model in domains):
+        if (
+            isinstance(performance, dict)
+            and domains
+            and not any(all(performance.get(key) == model.get(key) for key in _MODEL_KEYS) for model in domains)
+        ):
             return None
     return progress
 
@@ -831,21 +1034,35 @@ def attach(document: dict, workspace) -> dict:
     ``performance_brief``; never fails it. A variant or knob-copy response gets nothing."""
     try:
         brief = document.get("performance_brief")
-        if (not enabled() or not isinstance(brief, dict) or document.get("variant")
-                or document.get("selfcheck_submission") not in (None, sources.SUBMISSION)):
+        if (
+            not enabled()
+            or not isinstance(brief, dict)
+            or document.get("variant")
+            or document.get("selfcheck_submission") not in (None, sources.SUBMISSION)
+        ):
             return document
         ledger = idle_performance._load(Path(workspace) / LEDGER)
         digest = document.get("submission_sha256")
         experiments = []
         if isinstance(ledger, dict):
-            experiments = [r for r in ledger.get("experiments") or () if isinstance(r, dict)
-                           and r.get("baseline_status", "current") != "superseded"
-                           and r.get("candidate_current", True) is not False]
-        observed = {row.get("capsule"): row["performance"]
-                    for row in document.get("cases") or document.get("per_capsule") or ()
-                    if isinstance(row, dict) and isinstance(row.get("performance"), dict)}
-        experiments = [row for row in experiments if not observed.get(row.get("test_case"))
-                       or R.comparable(row.get("baseline_model") or {}, observed[row["test_case"]]) is None]
+            experiments = [
+                r
+                for r in ledger.get("experiments") or ()
+                if isinstance(r, dict)
+                and r.get("baseline_status") in {"current", "older_source"}
+                and r.get("candidate_current") is True
+            ]
+        observed = {
+            row.get("capsule"): row["performance"]
+            for row in document.get("cases") or document.get("per_capsule") or ()
+            if isinstance(row, dict) and isinstance(row.get("performance"), dict)
+        }
+        experiments = [
+            row
+            for row in experiments
+            if not observed.get(row.get("test_case"))
+            or R.comparable(row.get("baseline_model") or {}, observed[row["test_case"]]) is None
+        ]
         entries = [e for e in brief.get("largest_headroom") or () if isinstance(e, dict)]
         named = {e.get("test_case") for e in entries}
         for entry in entries:
@@ -853,17 +1070,42 @@ def attach(document: dict, workspace) -> dict:
             rows.sort(key=lambda r: (r.get("delta_pct") is None, r.get("delta_pct") or 0.0))
             if rows:
                 entry["idle_tuning_experiments"] = rows[:4]
-        shown = sorted(experiments, key=lambda r: (r.get("test_case") not in named, r.get("delta_pct") is None,
-                                                   r.get("delta_pct") or 0.0, str(r.get("test_case"))))
-        ranked = [r for r in (ledger or {}).get("ranked_candidates") or () if isinstance(r, dict)
-                  and r.get("current", True)][:5] if isinstance(ledger, dict) else []
-        brief["idle_tuning"] = {"schema": SCHEMA, "advisory_only": True, "promotion_authority": False,
-                                "source_sha256": digest, "count": len(experiments),
-                                "experiments": [R.compact(r) for r in shown[:BRIEF_LIMIT]],
-                                "ranked_candidates": [{k: r.get(k) for k in (
-                                    "candidate", "geomean_ratio", "cases_compared", "faster", "slower",
-                                    "numerics_changed")} for r in ranked],
-                                "all": LEDGER.as_posix(), "note": NOTE, "offer": offer()}
+        shown = sorted(
+            experiments,
+            key=lambda r: (
+                r.get("test_case") not in named,
+                r.get("delta_pct") is None,
+                r.get("delta_pct") or 0.0,
+                str(r.get("test_case")),
+            ),
+        )
+        ranked = (
+            [
+                r
+                for r in (ledger or {}).get("ranked_candidates") or ()
+                if isinstance(r, dict) and r.get("current") is True
+            ][:5]
+            if isinstance(ledger, dict)
+            else []
+        )
+        brief["idle_tuning"] = {
+            "schema": SCHEMA,
+            "advisory_only": True,
+            "promotion_authority": False,
+            "source_sha256": digest,
+            "count": len(experiments),
+            "experiments": [R.compact(r) for r in shown[:BRIEF_LIMIT]],
+            "ranked_candidates": [
+                {
+                    k: r.get(k)
+                    for k in ("candidate", "geomean_ratio", "cases_compared", "faster", "slower", "numerics_changed")
+                }
+                for r in ranked
+            ],
+            "all": LEDGER.as_posix(),
+            "note": NOTE,
+            "offer": offer(),
+        }
         progress = matching_progress(ledger, document)
         if progress is not None:
             brief["idle_tuning"]["progress"] = progress

@@ -147,7 +147,7 @@ def _summary(rows: list, newest: dict, current_source, recorded: list) -> dict:
         "rows": len(rows),
         "executed": sum(executed(row) for row in rows),
         "passed": sum(row.get("status") == "pass" for row in rows),
-        "from_newest_grade": (grades.get(newest["token"]) or {}).get("rows", 0),
+        "from_newest_grade": grades[newest["token"]]["rows"] if newest["token"] in grades else 0,
         "current_source_sha256": current_source,
         "from_current_source": sum(
             1 for row in rows if current_source and row[ORIGIN].get("graded_source_sha256") == current_source
@@ -212,7 +212,6 @@ def record(workspace, verdict: dict, token) -> bool:
     return True
 
 
-
 def record_rows(workspace, rows, token, *, graded_source_sha256, graded_at=None, reach_sha256=None) -> bool:
     """Merge one running grade's completed test cases before the grade itself completes.
 
@@ -227,10 +226,17 @@ def record_rows(workspace, rows, token, *, graded_source_sha256, graded_at=None,
     order = _token(token)
     if order is None:
         return False
-    origin = {"token": str(order), "graded_source_sha256": graded_source_sha256, "graded_at": graded_at,
-              **({"reach_sha256": reach_sha256} if reach_sha256 else {})}
-    incoming = {row["capsule"]: {**row, ORIGIN: origin} for row in rows
-                if isinstance(row, dict) and isinstance(row.get("capsule"), str) and executed(row)}
+    origin = {
+        "token": str(order),
+        "graded_source_sha256": graded_source_sha256,
+        "graded_at": graded_at,
+        **({"reach_sha256": reach_sha256} if reach_sha256 else {}),
+    }
+    incoming = {
+        row["capsule"]: {**row, ORIGIN: origin}
+        for row in rows
+        if isinstance(row, dict) and isinstance(row.get("capsule"), str) and executed(row)
+    }
     if not incoming:
         return False
     with _held(workspace) as (path, held, previous, recorded):
@@ -240,8 +246,11 @@ def record_rows(workspace, rows, token, *, graded_source_sha256, graded_at=None,
         if not changed:
             return False
         top = {key: value for key, value in held.items() if key not in (POINTER, SUMMARY)}
-        first = [row["capsule"] for row in top.get("per_capsule") or ()
-                 if isinstance(row, dict) and row.get("capsule") in merged]
+        first = [
+            row["capsule"]
+            for row in top.get("per_capsule") or ()
+            if isinstance(row, dict) and row.get("capsule") in merged
+        ]
         top["per_capsule"] = [merged[name] for name in dict.fromkeys([*first, *sorted(merged)])]
         _store(workspace, path, top, previous, recorded=recorded)
     return True
@@ -303,6 +312,7 @@ def follow_up(workspace, archive, verdict: dict, token, write_verdict, projectio
 
         write_verdict(Path(workspace) / "qa" / "verdict.json", document, expect=same_grade)
     project_rows(workspace, token, projections)
+
 
 def _store(workspace, path: Path, top: dict, token, *, recorded: list) -> None:
     """Enrich ``top`` (its merged rows already in place) and write it with every view derived from it.

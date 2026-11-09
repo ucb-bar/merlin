@@ -70,6 +70,9 @@ def issue(ws, source_ws, result, *, capsule, context, cert_tier, receipt_path, c
         or check.get("candidate_source_coverage", {}).get("status") != "verified"
     ):
         raise ValueError("model voucher lacks closed L2/source/dispatch certificate")
+    threshold = (capsule.get("gate") or {}).get("after_op_pass_fraction")
+    if type(threshold) not in (float, int) or not 0 <= threshold <= 1:
+        raise ValueError("model voucher lacks the selected operator gate threshold")
     gate = result.get("model_gate_admission")
     if (
         not isinstance(gate, dict)
@@ -77,7 +80,7 @@ def issue(ws, source_ws, result, *, capsule, context, cert_tier, receipt_path, c
         or gate.get("passed") is not True
         or type(gate.get("fraction")) not in (float, int)
         or not 0 <= gate["fraction"] <= 1
-        or gate["fraction"] < float((capsule.get("gate") or {}).get("after_op_pass_fraction", 0))
+        or gate["fraction"] < threshold
     ):
         raise ValueError("model voucher lacks actual selected operator gate admission")
     digest = promotion._submission_digest(source_ws)

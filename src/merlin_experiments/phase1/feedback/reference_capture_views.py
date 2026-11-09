@@ -190,7 +190,7 @@ def lift_selected(raw, source_pin, *, symbol, workspace, reference_root, facts, 
         model,
         op="matmul" if observed["problem"] else "projection_group",
         fences=kinds["fence"],
-        configurations=model.role_counts.get("configure", 0),
+        configurations=sum(count for role, count in model.role_counts.items() if role == "configure"),
         target=target,
         facts=evidence.facts,
     )
@@ -353,7 +353,7 @@ def candidate_view(inputs, *, entry_symbol, decoder):
                 "candidate_emitted_command_classification_incomplete",
                 required_adapter="complete_selected_instruction_decoder",
             )
-        fences = counts.get("FENCE", 0)
+        fences = sum(count for kind, count in counts.items() if kind == "FENCE")
         commands = sum(counts.values()) - fences
         roles = (decoder.get("structure") or {}).get("instruction_roles") or {}
         configurations = (
@@ -454,7 +454,9 @@ def compare_candidate(reference, candidate, expert, ours):
         command_role_comparison={
             role: dict(
                 reference=count,
-                candidate=candidate_roles.get(role, 0) if ours is not None else None,
+                candidate=sum(count for name, count in candidate_roles.items() if name == role)
+                if ours is not None
+                else None,
                 status="compared_function_body_counts" if compatible and ours is not None else "unknown",
             )
             for role, count in role_counts.items()

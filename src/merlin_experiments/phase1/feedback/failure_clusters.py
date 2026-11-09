@@ -34,10 +34,12 @@ LIMIT = 12
 EXAMPLES = 3
 _CASE = "<case>"
 _HEX = frozenset("0123456789abcdefABCDEF")
-NOTE = ("Failing test cases grouped by the same redacted failure (plane, category and detail compared "
-        "with numbers, paths and the case's own name normalized). One fix often clears a whole cluster, "
-        "so each cluster is a self-contained unit a helper can take: its member names, one example's "
-        "detail and a command that reproduces it. Ordered by size; per-case rows stay in `per_capsule`.")
+NOTE = (
+    "Failing test cases grouped by the same redacted failure (plane, category and detail compared "
+    "with numbers, paths and the case's own name normalized). One fix often clears a whole cluster, "
+    "so each cluster is a self-contained unit a helper can take: its member names, one example's "
+    "detail and a command that reproduces it. Ordered by size; per-case rows stay in `per_capsule`."
+)
 
 
 def _no_result_statuses() -> frozenset:
@@ -108,7 +110,7 @@ def normalize(detail, case: str | None = None) -> tuple[str, bool]:
         tokens = tokens[:-1]
     if marker in tokens:
         at = tokens.index(marker)
-        tokens = tokens[:max(at - 1, 0)] + [marker] + tokens[at + 2:]
+        tokens = tokens[: max(at - 1, 0)] + [marker] + tokens[at + 2 :]
     return " ".join(tokens), cut
 
 
@@ -119,13 +121,14 @@ def _covers(host: str, partial: str, cut: bool) -> bool:
         return False
     if not marker:
         return cut
-    rest = host[len(head):]
+    rest = host[len(head) :]
     return (tail in rest) if cut else rest.endswith(tail)
 
 
 def _failed(row) -> bool:
-    return (isinstance(row, dict) and isinstance(row.get("capsule"), str)
-            and row.get("status") not in _no_result_statuses())
+    return (
+        isinstance(row, dict) and isinstance(row.get("capsule"), str) and row.get("status") not in _no_result_statuses()
+    )
 
 
 def _plane(row) -> str:
@@ -137,7 +140,8 @@ def _category(row) -> str:
 
 
 def _inventory(workspace) -> dict | None:
-    from ..capability_inventory import FILENAME, SCHEMA as INVENTORY_SCHEMA
+    from ..capability_inventory import FILENAME
+    from ..capability_inventory import SCHEMA as INVENTORY_SCHEMA
 
     if workspace is None:
         return None
@@ -171,8 +175,11 @@ def reproduce_command(row, member: dict | None = None) -> str:
 def _merge_partial(groups: dict, partial: dict) -> dict:
     """Fold each cut or clipped signature into the largest group whose message it is part of."""
     for key in sorted(partial, key=lambda key: len(key[2])):
-        hosts = [other for other in groups if other != key and other[:2] == key[:2]
-                 and _covers(other[2], key[2], partial[key])]
+        hosts = [
+            other
+            for other in groups
+            if other != key and other[:2] == key[:2] and _covers(other[2], key[2], partial[key])
+        ]
         if key in groups and hosts:
             host = max(hosts, key=lambda other: (other not in partial, len(groups[other]), other[2]))
             groups[host] += groups.pop(key)
@@ -195,7 +202,7 @@ def build(rows, *, workspace=None, limit: int = LIMIT) -> dict | None:
         key = (_plane(row), _category(row), detail)
         groups.setdefault(key, []).append(row)
         if cut or f" {_elision()} " in f" {detail} ":
-            partial[key] = partial.get(key, False) or cut
+            partial[key] = (partial[key] if key in partial else False) or cut
     groups = _merge_partial(groups, partial)
     ordered = sorted(groups.items(), key=lambda item: (-len(item[1]), item[0][0], item[0][1], item[0][2]))
     clusters = []
@@ -211,14 +218,21 @@ def build(rows, *, workspace=None, limit: int = LIMIT) -> dict | None:
             "example_failure_detail": example.get("failure_detail"),
             "reproduce": reproduce_command(example, (members or {}).get(example["capsule"])),
         }
-        graded = [str((row.get("graded") or {}).get("graded_at")) for row in members_rows
-                  if isinstance(row.get("graded"), dict) and (row["graded"].get("graded_at"))]
+        graded = [
+            str((row.get("graded") or {}).get("graded_at"))
+            for row in members_rows
+            if isinstance(row.get("graded"), dict) and (row["graded"].get("graded_at"))
+        ]
         if graded:
             entry["newest_graded_at"] = max(graded)
-        if workspace is not None and (Path(workspace) / "selfcheck_out" / example["capsule"]
-                                      / "command_buffer.json").is_file():
-            entry["inspect"] = (f"python isa_tools.py debug selfcheck_out/{example['capsule']}/command_buffer.json"
-                                f" --capsule {example['capsule']}")
+        if (
+            workspace is not None
+            and (Path(workspace) / "selfcheck_out" / example["capsule"] / "command_buffer.json").is_file()
+        ):
+            entry["inspect"] = (
+                f"python isa_tools.py debug selfcheck_out/{example['capsule']}/command_buffer.json"
+                f" --capsule {example['capsule']}"
+            )
         clusters.append(entry)
     return {
         "schema": SCHEMA,
@@ -252,16 +266,22 @@ def render(section: dict | None, *, detail_chars: int = 240) -> list[str]:
     """Markdown lines for a round brief; empty when nothing failed."""
     if not isinstance(section, dict) or not section.get("clusters"):
         return []
-    lines = ["## Failure clusters: test cases that fail the same way", "",
-             "Each cluster below shares one redacted failure, so one fix often clears all of it. A cluster "
-             "is a self-contained unit you can hand to a helper with its reproduce command; full member "
-             f"lists are under `{KEY}` in `qa/verdict.json`.", ""]
+    lines = [
+        "## Failure clusters: test cases that fail the same way",
+        "",
+        "Each cluster below shares one redacted failure, so one fix often clears all of it. A cluster "
+        "is a self-contained unit you can hand to a helper with its reproduce command; full member "
+        f"lists are under `{KEY}` in `qa/verdict.json`.",
+        "",
+    ]
     for cluster in section["clusters"]:
         examples = ", ".join(f"`{name}`" for name in cluster["examples"])
-        lines += [f"- {cluster['count']} case(s), `{cluster['failure_plane']}` / `{cluster['failure_category']}`: "
-                  f"e.g. {examples}.",
-                  f"  Detail: {_brief_text(cluster.get('example_failure_detail'), detail_chars)}",
-                  f"  Reproduce: `{cluster['reproduce']}`"]
+        lines += [
+            f"- {cluster['count']} case(s), `{cluster['failure_plane']}` / `{cluster['failure_category']}`: "
+            f"e.g. {examples}.",
+            f"  Detail: {_brief_text(cluster.get('example_failure_detail'), detail_chars)}",
+            f"  Reproduce: `{cluster['reproduce']}`",
+        ]
     if section.get("clusters_not_listed"):
         lines.append(f"- {section['clusters_not_listed']} smaller cluster(s) not listed; see `per_capsule`.")
     return lines + [""]

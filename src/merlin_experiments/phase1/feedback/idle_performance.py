@@ -109,7 +109,9 @@ def grade_reserve(environ=None) -> int:
 
 
 def enabled(environ=None) -> bool:
-    return (os.environ if environ is None else environ).get(ENV, "1").strip() != "0"
+    """Idle advice is enabled unless the operator explicitly opts out."""
+    raw = (os.environ if environ is None else environ).get(ENV)
+    return raw is None or raw.strip() != "0"
 
 
 def _load(path: Path):
@@ -125,10 +127,10 @@ def _deadline_s(body: dict, path: Path) -> float:
     explicit = body.get("deadline_unix_ns")
     if isinstance(explicit, int):
         return explicit / 1e9
-    try:
-        return path.stat().st_mtime + int(body.get("timeout", 1800)) + 240
-    except (OSError, ValueError, TypeError):
-        return 0.0
+    timeout = body.get("timeout")
+    if type(timeout) is not int or timeout <= 0:
+        raise ValueError("request has neither an explicit deadline nor a positive timeout")
+    return path.stat().st_mtime + timeout + 240
 
 
 def outstanding(channel: Path, *, now: float | None = None) -> tuple[int, int]:
@@ -245,7 +247,8 @@ def withdraw(channel: Path, wanted: int, *, now: float | None = None) -> list[tu
             break
         try:
             request.unlink()
-        except FileNotFoundError:
+        except FileNotFoundError as error:
+            scratch_retention.say(f"[idle-perf] withdrawal raced completion/cancellation: {type(error).__name__}")
             continue  # answered or cancelled meanwhile
         names = [name.strip() for name in str(body.get("capsules") or "").split(",") if name.strip()]
         withdrawn.append((rid, names, str(body.get("submission_sha256"))))
@@ -274,6 +277,7 @@ def _cohort_l2(verdicts: list[dict], *, workspace=None) -> tuple[list[str], dict
                 roles = (verdict.get("joint_test_selection") or {}).get("workload_roles")
                 if roles is not None:
                     from ..workload_roles import PRIMARY
+
                     members = [name for name in members if roles.get(name) in PRIMARY]
                 cohort = [str(name) for name in members]
         for row in verdict.get("per_capsule") or ():
@@ -290,8 +294,11 @@ def _cohort_l2(verdicts: list[dict], *, workspace=None) -> tuple[list[str], dict
             # The same staged public suite/roles are available before the first
             # completed grade. The broker still admits every named source case.
             roles, members = workspace_roles(workspace) or {}, family_rollup.inventory(workspace)
-            cohort = [name for name, role in roles.items() if role in PRIMARY
-                      and (members.get(name) or {}).get("selfcheck_suite") == "scalability"]
+            cohort = [
+                name
+                for name, role in roles.items()
+                if role in PRIMARY and (members.get(name) or {}).get("selfcheck_suite") == "scalability"
+            ]
         for name, row in family_rollup.readiness_rows(workspace).items():
             if name not in (cohort or ()):
                 continue
@@ -326,8 +333,9 @@ def estimates(channel: Path, *, with_status: bool = False, selection_sha256: str
             if isinstance(compact, dict) and compact.get("detail") and row is compact:
                 continue  # A summary with unavailable details cannot establish a timing identity.
             performance = row.get("performance") if isinstance(row, dict) else None
-            if selection_sha256 is not None and (not isinstance(performance, dict)
-                    or performance.get("selection_sha256") != selection_sha256):
+            if selection_sha256 is not None and (
+                not isinstance(performance, dict) or performance.get("selection_sha256") != selection_sha256
+            ):
                 continue
             cycles = performance.get("estimated_whole_soc_cycles") if isinstance(performance, dict) else None
             if isinstance(digest, str) and type(cycles) in (int, float) and cycles > 0:
@@ -364,8 +372,9 @@ def passed(row: dict) -> bool:
     return row.get("pass") is True or row.get("numerical_execution_passed") is True or row.get("status") == "pass"
 
 
-def select(cohort, l2, known: dict, digest: str, requested: set, *, limit: int, preferred=frozenset(),
-           work=None) -> list[str]:
+def select(
+    cohort, l2, known: dict, digest: str, requested: set, *, limit: int, preferred=frozenset(), work=None
+) -> list[str]:
     """Passing cohort cases without an estimate of ``digest``.
 
     Cases never timed and cases timed on older source alternate, so the largest stale estimates are
@@ -382,8 +391,10 @@ def select(cohort, l2, known: dict, digest: str, requested: set, *, limit: int, 
         and (name, digest) not in requested
         and not any(row[1] == digest for row in known.get(name) or ())
     ]
-    untimed = sorted((name for name in eligible if not known.get(name)),
-                     key=lambda name: (name not in preferred, -work.get(name, 0)))
+    untimed = sorted(
+        (name for name in eligible if not known.get(name)),
+        key=lambda name: (name not in preferred, name not in work, -work[name] if name in work else 0),
+    )
     stale = sorted(
         (name for name in eligible if known.get(name)),
         key=lambda name: (name not in preferred, -(known[name][0][2].get("estimated_whole_soc_cycles") or 0), name),
@@ -404,8 +415,12 @@ def _declared_work(workspace: Path, cohort, *, family: str | None = None) -> dic
     found = {}
     for name in cohort:
         _, shape = describe(name, members.get(name), workspace)
-        if (shape and (family is None or shape.get("family") == family)
-                and type(shape.get("work")) is int and shape["work"] > 0):
+        if (
+            shape
+            and (family is None or shape.get("family") == family)
+            and type(shape.get("work")) is int
+            and shape["work"] > 0
+        ):
             found[name] = shape["work"]
     return found
 
@@ -476,7 +491,8 @@ class IdleMeasurer:
         self._next = self._clock() + knob("MERLIN_IDLE_PERF_INTERVAL_S")
         scratch_retention.say(
             f"[idle-perf] {wanted} higher-priority waiter(s) for a CPU: withdrew background Spike timing of "
-            + "; ".join(", ".join(names) for _, names, _ in withdrawn))
+            + "; ".join(", ".join(names) for _, names, _ in withdrawn)
+        )
         return "yielded"
 
     def _tick(self, grading: bool) -> str:
@@ -531,12 +547,14 @@ class IdleMeasurer:
         # behind untimed siblings, gSIM, or repeated small tuning experiments.
         # Spend one existing AUXILIARY slot, once per selected timing epoch for
         # each of the two targets. All ordinary admission and timeout gates hold.
-        early = (_largest_dense(self.workspace, cohort)
-                 if len(self._early_dense_attempted) < _EARLY_DENSE_CASES else ())
+        early = _largest_dense(self.workspace, cohort) if len(self._early_dense_attempted) < _EARLY_DENSE_CASES else ()
         for name in early:
-            if (l2.get(name) == "pass" and not any(len(row) < 4 or row[3] for row in known.get(name) or ())
-                    and name not in self._early_dense_attempted
-                    and (name, digest) not in self.requested):
+            if (
+                l2.get(name) == "pass"
+                and not any(len(row) < 4 or row[3] for row in known.get(name) or ())
+                and name not in self._early_dense_attempted
+                and (name, digest) not in self.requested
+            ):
                 budget -= self._time(channel, [name], digest, records, why="early largest dense baseline")
                 self._early_dense_attempted.add(name)
                 timed, live = 1, live + 1
@@ -560,8 +578,16 @@ class IdleMeasurer:
         # Retain comparisons from older model epochs too; only admission uses the current selection.
         historical = known if selection is None else estimates(channel, with_status=True)
         self._tuning(self.tuner.refresh, channel, digest, historical, cohort=cohort, l2=l2, progress_known=known)
-        timing = select(cohort, l2, known, digest, self.requested, limit=len(cohort), preferred=preferred,
-                        work=_declared_work(self.workspace, cohort))
+        timing = select(
+            cohort,
+            l2,
+            known,
+            digest,
+            self.requested,
+            limit=len(cohort),
+            preferred=preferred,
+            work=_declared_work(self.workspace, cohort),
+        )
         jobs = self._tuning(self.tuner.plan, channel, digest, cohort, l2, known, selection=selection) or []
         # Fill the free CPUs, alternating baseline timing and experiments (each in its own value order);
         # an experiment's missing baselines are timed beside it.
@@ -597,8 +623,9 @@ class IdleMeasurer:
             return "; ".join(statuses)
         return "estimates current; no untried tuning candidate" if not timing else "cpus busy"
 
-    def _time(self, channel: Path, names: list[str], digest: str, records: dict, why: str = "",
-              *, suite: str = "scalability") -> int:
+    def _time(
+        self, channel: Path, names: list[str], digest: str, records: dict, why: str = "", *, suite: str = "scalability"
+    ) -> int:
         """Submit one Spike timing request of ``submission/`` for ``names``; returns the CPUs it asks for."""
         timeout, deferred = request_timeout(names, records)
         self._submit(channel, names, digest, timeout=timeout, suite=suite)
@@ -606,8 +633,11 @@ class IdleMeasurer:
         scratch_retention.say(
             f"[idle-perf] background Spike timing request for {len(names)} case(s): {', '.join(names)}"
             + (f" ({why})" if why else "")
-            + (f" (timeout {timeout}s for observations a grade could not fit: {', '.join(deferred)})"
-               if deferred else "")
+            + (
+                f" (timeout {timeout}s for observations a grade could not fit: {', '.join(deferred)})"
+                if deferred
+                else ""
+            )
         )
         return len(names)
 
@@ -640,12 +670,17 @@ class IdleMeasurer:
         if cap and self.tuner.in_flight(channel) >= cap:
             return 0
         source_cap = tuning_knob("MERLIN_IDLE_TUNE_MAX_PER_SOURCE")
-        if source_cap and sum(r["operator"] and (r["experiment"] or {}).get("base_sha256") == digest
-                              for r in self.tuner._requests(channel)) >= source_cap:
+        if (
+            source_cap
+            and sum(
+                r["operator"] and (r["experiment"] or {}).get("base_sha256") == digest
+                for r in self.tuner._requests(channel)
+            )
+            >= source_cap
+        ):
             return 0
         if need:
-            self._time(channel, need, digest, records, why=f"baseline for {candidate['key']}",
-                       suite=job.get("suite", "scalability"))
+            self._time(channel, need, digest, records, why=f"baseline for {candidate['key']}", suite=job["suite"])
         timeout, _ = request_timeout(names, records, base=tuning_knob("MERLIN_IDLE_TUNE_TIMEOUT_S"))
         self.tuner.submit(channel, job, names, digest, timeout=timeout)
         return len(names) + len(need)
@@ -675,10 +710,15 @@ class IdleMeasurer:
             scratch_retention.say(f"[idle-tune] skipped: {type(error).__name__}: {str(error)[:200]}")
             return None
 
-    def _submit(self, channel: Path, names: list[str], digest: str, timeout: int | None = None,
-                *, suite: str = "scalability") -> str:
+    def _submit(
+        self, channel: Path, names: list[str], digest: str, timeout: int | None = None, *, suite: str = "scalability"
+    ) -> str:
         return submit(
-            channel, names, digest, origin=ORIGIN, prefix=REQUEST_PREFIX,
+            channel,
+            names,
+            digest,
+            origin=ORIGIN,
+            prefix=REQUEST_PREFIX,
             timeout=knob("MERLIN_IDLE_PERF_TIMEOUT_S") if timeout is None else timeout,
             extra={"suite": suite, **({"tiers": "L0,L1,L2"} if suite == "core" else {})},
         )
@@ -705,8 +745,8 @@ def request_timeout(names, performance: dict, *, base: int | None = None) -> tup
 
         if joint_control.selected() is not None:
             timeout = max(base, min(timeout, int(joint_control.remaining(drain=True) or 0)))
-    except (RuntimeError, OSError, ValueError):
-        pass
+    except (RuntimeError, OSError, ValueError) as error:
+        scratch_retention.say(f"[idle-perf] campaign timeout bound unavailable: {type(error).__name__}: {error}")
     return timeout, deferred
 
 

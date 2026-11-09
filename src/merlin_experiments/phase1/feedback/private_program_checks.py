@@ -38,7 +38,11 @@ def verify(checker, receipt, *, revalidate, **arguments):
         elf = Path(str(output.get("elf") or ""))
         if elf.is_symlink() or not elf.is_file() or file_sha256(elf) != output.get("elf_sha256"):
             raise ValueError("linked program changed during semantic verification") from error
-        verify_compilation(output, elf, required=arguments.get("require_compilation_recipe", True))
+        verify_compilation(
+            output,
+            elf,
+            required=(arguments["require_compilation_recipe"] if "require_compilation_recipe" in arguments else True),
+        )
         return {
             "program": arguments["program"],
             "status": FAILED,

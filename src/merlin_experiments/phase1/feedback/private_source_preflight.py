@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 import time
@@ -46,7 +47,7 @@ def _notify(progress, stage, **details):
         try:
             progress({"stage": stage, **details})
         except Exception:
-            pass
+            logging.getLogger(__name__).warning("Source preflight progress callback failed", exc_info=True)
 
 
 def _observer(callback, path):
@@ -77,12 +78,12 @@ def _observer(callback, path):
                     stream.write("\n")
                 os.replace(temporary, path)
             except OSError:
-                pass
+                logging.getLogger(__name__).warning("Source preflight progress publication failed", exc_info=True)
         if callback is not None:
             try:
                 callback(record)
             except Exception:
-                pass
+                logging.getLogger(__name__).warning("Source preflight progress publication failed", exc_info=True)
 
     return observe
 

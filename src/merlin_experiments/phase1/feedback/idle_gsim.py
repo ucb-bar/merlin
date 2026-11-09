@@ -35,6 +35,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections import Counter
 from pathlib import Path
 
 #: Authorization refusals after which no other case can be admitted on this tick either.
@@ -108,8 +109,17 @@ def verdict_performance(verdicts) -> dict:
 
 
 def candidates(
-    cohort, l2: dict, known: dict, digest, *, measured=frozenset(), attempted=frozenset(), records=None, model=None,
-    families=None, preferred=frozenset(),
+    cohort,
+    l2: dict,
+    known: dict,
+    digest,
+    *,
+    measured=frozenset(),
+    attempted=frozenset(),
+    records=None,
+    model=None,
+    families=None,
+    preferred=frozenset(),
 ) -> list[dict]:
     """Passing cohort cases whose current executable lacks a gSIM measurement, in :func:`order`.
 
@@ -208,9 +218,7 @@ def long_lane(entries: list[dict], expected: dict) -> set[str]:
     above that break are long relative to the rest and run only in the long lane, so they never hold a
     normal slot the shorter cases need. Relative by construction: no break (a tie or one case) means no
     long case, and once the shorter cases are measured the remaining ones split again."""
-    timed = sorted(
-        (expected[c["capsule"]], c["capsule"]) for c in entries if (expected.get(c["capsule"]) or 0) > 0
-    )
+    timed = sorted((expected[c["capsule"]], c["capsule"]) for c in entries if (expected.get(c["capsule"]) or 0) > 0)
     if len(timed) < 2:
         return set()
     ratios = [timed[i + 1][0] / timed[i][0] for i in range(len(timed) - 1)]
@@ -261,7 +269,16 @@ class GsimLane:
         return count
 
     def tick(
-        self, channel: Path, *, cohort, l2: dict, known: dict, digest, free=None, records=None, final_reserve=0,
+        self,
+        channel: Path,
+        *,
+        cohort,
+        l2: dict,
+        known: dict,
+        digest,
+        free=None,
+        records=None,
+        final_reserve=0,
         preferred=frozenset(),
     ) -> str | None:
         """One submission at most. ``free``: free shared slots beyond the grade reserve right now;
@@ -310,10 +327,10 @@ class GsimLane:
             for j in jobs.values()
             if isinstance(j, dict) and j.get("status") != "expired"
         }
-        retries: dict[str, int] = {}
+        retries = Counter()
         for job in jobs.values():
             if isinstance(job, dict) and job.get("outcome") in ("timeout", "lost", "cycle_cap"):
-                retries[job.get("capsule")] = retries.get(job.get("capsule"), 0) + 1
+                retries[job["capsule"]] += 1
         ranked = candidates(
             cohort,
             l2,
@@ -329,6 +346,15 @@ class GsimLane:
             self.last = "every passing case's current executable is measured or attempted"
             return None
         spike = _spike_seconds(self.run_dir)
+        for case in ranked:
+            name = case["capsule"]
+            if name not in spike and (name, "spike_timing_absent") not in self._said:
+                from . import scratch_retention
+
+                self._said.add((name, "spike_timing_absent"))
+                scratch_retention.say(
+                    f"[idle-gsim] {name}: Spike setup timing unavailable; scheduling uses the throughput model only"
+                )
         try:
             remaining_drain, remaining_end = joint_control.remaining(drain=True), joint_control.remaining()
         except RuntimeError:
@@ -342,7 +368,7 @@ class GsimLane:
         final_slots_free = free is None or free - max(0, int(final_reserve or 0)) >= 1
         expected = {
             c["capsule"]: M.expected_seconds(
-                fit, c["modeled_cycles"] or c.get("predicted_cycles"), spike_seconds=spike.get(c["capsule"], 0.0)
+                fit, c["modeled_cycles"] or c.get("predicted_cycles"), spike_seconds=spike.get(c["capsule"])
             )
             for c in ranked
         }
@@ -368,8 +394,8 @@ class GsimLane:
                 fit,
                 case["cycles"],
                 case["modeled_cycles"] or case.get("predicted_cycles"),
-                spike_seconds=spike.get(name, 0.0),
-                retries=retries.get(name, 0),
+                spike_seconds=spike.get(name),
+                retries=retries[name],
                 remaining_drain_s=remaining_drain,
                 remaining_end_s=remaining_end,
                 final_window_s=knobs["final_window_s"],
@@ -422,6 +448,7 @@ class GsimLane:
                     )
                     if key in case
                 }
+                detail["spike_seconds"] = spike.get(name)
                 submit(
                     channel,
                     [name],

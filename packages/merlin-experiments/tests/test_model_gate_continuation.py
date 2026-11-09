@@ -4,10 +4,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from merlin_experiments.phase1.feedback import model_gate_vouchers as vouchers
 
 from merlin.targetgen import capsule_runner as runner
 from merlin.targetgen.model_gate_continuation import ModelGateContinuation
+from merlin_experiments.phase1.feedback import model_gate_vouchers as vouchers
 
 
 def capsule(tmp_path):
@@ -74,6 +74,9 @@ def test_private_voucher_requires_closed_l2_gate_and_exact_source_context(tmp_pa
     record["source_provenance"] = {"typed_shape": (1, 32)}
     receipt = tmp_path / "receipt.json"
     receipt.write_text(json.dumps(record))
+    missing_gate = {k: v for k, v in cap.items() if k != "gate"}
+    with pytest.raises(ValueError, match="selected operator gate threshold"):
+        vouchers.issue(ws, ws, record, capsule=missing_gate, context=context, cert_tier="L3", receipt_path=receipt)
     path = vouchers.issue(ws, ws, record, capsule=cap, context=context, cert_tier="L3", receipt_path=receipt)
     assert not path.is_relative_to(ws)
     token = vouchers.verify(path, source_digest="a" * 64, capsules={"model"}, context=context, cert_tier="L3")

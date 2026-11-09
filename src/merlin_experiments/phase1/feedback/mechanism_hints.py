@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -83,7 +84,8 @@ def with_source_evidence(selection, workspace):
     for path in inventory_script().python_files(root):
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, SyntaxError, UnicodeError):
+        except (OSError, ValueError, SyntaxError, UnicodeError) as error:
+            logging.getLogger(__name__).warning("mechanism source observation unavailable for %s: %s", path, error)
             continue
         aliases = {}
         imported = set()

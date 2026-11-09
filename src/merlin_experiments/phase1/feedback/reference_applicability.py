@@ -86,7 +86,7 @@ def _candidate_effects(selector, region, *, workspace, facts, contract, target, 
     path, label = A._path(workspace, selector["path"], candidate=True)
     raw, _ = A._read(path, label, allow_elf=True)
     try:
-        format = selector.get("format", "auto")
+        format = selector["format"] if "format" in selector else "auto"
         if format == "auto":
             format = "elf" if isinstance(raw, PinnedELF) else "disassembly"
         rows, _, _ = A._instructions(raw, format, extent=extent, declared_isa=decoder.get("host_isa"))

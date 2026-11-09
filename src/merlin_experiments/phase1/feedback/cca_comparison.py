@@ -58,7 +58,10 @@ def mechanism_summary(analysis):
     effects = analysis.get("derived_effects") or {}
     sites = (analysis.get("mechanism_projection") or {}).get("role_sites") or {}
     out = dict(
-        roles=dict(status="observed", value={label: sites.get(role, 0) for role, label in SUMMARY_ROLES.items()})
+        roles=dict(
+            status="observed",
+            value={label: sites[role] if role in sites else 0 for role, label in SUMMARY_ROLES.items()},
+        )
         if sites
         else dict(status="unknown", reason="no decoded role sites")
     )

@@ -208,7 +208,10 @@ def selected(run_dir, *, context, candidate, capsules, hidden_capsules, contract
     if C.pin(path) != pointer:
         raise ValueError("imported capsule qualification changed")
     environment = yaml.safe_load((run_dir / "environment.yaml").read_bytes())
-    if environment.get("qualification_only") is not True or environment.get("validation_scope", "full") != "full":
+    # Legacy environments without this field were exclusively full-validation runs.
+    declared_scope = environment.get("validation_scope")
+    legacy_full = "validation_scope" not in environment
+    if environment.get("qualification_only") is not True or (not legacy_full and declared_scope != "full"):
         raise ValueError("capsule observation reuse is only for unpaid external full validation")
     record = verify(path, descriptor=context.descriptor)
     if hash_tree(candidate)["sha256"] != record["submission_sha256"]:

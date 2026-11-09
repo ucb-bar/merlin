@@ -681,7 +681,10 @@ def start_background(
     from merlin.common.cpu_pool import AUXILIARY, GRADE, cpu_priority, preparation_cpus, selected_pool
 
     stop = threading.Event()
-    start_cadence = os.environ.get("MERLIN_GRADE_START_TO_START", "0")
+    start_cadence = os.environ.get("MERLIN_GRADE_START_TO_START")
+    if start_cadence is None:
+        # Optional cadence selection: absence retains the ordinary interval mode.
+        start_cadence = "0"
     if start_cadence not in {"0", "1"}:
         raise ValueError("MERLIN_GRADE_START_TO_START must be 0 or 1")
     if source_identity is None and start_cadence == "1":
@@ -893,8 +896,11 @@ def start_background(
                 except Exception as error:  # noqa: BLE001 -- grading must outlive one failure
                     try:
                         failures.failed(error)
-                    except Exception:  # noqa: BLE001 -- the alert file may be on the same full disk
-                        pass
+                    except Exception as alert_error:  # noqa: BLE001 -- the alert file may be on the same full disk
+                        print(
+                            f"[in-turn grader] failure alert unavailable: {type(alert_error).__name__}: {alert_error}",
+                            flush=True,
+                        )
                     print(
                         f"[in-turn grader] resuming in {GRADER_RESUME_S}s after "
                         f"{type(error).__name__}: {str(error)[:200]}",

@@ -97,7 +97,7 @@ def probe(*, workspace, facts=None, bundle_manifest=None, repo=None, target=None
         raise ValueError(f"reference-analysis inventory is {listed.get('status')}: {listed.get('reason')}")
     files = sorted(
         (row for row in listed["report"].get("files", ()) if isinstance(row.get("path"), str)),
-        key=lambda row: (row.get("size_bytes", 0), row["path"]),
+        key=lambda row: (row["size_bytes"], row["path"]),
     )
     if not files:
         raise ValueError("reference guidance is selected but no visible reference input can be lifted")

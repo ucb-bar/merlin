@@ -405,6 +405,12 @@ def _material(kwargs, context, selection, producer, owner):
         raise ValueError("completed-build reuse refuses unsupported build options or execution")
     if type(context) is not dict or set(context) != {"capability", "facts"}:
         raise ValueError("completed-build reuse needs exact selected capability and facts")
+    # Match the public builder's optional keyword defaults; these are invocation policy,
+    # not values read from an old producer receipt. The resulting material is pinned.
+    dedup_weights = kwargs["blob_weights"] if "blob_weights" in kwargs else True
+    op_profile = kwargs["op_profile"] if "op_profile" in kwargs else False
+    host_math_policy = kwargs["host_math_policy"] if "host_math_policy" in kwargs else "native"
+    fusion = kwargs["host_elementwise_fusion"] if "host_elementwise_fusion" in kwargs else False
     settings = BuildSettings(
         board=kwargs["board"],
         board_catalog=Path(kwargs["board_catalog"]),
@@ -412,10 +418,10 @@ def _material(kwargs, context, selection, producer, owner):
         datapath="",
         arena_mb=kwargs["arena_mb"],
         host_package=Path(kwargs["package"]),
-        dedup_weights=kwargs.get("blob_weights", True),
-        op_profile=kwargs.get("op_profile", False),
-        host_math_policy=kwargs.get("host_math_policy", "native"),
-        host_elementwise_fusion=kwargs.get("host_elementwise_fusion", False),
+        dedup_weights=dedup_weights,
+        op_profile=op_profile,
+        host_math_policy=host_math_policy,
+        host_elementwise_fusion=fusion,
     )
     device = kwargs.get("device")
     candidate = Path(device.package_dir) if device is not None else Path(kwargs["package"])
