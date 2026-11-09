@@ -34,6 +34,7 @@ def build_outlined_program(
     packing_tile_shape: tuple[int, int] | None = None,
     packing_tile_budget_bytes: int | None = None,
     frozen_inputs=None,
+    analysis_workspace_budget_bytes: int | None = None,
 ) -> dict:
     """Compile isolated kernels and emit a real C staged chain, default-off.
 
@@ -53,6 +54,12 @@ def build_outlined_program(
         raise ValueError("explicit boolean vectorization selection required")
     if not isinstance(prefix, str) or not prefix.isascii() or not prefix.isidentifier():
         raise ValueError("explicit C-safe program prefix required")
+    if analysis_workspace_budget_bytes is not None and (
+        frozen_inputs is None
+        or type(analysis_workspace_budget_bytes) is not int
+        or not 0 < analysis_workspace_budget_bytes < 1 << 63
+    ):
+        raise ValueError("analysis workspace bound requires explicit frozen inputs and positive LP64 byte limit")
     source, output = Path(source).resolve(strict=True), Path(output)
     raw = source.read_bytes()
     output.mkdir(parents=True, exist_ok=False)
@@ -75,7 +82,9 @@ def build_outlined_program(
             module,
             worker_slots=worker_slots,
             worker_count=len(roles.compute_harts),
-            workspace_budget_bytes=workspace_budget_bytes,
+            workspace_budget_bytes=(
+                workspace_budget_bytes if analysis_workspace_budget_bytes is None else analysis_workspace_budget_bytes
+            ),
             alignment_bytes=alignment_bytes,
             data_preparation=data_preparation,
             packing_tile_shape=packing_tile_shape,
@@ -84,6 +93,7 @@ def build_outlined_program(
         prepared_staged_kernels = {} if prepared_staged_kernels is None else dict(prepared_staged_kernels)
         frozen_blob_objects = []
         frozen_blob_paths = []
+        analysis_workspace_bytes = plan.workspace_bytes
         if frozen_inputs is not None:
             import subprocess
 
@@ -273,7 +283,10 @@ def build_outlined_program(
             # must equal the actually loaded private-image digest; NFS loader
             # temporaries are neither dependencies nor publication candidates.
             for row in plan.frozen_inputs["dispatch_mapping"]:
-                for path, digest in row.get("proof", {}).get("input_sha256", {}).items():
+                proof = row.get("proof", {})
+                if proof and proof["input_sha256"].get(proof["retained_host_image"]) != proof["host_image_sha256"]:
+                    raise ValueError("retained host image manifest differs from actually loaded image")
+                for path, digest in proof.get("input_sha256", {}).items():
                     if sha256_file(path) != digest:
                         raise ValueError("offline evaluation dependency changed before build closure")
                     source_pins[path] = digest
@@ -334,6 +347,13 @@ def build_outlined_program(
                 ),
                 "context_stack_code_and_platform_memory": "caller must admit actual linked image separately",
             }
+            if analysis_workspace_budget_bytes is not None:
+                report["analysis_plan"] = {
+                    "metadata_only": True,
+                    "pre_specialization_workspace_bytes": analysis_workspace_bytes,
+                    "analysis_workspace_budget_bytes": analysis_workspace_budget_bytes,
+                    "final_target_storage_budget_bytes": workspace_budget_bytes,
+                }
         return report
     except BaseException as error:
         report.update(status="failed", error=f"{type(error).__name__}: {error}")

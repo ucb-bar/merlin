@@ -62,6 +62,36 @@ def compiler_required():
         pytest.skip("explicit selected native compiler required")
 
 
+def permutation_plan(shape=(3, 5), width=1):
+    permutation = tuple(reversed(range(len(shape))))
+    out = tuple(shape[i] for i in permutation)
+    dtype = "i" + str(width * 8)
+    src = "tensor<" + "x".join(map(str, (*shape, dtype))) + ">"
+    dst = "tensor<" + "x".join(map(str, (*out, dtype))) + ">"
+    dims = ",".join(f"d{i}" for i in range(len(shape)))
+    amap = "affine_map<(" + dims + ")->(" + dims + ")>"
+    source = f"""module {{func.func @forward(%w:{src},%x:{dst})->{dst} {{
+    %e=tensor.empty():{dst}
+    %t=linalg.transpose ins(%w:{src})outs(%e:{dst})permutation={list(permutation)}
+    %e2=tensor.empty():{dst}
+    %r=linalg.generic {{indexing_maps=[{amap},{amap},{amap}],
+    iterator_types=[{",".join(['"parallel"'] * len(shape))}]}}
+    ins(%t,%x:{dst},{dst})outs(%e2:{dst}){{
+    ^bb0(%a:{dtype},%b:{dtype},%o:{dtype}):
+    %v=arith.addi %a,%b:{dtype}
+    linalg.yield %v:{dtype}
+    }}->{dst}
+    func.return %r:{dst}}}}}"""
+    return plan_deployable_chain(
+        parse_mlir_text(source),
+        worker_slots=(0,),
+        worker_count=1,
+        workspace_budget_bytes=max(4096, 4 * np.prod(shape).item() * width + 256),
+        alignment_bytes=64,
+        data_preparation=True,
+    )
+
+
 @pytest.mark.parametrize("change", ["source", "shape", "dtype", "bytes", "duplicate", "budget", "index"])
 def test_binding_refusals_before_evaluation(tmp_path, change):
     p = plan()
@@ -202,7 +232,7 @@ def test_offline_byte_permutation_preserves_full_bitpatterns_and_tails(width):
 
     raw = np.arange(3 * 5 * width, dtype=np.uint8)
     array = raw.view("<i" + str(width)).reshape(3, 5)
-    view = {"kind": "pack_permutation", "output_shape": [5, 3], "source_strides": [1, 5]}
+    view = permutation_plan(width=width).dispatches[0]["views_before"][0]
     assert _view(view, array).tobytes() == array.T.copy().tobytes()
 
 
@@ -246,3 +276,191 @@ def test_cartesian_iteration_domain_is_budgeted_before_reference_allocation(tmp_
     kernel = canonical_kernel(p.outlined.module, p.dispatches[0]["symbol"])
     with pytest.raises(ValueError, match="offline intermediate budget"):
         _evaluate(kernel, [np.zeros((3, 7), dtype=np.int8), np.zeros((7, 5), dtype=np.int8)], tmp_path, 5000)
+
+
+@pytest.mark.parametrize("shape", [(1, 65537), (65537, 1), (65537,)])
+def test_thin_and_rank1_budget_refusal_precedes_permutation_allocation(tmp_path, monkeypatch, shape):
+    from merlin.compile import frozen_inputs as module
+
+    p = permutation_plan(shape)
+    raw = bytes(np.prod(shape).item())
+    path = tmp_path / "weight.bin"
+    path.write_bytes(raw)
+    request = FrozenInputs(
+        p.source_ir_sha256,
+        (FrozenInput(0, "i8", shape, path, hashlib.sha256(raw).hexdigest()),),
+        3 * len(raw) - 1,
+        2 * len(raw),
+    )
+
+    def forbidden(*args):
+        raise AssertionError("allocation reached despite insufficient budget")
+
+    monkeypatch.setattr(module, "_view", forbidden)
+    with pytest.raises(ValueError, match="offline view intermediate budget"):
+        specialize(p, request, tmp_path / "offline")
+
+
+def test_actual_thin_counterexample_within_declared_budget_after_transpose_fix(tmp_path):
+    import tracemalloc
+
+    n = 1 << 20
+    p = permutation_plan((1, n))
+    raw = np.arange(n, dtype=np.uint8).tobytes()
+    path = tmp_path / "weight.bin"
+    path.write_bytes(raw)
+    request = FrozenInputs(
+        p.source_ir_sha256, (FrozenInput(0, "i8", (1, n), path, hashlib.sha256(raw).hexdigest()),), 14_680_064, 2 * n
+    )
+    tracemalloc.start()
+    try:
+        derived, blob = specialize(p, request, tmp_path / "offline")
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert blob == raw and derived.frozen_inputs["published_blob_bytes"] == n
+    assert peak < request.offline_budget_bytes
+
+
+@pytest.mark.parametrize("change", ["missing", "stride", "shape", "width", "duplicate"])
+def test_offline_permutation_requires_complete_noncontradictory_proof(change):
+    from merlin.compile.frozen_inputs import _view
+
+    view = dict(permutation_plan().dispatches[0]["views_before"][0])
+    if change == "missing":
+        del view["permutation"]
+    elif change == "stride":
+        view["source_strides"] = (5, 1)
+    elif change == "shape":
+        view["source_shape"] = (5, 3)
+    elif change == "width":
+        view["element_bytes"] = 4
+    else:
+        view["permutation"] = (0, 0)
+    with pytest.raises(ValueError, match="permutation"):
+        _view(view, np.arange(15, dtype=np.int8).reshape(3, 5))
+
+
+def test_retained_host_image_mutation_after_successful_call_refuses(tmp_path, monkeypatch):
+    compiler_required()
+    from merlin.compile.frozen_inputs import _evaluate
+    from merlin.llvmlower.abi import HostModel
+
+    p = plan()
+    kernel = canonical_kernel(p.outlined.module, p.dispatches[0]["symbol"])
+    original = HostModel.__call__
+    work = tmp_path / "native"
+
+    def mutate(self, args):
+        original(self, args)
+        path = work / "model_host.so"
+        path.write_bytes(path.read_bytes() + b"post-call mutation")
+
+    monkeypatch.setattr(HostModel, "__call__", mutate)
+    with pytest.raises(ValueError, match="changed after native evaluation"):
+        _evaluate(kernel, [np.arange(6, dtype=np.int8).reshape(3, 2)], work, 1 << 20)
+
+
+def test_explicit_metadata_analysis_bound_does_not_increase_final_target_budget(tmp_path):
+    compiler_required()
+    from merlin.compile.outlined_program import build_outlined_program
+
+    p = plan()
+    request = binding(tmp_path, p)
+    source = tmp_path / "source.mlir"
+    source.write_text(SOURCE)
+    kwargs = dict(
+        roles=StagedRoles((0, 1, 2), 2, 2, 2, 2, (0,), (0,)),
+        worker_slots=(0, 0, 0),
+        workspace_budget_bytes=128,
+        alignment_bytes=64,
+        compute_cflags=("-march=rv64gcv",),
+        frozen_inputs=request,
+    )
+    with pytest.raises(ValueError, match="unique-storage"):
+        build_outlined_program(source, tmp_path / "old-limit", **kwargs)
+    built = build_outlined_program(source, tmp_path / "analysis", analysis_workspace_budget_bytes=4096, **kwargs)
+    assert built["analysis_plan"]["pre_specialization_workspace_bytes"] > 128
+    assert built["live_storage_bytes"] <= 128
+    assert built["analysis_plan"]["final_target_storage_budget_bytes"] == 128
+    with pytest.raises(ValueError, match="whole-chain tensor/provider"):
+        build_outlined_program(
+            source,
+            tmp_path / "final-refusal",
+            analysis_workspace_budget_bytes=4096,
+            **{**kwargs, "workspace_budget_bytes": 64},
+        )
+
+
+def test_rank_zero_offline_is_explicitly_unqualified():
+    kernel = parse_mlir_text("module {func.func @forward(%a:tensor<i32>)->tensor<i32>{func.return %a:tensor<i32>}}")
+    with pytest.raises(ValueError, match="rank-zero"):
+        _admit(kernel)
+
+
+def test_builder_independently_refuses_mismatched_loaded_image_manifest(tmp_path, monkeypatch):
+    compiler_required()
+    from merlin.compile import frozen_inputs as module
+    from merlin.compile.outlined_program import build_outlined_program
+
+    p = plan()
+    request = binding(tmp_path, p)
+    source = tmp_path / "source.mlir"
+    source.write_text(SOURCE)
+    original = module._evaluate
+
+    def inconsistent(*args, **kwargs):
+        values, proof = original(*args, **kwargs)
+        proof["host_image_sha256"] = "0" * 64
+        return values, proof
+
+    monkeypatch.setattr(module, "_evaluate", inconsistent)
+    with pytest.raises(ValueError, match="manifest differs from actually loaded image"):
+        build_outlined_program(
+            source,
+            tmp_path / "bad-manifest",
+            roles=StagedRoles((0, 1, 2), 2, 2, 2, 2, (0,), (0,)),
+            worker_slots=(0, 0, 0),
+            workspace_budget_bytes=4096,
+            alignment_bytes=64,
+            compute_cflags=("-march=rv64gcv",),
+            frozen_inputs=request,
+        )
+
+
+@pytest.mark.parametrize("limit", [None, True, 0, -1, 1 << 63])
+def test_analysis_bound_never_grants_unfrozen_or_invalid_budget_permission(tmp_path, limit):
+    from merlin.compile.outlined_program import build_outlined_program
+
+    p = plan()
+    request = binding(tmp_path, p)
+    source = tmp_path / "source.mlir"
+    source.write_text(SOURCE)
+    # None here exercises an explicit analysis bound on a dynamic-input build.
+    frozen, bound = (None, 4096) if limit is None else (request, limit)
+    with pytest.raises(ValueError, match="analysis workspace bound"):
+        build_outlined_program(
+            source,
+            tmp_path / "bad-analysis",
+            roles=StagedRoles((0, 1, 2), 2, 2, 2, 2, (0,), (0,)),
+            worker_slots=(0, 0, 0),
+            workspace_budget_bytes=4096,
+            alignment_bytes=64,
+            compute_cflags=("-march=rv64gcv",),
+            frozen_inputs=frozen,
+            analysis_workspace_budget_bytes=bound,
+        )
+    assert not (tmp_path / "bad-analysis").exists()
+
+
+@pytest.mark.parametrize("width", [4, 8])
+def test_byte_permutation_retains_ieee_payloads_without_float_arithmetic(width):
+    from merlin.compile.frozen_inputs import _view
+
+    word = np.array(
+        [0, 1, (1 << (width * 8)) - 1, 1 << (width * 8 - 1), (1 << (width * 8 - 1)) - 1], dtype="<u" + str(width)
+    )
+    bits = np.tile(word, 3).reshape(3, 5)
+    value = bits.view("<f" + str(width))
+    view = permutation_plan(width=width).dispatches[0]["views_before"][0]
+    assert _view(view, value).tobytes() == bits.T.copy().tobytes()

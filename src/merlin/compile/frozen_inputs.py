@@ -76,6 +76,8 @@ def _dtype(typ):
     from xdsl.dialects.builtin import IntegerType, NoneAttr, TensorType
 
     if isinstance(typ, TensorType):
+        if typ.get_num_dims() == 0:
+            raise ValueError("rank-zero offline tensors are not supported")
         if not isinstance(typ.encoding, NoneAttr):
             raise ValueError("encoded frozen tensor is unsupported")
         typ = typ.element_type
@@ -286,13 +288,17 @@ def _evaluate(kernel, arrays, work, budget):
     estimate = estimate * 4 + 128 * (len(arrays) + len(function.function_type.outputs))
     if estimate > budget:
         raise ValueError(f"offline intermediate budget exceeded: bound {estimate}, budget {budget}")
+    reference_begin = time.monotonic()
     expected = _reference(function, arrays)
+    reference_seconds = time.monotonic() - reference_begin
+    compile_begin = time.monotonic()
     result = lower_model(checked_generic_text(kernel), work, textual=True, targets=("host",))
     model = HostModel.load(
         str(result.host_so), name="merlin_canonical_kernel", image_policy=PrivateHostImagePolicy(work.resolve())
     )
     if sha256_file(result.host_so) != model.image_sha256:
         raise ValueError("retained canonical host image differs from the actually loaded private image")
+    compile_load_seconds = time.monotonic() - compile_begin
     storage, buffers, args = [], [], []
     for array in [*arrays, *expected]:
         raw = np.full(array.nbytes + 128, 0xA7, dtype=np.uint8)
@@ -305,7 +311,9 @@ def _evaluate(kernel, arrays, work, budget):
         buffers.append(view)
         args.append((view.ctypes.data, view.shape))
     snapshots = [a.tobytes() for a in buffers[: len(arrays)]]
+    execution_begin = time.monotonic()
     model(args)
+    execution_seconds = time.monotonic() - execution_begin
     for index, (raw, view) in enumerate(zip(storage, buffers, strict=True)):
         if not np.all(raw[:64] == 0xA7) or not np.all(raw[-64:] == 0xA7):
             raise ValueError("offline native evaluation corrupted guards")
@@ -332,6 +340,9 @@ def _evaluate(kernel, arrays, work, budget):
     selected_llc = toolchain.host_llc()
     if selected_llc is not None:
         tools.append(selected_llc)
+    artifact_pins = {str(path): sha256_file(path) for path in [*artifacts, *tools]}
+    if artifact_pins[str(result.host_so)] != model.image_sha256:
+        raise ValueError("retained host image changed after native evaluation")
     return expected, {
         "compiler": str(toolchain.clang()),
         "compiler_sha256": sha256_file(toolchain.clang()),
@@ -344,7 +355,11 @@ def _evaluate(kernel, arrays, work, budget):
             "scalar_return": None,
         },
         "entry": "_mlir_ciface_merlin_canonical_kernel",
-        "input_sha256": {str(path): sha256_file(path) for path in [*artifacts, *tools]},
+        "host_reference_seconds": reference_seconds,
+        "host_compile_load_seconds": compile_load_seconds,
+        "host_native_execution_seconds": execution_seconds,
+        "host_durations_are_target_latency": False,
+        "input_sha256": artifact_pins,
         "inputs": [
             {
                 "shape": list(a.shape),
@@ -365,17 +380,40 @@ def _view(view, value):
     if view["kind"] == "alias":
         return value  # The caller reshapes to the independently checked result contract.
     if view["kind"] == "pack_permutation":
-        flat = value.reshape(-1)
-        indices = np.zeros(view["output_shape"], dtype=np.int64)
-        for axis, stride in enumerate(view["source_strides"]):
-            shape = [1] * len(view["output_shape"])
-            shape[axis] = view["output_shape"][axis]
-            indices += np.arange(shape[axis], dtype=np.int64).reshape(shape) * stride
-        return np.ascontiguousarray(flat[indices])
+        permutation = view.get("permutation")
+        rank = value.ndim
+        if (
+            not isinstance(permutation, (list, tuple))
+            or len(permutation) != rank
+            or any(type(axis) is not int for axis in permutation)
+            or sorted(permutation) != list(range(rank))
+        ):
+            raise ValueError("offline byte permutation requires the complete proved permutation")
+        source_shape = tuple(view.get("source_shape", ()))
+        output_shape = tuple(view.get("output_shape", ()))
+        strides = tuple(math.prod(source_shape[i + 1 :]) for i in range(rank))
+        if (
+            source_shape != value.shape
+            or output_shape != tuple(source_shape[i] for i in permutation)
+            or tuple(view.get("source_strides", ())) != tuple(strides[i] for i in permutation)
+            or view.get("element_bytes") != value.dtype.itemsize
+        ):
+            raise ValueError("offline byte permutation metadata contradicts its source layout")
+        # A transpose is a zero-copy view. Only the final dense byte transport
+        # may allocate payload storage; no Cartesian int64 index journal exists.
+        return np.ascontiguousarray(np.transpose(value, tuple(permutation)))
     slices = tuple(
         slice(o, o + n * s, s) for o, n, s in zip(view["offsets"], view["sizes"], view["strides"], strict=True)
     )
     return np.ascontiguousarray(value[slices])
+
+
+def _view_inputs(view):
+    """Preserve ordered operands of separately admitted multi-input transport."""
+    inputs = view.get("inputs", [view.get("input")])
+    if not isinstance(inputs, (list, tuple)) or not inputs or any(not isinstance(bid, str) for bid in inputs):
+        raise ValueError("complete view operand roster required")
+    return list(inputs)
 
 
 def specialize(plan, permission: FrozenInputs, output: Path):
@@ -436,14 +474,26 @@ def specialize(plan, permission: FrozenInputs, output: Path):
 
     def visit_views(views):
         for view in views:
-            if view["input"] in known:
+            inputs = _view_inputs(view)
+            if any(bid not in specs for bid in inputs):
+                raise ValueError("view names an unknown source buffer")
+            if view["kind"] in {"alias", "pack_permutation", "pack_slice"} and len(inputs) == 1 and inputs[0] in known:
                 spec = specs[view["output"]]
-                bound = sum(a.nbytes for a in known.values()) + spec.bytes * 12
+                # Basic slices/transposes need at most one dense payload and
+                # one serialization for the seal. Neither creates index arrays.
+                bound = sum(a.nbytes for a in known.values()) + spec.bytes * 2
                 if bound > permission.offline_budget_bytes:
                     raise ValueError("offline view intermediate budget exceeded")
-                known[spec.id] = _view(view, known[view["input"]]).reshape(spec.shape)
+                view_begin = time.monotonic()
+                known[spec.id] = _view(view, known[inputs[0]]).reshape(spec.shape)
                 offline_views.append(
-                    {**view, "bytes": spec.bytes, "sha256": hashlib.sha256(known[spec.id].tobytes()).hexdigest()}
+                    {
+                        **view,
+                        "bytes": spec.bytes,
+                        "sha256": hashlib.sha256(known[spec.id].tobytes()).hexdigest(),
+                        "accounted_intermediate_bound_bytes": bound,
+                        "host_packing_and_seal_seconds": time.monotonic() - view_begin,
+                    }
                 )
             else:
                 pending.append(view)
@@ -486,9 +536,9 @@ def specialize(plan, permission: FrozenInputs, output: Path):
     for step in retained:
         needed.update(step["inputs"] + step["outputs"])
         for view in step["views_before"]:
-            needed.update((view["input"], view["output"]))
+            needed.update([*_view_inputs(view), view["output"]])
     for view in pending:
-        needed.update((view["input"], view["output"]))
+        needed.update([*_view_inputs(view), view["output"]])
     external = [b for b in args.values() if b.arg_index not in roots]
     needed.update(b.id for b in external)
     blob, entries, offset, buffers = bytearray(), {}, 0, []
@@ -502,6 +552,12 @@ def specialize(plan, permission: FrozenInputs, output: Path):
             padding = (-len(blob)) % plan.alignment_bytes
             if len(blob) + padding + spec.bytes > permission.published_budget_bytes:
                 raise ValueError("published frozen blob exceeds explicit storage budget")
+            # Include serialization, growing transport and immutable return
+            # payloads. This is logical payload accounting, not a bound on
+            # Python allocator overhead or compiler-process resident memory.
+            publication_bound = sum(a.nbytes for a in known.values()) + 4 * (len(blob) + padding + spec.bytes)
+            if publication_bound > permission.offline_budget_bytes:
+                raise ValueError("offline blob publication budget exceeded")
             blob.extend(bytes(padding))
             data = known[spec.id].tobytes()
             if len(data) != spec.bytes:
@@ -539,6 +595,7 @@ def specialize(plan, permission: FrozenInputs, output: Path):
         "original_program_preserved": True,
         "runtime_arithmetic_on_controller": False,
         "compiler_process_memory_bounded": False,
+        "offline_accounting_basis": "logical tensor/reference/guard/transport payloads; allocator overhead excluded",
         "full_model_admission": False,
     }
     return replace(

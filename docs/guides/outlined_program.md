@@ -85,6 +85,23 @@ and platform memory require separate complete linked-image admission. Build
 time and live storage are recorded; neither establishes amortization, speedup,
 target numerical qualification or full-model readiness.
 
+For a graph whose original unique-storage plan exceeds the target capacity,
+`analysis_workspace_budget_bytes` can declare a separate, explicit LP64 bound
+for pre-specialization **metadata-only** planning. It is legal only together with
+`FrozenInputs`. It does not allocate that source arena or raise the final target
+budget: specialization must still fit its live readonly blob plus final
+tensor/provider arena inside the original `workspace_budget_bytes`. The receipt
+records both limits and the original planned byte count. This distinction does
+not by itself admit a full model's caller data, code, platform memory or lifetime.
+
+Byte permutation uses the source proof's complete permutation and dense strides,
+then a transpose view and at most one contiguous payload copy. Thin dimensions
+create no integer index journal. Publication copies also count against offline
+payload accounting. Allocator overhead and compiler-process resident memory are
+not bounded by this logical accounting. Retained host images are rechecked at
+manifest and builder closure. Rank-zero offline tensors remain explicitly
+unqualified even when the ordinary tensor runtime supports their ABI.
+
 Every arithmetic dispatch runs on one explicitly assigned compute worker.
 The controller initializes bindings, packs admitted views, prepares descriptors,
 dispatches work and copies final results. It never calls a compiled arithmetic
