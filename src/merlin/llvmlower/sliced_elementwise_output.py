@@ -30,6 +30,8 @@ def _slice_unused_elementwise_outputs(ctx, module):
                 if len(generic.operands) != 2 or generic.operands[1] != value or generic.results:
                     continue
                 source = generic.operands[0]
+                if not isinstance(source.type, ir.MemRefType):
+                    continue  # Generalized fills can have a scalar input.
                 old_ty, src_ty = ir.MemRefType(value.type), ir.MemRefType(source.type)
                 if list(old_ty.shape) != list(src_ty.shape):
                     continue

@@ -77,6 +77,18 @@ def test_second_consumer_preserves_full_computation(tmp_path):
     assert "memref<1x4x8xf32>" in out
 
 
+@M2M
+def test_generalized_scalar_fill_keeps_its_full_output(tmp_path):
+    source = SOURCE.replace("%input: memref<1x4x8xi32>", "%input: i32")
+    source = source.replace("ins(%input : memref<1x4x8xi32>)", "ins(%input : i32)")
+    source = source.replace("indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d1, d2)>,",
+                            "indexing_maps = [affine_map<(d0, d1, d2) -> ()>,")
+    out = _rewrite(tmp_path, source)
+    assert "OK sliced_elementwise_output 0" in out
+    assert "memref<1x4x8xf32>" in out
+    assert out.count("memref.dealloc") == 1
+
+
 def test_switch_is_explicit_and_present_in_every_runner(monkeypatch):
     monkeypatch.delenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT", raising=False)
     assert P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in P._upstream_pipeline()
