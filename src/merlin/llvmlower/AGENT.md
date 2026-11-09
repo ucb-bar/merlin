@@ -792,3 +792,11 @@ original FP32 quantization/scaling DAG and account for the added correction work
   controller byte packing. Preserve source/argument/attribute identity, dense
   encoding, full bounds and whole-chain lifetimes; all numerical work stays in
   compute callbacks. Unknown effects/layouts/bodies grant no packing permission.
+
+- Closed retained literal fills needed by layout transport may be outlined into
+  zero-input tensor kernels when data preparation is explicitly selected. Keep
+  ordinary root seed cloning unchanged. Static dense concat may copy ordered
+  byte spans on the controller only after proving the axis/types/full extents
+  and fresh disjoint output. Inputs may alias each other. Unknown contracts,
+  rank-zero concat and unproved boolean storage refuse; neither capability
+  permits in-place cache updates or shortened whole-chain lifetimes.

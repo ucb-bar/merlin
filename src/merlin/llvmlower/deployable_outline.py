@@ -105,6 +105,10 @@ def _array(attribute):
 
 
 def _view(op, node, buffers) -> dict:
+    if op.name == "tensor.concat":
+        from .deployable_packing import static_concat
+
+        return static_concat(op, node, buffers)
     if len(node.inputs) != 1 or len(node.outputs) != 1 or op.regions:
         raise ValueError(f"unsupported deployable driver/view ABI: {op.name}")
     src, out = buffers[node.inputs[0]], buffers[node.outputs[0]]
@@ -199,7 +203,9 @@ def plan_deployable_chain(
         "sym_visibility",
     }:
         raise ValueError("function-level contracts cannot be redistributed across outlined kernel arities")
-    outlined = outline_dispatches(module.clone(), forward=entry)
+    outlined = outline_dispatches(module.clone(), forward=entry, outline_literal_fills=data_preparation)
+    if preparation is not None:
+        preparation["literal_fill_kernels"] = [d.symbol for d in outlined.dispatches if d.root_op == "linalg.fill"]
     full = build_dispatch_program(outlined, entry=entry)
     program = prune_dead_nodes(full)
     if verify_program(program):

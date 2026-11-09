@@ -168,3 +168,82 @@ def static_permutation(function, node, specs):
         "element_bytes": source.bytes // math.prod(source.shape),
         "effect": "readonly source and complete fresh dense destination; byte copies only",
     }
+
+
+def static_concat(op, node, specs):
+    """Prove ordered static dense byte concatenation into a fresh tensor.
+
+    Inputs may alias each other; the ordinary unique whole-chain allocation
+    must keep the destination disjoint. This grants no in-place cache update,
+    arithmetic interpretation, implicit bool storage or shortened lifetime.
+    """
+    from xdsl.dialects import tensor
+    from xdsl.dialects.builtin import IntegerAttr
+
+    from .deployable_outline import static_tensor_contract
+
+    if (
+        not isinstance(op, tensor.ConcatOp)
+        or not _provenance_only(op)
+        or op.regions
+        or set(op.properties) != {"dim"}
+        or not isinstance(op.properties["dim"], IntegerAttr)
+        or not op.operands
+        or len(node.inputs) != len(op.operands)
+        or len(node.outputs) != 1
+        or len(op.results) != 1
+    ):
+        raise ValueError("unsupported static concat tensor/effect contract")
+    destination = specs[node.outputs[0]]
+    out_shape, dtype, out_bytes = static_tensor_contract(op.results[0].type)
+    axis = op.properties["dim"].value.data
+    if (
+        destination.arg_index is not None
+        or node.outputs[0] in node.inputs
+        or not 1 <= len(out_shape) <= 8
+        or type(axis) is not int
+        or not 0 <= axis < len(out_shape)
+        or dtype == "i1"
+        or (destination.shape, destination.dtype, destination.bytes) != (out_shape, dtype, out_bytes)
+    ):
+        raise ValueError("concat requires ordinary ranked dense nonboolean storage and a static in-bounds axis")
+    shapes = []
+    for bid, operand in zip(node.inputs, op.operands, strict=True):
+        shape, element, size = static_tensor_contract(operand.type)
+        source = specs[bid]
+        if (
+            (source.shape, source.dtype, source.bytes) != (shape, element, size)
+            or element != dtype
+            or len(shape) != len(out_shape)
+            or any(s != d for index, (s, d) in enumerate(zip(shape, out_shape, strict=True)) if index != axis)
+        ):
+            raise ValueError("concat input types/shapes do not match the complete output contract")
+        shapes.append(shape)
+    if sum(shape[axis] for shape in shapes) != out_shape[axis]:
+        raise ValueError("concat axis extents do not cover the exact output")
+    element_bytes = out_bytes // math.prod(out_shape)
+    inner = math.prod(out_shape[axis + 1 :])
+    outer = math.prod(out_shape[:axis])
+    blocks = [shape[axis] * inner * element_bytes for shape in shapes]
+    if sum(blocks) * outer != out_bytes or any(
+        block * outer != specs[bid].bytes for bid, block in zip(node.inputs, blocks, strict=True)
+    ):
+        raise ValueError("concat static byte spans are inconsistent")
+    return {
+        "kind": "pack_concat",
+        "inputs": list(node.inputs),
+        "output": node.outputs[0],
+        "source_op": op.name,
+        "source_attributes": {key: str(value) for key, value in op.attributes.items()},
+        "axis": axis,
+        "source_shapes": shapes,
+        "output_shape": out_shape,
+        "dtype": dtype,
+        "outer_blocks": outer,
+        "input_block_bytes": blocks,
+        "output_block_bytes": sum(blocks),
+        "element_bytes": element_bytes,
+        "logical_bytes_read": out_bytes,
+        "logical_bytes_written": out_bytes,
+        "effect": "readonly inputs may alias each other; fresh disjoint complete output; no lifetime reuse",
+    }

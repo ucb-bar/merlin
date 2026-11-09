@@ -43,3 +43,9 @@ Plus the **whole-model dialect plane** that brings real model2MLIR modules into 
 ## Notes for future agents
 
 To add a target: a reference dialect under `../targets/`, a lowering table in its `dialect_plan.yaml`, an opcode map in `runtime_lowering.py` (or a target-supplied encoding), and a backend in `merlin/python/merlin/runtime/`. Keep stages wrappable as xDSL `ModulePass`es — don't grow hidden state.
+
+- The default outliner still clones literal fills into arithmetic roots. The
+  explicit `outline_literal_fills` capability additionally outlines only closed
+  fresh literal fills retained by driver values, without introducing scalar
+  kernel arguments or changing reduction seed ownership. Unknown fill bodies,
+  effects and contracts grant no extra outlining permission.

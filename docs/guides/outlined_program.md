@@ -229,7 +229,12 @@ boolean in the JSON config enable a source-proved preparation seam. The default
 is false. Immutable static constant `tensor.splat` producers become equivalent
 `linalg.fill` producers using the exact original literal attribute. The existing
 outliner clones these producers into their arithmetic kernels, so reduction
-seeds and numeric constants require no scalar controller ABI. This changes no
+seeds and numeric constants require no scalar controller ABI. A closed fresh
+literal fill whose tensor remains live outside those arithmetic roots is outlined
+as its own zero-input tensor kernel on an assigned compute worker. The original
+producer is still cloned into ordinary reduction roots, preserving their immutable
+input contract. Only an exact literal/empty/identity-yield body is eligible.
+This changes no
 quantization, floating arithmetic order, overflow policy or literal bits.
 
 A standalone kernel containing only a fresh-output static `linalg.transpose`
@@ -237,6 +242,14 @@ with its exact identity-yield body may become controller byte packing. The
 permutation, dimensions, dtype, full destination coverage and source/destination
 storage are proved from the actual function. Nondefault encodings, unknown
 contracts, dynamic shapes or nonidentity bodies grant no packing permission.
+The outlined transport also supports a static dense `tensor.concat`: its axis,
+all operand/result types, complete contiguous byte spans and fresh destination
+are proved from source. Read-only operands may duplicate or partially overlap
+each other; the destination stays disjoint. Unknown attributes, nondefault
+encodings, empty or dynamic extents, rank-zero concat and unproved boolean
+storage refuse. This is byte transport, without implicit numeric conversion or
+in-place cache-update permission.
+
 All views and intermediate buffers retain unique whole-chain storage; packing
 never mutates inputs or shortens an alias lifetime. Only byte/address operations
 run on the controller. All reductions, quantization, integer compensation,

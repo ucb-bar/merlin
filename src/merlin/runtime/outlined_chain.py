@@ -17,6 +17,19 @@ from merlin.runtime.staged_dispatch import StagedRoles
 def _views(views, positions) -> list[str]:
     lines = []
     for view in views:
+        if view["kind"] == "pack_concat":
+            dst = positions[view["output"]]
+            lines.append(f"    for(size_t block=0;block<{view['outer_blocks']};++block) {{")
+            offset = 0
+            for bid, size in zip(view["inputs"], view["input_block_bytes"], strict=True):
+                src = positions[bid]
+                lines.append(
+                    f"      memcpy((unsigned char*)c->buffers[{dst}]+block*{view['output_block_bytes']}+{offset},"
+                    f"(const unsigned char*)c->buffers[{src}]+block*{size},{size});"
+                )
+                offset += size
+            lines.append("    }")
+            continue
         src, dst = positions[view["input"]], positions[view["output"]]
         if view["kind"] == "alias":
             lines.append(f"    c->buffers[{dst}] = c->buffers[{src}];")
