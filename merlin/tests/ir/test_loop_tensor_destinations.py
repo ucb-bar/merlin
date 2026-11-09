@@ -60,23 +60,27 @@ with ir.Context() as ctx:
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
 @pytest.mark.parametrize("shape,init_read,opaque,changed", [
     ("4", False, False, 1), ("17", False, False, 1),
-    ("4", True, False, 0), ("0", False, False, 0),
+    ("4", True, False, 1), ("0", False, False, 0),
     ("?", False, False, 0), ("4", False, True, 0),
 ])
-def test_only_complete_unobserved_init_destinations_change(tmp_path, shape, init_read, opaque, changed):
+def test_complete_destinations_or_value_copies_preserve_original_producers(tmp_path, shape, init_read, opaque, changed):
     stdout, text = rewrite(tmp_path, source(shape=shape, init_read=init_read, opaque=opaque))
     assert f"OK loop_tensor_destinations {changed}" in stdout
     assert "scf.for" in text
+    assert ('prov.op = "copy-selected-state"' in text) == init_read
 
 
-def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True, write=False, opaque=False, constant=False, while_state=None):
+def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True, write=False, opaque=False, constant=False, while_state=None, outside_read=False):
     marker = "read_only" if readonly else ""
     seed = "%seed" if fresh else "%x"
     declaration = "func.func private @observe()" if opaque else ""
     extra = "func.call @observe() : () -> ()" if opaque else ""
     store = "memref.store %v, %mutable[%i] : memref<4xf32>" if write else ""
     read = "%v = memref.load %view[%i] : memref<?xf32>"
-    if conditional:
+    hoisted = "%v=memref.load %view[%c0]:memref<?xf32>" if outside_read else ""
+    if outside_read:
+        read = ""
+    if conditional and not outside_read:
         read = f"""%yes=arith.cmpi slt,%i,%c2:index
           %v=scf.if %yes -> f32 {{
             %r=memref.load %view[%i]:memref<?xf32>
@@ -113,6 +117,7 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
         %empty=tensor.empty():tensor<4xf32>
         {fill}
         {header}
+          {hoisted}
           %next=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
             ins(%old:tensor<4xf32>) outs(%empty:tensor<4xf32>) {{^bb0(%in:f32,%init:f32):
               %i=linalg.index 0:index
@@ -140,6 +145,14 @@ def test_read_capture_requires_fresh_seed_and_closed_readonly_entry_origin(tmp_p
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("options,changed", [({}, 1), ({"fresh": False}, 0), ({"readonly": False}, 0)])
+def test_scalar_read_captures_close_their_loop_local_producer_graph(tmp_path, options, changed):
+    stdout, output = rewrite(tmp_path, read_source(conditional=False, outside_read=True, **options))
+    assert f"OK loop_tensor_destinations {changed}" in stdout
+    assert "memref.load" in output
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
 @pytest.mark.parametrize("state,options,changed", [
     ("identity", {}, 1), ("identity", {"generalize": True}, 1),
     ("identity", {"constant": True}, 1), ("identity", {"fresh": False}, 0),
@@ -150,6 +163,79 @@ def test_while_destinations_require_unmodified_condition_state(tmp_path, state, 
     stdout, output = rewrite(tmp_path, read_source(while_state=state, **options))
     assert f"OK loop_tensor_destinations {changed}" in stdout
     assert "scf.while" in output and "scf.condition" in output and "memref.load" in output
+
+
+def branch_source(*, while_loop=True, nested=False, passthrough=False, opaque=False, multiple=False, inside=False, reduction=False):
+    type_ = "tensor<4xf32>"
+    returned = "%result#0" if while_loop else "%result"
+    header = f"""%result:2=scf.while (%before=%seed,%step_before=%zero_index)
+        :({type_},index)->({type_},index) {{
+        %continue=arith.cmpi slt,%step_before,%bound:index
+        scf.condition(%continue) %before,%step_before:{type_},index
+      }} do {{ ^bb0(%old:{type_},%step:index):"""
+    tail = f"%next_step=arith.addi %step,%one_index:index\nscf.yield %chosen,%next_step:{type_},index"
+    if not while_loop:
+        header = f"%result=scf.for %step=%zero_index to %bound step %one_index iter_args(%old=%seed)->{type_} {{"
+        tail = f"scf.yield %chosen:{type_}"
+    declaration = "func.func private @unknown(f32)->f32" if opaque else ""
+    arithmetic = "%v=func.call @unknown(%in):(f32)->f32" if opaque else "%v=arith.addf %in,%one:f32"
+    value = "%old" if passthrough else "%inside" if inside else "%capture"
+    extra = f"%inside=arith.constant dense<2.0>:{type_}" if inside else ""
+    computed = f"""%next=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
+      ins(%old:{type_}) outs(%empty:{type_}) {{^bb0(%in:f32,%init:f32):
+      {arithmetic}
+      linalg.yield %v:f32
+    }}->{type_}"""
+    if reduction:
+        computed = f"""%next=linalg.generic {{indexing_maps=[affine_map<(i,j)->(i,j)>,affine_map<(i,j)->(i)>],iterator_types=["parallel","reduction"]}}
+          ins(%matrix:tensor<4x3xf32>) outs(%seed:{type_}) {{^bb0(%in:f32,%init:f32):
+          %v=arith.addf %in,%init:f32
+          linalg.yield %v:f32
+        }}->{type_}"""
+    if nested:
+        computed = f"""%next=scf.if %choose -> {type_} {{
+          scf.yield %old:{type_}
+        }} else {{ {computed} scf.yield %next:{type_} }}"""
+    if multiple:
+        branch = f"""%chosen_pair:2=scf.if %choose -> (index,{type_}) {{
+          scf.yield %zero_index,{value}:index,{type_}
+        }} else {{ {computed} scf.yield %one_index,%next:index,{type_} }}"""
+        tail = tail.replace("%chosen", "%chosen_pair#1")
+    else:
+        branch = f"""%chosen=scf.if %choose -> {type_} {{
+          scf.yield {value}:{type_}
+        }} else {{ {computed} scf.yield %next:{type_} }}"""
+    return f"""module {{ {declaration}
+      func.func @forward(%capture:{type_},%matrix:tensor<4x3xf32>,%bound:index,%choose:i1)->{type_} {{
+        %zero_index=arith.constant 0:index
+        %one_index=arith.constant 1:index
+        %zero=arith.constant 0.0:f32
+        %one=arith.constant 1.0:f32
+        %empty=tensor.empty():{type_}
+        %seed=linalg.fill ins(%zero:f32) outs(%empty:{type_})->{type_}
+        {header}
+          {extra}
+          {branch}
+          {tail}
+        }}
+        return {returned}:{type_}
+      }}
+    }}"""
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("options,changed", [
+    ({}, 2), ({"while_loop": False}, 2), ({"nested": True}, 2),
+    ({"passthrough": True}, 1), ({"multiple": True}, 2),
+    ({"opaque": True}, 0), ({"inside": True}, 2), ({"reduction": True}, 2),
+])
+def test_branch_state_qualifies_every_path_before_reusing_destinations(tmp_path, options, changed):
+    stdout, output = rewrite(tmp_path, branch_source(**options))
+    assert f"OK loop_tensor_destinations {changed}" in stdout
+    assert "scf.if" in output and ("scf.for" if options.get("while_loop") is False else "scf.while") in output
+    assert ('prov.op = "copy-selected-state"' in output) == (changed == 2)
+    if options.get("multiple"):
+        assert "index, tensor<4xf32>" in output
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")

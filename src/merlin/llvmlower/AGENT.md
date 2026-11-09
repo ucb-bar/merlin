@@ -6,6 +6,11 @@ in position and type. Computed/permuted condition state grants no seed facts.
 The readonly-capture extension still requires an independently synthesized seed
 and actual readonly entry storage; native bufferization and lifetime checks
 remain authoritative. Preserve original conditions and zero-trip semantics.
+Nested conditional state requires a complete plan for every selected branch
+result before edits. Retarget only complete unused-init generics; captured or
+closed pure computed values may use an explicit identity value copy into the
+carried destination. Preserve reduction/init semantics and all branch order.
+Unknown effects/captures and library calls grant no copy/reuse permission.
 
 Mixed borrowed composition retains distinct live ordinary descriptor and plural
 writer owners for one exact source epoch. Disjoint ABI rows, original effect

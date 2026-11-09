@@ -20,8 +20,8 @@ It runs after tensor fusion, immediately before one-shot bufferization. Upstream
 `tensor.empty` through `RemoveOutsDependency`. At this later seam, a complete
 overwrite may instead use the corresponding serial loop-carried tensor.
 
-The yielded value must be a direct, single-result `linalg.generic` in the loop
-body with the exact carried tensor type, positive static dimensions, only
+Direct destination retargeting requires a single-result `linalg.generic` in the
+current block with the exact carried tensor type, positive static dimensions, only
 parallel iterators, an identity output map, and an unused output-init block
 argument. Its original scalar-body profile contains numeric arithmetic/math or
 linalg index/yield operations. A second closed profile also permits scalar
@@ -37,11 +37,24 @@ before-argument unchanged, in the same position and type. Computed, permuted or
 heterogeneous condition state remains unchanged because it cannot inherit the
 corresponding initial seed facts. The original condition, iteration order and
 zero-trip behavior stay executable; no iteration bound is invented.
-Dynamic/empty shapes, live init values and library calls stay
-unchanged. No operation is selected by provenance or workload identity.
+Dynamic/empty shapes and library calls stay unchanged. No operation is selected
+by provenance or workload identity.
 
-Only the unused destination SSA edge changes. Every payload operation, input,
-type, attribute and arithmetic order remains. Native bufferization decides
+Conditional state may follow nested `scf.if` results. Every selected result
+position in both regions must qualify before any path changes. A pass-through
+of the carried value needs no edit. A captured immutable tensor needs a pure
+parallel value copy on that path, with the carried value as its destination.
+Loop-local arithmetic/tensor values and pure tensor linalg producers may also
+use a complete value copy after closing their producer DAG against hidden
+effects/captures. The same readonly-entry/fresh-seed gate applies to scalar
+memory captures; unknown producers, writes and opaque calls do not qualify.
+Reduction bodies and live original init arguments remain intact; the separate
+copy moves their complete computed value. Library calls grant no permission.
+
+Original payload operations, inputs, attributes and arithmetic order remain.
+Direct retargeting changes only an unused destination. New copies use identity
+maps and an unused init, preserve source IDs/location on the selected edge, and
+introduce no arithmetic, predicate change or branch speculation. Native bufferization decides
 whether physical storage can be reused, including conflicts with live inputs.
 Ordinary deallocation and lifetime checks remain mandatory. The feature grants
 no physical alias, effect, numeric approximation or target permission.
@@ -58,3 +71,16 @@ actual Merlin library. Destination reuse preserves that fusion while ordinary
 bufferization and post-deallocation lifetime verification remain mandatory.
 The same integration now also retains pointer/accumulator `while` state and
 final pointer observations over changing runtime counts, including zero.
+Nested pointer branches, pointer-returning helper inlining, `for`/`while` state,
+and conditional row reductions now also execute through the actual Merlin
+library path over independent empty/tail domains, choices and iteration counts.
+Computed/permuted before-state and broader ownership profiles remain separate.
+
+The upstream boundary is LLVM `a47bddccec30255619bb8c37fa59700e661d4e66`:
+`mlir/lib/Dialect/SCF/Transforms/BufferizableOpInterfaceImpl.cpp` requires
+equivalent before/after state or inserts a before-region allocation/copy.
+`mlir/test/Dialect/SCF/one-shot-bufferize.mlir` exercises while equivalence,
+non-equivalent conditions and mismatched state. The conditional read-only/fresh
+case also appears in `Dialect/Bufferization/Transforms/one-shot-bufferize-allow-return-allocs.mlir`.
+This feature exposes value destinations before that analysis; it does not
+replace upstream alias handling or relax post-deallocation lifetime verification.
