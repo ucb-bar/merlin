@@ -951,11 +951,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
                 inspect.signature(RQ.agreement).parameters["limit"].default,
             )
             calibration = _freeze_calibration(samples, limit=calibration_limit, normalize=RQ._as_tuple, torch=torch)
-    original_snapshot = {
-        "status": "unavailable",
-        "stage": "original",
-        "reason": "selected model2MLIR does not expose frontend capture tracing",
-    }
+    original_snapshot = EQ.unavailable_original_snapshot()
     trace_supported = "capture_trace" in inspect.signature(m2m.convert).parameters
     if trace_supported and not a.already_quantized:
         try:
@@ -968,11 +964,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
                 source_exported if source_exported is not None else mdl, tuple(inputs), stage="original"
             )
         except Exception as exc:  # noqa: BLE001 -- unknown source counts are not fabricated
-            original_snapshot = {
-                "status": "unavailable",
-                "stage": "original",
-                "reason": f"original frontend capture failed: {type(exc).__name__}: {exc}",
-            }
+            original_snapshot = EQ.unavailable_original_snapshot(
+                f"original frontend capture failed: {type(exc).__name__}: {exc}"
+            )
     elif a.already_quantized:
         original_snapshot["reason"] = "loader supplies an already-quantized graph; the original model was not captured"
     _scheme, cast = (None, None) if a.already_quantized else _SCHEME.get(a.dtype, (None, None))
@@ -1027,11 +1021,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             )
         except Exception as exc:  # noqa: BLE001 -- compatibility output retains unknown lineage
             precision_conversion = {"status": "unavailable", "reason": f"{type(exc).__name__}: {exc}"}
-            original_snapshot = {
-                "stage": "original",
-                "status": "unavailable",
-                "reason": "precision conversion lacks exact original source ownership",
-            }
+            original_snapshot = EQ.unavailable_original_snapshot(
+                "precision conversion lacks exact original source ownership"
+            )
             mdl = mdl.to(getattr(torch, cast))
             inputs = tuple(
                 x.to(getattr(torch, cast)) if isinstance(x, torch.Tensor) and x.is_floating_point() else x
@@ -1083,6 +1075,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         if recipe.get("recipe_sha256") != recipe_digest(recipe):
             raise ValueError("selected quantization recipe digest does not match its content")
     q, quant_stats = EQ.quantization(a, external_selection, recipe=recipe, quant_for=_quant_for)
+    original_snapshot = EQ.external_original_snapshot(
+        selected_export, external_selection, q, original_snapshot, trace_supported=trace_supported
+    )
     agreement = None
     if recipe is not None:
         # THE TARGET'S OWN QUANTIZATION. The recipe was derived from what the hardware's readout
@@ -1487,6 +1482,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             source_path=Path(a.loader),
             capture_trace=True,
             conversion_result=res,
+            metadata=EQ.bundle_metadata(res),
         )
     if completed is not None:
         completed(

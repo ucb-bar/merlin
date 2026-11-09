@@ -1,4 +1,34 @@
-"""Generic selection and exact-export preservation for preapplied captures."""
+"""Shared capture source identity and preapplied selection helpers."""
+
+
+def unavailable_original_snapshot(reason="selected model2MLIR does not expose frontend capture tracing"):
+    """Keep unavailable source identity explicit through capture failure paths."""
+    return {"status": "unavailable", "stage": "original", "reason": reason}
+
+
+def external_original_snapshot(exported, selection, config, original_snapshot, *, trace_supported):
+    """Attest only the explicitly selected external export as the numeric source."""
+    if not trace_supported or exported is None or not all(selection):
+        return original_snapshot
+    from m2m.capture.external_quantization import validate_manifest
+    from m2m.capture.trace import snapshot_exported_program
+
+    # The selected external export is the numeric source, not an earlier
+    # floating-point model. Authenticate it before stamping this exact graph;
+    # conversion must consume the same export without recapture or casts.
+    validate_manifest(getattr(exported, "_m2m_external_quantization_manifest", None), config)
+    return snapshot_exported_program(exported, stage="original")
+
+
+def bundle_metadata(conversion_result):
+    """Derive buffer roles from the same prepared export used by conversion."""
+    if __package__:
+        from ._pt2_capture_worker import _read_only_buffer_arguments
+    else:
+        from _pt2_capture_worker import _read_only_buffer_arguments
+
+    exported = conversion_result.exported_program
+    return {"read_only_buffer_arguments": _read_only_buffer_arguments(exported) if exported is not None else []}
 
 
 def add_arguments(parser):
