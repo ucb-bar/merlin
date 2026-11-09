@@ -111,7 +111,8 @@ def _ltd_scalar_body(op, *, fresh_seed, private_atomics=False):
                     or not _ltd_private_root(inner.operands[0])):
                 return False
             try:
-                if _cas_match(inner) is None:
+                match = _word_match(inner) if str(inner.results[0].type) in ('f32', 'f64') else _cas_match(inner)
+                if match is None:
                     return False
             except (ValueError, KeyError, IndexError):
                 return False

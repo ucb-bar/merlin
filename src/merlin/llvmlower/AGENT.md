@@ -42,6 +42,18 @@ narrower index conversion and explicit layout/triple overrides grant no support.
 Internal LLVM linkage is part of the exact helper binding; MLIR private symbol
 visibility alone cannot prevent native symbol interposition.
 
+`lower_atomic_word_views` extends that same native seam to exact integer word
+RMW regions on f32/f64 storage. Match the complete current-bitcast, outside
+integer operand, modular update, storage-bitcast and atomic yield. Exchange uses
+its closed outside-word bitcast/yield. Emit one integer LLVM atomic with internal
+linkage and the original floating memref borrowing/result boundary; retain the
+actual helper through ownership and restore it before liveness/LLVM conversion.
+Reconstruct borrowing grants from the full current helper body and actual call
+types. Derive LLVM enum attributes from its registered parser. Original names,
+provenance and source kind labels grant no permission. This feature also handles
+integer CAS and composes at one bufferization seam. No whole-buffer conversion,
+FP min/max substitution or source arithmetic rounding policy is implied.
+
 Mixed borrowed composition retains distinct live ordinary descriptor and plural
 writer owners for one exact source epoch. Disjoint ABI rows, original effect
 objects/callbacks and every native observer remain required; either owner's

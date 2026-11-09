@@ -8,10 +8,12 @@ memref live across one LLVM cmpxchg, with no escaping pointer or allocation.
 
 import ast
 
+from .atomic_word_views import SUPPORT as _WORD_SUPPORT
+
 FEATURE = "lower_integer_compare_exchange"
 MARKER = "__merlin_integer_compare_exchange__"
 
-SUPPORT = r"""
+SUPPORT = _WORD_SUPPORT + r"""
 _CAS_GENERATED = []
 _CAS_PENDING = []
 
@@ -86,43 +88,54 @@ def _cas_match(op):
     return (*op.operands, comparison, value, int(width[1:]))
 
 
-def _cas_rewrite(ctx, module):
+def _cas_rewrite(ctx, module, *, word_views=False):
     if _CAS_PENDING:
         raise ValueError('previous atomic helpers were not restored')
-    _CAS_GENERATED.clear()
     operations = tuple(_cas_walk(module.operation))
-    plans = [(op, match) for op in operations if (match := _cas_match(op)) is not None]
-    if any(_cas_root_function(op, module) is None for op, _ in plans):
+    plans = []
+    for op in operations:
+        if (word_views and op.name == 'memref.generic_atomic_rmw' and op.results
+                and str(op.results[0].type) in ('f32', 'f64')):
+            memory, index, value, width, kind = _word_match(op)
+            plans.append((op, memory, index, (value,), width, 'word', kind))
+        elif (match := _cas_match(op)) is not None:
+            memory, index, comparison, value, width = match
+            plans.append((op, memory, index, (comparison, value), width, 'cas', 'cas'))
+    if any(_cas_root_function(op, module) is None for op, *_ in plans):
         raise ValueError('compare/exchange requires a direct root function and closed standard control scopes')
     if plans:
         _cas_native_policy('')
-        owners = {module.operation, *(_cas_root_function(op, module) for op, _ in plans)}
+        owners = {module.operation, *(_cas_root_function(op, module) for op, *_ in plans)}
         for owner in owners:
             names = [item if isinstance(item, str) else item.name for item in owner.attributes]
             if any(name.startswith('dlti.') or name in ('llvm.data_layout', 'llvm.target_triple') for name in names):
                 raise ValueError('native compare/exchange requires the default compiler data layout')
+    _CAS_GENERATED.clear()
     symbols = {ir.StringAttr(op.attributes['sym_name']).value for op in module.body.operations if 'sym_name' in op.attributes}
     helpers = {}
-    for op, (memory, index, comparison, value, width) in plans:
-        if width not in helpers:
+    for op, memory, index, values, width, family, kind in plans:
+        key = (family, width, kind)
+        if key not in helpers:
             ordinal = 0
-            while (symbol := '__merlin_atomic_cas_' + str(width) + '_' + str(ordinal)) in symbols:
+            prefix = '__merlin_atomic_cas_' + str(width) if family == 'cas' else '__merlin_atomic_word_' + str(width) + '_' + kind
+            while (symbol := prefix + '_' + str(ordinal)) in symbols:
                 ordinal += 1
             symbols.add(symbol)
-            helper = ir.Module.parse(_cas_source(symbol, width), context=ctx)
+            source = _cas_source(symbol, width) if family == 'cas' else _word_source(symbol, width, kind)
+            helper = ir.Module.parse(source, context=ctx)
             function = tuple(helper.body.operations)[0].operation
             function.detach_from_parent()
             module.body.append(function)
             _CAS_GENERATED.append(function)
-            helpers[width] = symbol
+            helpers[key] = symbol
         with ctx, ir.Location.unknown(), ir.InsertionPoint(op):
             attributes = {}
             for item in op.attributes:
                 name = item if isinstance(item, str) else item.name
                 if name.startswith('prov.'):
                     attributes[name] = op.attributes[name]
-            call = ir.Operation.create('func.call', operands=[memory, index, comparison, value],
-                results=[op.results[0].type], attributes={'callee': ir.FlatSymbolRefAttr.get(helpers[width]),
+            call = ir.Operation.create('func.call', operands=[memory, index, *values],
+                results=[op.results[0].type], attributes={'callee': ir.FlatSymbolRefAttr.get(helpers[key]),
                     **attributes})
         op.results[0].replace_all_uses_with(call.results[0])
         op.erase()
@@ -183,6 +196,9 @@ def _cas_checked_calls(module):
         if symbol in duplicates or not op.regions or len(op.regions[0].blocks) != 1:
             continue
         block = op.regions[0].blocks[0]
+        if _word_helper_equal(op, symbol, module):
+            accepted.add(symbol)
+            continue
         if len(block.arguments) != 4 or not any(item.operation.name == 'llvm.cmpxchg' for item in block.operations):
             continue
         type_ = str(block.arguments[2].type)
@@ -245,23 +261,34 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(), p
 '''
 
 
-def bind_runner(source, *, selected):
+def bind_runner(source, *, selected, word_views=False):
     if not selected:
         return source
     calls = [node for node in ast.parse(source).body if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
              and isinstance(node.value.func, ast.Name) and node.value.func.id == "_run_stages"]
     if len(calls) != 1:
         raise ValueError("compare/exchange requires one native stage runner call")
+    prelude = PRELUDE
+    if word_views:
+        from .atomic_word_views import MARKER as WORD_MARKER
+        prelude = prelude.replace("marker = '" + MARKER + "'", "marker = '" + WORD_MARKER + "'").replace(
+            '_cas_rewrite(ctx, module)', '_cas_rewrite(ctx, module, word_views=True)')
     lines = source.splitlines(keepends=True)
     at = calls[0].lineno - 1
     after = calls[0].end_lineno
-    return ("".join(lines[:at]) + PRELUDE + "\n" + "".join(lines[at:after])
+    return ("".join(lines[:at]) + prelude + "\n" + "".join(lines[at:after])
             + "\nif not _CAS_CONSUMED:\n    raise ValueError('integer compare/exchange marker was not consumed')\n"
             + "".join(lines[after:]))
 
 
 def edit_pipeline(passes):
+    from .atomic_word_views import MARKER as WORD_MARKER
     positions = [i for i, name in enumerate(passes) if name.startswith("one-shot-bufferize{")]
+    if WORD_MARKER in passes:
+        if (len(positions) == 1 and passes.count(WORD_MARKER) == 1 and MARKER not in passes
+                and passes.index(WORD_MARKER) == positions[0] - 1):
+            return list(passes)  # The selected word-view feature also lowers integer CAS.
+        raise ValueError("atomic legalization requires one unmodified bufferization seam")
     if len(positions) != 1 or MARKER in passes:
         raise ValueError("compare/exchange requires one unmodified bufferization seam")
     at = positions[0]

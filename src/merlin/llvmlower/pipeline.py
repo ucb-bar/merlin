@@ -1388,7 +1388,9 @@ def _select_runner(
     source = bind_exact_exp_runner(source, features=feats)
     source = _bind_source_observation_runner(source, selected=_SOURCE_OBSERVATION_FEATURE in feats)
     from .atomic_compare_exchange import FEATURE as _INTEGER_COMPARE_EXCHANGE, bind_runner as _bind_integer_compare_exchange
-    source = _bind_integer_compare_exchange(source, selected=_INTEGER_COMPARE_EXCHANGE in feats)
+    from .atomic_word_views import FEATURE as _ATOMIC_WORD_VIEWS
+    source = _bind_integer_compare_exchange(source, selected=bool({_INTEGER_COMPARE_EXCHANGE, _ATOMIC_WORD_VIEWS} & feats),
+        word_views=_ATOMIC_WORD_VIEWS in feats)
     from .loop_tensor_destinations import FEATURE as _LOOP_TENSOR_DESTINATIONS, bind_runner as _bind_loop_tensor_destinations
     source = _bind_loop_tensor_destinations(source, selected=_LOOP_TENSOR_DESTINATIONS in feats)
     # Every variant runs elementwise fusion under the broadcast control function (fusion_guard).
