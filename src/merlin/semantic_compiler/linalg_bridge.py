@@ -35,6 +35,7 @@ from .linalg_recognition import (
     _oriented_matmul_accumulate_maps,
     _oriented_matmul_maps,
     _recognize_f32_reduce,
+    _scalar_bf16_bits,
     _scalar_f32_bits,
     _scalar_i64,
     _scalar_integer,
@@ -88,7 +89,6 @@ def translate_linalg_text(
     from merlin.frontends.linalg_math_patterns import recognize_static_f32_exp_rsqrt_body
     from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.frontends.linalg_ordered_fp8 import (
-        is_positive_bf16_zero,
         recognize_ordered_fp8_bf16_reset_matmul,
     )
     from merlin.frontends.linalg_patterns import (
@@ -130,6 +130,7 @@ def translate_linalg_text(
     f32_scalars: dict[object, int] = {}
     f64_scalars: dict[object, int] = {}
     boolean_scalars: dict[object, int] = {}
+    bf16_scalars: dict[object, int] = {}
     bf16_zeros: set[object] = set()
     zero_fills: set[object] = set()
     constants: dict[str, TensorValue] = {}
@@ -554,8 +555,11 @@ def translate_linalg_text(
                 constant_bindings.append(ConstantBinding(node_id, encoding, data.hex()))
                 env[op.results[0]] = node_id
                 continue
-            if is_positive_bf16_zero(op):
-                bf16_zeros.add(op.results[0])
+            if str(op.results[0].type) == "bf16":
+                bits = _scalar_bf16_bits(op)
+                bf16_scalars[op.results[0]] = bits
+                if bits == 0:
+                    bf16_zeros.add(op.results[0])
             elif str(op.results[0].type) == "f32":
                 f32_scalars[op.results[0]] = _scalar_f32_bits(op)
             elif str(op.results[0].type) == "f64":
@@ -636,8 +640,9 @@ def translate_linalg_text(
             elif type_.dtype == "i64" and scalar in i64_scalars:
                 value = i64_scalars[scalar]
                 encoding, data = "i64-le", value.to_bytes(8, "little", signed=True)
-            elif type_.dtype == "bf16" and scalar in bf16_zeros:
-                value, encoding, data = 0, "bf16-le-raw", b"\x00\x00"
+            elif type_.dtype == "bf16" and scalar in bf16_scalars:
+                bits = bf16_scalars[scalar]
+                value, encoding, data = bits, "bf16-le-raw", bits.to_bytes(2, "little")
             else:
                 raise LinalgBridgeError("tensor.splat requires an admitted constant with matching element type")
             env[op.results[0]] = append_splat(node_id, type_, value, encoding, data)

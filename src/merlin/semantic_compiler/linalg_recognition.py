@@ -578,6 +578,26 @@ def _i64_to_f32_bits(value: int) -> int:
     return (int(value < 0) << 31) | ((exponent + 127) << 23) | (significand & ((1 << 23) - 1))
 
 
+def _scalar_bf16_bits(op) -> int:
+    """Read an already typed finite BF16 literal without changing its bits."""
+    from math import isfinite
+
+    from xdsl.dialects.builtin import BFloat16Type, FloatAttr
+
+    literal = op.properties.get("value")
+    if (
+        not isinstance(literal, FloatAttr)
+        or not isinstance(literal.type, BFloat16Type)
+        or literal.type != op.results[0].type
+        or set(op.properties) != {"value"}
+        or any(not key.startswith("prov.") for key in op.attributes)
+        or not isfinite(literal.value.data)
+    ):
+        raise LinalgBridgeError("BF16 scalar needs an exact finite typed literal")
+    op.verify()
+    return int.from_bytes(literal.type.pack((literal.value.data,)), "little")
+
+
 def _scalar_f32_bits(op) -> int:
     from math import isnan
 
