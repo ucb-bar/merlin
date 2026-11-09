@@ -331,3 +331,52 @@ def test_rehashed_inconsistent_guarded_contract_never_publishes(tmp_path, change
     with pytest.raises(ValueError, match="guarded"):
         stage_compile_inputs(source, target)
     assert not target.exists()
+
+
+def mutable_fixture(root, grid, words, change=None):
+    guarded_fixture(root)
+    receipt = json.loads((root / "capture_receipt.json").read_text())
+    spec = json.loads((root / "spec.json").read_text())
+    spec["grid"] = list(grid)
+    admission = json.loads((root / "memory-admission.json").read_text())
+    admission.update(schema="t2m.memory-admission.v2", spec=spec, owner_words_per_element=words,
+        guard_storage_bytes_per_output_element=8 * (words + 1), writable_reads="shared-readers-or-single-writer-program",
+        ownership_protocol="sticky-complemented-program-fragments")
+    # A read of a writable source is a declared effect here, not a staging proof.
+    admission["accesses"].append({"buffer": "old", "opcode": "tts.gather", "effect": "read", "source_ids": ["normalized.0"], "tile": [8]})
+    if change == "words":
+        admission["owner_words_per_element"] += 1
+    elif change == "protocol":
+        admission["ownership_protocol"] = "unchecked"
+    elif change == "scope":
+        admission["writable_reads"] = "unchecked"
+    stage = json.loads((root / "memory-stage.json").read_text())
+    stage["stage"] = "memory-ir" if change == "stage" else "memory-effects"
+    model = (root / "model.mlir").read_bytes().replace(b"16 : i64", str(8 * (words + 1)).encode() + b" : i64")
+    provenance = json.loads((root / "provenance.json").read_text())
+    provenance.update(spec=spec, mlir_sha256=record(model)["sha256"])
+    provenance["memory"]["admission_sha256"] = record(encoded(admission))["sha256"]
+    files = {"spec.json": encoded(spec), "model.mlir": model, "memory-admission.json": encoded(admission),
+             "memory-stage.json": encoded(stage), "provenance.json": encoded(provenance)}
+    for name, raw in files.items():
+        (root / name).write_bytes(raw)
+        receipt["artifacts"][name] = record(raw)
+    (root / "capture_receipt.json").write_bytes(encoded(receipt))
+
+
+@pytest.mark.parametrize("grid,words,cost", [((1,), 1, 16), ((65536, 65536), 2, 24),
+    ((2**31 - 1, 2**31 - 1, 2), 3, 32)])
+def test_mutable_profile_retains_grid_derived_scratch_cost(tmp_path, grid, words, cost):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    mutable_fixture(source, grid, words)
+    stage_compile_inputs(source, target)
+    assert json.loads((target / "signature.json").read_text())["guard_storage_bytes_per_result_element"] == cost
+
+
+@pytest.mark.parametrize("change", ["words", "protocol", "scope", "stage"])
+def test_rehashed_invalid_mutable_contract_never_publishes(tmp_path, change):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    mutable_fixture(source, (65536, 65536), 2, change)
+    with pytest.raises(ValueError):
+        stage_compile_inputs(source, target)
+    assert not target.exists()

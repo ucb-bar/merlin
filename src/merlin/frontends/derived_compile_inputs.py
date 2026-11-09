@@ -122,11 +122,12 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
                 raise ValueError("guarded derived kernel lacks one typed entry")
             contract = entries[0].attributes.get("prov.memory_guard_bytes_per_result_element")
             types = list(entries[0].function_type.outputs)
-            if (not isinstance(contract, IntegerAttr) or contract.value.data != 16 or len(types) != len(outputs)
+            cost = json.loads(kernel["memory-admission.json"])["guard_storage_bytes_per_output_element"]
+            if (not isinstance(contract, IntegerAttr) or contract.value.data != cost or len(types) != len(outputs)
                     or any(not isinstance(t, TensorType) or list(t.get_shape()) != b["shape"]
                            or str(t.get_element_type()) != b["dtype"] for t, b in zip(types, outputs))):
                 raise ValueError("guarded derived kernel scratch differs from its typed results")
-            guard_storage += 16 * sum(math.prod(b["shape"]) for b in outputs) * sum(
+            guard_storage += cost * sum(math.prod(b["shape"]) for b in outputs) * sum(
                 call["implementation_sha256"] == digest for call in calls)
         if (digest != _sha(kernel["model.mlir"]) or provenance.get("mlir_sha256") != digest
                 or provenance.get("source_sha256") != _sha(kernel["source.ttir"])

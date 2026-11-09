@@ -33,6 +33,9 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   Static derived guarded kernels additionally bind per-call scratch costs to
   their typed results and model declaration; the evaluator budgets that scratch
   separately from final model outputs.
+  V2 memory admission checks the sticky reader/writer protocol and derives
+  metadata word count/cost from the maximum logical grid, retaining the explicit
+  pre-CSE memory-effects stage. V1 evidence keeps its original scope and cost.
   `kernel_shape_abi.py` validates ABI v5's named runtime dimensions and logical
   ceil-divided grids. Standalone compile-signature v2 retains symbolic tensor
   dimensions and typed scalar bindings. Staging checks declared types/relations,

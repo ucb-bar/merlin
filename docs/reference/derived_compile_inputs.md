@@ -112,7 +112,7 @@ The explicit standalone `shared-guarded-buffer` profile replaces the pure tensor
 memory witness with `memory-admission.json`, retaining the same functional
 tensor/scalar boundary and standard memory payload. Staging checks the report's
 source/access/effect inventory, internal ABI layout, continuation hashes and
-declared 16-byte scratch cost per result element. It retains that cost in the
+declared scratch cost per result element. It retains that cost in the
 compile signature for evaluator allocation accounting, and copies the report
 with the other compiler evidence. Evaluator values and references remain
 excluded. These are declared-contract and byte-custody checks, not a proof that
@@ -126,3 +126,13 @@ in `signature.json`. Host evaluation accounts for that scratch separately from
 the final model outputs, which may be smaller than kernel intermediates. This
 is declared resource consistency, not a proof of executable allocation lifetime
 or semantic equivalence. Dynamic bound-model scratch requires another contract.
+
+V2 admission additionally declares writable observations using sticky reader/
+writer program tags and completed-write initialization checks. Staging checks
+the protocol name and derives the 16/24/32-byte metadata cost from the maximum
+logical grid's 31-bit program-ID fragments. The explicit `memory-effects`
+continuation stops before CSE/canonicalization so the producer can preserve
+source-base gather observations as actual memory loads before optimization.
+V1 evidence remains readable with its original write-only admission scope,
+16-byte cost and `memory-ir` continuation. Neither version grants an executable
+memory or numerical proof through staging alone.

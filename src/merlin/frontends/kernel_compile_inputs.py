@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -18,6 +19,17 @@ from merlin.frontends.kernel_shape_abi import validate_dimensions
 from merlin.xdsl_dialects._common import text
 
 
+def _guard_layout(spec, version2):
+    if not version2:
+        return {"guard_storage_bytes_per_output_element": 16}
+    validate_dimensions(spec, spec["buffers"], spec.get("runtime_scalars", []))
+    bounds = {s["name"]: s.get("bounds") for s in spec.get("runtime_scalars", [])}
+    counts = [n if type(n) is int else (bounds[n["dimension"]][1] + n["divisor"] - 1) // n["divisor"]
+              for n in spec.get("grid", [1])]
+    words = max(1, ((math.prod(counts) - 1).bit_length() + 30) // 31)
+    return {"owner_words_per_element": words, "guard_storage_bytes_per_output_element": 8 * (words + 1)}
+
+
 def _checked_memory_members(checked, provenance):
     profile = provenance.get("profile", "shared-functional-tensor")
     if profile == "shared-functional-tensor":
@@ -27,6 +39,8 @@ def _checked_memory_members(checked, provenance):
         raise ValueError("unsupported kernel memory evidence profile")
     names = ("memory-admission.json" if guarded else "memory-witness.mlir", "memory-input.mlir", "memory-stage.mlir", "memory-stage.json")
     copied = {name: checked(name) for name in names}
+    admission = json.loads(copied[names[0]]) if guarded else None
+    version2 = admission is not None and admission.get("schema") == "t2m.memory-admission.v2"
     memory = provenance.get("memory", {})
     for name, key in ((names[0], "admission_sha256" if guarded else "witness_sha256"), (names[1], "continuation_input_sha256"),
                       (names[2], "continuation_output_sha256")):
@@ -35,25 +49,27 @@ def _checked_memory_members(checked, provenance):
     stage = json.loads(copied[names[3]])
     def record(name):
         return {"bytes": len(copied[name]), "sha256": hashlib.sha256(copied[name]).hexdigest()}
-    if (stage.get("schema") != "t2m.triton-shared-stage.v1" or stage.get("stage") != "memory-ir"
+    if (stage.get("schema") != "t2m.triton-shared-stage.v1" or stage.get("stage") != ("memory-effects" if version2 else "memory-ir")
             or stage.get("stage_completed") is not True
             or stage.get("artifacts", {}).get("source.ttir") != record(names[1])
             or stage.get("artifacts", {}).get("lowered.mlir") != record(names[2])):
         raise ValueError("kernel memory report does not bind its input/output")
     if guarded:
-        admission, spec = json.loads(copied[names[0]]), provenance.get("spec")
+        spec = provenance.get("spec")
         if not isinstance(spec, dict) or not isinstance(spec.get("buffers"), list):
             raise ValueError("guarded memory evidence lacks its logical buffer ABI")
         arguments = ([{"kind": "extent", "buffer": b["name"]} for b in spec["buffers"]]
             + [{"kind": kind, "buffer": b["name"]} for b in spec["buffers"] if b["effect"] != "read" for kind in ("owners", "visited")]
             + [{"kind": "program"}])
-        if (admission.get("schema") != "t2m.memory-admission.v1"
+        layout = _guard_layout(spec, version2)
+        if (admission.get("schema") not in ("t2m.memory-admission.v1", "t2m.memory-admission.v2")
                 or admission.get("strategy") != "runtime-guarded-private-output-state"
                 or admission.get("spec") != spec or admission.get("internal_arguments") != arguments
                 or admission.get("guarded_input_sha256") != record(names[1])["sha256"]
                 or admission.get("continuation_output_sha256") != record(names[2])["sha256"]
-                or admission.get("guard_storage_bytes_per_output_element") != 16
-                or admission.get("writable_reads") != "refused"
+                or any(admission.get(key) != value for key, value in layout.items())
+                or version2 and admission.get("ownership_protocol") != "sticky-complemented-program-fragments"
+                or admission.get("writable_reads") != ("shared-readers-or-single-writer-program" if version2 else "refused")
                 or admission.get("fresh_initialization") != "post-grid-complete-write-coverage"
                 or not isinstance(admission.get("accesses"), list)):
             raise ValueError("guarded memory evidence has an inconsistent admission contract")
@@ -63,7 +79,9 @@ def _checked_memory_members(checked, provenance):
             buffer = buffers.get(access.get("buffer"))
             write = access.get("opcode") in ("tts.store", "tts.scatter")
             if (buffer is None or access.get("opcode") not in ("tts.load", "tts.store", "tts.gather", "tts.scatter")
-                    or access.get("effect") != ("write" if write else "read") or (buffer["effect"] == "read") == write
+                    or access.get("effect") != ("write" if write else "read")
+                    or write and buffer["effect"] == "read"
+                    or not write and buffer["effect"] != "read" and not version2
                     or not access.get("source_ids") or any(s not in inventory for s in access["source_ids"])
                     or not access.get("tile") or any(type(n) is not int or n <= 0 for n in access["tile"])):
                 raise ValueError("guarded memory access inventory differs from its source/effect contract")
@@ -178,9 +196,11 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
                  "input_mutability": "borrowed-immutable-tensors"}
     if receipt["profile"] == "shared-guarded-buffer":
         contract = entry.attributes.get("prov.memory_guard_bytes_per_result_element")
-        if not isinstance(contract, IntegerAttr) or contract.value.data != 16:
+        admission = json.loads(memory_members["memory-admission.json"])
+        cost = admission["guard_storage_bytes_per_output_element"]
+        if not isinstance(contract, IntegerAttr) or contract.value.data != cost:
             raise ValueError("guarded kernel lacks its declared scratch storage contract")
-        signature["guard_storage_bytes_per_result_element"] = 16
+        signature["guard_storage_bytes_per_result_element"] = cost
     if scalars:
         signature["scalar_abi"] = "native-by-value; invocation-data"
     # The native host's existing ABI names @forward. Record this symbol-only
