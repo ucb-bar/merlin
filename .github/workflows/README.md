@@ -18,9 +18,9 @@ Integration remains a required dependency of the aggregate check.
 The permanent Merlin suite has a hard **150 collected-case maximum**, including
 parameterization. `check_test_budget.py` discovers collectors across the owned
 repository, including package, example and build-tool roots. Collection errors,
-collection-time skips, deselection and an empty suite fail. Two exact SHA-bound
-copied Atlas test files remain immutable reproduction inputs under its
-`SOURCE.yaml`; changed copies cannot use that classification. External OOT suites
+collection-time skips, deselection and an empty suite fail. Six exact SHA-bound
+companion test files remain immutable reproduction inputs under their examples'
+`SOURCE.yaml` records; changed copies cannot use that classification. External OOT suites
 are separately owned and their selected results are reported separately.
 
 The compact suite runs once without a slow/integration exclusion. JUnit and
