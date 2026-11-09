@@ -107,6 +107,8 @@ def main():
             if (type(incoming) is not int or incoming < 0 or incoming in bindings
                     or type(outgoing) is not int or outgoing < 0):
                 raise ValueError("application bindings require distinct nonnegative integer inputs and integer outputs")
+            if incoming >= len(inputs):
+                raise ValueError("input binding index exceeds generated ABI")
             bindings[incoming] = outgoing
         def selected_path(value):
             path = Path(value)
@@ -116,6 +118,8 @@ def main():
             raise ValueError("application bindings require producer_application and producer_execution paths")
         generated, generated_bindings = load_output_bindings(
             selected_path(producers[0]), selected_path(producers[1]), record, bindings)
+        if set(generated) != {f"input_{index}" for index in bindings}:
+            raise ValueError("generated binding arrays differ from declared input bindings")
         for key, value in generated.items():
             index = int(key[6:])
             if value.shape != inputs[index].shape or value.dtype != inputs[index].dtype:

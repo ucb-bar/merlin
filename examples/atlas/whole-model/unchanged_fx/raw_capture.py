@@ -164,6 +164,16 @@ def reconstruct(model, policy, tensors, *, replay, linear_class, patch_attention
     return model
 
 
+def state_tensor_names(tensors, policy):
+    """Separate ordinary payloads from policy-declared native weight state."""
+    ordinary = {name for name in tensors if not name.endswith(
+        (".weight_codes", ".weight_scale_exp", ".input_scale_exp"))}
+    quantized = {site["weight"][key] for site in policy["sites"].values()
+                 if site.get("status") == "quantized" and site["kind"] == "linear"
+                 for key in ("codes", "scale_exp")}
+    return ordinary, quantized
+
+
 def authenticate_state(program, tensors, policy):
     """Bind all non-placeholder source state to original exported tensor bytes."""
     expected = {}
@@ -184,13 +194,11 @@ def authenticate_state(program, tensors, policy):
         if source_name not in tensors or tensor_record(value) != tensor_record(tensors[source_name]):
             raise ValueError(f"original FX state differs from raw export: {name}")
         expected[name] = tensor_record(value)
-    quantized = {f"model.{site['weight'][key]}" for site in policy["sites"].values()
-                 if site.get("status") == "quantized" and site["kind"] == "linear"
-                 for key in ("codes", "scale_exp")}
+    ordinary, quantized = state_tensor_names(tensors, policy)
+    ordinary = {f"model.{name}" for name in ordinary}
+    quantized = {f"model.{name}" for name in quantized}
     if not quantized <= set(expected):
         raise ValueError(f"original FX graph omits declared code/exponent state: {sorted(quantized - set(expected))}")
-    ordinary = {f"model.{name}" for name in tensors if not name.endswith(
-        (".weight_codes", ".weight_scale_exp", ".input_scale_exp"))}
     if set(expected) != ordinary | quantized:
         raise ValueError("original FX graph omits or adds raw exported state")
     return expected

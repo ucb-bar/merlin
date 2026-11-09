@@ -14,13 +14,14 @@ import adapter_loader
 
 
 @pytest.fixture
-def source(tmp_path, monkeypatch):
+def source(tmp_path, monkeypatch, request):
     import fx_export
 
     torch.manual_seed(19)
     architecture, export = tmp_path / "architecture", tmp_path / "export"
     architecture.mkdir()
-    config = LlamaConfig(vocab_size=32, hidden_size=16, intermediate_size=32, num_hidden_layers=1,
+    config = LlamaConfig(vocab_size=32, hidden_size=16, intermediate_size=32,
+                         num_hidden_layers=getattr(request, "param", 1),
                          num_attention_heads=2, num_key_value_heads=1, max_position_embeddings=128,
                          tie_word_embeddings=False, use_cache=False)
     config._attn_implementation = "eager"
@@ -191,3 +192,85 @@ def test_live_prefill_cache_exports_original_state_and_feeds_decode(source, tmp_
     assert inventory(dict(list(model.named_parameters()) + list(model.named_buffers()))) == model_before
     with pytest.raises(ValueError, match="original four-input boundary"):
         select(arguments, "layer0-prefill-cache", cache_roles=roles)
+
+
+@pytest.mark.parametrize("source", [2], indirect=True)
+def test_live_whole_cache_exports_original_state_and_independent_decode(source, tmp_path, monkeypatch):
+    from cache_source import phase_positions_and_mask
+    from raw_capture import inventory, tensor_record
+    from ref_profile import RefQuantLinear
+    from safetensors.torch import load_file
+    from transformers import DynamicCache
+
+    export, _, inputs_path, ids, original_logits, model = source
+    raw_before = inventory(load_file(str(export / "model.safetensors")))
+    state_before = inventory(dict(list(model.named_parameters()) + list(model.named_buffers())))
+    parameters = {f"model.{name}": value for name, value in raw_before.items()}
+    source_path = tmp_path / "model-source.json"
+    baseline, _ = adapter_loader.get_model_and_inputs()
+    baseline_state = inventory({name: value for name, value in
+        list(baseline.named_parameters()) + list(baseline.named_buffers()) if value.device.type != "meta"})
+
+    def select(arguments, selection, *, include_parameters=False):
+        inputs = {f"input_{index}": value.contiguous() for index, value in enumerate(arguments)}
+        save_file(inputs, inputs_path)
+        receipt = dict(kind="model", input_keys=list(inputs), tensors=inventory(inputs))
+        if include_parameters:
+            receipt["parameters"] = parameters
+        source_path.write_text(json.dumps(receipt))
+        monkeypatch.setenv("ATLAS_CAPTURE_BOUNDARY", selection)
+        monkeypatch.setenv("ATLAS_BOUNDARY_SOURCE_JSON", str(source_path))
+        monkeypatch.setenv("ATLAS_EXPECTED_BOUNDARY_SOURCE_SHA256", sha256(source_path.read_bytes()).hexdigest())
+        with patch.object(torch.export, "load", side_effect=AssertionError("saved source program loaded")), \
+             patch.object(RefQuantLinear, "__init__", side_effect=AssertionError("quantizing constructor called")):
+            return adapter_loader.get_model_and_inputs()
+
+    def words(values):
+        return [tensor_record(value) for value in values]
+
+    conventional = DynamicCache(config=model.config)
+    with torch.no_grad():
+        positions, mask = phase_positions_and_mask(ids, 0)
+        original = model(ids, position_ids=positions, attention_mask=mask,
+                         past_key_values=conventional, use_cache=True)
+        expected_prefill = (original.logits, *(value.clone() for layer in conventional.layers
+                                              for value in (layer.keys, layer.values)))
+        decode_ids = torch.tensor([[11]])
+        decode_positions, decode_mask = phase_positions_and_mask(decode_ids, ids.shape[1])
+        independent_arguments = (decode_ids, decode_positions, decode_mask,
+                                 *(value.clone() for value in expected_prefill[1:]))
+        original = model(decode_ids, position_ids=decode_positions, attention_mask=decode_mask,
+                         past_key_values=conventional, use_cache=True)
+        expected_decode = (original.logits, *(value.clone() for layer in conventional.layers
+                                             for value in (layer.keys, layer.values)))
+    assert tensor_record(expected_prefill[0]) == tensor_record(original_logits)
+    prefill, prefill_inputs = select((ids, positions, mask), "model-prefill-cache")
+    actual_prefill = prefill.module()(*prefill_inputs)
+    decode, decode_inputs = select(independent_arguments, "model-decode-cache", include_parameters=True)
+    frozen_inputs = words(decode_inputs)
+    # Generated words enter only the invocation, after independent capture.
+    actual_decode = decode.module()(*decode_inputs[:3], *actual_prefill[1:])
+    count = model.config.num_hidden_layers
+    assert len(prefill_inputs) == 3
+    assert len(decode_inputs) == 3 + 2 * count
+    assert len(actual_prefill) == len(actual_decode) == 1 + 2 * count
+    assert words(actual_prefill) == words(expected_prefill)
+    assert words(actual_decode) == words(expected_decode)
+    assert words(decode_inputs) == frozen_inputs
+    for prefix, updated in zip(actual_prefill[1:], actual_decode[1:]):
+        assert tensor_record(prefix) == tensor_record(updated[:, :, :ids.shape[1]])
+    for program in (prefill, decode):
+        actual_state = inventory({name: value for name, value in
+            list(program.named_parameters()) + list(program.named_buffers()) if value.device.type != "meta"})
+        assert actual_state == baseline_state
+        assert actual_state == {name: parameters[name] for name in actual_state}
+        assert set(dict(program.named_parameters())) == set(dict(baseline.named_parameters()))
+        assert {call["target"] for call in program._m2m_external_quantization_manifest["atlas"]["calls"]} >= {
+            "atlas.qlinear.default", "atlas.qk_matmul.default", "atlas.pv_matmul.default"}
+    assert inventory(load_file(str(export / "model.safetensors"))) == raw_before
+    assert inventory(dict(list(model.named_parameters()) + list(model.named_buffers()))) == state_before
+
+    with pytest.raises(ValueError, match="prefill positions"):
+        select((ids, positions + 1, mask), "model-prefill-cache")
+    with pytest.raises(ValueError, match="ordered source K/V"):
+        select(independent_arguments[:-1], "model-decode-cache")

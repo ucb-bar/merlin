@@ -21,15 +21,30 @@ append semantics and returns hidden state, updated K, and updated V.
 Select ATLAS_CAPTURE_BOUNDARY=layer0-prefill-cache with the original four-input
 layer0 archive to return hidden state and the initial post-RoPE, pre-GQA BF16
 K/V. The default layer0 selection continues to return only hidden state.
+Select ATLAS_CAPTURE_BOUNDARY=model-prefill-cache for ids, absolute positions,
+and a BF16 mask, returning logits followed by K/V for every source layer.
+model-decode-cache adds ordered past K/V tensors after those three inputs.
+Both selections authenticate their independent input archive and source receipt.
 """
 from __future__ import annotations
 
 import os
 import json
+import importlib.util
 from hashlib import sha256
 from pathlib import Path
+import sys
 
 from atlas_mlir_native.capture import normalize_capture, prepare_model
+
+
+def _load_sibling(name):
+    """Load an example helper next to this adapter without a package import."""
+    spec = importlib.util.spec_from_file_location(f"_adapter_{name}", Path(__file__).with_name(f"{name}.py"))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def layer0_boundary(model, inputs, source, *, tensor_record, prefill_cache=False):
@@ -91,12 +106,7 @@ def layer0_boundary(model, inputs, source, *, tensor_record, prefill_cache=False
                                               position_embeddings=(cosine, sine))
 
     if cached or prefill_cache:
-        import importlib.util
-        import sys
-        spec = importlib.util.spec_from_file_location("_adapter_cache_source", Path(__file__).with_name("cache_source.py"))
-        cache_source = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = cache_source
-        spec.loader.exec_module(cache_source)
+        cache_source = _load_sibling("cache_source")
 
         class PrefillCacheLayer0(Layer0):
             def forward(self, hidden, cosine, sine, attention_mask):
@@ -153,6 +163,57 @@ def head_boundary(model, inputs, source, *, tensor_record):
     return boundary, (hidden,)
 
 
+def model_cache_boundary(model, inputs, source, *, tensor_record, prefill_cache,
+                         authenticated_parameters=None):
+    """Select the existing tensor-cache source with its complete original state."""
+    cache_source = _load_sibling("cache_source")
+    layer_count = model.config.num_hidden_layers
+    count = 3 if prefill_cache else 3 + 2 * layer_count
+    keys = [f"input_{index}" for index in range(count)]
+    if source.get("kind") != "model" or source.get("input_keys") != keys:
+        raise ValueError("model cache requires ids, positions, mask, and ordered source K/V")
+    if set(inputs) != set(keys) or set(inputs) != set(source["tensors"]):
+        raise ValueError("model cache archive tensor roster differs from selected source")
+    if any(tensor_record(value) != source["tensors"][key] for key, value in inputs.items()):
+        raise ValueError("model cache tensor words differ from selected source")
+    arguments = tuple(inputs[key] for key in keys)
+    if prefill_cache:
+        cache_source.validate_prefill_phase(*arguments)
+    else:
+        cache_source.validate_phase(*arguments[:3], arguments[3:])
+        if arguments[3].shape[2] < 1:
+            raise ValueError("model decode cache requires a positive-length source prefix")
+    roles = source.get("cache_roles")
+    if roles is not None:
+        expected_inputs = [("input_ids", None), ("position_ids", None), ("attention_mask", None)]
+        expected_outputs = [("logits", None)]
+        for layer in range(layer_count):
+            for operand in ("key", "value"):
+                if not prefill_cache:
+                    expected_inputs.append((f"past_{operand}", layer))
+                expected_outputs.append((f"updated_{operand}", layer))
+        for field, expected in (("inputs", expected_inputs), ("outputs", expected_outputs)):
+            entries = roles.get(field, [])
+            if (len(entries) != len(expected)
+                    or any(entry.get("index") != index or entry.get("role") != role
+                           or entry.get("layer") != layer
+                           for index, (entry, (role, layer)) in enumerate(zip(entries, expected)))):
+                raise ValueError("model cache roles differ from the ordered source ABI")
+    selector = cache_source.TensorPrefillLogits if prefill_cache else cache_source.TensorCacheLogits
+    boundary = selector(model.eval()).eval()
+    state = list(boundary.named_parameters()) + list(boundary.named_buffers())
+    actual_state = {name: tensor_record(value) for name, value in state if value.device.type != "meta"}
+    expected_state = source.get("parameters", authenticated_parameters)
+    if expected_state is None or actual_state != expected_state:
+        missing = sorted(set(expected_state or {}) - set(actual_state))
+        extra = sorted(set(actual_state) - set(expected_state or {}))
+        changed = sorted(name for name in actual_state.keys() & (expected_state or {}).keys()
+                         if actual_state[name] != expected_state[name])
+        raise ValueError(f"live model cache parameters differ from selected source boundary: "
+                         f"missing={missing}, extra={extra}, changed={changed}")
+    return boundary, arguments
+
+
 def get_model_and_inputs():
     import algos
     import fx_export
@@ -163,10 +224,7 @@ def get_model_and_inputs():
     from safetensors.torch import load_file
     from transformers import AutoConfig, AutoModelForCausalLM
 
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("_adapter_raw_capture", Path(__file__).with_name("raw_capture.py"))
-    raw_capture = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(raw_capture)
+    raw_capture = _load_sibling("raw_capture")
     inventory = raw_capture.inventory
     prohibit_weight_conversion = raw_capture.prohibit_weight_conversion
     reconstruct = raw_capture.reconstruct
@@ -203,13 +261,19 @@ def get_model_and_inputs():
         if set(inputs) != {"input_ids"} or inputs["input_ids"].dtype != torch.int64:
             raise ValueError("input archive must contain only int64 input_ids")
         arguments = (inputs["input_ids"],)
-    elif selected in {"layer0", "layer0-prefill-cache", "head"}:
+    elif selected in {"layer0", "layer0-prefill-cache", "head", "model-prefill-cache", "model-decode-cache"}:
         source_path = raw_capture.checked_path(os.environ["ATLAS_BOUNDARY_SOURCE_JSON"])
         source_bytes = source_path.read_bytes()
         if sha256(source_bytes).hexdigest() != os.environ["ATLAS_EXPECTED_BOUNDARY_SOURCE_SHA256"]:
             raise ValueError("selected boundary source receipt digest differs")
-        selector = head_boundary if selected == "head" else layer0_boundary
-        options = {"prefill_cache": True} if selected == "layer0-prefill-cache" else {}
+        if selected in {"model-prefill-cache", "model-decode-cache"}:
+            selector = model_cache_boundary
+            ordinary, quantized = raw_capture.state_tensor_names(tensors, policy)
+            options = {"prefill_cache": selected == "model-prefill-cache",
+                       "authenticated_parameters": {f"model.{name}": before[name] for name in ordinary | quantized}}
+        else:
+            selector = head_boundary if selected == "head" else layer0_boundary
+            options = {"prefill_cache": True} if selected == "layer0-prefill-cache" else {}
         boundary, arguments = selector(model, inputs, json.loads(source_bytes),
                                       tensor_record=raw_capture.tensor_record, **options)
     else:

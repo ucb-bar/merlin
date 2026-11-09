@@ -105,11 +105,114 @@ int run(const void *const *inputs, void *const *outputs) {
             assert row[field] == sha256(path.read_bytes()).hexdigest()
 
 
+def test_all_layer_cache_bindings_detect_each_skipped_substitution(bound_execution, monkeypatch):
+    import application_bindings
+
+    case = bound_execution
+    compiler = shutil.which("cc")
+    if compiler is None:
+        pytest.skip("C compiler required for real pointer dispatch")
+    count = 44
+    signature = {"dtype": "bf16", "shape": [4]}
+    generated = [np.arange(4, dtype=np.uint16) + np.uint16(100 + index * 7) for index in range(count)]
+    defaults = [value ^ np.uint16(0x8000) for value in generated]
+    producer = json.loads((case.producer / "compiled.json").read_text())
+    producer["interface"] = {"outputs": ["logits", *(f"cache_{index}" for index in range(count))],
+                             "output_types": [signature] * (count + 1)}
+    _save(case.producer / "compiled.json", producer)
+    published = [np.zeros(4, dtype=np.uint16), *generated]
+    receipt = json.loads((case.execution / "execution.json").read_text())
+    receipt["compiled_sha256"] = sha256((case.producer / "compiled.json").read_bytes()).hexdigest()
+    receipt["outputs"] = [{"dtype": value.dtype.str, "shape": list(value.shape),
+                           "sha256": sha256(value.tobytes()).hexdigest()} for value in published]
+    _save(case.execution / "execution.json", receipt)
+    np.savez(case.execution / "actual.npz", **{f"output_{index}": value for index, value in enumerate(published)})
+    consumer = json.loads((case.consumer / "compiled.json").read_text())
+    consumer["interface"] = {
+        "inputs": ["ids", "positions", "mask", *(f"cache_{index}" for index in range(count))],
+        "input_types": [signature] * (count + 3),
+        "outputs": [f"cache_{index}" for index in range(count)], "output_types": [signature] * count}
+    _save(case.consumer / "compiled.json", consumer)
+    packaged = [np.zeros(4, dtype=np.uint16)] * 3 + defaults
+    np.savez(case.consumer / "tensors.npz", **{f"input_{index}": value for index, value in enumerate(packaged)})
+    case.descriptor["bindings"] = [{"input_index": index + 3, "output_index": index + 1}
+                                  for index in range(count)]
+    _save(case.bindings, case.descriptor)
+    source = case.consumer / "dispatch.c"
+    source.write_text("""#include <stdint.h>
+int run(const void *const *inputs, void *const *outputs) {
+    for (int layer_tensor = 0; layer_tensor < 44; ++layer_tensor) {
+        const uint16_t *cache = inputs[layer_tensor + 3];
+        uint16_t *result = outputs[layer_tensor];
+        for (int word = 0; word < 4; ++word) result[word] = cache[word];
+    }
+    return 0;
+}
+""")
+    subprocess.run(["nice", "-n", "10", compiler, "-shared", "-fPIC", str(source),
+                    "-o", str(case.consumer / "dispatch.so")], check=True, capture_output=True)
+
+    def assert_generated_outputs():
+        with np.load(case.output / "actual.npz", allow_pickle=False) as actual:
+            for index, value in enumerate(generated):
+                np.testing.assert_array_equal(actual[f"output_{index}"], value)
+
+    execute_graph.main()
+    assert_generated_outputs()
+    assert len(json.loads((case.output / "execution.json").read_text())["generated_bindings"]) == count
+    original_loader = application_bindings.load_output_bindings
+    for skipped in range(count):
+        def omit_one(*args, **kwargs):
+            arrays, rows = original_loader(*args, **kwargs)
+            del arrays[f"input_{skipped + 3}"]
+            return arrays, rows
+        monkeypatch.setattr(application_bindings, "load_output_bindings", omit_one)
+        with pytest.raises(ValueError, match="declared input bindings"):
+            execute_graph.main()
+
+
 def test_missing_bindings_field_raises_value_error(bound_execution):
     case = bound_execution
     del case.descriptor["bindings"]
     _save(case.bindings, case.descriptor)
     with pytest.raises(ValueError, match="bindings"):
+        execute_graph.main()
+    assert not case.output.exists()
+
+
+@pytest.mark.parametrize("fault", ["missing", "out_of_range"])
+def test_incomplete_or_extra_generated_arrays_fail_before_execution(bound_execution, monkeypatch, fault):
+    import application_bindings
+
+    case = bound_execution
+    original_loader = application_bindings.load_output_bindings
+
+    def changed_arrays(*args, **kwargs):
+        arrays, rows = original_loader(*args, **kwargs)
+        if fault == "missing":
+            del arrays["input_0"]
+        else:
+            arrays["input_2"] = arrays["input_0"].copy()
+        return arrays, rows
+
+    monkeypatch.setattr(application_bindings, "load_output_bindings", changed_arrays)
+    with pytest.raises(ValueError, match="declared input bindings"):
+        execute_graph.main()
+    assert not case.output.exists()
+
+
+def test_declared_input_outside_generated_abi_fails_before_loading(bound_execution, monkeypatch):
+    import application_bindings
+
+    case = bound_execution
+    case.descriptor["bindings"][0]["input_index"] = 2
+    _save(case.bindings, case.descriptor)
+
+    def unexpected_loader(*args, **kwargs):
+        pytest.fail("invalid input index must fail before loading producer evidence")
+
+    monkeypatch.setattr(application_bindings, "load_output_bindings", unexpected_loader)
+    with pytest.raises(ValueError, match="index exceeds generated ABI"):
         execute_graph.main()
     assert not case.output.exists()
 
