@@ -46,6 +46,7 @@ def main():
     parser.add_argument("--native-cache", type=Path)
     parser.add_argument("--compact-trace", action="store_true")
     parser.add_argument("--input-overrides", type=Path, help="generated predecessor inputs, keyed input_N")
+    parser.add_argument("--input-bindings", type=Path, help="JSON producer application/execution and typed output-to-input bindings")
     parser.add_argument("--execution-output", type=Path, help="separate mutable execution artifacts from compiled package")
     args = parser.parse_args()
     if args.max_instructions <= 0:
@@ -55,8 +56,11 @@ def main():
             parser.error("qualified_native requires separate arithmetic and memory qualifications")
     elif args.native_qualification or args.memory_qualification or args.native_cache:
         parser.error("qualification options require the qualified_native backend")
+    if args.input_bindings and args.input_overrides:
+        parser.error("select input-bindings or input-overrides exclusively")
     root = args.compiled.resolve()
-    record = json.loads((root / "compiled.json").read_text())
+    compiled_bytes = (root / "compiled.json").read_bytes()
+    record = json.loads(compiled_bytes)
     if record.get("functional_validation_only") and args.backend not in {"functional", "qualified_native"}:
         raise ValueError("execution-host math package is functional validation only")
     for member, expected in record.get("runtime_files", {}).items():
@@ -85,6 +89,38 @@ def main():
                     raise ValueError(f"input override changes generated ABI: {key}")
                 inputs[index] = value
                 input_overrides[key] = sha256(value.tobytes()).hexdigest()
+    generated_bindings = []
+    if args.input_bindings:
+        from application_bindings import _unique_object, load_output_bindings
+
+        descriptor = json.loads(args.input_bindings.read_text(), object_pairs_hook=_unique_object)
+        if not isinstance(descriptor, dict) or descriptor.get("schema") != "merlin.application_output_bindings.v1":
+            raise ValueError("unknown application output bindings schema")
+        bindings = {}
+        rows = descriptor.get("bindings")
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("application bindings require a nonempty bindings list")
+        for row in rows:
+            if not isinstance(row, dict):
+                raise ValueError("application binding must be an object")
+            incoming, outgoing = row.get("input_index"), row.get("output_index")
+            if (type(incoming) is not int or incoming < 0 or incoming in bindings
+                    or type(outgoing) is not int or outgoing < 0):
+                raise ValueError("application bindings require distinct nonnegative integer inputs and integer outputs")
+            bindings[incoming] = outgoing
+        def selected_path(value):
+            path = Path(value)
+            return path if path.is_absolute() else args.input_bindings.resolve().parent / path
+        producers = [descriptor.get(name) for name in ("producer_application", "producer_execution")]
+        if any(not isinstance(value, str) or not value for value in producers):
+            raise ValueError("application bindings require producer_application and producer_execution paths")
+        generated, generated_bindings = load_output_bindings(
+            selected_path(producers[0]), selected_path(producers[1]), record, bindings)
+        for key, value in generated.items():
+            index = int(key[6:])
+            if value.shape != inputs[index].shape or value.dtype != inputs[index].dtype:
+                raise ValueError(f"input binding changes generated ABI: {key}")
+            inputs[index] = value
     initial = [value.tobytes() for value in inputs]
     execution_root = args.execution_output.resolve() if args.execution_output else root
     execution_root.mkdir(parents=True, exist_ok=True)
@@ -146,10 +182,12 @@ def main():
     if parameters is not None and ct.string_at(parameters, len(data)) != data:
         raise AssertionError("generated application changed immutable source parameters")
     np.savez(execution_root / "actual.npz", **{f"output_{index}": value for index, value in enumerate(outputs)})
-    receipt = {"status": "EXECUTED_UNCOMPARED", "source_request_digest": record["source_request_digest"],
+    receipt = {"status": "EXECUTED_UNCOMPARED", "compiled_sha256": sha256(compiled_bytes).hexdigest(),
+               "source_request_digest": record["source_request_digest"],
                "source_model_sha256": record["source_model_sha256"], "immutable_inputs": True,
                "functional_instruction_limit": args.max_instructions if args.backend in {"functional", "qualified_native"} else None,
                "input_overrides": input_overrides,
+               "generated_bindings": generated_bindings,
                "inputs": [{"sha256": sha256(value.tobytes()).hexdigest(), "shape": list(value.shape),
                            "dtype": value.dtype.str} for value in inputs],
                "device_launches": len(execution["launches"]), "backend": args.backend,
