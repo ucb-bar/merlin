@@ -79,3 +79,6 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
   post-offload callback receives exact routed IR and an immutable sidecar; its
   selected host file enters the normal lowering/object identity path. ABI bridge
   code remains provider-owned; this hook makes no placement decision.
+- Model preparation normalizes proved unsigned-byte dots before outlining.
+  This is arithmetic normalization, not dtype inference, a precision policy,
+  placement, or a guarantee that packing runs on a separate hart.

@@ -353,6 +353,11 @@ def _prepare_model_mlir(
         selected_passes = ("contraction_int8",)
 
     module = parse_mlir_file(mlir_path)
+    from ...llvmlower.unsigned_byte_dot import normalize_unsigned_byte_dots
+
+    _unsigned = normalize_unsigned_byte_dots(module)
+    if _unsigned:
+        print(f"[integer] normalized {_unsigned} unsigned byte dot(s) with exact modular compensation")
     # Same first step as the interpreter path (dispatch_runtime.run_model): torchao's
     # choose_qparams/quantize arrive as opaque calls to externs nothing defines, and the two paths
     # diverging here is precisely how a bundle ends up interpretable but unlinkable.

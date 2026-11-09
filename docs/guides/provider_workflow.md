@@ -185,3 +185,45 @@ changing the simulator or its timing inputs creates a separate cohort.
 All destinations are fresh. Raw failures, postgate refusals, source snapshots
 and earlier receipts remain available for review. A new result never overwrites
 an existing output directory.
+
+## Preserve a captured TorchAO integer graph
+
+The ordinary model API is a separate path for a capture containing FP32
+quantization/scaling operations around integer matrix roots. Inspect the source
+contract before building it:
+
+```python
+from merlin.compile.source_quantization import inspect_source_w8a8
+from merlin.runtime.backends import spike_model
+
+contract = inspect_source_w8a8(bundle)
+image = spike_model.build(
+    bundle, fresh_work,
+    int8_compute=False,
+    backend="rvv",
+    features=frozenset({"perop_register_block", "named_int8_contraction"}),
+    host_vectorize=True,
+    vlen=selected_vlen_bits,
+    matrix=selected_matrix_route,  # None selects the ordinary CPU path.
+)
+```
+
+`int8_compute=False` preserves quantization already present in the capture.
+The source must declare the TorchAO W8A8 scheme and prove each zero-seeded
+integer root's operand signedness. Missing or contradictory dtype witnesses
+refuse admission; an old incorrectly signed capture requires recapture.
+
+A closed U8×S8→I32 root is normalized before outlining using
+`u = signed(u xor 128) + 128`. The compiler adds the exact signed column-sum
+compensation modulo 2³². Signed roots, floating quantization, scales and
+epilogues retain their source semantics. The compensation and input conversion
+are real generated work; this transformation does not establish profitability,
+offline preparation, or a split between preparation and compute harts.
+
+When selecting both a standalone RVV provider and a derived matrix provider in
+one process, point `MERLIN_TARGET_PATH` at their single shared physical RVV base
+and the derived provider root. Two independent checkouts claiming the same
+provider namespace refuse, even if their revisions match. Complete numerical
+checking and simulator qualification remain caller obligations. This ordinary
+model API does not make the integer-file CLI accept floating graphs, establish
+whole-model mixed precision, or change routing defaults.

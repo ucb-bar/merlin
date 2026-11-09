@@ -48,3 +48,8 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
   numerical regime (comparison, tolerances, scaling and subnormal handling), not hardware evidence.
   Core never discovers a profile by target name. Floating execution without that declaration refuses;
   callers must forward it through recursive tiling, certification, runtime dispatch and device builds.
+- Source-W8A8 admission requires explicit operand dtype witnesses consistent
+  with each integer root's actual extensions. Both S8×S8 and U8×S8 roots are
+  supported; unknown or contradictory evidence refuses and requests recapture.
+  The canonical signed ABI may require exact modular unsigned compensation.
+  Preserve source quantization rather than applying W8A8 conversion a second time.

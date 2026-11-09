@@ -763,3 +763,11 @@ Finite-point row observations require pure returned-value quantization, stable R
 ## Exact BF16 integer observations
 
 Exact BF16 integer observations preserve the original scale/product DAG and require pure roundeven values, integer-only observations, stable RNE, nontrapping arithmetic, unobserved flags and standard unobserved representation copies. Compose after finite-point specialization; each contract remains independently required.
+
+## Exact unsigned byte dots
+
+`unsigned_byte_dot` rewrites only a closed zero-seeded U8×S8→I32 scalar MAC
+with explicit extensions and unflagged wrapping arithmetic. The signed-byte dot
+plus column-sum correction is exact modulo 2³²; it never infers unsigned intent
+from storage alone or repairs a contradictorily signed source capture. Keep the
+original FP32 quantization/scaling DAG and account for the added correction work.

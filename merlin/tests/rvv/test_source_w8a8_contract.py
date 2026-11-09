@@ -24,7 +24,7 @@ _MODEL = """builtin.module attributes {prov.quantization = "int8_dyn_act_int8_we
       %product = "arith.muli"(%lhs32, %rhs32) : (i32, i32) -> i32
       %sum = "arith.addi"(%acc, %product) : (i32, i32) -> i32
       "linalg.yield"(%sum) : (i32) -> ()
-    }) {prov.op = "int_matmul", prov.aten = "aten._int_mm.default"} : (tensor<4x19xi8>, tensor<19x8xi8>, tensor<4x8xi32>) -> tensor<4x8xi32>
+    }) {prov.op = "int_matmul", prov.aten = "aten._int_mm.default", prov.int_mm_lhs_dtype = "int8", prov.int_mm_rhs_dtype = "int8"} : (tensor<4x19xi8>, tensor<19x8xi8>, tensor<4x8xi32>) -> tensor<4x8xi32>
     func.return %result : tensor<4x8xi32>
   }
 }"""
@@ -90,7 +90,6 @@ def test_source_w8a8_host_uses_framework_golden_without_second_quantization(tmp_
     golden = np.array([1.0, -2.0, 3.0, 4.0], dtype=np.float32)
     np.save(bundle / "golden.npy", golden)
     monkeypatch.setattr(registry, "load_rvv_package", lambda _path: SimpleNamespace(is_int8=True, backend="rvv"))
-    monkeypatch.setattr(compile_cli, "host_lane_identity", lambda _path: {"dtype_strategy": "int8_w8a8"})
     seen = {}
 
     def run_model(_bundle, _work, *, int8_compute, **_kwargs):
@@ -132,7 +131,6 @@ def test_source_w8a8_host_cache_is_strict_and_preserves_source_reference(tmp_pat
     contract["capture_receipt"]["status"] = "verified_materialized"
     monkeypatch.setattr(source_quantization, "inspect_source_w8a8", lambda _path: contract)
     monkeypatch.setattr(registry, "load_rvv_package", lambda _path: SimpleNamespace(is_int8=True, backend="rvv"))
-    monkeypatch.setattr(compile_cli, "host_lane_identity", lambda _path: {"dtype_strategy": "int8_w8a8"})
     seen = {}
     evidence = {
         "schema": "merlin.host_cache.v1",
