@@ -3,11 +3,12 @@ import ctypes
 from dataclasses import replace
 import shutil
 import subprocess
+import struct
 
 import pytest
 
-from merlin.compile.c_bf16_linear import POLICY, emit_c
-from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType
+from merlin.compile.c_bf16_linear import POLICY, SOURCE_POLICY, emit_c
+from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType, pointwise_identity_maps
 
 
 def request(k):
@@ -25,8 +26,9 @@ def request(k):
                          (("a", "external"), ("b", "external"), ("seed", "external")), "synthetic")
 
 
-def compile_c(directory, k):
-    record, files = emit_c(request(k), "dot")
+def compile_c(directory, k, *, policy=POLICY, source=None):
+    source = source or request(k)
+    record, files = emit_c(source, "dot", policy=policy)
     for name, text in files.items():
         (directory / name).write_text(text)
     (directory / "mode.c").write_text("""#include <fenv.h>
@@ -34,8 +36,8 @@ int mode(int downward) { return fesetround(downward?FE_DOWNWARD:FE_TONEAREST); }
 """)
     # Passed tmp_path trees can be removed and their directory names reused.
     # The dynamic loader retains a path's first library, so bind it to shape.
-    library_path = directory / f"dot-{k}.so"
-    subprocess.run([shutil.which("cc"), "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+    library_path = directory / f"dot-{k}-{policy}-{source.digest()[:12]}.so"
+    subprocess.run(["nice", "-n", "10", shutil.which("cc"), "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
                     "-frounding-math", "-ffp-contract=off", "-shared", "-fPIC",
                     str(directory / "dot.c"), str(directory / "mode.c"), "-lm", "-o", str(library_path)],
                    check=True, capture_output=True)
@@ -106,3 +108,78 @@ def test_source_contract_rejects_reinterpretation():
     operand = replace(source.nodes[0], attrs=(("hidden_scale", 2),))
     with pytest.raises(ValueError, match="source types or effects"):
         emit_c(replace(source, nodes=(operand, *source.nodes[1:])), "dot")
+
+
+def widened_request(k):
+    source = request(k)
+    lhs, rhs, seed, out = source.nodes
+    raw_f32 = lambda shape: TensorType(shape, "f32", "raw-bit-pattern")
+    left = SemanticNode("left_f32", "bf16_to_f32", (lhs.id,), raw_f32(lhs.type.shape),
+                        (("numeric_semantics", "bf16-to-f32-exact-v1"),), index_maps=pointwise_identity_maps(2, 1))
+    right = replace(left, id="right_f32", inputs=(rhs.id,), type=raw_f32(rhs.type.shape))
+    seed = replace(seed, type=raw_f32(out.type.shape))
+    dot = replace(out, id="dot_f32", op="source_f32_matmul_unqualified", inputs=(left.id, right.id, seed.id),
+                  type=seed.type, attrs=(("numeric_semantics", "source-f32-mul-add-unqualified-v1"),
+                                         ("reduction_order", "unresolved")))
+    result = SemanticNode("out", "f32_to_bf16", (dot.id,), out.type,
+                          (("numeric_semantics", "f32-to-bf16-rne-v1"),), index_maps=pointwise_identity_maps(2, 1))
+    return replace(source, nodes=(lhs, rhs, seed, left, right, dot, result))
+
+
+@pytest.mark.parametrize("widened", [False, True])
+@pytest.mark.parametrize("a,b,expected", [
+    ([0x3f81, 0x3f80], [0x3fc0, 0xbfc0], 0x3c40),  # BF16-rounded products would give 0x3c80.
+    ([0x3f80] * 4, [0x4b80, 0x3f80, 0xcb80, 0xbf80], 0xbf80),  # Ascending K, not a tree.
+    ([0x3f80] * 33, [0x3f80] + [0] * 31 + [0x3c40], 0x3f82),  # Single final RNE, no tile chop.
+    ([1], [0x3fc0], 2),  # Subnormal final BF16 RNE, including tie-to-even.
+    ([1], [1], 0),  # Binary32 product underflow follows source arithmetic.
+    ([0x8000], [0x3f80], 0),
+])
+def test_source_f32_accumulation_preserves_products_and_order(tmp_path, widened, a, b, expected):
+    source = widened_request(len(a)) if widened else request(len(a))
+    record, library = compile_c(tmp_path, len(a), policy=SOURCE_POLICY, source=source)
+    arrays = [memory(a), memory(b), memory([0, 0] if widened else [0])]
+    output = memory([0xdead])
+    before = [value.raw for value in arrays]
+    assert call(library, arrays, output) == 0
+    assert output.raw == memory([expected]).raw
+    assert [value.raw for value in arrays] == before
+    assert record["numeric_semantics"] == SOURCE_POLICY
+    assert record["source_request_digest"] == source.digest()
+    assert record["inputs"] == ["a", "b", "seed"]
+    assert record["outputs"] == ["out"]
+
+
+@pytest.mark.parametrize("k", [1, 31, 32, 33, 65])
+def test_source_f32_accumulation_ordinary_matrix_and_tails(tmp_path, k):
+    source = request(k)
+    a, b, seed, out = source.nodes
+    source = replace(source, nodes=(replace(a, type=replace(a.type, shape=(2, k))),
+                                    replace(b, type=replace(b.type, shape=(k, 3))),
+                                    replace(seed, type=replace(seed.type, shape=(2, 3))),
+                                    replace(out, type=replace(out.type, shape=(2, 3)))))
+    _, library = compile_c(tmp_path, k, policy=SOURCE_POLICY, source=source)
+    arrays = [memory([0x3f80] * k + [0x4000] * k), memory([0x3f80, 0x4000, 0xbf80] * k), memory([0] * 6)]
+    output = memory([0xdead] * 6)
+    def bf16(value):
+        bits = struct.unpack("<I", struct.pack("<f", value))[0]
+        return (bits + 0x7fff + ((bits >> 16) & 1)) >> 16
+    expected = [bf16(value) for value in [k, 2*k, -k, 2*k, 4*k, -2*k]]
+    assert call(library, arrays, output) == 0
+    assert output.raw == memory(expected).raw
+
+
+def test_widened_source_seed_and_policy_refusals(tmp_path):
+    source = widened_request(1)
+    _, library = compile_c(tmp_path, 1, policy=SOURCE_POLICY, source=source)
+    for words in ([0, 0x8000], [1, 0], [0, 1]):
+        output = memory([0xdead])
+        assert call(library, [memory([0x3f80]), memory([0x3f80]), memory(words)], output) == -2
+        assert output.raw == memory([0xdead]).raw
+    with pytest.raises(ValueError, match="dense logical"):
+        emit_c(source, "dot")
+    with pytest.raises(ValueError, match="unknown.*policy"):
+        emit_c(request(1), "dot", policy="unspecified")
+    changed_cast = replace(source.nodes[3], attrs=(("numeric_semantics", "other"),))
+    with pytest.raises(ValueError, match="conversion"):
+        emit_c(replace(source, nodes=(*source.nodes[:3], changed_cast, *source.nodes[4:])), "dot", policy=SOURCE_POLICY)
