@@ -402,16 +402,6 @@ def _capture_file(capture: Path, name: str) -> tuple[Path, bool] | None:
     return path, True
 
 
-def _bound_reference(capture: Path, name: str):
-    """A ``.npy`` capture file the capture's own receipt binds by digest; ``None`` when absent or unbound."""
-    import numpy as np
-
-    found = _capture_file(capture, name)
-    if found is None or not found[1]:
-        return None
-    return np.load(found[0], allow_pickle=False)
-
-
 INTEGER_REFERENCE_SCHEMA = "merlin.capture.integer_reference.v1"
 _ABI_DTYPES = {"f32": "float32", "f64": "float64", "f16": "float16", "i64": "int64", "i32": "int32", "i8": "int8"}
 

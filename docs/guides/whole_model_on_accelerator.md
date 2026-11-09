@@ -3,9 +3,21 @@ title: Compiling a whole model onto an accelerator
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-09
+last_verified: 2026-11-09
 related: [compilation_strategies, targetgen, adding_a_target, phase0_phase1_setup, firesim]
-code_refs: [src/merlin/compile_cli.py, src/merlin/compile/command.py, src/merlin/compile/baremetal_model.py, src/merlin/compile/model_execution_inputs.py, src/merlin/llvmlower/group_offload.py, src/merlin/llvmlower/device_build.py, src/merlin/targetgen/coverage_certificate.py, src/merlin/targetgen/native_model_execution.py, src/merlin_experiments/phase1/feedback/private_full_model_execution.py]
+code_refs:
+  - src/merlin/compile_cli.py
+  - src/merlin/compile/command.py
+  - src/merlin/model.py
+  - src/merlin/runtime/modelinputs.py
+  - src/merlin/llvmlower/group_offload.py
+  - src/merlin/llvmlower/device_build.py
+  - src/merlin/targetgen/coverage_certificate.py
+  - src/merlin/targetgen/native_model_execution.py
+  - src/merlin_experiments/phase1/feedback/private_full_model_execution.py
+  - src/merlin/api.py
+  - src/merlin/service_cli.py
+  - src/merlin/compiler/pipeline.py
 ---
 
 # Compiling a whole model onto an accelerator
@@ -184,7 +196,7 @@ it selects no new quantization recipe. Keep a paired full-output control and
 measure the realized model before claiming a performance gain.
 
 A candidate device route must be an explicit input to the Python
-`merlin.compile.baremetal_model.compile_saved_model` API via `device=DeviceRouting(...)`. Derive the
+`merlin.model.compile_saved_model` API via `device=DeviceRouting(...)`. Derive the
 routing from a placement and the saved capture (for example, `routing_for_placement`), with a selected
 device package and declared granularity; do not manufacture `select=lambda shape: True` to make a
 coverage number. The build records a device sidecar, but labels it
@@ -246,3 +258,10 @@ not automatically execute norms or elementwise work. State which regions ran on 
 were declined, and what numerical and RTL tier actually measured them. See
 [simulator selection](simulator_selection.md) and [FireSim execution](firesim.md)
 for the distinct execution and timing scopes.
+
+This guide covers the retained saved-model workflow. The common public
+`merlin.api.compile` and `merlin compile` / `merlin-compile --backend` front door
+also accept explicit backend providers and typed system/platform/hart options.
+`compiler.pipeline.PlannedCompiler` consumes an admitted selected plan. That
+service supports declared non-LLVM artifacts; its existence does not remove
+the saved-model route limits or supply a target execution qualification.

@@ -674,6 +674,13 @@ def attach_common_substrate(
                 if path != _logical("merlin.verify.lean_contract")
                 and not (version in _SHARED_SUBSTRATES and path in {_logical(module) for module in public})
             )
+    if version == COMMON_SUBSTRATE_V19:
+        if "lean_proof_authoring" in tools:
+            cli = str(_source(python_source_root, "merlin.verification.lean_cli"))
+            bundle["allowed"].append({"path": cli, "mode": "ro", "note": "existing Lean author CLI implementation"})
+        else:
+            cli = str(python_source_root / "merlin/verification/lean_cli.py")
+            bundle["denied"].append({"path": cli, "reason": "interactive Lean proof development requires EL6"})
     if version in _SHARED_SUBSTRATES:
         _withhold_author_packages(bundle, python_source_root, _SHARED_SUBSTRATES[version])
     from .tool_profile_toolchain import attach_selected_toolchain
@@ -683,7 +690,10 @@ def attach_common_substrate(
         from .tool_profile_toolchain import require_packaged_mathematics
 
         require_packaged_mathematics(
-            lean_toolchain_manifest, python_source_root, ("Foundation", "ResourceGeometry", "StateEffects")
+            lean_toolchain_manifest,
+            python_source_root,
+            ("Foundation", "ResourceGeometry", "StateEffects"),
+            mathematics_directory=python_source_root / "merlin" / Path(substrate_data(version)[0]).parent,
         )
     profile = {key: value for key, value in profile.items() if key != "sha256"}
     profile["lean_toolchain"] = toolchain

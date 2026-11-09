@@ -3,7 +3,7 @@ title: Independent component feedback authority
 kind: design
 status: current
 owner: experiments
-last_verified: 2026-10-09
+last_verified: 2026-11-09
 related: [component_phase2_workflow, component_final_evaluation]
 code_refs:
   - src/merlin_experiments/phase2/component_baseline.py
@@ -25,6 +25,8 @@ code_refs:
   - src/merlin_experiments/phase1/component_tool_readiness.py
   - src/merlin_experiments/phase2/component_launch.py
   - build_tools/upstreams/native/circt-state-dependencies.patch
+  - src/merlin_experiments/phase2/supervised_feedback.py
+  - src/merlin_experiments/phase2/feedback_guardian.py
 ---
 
 # Independent component feedback authority
@@ -316,13 +318,18 @@ The direct analytical thread coordinator forwards each remaining timeout and rej
 result after the development deadline. It cannot forcibly interrupt a callback
 that ignores that timeout, and executor shutdown waits for active threads.
 The wrapper therefore supplies cooperative budgets and late-result refusal;
-normal component workflow additionally forks callbacks through `bounded_feedback`.
-That worker wrapper attempts process-tree cleanup with descendant snapshots.
-It does not establish persistent descendant ownership, an independently retained
-cleanup receipt or parent-owned lease release. A child that reparents before a
-snapshot and parent-side result decoding require separate supervision; the direct
-thread coordinator does not prove those bounds. A complete hard deadline needs
+normal component workflow additionally runs callbacks through `bounded_feedback`
+and its dedicated invocation guardian. That guardian owns and reaps local
+descendants, including adopted double forks, and the parent retains ownership
+and leases when cleanup is unresolved. Bounded result transfer and late-result
+refusal remain separate from parent OS calls/decoding, which are not hard
+interruptible deadlines; delegated non-descendant work stays UNKNOWN. A complete hard deadline needs
 an admitted process/lease lifecycle with bounded result transfer and explicit
 cleanup and release evidence. Late or incomplete results cannot become authority.
 The current context has no qualified physical measurement roles. This limitation
 does not relax their controls or turn a stale result into qualified feedback.
+
+Current role issuance lives in `component_runtime_authority.py`, with separate
+functional and measurement qualifiers. Compiler providers do not issue those
+roles. Dated clean-engine controls above remain observations of their original
+selected source/tool bytes, not qualification of a newer engine or target.

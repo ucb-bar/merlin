@@ -3,9 +3,17 @@ title: Host and device compilation
 kind: reference
 status: current
 owner: runtime
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [runtime, zephyr, adding_a_target, experiment_abi]
-code_refs: [src/merlin/targetgen/contract/build_recipe.py, src/merlin/targetgen/contract/build_service.py, src/merlin/targetgen/contract/compile.py, src/merlin/runtime/backends/base.py, merlin/runtime/c]
+code_refs:
+  - src/merlin/compiler/build/application.py
+  - src/merlin/compiler/build/control.py
+  - src/merlin/compiler/lower/c/dispatch.py
+  - src/merlin/runtime/program.py
+  - src/merlin/targetgen/contract/build_recipe.py
+  - src/merlin/targetgen/contract/build_service.py
+  - src/merlin/targetgen/contract/compile.py
+  - src/merlin/runtime/backends/base.py
 ---
 
 # Host and device compilation
@@ -38,14 +46,22 @@ they do not substitute the logical ABI's default symbol or infer a candidate nam
 Runtime input tensors are passed at invocation; expected outputs and grading
 data belong only to the evaluator.
 
-This diagram is the intended whole-model boundary, not a claim that all
-adapters are connected today. `MerlinProgram` carries a target-independent
-dispatch and memory plan, but its C replay consumer is absent and the builder
-has no production caller outside tests. Atlas's current `execution_plan.json`
-describes one diagnostic kernel, not a mixed host/device model invocation.
-The existing whole-model Zephyr route compiles RVV host work; it does not yet
-load and schedule Atlas device programs. A combined artifact builder and
-compiled mixed-route replay still need implementation and qualification.
+The shared serial C path is implemented in
+`compiler/lower/c/dispatch.py`: `emit_program_c` consumes a checked
+`MerlinProgram`, bounded arena requirements and one explicit `DispatchCall` per
+node. `compiler/build/control.py` binds selected compiled region receipts;
+`compiler/build/application.py` assembles semantic applications through explicit
+region adapters. These are actual callers of `runtime.program.build_program`.
+Every wrapper must complete synchronously before returning, with explicit
+placement, buffer alignment, context and workspace requirements. Unknown calls,
+uncovered nodes or incompatible storage refuse.
+
+This path does not by itself implement a platform launcher, asynchronous queues
+or an arbitrary heterogeneous model. Each selected backend must supply its real
+region implementation and artifact/ABI binding; the selected platform must supply
+startup, memory visibility and completion. A device binary can be a separate
+asset rather than LLVM. Atlas, Gemmini and RVV require their own admitted adapter
+and execution evidence; a shared C driver is not their hardware qualification.
 
 ## Shared build boundary
 
@@ -76,9 +92,10 @@ certificates, interval endpoints, radix packing, prepared softmax spans) and the
 `templates/` the attention lowering instantiates; lowering-generated host code
 includes them, and none of them is a device runtime or enables an optimization by
 itself (see its `AGENT.md`). The tracked
-`merlin_hal.h` describes a broader replay seam, but its documented
-`merlin_program.c` consumer does not exist, so that header is not yet a
-working universal accelerator dispatcher.
+`merlin_hal.h` describes a historical broader replay seam. Its referenced
+`merlin_program.c` is not the current consumer: the implemented serial C
+dispatcher is `compiler/lower/c/dispatch.py` and uses explicit compiled wrappers.
+That implementation is not a universal platform runtime.
 
 Target packages own device-specific code. A RoCC target can link its custom
 instructions into the host ELF: the host core issues the instructions, and

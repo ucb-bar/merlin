@@ -3,9 +3,10 @@ title: Checked alignment for exact paired readouts
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: [architecture]
-code_refs: [src/merlin/llvmlower/enclosed_readout.py, merlin/tests/ir/test_enclosed_readout_alignment.py]
+code_refs:
+  - src/merlin/llvmlower/enclosed_readout.py
 ---
 
 # Checked alignment for exact paired readouts
@@ -30,3 +31,8 @@ option; target instruction/resource selection remains provider-owned. Default
 emission is byte identical. An actual target object and complete producer,
 readout, fence and decoder measurement determine profitability; an instruction
 count reduction alone supplies no hardware or whole-model timing claim.
+
+`enclosed_readout.prove` constructs the complete paired-observation certificate;
+`emit_pair_scan` consumes it and emits the selected copy/alignment policy.
+The emitted decoder does not establish that a physical device implements those
+readout functions or that its commands have completed.

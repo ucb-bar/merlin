@@ -741,28 +741,6 @@ def _stop_sim_process(process) -> None:
         process.wait()
 
 
-def _cancel_running_job(ch: Path, jid: str, job: dict, reason: str) -> None:
-    """Publish cancellation and release every resource held by an obsolete job."""
-    _stop_sim_process(job["proc"])
-    timing = dict(
-        job["timing"],
-        finished_at_unix=time.time(),
-        state="cancelled",
-        worker_runtime_s=max(0.0, time.monotonic() - job["started_monotonic"]),
-        returncode=job["proc"].returncode,
-    )
-    (ch / f"simtiming_{jid}.json").write_text(json.dumps(timing, indent=2))
-    response = {"sim": job["sim"], "state": "cancelled", "all_pass": False, "error": reason}
-    for recipient in (jid, *job.get("aliases", [])):
-        (ch / f"simresp_{recipient}.json").write_text(json.dumps(response, indent=2))
-        (ch / f"simerr_{recipient}").write_text("cancelled")
-    if job.get("log"):
-        job["log"].close()
-    _release_veril_workers(job["slots"])
-    if job.get("snapshot_root"):
-        shutil.rmtree(job["snapshot_root"], ignore_errors=True)
-
-
 def _per_capsule_timeout(
     requested: int, *, context: InvocationContext, timing_file: Path | None = None
 ) -> tuple[int, str]:

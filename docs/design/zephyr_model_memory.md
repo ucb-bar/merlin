@@ -3,24 +3,26 @@ title: "Zephyr model memory and image sizing"
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-16
+last_verified: 2026-11-09
 related: [runtime]
-code_refs: [src/merlin/runtime/backends/zephyr_model.py]
+code_refs: [src/merlin/compiler/build/zephyr/memory.py, src/merlin/compiler/build/zephyr/config.py, src/merlin/runtime/backends/zephyr_model.py]
 ---
 
 # Zephyr model memory and image sizing
 
-These notes retain the sizing and image construction rationale of the named
-functions in `src/merlin/runtime/backends/zephyr_model.py`.
+`compiler/build/zephyr/memory.py` owns `ram_for_weights`, `memory_plan` and
+`require_external_arena`; `compiler/build/zephyr/config.py` owns image
+configuration. `runtime/backends/zephyr_model.py:build_app` consumes those
+results while constructing the image.
 
-## `_ram_for_weights`
+## `ram_for_weights`
 
 RAM-region size to hold the weights blob (linked into .data) plus an activation
 arena (the leftover, claimed by ARENA_SIZE=-1). Headroom scales with the model
-(30% of weights + 128 MB) rather than a fat fixed floor, so small models stay at the
-256 MB default — important on FireSim, where the whole-model image only boots reliably
-at the stock `ram0` size and an over-large region wedges the boot (no uartlog). Models
-that genuinely need more grow the region; rounded up to 16 MB.
+(30% of weights + 128 MiB), and the result is rounded up to 16 MiB. The minimum
+is the selected board's `default_ram_bytes`, supplied by the caller; 256 MiB is
+not a universal compiler default. Earlier FireSim measurements motivated keeping
+a small image at its port's default region rather than enlarging every image.
 
 TWO ESTIMATES OF THE SAME QUANTITY, and the measured one wins.
 
@@ -50,6 +52,16 @@ than literal is not in the measured total (:func:`allocation_bytes` reports how 
 A shortfall is not silent, which is what makes this safe to tighten: the image links a malloc guard
 that prints ``FAIL alloc bytes=<n> op=<id>`` and terminates in the protocol, so a returned log names
 the allocation that did not fit.
+
+## Selected board layout
+
+`memory_plan` checks the selected board's default region, link limit and physical
+DRAM capacity before choosing linked or external weights. An external layout
+requires the board's explicit low-memory region and tail reservation; exceeding
+the link limit cannot invent another SoC's map. `require_external_arena` checks
+the actual linked ELF segments leave enough low RAM for the activation demand.
+An override must fit the weights and declared board limits. These are image
+construction checks, not evidence that Zephyr or the selected hardware ran.
 
 ## `build_app`
 

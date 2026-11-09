@@ -3,7 +3,7 @@ title: Check complete public composition and parameter storage before building
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-19
+last_verified: 2026-11-09
 related: [phase2_source_roles, phase2_development_sources, phase2_test_justification]
 code_refs:
   - src/merlin_experiments/phase0/development_composition_preflight.py
@@ -53,3 +53,8 @@ Complete reduced-depth public models retain their nonlinear operations and state
 This preflight cannot supply missing selected RMSNorm, RoPE, softmax, floating PV,
 activation or whole-graph numerical contracts. Integer QK/PV chains are useful
 connected controls, but do not establish complete softmax or FlashAttention.
+
+`development_composition_preflight.check` is read-only. It delegates source
+plan checks to `oot_starterkit.plan` and full pointer storage planning to
+`bundle_pack.plan`; none of these operations invokes the candidate or supplies
+missing nonlinear/whole-model numerical semantics.

@@ -3,7 +3,7 @@ title: Quantized host optimizations
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [architecture, lowering_pipeline]
 code_refs: [src/merlin/llvmlower/requantization.py, src/merlin/llvmlower/integer_readout.py, src/merlin/llvmlower/guarded_quantized_mean.py]
 ---
@@ -14,6 +14,14 @@ These explicit compiler utilities specialize numeric contracts from the current 
 independently of the accelerator or workload. They do not select behavior from model names,
 captured operation IDs, golden outputs or calibration samples. Target providers retain
 instruction selection, hardware legality, device schedules and ABI glue.
+
+The implementation and proof entrypoints remain in
+`llvmlower/requantization.py` (`prove_scale`, `prove_scale_bound`,
+`synthesize_store_scale`, `synthesize_bias`), `integer_readout.py`
+(`derive`, `emit_readout`) and `guarded_quantized_mean.py`
+(`derive`, `emit_kernel`, `emit_packed_nhwc_kernel`). A proof or emitter call
+uses its explicit numerical domain; it does not select a backend or admit an
+approximation on behalf of the application.
 
 ## Ordered requantization
 
@@ -50,5 +58,6 @@ Core tests exhaust independent small accumulator domains, solve and refuse scale
 check bias overflow/inexact bias, compare compiled readout with ordered C float arithmetic at
 every transition and nearby value, and exhaust all65,536 two-element mean inputs. Packed and
 contiguous tests include adversarial cancellation order, count128 lane bounds, multiple
-batches, unaligned input, output guards and certificate tampering. These establish the stated
-numeric contracts; model performance remains a separately measured result.
+batches, unaligned input, output guards and certificate tampering. These regressions protect the stated
+numeric contracts; they do not report a new target execution or model performance
+measurement.

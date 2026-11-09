@@ -3,13 +3,12 @@ title: Conditional source value cones
 kind: design
 status: current
 owner: merlin-core
-last_verified: 2026-10-10
+last_verified: 2026-11-09
 related: [docs/design/independent_rtl_intake.md]
 code_refs:
   - src/merlin/targetgen/rtl/hw_conditional_value_cones.py
   - src/merlin/targetgen/rtl/hw_value_bindings.py
   - src/merlin/targetgen/rtl/hw_combinational.py
-  - merlin/tests/targetgen/test_hw_conditional_value_cones.py
 ---
 
 # Conditional source value cones
@@ -72,3 +71,8 @@ collision validity, event acceptance, completion and effects need their own
 premises. Whole-domain, source/SDK, runtime, physical, resource and admission
 claims remain unknown. Existing structural and closed-module readers retain
 their original meaning and frozen records.
+
+`prepare_conditional_value_cones` is the source-binding entrypoint. The returned
+`PreparedConditionalValueCones.evaluate` delegates only the selected known-bit
+expressions to the existing evaluator; `record` returns fresh metadata. Neither
+operation issues hardware execution or temporal admission.

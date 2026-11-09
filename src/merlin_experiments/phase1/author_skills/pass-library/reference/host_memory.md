@@ -15,4 +15,4 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Arena capacity is not runtime peak or cross-layer reuse
 - **evidence to request**: Pre/post LLVM hashes and frame/arena bytes
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/ir/test_stack_arena.py`: `out, report = bind_stack_arena(text, entry_symbol="k")`
+- **test that calls it**: none found

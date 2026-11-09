@@ -3,15 +3,20 @@ title: Bounded convolution operand reuse
 kind: reference
 status: current
 owner: compile
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [shared_compiler_passes, ../guides/shared_pass_phase2]
 code_refs:
-  - src/merlin/compile/scheduling/block_schedule.py
-  - merlin/tests/infra/test_tiled_convolution_schedule.py
-  - merlin/tests/infra/test_shared_scheduling_export.py
+  - src/merlin/compiler/schedule/blocks.py
+  - src/merlin/compiler/schedule/convolution.py
 ---
 
 # Bounded convolution operand reuse
+
+`compiler/schedule/convolution.py:schedule_tiled_convolution` owns panel
+enumeration. `compiler/schedule/blocks.py` is the public block-scheduling surface;
+common effect records, execution and residency checks have their own sibling
+owners. The convolution routine supplies no target instruction or completion
+implementation.
 
 `schedule_tiled_convolution(conv, geometry, knobs)` schedules the raw integer
 convolution core when complete operands or all live outputs do not fit on chip.
@@ -42,7 +47,7 @@ verification policies, not target capacity or executable-size allowances.
 
 ## Backend consumption through Phase 2
 
-The public leaf is `merlin.compile.scheduling.block_schedule`. An updated
+The public leaf is `merlin.compiler.schedule.block_schedule`. An updated
 `export_shared_scheduling` release includes these APIs byte for byte without
 adding imports to the public-module roster. Exporting code does not select it
 for a frozen experiment. Keep the original Phase 1 package and library grants

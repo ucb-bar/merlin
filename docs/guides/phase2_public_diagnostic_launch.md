@@ -3,7 +3,7 @@ title: Launch a public diagnostic retained queue
 kind: guide
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [phase2_component_search, spike_timing]
 code_refs:
   - src/merlin_experiments/phase2/public_diagnostic_launch.py
@@ -372,3 +372,10 @@ or convergence claim, and does not enable formal search. It remains disabled by
 default and cannot be selected by a saved owner verdict. A real completed queued
 control and distinct candidate are still required to demonstrate this path on a
 target; host fixture tests establish only its decision and refusal behavior.
+
+Before constructing native owners, an embedding operator can call
+`public_diagnostic_launch.require_current_native_contract(target, expected_pin)`
+to check the exact already selected contract path and bytes. This read-only
+preflight selects no replacement and issues no runtime owner. Original queued
+source/output checks, native observation domains and cleanup evidence are still
+required; `--check-plan` cannot supply them.

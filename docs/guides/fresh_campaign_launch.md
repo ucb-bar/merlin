@@ -3,7 +3,7 @@ title: Launch a fresh open-compiler campaign from a reviewed spec
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-28
+last_verified: 2026-11-09
 related: [artifact_evaluation, frozen-execution-source]
 code_refs:
   - examples/gemmini/phase1/launch/fresh_campaign.py
@@ -311,3 +311,10 @@ guidance are identical to the recorded ones. Three things differ on purpose:
 - `full_compiler_manifest_sha256` records the manifest the argv pins. fresh2
   carried v8's stale value.
 - A new `launch_spec` field pins the spec file and its sha256.
+
+The named Fresh2/Fresh7 presets above preserve particular recorded campaign
+selections. They are reproduction inputs, rather than a universal default for
+new hardware, source layouts or SDK releases. A prospective run must inspect
+its actual prepared source/profile manifest, selected corpus and launch plan;
+matching a preset name does not make a newer toolchain or source grant
+equivalent to the archived treatment.

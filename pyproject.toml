@@ -25,7 +25,12 @@ Repository = "https://github.com/ucb-bar/merlin"
 Issues = "https://github.com/ucb-bar/merlin/issues"
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-timeout", "pytest-xdist", "pyyaml", "pydantic", "rich", "build", "setuptools", "ruff>=0.16,<0.17"]
+dev = [
+    "pytest", "pytest-timeout", "pytest-xdist", "pyyaml", "pydantic", "rich",
+    "build", "setuptools", "ruff>=0.16,<0.17",
+    # CPU-only captured-weight fixtures use the public serialization format.
+    "safetensors",
+]
 xdsl = ["xdsl>=0.68"]
 # Compiler-pass verification (docs/design/compiler_verification.md): the static lit/FileCheck
 # layer needs only the in-tree LLVM build, but the formal layer solves with z3. z3 previously
@@ -243,6 +248,9 @@ merlin = [
 
 [tool.pytest.ini_options]
 testpaths = ["merlin/tests"]
+# Developer gates are checkout-local modules; collection must not depend on
+# another test having added the repository root to sys.path first.
+pythonpath = ["."]
 markers = [
     "slow: long-running tests (heavy builds/sims); deselect with -m 'not slow'",
     "integration: end-to-end tests spanning multiple subsystems or external tools",

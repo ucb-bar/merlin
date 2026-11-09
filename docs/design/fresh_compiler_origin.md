@@ -3,7 +3,7 @@ title: "Fresh compiler origin and Phase 2 lineage"
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-09
+last_verified: 2026-11-09
 related: [component_compiler_convergence, component_phase2_workflow, component_final_evaluation]
 code_refs:
   - src/merlin_experiments/phase1/component_origin.py
@@ -13,8 +13,7 @@ code_refs:
   - src/merlin_experiments/phase1/component_qualification_evidence.py
   - src/merlin_experiments/phase2/component_runtime_support.py
   - src/merlin_experiments/phase2/component_runtime_controls.py
-  - packages/merlin-experiments/tests/test_component_origin.py
-  - packages/merlin-experiments/tests/test_fresh_phase1_generation_budget.py
+  - src/merlin_experiments/phase1/component_tool_readiness.py
 ---
 
 # Fresh compiler origin
@@ -48,8 +47,8 @@ resigning supplied costs or removing budget fields cannot replace source replay.
 No budget limit is inferred from a workload or winning implementation.
 
 This is logical reference-generation admission. It does not establish compiler
-execution time limits, peak process heap, a large compile-only qualification
-mode, hardware correctness or timing. Those still require their separate gates.
+execution time limits, peak process heap, large source-only static obligations,
+hardware correctness or timing. Those still require their separate gates.
 
 Shared translation, host compilation, linking and functional simulation tools
 are probed before authoring. These probes exercise independent tool inputs;
@@ -147,3 +146,9 @@ verifier explicitly refuses those missing mechanisms. The fixed fourteen-case
 runtime qualifier therefore remains unavailable until independent producers
 establish every required mechanism. A numerical pass cannot issue that runtime
 authority, start a fresh authoring session, or enable Phase 2 feedback by itself.
+
+`component_origin.py` owns the observed fresh scaffold-to-compiler lifecycle;
+`component_lineage.py` owns descendants. `component_tool_readiness.py` probes
+the admitted author tool paths without a model request. Independent runtime
+qualification, source-only static checks and numerical evaluation remain
+separate prerequisites and evidence owners.

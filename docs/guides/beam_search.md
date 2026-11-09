@@ -15,7 +15,6 @@ code_refs:
   - src/merlin/kernels/action_catalog.py
   - src/merlin/targetgen/publish.py
   - build_tools/scripts/rvv_chia_beam.py
-  - merlin/tests/rvv/test_rvv_beam.py
 ---
 
 # RVV beam search

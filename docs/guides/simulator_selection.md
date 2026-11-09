@@ -3,9 +3,16 @@ title: Selecting and checking a simulator
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-10-10
+last_verified: 2026-11-09
 related: [phase0_specification, target_resolution, whole_model_on_accelerator]
-code_refs: [src/merlin/targetgen/gsim_emulator.py, src/merlin/targetgen/program_engine_policy.py, src/merlin/targetgen/program_oracle.py, src/merlin/targetgen/mem_perturb.py, src/merlin/targetgen/load_order.py]
+code_refs:
+  - src/merlin/targetgen/gsim_emulator.py
+  - src/merlin/targetgen/program_engine_policy.py
+  - src/merlin/targetgen/program_oracle.py
+  - src/merlin/targetgen/mem_perturb.py
+  - src/merlin/targetgen/load_order.py
+  - src/merlin/runtime/backends/base.py
+  - examples/gemmini/support/contracts/target_contract.yaml
 ---
 
 # Selecting and checking a simulator
@@ -30,9 +37,11 @@ provider's documented toolchain and harness. In particular, a generated
 parameter header from another configuration can compile successfully and
 produce incorrect results on the selected hardware.
 
-Gemmini's trusted support is canonical in `examples/gemmini/support`; no separate support branch
-checkout is needed. Its historical external origin is not the selected provider or a compiler
-candidate. The gSIM emitter and native model are separate dependencies; see the
+Gemmini's reviewed in-repo support declaration in `examples/gemmini/support`
+names the generic core runtime and legality readers. It does not ship the
+handwritten compiler/support implementation. Independently selected external
+execution providers require their own review; the presence of a compiler
+checkout does not select one. The gSIM emitter and native model are separate dependencies; see the
 [gSIM worker setup](gsim_worker_setup.md) when provisioning a new worker.
 
 Program-driven engines consume assembled instruction words and memory regions.
@@ -213,3 +222,8 @@ The result carries an `order_check` record whose `status` is `static_clear`, `or
 sample the schedule space, they do not cover it. `order_sensitive` is a statement about the program
 under the ordering freedom AXI4 grants, not a claim that a particular chip reorders those requests.
 
+Engine discovery is read-only. `program_engine_policy` resolves program wrappers;
+`gsim_emulator` resolves installed artifacts and validates their receipts. The
+contract-selected generic RoCC backend is a separate ELF invocation path.
+Neither lookup builds hardware, starts FireSim infrastructure, or certifies a
+selected machine; operators provision those environments independently.

@@ -3,7 +3,7 @@ title: "Independent linked instruction policy"
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [fresh_compiler_origin, component_compiler_convergence]
 code_refs:
   - src/merlin/targetgen/contract/elf_admission.py
@@ -11,7 +11,6 @@ code_refs:
   - src/merlin_experiments/phase2/component_instruction_audit.py
   - src/merlin_experiments/phase2/component_runtime_instruction_control.py
   - src/merlin_experiments/phase2/component_runtime_fixture.py
-  - packages/merlin-experiments/tests/test_component_instruction_audit.py
 ---
 
 # Independent linked instruction policy
@@ -66,3 +65,9 @@ static binaries are not executed. An optional explicitly selected diagnostic
 service owner additionally runs the prepared positive through the stock normal
 pipeline with complete output decoding, then proves that the linked negative
 never reaches execution. The positive's physical stage witness remains refused.
+
+`component_instruction_policy.py` binds the protected symbol selection;
+`component_instruction_audit.py` inspects the actual linked sections using the
+selected native accessors. The shared `contract/elf_admission.py` interface
+installs that independent check before execution rather than allowing candidate
+code to select its own instruction acceptance.

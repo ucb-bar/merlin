@@ -3,9 +3,12 @@ title: "Private softmax producer spans"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [ordered_fma_certificates, quantized_host_optimizations]
-code_refs: [src/merlin/llvmlower, merlin/runtime/c]
+code_refs:
+  - src/merlin/llvmlower/source_attention_frontier.py
+  - src/merlin/llvmlower/prepared_softmax_spans.py
+  - merlin/runtime/c/prepared_softmax_spans.h
 ---
 
 # Private softmax producer spans
@@ -45,3 +48,8 @@ RNE, nontrapping arithmetic and unobserved exception flags remain required.
 The option saves a redundant scan only. It does not claim a hardware or whole
 model speedup. Complete allocation-aware group cost and original model accuracy
 qualification are separate release gates.
+
+`prepared_softmax_spans.prepare_softmax_produced_spans` validates and rewrites
+the owned producer region. The runtime header with the same name records and
+consumes tile coverage. Neither layer accepts arbitrary caller-supplied intervals
+as completed producer evidence.

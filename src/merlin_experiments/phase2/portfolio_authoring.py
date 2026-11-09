@@ -17,6 +17,7 @@ from merlin.benchharness import hash_tree
 from merlin.common.digest import sha256_bytes
 from merlin.perf.agent_guidance import inspect_compiler_package
 from merlin.perf.execution_policy import GLOBAL_AUTHORING_ROUND_MAX_SECONDS, ITERATION_MAX_SECONDS
+from merlin.targetgen.contract.schemas import load_schema
 from merlin.targetgen.target_experiment import TargetExperiment
 
 from . import agent_view as AV
@@ -719,9 +720,9 @@ class PortfolioAuthoring:
                     candidate,
                     contract=experiment.inputs.contract_root,
                 ).to_dict(),
-                "optimization_surfaces_schema": P2_CONTRACTS.mapping_file(
-                    experiment.inputs.contract_root / "schemas/manifest.schema.json"
-                )["properties"]["optimization_surfaces"],
+                "optimization_surfaces_schema": load_schema("manifest", contract=experiment.inputs.contract_root)[
+                    "properties"
+                ]["optimization_surfaces"],
                 "candidate": str(candidate),
                 # ADVERTISED, not just sealed: each row carries whether this run can answer it.
                 "broker_actions": [action.advertised() for action in actions],

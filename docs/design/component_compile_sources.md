@@ -3,9 +3,14 @@ title: Independent source-only coverage rosters
 kind: design
 status: current
 owner: experiments
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [component_scale_generalization, component_execution_budget, component_graph_variants]
-code_refs: [src/merlin_experiments/phase0/component_compile_sources.py, src/merlin_experiments/phase0/component_compile_plan.py, src/merlin/targetgen/component_program.py, src/merlin/targetgen/contract/compile_only.py]
+code_refs:
+  - src/merlin_experiments/phase0/component_compile_sources.py
+  - src/merlin_experiments/phase0/component_compile_plan.py
+  - src/merlin/targetgen/component_program.py
+  - src/merlin/targetgen/contract/compile_only.py
+  - src/merlin_experiments/phase0/component_compile_graphs.py
 ---
 
 # Independent source-only coverage rosters
@@ -32,7 +37,7 @@ and saved JSON do not independently establish authority or historical origin.
 
 Each member declares its immutable name, cohort, separate `compile_only` or
 `static_refusal` expectation, reviewed operation owner, original dimensions and
-required static obligations. The current fixed original frontend supports
+required static obligations. The version-1 fixed original frontend supports
 positive rank-two integer copy and contraction sources. It admits explicit
 `integer_reference` bounded-exact or modular numerical semantics; values and
 numerical input domains are not chosen or proved by this path. Saturating,
@@ -95,3 +100,11 @@ legality, full output iteration/store coverage, and physical ownership and
 completion. Compilation, correctness, timing and whole-domain generalization
 stay separate. A finite source roster cannot guarantee arbitrary whole-model
 composition or numerical error behavior.
+
+Version 2 of the source-only plan additionally admits explicit
+`component_program` graph families. `component_compile_graphs.py` expands each
+selected family into its original paired representations, requires independently
+selected `matmul`, `copy` and `add` operation owners, and bounds node/output
+metadata before constructing topology. The resulting sources still establish
+no numerical, physical-reuse, ordering or performance claim. Version 1 retains
+its original primitive-only meaning.

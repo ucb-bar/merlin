@@ -3,7 +3,7 @@ title: Tracking experiments — the dashboard and the watch view
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-23
+last_verified: 2026-11-09
 related: [experiment_console, storage, reproducibility, artifact_evaluation, phase2_test_justification]
 code_refs:
   - src/merlin_experiments/tracking/console/discovery.py
@@ -42,11 +42,14 @@ code_refs:
   - src/merlin_experiments/cli.py
   - src/merlin/targetgen/target_index.py
   - merlin/contract/storage.yaml
+  - src/merlin_experiments/tracking/console/cli.py
+  - src/merlin_experiments/tracking/console/launch.py
 ---
 
 # Tracking experiments: the dashboard and the watch view
 
-Two read-only views of a run, built from the records the phase owners already write:
+Two views built from records the phase owners already write. They leave the
+input run untouched; dashboard generation writes its selected HTML artifact:
 
 ```bash
 merlin-experiment dashboard <run_dir>            # one self-contained HTML page for a run
@@ -433,3 +436,9 @@ nothing else. The live view adds nothing to the run:
 Measured on a synthetic Phase 1 run with a 200 MB event stream growing about 90 KB/s, refreshed every
 10 s and pinned to one CPU: catching up on the whole file took 1.7 s of CPU, steady state averaged
 about 0.3 % of one CPU, and RSS stayed at 61 MB.
+
+The installed tracking APIs come from `src/merlin_experiments/tracking/` in
+the current Merlin wheel. Console frontend code remains in the separate Go
+source tree described above. Both views consume producer records; missing
+execution, certification or timing evidence stays missing even when the page
+renders successfully.

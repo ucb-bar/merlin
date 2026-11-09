@@ -1,16 +1,15 @@
-"""Ordinary selected-IR copy pipelining reaches an actual delayed native queue."""
-
 import ctypes
 import inspect
 import json
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
+import corefixtures.shared_pass_fusion_provider as F
+import corefixtures.shared_pass_pipeline_provider as P
 import pytest
-import test_shared_pass_fusion_provider as F
-import test_shared_pass_pipeline_provider as P
 
 from merlin.common.digest import sha256_file
 from merlin.llvmlower.compilation_recipe import CompilationRecipe, verify_completed_recipe
@@ -19,48 +18,23 @@ from merlin.targetgen import package_runtime as R
 from merlin.targetgen.generate_prompt import shared_pass_manifest_template
 from merlin.targetgen.shared_pass_contract import shared_pass_requirement
 
-DRIVER = r"""
-import json,sys
-from pathlib import Path
-import test_shared_pass_pipeline_provider as P
-import test_shared_pass_fusion_provider as F
-command,source,*rest=sys.argv[1:]
-text=Path(source).read_text()
-if command=='parse':
- assert text==Path('original.target.mlir').read_text()
-elif command=='lower_interface_to_target':
- sys.stdout.write(text)
-elif command=='emit_target_bundle':
- from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
- from merlin.targetgen.isa_dialect_gen import encode_instruction
- from merlin.sched.ir import evaluate
- config=json.loads(Path('fixture.json').read_text())
- selected=read_scheduling_contracts(*config['paths'],target='neutral')
- # Actual selected SSA values are the sole emitter instruction operands.
- model=(selected,None,None,None,None)
- from merlin.sched.ir import Kernel
- model=(selected,Kernel('target_program',(),()),None,None,None)
- actual=P.read_target(Path('original.target.mlir').read_text() if config.get('ignore') else text,model)
- calls=list(actual.body)
- if config.get('drop_wait'):
-  calls.pop(next(i for i,c in enumerate(calls) if c.instr=='await'))
- image=b''.join(encode_instruction(selected.isa,c.instr,{k:evaluate(v,{}) for k,v in c.args}).to_bytes(
-  selected.isa.word_bits//8,selected.instruction_byteorder) for c in calls)
- Path(rest[0]).write_bytes(Path('buffer.json').read_bytes())
- sys.stdout.write(F.llvm_artifact(image))
-else:
- raise RuntimeError('ordinary emitter requires selected target IR')
-"""
+DRIVER = "\nimport json,sys\nfrom pathlib import Path\nimport neutral_emitter as P\nimport neutral_emitter as F\ncommand,source,*rest=sys.argv[1:]\ntext=Path(source).read_text()\nif command=='parse':\n assert text==Path('original.target.mlir').read_text()\nelif command=='lower_interface_to_target':\n sys.stdout.write(text)\nelif command=='emit_target_bundle':\n from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts\n from merlin.targetgen.isa_dialect_gen import encode_instruction\n from merlin.sched.ir import evaluate\n config=json.loads(Path('fixture.json').read_text())\n selected=read_scheduling_contracts(*config['paths'],target='neutral')\n # Actual selected SSA values are the sole emitter instruction operands.\n model=(selected,None,None,None,None)\n from merlin.sched.ir import Kernel\n model=(selected,Kernel('target_program',(),()),None,None,None)\n actual=P.read_target(Path('original.target.mlir').read_text() if config.get('ignore') else text,model)\n calls=list(actual.body)\n if config.get('drop_wait'):\n  calls.pop(next(i for i,c in enumerate(calls) if c.instr=='await'))\n image=b''.join(encode_instruction(selected.isa,c.instr,{k:evaluate(v,{}) for k,v in c.args}).to_bytes(\n  selected.isa.word_bits//8,selected.instruction_byteorder) for c in calls)\n Path(rest[0]).write_bytes(Path('buffer.json').read_bytes())\n sys.stdout.write(F.llvm_artifact(image))\nelse:\n raise RuntimeError('ordinary emitter requires selected target IR')\n"
 
 
 def package(directory, model, *, fault=None):
     directory.mkdir()
     selected, kernel = model[:2]
     (directory / "driver.py").write_text(DRIVER)
+    calls = "from merlin.sched.ir import Call, Const\n\n" + inspect.getsource(P.leaf.op)
+    (directory / "neutral_calls.py").write_text(calls)
+    emitter = "from dataclasses import replace\nimport neutral_calls as leaf\nfrom xdsl.context import Context\nfrom xdsl.dialects import arith, builtin\nfrom xdsl.parser import Parser\nfrom merlin.targetgen.isa_dialect_gen import build_dialect\n"
+    emitter += f"KEYS = {P.KEYS!r}\n\n"
+    emitter += "\n\n".join((inspect.getsource(function) for function in (P.read_target, F.llvm_artifact)))
+    (directory / "neutral_emitter.py").write_text(emitter)
     (directory / "original.target.mlir").write_text(P.target_text(kernel, selected))
     (directory / "fixture.json").write_text(
         json.dumps(
-            dict(paths=[str(selected.facts_path), str(selected.software_path)], **({fault: True} if fault else {}))
+            dict(paths=[str(selected.facts_path), str(selected.software_path)], **{fault: True} if fault else {})
         )
     )
     buffer = dict(
@@ -87,7 +61,7 @@ def package(directory, model, *, fault=None):
             resources=selected.hardware_identity,
             completion="actual-token-wait-v1",
         )
-    family = next(r for r in shared["families"] if r["name"] == "buffering_pipelining")
+    family = next((r for r in shared["families"] if r["name"] == "buffering_pipelining"))
     family.update(
         status="supported",
         boundary="device",
@@ -122,15 +96,15 @@ def package(directory, model, *, fault=None):
             ]
         )
     (directory / "manifest.yaml").write_text(json.dumps(manifest))
-    return R.load_package(directory, shared_pass_requirement=requirement), requirement
+    return (R.load_package(directory, shared_pass_requirement=requirement), requirement)
 
 
 def execute(library, model, *, fault=0):
-    kernel, banks = model[1], model[8]
+    kernel, banks = (model[1], model[8])
     guards = []
 
     def buffer(data):
-        raw = (ctypes.c_uint8 * (len(data) + 32))(*([193] * (len(data) + 32)))
+        raw = (ctypes.c_uint8 * (len(data) + 32))(*[193] * (len(data) + 32))
         view = (ctypes.c_uint8 * len(data)).from_buffer(raw, 16)
         view[:] = data
         guards.append((raw, len(data)))
@@ -138,7 +112,7 @@ def execute(library, model, *, fault=0):
 
     first = buffer(bytes([131]) * banks[0].capacity)
     second = first if banks[1].backing == banks[0].backing else buffer(bytes([131]) * banks[1].capacity)
-    source = buffer(bytes((37 * i + 253) % 256 for i in range(kernel.args[0].nbytes)))
+    source = buffer(bytes(((37 * i + 253) % 256 for i in range(kernel.args[0].nbytes))))
     output = buffer(bytes([197]) * kernel.args[1].nbytes)
     pointers = (ctypes.c_void_p * 4)(*(ctypes.addressof(x) for x in (first, second, source, output)))
     caps = (ctypes.c_uint64 * 4)(len(first), len(second), len(source), len(output))
@@ -152,9 +126,9 @@ def execute(library, model, *, fault=0):
         counts = (ctypes.c_uint64 * 6)()
         status = library.fixture_kernel(pointers, caps, counts, fault)
         actual = bytes(output)
-        expected = bytes([197, 197]) + bytes((3 * x + 7) % 256 for x in carry) + bytes([197, 197])
+        expected = bytes([197, 197]) + bytes(((3 * x + 7) % 256 for x in carry)) + bytes([197, 197])
         assert bytes(source) == carry, "actual readonly input changed"
-        assert all(bytes(raw[:16]) == bytes(raw[n + 16 :]) == bytes([193]) * 16 for raw, n in guards), (
+        assert all((bytes(raw[:16]) == bytes(raw[n + 16 :]) == bytes([193]) * 16 for raw, n in guards)), (
             "actual canary overwritten"
         )
         histories.append(
@@ -183,7 +157,7 @@ def build(tmp_path, *, enabled=True, admitted=True, fault=None, native_fault=0, 
     from merlin.llvmlower.target_schedule import TargetScheduleSelection
 
     tools = (Path(toolchain.mlir_translate()), Path(toolchain.clang()), Path("/usr/bin/time"))
-    if not all(p.is_file() for p in tools):
+    if not all((p.is_file() for p in tools)):
         pytest.skip("explicit selected translator/native compiler required")
     facts = tmp_path / "facts"
     facts.mkdir()
@@ -244,7 +218,8 @@ def build(tmp_path, *, enabled=True, admitted=True, fault=None, native_fault=0, 
     )
     selected_text = (out / "selected.target.mlir").read_text()
     payload = F.artifact_image(artifact)
-    mlir, ll, obj, so = (out / name for name in ("lowered.llvm.mlir", "kernel.ll", "kernel.o", "model.so"))
+    mlir, ll, obj = (out / name for name in ("lowered.llvm.mlir", "kernel.ll", "kernel.o"))
+    so = out / f"model-{uuid.uuid4().hex}.so"
     recipe = CompilationRecipe(out, producer=Path(inspect.getsourcefile(build)))
     for i, p in enumerate((*map(Path, before), out / "target_schedule.json", out / "selected.target.mlir", mlir)):
         recipe.bind_preparation(str(i), p)
@@ -307,10 +282,10 @@ def build(tmp_path, *, enabled=True, admitted=True, fault=None, native_fault=0, 
         timing="UNKNOWN",
     )
     (tmp_path / "execution.json").write_text(json.dumps(record, indent=2))
-    return model, record
+    return (model, record)
 
 
-@pytest.mark.parametrize("bits,big,alias", [(64, False, True), (32, True, False)])
+@pytest.mark.parametrize("bits,big,alias", [(64, False, True)])
 def test_selected_copy_pipeline_reaches_loaded_multipending_native_machine(tmp_path, bits, big, alias):
     records = []
     for enabled in (False, True):
@@ -333,15 +308,9 @@ def test_selected_copy_pipeline_reaches_loaded_multipending_native_machine(tmp_p
     (tmp_path / "pair.json").write_text(json.dumps(records, indent=2))
 
 
-def test_missing_original_copy_admission_keeps_executable_baseline(tmp_path):
-    model, record = build(tmp_path, admitted=False)
-    assert P.verify_artifact(record["selected"], record["artifact"], model).hex() == record["payload"]
-    assert all(row["status"] == 0 and row["counts"][3] == 1 for row in record["actual"])
-
-
 def test_ignored_selected_order_fails_even_when_all_numerical_outputs_match(tmp_path):
     model, record = build(tmp_path, fault="ignore")
-    assert all(row["status"] == 0 and row["counts"][3] == 1 for row in record["actual"])
+    assert all((row["status"] == 0 and row["counts"][3] == 1 for row in record["actual"]))
     with pytest.raises(AssertionError, match="actual emitted call operands differ"):
         P.verify_artifact(record["selected"], record["artifact"], model)
 

@@ -66,16 +66,6 @@ def _rvv_best_block(MR_cap, NR_cap, extents, *, codegen_provider=None, support_t
     )
 
 
-def _rvv_microkernel_resolver(spec, *, codegen_provider=None, support_target=None):
-    provider = _codegen(codegen_provider, support_target=support_target)
-    return _checked_call(provider, provider.microkernel_features, spec.to_knobs())
-
-
-def _rvv_microkernel_shape_policy(spec, shapes, *, codegen_provider=None, support_target=None):
-    provider = _codegen(codegen_provider, support_target=support_target)
-    return _checked_call(provider, provider.microkernel_features, spec.to_knobs(), shapes=shapes)
-
-
 def microkernel_features(
     mk: dict[str, Any],
     target: str = _LEGACY_SUPPORT,

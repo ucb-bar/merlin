@@ -41,9 +41,6 @@ voyager_accel unbacked:unmaterializable:elementwise_map
 # byte-identical copies of companion commits (examples/<target>/SOURCE.yaml) and carry these uncited
 # claims. The providers already shipped them; vendoring brought them into the tree, it did not add
 # them. Cite or drop each in the companion contract and re-vendor.
-atlas unbacked:undetermined:reduction
-atlas unbacked:undetermined:synchronization
-atlas unbacked:unmaterializable:elementwise_map
 rvv unbacked:no_semantic_capabilities:vector
 rvv unbacked:undetermined:movement
 rvv unbacked:undetermined:reduction

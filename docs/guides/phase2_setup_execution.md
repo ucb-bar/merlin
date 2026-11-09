@@ -3,7 +3,7 @@ title: Phase 2 setup and execution boundaries
 kind: guide
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-19
+last_verified: 2026-11-09
 related: [phase2_corpus_search, spike_timing, shared_pass_phase2, ../design/phase2_capacity_cohort]
 code_refs:
   - src/merlin_experiments/phase2/public_diagnostic_launch.py
@@ -90,3 +90,9 @@ coordinator must not hold a child CPU lease while awaiting workers. Retain each
 candidate's hypothesis, emitted changes, complete correctness, scoped feedback,
 decision, costs and clean shutdown. A fixed number of sweeps is an estimate;
 observed breakpoints and frozen stopping rules determine how much search suffices.
+
+For source navigation, `public_diagnostic_launch.py` owns explicit unscored
+launch preparation, `ordinary_search_policy.py` binds the retained ordinary
+queue, and `ordinary_capsule_feedback.py` projects admitted observations.
+`transforms/pipeline.py` provides reusable compiler actions; it does not issue
+measurement or final evaluation authority.

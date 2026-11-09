@@ -2,14 +2,13 @@
 title: "Justifying Phase 2 tests from Phase 0 evidence"
 kind: guide
 status: current
-last_verified: 2026-10-19
+last_verified: 2026-11-09
 owner: experiments
 related: [phase0_specification, generating_capsules, normal_search_feedback]
 code_refs:
   - src/merlin_experiments/phase2/test_justification.py
   - src/merlin_experiments/phase2/bottleneck_priority.py
   - src/merlin_experiments/phase2/corpus.py
-  - experiments/templates/phase0/performance.yaml
 ---
 
 # Justifying Phase 2 tests from Phase 0 evidence
@@ -270,3 +269,9 @@ content. Native coverage still reads the original saved declaration; the
 checked diagnostic independently requires actual L0/L1/L2 source, instruction,
 output and effect checks. L3 remains pending. This view selects neither placement
 nor target instruction classes, numerical tolerances or timing authority.
+
+Test justification is owned by `phase2/test_justification.py`, rather than
+pytest or a compiler backend. It reopens original source/reference and
+performance-policy inputs and explains the selected experiment denominator.
+A rationale receipt is neither a compiler proof nor a measured claim; those
+remain the independent verifier/evaluator outputs for the actual compiled bytes.

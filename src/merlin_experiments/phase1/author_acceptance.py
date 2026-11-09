@@ -303,8 +303,8 @@ def check_withheld(ctx) -> Check:
     names = withheld_names(ctx.staged)
     candidates = _withheld_candidates(ctx.roots, names)
     proc, result = run_child(_WITHHELD, ctx.roots, (), json.dumps(names), json.dumps(candidates), cwd=ctx.ws)
-    if result is None:
-        return Check("withheld-imports", FAIL, f"probe failed: {_tail(proc)}")
+    if proc.returncode != 0 or result is None:
+        return Check("withheld-imports", FAIL, f"probe failed: {_tail(proc)}", result if result is not None else {})
     reachable = {k: v for k, v in result["reachable"].items() if v.get("imports")}
     detail = {
         "author_sys_path": [str(r) for r in ctx.roots],
@@ -389,8 +389,13 @@ def check_withheld_sandbox(ctx) -> Check:
         manifest,
         cwd=ctx.work,
     )
-    if built is None:
-        return Check("withheld-in-bwrap", FAIL, f"sandbox argv composition failed: {_tail(proc)}")
+    if proc.returncode != 0 or built is None:
+        return Check(
+            "withheld-in-bwrap",
+            FAIL,
+            f"sandbox argv composition failed: {_tail(proc)}",
+            built if built is not None else {},
+        )
     from shlex import quote
 
     withheld = withheld_names(ctx.staged)
@@ -494,8 +499,10 @@ def check_imports(ctx) -> Check:
         results = list(pool.map(run, chunks))
     rows, outside = [], set()
     for proc, result in results:
-        if result is None:
-            return Check("staged-imports", FAIL, f"import walk stopped: {_tail(proc)}")
+        if proc.returncode != 0 or result is None:
+            return Check(
+                "staged-imports", FAIL, f"import walk stopped: {_tail(proc)}", result if result is not None else {}
+            )
         rows += result["rows"]
         outside.update(result["outside"])
     failed = {r["module"]: r["error"] for r in rows if r["error"]}
@@ -524,37 +531,25 @@ def check_imports(ctx) -> Check:
 # c. Library fusion
 # ---------------------------------------------------------------------------------------------------
 
-_FUSION = r"""
-fixtures = json.loads(sys.argv[1])
-sys.path[len(_ROOTS):len(_ROOTS)] = fixtures
-from merlin.common import mlir_query as mq
-from merlin.compile.analysis.contraction_shapes import contraction_extents
-from merlin.xdsl_dialects.lowering import compute_groups as CG
-from merlin.xdsl_dialects.lowering import output_fusion as OF
-import test_output_fusion as T
-
-module = mq.parse(T._module())
-extents = contraction_extents(module)
-first = CG.form_groups(module, "synthetic", oracle=T._Oracle())
-decided = OF.decisions(first, module, T._path(), OF.Values())
-groups = CG.form_groups(module, "synthetic", oracle=T._Oracle(), fusion=decided)
-device = [g for g in groups if g.placement != CG.HOST]
-_emit({"extents": [list(v) for v in extents.values()], "cuts": [g.fusion["cut"] for g in device],
-       "refusals": [g.fusion.get("refusals") for g in device], "outside": _outside(_ROOTS)})
+_FUSION_REQUEST = r"""
+from merlin_experiments.phase1.author_acceptance_fusion import probe_request
+_emit(probe_request())
 """
 
 
 def check_fusion(ctx) -> Check:
-    tests = ctx.framework / "merlin" / "tests"
-    fixtures = [str(tests / "fixtures"), str(tests / "ir")]
-    if not (tests / "ir" / "test_output_fusion.py").is_file():
-        return Check("fusion", SKIP, "the export carries no output-fusion fixture")
+    owner = "merlin_experiments/phase1/author_acceptance_fusion.py"
+    if not any((root / owner).is_file() for root in operator_roots(ctx.framework)):
+        return Check("fusion", SKIP, "the export carries no output-fusion input")
+    proc, request = run_child(_FUSION_REQUEST, operator_roots(ctx.framework), (), cwd=ctx.ws, env=ctx.data_env)
+    if proc.returncode != 0 or request is None:
+        return Check("fusion", FAIL, f"selected export's fusion input unavailable: {_tail(proc)}")
     library = [Path(ctx.ws) / "submission" / "compiler_library"]
     proc, result = run_child(
-        _FUSION, library, ctx.staged["refused"], json.dumps(fixtures), cwd=ctx.ws, env=ctx.data_env
+        request["probe"], library, ctx.staged["refused"], json.dumps(request["input"]), cwd=ctx.ws, env=ctx.data_env
     )
-    if result is None:
-        return Check("fusion", FAIL, f"fusion probe failed: {_tail(proc)}")
+    if proc.returncode != 0 or result is None:
+        return Check("fusion", FAIL, f"fusion probe failed: {_tail(proc)}", result if result is not None else {})
     if not result["extents"] or not any(result["extents"]):
         return Check("fusion", FAIL, "contraction_extents is empty on a dense fixture", result)
     if not result["cuts"] or all(cut == "bare" for cut in result["cuts"]):
@@ -589,7 +584,7 @@ def check_skills(ctx) -> Check:
     scripts = sorted(f"{n}/{rel}" for n, files in reference.items() for rel in files if rel.startswith("scripts/"))
     first = next(iter(roots.values()))
     env = {"PYTHONPATH": os.pathsep.join(str(r) for r in ctx.roots), **ctx.data_env}
-    failures, outside = {}, {}
+    failures = {}
     for script in scripts:
         proc = subprocess.run(
             [sys.executable, "-P", "-B", str(first / script), "--help"],
@@ -644,8 +639,10 @@ def _run_skill_script(ctx, skill: str, script: str, argv: list[str], timeout: in
 
 def check_scheduling_example(ctx) -> Check:
     proc, result = _run_skill_script(ctx, "scheduling-api", "dense_schedule_example.py", ["example"])
-    if result is None or result["code"] != 0:
-        return Check("scheduling-example", FAIL, f"example did not verify: {_tail(proc)}")
+    if proc.returncode != 0 or result is None or result["code"] != 0:
+        return Check(
+            "scheduling-example", FAIL, f"example did not verify: {_tail(proc)}", result if result is not None else {}
+        )
     if result["foreign"]:
         return Check(
             "scheduling-example",
@@ -662,8 +659,10 @@ def check_library_inventory(ctx) -> Check:
     """The inventory script imports ``scheduling_capabilities`` from the staged library and writes its file."""
     out = ctx.work / "library_inventory.md"
     proc, result = _run_skill_script(ctx, "scheduling-api", "library_inventory.py", ["--output", str(out)])
-    if result is None or result["code"] != 0:
-        return Check("library-inventory", FAIL, f"inventory did not run: {_tail(proc)}")
+    if proc.returncode != 0 or result is None or result["code"] != 0:
+        return Check(
+            "library-inventory", FAIL, f"inventory did not run: {_tail(proc)}", result if result is not None else {}
+        )
     if result["foreign"]:
         return Check(
             "library-inventory",
@@ -753,8 +752,8 @@ def check_capacity_schedule_example(ctx) -> Check:
     its choice table ranks a held-out class, both against the staged library only."""
     name = "capacity-schedule-example"
     proc, result = _run_skill_script(ctx, "shape-schedule-selection", "capacity_pipeline_example.py", [])
-    if result is None or result["code"] != 0:
-        return Check(name, FAIL, f"example did not verify: {_tail(proc)}")
+    if proc.returncode != 0 or result is None or result["code"] != 0:
+        return Check(name, FAIL, f"example did not verify: {_tail(proc)}", result if result is not None else {})
     out = _stdout_json(proc) or {}
     plans = out.get("pipelines") or {}
     detail = {
@@ -775,7 +774,7 @@ def check_capacity_schedule_example(ctx) -> Check:
     separating = report.get("separating_predicates", ())
     guards = [s.get("guards", {}).get("when_true", {}).get("predicate") for s in separating]
     detail.update(table=table, classes=[row.get("class") for row in report.get("classes", ())], guards=guards)
-    if table is None or table["code"] != 0 or detail["classes"] != ["long-m", "long-n"]:
+    if table_proc.returncode != 0 or table is None or table["code"] != 0 or detail["classes"] != ["long-m", "long-n"]:
         return Check(name, FAIL, f"choice table did not rank the held-out classes: {_tail(table_proc)}", detail)
     if {"resource": "accumulator_output_copies", "at_least": 1} not in guards:
         return Check(name, FAIL, "choice table did not derive the accumulator-fit ResourcePredicate guard", detail)
@@ -810,8 +809,12 @@ def check_pass_pipeline(ctx) -> Check:
         proc, result = _run_skill_script(ctx, "compose-pass-pipeline", "pass_specs.py", argv)
         verdict = _stdout_json(proc)
         results[entry + (":" + ",".join(order) if order else ":source-order")] = verdict
-        if result is None or result["code"] != 0 or result["foreign"]:
-            failures[entry] = (verdict or {}).get("reason") or (result or {}).get("foreign") or _tail(proc, 400)
+        if proc.returncode != 0 or result is None or result["code"] != 0 or result["foreign"]:
+            failures[entry] = (
+                (verdict or {}).get("reason")
+                or (result if result is not None else {}).get("foreign")
+                or _tail(proc, 400)
+            )
     detail.update(results=results, failures=failures)
     if failures:
         return Check("pass-pipeline", FAIL, f"documented order rejected: {failures}", detail)
@@ -871,14 +874,21 @@ def check_tuning(ctx) -> Check:
     shutil.copytree(ctx.ws / "submission", copy, symlinks=True)
     library = [copy / "compiler_library"]
     proc, declared = run_child(_KNOB_DECLARE, library, ctx.staged["refused"], copy, cwd=copy.parent)
-    if declared is None:
-        return Check("tuning-knobs", FAIL, f"declare/read failed: {_tail(proc)}")
+    if proc.returncode != 0 or declared is None:
+        return Check(
+            "tuning-knobs", FAIL, f"declare/read failed: {_tail(proc)}", declared if declared is not None else {}
+        )
     proc, applied = run_child(_KNOB_APPLY, operator_roots(ctx.framework), (), copy, cwd=ctx.work)
-    if applied is None:
-        return Check("tuning-knobs", FAIL, f"selfcheck_tuning.apply_request failed: {_tail(proc)}")
+    if proc.returncode != 0 or applied is None:
+        return Check(
+            "tuning-knobs",
+            FAIL,
+            f"selfcheck_tuning.apply_request failed: {_tail(proc)}",
+            applied if applied is not None else {},
+        )
     proc, read = run_child(_KNOB_READ, library, ctx.staged["refused"], cwd=copy.parent)
     detail = {"declared": declared, "applied": applied, "read": read}
-    if read is None:
+    if proc.returncode != 0 or read is None:
         return Check("tuning-knobs", FAIL, f"override read failed: {_tail(proc)}", detail)
     if declared["value"] != "off" or read["value"] != "on":
         return Check("tuning-knobs", FAIL, f"default {declared['value']!r}, override {read['value']!r}", detail)
@@ -949,8 +959,8 @@ def _completion_guarded(source: Path) -> tuple[bool, str]:
 
 
 def check_large_results(ctx) -> Check:
-    tests = ctx.framework / "packages" / "merlin-experiments" / "tests"
-    fixture = tests / "test_rolling_performance_feedback.py"
+    # This is a framework readiness regression, not candidate timing evidence.
+    fixture = ctx.framework / "merlin" / "tests" / "infra" / "test_workflow_feedback.py"
     if not fixture.is_file():
         return Check("large-results", FAIL, "the export carries no rolling-feedback fixture")
     proc = _pytest(ctx, fixture, "mebibyte")
@@ -1034,8 +1044,13 @@ def check_codex_config(ctx) -> Check:
     proc, written = run_child(
         _CODEX_HOME, operator_roots(ctx.framework), (), home, ctx.ws, ctx.helper_effort, cwd=ctx.work
     )
-    if written is None:
-        return Check("codex-config", FAIL, f"frozen config.toml not written: {_tail(proc)}")
+    if proc.returncode != 0 or written is None:
+        return Check(
+            "codex-config",
+            FAIL,
+            f"frozen config.toml not written: {_tail(proc)}",
+            written if written is not None else {},
+        )
     missing = [
         k
         for k, present in (
@@ -1103,7 +1118,7 @@ _emit({"round": CTX.round_note(record, 16), "continuation": CTX.continuation_not
         (),
         cwd=ctx.work,
     )
-    if prompt is None:
+    if proc.returncode != 0 or prompt is None:
         return Check("task-disclosure", FAIL, f"core prompt notes unavailable: {_tail(proc)}", detail)
     detail["round_note"] = prompt["round"][-1200:]
     wanted = {"section skills": "task-*", "feedback files": "qa/"}

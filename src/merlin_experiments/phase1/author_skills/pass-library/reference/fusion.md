@@ -15,7 +15,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Device fusion still needs selected numeric/effect capability
 - **evidence to request**: Intermediate bytes, launches and exact output comparison
 - **access**: requires_reviewed_library_extension
-- **test that calls it**: `merlin/tests/rvv/test_epilogue_fusion.py`: `assert out[i : i + len(EF.fusion_stage())] == EF.fusion_stage()`
+- **test that calls it**: none found
 
 ### connected_multioutput  [fusion]
 
@@ -28,7 +28,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Not general arbitrary graph fusion; target capability must support operations
 - **evidence to request**: Source coverage, emitted regions and boundary tensors
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_multioutput_fusion.py`: `result = compile_source_multioutput(module, operations, **options)`
+- **test that calls it**: none found
 
 ### physical_composition  [fusion]
 
@@ -41,7 +41,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: No capability inferred from matching names or approximate numerics
 - **evidence to request**: Original versus fused arithmetic and decoded instruction image
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_physical_fusion.py`: `assert plan_fusion(observed, objects, banks, adapter, (capability,), **model) is None`
+- **test that calls it**: none found
 
 ### independent_sibling_epilogues  [fusion]
 
@@ -54,4 +54,4 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Grouping is only a source proposal; independent epilogue-state and clobber adapter still required
 - **evidence to request**: Per-result epilogue provenance and decoded state before each readout
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_projection_dense.py`: `(group,) = find_shared_input_groups(module)`
+- **test that calls it**: none found

@@ -3,12 +3,11 @@ title: Exact integer source bounds for independent component DAGs
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 code_refs:
   - src/merlin_experiments/phase0/component_integer_bounds.py
   - src/merlin_experiments/phase0/component_numerics.py
   - src/merlin_experiments/phase0/writer.py
-  - packages/merlin-experiments/tests/test_component_integer_bounds.py
 ---
 
 # Integer DAG arithmetic admission
@@ -86,3 +85,10 @@ Hardware correspondence, physical arithmetic, device execution, synchronization,
 large-shape compiler legality and timing require separate qualification. The
 execution budget separately limits logical reference work and payload; it does
 not establish numerical exactness by itself.
+
+The current source analyzer also supports `reduce_sum`: the complete reduction
+extent bounds every prefix, including zero, before checking the selected result
+width. `concat` joins operand intervals; copy, transpose, reshape, alias, cast
+and extract-slice propagate the checked source interval and still check the
+result width. These paths do not infer physical hardware behavior or relax the
+selected bounded-exact/modular distinction.

@@ -117,7 +117,7 @@ def check_heavy_pass_recipes(ctx):
         proc, result = _run_skill_script(ctx, SKILL, script, args[0] if args else [])
         out = _stdout_json(proc) or {}
         detail[script] = {"child": result, "facts": out.get("facts")}
-        if result is None or result["code"] != 0:
+        if proc.returncode != 0 or result is None or result["code"] != 0:
             return Check(NAME, FAIL, f"{script} did not verify: {_tail(proc)}", detail)
         problem = verify(out)
         if problem:

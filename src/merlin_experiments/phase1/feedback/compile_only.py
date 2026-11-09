@@ -116,6 +116,7 @@ def _verified_substrate(owner):
         COMMON_SUBSTRATE_V15,
         COMMON_SUBSTRATE_V16,
         COMMON_SUBSTRATE_V17,
+        COMMON_SUBSTRATE_V19,
     )
 
     return owner.profile.get("common_substrate") in {
@@ -134,6 +135,7 @@ def _verified_substrate(owner):
         COMMON_SUBSTRATE_V15,
         COMMON_SUBSTRATE_V16,
         COMMON_SUBSTRATE_V17,
+        COMMON_SUBSTRATE_V19,
     }
 
 

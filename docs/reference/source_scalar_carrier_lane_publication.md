@@ -3,9 +3,13 @@ title: Scalar observations in tensor lanes
 kind: reference
 status: current
 owner: ir
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [lowering_pipeline]
-code_refs: [src/merlin/llvmlower/closed_tensor_insert.py, src/merlin/llvmlower/source_expression_interval.py, src/merlin/llvmlower/source_scalar_carrier_binding.py, src/merlin/llvmlower/source_stage_transport.py]
+code_refs:
+  - src/merlin/llvmlower/closed_tensor_insert.py
+  - src/merlin/llvmlower/source_expression_interval.py
+  - src/merlin/llvmlower/source_scalar_carrier_binding.py
+  - src/merlin/llvmlower/source_stage_transport.py
 ---
 
 # Current scalar observations in tensor lanes
@@ -52,3 +56,9 @@ runtime predicate, physical placement and complete producer/consumer timing.
 Earlier coefficient/helper/provider results do not transfer to newly derived
 code without revalidation. Retaining packet scheduling can generate additional
 helper members; code size, per-point predicates and fallback service need pricing.
+
+`closed_tensor_insert.prove_closed_tensor_insert` owns lane/publication
+legality. `source_scalar_carrier_binding` retains the explicit host numeric
+admission and incoming-RNE capability; `source_stage_transport` applies the
+invocation-local native edit. These owners preserve the distinction between a
+proved source expression, a runtime guard and an emitted implementation.

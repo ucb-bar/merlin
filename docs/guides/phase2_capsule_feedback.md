@@ -3,13 +3,12 @@ title: Inspect ordinary per-capsule performance feedback
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-19
+last_verified: 2026-11-09
 related: [phase2_corpus_search, normal_search_feedback, spike_timing]
 code_refs:
   - src/merlin_experiments/phase2/ordinary_capsule_feedback.py
   - src/merlin_experiments/phase1/feedback/candidate_execution_products.py
   - src/merlin_experiments/phase1/feedback/compiler_profile_emission.py
-  - packages/merlin-experiments/tests/test_ordinary_capsule_feedback.py
   - src/merlin/perf/capsule_roofline.py
   - src/merlin/perf/candidate_diagnostics.py
   - packages/merlin-timing/src/merlin_timing/observations.py
@@ -93,3 +92,9 @@ producer check. Source arithmetic, instruction effects, hardware execution,
 timing, final guards and mandatory grading tiers keep their independent owners.
 Neither this diagnostic nor the product reader adds a candidate import grant or
 qualifies an ordinary search queue by itself.
+
+`candidate_execution_products.py` reopens the actual producer roles before
+`ordinary_capsule_feedback.join_capsule_feedback` projects them. The separate
+`merlin_timing` package supplies its explicit count-report contract; it is not
+implicitly a core runtime or target qualification. Keep the selected observer
+version and its evidence distinct from the compiler wheel.

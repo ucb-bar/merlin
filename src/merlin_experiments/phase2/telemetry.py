@@ -171,6 +171,21 @@ def treatment_identity(
         raise StageGateError("performance telemetry treatment source identity is incomplete")
     if version in (4, 5):
         _validate_package_source_record(sources["performance_package_sources"])
+    driver = sources["codex_driver"]
+    if "support" in driver:
+        support = driver["support"]
+        if not isinstance(support, Mapping) or set(support) != {"codex_runtime"}:
+            raise StageGateError("Codex driver support source identity is incomplete")
+        runtime = support["codex_runtime"]
+        if (
+            set(driver) != {"path", "sha256", "support"}
+            or not isinstance(runtime, Mapping)
+            or set(runtime) != {"path", "sha256"}
+            or not isinstance(runtime["path"], str)
+            or not runtime["path"]
+            or not digest.is_sha256(runtime["sha256"])
+        ):
+            raise StageGateError("Codex driver runtime source identity is malformed")
     source_sha256 = {str(name): str(source["sha256"]) for name, source in sorted(sources.items())}
     resolution = preflight.get("model_resolution")
     if (
@@ -312,6 +327,11 @@ def _verified_snapshot(preflight: Mapping[str, Any], model: str):
             continue
         if _sha256_file(Path(str(source.get("path") or ""))) != source["sha256"]:
             raise StageGateError(f"pinned telemetry implementation changed: {label}")
+        if label == "codex_driver" and "support" in source:
+            runtime = source["support"]["codex_runtime"]
+            active = module_source_path("merlin_experiments.phase1.providers.codex_runtime").resolve()
+            if Path(runtime["path"]) != active or _sha256_file(active) != runtime["sha256"]:
+                raise StageGateError("pinned telemetry implementation changed: codex_runtime")
     return _snapshot(document)
 
 
@@ -597,7 +617,14 @@ def prepare(
             "performance_gsim_gate": _telemetry_source_record(GATE, label="performance GSIM gate"),
             "performance_pk_claim": _telemetry_source_record(PK, label="performance PK claim"),
             "performance_prompt": _telemetry_source_record(PP, label="performance prompt contract"),
-            "codex_driver": _telemetry_source_record(CA, label="Codex driver"),
+            "codex_driver": {
+                **_telemetry_source_record(CA, label="Codex driver"),
+                "support": {
+                    "codex_runtime": _telemetry_source_record(
+                        module_source_path("merlin_experiments.phase1.providers.codex_runtime"), label="Codex runtime"
+                    )
+                },
+            },
             "codex_model_bridge": _telemetry_source_record(model_bridge, label="Codex model bridge"),
             "benchharness": _telemetry_source_record(hash_tree, label="candidate tree hashing"),
             "sandbox_bwrap": _telemetry_source_record(BW, label="agent bwrap policy"),
@@ -762,8 +789,12 @@ def finalize(
     from merlin.targetgen import experiment_tokens as ET  # noqa: PLC0415
 
     snapshot = _verified_snapshot(preflight_record, model)
+    from datetime import datetime  # noqa: PLC0415
+
     try:
-        from aet.trajectory.importers.codex import import_codex_run  # noqa: PLC0415
+        from aet.trajectory.classify import ActivityClassifier, ActivityConfig  # noqa: PLC0415
+        from aet.trajectory.codex import CodexNormalizer  # noqa: PLC0415
+        from aet.trajectory.importers.codex import build_trajectory_from_run  # noqa: PLC0415
         from aet.trajectory.reconcile import (  # noqa: PLC0415
             reconcile_codex,
             token_ledger_rows,
@@ -780,6 +811,8 @@ def finalize(
     snapshot_path.write_bytes(snapshot.raw_bytes)
     combined_raw = root / "codex_events.raw.jsonl"
     total_wall = 0.0
+    normalizer = CodexNormalizer()
+    first_arrival = previous_arrival = None
     with combined_raw.open("wb") as combined:
         for row in round_records:
             index = int(row["round"])
@@ -807,6 +840,17 @@ def finalize(
             wrappers = [
                 json.loads(line) for line in stamped_path.read_text(encoding="utf-8").splitlines() if line.strip()
             ]
+            for line, wrapper in zip(raw_lines, wrappers, strict=True):
+                try:
+                    arrival = datetime.fromisoformat(wrapper["arrived_at"])
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise StageGateError(f"Codex round {index} lacks an observed arrival timestamp") from exc
+                if arrival.utcoffset() is None or (previous_arrival is not None and arrival < previous_arrival):
+                    raise StageGateError("Codex arrival timestamps must be timezone-aware and nondecreasing")
+                if first_arrival is None:
+                    first_arrival = arrival
+                normalizer.feed_line(line, t_s=(arrival - first_arrival).total_seconds())
+                previous_arrival = arrival
             _write_jsonl(
                 ts_dir / destination.name,
                 [
@@ -816,15 +860,17 @@ def finalize(
             )
             total_wall += float((evidence.get("summary") or {}).get("wall_s", 0.0))
 
-    trajectory, normalized = import_codex_run(
-        raw_dir,
-        timestamped=ts_dir,
+    normalized = normalizer.result()
+    config = ActivityConfig()
+    trajectory = build_trajectory_from_run(
+        normalized,
         run_id=run_id,
+        classifier=ActivityClassifier(config),
+        classifier_cfg=config.to_dict(),
         model=model,
-        billing_mode="subscription",
-        provider="openai",
+        snapshot=snapshot,
+        billing_row={"provider": "openai", "billing_mode": "subscription"},
         calculated_at="",
-        price_snapshot=snapshot_path,
     )
     reconciliation = reconcile_codex(normalized, trajectory, admin_usd=None)
     expected_raw_events = sum(int((row.get("telemetry") or {}).get("event_count", 0)) for row in round_records)

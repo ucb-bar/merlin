@@ -3,15 +3,19 @@ title: "LLVM lowering pipeline rationale"
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-16
+last_verified: 2026-11-09
 related: [runtime]
-code_refs: [src/merlin/llvmlower/pipeline.py]
+code_refs: [src/merlin/llvmlower/pipeline.py, src/merlin/compiler/lower/scalar/pipeline.py, src/merlin/compiler/passes/policy.py]
 ---
 
 # LLVM lowering pipeline rationale
 
-The named functions in `src/merlin/llvmlower/pipeline.py` implement these choices.
-The text below retains their detailed rationale alongside the public pipeline code.
+`compiler/lower/scalar/pipeline.py:scalar_passes` owns the scalar and OpenMP
+pass sequences. `compiler/passes/policy.py:deallocation_passes` and
+`splice_passes` expand their allocation-lifetime policy. The retained helpers in
+`llvmlower/pipeline.py` select that policy per build and compose the upstream
+invocation. The rationale below describes those same ordering obligations;
+its historical model measurements do not qualify a new executable.
 
 ## `_dealloc_passes`
 

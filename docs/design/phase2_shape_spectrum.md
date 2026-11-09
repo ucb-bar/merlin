@@ -3,13 +3,15 @@ title: Development shape spectra and reduced-depth compilation tests
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-18
+last_verified: 2026-11-09
 related: [phase2_capacity_cohort, ../guides/phase2_test_justification, ../guides/shared_pass_phase2]
 code_refs:
   - src/merlin_experiments/phase0/shape_spectrum.py
   - src/merlin_experiments/phase0/component_coverage_inputs.py
   - src/merlin_experiments/phase0/public_boundaries.py
   - src/merlin_experiments/phase0/capacity_families.py
+  - src/merlin_experiments/phase0/development_envelopes.py
+  - src/merlin_experiments/phase0/development_cohort.py
 ---
 
 # Development shape spectra and reduced-depth compilation tests
@@ -135,3 +137,8 @@ reduced-model coverage. Numerical software correspondence, private exclusion,
 accelerator admission, baseline execution and qualified timing remain required.
 No validation workload was executed to construct or test this route. Public
 architecture configs are now disclosed development inputs, not held-out models.
+
+`shape_spectrum.plan` produces metadata only. `development_envelopes` selects
+supported fresh source factories and `development_cohort` retains their complete
+requests and refusal matrix. Keeping these owners separate makes a planned point,
+a realized source, a numerical execution and a scored objective distinguishable.

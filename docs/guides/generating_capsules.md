@@ -3,10 +3,9 @@ title: Generating capsules for a target
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-15
+last_verified: 2026-11-09
 related: [adding_a_target, phase0_phase1_setup, capsule_bench, integrations, phase0_specification]
 code_refs:
-  - experiments/catalog.yaml
   - src/merlin_experiments/phase0/__main__.py
   - src/merlin_experiments/phase0/generation.py
   - src/merlin_experiments/phase0/writer.py
@@ -18,9 +17,10 @@ code_refs:
   - src/merlin/targetgen/group_capsule_entries.py
   - src/merlin_experiments/phase0/model_forms.py
   - src/merlin_experiments/phase0/form_perf.py
-  - src/merlin/compile/analysis/compute_endpoints.py
+  - src/merlin/analysis/compute_endpoints.py
   - src/merlin/perf/isa_prohibition.py
   - src/merlin_experiments/phase0/instruction_roles.py
+  - src/merlin_experiments/corpus/preparation_generation.py
 ---
 
 # Generating capsules for a target
@@ -299,3 +299,10 @@ resolved performance entry, claim, template, facts and selected requirement
 identity; the manifest binds its bytes, and release preparation copies it.
 The ledger is pending work: it issues no performance capsule, measurement, or
 Phase 2 readiness. Phase 2 needs a separately completed full preparation run.
+
+Implementation navigation follows `phase0/generation.py` for the complete
+requested roster, `phase0/writer.py` for actual members, and
+`corpus/preparation_generation.py` plus `corpus/release.py` for completed-artifact
+checks and a separately reviewed release. `phase1-functional` defers only
+performance members and retains their pending ledger; it supplies no Phase2
+readiness or execution verdict.

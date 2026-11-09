@@ -8,7 +8,6 @@ related: []
 code_refs:
   - src/merlin/llvmlower/radix_product_groups.py
   - src/merlin/llvmlower/radix_integer_reconstruct.py
-  - merlin/tests/ir/test_radix_integer_reconstruct.py
 ---
 
 # Exact integer radix reconstruction

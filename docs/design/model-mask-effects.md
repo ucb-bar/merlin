@@ -3,9 +3,13 @@ title: Explicit effects for closed-mask model lowering
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: [lowering_pipeline, architecture]
-code_refs: [src/merlin/llvmlower/lower.py, src/merlin/llvmlower/masked_contraction.py, src/merlin/runtime/backends/spike_model.py, src/merlin/runtime/backends/zephyr_model.py]
+code_refs:
+  - src/merlin/llvmlower/lower.py
+  - src/merlin/llvmlower/masked_contraction.py
+  - src/merlin/runtime/backends/spike_model.py
+  - src/merlin/runtime/backends/zephyr_model.py
 ---
 
 # Explicit effects for closed-mask model lowering
@@ -30,3 +34,7 @@ The normal lowering recipe binds the actual runner permission and source
 selection report. Final object/ELF identity, original output gates and complete
 hardware cost remain separate qualification obligations. These permissions do
 not establish profitable masking or permit changing an observed result.
+
+`masked_contraction` owns the source-use proof and feature composition. The
+model builders transport the selected effects into ordinary lowering; they do
+not derive those permissions from a simulator success or the selected backend.

@@ -132,7 +132,7 @@ def recognize_signed_integer_matmul(op, dtypes=("i8", "i8", "i32")) -> tuple:
     from xdsl.dialects.linalg.ops import GenericOp, YieldOp
     from xdsl.ir.affine import AffineDimExpr, AffineMap
 
-    if type(op) is not GenericOp:
+    if not isinstance(op, GenericOp):
         raise ValueError("dense source requires a typed linalg.generic")
     if type(dtypes) is not tuple or len(dtypes) != 3 or any(t not in ("i8", "i16", "i32", "i64") for t in dtypes):
         raise ValueError("dense source requires explicit supported signed integer formats")
@@ -270,8 +270,10 @@ def static_zero_integer_matmul_geometry(operation, dtypes=("i8", "i8", "i32"), *
             or constant.result.type != init.type.element_type
             or constant.parent is None
             or constant.parent is not splat.parent
-            or (constant.next_op is not splat
-                and next((op for op in splat.parent.ops if op is constant or op is splat), None) is not constant)
+            or (
+                constant.next_op is not splat
+                and next((op for op in splat.parent.ops if op is constant or op is splat), None) is not constant
+            )
         ):
             raise ValueError("dense source splat initializer is not an exact local typed integer zero")
         try:

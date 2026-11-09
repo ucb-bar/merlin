@@ -174,7 +174,10 @@ def chipyard_l3_selection(target: str) -> dict:
                     )
                     if not exact:
                         return False, source_reason
-                    why = f"{why}; {source_reason}"
+                    # Source validation supplements an engine's explanation; it cannot
+                    # supply the missing explanation of a successful backend probe.
+                    if str(why or "").strip():
+                        why = f"{why}; {source_reason}"
                 return bool(ok), str(why or "")
             ok = bool(backend.available(engine))  # may raise; the policy records that as a reason
             return (

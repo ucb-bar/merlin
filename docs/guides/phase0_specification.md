@@ -3,12 +3,12 @@ title: Defining and inspecting Phase 0 inputs
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-12
+last_verified: 2026-11-09
 related: [generating_capsules, adding_a_target, software_instruction_semantics, component_phase0_diagnostics]
 code_refs:
   - src/merlin/targetgen/corpus_instruction_roles.py
   - src/merlin/targetgen/software_spec.py
-  - src/merlin/targetgen/instruction_semantics.py
+  - src/merlin/target/spec/instructions.py
   - src/merlin/targetgen/rtl/circt_introspect.py
   - src/merlin/targetgen/rtl/elaboration.py
   - src/merlin/targetgen/rtl/source_selection.py
@@ -37,6 +37,9 @@ code_refs:
   - src/merlin_experiments/phase1/component_qualification.py
   - src/merlin_experiments/phase2/component_final_qualification.py
   - src/merlin_experiments/capture_execution/precision_staging.py
+  - src/merlin/target/spec/load.py
+  - src/merlin/target/spec/quantization.py
+  - src/merlin/compiler/quantization/preparation.py
 ---
 
 # Define the software contract before generating tests
@@ -124,8 +127,12 @@ proves that an unknown format became supported.
 
 ## What is the SW spec?
 
-`target/software-spec.yaml` is a versioned `merlin.software_spec.v1` declaration of
-software-visible behavior. It is not a second handwritten hardware geometry table.
+The examples below use a versioned `merlin.software_spec.v1` declaration of
+software-visible behavior. A fresh compact declaration may select
+`merlin.software_spec.v2` through `target.spec.load`: it composes exact-source
+operation, numerical, quantization, optional ISA and computation records into
+the existing supported v1 consumer view. Arbitrary scalar computations still
+have no executable v1 projection. It is not a second handwritten hardware geometry table.
 
 | Input | Define explicitly | Do not treat it as |
 | --- | --- | --- |
@@ -606,3 +613,10 @@ Phase 2 consumes its own performance selection plus that exact functional compil
 Holdout claim models stay owner-only until the prescribed evaluation point. Full-model
 compilation, executable numerical agreement, dispatch evidence and hardware qualification
 remain separate requirements; none follows merely from producing these files.
+
+The mathematical quantization scheme belongs to the selected software contract.
+Application calibration/recovery is selected separately through
+`compiler.quantization.preparation`; a preparation profile cannot silently
+change the requested numerical meaning to satisfy a backend. Fusion admission
+and physical implementation proposals remain explicit backend/system contracts,
+not consequences of a compact declaration or a successful source projection.

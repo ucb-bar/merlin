@@ -408,6 +408,8 @@ def _write_product(rec: dict[str, Any]) -> Path:
             return "unavailable"
         try:
             r = subprocess.run([path, flag], capture_output=True, text=True, timeout=30)
+            if r.returncode != 0:
+                return "unknown"
             return (r.stdout or r.stderr).strip().splitlines()[0]
         except Exception:
             return "unknown"
@@ -428,7 +430,7 @@ def _write_product(rec: dict[str, Any]) -> Path:
             f"fault corpus: merlin.verify.faults.CORPUS ({len(rec['faults'])} seeded faults)",
             f"program under test: merlin.xdsl_dialects.lowering.pipeline.lower_repeated_rhs_matmul"
             f"(m={shape['m']}, k={shape['k']}, n={shape['n']}, reuse={shape['reuse']})",
-            f"static layer checks: merlin/tests/data/lit/core/materialize_interface_residency.mlir",
+            "static layer checks: merlin/tests/data/lit/core/materialize_interface_residency.mlir",
             f"solver: {z3_version} (bound {rec.get('timeout_ms', 'UNKNOWN')} ms per attempt)",
             f"exporter: {_ver(find_mlir_tool('mlir-translate'), '--version')}",
             f"matcher: {_ver(find_filecheck(), '--version')}",

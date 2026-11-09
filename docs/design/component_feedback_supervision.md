@@ -3,7 +3,7 @@ title: Component feedback transport and supervision
 kind: design
 status: current
 owner: experiments
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [component_independent_feedback, component_phase2_workflow]
 code_refs:
   - src/merlin_experiments/phase2/feedback_protocol.py
@@ -98,3 +98,8 @@ Candidate SHA checks and private mutation/refusal evidence remain in place. Ther
 is no automatic restoration: concurrent candidate ownership and restoration are
 separate unresolved contracts. This lifecycle changes no prompts, cohorts,
 statistical gates, accuracy thresholds or physical measurement authority.
+
+`feedback_protocol.py` owns the bounded wire values.
+`supervised_feedback.py` owns parent reception and retained unresolved handles;
+`feedback_guardian.py` and `execution/owned_children.py` own actual descendant
+termination and reaping. A successful result cannot bypass unresolved cleanup.

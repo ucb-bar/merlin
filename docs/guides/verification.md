@@ -3,7 +3,7 @@ title: Verify a compiler transformation
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-09
+last_verified: 2026-11-09
 related: [phase0_specification, model_lowering, simulator_selection]
 code_refs:
   - src/merlin/verification/receipts.py
@@ -13,9 +13,9 @@ code_refs:
   - src/merlin/verification/smt_semantics.py
   - src/merlin/verification/cb_semantics.py
   - src/merlin/verification/model_coverage.py
-  - src/merlin/verify/scalar_ir.py
-  - src/merlin/verify/outline_ir.py
-  - src/merlin/verify/split_reduction.py
+  - src/merlin/verification/scalar_ir.py
+  - src/merlin/verification/outline_ir.py
+  - src/merlin/verification/split_reduction.py
   - src/merlin/verification/cli.py
 ---
 
@@ -74,7 +74,7 @@ import json
 import os
 from pathlib import Path
 
-from merlin.verify.receipts import TransformReceipt, qualify_receipt, verify_transformation
+from merlin.verification.receipts import TransformReceipt, qualify_receipt, verify_transformation
 
 translator = os.environ["MERLIN_VERIFY_TRANSLATOR"]
 expected_sha = os.environ["MERLIN_VERIFY_TRANSLATOR_SHA256"]
@@ -169,7 +169,7 @@ It is an algebraic obligation over those widths, not a check of any emitted kern
 
 Each receipt records SHA-256 identities of the generic xDSL IR text (or, for an emitted
 `merlin_iface` target, its exact UTF-8 text) and canonical command-buffer JSON, both sides' typed
-signatures, the verifier's source digest (the `merlin.verify` semantic modules plus the
+signatures, the verifier's source digest (the `merlin.verification` semantic modules plus the
 `merlin_iface` generic-form bridge), translator path/version/hash,
 xDSL and Z3 versions, timeout, assumptions, solver-query digest, outcome, and any counterexample.
 The receipt's `status` is one of
@@ -240,7 +240,7 @@ proof. Until those semantics and their independent conformance checks exist, the
 To inventory the current captured models against the source-side subset, run:
 
 ```sh
-python -m merlin.verify.model_coverage \
+python -m merlin.verification.model_coverage \
   merlin/contract/capsules/model/SY_model_tiny_llama/capsule.interface.mlir \
   merlin/contract/capsules/model/SY_model_smolvla/capsule.interface.mlir \
   merlin/contract/capsules/model/SY_model_resnet50/capsule.interface.mlir
@@ -272,3 +272,9 @@ is either supported or deliberately routed to a verified host path, and close
 the transformation, boundary-transfer, target-conformance and end-to-end
 execution obligations for the exact compiler/package bytes. Any unknown,
 unavailable verifier, uncovered row or unexecuted path keeps that claim open.
+
+The canonical verification owner is `src/merlin/verification/`; retained
+`merlin.verify` aliases preserve existing imports. Verification receipts belong
+to this independent subsystem, while compiler passes produce the exact artifacts
+they consume. Unit tests protect those obligations but do not issue a production
+semantic or execution verdict.

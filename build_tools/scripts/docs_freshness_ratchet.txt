@@ -69,7 +69,6 @@ guides/targetgen.md
 guides/tinyllama_int8_rvv_zephyr.md
 guides/vision_workloads_rvv_zephyr.md
 guides/zephyr.md
-reference/architecture.md
 reference/contracts.md
 reference/core_dialects.md
 reference/dialects.md
@@ -78,7 +77,6 @@ reference/generated_target_repos.md
 reference/lowering_pipeline.md
 reference/merlin_layout.md
 reference/plot_style.md
-reference/repo_structure.md
 reference/runtime.md
 reference/rvv_kernel_mining_methodology.md
 reference/xdsl.md

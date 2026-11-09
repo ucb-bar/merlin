@@ -3,14 +3,18 @@ title: Tiled load addressing and panel completion
 kind: reference
 status: current
 owner: compiler
-last_verified: 2026-11-05
+last_verified: 2026-11-09
 related: [../guides/verified_compiler_tooling, shared_compiler_passes]
 code_refs:
-  - src/merlin/compile/scheduling/tile_load_coalescing.py
-  - src/merlin/compile/scheduling/panel_tile_loads.py
+  - src/merlin/compiler/schedule/tile_load_coalescing.py
+  - src/merlin/compiler/schedule/panel_tile_loads.py
 ---
 
 # Compose tiled load addressing with panel completion
+
+`compiler/schedule/tile_load_coalescing.py` owns addressing proposals and band
+expansion; `compiler/schedule/panel_tile_loads.py` joins them to the original
+checked panel result before emission.
 
 `TileLoadAddressLaw` states source-byte and tiled local-band addressing. It has
 no synchronous flag. `propose_tile_load_coalescing` preserves exact mappings and

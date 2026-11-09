@@ -3,9 +3,16 @@ title: "Design note: accumulator loads are ordered by issue, not by completion"
 kind: design
 status: current
 owner: verification
-last_verified: 2026-10-26
+last_verified: 2026-11-09
 related: [open_coded_nest_costs, capsule_phase_split, agentic_experiment_integrity]
-code_refs: [examples/gemmini/verification/acc_race/acc_race_repro.c, examples/gemmini/verification/acc_race/vend_repro.c, examples/gemmini/verification/acc_race/classify.py, examples/gemmini/verification/acc_race/fence_vendor_resadd.py, merlin/tests/gemmini/test_acc_race_repro.py, src/merlin/targetgen/completion_order.py, src/merlin/targetgen/rtl/command_ordering.py, src/merlin/targetgen/completion_order_gate.py]
+code_refs:
+  - examples/gemmini/verification/acc_race/acc_race_repro.c
+  - examples/gemmini/verification/acc_race/vend_repro.c
+  - examples/gemmini/verification/acc_race/classify.py
+  - examples/gemmini/verification/acc_race/fence_vendor_resadd.py
+  - src/merlin/targetgen/completion_order.py
+  - src/merlin/targetgen/rtl/command_ordering.py
+  - src/merlin/targetgen/completion_order_gate.py
 ---
 
 # Accumulator loads are ordered by issue, not by completion
@@ -129,10 +136,10 @@ different IDs out of order. It was built into a Verilator `GemminiRocketConfig`;
      the loop unroller issues, shows up only under a heavy per-response tail.
 4. **A clean sweep is a sample, not a proof.** Eight seeds sample the schedule space. Report a clean
    sweep as "no failure in N seeds under these profiles", never as "race-free".
-5. **FireSim is cycle-deterministic for a given ELF.** The same binary fails the same elements on
-   every run. What changes the outcome is timing context, such as a different repetition or
-   different code around the kernel. "Non-deterministic" here means timing-dependent, not random per
-   run.
+5. **The retained FireSim observations repeat for their recorded ELF and environment.**
+   The selected binary failed the same elements on the retained repeated runs. What changes the outcome is timing context, such as a different repetition or
+   different code around the kernel. "Non-deterministic" here describes the observed timing dependence; it does not
+   establish deterministic behavior for all FireSim workloads or environments.
 6. **The decision is static, at L2, over the executed stream.** The same hazard appeared in the
    scratchpad: a 16-row zero fill and the rows gathered into it, back to back in the load queue,
    wrong on FireSim in 8 of 12 runs while Spike and GSIM passed. `merlin.targetgen.completion_order`
@@ -144,3 +151,11 @@ different IDs out of order. It was built into a Verilator `GemminiRocketConfig`;
    functional tier with the command indices and rows. An undecidable stream is recorded as
    `unknown` with its reasons, never as clear. Its verdict replaces the accumulator-only rule above
    as the trigger of the perturbation sweep.
+
+The current integration runs `completion_order_gate` in the certification
+context, including ladders that reach an RTL tier and the final coverage pass.
+Other development contexts can explicitly record `deferred`; disabled checks
+retain their declared skipped status. `unknown` remains undecidable evidence,
+not a clear result. The structural checker reads the actual functional command
+stream and selected ordering facts; it does not recreate the historical board
+runs or establish a new hardware revision's completion semantics.

@@ -3,9 +3,17 @@ title: Integrations
 kind: guide
 status: current
 owner: kernels
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [kernel_mining, architecture, repo_structure]
-code_refs: [src/merlin/kernels/ingest, pyproject.toml, src/merlin/benchharness/chia_bridge.py, src/merlin/benchharness/chia_tasks.py, src/merlin/targetgen/aet_bridge.py, src/merlin_experiments/phase2/telemetry.py]
+code_refs:
+  - src/merlin/benchharness/chia_bridge.py
+  - src/merlin/benchharness/chia_tasks.py
+  - src/merlin/targetgen/aet_bridge.py
+  - src/merlin_experiments/phase2/telemetry.py
+  - src/merlin/kernels/ingest/__init__.py
+  - src/merlin/integrations/modelir.py
+  - src/merlin/integrations/specir.py
+  - src/merlin/compiler/backend/load.py
 ---
 
 # Integrations
@@ -419,3 +427,10 @@ Each adapter normalizes its source into `merlin/schemas/` artifacts (e.g. `kerne
 
 Note: xDSL is consumed as an optional library (adapters call its *tooling*); merlin's own prototype
 dialects live in `src/merlin/xdsl_dialects/`.
+
+Current dependency versions and extras are declared in the root `pyproject.toml`
+and frozen by `uv.lock`; the dated checks above are historical observations.
+OOT compiler discovery uses `compiler/backend/load.py` and explicit provider
+selection. Loading a provider exposes its declared compiler interface, not
+independent support/evaluator sources or a hardware qualification. Generated
+experiment backends and upstream clones use the same selected provider contract.

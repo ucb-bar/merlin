@@ -7,8 +7,6 @@ last_verified: 2026-10-08
 related: [verified_compiler_roadmap]
 code_refs:
   - src/merlin/llvmlower/quantized_affine_pair.py
-  - merlin/tests/ir/test_quantized_affine_pair.py
-  - merlin/tests/ir/test_quantized_affine_source_word.py
 ---
 
 # Exact quantized affine pair certificates

@@ -3,9 +3,16 @@ title: "Design note: Merlin supplies the host part of a whole-program capsule"
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-18
+last_verified: 2026-11-09
 related: [capsule_phase_split, agentic_experiment_integrity, derived_capsule_axes]
-code_refs: [src/merlin/targetgen/frozen_placement.py, src/merlin/targetgen/owned_host_model_selection.py, src/merlin/targetgen/owned_host_model_execution.py, src/merlin_experiments/phase0/program_admission.py, src/merlin_experiments/corpus/publication.py, src/merlin/compile/owned_host_model.py]
+code_refs:
+  - src/merlin/targetgen/frozen_placement.py
+  - src/merlin/targetgen/owned_host_model_selection.py
+  - src/merlin/targetgen/owned_host_model_execution.py
+  - src/merlin_experiments/phase0/program_admission.py
+  - src/merlin_experiments/corpus/publication.py
+  - src/merlin/compiler/build/owned.py
+  - src/merlin/targetgen/owned_host_selections.py
 ---
 
 # Merlin supplies the host part of a whole-program capsule
@@ -164,3 +171,10 @@ These rules apply to new qualifications and never rewrite historical frozen resu
 - The frozen decisions carry no operation ordinals, so the binding is by operation name and count
   rather than by ordinal. A future Phase 0 schema that keeps the ordinals can tighten it to exact
   operation identity without changing the route.
+
+The canonical fixed host compiler is `compiler/build/owned.py`. This retained
+experiment route enforces its frozen mandatory accelerator census; it is not a
+general replacement for current backend implementation proposals and resource
+planning. Scalar/RVV provider selection and any shared CPU resource constraints
+belong to the selected system, while this grader retains its original placement
+and complete-output obligations.

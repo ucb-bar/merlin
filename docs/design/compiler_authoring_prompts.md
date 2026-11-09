@@ -3,7 +3,7 @@ title: Shared compiler authoring plan and launch-specific tool guidance
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-09
+last_verified: 2026-11-09
 related: [component_scale_generalization, fresh_compiler_origin, component_phase2_workflow]
 code_refs:
   - src/merlin/targetgen/generalization_prompt.py
@@ -13,7 +13,6 @@ code_refs:
   - src/merlin_experiments/phase1/source_inputs.py
   - src/merlin_experiments/phase1/component_origin.py
   - src/merlin_experiments/phase2/stage_prompt.py
-  - packages/merlin-experiments/tests/test_general_compiler_prompts.py
 ---
 
 # Shared authoring plan
@@ -95,3 +94,8 @@ Prompt guidance cannot replace independent qualification. The separate
 generation, ordinary compile-through-link grading, discharged scale legality,
 synthetic interaction obligations and regime-qualified performance transfer.
 Missing mechanisms remain missing even when the author follows the plan.
+
+`generalization_prompt.py` owns the common versioned requirements. The Phase 1
+task stager and Phase 2 prompt renderer compose those requirements with the
+actual selected tool inventory. Neither the shared text nor an experiment-level
+label adds a compiler API, filesystem grant or evaluation authority.

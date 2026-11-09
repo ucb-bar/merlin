@@ -3,11 +3,10 @@ title: Evaluate default compiler passes
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [shared_pass_phase2, shared_source_lowering, portable_generated_target_admission, ../reference/shared_compiler_passes]
 code_refs:
   - examples/gemmini/phase2/shared_pass_benchmarks.py
-  - merlin/tests/gemmini/test_shared_pass_benchmark_inputs.py
   - src/merlin/transforms/pipeline_state.py
   - src/merlin/llvmlower/device_preparation.py
   - src/merlin/llvmlower/device_build.py
@@ -155,3 +154,9 @@ overlap can dominate. Full automatic asynchronous double buffering remains
 separate implementation work where no qualified transformation exists.
 Phase 2 tunes admitted policy choices after this default comparison, preserving
 all contracts and freezing learned rules before held-out evaluation.
+
+This benchmark recipe intentionally exercises the retained LLVM-capable
+Gemmini package route. It does not constrain every backend's artifact format: a
+selected backend may emit device binaries or command assets through its own
+admitted interface. FireSim deployment remains operator-owned; the measurement
+workflow consumes a prepared execution environment and its exact handoff inputs.

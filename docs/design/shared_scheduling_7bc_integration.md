@@ -3,7 +3,7 @@ title: Shared scheduling source-choice integration
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-19
+last_verified: 2026-11-09
 related: [../guides/shared_pass_phase2, ../guides/shared_source_lowering, ../guides/shared_offload_selection]
 code_refs:
   - src/merlin/llvmlower/source_choices.py
@@ -103,3 +103,9 @@ refused neutral execution; and the stronger lifetime checker exposed missing
 explicit ABI-effect transport in the older source route. The fixes isolate the
 test patch/selection and transport the original effects; they do not weaken
 backend, numerical, lifetime or qualification checks.
+
+The active implementation owners remain `llvmlower/source_choices.py`,
+`source_model.py` and `shared_source_routing.py`.
+`phase2/source_choices_workflow.py` transports the original caller's finite
+selection only. This source-choice seam is separate from backend proposal
+enumeration and the retained generated-compiler queue.

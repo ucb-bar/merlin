@@ -321,7 +321,7 @@ def _exposure(text: str, harness_o: Path, entry: str, forbidden: set[str]) -> li
     if named:
         problems.append(f"harness names vendor routines {named[:8]}")
     nm = Path(str(_toolchain()[0]).replace("gcc", "nm"))
-    proc = subprocess.run([str(nm), str(harness_o)], capture_output=True, text=True, timeout=60)
+    proc = subprocess.run([str(nm), str(harness_o)], capture_output=True, text=True, timeout=60, check=True)
     undefined = {line.split()[-1] for line in proc.stdout.splitlines() if line.split()[:1] == ["U"]}
     extra = sorted(undefined - _CONSOLE_SYMBOLS - {entry})
     if extra:

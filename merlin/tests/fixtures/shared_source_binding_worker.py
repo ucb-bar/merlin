@@ -14,7 +14,7 @@ sys.path[:0] = [str(bundle), *config["dependencies"]]
 
 for name in (
     "merlin.llvmlower.direct_source_contraction",
-    "merlin.llvmlower.late_quant_rne",
+    "merlin.targetgen.common_transforms",
     "merlin_experiments.phase0.connected_integer_bounds",
     "merlin.runtime.reference",
 ):
@@ -45,5 +45,5 @@ else:
     except ImportError:
         value = {"unselected_import": "refused"}
     else:
-        raise AssertionError("V1 release unexpectedly supplied source-binding API")
+        raise AssertionError("unselected release unexpectedly supplied source-binding API")
 Path(config["result"]).write_text(json.dumps(value, sort_keys=True) + "\n")

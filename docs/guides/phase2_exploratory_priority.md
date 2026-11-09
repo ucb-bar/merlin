@@ -3,9 +3,10 @@ title: Exploratory next-parent guidance
 kind: guide
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [phase2_public_diagnostic_launch, phase2_archive_screen]
-code_refs: [src/merlin_experiments/phase2/exploratory_development_priority.py]
+code_refs:
+  - src/merlin_experiments/phase2/exploratory_development_priority.py
 ---
 
 # Exploratory next-parent guidance
@@ -58,3 +59,8 @@ exposes known useful-work compute floors, caller-proven padded work, logical
 request ideals and separately observed client requests. It preserves missing
 host, physical-memory, port and overlap terms. These numbers can identify
 padding or reload opportunities without claiming complete attainment.
+
+`exploratory_development_priority.decide` consumes descriptive normal-queue
+feedback and returns advice only. Its original declared member roster and
+selected improvement threshold remain explicit inputs; it cannot promote a
+candidate, remove a pending case or replace a timing qualification.

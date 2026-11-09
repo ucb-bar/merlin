@@ -3,12 +3,11 @@ title: Source-derived small execution admission
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 code_refs:
   - src/merlin_experiments/phase0/component_execution_budget.py
   - src/merlin_experiments/phase0/component_coverage_plan.py
   - src/merlin_experiments/phase0/generation.py
-  - packages/merlin-experiments/tests/test_component_execution_budget.py
 ---
 
 # Small execution admission
@@ -51,8 +50,9 @@ They require a new independently derived cost owner before admission; they do
 not use a zero or guessed cost. Unsupported or unknown costs and exceeded
 limits are recorded as generation failures. Every mandatory obligation remains
 in the private coverage denominator. This path does not convert a large failed
-execution into a compilation success. Large compilation evidence needs a
-separate future source-through-link qualification mode.
+execution into a compilation success. Large compilation evidence uses the separate
+[source-only compile-through-link roster](component_compile_sources.md); it
+still does not establish numerical execution or discharge its static obligations.
 
 Budget admission runs before sealed capture selection and capsule staging.
 Refused entries are excluded from capture selection and stopped before the
@@ -82,6 +82,7 @@ definition. They do not estimate device cycles or charge a hardware schedule.
 | --- | --- | --- | --- |
 | DAG input with E elements | 2E, construction and range pass | E | E times declared storage bytes |
 | Matmul result with E outputs and K reduction | 2EK + 2E, worst-case multiply/add plus initialization and projection | 2E | Raw result and projected result |
+| Reduction with I input elements and E outputs | 2I + 2E | 2E | Raw reduction and projected result |
 | Other supported DAG node with E outputs | 3E, source computation/copy and projection allowance | 2E | Raw result and projected result |
 | Integer movement input with E elements | E, construction | E | Declared input storage |
 | Complete published output with E elements | E, publication | E | Declared output storage |
@@ -103,3 +104,8 @@ Python instructions. Python object/serialization overhead, repeated witness
 passes, native compilation time and simulator runtime require separate resource
 and timeout controls. Bounded references do not certify compiler completeness,
 large-input arithmetic, physical effects, device timing or whole models.
+
+`component_execution_budget.measure` derives logical costs from the analyzed
+source DAG. Generation admission and later v2 replay use those same fixed
+counts; target cost models, compiler schedules and measured execution times
+remain outside this reference-allocation budget.

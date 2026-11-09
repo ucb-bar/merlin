@@ -3,7 +3,7 @@ title: Start capsule-qualified ordinary source development
 kind: guide
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [phase2_public_diagnostic_launch, phase2_component_search]
 code_refs:
   - src/merlin_experiments/phase2/capsule_ordinary_scope.py
@@ -11,6 +11,8 @@ code_refs:
   - src/merlin_experiments/phase2/authoring_cli.py
   - src/merlin_experiments/phase2/broker_file_channel.py
   - src/merlin_experiments/phase2/ordinary_search_policy.py
+  - src/merlin_experiments/phase2/capsule_iteration.py
+  - src/merlin_experiments/phase2/capsule_source_development.py
 ---
 
 # Capsule-qualified ordinary source development
@@ -209,3 +211,9 @@ limits and preserve the evaluation workers' independently selected resource limi
 Process exit zero means that a checkpoint was written. Read its `state`, admission
 and original feedback receipts to determine whether it completed. Refused checkpoints
 can preserve source edits without any queued correctness or timing evidence.
+
+For source navigation, `capsule_iteration.py` owns the original qualified
+Phase1 input, `capsule_source_development.py` owns the optional public diagnostic
+corpus selection, and `capsule_ordinary_scope.py` binds them to the ordinary
+queue. The file transport delivers requests to that same broker; it does not
+create another evaluator or reconstruct authority from response JSON.

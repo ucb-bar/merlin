@@ -27,7 +27,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Target encoding/capability binding required
 - **evidence to request**: Decoded extents, stride and local overlap checks
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_tile_load_coalescing.py`: `plan = TileLoadCoalescing(rows, columns, tile, 64, base, stride, capacity)`
+- **test that calls it**: none found
 
 ### rhs_load_elimination
 
@@ -40,4 +40,4 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Invalidation and physical address proof required
 - **evidence to request**: Retained RHS epochs and emitted load counts
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_staged_dense.py`: `assert eliminate_redundant_rhs_loads(original, problem, contract(**{premise: False})) is original`
+- **test that calls it**: none found

@@ -3,11 +3,10 @@ title: Scalar pointwise FMA and division loop scheduling
 kind: reference
 status: current
 owner: llvmlower
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [docs/reference/architecture.md]
 code_refs:
   - src/merlin/llvmlower/scalar_pointwise_unroll.py
-  - merlin/tests/ir/test_scalar_pointwise_unroll.py
 ---
 
 # Scalar pointwise FMA and division loop scheduling
@@ -50,3 +49,8 @@ The focused suite compares actual optimized native baseline and selected outputs
 bit for bit, including odd tails, tensor input/destination aliasing, signed zero,
 infinities and existing FMA cancellation. It also checks structural refusals and
 that the default pipeline remains byte unchanged.
+
+`_pointwise_unroll_candidate` establishes the source domain and
+`_annotate_pointwise_unroll` attaches the request. The selected upstream compiler
+decides the final unrolling and remainder code. The shared pass emits no target
+instructions or additional alias permissions.

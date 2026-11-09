@@ -9,8 +9,6 @@ code_refs:
   - src/merlin/llvmlower/source_expression_interval.py
   - src/merlin/llvmlower/source_expression_interval_llvm.py
   - src/merlin/llvmlower/bounded_rne_maps.py
-  - merlin/tests/ir/test_source_expression_interval.py
-  - merlin/tests/ir/test_source_expression_interval_llvm.py
 ---
 
 # Source expression interval tables

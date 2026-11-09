@@ -3,18 +3,19 @@ title: General optimization passes and Phase 2 integration
 kind: reference
 status: current
 owner: compile
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [shared_compiler_passes, tiled_convolution, panel_transfers, shared_input_scheduling, copy_pipeline, ../guides/shared_pass_phase2]
 code_refs:
-  - src/merlin/compile/scheduling/block_schedule.py
-  - src/merlin/compile/scheduling/shared_input_groups.py
-  - src/merlin/compile/scheduling/shared_input_schedule.py
-  - src/merlin/compile/scheduling/shared_input_verification.py
-  - src/merlin/compile/scheduling/panel_transfers.py
-  - src/merlin/compile/scheduling/copy_pipeline.py
-  - src/merlin/compile/scheduling/dense_source.py
-  - src/merlin/compile/scheduling/configuration_loops.py
-  - src/merlin/compile/scheduling/command_compaction.py
+  - src/merlin/compiler/schedule/blocks.py
+  - src/merlin/compiler/schedule/convolution.py
+  - src/merlin/compiler/schedule/shared_input_groups.py
+  - src/merlin/compiler/schedule/shared_input_schedule.py
+  - src/merlin/compiler/schedule/shared_input_verification.py
+  - src/merlin/compiler/schedule/panel_transfers.py
+  - src/merlin/compiler/schedule/copy_pipeline.py
+  - src/merlin/compiler/schedule/dense_source.py
+  - src/merlin/compiler/schedule/configuration_loops.py
+  - src/merlin/compiler/schedule/command_compaction.py
 ---
 
 # General optimization passes and Phase 2 integration
@@ -25,6 +26,11 @@ configuration elimination and ordered host-loop unrolling. Those mechanisms
 were not a complete reference-quality generated accelerator pipeline. The
 following additions extend them without introducing target instruction code.
 Their availability is distinct from a generated backend consuming them.
+
+Current implementations live under `compiler/schedule/`. `blocks.py` retains the
+public block API, while `convolution.py` owns tiled convolution and the named
+shared-input, panel, copy and command modules own their respective algorithms.
+The code references follow those bodies rather than compatibility imports.
 
 | Transformation | Existing foundation | Added mechanism | Present boundary |
 | --- | --- | --- | --- |

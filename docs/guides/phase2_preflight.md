@@ -3,7 +3,7 @@ title: Prepare and check a Phase 2 experiment
 kind: guide
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [phase2_corpus_search, phase2_public_diagnostic_launch, phase2_archive_screen, shared_pass_phase2]
 code_refs:
   - src/merlin_experiments/phase2/public_diagnostic_launch.py
@@ -126,3 +126,9 @@ Reserve resources before launch, keep the evaluator separate from compiler
 edits, preserve the declared objective and stop rules, and retain a final
 verification reserve. The coordinator owns retained candidates, bounded parallel
 evaluation, feedback and decisions; setup scripts do not replace that loop.
+
+`timing_domain_readiness.py` writes a metadata report;
+`public_diagnostic_launch.py` owns the explicit launch path.
+`diagnostic_pair_check.py` checks both actually retained compiler products through
+a live original selection. None of those outputs alone is the ordinary search
+qualification or a physical timing certificate.

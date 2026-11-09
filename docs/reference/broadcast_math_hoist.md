@@ -3,18 +3,24 @@ title: Typed broadcast reciprocal square root hoisting
 kind: reference
 status: current
 owner: llvmlower
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [docs/reference/architecture.md, docs/reference/scalar_pointwise_unroll.md]
 code_refs:
   - src/merlin/llvmlower/broadcast_math_hoist.py
-  - src/merlin/llvmlower/pipeline.py
-  - merlin/tests/ir/test_broadcast_math_hoist.py
+  - src/merlin/compiler/transforms/host_broadcast.py
+  - src/merlin/llvmlower/automatic_host_features.py
 ---
 
 # Typed broadcast reciprocal square root hoisting
 
-`hoist_broadcast_source_rsqrt` is an explicit, default-off host compiler feature.
-It runs after source elementwise fusion and immediately before bufferization.
+`hoist_broadcast_source_rsqrt` is an explicit host compiler feature. Its standalone
+selection is opt-in. The ordinary serial `automatic_scalar_host` pipeline also
+considers this rewrite by default; `MERLIN_AUTOMATIC_HOST_OPTIMIZATIONS=0`,
+`-automatic-host-optimizations`, or the specific `-broadcast-math-hoist` pass
+choice can disable the corresponding automatic selection. Eligibility still
+comes from the current typed source. The implementation lives in
+`compiler/transforms/host_broadcast.py`; the feature adapter and automatic host
+pipeline reuse it. It runs after source elementwise fusion and immediately before bufferization.
 Fusion can place a row operation inside a wider channel consumer. The rewrite
 materializes its exact scalar dependency chain once at each distinct row point.
 Later fusion cannot absorb the producer again at this seam.

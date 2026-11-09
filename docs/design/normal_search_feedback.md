@@ -3,7 +3,7 @@ title: Normal compiler search and diagnostic feedback
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [phase2_corpus_search, phase2_cpu_timing_study, independent_performance_feedback]
 code_refs:
   - src/merlin_experiments/phase1/feedback/selfcheck.py
@@ -340,3 +340,9 @@ executes fixed cheap/RTL/calibration producers on explicitly allocated resources
 and preserves costs even when qualification remains UNKNOWN; its default plan
 launches nothing. Actual Phase 1 completion, worker qualification, costs,
 convergence and protected final performance require the original executions.
+
+These diagnostics and search controls belong to the experiment workflow.
+Compiler execution-plan records and backend proposals remain compiler inputs;
+they cannot issue a completed experiment job, independent numerical acceptance
+or a measured incumbent. Source relocation preserves the original queue's
+immutable revisions, complete roster and evaluator authority.

@@ -3,9 +3,15 @@ title: Phase 2 CPU fidelity and timing study
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-11
+last_verified: 2026-11-09
 related: [component_phase2_workflow, phase2_test_justification]
-code_refs: [src/merlin_experiments/phase2/evaluation_fidelity.py, src/merlin_experiments/phase2/component_compiled_arms.py, src/merlin_experiments/phase2/timing_study.py, src/merlin_experiments/phase2/ordinary_timing_study.py, src/merlin_experiments/phase2/ordinary_calibration.py]
+code_refs:
+  - src/merlin_experiments/phase2/evaluation_fidelity.py
+  - src/merlin_experiments/phase2/component_compiled_arms.py
+  - src/merlin_experiments/phase2/timing_study.py
+  - src/merlin_experiments/phase2/ordinary_timing_study.py
+  - src/merlin_experiments/phase2/ordinary_calibration.py
+  - src/merlin_experiments/phase2/ordinary_search_policy.py
 ---
 
 # Phase 2 CPU fidelity and timing study
@@ -240,3 +246,10 @@ the result UNKNOWN. Screening still requires 95% ranking agreement, at most 10%
 relative error, 95% interval coverage, and every original evidence minimum:
 100 decided pairs, 20 pairs per qualifying slice, three slices and 20 predictions.
 Final acceptance retains its original full roster and independent physical gates.
+
+The ordinary CPU-study request is constructed by
+`ordinary_timing_study.request_from_policy` from the current live policy. The
+component planning command is a separately scoped entrypoint. Neither command
+provisions infrastructure; execution requires its explicit original owners and
+allocated resource selection. Install the independent `merlin_timing` package
+only for workflows that actually select that observer/calibration interface.

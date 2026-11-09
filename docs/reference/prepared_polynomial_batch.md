@@ -3,9 +3,12 @@ title: "Four-cell prepared polynomial scheduling"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [ordered_fma_certificates, quantized_host_optimizations]
-code_refs: [src/merlin/llvmlower, merlin/runtime/c]
+code_refs:
+  - src/merlin/llvmlower/source_attention_frontier.py
+  - src/merlin/llvmlower/prepared_polynomial_batch.py
+  - merlin/runtime/c/prepared_polynomial_batch.h
 ---
 
 # Four-cell prepared polynomial scheduling
@@ -30,6 +33,11 @@ is automatic storage, with no change to the caller workspace ABI.
 
 Portable C expresses independence but does not promise target issue order.
 Inspect actual compiler output and price the entire group, including scratch
-and replay, before selecting this policy. The initial RV64GC compilation still
-serializes each endpoint Horner chain; no eight-cell extension is justified by
-that evidence.
+and replay, before selecting this policy. A portable four-cell schedule does not establish an eight-cell cost policy;
+selected compiler output and complete measurements must justify any wider
+alternative.
+
+The emitter adapter `prepare_polynomial_batch_four` checks the complete original
+cell loop and tail before replacing it. The runtime arithmetic lives in
+`prepared_polynomial_batch.h`; target-specific eight-endpoint FMA hooks, when
+separately selected, remain provider capabilities rather than a new cell schedule.

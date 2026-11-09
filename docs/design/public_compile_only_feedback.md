@@ -3,9 +3,18 @@ title: Public scale compilation through the original brokers
 kind: design
 status: current
 owner: ir
-last_verified: 2026-10-14
+last_verified: 2026-11-09
 related: [verified_compiler_tooling, verified_compiler_roadmap, phase2_test_justification]
-code_refs: [src/merlin_experiments/phase0/public_compile_sources.py, src/merlin_experiments/phase1/feedback/compile_only.py, src/merlin_experiments/phase1/feedback/compiler_profile_child.py, src/merlin_experiments/phase1/brokers/compiler_call_channel.py, src/merlin_experiments/phase2/public_compile_only.py, src/merlin/targetgen/compile_only_execution.py, src/merlin/verification/lean_emission_chain.py]
+code_refs:
+  - src/merlin_experiments/phase0/public_compile_sources.py
+  - src/merlin_experiments/phase1/feedback/compile_only.py
+  - src/merlin_experiments/phase1/feedback/compiler_profile_child.py
+  - src/merlin_experiments/phase1/brokers/compiler_call_channel.py
+  - src/merlin_experiments/phase2/public_compile_only.py
+  - src/merlin/targetgen/compile_only_execution.py
+  - src/merlin/verification/lean_emission_chain.py
+  - src/merlin/verification/lean_emission_context.py
+  - src/merlin/targetgen/common_transforms.py
 ---
 
 # Public scale compilation through the original brokers
@@ -172,3 +181,9 @@ compiler namespace. On completion or cancellation the dedicated host owner
 reaps its proof children before private staging is removed; source identities
 are reopened afterward. Pending file, request-byte and request-count limits
 bound this channel independently of simulator work.
+
+The LLVM build-only route above is an explicitly scoped diagnostic. A backend
+may instead emit binaries or command assets under an admitted artifact ABI;
+structural acceptance of those outputs does not supply this route's LLVM, link,
+numerical or certification adapters. Common compile orchestration must preserve
+that distinction rather than require every device emitter to produce LLVM.

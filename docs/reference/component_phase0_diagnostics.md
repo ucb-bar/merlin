@@ -3,9 +3,13 @@ title: Component Phase 0 diagnostic API
 kind: reference
 status: current
 owner: experiments
-last_verified: 2026-10-12
+last_verified: 2026-11-09
 related: [phase0_specification, component_compiler_convergence, phase0_phase1_setup]
-code_refs: [src/merlin_experiments/phase0/declared_run.py, src/merlin_experiments/phase0/component_coverage.py]
+code_refs:
+  - src/merlin_experiments/phase0/declared_run.py
+  - src/merlin_experiments/phase0/component_coverage.py
+  - src/merlin_experiments/phase0/component_automatic.py
+  - src/merlin_experiments/phase0/source_requirement_ledger.py
 ---
 
 # Component Phase 0 diagnostic API
@@ -190,3 +194,10 @@ Candidate compilation, source-to-ELF correspondence and physical ownership,
 synchronization and execution qualification belong to Phase 1. Measured costs and
 held performance calibration belong to Phase 2. Phase 0 must prepare their inputs
 without claiming those later verdicts or requiring a preexisting target backend.
+
+The request versions above retain their original scope. Later explicit request
+versions add packing and further original-source forms; `declared_run.validate`
+is the closed field/version boundary and `component_automatic` owns the selected
+automatic source derivation. A newer form is available only when that exact
+request, policy and source version admit it. Upgrading a transport or reading
+a newer implementation never completes an older receipt's missing obligations.

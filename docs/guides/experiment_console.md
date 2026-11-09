@@ -3,7 +3,7 @@ title: Experiment console — track, inspect and debug any experiment from the t
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-26
+last_verified: 2026-11-09
 related: [experiment_dashboard]
 code_refs:
   - src/merlin_experiments/tracking/console/cli.py
@@ -37,6 +37,7 @@ code_refs:
   - packages/merlin-experiments/console/internal/ui/views.go
   - src/merlin_experiments/cli.py
   - src/merlin_experiments/phase1/telemetry/startup.py
+  - packages/merlin-experiments/console/go.mod
 ---
 
 # Experiment console
@@ -47,8 +48,9 @@ slowing a run down or why a capsule fails. Progress, stages, agents, the timelin
 performance, capsules, passes and events are all on one screen, and Enter on any row opens the record
 behind it.
 
-The console only reads records. It never writes into a run, never starts or stops a job, and never
-touches hardware, so it is safe to leave open next to a running experiment.
+Monitoring only reads experiment records: it does not write into a run or start
+or stop a job. The explicit `--build` action separately writes the terminal
+frontend under the configured build root.
 
 ## Quick start
 
@@ -86,9 +88,7 @@ This writes `out/build/console/merlin-console`. The build needs Go 1.26 or newer
 your `PATH`, install it in your home directory and point the console at it:
 
 ```bash
-mkdir -p ~/.local
-curl -fsSL https://go.dev/dl/go1.26.10.linux-amd64.tar.gz | tar -C ~/.local -xz
-export MERLIN_CONSOLE_GO=~/.local/go/bin/go
+export MERLIN_CONSOLE_GO=/absolute/selected/go/bin/go
 merlin-experiment console --build
 ```
 
@@ -404,3 +404,9 @@ operator diagnostics, does not change checks, and is not yet a dedicated UI pane
   history instead of live cores.
 - The console reads only this machine's records. Results on other machines (for example FPGA runs)
   appear only through records copied back here.
+
+The frontend source remains `packages/merlin-experiments/console/`; its Go
+module owns the minimum language/toolchain declaration. Python record readers
+live in `src/merlin_experiments/tracking/console/` within Merlin's current wheel.
+A console-rendered certificate or modeled cost summarizes its cited producer
+record; the view does not issue an independent acceptance or timing verdict.

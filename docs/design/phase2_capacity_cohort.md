@@ -3,9 +3,18 @@ title: "Design note: the Phase 2 capacity cohort, its scope, its roofline and it
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-19
+last_verified: 2026-11-09
 related: [merlin_supplied_host_placement, spike_timing]
-code_refs: [src/merlin_experiments/phase2/metric_scope.py, src/merlin_experiments/phase2/public_program_measurement.py, src/merlin_experiments/phase0/form_perf.py, src/merlin_experiments/phase0/capacity_families.py, src/merlin_experiments/phase2/claims/capacity.py, src/merlin_experiments/phase2/roofline_priority.py, src/merlin_experiments/phase2/calibration_validation.py, src/merlin/perf/movement_peak.py, src/merlin/perf/staged_roofline.py, experiments/templates/phase0/performance.yaml]
+code_refs:
+  - src/merlin_experiments/phase2/metric_scope.py
+  - src/merlin_experiments/phase2/public_program_measurement.py
+  - src/merlin_experiments/phase0/form_perf.py
+  - src/merlin_experiments/phase0/capacity_families.py
+  - src/merlin_experiments/phase2/claims/capacity.py
+  - src/merlin_experiments/phase2/roofline_priority.py
+  - src/merlin_experiments/phase2/calibration_validation.py
+  - src/merlin/perf/movement_peak.py
+  - src/merlin/perf/staged_roofline.py
 ---
 
 # The Phase 2 capacity cohort
@@ -19,8 +28,9 @@ Phase 2 optimizes what decides accelerator performance:
 
 The previous cohort could not exercise any of these. The form-perf and PK members top out around
 M≤17, N≤32 and K=128. They fit every on-chip store many times over, so none of those decisions
-changes their cycles. Phase 2 iterates on a calibrated Spike timing model with no RTL simulator in
-the loop, so large shapes are affordable. This note covers four changes:
+changes their cycles. An explicitly qualified Spike timing model may screen large shapes within
+its admitted domain. Missing calibration or unsupported regimes stay UNKNOWN;
+this design does not establish a simulator-free qualified search loop. This note covers four changes:
 
 - the metric scope;
 - the capacity-scaled families;
@@ -267,3 +277,8 @@ Points selected on facts-v6 (19 shapes):
 - The accelerator-affecting host stage has no cycle model yet.
 - The Merlin host stage of a split program is not yet measured separately. Until it is, only paired
   deltas over identical Merlin host code are scored.
+
+The facts-v6 shape and calibration tables are historical construction examples.
+A current cohort is generated from its selected facts and frozen policy, not
+those literal dimensions. No documentation refresh changes an existing cohort's
+source membership, objective weights, floor arithmetic or acceptance threshold.

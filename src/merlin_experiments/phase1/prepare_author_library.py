@@ -52,11 +52,13 @@ def prepare(
     reviewed_module=(),
     reviewed_rtl_discovery_dependencies=False,
     reviewed_tensor_views=False,
-    library_version=21,
+    library_version=26,
 ):
     repo, output = Path(repo).resolve(), Path(output).absolute()
-    if type(library_version) is not int or library_version not in (8, 16, 17, 18, 19, 20, 21, 22, 23, 24):
-        raise ValueError("author library preparation requires explicit inventory version 8 or 16 through 24")
+    if type(library_version) is not int or library_version != 26:
+        raise ValueError(
+            "fresh author library preparation requires inventory version 26; replay older inventories in their frozen environment"
+        )
     _require_source_revision(repo, source_revision)
     base = load_selection(root=previous_root, contract_path=previous_contract, contract_sha256=previous_sha256)
     if base is None or not enabled(base):
@@ -77,11 +79,13 @@ def prepare(
         raise ValueError("shared SDK identity changed during preparation")
     members = {row.path: row for row in base.contract.members}
     requested = reviewed_discovery_modules(
-        reviewed_module, existing=base.contract.public_modules,
+        reviewed_module,
+        existing=base.contract.public_modules,
         enabled=reviewed_rtl_discovery_dependencies,
     )
     requested = reviewed_view_modules(
-        requested, existing=base.contract.public_modules,
+        requested,
+        existing=base.contract.public_modules,
         source_modules={member.module for member in base.contract.members},
         enabled=reviewed_tensor_views,
     )
@@ -116,8 +120,10 @@ def prepare(
         library,
         review_id=REVIEW_PREFIX + "coevolution-readiness:" + source_revision[:12],
         # A reviewed package contributes its initializer as a source only; public APIs stay leaves.
-        public_modules=(*base.contract.public_modules,
-                        *(module for path, module in additions.items() if not path.endswith("/__init__.py"))),
+        public_modules=(
+            *base.contract.public_modules,
+            *(module for path, module in additions.items() if not path.endswith("/__init__.py")),
+        ),
         sources=tuple(sources.items()),
     )
     selection = CompilerLibrarySelection(contract, library)
@@ -156,8 +162,7 @@ def prepare(
         "campaign_launched": False,
         "source_member_sha256": hashes,
     }
-    if library_version != 8:
-        report["library_inventory_version"] = library_version
+    report["library_inventory_version"] = library_version
     for name, value in [
         ("compiler-library-contract.json", selection.contract.record()),
         ("compiler-library-selection.json", selection.record()),
@@ -242,14 +247,21 @@ def main():
     for name in ("source-revision", "previous-sha256"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--generated-package", type=Path)
-    parser.add_argument("--library-version", type=int, choices=(8, 16, 17, 18, 19, 20, 21, 22, 23, 24), default=21,
-                        help="prospective reviewed source inventory; existing library grants remain explicit")
     parser.add_argument(
-        "--reviewed-rtl-discovery-dependencies", action="store_true",
+        "--library-version",
+        type=int,
+        choices=(26,),
+        default=26,
+        help="prospective reviewed source inventory; existing library grants remain explicit",
+    )
+    parser.add_argument(
+        "--reviewed-rtl-discovery-dependencies",
+        action="store_true",
         help="explicitly include reviewed merlin.common.facts_view for public RTL discovery imports",
     )
     parser.add_argument(
-        "--reviewed-tensor-views", action="store_true",
+        "--reviewed-tensor-views",
+        action="store_true",
         help="explicitly add static tensor-view canonicalization to the next reviewed library",
     )
     parser.add_argument(

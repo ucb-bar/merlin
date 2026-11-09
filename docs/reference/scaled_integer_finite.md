@@ -9,8 +9,6 @@ code_refs:
   - src/merlin/llvmlower/scaled_integer_finite.py
   - src/merlin/llvmlower/scaled_integer_finite_llvm.py
   - src/merlin/llvmlower/source_expression_interval.py
-  - merlin/tests/ir/test_scaled_integer_finite.py
-  - merlin/tests/ir/test_scaled_integer_finite_llvm.py
 ---
 
 # Broadcast scaled integer finite guards

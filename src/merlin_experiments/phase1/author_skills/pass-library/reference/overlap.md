@@ -15,7 +15,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Unknown DMA dependency must remain blocked
 - **evidence to request**: Issue/completion ordering and time-window evidence
 - **access**: selected_public_library
-- **test of its module** (none calls this symbol directly): `merlin/tests/infra/test_temporary_storage.py`
+- **test of its module** (none calls this symbol directly): `merlin/tests/infra/test_copy_coalescing.py`
 
 ### copy_pipeline
 
@@ -28,7 +28,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Does not establish compute/load overlap without its own adapter
 - **evidence to request**: Slot ownership, fences, queue occupancy and completed-call timing
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_copy_pipeline.py`: `candidate, report = pipeline_private_copies(kernel, objects, banks, ADAPTER, admission, policy=policy, **model)`
+- **test of its module** (none calls this symbol directly): `merlin/tests/targetgen/test_shared_pass_pipeline_consumption.py`
 
 ### double_buffer_ownership
 
@@ -41,7 +41,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Target must realize legal alternating storage and stage ordering
 - **evidence to request**: Planned versus emitted stages, live intervals and dependency waits
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_staged_dense.py`: `after, report = rewrite_staged_dense(`
+- **test that calls it**: none found
 
 ### pipeline_phases
 
@@ -53,7 +53,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Existing staged representation is a foundation; generic modulo scheduler and emitted phase/rotation verifier remain an explicit implementation obligation
 - **evidence to request**: Stage count, slot identity, prologue/drain costs and decoded final completion
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_staged_dense.py`: `problem = StagedDenseProblem(m, k, n)`
+- **test that calls it**: none found
 
 ### final_k_accumulator_readout_frontier
 
@@ -66,7 +66,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Target adapter supplies the causal readiness law; store snapshots and finite queues stay exact
 - **evidence to request**: Readout issue points relative to final reduction commits, accumulator stall cycles and exact outputs
 - **access**: full_compiler_source_and_scheduling_capabilities_v19
-- **test that calls it**: `merlin/tests/infra/test_dense_ready_readout.py`: `actual, _ = propose_dense_ready_readout(original.kernel, p, ADAPTER)`
+- **test that calls it**: none found
 
 ### accumulator_readout_compute_overlap
 
@@ -79,7 +79,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Target adapter declares readout/compute concurrency; epoch hazards are checked before counted emission
 - **evidence to request**: Accumulator-busy cycles, overlapped readout epochs and exact outputs before and after
 - **access**: full_compiler_source_and_scheduling_capabilities_v19
-- **test that calls it**: `merlin/tests/infra/test_dense_readout_overlap.py`: `actual, _ = propose_dense_readout_overlap(`
+- **test that calls it**: none found
 
 ### segmented_k_retained_operand_pipeline
 
@@ -92,4 +92,4 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Capacity-legal issue order and tile-load admission come from target facts
 - **evidence to request**: Load/compute overlap, accumulator and scratchpad occupancy and exact outputs
 - **access**: full_compiler_source_and_scheduling_capabilities_v19
-- **test that calls it**: `merlin/tests/infra/test_dense_segmented_pipeline.py`: `return schedule_dense_segmented_pipeline(`
+- **test that calls it**: none found

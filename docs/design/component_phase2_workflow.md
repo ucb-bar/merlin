@@ -3,7 +3,7 @@ title: "Component-only Phase 2 feedback and launch boundaries"
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [beam_cca_architecture]
 code_refs:
   - src/merlin/perf/component_cost.py
@@ -19,12 +19,12 @@ code_refs:
   - src/merlin_experiments/phase2/stage_prompt.py
   - src/merlin_experiments/phase2/authoring.py
   - src/merlin_experiments/phase2/authoring_cli.py
-  - packages/merlin-experiments/tests/test_component_workflow.py
-  - packages/merlin-experiments/tests/test_component_cca.py
   - src/merlin_experiments/phase0/component_generation.py
   - src/merlin_experiments/phase0/generation.py
   - src/merlin_experiments/phase2/corpus.py
-  - packages/merlin-experiments/tests/test_component_generation.py
+  - src/merlin_experiments/phase2/authoring_selections.py
+  - src/merlin_experiments/phase2/component_launch.py
+  - src/merlin_experiments/phase2/feedback_guardian.py
 ---
 
 # Component-only Phase 2
@@ -170,11 +170,12 @@ Neither tier requires a GSIM measurement on every iteration. Neither grants fina
 accuracy, hardware parity or convergence acceptance. Spike functional evidence
 cannot be presented as RTL or FPGA timing. Normal analytical and CCA actions run
 through `supervised_feedback.bounded_feedback`, which forks the selected trusted
-callback into a private worker and uses the existing portfolio process supervisor
-to kill its complete tree at the wall deadline. The worker stays alive after
-publishing its result until supervision enumerates its descendants, so nested tools
-that opened new sessions are also cancelled. This host deadline does not replace
-candidate sandbox admission or a separately qualified native worker service.
+callback through the dedicated invocation guardian, which owns and reaps its
+local descendants. Results remain bounded and late results refuse; unresolved
+cleanup retains ownership and leases. Parent OS calls and decoding do not acquire
+a hard interruptible deadline, and delegated non-descendant work stays UNKNOWN.
+This transport does not replace candidate sandbox admission or independently
+qualified native execution.
 
 The public `component_analytical.build_component_analytical_provider` binds the
 frozen baseline, exact corpus, descriptor, controlled calibration adapter,
@@ -275,11 +276,11 @@ available actions, exact member identities and budgets. These functions prepare
 input; they do not approve the view or start an agent.
 
 Normal `authoring.run_stage` and `authoring_cli --workflow component-only-v1`
-currently refuse before descriptor loading, executable lookup, telemetry,
-legacy GSIM flags or model selection. There is no qualified fresh-session,
-network-restricted authoring transport in this owner. The future launch edge
-must verify an approved minimal view, content-bound runtime isolation and a
-zero-history participant session, then create the explicit providers and broker.
+refuse without the original independently qualified launch owner. The current
+`QualifiedComponentLaunch` route verifies that exact typed owner and its
+minimal view, runtime isolation and fresh-session inputs before dispatching to
+`run_component_stage`. CLI launch inputs still require original live Phase1
+origin and measurement-support owners; a JSON declaration cannot construct them.
 A library already developed by an implementation agent is not evidence of a
 fresh participant's convergence.
 
@@ -311,3 +312,8 @@ complete-model speedup.
 The command-buffer structural action and complete CCA action remain separate:
 neither substitutes a partial agreement predicate for the all-facet report or
 establishes final acceptance.
+
+The ordinary corpus search and optional component search retain different
+admission owners. The existence of the qualified component launch mechanism is
+not evidence that a particular target has supplied its missing physical or timer
+roles. Those remain the separate live requirements described above.

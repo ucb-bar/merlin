@@ -3,29 +3,29 @@ title: Disk under out/ — why it grows and what is safe to reclaim
 kind: guide
 status: current
 owner: infra
-last_verified: 2026-10-26
+last_verified: 2026-11-09
 related: [reproducibility, getting_started, phase0_phase1_setup]
-code_refs: [src/merlin/common/content_store.py,
-            src/merlin/common/oot_repo.py,
-            src/merlin/common/artifacts.py,
-            src/merlin/targetgen/champions.py,
-            src/merlin/targetgen/target_index.py,
-            src/merlin_experiments/phase1/oot_history.py,
-            src/merlin/common/storage_cli.py,
-            src/merlin/common/storage_lifecycle.py,
-            src/merlin/common/storage_ops.py,
-            src/merlin/common/cited_evidence.py,
-            src/merlin/common/immutability.py,
-            src/merlin_experiments/corpus/evidence_custody.py,
-            src/merlin_experiments/phase1/feedback/scratch_retention.py,
-            src/merlin_experiments/phase2/external_resources.py,
-            src/merlin_experiments/phase2/_kernel_resources.py,
-            merlin/contract/storage.yaml,
-            .claude/hooks/guard_artifact_writes.py,
-            src/merlin/targetgen/sandbox/bwrap.py,
-            merlin/tests/conftest.py,
-            build_tools/scripts/provision_worktree.py,
-            build_tools/scripts/worktree_provisioning.yaml]
+code_refs:
+  - src/merlin/common/content_store.py
+  - src/merlin/common/oot_repo.py
+  - src/merlin/common/artifacts.py
+  - src/merlin/targetgen/champions.py
+  - src/merlin/targetgen/target_index.py
+  - src/merlin_experiments/phase1/oot_history.py
+  - src/merlin/common/storage_cli.py
+  - src/merlin/common/storage_lifecycle.py
+  - src/merlin/common/storage_ops.py
+  - src/merlin/common/cited_evidence.py
+  - src/merlin/common/immutability.py
+  - src/merlin_experiments/corpus/evidence_custody.py
+  - src/merlin_experiments/phase1/feedback/scratch_retention.py
+  - src/merlin_experiments/phase2/external_resources.py
+  - src/merlin_experiments/phase2/_kernel_resources.py
+  - merlin/contract/storage.yaml
+  - src/merlin/targetgen/sandbox/bwrap.py
+  - merlin/tests/conftest.py
+  - build_tools/scripts/provision_worktree.py
+  - build_tools/scripts/worktree_provisioning.yaml
 ---
 
 # Disk under `out/` — why it grows and what is safe to reclaim
@@ -522,3 +522,10 @@ a lifecycle pin as well, so either alone keeps the evidence.
 adds the index rows that cite that run. A champion row says `unsealed_legacy`, `reconstructed` and
 `composed` when its provenance carries those blocks, and a legacy champion is found by the run
 directories its legacy block names.
+
+Use the current report and lifecycle records for a cleanup decision. The dated
+size tables above explain earlier failures; they are not a current disk census
+or deletion authorization. `storage_lifecycle.py` owns live leases, pins and
+terminal acknowledgement, `content_store.py` owns reusable exact bytes, and
+`storage_ops.py` owns explicit external-tree moves and duplicate linking. A
+renamed path, old timestamp or absent process alone does not retire evidence.

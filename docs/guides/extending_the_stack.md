@@ -3,13 +3,13 @@ title: Extending the compiler stack
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-16
+last_verified: 2026-11-09
 related: [phase0_specification, model_lowering, model2mlir, triton_kernels, target_resolution, llvm_integration, simulator_selection]
 code_refs:
   - src/merlin/targetgen/software_spec.py
-  - src/merlin/targetgen/instruction_semantics.py
+  - src/merlin/target/spec/instructions.py
   - src/merlin/targetgen/semantic_search/search.py
-  - src/merlin/targetgen/quant_recipe.py
+  - src/merlin/compiler/quantization/capabilities.py
   - src/merlin/targetgen/quant_layer_plan.py
   - src/merlin/targetgen/_recipe_quantizer.py
   - src/merlin/targetgen/_gptq.py
@@ -23,6 +23,13 @@ code_refs:
   - src/merlin/runtime/dispatch_runtime.py
   - src/merlin/llvmlower/lower.py
   - src/merlin/llvmlower/codegen.py
+  - src/merlin/api.py
+  - src/merlin/service_cli.py
+  - src/merlin/compiler/backend/scalar.py
+  - src/merlin/compiler/lower/scalar/pipeline.py
+  - src/merlin/target/spec/load.py
+  - src/merlin/compiler/quantization/preparation.py
+  - src/merlin/compiler/quantization/torchao/pt2e.py
 ---
 
 # Extending the compiler stack
@@ -52,7 +59,7 @@ The [Atlas](../../examples/atlas/README.md) and
 `phase0/`, `phase1/`, `phase2/` and `whole-model/`. Their `artifacts/` directories explain
 navigation; generated payloads belong under the configured output root, not in examples.
 
-## Understand the two lowering routes
+## Understand the retained lowering routes
 
 ```text
 PyTorch model + actual inputs + optional operation-scoped quantization
@@ -473,3 +480,17 @@ operations, numerical agreement and actual hardware/performance evidence indepen
 Iteration success, host execution or a sealed corpus does not establish full headline
 accelerator compilation. Functional and performance capsule selections remain separate;
 performance results must bind the exact functionally qualified compiler and new run inputs.
+
+For current implementation navigation, start with `merlin.api.compile` and the
+selected provider. Generic scalar compilation lives in
+`compiler/backend/scalar.py`, with reusable scalar pass construction under
+`compiler/lower/scalar/`; RVV implementation belongs in its selected OOT provider.
+Target-specific device binaries or command assets need not pass through LLVM.
+The retained staged and saved-model routes above remain separately scoped APIs.
+
+Human-authored numerical meaning is loaded by `target/spec/load.py`; typed
+quantization declarations live in `target/spec/quantization.py`. Application
+calibration/recovery belongs to an explicitly selected
+`compiler.quantization.preparation` profile. A profile that would change the
+requested recipe requires selection of that exact proposed alternative; it cannot
+quietly replace the numerical contract to fit a backend.

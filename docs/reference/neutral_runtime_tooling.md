@@ -3,9 +3,18 @@ title: Neutral contract-driven runtime tooling
 kind: reference
 status: current
 owner: runtime
-last_verified: 2026-10-10
+last_verified: 2026-11-09
 related: [target_resolution, simulator_selection, gsim_worker_setup]
-code_refs: [src/merlin/runtime/backends/base.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/runtime/backends/chipyard_rocc_bound.py, src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/harness_render.py, src/merlin/targetgen/rocc/semantics.py, src/merlin/targetgen/rtl_checks_generic.py, src/merlin/targetgen/build_cache.py, src/merlin_experiments/capture_execution/sealed_inventory.py]
+code_refs:
+  - src/merlin/runtime/backends/base.py
+  - src/merlin/runtime/backends/chipyard_rocc.py
+  - src/merlin/runtime/backends/chipyard_rocc_bound.py
+  - src/merlin/runtime/backends/rocc_selection.py
+  - src/merlin/runtime/harness_render.py
+  - src/merlin/targetgen/rocc/semantics.py
+  - src/merlin/targetgen/rtl_checks_generic.py
+  - src/merlin/targetgen/build_cache.py
+  - src/merlin_experiments/capture_execution/sealed_inventory.py
 ---
 
 # Neutral contract-driven runtime tooling
@@ -132,3 +141,9 @@ still needs its actual toolchain, simulator receipt, nonzero numerical smoke and
 fresh-client isolation check before experiments. These shared tools do not
 qualify the native worker, prove complete Phase 0 coverage, or certify end-to-end
 compiler accuracy or performance.
+
+For navigation, `backends.base.get_backend` resolves the selected execution
+provider; `chipyard_rocc_bound.py` validates and executes the declared generic
+RoCC tooling contract. `rocc_selection.py` prepares pinned deployment data only.
+Compiler provider registration and source-only CI consumer pins are separate
+mechanisms and grant no runtime or evaluator authority.

@@ -3,9 +3,12 @@ title: "Fused canonical encoder witness"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [ordered_fma_certificates, quantized_host_optimizations]
-code_refs: [src/merlin/llvmlower, merlin/runtime/c]
+code_refs:
+  - src/merlin/llvmlower/fused_encoded_witness.py
+  - src/merlin/llvmlower/source_attention_frontier.py
+  - merlin/runtime/c/bf16_radix_pack.h
 ---
 
 # Fused canonical encoder witness
@@ -33,7 +36,7 @@ remains mandatory on failure. Public checked encoder and widening APIs are
 unchanged. Existing float scratch remains allocated but has no consumer in the
 selected route, preserving the private workspace size and external ABI.
 
-The current proposal removes redundant scanning and scratch traffic. The old
-137.8M-instruction widening scope is not a savings estimate: f64 stores and
-point comparisons remain. Complete source-consumer and whole-model gates plus
+The selected rewrite removes redundant scanning and scratch traffic. Removing
+a separate widening scope is not the same as removing all of its cost: f64
+stores and point comparisons remain. Complete source-consumer and whole-model gates plus
 measured full provider cost govern promotion.

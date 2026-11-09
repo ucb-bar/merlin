@@ -3,9 +3,12 @@ title: Execution memory admission
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: [architecture, runtime]
-code_refs: [src/merlin/runtime/execution_memory.py, src/merlin/runtime/elf_audit.py, src/merlin/runtime/backends/spike_model.py, merlin/tests/runtime/test_execution_memory.py]
+code_refs:
+  - src/merlin/runtime/execution_memory.py
+  - src/merlin/runtime/elf_audit.py
+  - src/merlin/runtime/backends/spike_model.py
 ---
 
 # Execution memory admission
@@ -82,3 +85,8 @@ phase 2 should retain the exact admission with its measurement. Execution
 providers must still close the selected map at launch. Supplying this API does
 not make existing execution paths or historical measurements automatically
 qualified.
+
+`MemoryMapBinding.validate` checks the selected provider data;
+`admit_execution_memory` checks actual absolute ELF load segments and the complete
+explicit runtime reservations. Neither routine derives a SoC memory map from
+simulator capacity or chooses a runtime platform.

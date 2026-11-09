@@ -3,9 +3,11 @@ title: Prepare an explicit bubblewrap argument budget
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-12
+last_verified: 2026-11-09
 related: [verified_compiler_tooling, targetgen]
-code_refs: [build_tools/scripts/build_bwrap_argument_budget.py, src/merlin/targetgen/sandbox/bwrap.py]
+code_refs:
+  - build_tools/scripts/build_bwrap_argument_budget.py
+  - src/merlin/targetgen/sandbox/bwrap.py
 ---
 
 # Prepare an explicit bubblewrap argument budget
@@ -82,3 +84,8 @@ parser should refuse its bound; the rebuilt binary must execute, keep each
 private file masked, preserve a public sentinel and leave the original host
 files unchanged. This control establishes finite parser/isolation behavior on
 that worker, rather than a full experiment or hardware qualification.
+
+The implementation entrypoint is `build_bwrap_argument_budget.py`;
+`patch_arguments` accepts only the expected unique source declaration. The
+sandbox launcher in `targetgen/sandbox/bwrap.py` retains the complete selected
+policy. The build recipe changes an explicit parser capacity, not its grants.

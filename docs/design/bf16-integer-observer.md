@@ -3,7 +3,7 @@ title: Exact BF16 integer observations
 kind: design
 status: current
 owner: compiler
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: []
 code_refs:
   - src/merlin/llvmlower/bf16_integer_observer.py
@@ -69,4 +69,9 @@ sanitization. Every contract permission is required explicitly.
 Whole-model and complete target-group receipts belong to their qualification
 owner. Unit tests grant no performance or production admission. Functional
 instruction counts must not be reported as accelerator or FPGA cycle counts.
-Exact per-change token billing is unavailable.
+
+`bf16_integer_observer.c_header` specializes the owned runtime quantizer;
+`prepare_bf16_integer_observer` inserts it into the selected emitted source.
+The shared frontier emitter validates composition order and the explicit contract.
+This boundary supplies portable host code, while target products and instruction
+selection remain OOT responsibilities.

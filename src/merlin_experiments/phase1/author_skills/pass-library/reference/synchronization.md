@@ -15,7 +15,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Proposal is not execution authority; queue completion proof required
 - **evidence to request**: Fence counts and retained dependency paths
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_effect_cleanup.py`: `assert cleanup_indices(effects) == (0, 1, 2, 4, 5, 6, 8, 9)`
+- **test that calls it**: none found
 
 ### convolution_compute_epochs
 
@@ -28,7 +28,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Map every ConvolutionComputeEpochLaw and ConvolutionLoadIssueLaw flag to an ordering fact or UNKNOWN (heavy-pass-recipes conv_epoch_recipe.py prints the table), route complete() to a real full drain, and run the completion-order check on the emitted stream
 - **evidence to request**: Fences per compute and commands before and after, completion-order verdict with zero hazard pairs, exact outputs and cycles on the same cases
 - **access**: full_compiler_source_and_scheduling_capabilities_v19
-- **test that calls it**: `merlin/tests/ir/test_convolution_exploration.py`: `space = convolution_pass_space(s, verify_source=verify, realize=realize,`
+- **test that calls it**: none found
 
 ### dense_panel_epochs
 
@@ -41,7 +41,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Map every DensePanelEpochLaw flag to an ordering fact or UNKNOWN (heavy-pass-recipes dense_epoch_recipe.py prints the table), pass epoch_law to schedule_dense_pipeline with a two-window plan, route the remaining drains to a real full fence, and run the completion-order check on the emitted stream
 - **evidence to request**: Fences per output tile and commands before and after, completion-order verdict with zero hazard pairs, exact outputs and cycles on the same cases
 - **access**: full_compiler_source_and_scheduling_capabilities_v19
-- **test that calls it**: `merlin/tests/infra/test_dense_panel_epochs.py`: `return DensePanelEpochLaw(`
+- **test that calls it**: none found
 
 ### shared_rhs_epochs
 
@@ -54,7 +54,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Use heavy-pass-recipes/shared_rhs_epoch_recipe.py:prepare through the ordinary registered-pass A/B workflow. Bind actual source products, target encode/project callbacks, selected reuse/ordering/readout laws and a real completion; unavailable premises decline or retain drains. Reanalyze emitted operands and traffic for both operands, not just the retained RHS.
 - **evidence to request**: Consumed source-bound schedule.plan, exact member/operand/output roster, original i32 or scaled narrow readouts, actual transfer rectangles and bytes by operand, configuration/completion counts, asynchronous ordering verdict, complete numerical outputs and comparable whole-call cycles across neighboring shapes
 - **access**: full_compiler_source_and_scheduling_capabilities_v24
-- **test that calls it**: `merlin/tests/infra/test_dense_shared_rhs.py`: `return schedule_dense_shared_rhs(`
+- **test that calls it**: none found
 
 ### convolution_readout_epochs
 
@@ -67,4 +67,4 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Bind every ConvolutionReadoutEpochLaw premise to selected source or UNKNOWN, distinguish finite pending store slots from issued work, and explicitly pass readout_law. conv_epoch_recipe.emit_checked_readout_epoch verifies actual consumer source/schedule/law/final-drain receipt; a default call or driver-local option is not application. Checked dense result objects are not convolution effect adapters.
 - **evidence to request**: Actual consumer receipt and emitted source/operand/store/final-drain sequence, all original outputs, complete-call same-domain cycles and modeled source activity; source calls and drain counts do not establish overlap or speedup
 - **access**: full_compiler_source_and_scheduling_capabilities_v23
-- **test that calls it**: `merlin/tests/ir/test_convolution_exploration.py`: `emit_convolution_schedule(schedule, Integers(), lambda k, a: events.append((k, a)),`
+- **test that calls it**: none found

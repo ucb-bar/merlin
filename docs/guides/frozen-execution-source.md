@@ -3,7 +3,7 @@ title: Freeze evaluator source before issuing execution owners
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [phase2_preflight, phase2_public_diagnostic_launch, shared_pass_phase2]
 code_refs:
   - src/merlin_experiments/source_snapshot.py
@@ -18,8 +18,8 @@ source from subsequent compiler edits. A source snapshot supplies byte custody;
 it does not issue compiler, numerical, hardware, timing, or formal authority.
 
 Assemble ordinary source copies from explicitly selected clean commits in a
-temporary task directory. Retain the normal Merlin layout (`src`, optional
-`packages/*/src`, `pyproject.toml`, `build_tools/package_resources.json`, and the
+temporary task directory. Retain the selected Merlin layout (`src`, explicitly
+selected separate distribution sources, `pyproject.toml`, `build_tools/package_resources.json`, and the
 required `merlin/{runtime,schemas,contract}` resources). Place selected OOT support
 under `oot/<repository>/`, preserving any sibling checker directories used by
 the original implementation. Exclude `.git`, environments, runtime binaries,
@@ -70,10 +70,8 @@ Do not wrap these commands blindly: inherited frozen startup clears target
 selectors and can delay the child's original parent-death guard. Any future
 transport migration needs its own exact selection and lifecycle controls.
 
-The source-only verification on 2026-10-20 used Merlin `b8647e323` and companion
-OOT `f2fa564`. Its original snapshot seal was
-`2d0b63e712e03646af9178708cdb3908d4d72213150b06e2b7a573563b823a65`.
-Isolated canonical imports, a factory round trip without issuance, a genuine
-neutral original sealed-child source-scope control, and final snapshot
-verification passed. The historical target profile refused the changed
-repository ownership. No compiler, accelerator, or trace job ran.
+The current shared namespaces are `src/merlin`, `src/merlin_analysis` and
+`src/merlin_experiments`. Declare their actual selected source root once; add
+separately distributed optional sources only when the snapshot explicitly
+contains them. Retained historical snapshots keep their original root layout,
+module identities and verifier rather than being rewritten to the current tree.

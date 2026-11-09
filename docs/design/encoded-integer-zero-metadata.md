@@ -7,9 +7,7 @@ last_verified: 2026-10-06
 related: []
 code_refs:
   - src/merlin/llvmlower/encoded_i8_zeros.py
-  - merlin/tests/ir/test_encoded_i8_zeros.py
   - src/merlin/llvmlower/encoded_radix_reconstruct.py
-  - merlin/tests/ir/test_encoded_radix_reconstruct.py
 ---
 
 # Encoded byte zero summaries

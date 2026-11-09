@@ -3,9 +3,13 @@ title: "Explicit approximate source roundoff"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: [independent_scalar_lanes, prepared_operand_owners]
-code_refs: [src/merlin/llvmlower/source_roundoff_policy.py, src/merlin/llvmlower/source_attention_frontier.py, merlin/runtime/c/source_rms_roundoff_estimate.h, merlin/runtime/c/source_rms_point_products.h]
+code_refs:
+  - src/merlin/llvmlower/source_roundoff_policy.py
+  - src/merlin/llvmlower/source_attention_frontier.py
+  - merlin/runtime/c/source_rms_roundoff_estimate.h
+  - merlin/runtime/c/source_rms_point_products.h
 ---
 
 # Explicit approximate source roundoff

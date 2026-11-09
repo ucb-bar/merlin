@@ -3,7 +3,7 @@ title: Recover missing public archive count observations
 kind: guide
 status: current
 owner: timing
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [spike_timing, phase2_archive_screen]
 code_refs:
   - packages/merlin-timing/src/merlin_timing/archive.py
@@ -117,3 +117,9 @@ host-store/write/cache activity ranges. These records provide no new eligible
 TRAIN activated-store-33 witness. Retain these refusals; exporting more repeat
 labels does not qualify the zero-flush domain or justify fitting against held
 errors.
+
+`merlin_timing.archive` owns archive metadata intake and attachment.
+`_counter_symbol_aliases.window` adds only an exact linked-function alias proof;
+`archive_spike_runtime` owns separately selected observation execution. Install
+and select the independent timing package explicitly. The retained recovery
+counts above are historical observations, not newly issued domain qualification.

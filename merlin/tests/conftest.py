@@ -71,6 +71,7 @@ _FIXTURES = merlin_dir() / "tests" / "fixtures"
 if str(_FIXTURES) not in sys.path:
     sys.path.insert(0, str(_FIXTURES))
 
+from corefixtures.selected_storage_contracts import native as native  # noqa: E402
 
 # ------------------------------------------------------------------------------------------------
 # Temp dirs the suite makes for itself must be reclaimable.

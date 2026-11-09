@@ -15,7 +15,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Sample agreement is not full-domain proof; target rounding must match
 - **evidence to request**: Scale proof, overflow bounds and exact boundary values
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/ir/test_requantization_scale_synthesis.py`: `proof = synthesize_store_scale(scales, -1048576, 1048576)`
+- **test that calls it**: none found
 
 ### ordered_reductions
 
@@ -27,7 +27,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Parallel reassociation requires separate numeric permission
 - **evidence to request**: Reduction order, accumulator width and exceptional behavior
 - **access**: requires_reviewed_library_extension
-- **test that calls it**: `merlin/tests/ir/test_scalar_ordered_reduction.py`: `assert edit_pipeline(original) == ["canonicalize", MARKER, "one-shot-bufferize"]`
+- **test that calls it**: none found
 
 ### row_normalization
 
@@ -40,7 +40,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Target arithmetic adapter and final complete-domain checks required
 - **evidence to request**: Row working set, passes over data and numeric error contract
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_row_softmax.py`: `result = compile_row_softmax(**opts)`
+- **test that calls it**: none found
 
 ### partial_sum_initialization
 
@@ -52,4 +52,4 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Initialization permission must be decoded; zero input data is not proof of an initialized accumulator
 - **evidence to request**: Initialization count, accumulation epochs, bias identity and tail checks
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_staged_dense.py`: `result.append(AccumulatorZero(0, mr, nr))`
+- **test that calls it**: none found

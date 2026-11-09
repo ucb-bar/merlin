@@ -3,7 +3,7 @@ title: Compact host rounding at bounded integer observations
 kind: reference
 status: current
 owner: compiler
-last_verified: 2026-10-18
+last_verified: 2026-11-09
 related: [shared_compiler_passes, optional_passes, lowering_pipeline, roundeven_runtime, whole_model_op_profile]
 code_refs:
   - src/merlin/llvmlower/automatic_rounding.py
@@ -11,8 +11,6 @@ code_refs:
   - src/merlin/llvmlower/quant_round_check.py
   - src/merlin/llvmlower/lower.py
   - src/merlin/llvmlower/optional_passes.py
-  - merlin/tests/ir/test_automatic_rounding.py
-  - merlin/tests/ir/test_stock_cli.py
 ---
 
 # Compact host rounding at bounded integer observations
@@ -95,3 +93,9 @@ executes the resulting padded quantization through its ordinary tools.
 These tests establish the documented source mechanism and selected native
 toolchain behavior. They do not qualify arbitrary target intrinsics, numerical
 policies, device instructions, asynchronous execution or hardware timing.
+
+For implementation navigation, `automatic_rounding.rewrite_rounding` owns
+selection and materialization, while `quant_round_check` independently reads
+the realized arithmetic. The ordinary lowerer installs the checked result; the
+selected native toolchain and shared round-even runtime still own executable
+intrinsic realization.

@@ -3,17 +3,22 @@ title: Qualified input-copy pipelines
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [architecture, shared_pass_phase2]
-code_refs: [src/merlin/compile/scheduling/copy_pipeline.py, src/merlin/compile/scheduling/schedule_pipeline.py, merlin/tests/infra/test_copy_pipeline.py, merlin/tests/targetgen/test_shared_pass_pipeline_consumption.py]
+code_refs:
+  - src/merlin/compiler/schedule/copy_pipeline.py
+  - src/merlin/compiler/schedule/schedule_pipeline.py
+  - merlin/tests/targetgen/test_shared_pass_pipeline_consumption.py
 ---
 
 # Qualified input-copy pipelines
 
-`merlin.compile.scheduling.copy_pipeline` hoists existing asynchronous input-copy
+`merlin.compiler.schedule.copy_pipeline` hoists existing asynchronous input-copy
 launches into explicitly assigned private buffer slots. It preserves every
 instruction, launch order, completion wait, arithmetic operation, descriptor and
-configuration operation. No hardware loop instruction is required.
+configuration operation. `compiler/schedule/copy_pipeline.py` owns admission
+and motion; `compiler/schedule/schedule_pipeline.py` consumes the explicit
+selection. No hardware loop instruction is required.
 
 The existing `temporary_storage.prefetch_private_copies` already supports qualified
 input prefetch across synchronous memory operations. Its original admission permits

@@ -3,9 +3,15 @@ title: Retained-object chain images
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [runtime, model_check]
-code_refs: [src/merlin/model_check/chain_image.py, src/merlin/model_check/chain_image_abi.py, src/merlin/model_check/chain_image_readback.py, merlin/runtime/c/chain_guest.c, merlin/tests/infra/test_chain_guest.py]
+code_refs:
+  - src/merlin/model_check/chain_image.py
+  - src/merlin/model_check/chain_image_abi.py
+  - src/merlin/model_check/chain_image_readback.py
+  - src/merlin/model_check/chain_image_data.py
+  - src/merlin/model_check/chain_image_timing.py
+  - merlin/runtime/c/chain_guest.c
 ---
 
 # Retained-object chain images
@@ -30,7 +36,7 @@ The versioned `merlin.chain_image.selection.v1` JSON selects:
 | `compiler` | `{path, sha256}` frozen compiler tree. |
 | `models`, `inputs`, `workload_contract` | Exact `{path, sha256}` file pins. |
 | `programs` | Every declared program name mapped to its completed build receipt pin. |
-| `transport` | `full_arrays_v1` or `all_element_comparison_v1`. |
+| `transport` | `full_arrays_v1`, `all_element_comparison_v1`, or the separately scoped `timing_only_v1` diagnostic. |
 | `reference`, `reference_identity`, `bundle` | Compact mode's admitted all-output supplement pin, its exact selected identity, and original sealed bundle root. |
 | `layout` | Explicit `weights` base per program, `inputs` and `references` bases, and live `arena: {begin, bytes}`. |
 | `memory_map`, `execution_identity` | Existing decoded-map pin and exact provider identity. |
@@ -76,3 +82,11 @@ roster, then decodes the actual UART. It keeps model validation incomplete pendi
 source placement, accelerator-kernel, instruction and hardware gates. A linked image or transport
 comparison does not promote old failed native records, certify a bitstream, establish a target clock,
 or prove full-system/DRAM timing equivalence.
+
+`timing_only_v1` is a separate diagnostic transport: it retains the declared
+chain and scalar timing records but emits no output arrays, embeds no reference,
+and supplies no numerical verdict. Selecting reference/bundle fields or group
+profiling with that transport refuses. Its decoder in `chain_image_timing.py`
+checks the complete step roster and enclosing interval; separate complete-output
+execution remains mandatory for numerical qualification. The all-output transport
+contracts above are not weakened by this diagnostic mode.

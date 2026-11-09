@@ -5971,35 +5971,6 @@ def _pin_model_capsule(capsule: dict, destination: Path) -> dict:
     return pin(capsule, destination)
 
 
-def _capsule_dependency_waves(capsules: list[dict]) -> list[list[dict]]:
-    """Finish selected ``extends`` siblings before screening their dependents.
-
-    Preserve the caller's priority within each independent wave. Missing
-    siblings remain missing: the oracle still records an unverified extension,
-    rather than discovering another corpus or dropping the screened member.
-    Completion ordering does not grant a sibling a pass or change any tier.
-    """
-    names = [str(cap.get("name") or "") for cap in capsules]
-    if any(not name for name in names) or len(set(names)) != len(names):
-        raise ValueError("capsule dependency scheduling requires unique nonempty names")
-    selected = set(names)
-    dependencies = {
-        name: {str(cap["extends"])} if cap.get("extends") and str(cap["extends"]) in selected else set()
-        for name, cap in zip(names, capsules, strict=True)
-    }
-    pending = list(zip(names, capsules, strict=True))
-    completed: set[str] = set()
-    waves = []
-    while pending:
-        ready = [(name, cap) for name, cap in pending if dependencies[name] <= completed]
-        if not ready:
-            raise ValueError("cyclic capsule extends dependencies: " + ", ".join(name for name, _ in pending))
-        waves.append([cap for _, cap in ready])
-        completed.update(name for name, _ in ready)
-        pending = [(name, cap) for name, cap in pending if name not in completed]
-    return waves
-
-
 def _model_gate_operation_passed(result: dict, capsule: dict, oracle_adapters) -> bool:
     """An explicit L2 screen may open only the L2 capstone, never full certification."""
     if result.get("status") == "pass":

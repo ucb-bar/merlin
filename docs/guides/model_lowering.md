@@ -3,13 +3,13 @@ title: Inspecting whole-model MLIR lowering
 kind: guide
 status: current
 owner: ir
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [llvm_toolchain, llvm_integration, triton_kernels]
 code_refs:
   - src/merlin/llvmlower/cli.py
   - src/merlin/llvmlower/lower.py
   - src/merlin/common/ir_audit.py
-  - src/merlin/llvmlower/passes_xdsl.py
+  - src/merlin/compiler/frontend/preprocess.py
   - src/merlin/xdsl_dialects/ir_inspection.py
 ---
 
@@ -19,6 +19,12 @@ code_refs:
 shared whole-model lowering API. It does not capture a model, select an accelerator,
 launch an agent, or execute the result. Unlike the broader `merlin compile` workflow,
 it needs no workload catalog or deployment configuration.
+
+The command is implemented in `llvmlower/cli.py`; `llvmlower/lower.py` owns
+its compilation result. Shared source preprocessing lives in
+`compiler/frontend/preprocess.py`, with numerical expansion in
+`compiler/quantization/linalg.py` and operation rewrites in
+`compiler/transforms/`. The audit follows the actual selected implementations.
 
 ```sh
 merlin lower /path/to/capture/model.mlir \

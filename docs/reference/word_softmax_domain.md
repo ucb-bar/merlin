@@ -3,9 +3,12 @@ title: "Prepared word-space softmax interval domain"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [ordered_fma_certificates, quantized_host_optimizations]
-code_refs: [src/merlin/llvmlower, merlin/runtime/c]
+code_refs:
+  - src/merlin/llvmlower/source_attention_frontier.py
+  - merlin/runtime/c/prepared_softmax_interval.h
+  - merlin/runtime/c/monotone_bit_polynomial.h
 ---
 
 # Prepared word-space softmax interval domain
@@ -34,3 +37,9 @@ Independent tests cover three coefficient/domain plans, cutoff crossings,
 signed zeros, subnormals, word-budget overflow, non-RNE admission, masks and
 unknown inputs. Small complete executors exercise both basic and fully prepared
 word/softmax/integer-reconstruction combinations, including refusal paths.
+
+The emitter chooses the separate word-domain admission when both options are
+selected. `prepared_softmax_interval.h` owns that admission and the positive
+consumer operations; `monotone_bit_polynomial.h` owns the word enclosure.
+Keeping these owners distinct prevents a word-budget bound from being treated
+as permission for unrelated signed reductions.

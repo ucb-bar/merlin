@@ -3,33 +3,28 @@ title: Enable shared passes in model builds
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [shared_pass_phase2, ../reference/shared_compiler_passes]
 code_refs:
-  - src/merlin/compile/baremetal_model.py
+  - src/merlin/model.py
   - src/merlin/llvmlower/source_model.py
   - src/merlin/llvmlower/source_dense.py
   - src/merlin/transforms/dense_ir.py
-  - merlin/tests/ir/test_dense_capture_metadata.py
-  - merlin/tests/ir/test_dense_zero_splat.py
   - src/merlin/transforms/dense_row_batching.py
   - src/merlin/transforms/dense_row_batching_check.py
-  - merlin/tests/ir/test_dense_row_batching.py
   - src/merlin/llvmlower/source_dense_group.py
-  - src/merlin/compile/scheduling/compact_dense_group.py
-  - src/merlin/compile/scheduling/compact_dense_group_check.py
+  - src/merlin/compiler/schedule/compact_dense_group.py
+  - src/merlin/compiler/schedule/compact_dense_group_check.py
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/llvmlower/source_multioutput.py
   - src/merlin/llvmlower/source_recomputation.py
   - src/merlin/llvmlower/source_recomputation_policy.py
   - src/merlin/runtime/source_recomputation_build.py
-  - merlin/tests/runtime/test_source_recomputation_build.py
   - src/merlin/compiler/transforms/recomputation.py
   - src/merlin/transforms/recomputation_check.py
-  - merlin/tests/gemmini/test_public_recomputation_execution.py
   - merlin/tests/gemmini/recomputation_host_work.py
-  - src/merlin/compile/scheduling/multioutput_fusion.py
-  - src/merlin/compile/scheduling/multioutput_fusion_check.py
+  - src/merlin/compiler/schedule/multioutput_fusion.py
+  - src/merlin/compiler/schedule/multioutput_fusion_check.py
   - src/merlin/llvmlower/source_rows.py
   - src/merlin/llvmlower/dealloc_lifetime.py
   - src/merlin/llvmlower/borrowed_buffer_calls.py
@@ -42,13 +37,13 @@ code_refs:
   - src/merlin/llvmlower/logical_borrowed_abi.py
   - src/merlin/llvmlower/convolution_routes.py
   - src/merlin/llvmlower/im2col_pack.py
-  - src/merlin/verify/host_packing_storage.py
-  - src/merlin/compile/scheduling/schedule_pipeline.py
-  - src/merlin/compile/scheduling/temporary_storage.py
-  - src/merlin/compile/scheduling/copy_elimination.py
-  - src/merlin/compile/scheduling/dead_write_pipeline.py
-  - src/merlin/compile/scheduling/dead_write_check.py
-  - src/merlin/compile/scheduling/dead_writes.py
+  - src/merlin/verification/packing.py
+  - src/merlin/compiler/schedule/schedule_pipeline.py
+  - src/merlin/compiler/schedule/temporary_storage.py
+  - src/merlin/compiler/schedule/copy_elimination.py
+  - src/merlin/compiler/schedule/dead_write_pipeline.py
+  - src/merlin/compiler/schedule/dead_write_check.py
+  - src/merlin/compiler/schedule/dead_writes.py
   - src/merlin/runtime/backends/spike_model.py
   - src/merlin/runtime/host_provider.py
 ---
@@ -433,7 +428,7 @@ For saved-model compilation, wrap the policy in one live
 `SourceRecomputationBuild` and pass it through the ordinary API:
 
 ```python
-from merlin.compile.baremetal_model import compile_saved_model
+from merlin.model import compile_saved_model
 from merlin.llvmlower.source_recomputation_policy import SourceRecomputationPolicy
 from merlin.runtime.source_recomputation_build import SourceRecomputationBuild
 
@@ -816,7 +811,7 @@ activation-payload budget and independently qualified allocation effects:
 
 ```python
 from dataclasses import replace
-from merlin.verify.host_packing_storage import PackingAllocationEffects
+from merlin.verification.host_packing_storage import PackingAllocationEffects
 
 allocation = PackingAllocationEffects(
     allocator_symbol=runtime_allocator_symbol,
@@ -936,7 +931,7 @@ including admission of the final linked image.
 The saved-model API accepts the same tuple:
 
 ```python
-from merlin.compile.baremetal_model import compile_saved_model
+from merlin.model import compile_saved_model
 
 receipt = compile_saved_model(
     capture=capture_directory,
@@ -1084,7 +1079,7 @@ An original host integration can select private payload deletion in the ordinary
 schedule compiler:
 
 ```python
-from merlin.compile.scheduling.dead_write_pipeline import compile_schedule_with_dead_writes
+from merlin.compiler.schedule.dead_write_pipeline import compile_schedule_with_dead_writes
 
 result = compile_schedule_with_dead_writes(
     kernel, objects, banks, storage_adapter, encoding, program_limits,
@@ -1135,3 +1130,11 @@ Neutral native tests establish this mechanism with different memory and encoding
 models. Actual accelerator effects, a consuming backend and complete-model
 qualification remain separate integration requirements. Requested payload bytes
 and command counts establish no physical bus traffic or latency improvement.
+
+Canonical reusable schedule owners now live under `compiler/schedule/`;
+`merlin.model.compile_saved_model` owns the saved-model facade. The retained
+`llvmlower/source_model.py` transaction joins these selected source families to
+their implementation callbacks and build/link lifecycle. Its fixed source
+recognizers are narrower than the ordinary backend proposal protocol: an OOT
+callback here implements an already checked computation and cannot choose new
+numerical meaning, source membership or independent verification policy.

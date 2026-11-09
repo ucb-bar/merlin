@@ -3,9 +3,15 @@ title: Bottom-up lifting and top-down reconstruction
 kind: design
 status: current
 owner: mining
-last_verified: 2026-10-27
+last_verified: 2026-11-09
 related: [kernel_reconstruction, kernel_mining, rvv_kernel_mining_methodology, core_dialects]
-code_refs: [src/merlin/kernels/reference_capture.py, src/merlin/kernels/kernel_evidence.py, src/merlin/kernels/reconstruction.py, src/merlin/compile/scheduling/schedule_ir.py, src/merlin/mining/reconstruction_reference.py, src/merlin/mining/reconstruction_experiments.py]
+code_refs:
+  - src/merlin/kernels/reference_capture.py
+  - src/merlin/kernels/kernel_evidence.py
+  - src/merlin/kernels/reconstruction.py
+  - src/merlin/compiler/schedule/schedule_ir.py
+  - src/merlin/mining/reconstruction_reference.py
+  - src/merlin/mining/reconstruction_experiments.py
 ---
 
 # Bottom-up lifting and top-down reconstruction
@@ -46,3 +52,9 @@ analysis tool selects mapped regions, compares fresh machine views and reports
 evidence gaps. Constructing a scheduling plan establishes intent; its actual
 lowering consumer and emitted code must demonstrate the requested mechanism.
 Automatic fused/quantized bindings and broad generalization still need work.
+
+The canonical counted schedule consumer is
+`merlin.compiler.schedule.schedule_ir`. `kernels.reconstruction` searches checked
+adapter decisions; `mining.reconstruction_reference` binds source regions and
+`reconstruction_experiments` joins emitted evidence. A scheduling annotation
+without an implemented consumer is reported as a gap.

@@ -3,7 +3,7 @@ title: Preparing private full-session numerical validation
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-23
+last_verified: 2026-11-09
 code_refs:
   - examples/gemmini/phase1/launch/prepare_full_chain_scope.py
   - examples/gemmini/phase1/launch/external_validation.py
@@ -68,3 +68,8 @@ neither stateful session execution nor a full model pass. `--validation-scope fu
 alone does not select these numerical checks. No full-model pass is required to
 begin construction from an empty backend; the final evaluation must remain an
 explicit unfulfilled obligation until its actual evidence exists.
+
+`prepare_full_chain_scope.prepare` is a target-local metadata proposal builder.
+`private_numerical_selection.py` owns the independently selected executable
+numerical mode; `external_validation.py` binds that selection to actual frozen
+candidate evaluation. The proposal builder cannot substitute for either owner.

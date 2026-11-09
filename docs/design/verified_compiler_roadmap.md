@@ -3,9 +3,22 @@ title: Capability roadmap for a verified general compiler
 kind: design
 status: current
 owner: ir
-last_verified: 2026-10-12
+last_verified: 2026-11-09
 related: [verified_compiler_tooling, compiler_verification, lowering_pipeline, phase2_test_justification, component_compiler_convergence]
-code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/llvmlower, src/merlin/targetgen, src/merlin/perf, src/merlin_experiments/phase1/brokers/common_transforms.py]
+code_refs:
+  - src/merlin_experiments/phase1/brokers/common_transforms.py
+  - src/merlin/transforms/pipeline.py
+  - src/merlin/transforms/analyses.py
+  - src/merlin/transforms/resource_allocation.py
+  - src/merlin/verification/lean_checker.py
+  - src/merlin/verification/lean_contract.py
+  - src/merlin/verification/lean_emission_context.py
+  - src/merlin/targetgen/common_transforms.py
+  - src/merlin/targetgen/tool_profile_shared.py
+  - src/merlin/compiler/lower/scalar/pipeline.py
+  - src/merlin/compiler/backend/scalar.py
+  - src/merlin/llvmlower/lower.py
+  - src/merlin/perf/pass_observation.py
 ---
 
 # Capability roadmap for a verified general compiler
@@ -80,7 +93,7 @@ adding another implementation with the same name.
 | --- | --- | --- |
 | Selected logical host layout and dispatch fusion | An explicit source-pinned `GraphOptimizationContract` selects `layout_propagation.rewrite_module` and/or the existing outlined logical-host fusion planner/emitter before ordinary `lower_model` preprocessing. | The first selected domain is static pointwise tensors and permutations. Typed interfaces, ordered scalar regions, symbolic logical coordinates and expanded actual-source correspondence are checked independently. Unsupported forms refuse; byte/dispatch savings and code-growth limits are structural cost proxies. This route supplies no Lean, physical representation, hardware or timing proof. |
 | Ordinary host preparation and scalar lowering | `llvmlower.lower.lower_model` calls `passes_xdsl.preprocess_text` and `pipeline.lower_to_llvm_ir`. The default upstream pass list runs canonicalization/CSE, elementwise fusion and named-op generalization, one-shot bufferization, out-parameter conversion, ownership-based deallocation, allocation/loop hoisting, linalg-to-loops, SCF-to-CF, strided metadata expansion and LLVM conversion/translation. | These are existing executed passes, not missing compiler mechanisms. Numerical execution and ordinary build gates remain their assurance; the new Lean obligations do not prove this complete pipeline. An upstream pass being scheduled does not establish a profitable rewrite for every input. |
-| Selected CPU vector or multicore lowering | `llvmlower.pipeline.lower_to_llvm_ir` selects `build_rvv_pipeline` and its transform schedule for the supported CPU vector path, or `_parallel_pipeline` for scalar OpenMP; serial lowering remains the default. | Existing host scheduling/vectorization machinery is reusable where the selected host ISA/runtime permits it. It does not generate an accelerator schedule, cover every CPU, or inherit a complete transformation theorem. |
+| Selected CPU vector or multicore lowering | `compiler/lower/scalar/pipeline.py` owns shared scalar pass construction and the selected OpenMP route. RVV implementation and its vector schedule are supplied by the selected OOT provider; retained host compatibility routes require that provider explicitly. | Existing host scheduling/vectorization machinery is reusable where the selected host ISA/runtime permits it. It does not generate an accelerator schedule, cover every CPU, or inherit a complete transformation theorem. |
 | Ordinary host object generation and linking | `llvmlower.lower.lower_model` uses `codegen.compile_ll` for selected objects or `codegen.build_host_shared` for a host library, including the shared MLIR C runtime. Wide C-interface boundary repair runs before code generation. | Stock LLVM owns CPU instruction selection, physical register allocation and its selected optimizations. Do not duplicate its register allocator in the OOT. Device artifact lowering, target ABI details and final deployment remain separate obligations. |
 | Existing optional host lifetime/arena optimization | The `sink-deallocs` option inserts canonicalization followed by upstream `optimize-allocation-liveness`, with a structural placement check. `lower_model(static_arena=True)` calls `arena_bind.bind_arena` after LLVM translation; that route reuses `xdsl_dialects.lowering.arena_plan.pack_disjoint`. | Both are opt-in, not defaults. The binder checks the admitted allocation/free, escape and CFG conditions and conflicting placement; unsupported cases remain unbound or refused. It is not the new SSA resource allocator and is not covered by the new Lean lifetime receipt. It does not establish asynchronous device residency. |
 | Host-owned common transformation request | `CommonTransformService.apply` invokes `transforms.pipeline.apply_common_pipeline` on the request's actual standard xDSL IR. Default selectors enable supported shape/integer simplification and initialized buffer reuse; loop segmentation, dependency permutations and version-2 scalar redundancy/LICM/unrolling require explicit options. | Changed covered transforms require actual host-issued receipts bound to before/after IR. Structural correspondence is trusted; Lean checks modeled bit-vector equality, pure scalar reuse/speculation, ordered loop arithmetic/folds and disjoint lifetime obligations. Opaque effectful schedule changes without a supported semantic model refuse proof. This is not a full SCF/memory/LLVM/RTL theorem. |
@@ -159,3 +172,8 @@ Completion means a general invoked capability with its declared gates, rather
 than a capsule count or a pass name. Fresh Phase 1 success, calibrated Phase 2
 ranking and final independent whole-program execution/performance remain
 separate experimental results.
+
+For current source navigation, start with the exact files in this page's
+`code_refs` and the generated module index. Current SDK26 membership is explicit;
+the version-numbered rows record original capability boundaries and do not
+authorize regenerating SDK6–25 or expanding a frozen experiment's imports.

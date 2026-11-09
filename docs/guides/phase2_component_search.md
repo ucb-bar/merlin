@@ -3,7 +3,7 @@ title: Launch a bounded component compiler search
 kind: guide
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-12
+last_verified: 2026-11-09
 related: [component_phase2_workflow, phase2_cpu_timing_study, phase2_test_justification]
 code_refs:
   - src/merlin_experiments/phase2/search_configuration.py
@@ -209,3 +209,9 @@ the observed selected compiler. `NO_FINAL_ACCEPTANCE` feedback and a consumable
 authoring record do not establish held-out performance or convergence. Preserve
 the frozen compiler and its identities before the separately authorized final
 validation run. No FPGA measurement belongs in the authoring loop.
+
+This is an optional research search controller, under
+`src/merlin_experiments/phase2/`, with target execution selected through original
+qualified runtime owners. It is separate from the common compile/run API.
+A provider's compiler capability record cannot issue the independent measurement,
+held applicability or final evaluation owners required by this workflow.

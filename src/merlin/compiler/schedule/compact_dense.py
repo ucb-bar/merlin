@@ -176,7 +176,7 @@ class CompactDenseResult:
     output_readout: object = None
     checked_readout: str | None = None
     uses_schedule_ir: bool = False
-    schedule_library_version: int = 12
+    schedule_library_version: int = 26
 
     def revalidate(self):
         from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
@@ -626,7 +626,8 @@ def schedule_compact_dense(
         storage, outer_order = decision.storage, decision.outer_order
     elif source_identity is not None:
         raise ValueError("dense source identity requires an explicit schedule plan")
-    schedule_library_version = 13 if decision is not None and decision.loop_transforms else 12
+    # Source custody names the current SDK independently of loop-transform legality.
+    schedule_library_version = 26
     sources = _dense_library_sources(decision is not None, schedule_library_version)
     checked_selection = None if selected_contracts is None else _digest(selected_contracts.record())
     binding = (
@@ -880,7 +881,7 @@ def _digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def _dense_library_sources(uses_schedule_ir=False, schedule_library_version=12):
+def _dense_library_sources(uses_schedule_ir=False, schedule_library_version=26):
     if uses_schedule_ir:
         from merlin.compiler.schedule.library_sources import shared_library_sources
 

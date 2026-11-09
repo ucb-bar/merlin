@@ -3,7 +3,7 @@ title: Repository structure
 kind: reference
 status: current
 owner: core
-last_verified: 2026-11-08
+last_verified: 2026-11-09
 related: [architecture, getting_started, storage]
 code_refs: [pyproject.toml, src/merlin, packages, experiments/catalog.yaml]
 ---
@@ -32,10 +32,8 @@ src/
   merlin_experiments/ phase orchestration, agent tooling, trusted grading and certification
   merlin_dse/         typed design-space exploration interfaces
 packages/
-  merlin-experiments/tests/ retained workflow and evaluation regression sources
-  merlin-dse/tests/         retained design-space exploration regressions
-  merlin-mining/tests/      retained mining/search regressions
-  merlin-timing/           independent measurement package and dependency environment
+  merlin-timing/     independent measurement package and dependency environment
+  other directories retain historical metadata and inputs, not a second active test suite
 experiments/
   catalog.yaml       experiment discovery: merlin experiment list
   definitions/       versioned phase definitions and explicitly non-runnable templates
@@ -59,7 +57,7 @@ merlin/
   schemas/     cross-workstream coordination contract
   benchmarks/  shared workload descriptions
   experiments/ retained native phase engines and experiment resources (not the catalog)
-  tests/       integration/conformance/golden/data
+  tests/       compact compiler/runtime, verification and contract cases with shared fixtures/data
 ```
 
 ## Find the owner before changing code
@@ -134,7 +132,7 @@ and paper evaluation are consumers of phase results, not phase-engine code.
 | Change research analysis or search | The logical owner under `src/merlin/{agentreport,compare,dse,dse_guidance,mining,perf,plotting}/` or `src/merlin_dse/` |
 | Locate outputs or determine whether cleanup is safe | `merlin storage report`, `merlin/contract/storage.yaml`, [storage guide](../guides/storage.md) |
 | Find a command's module and distribution | [Generated CLI reference](cli.md) |
-| Find tests | `merlin/tests/<subsystem>/`, plus focused `packages/*/tests/` |
+| Find active tests and the complete collection budget | `merlin/tests/<subsystem>/`, `merlin/tests/AGENT.md`, `build_tools/scripts/check_test_budget.py` |
 
 These are actual source owners, while the broader destination architecture remains
 a plan. Compatibility aliases under `src/merlin/compile/` do not duplicate their
@@ -145,6 +143,23 @@ The scheduling source roster includes the actual split owners in SDK26;
 frozen SDK6–25 inventories and archives remain unchanged. Public imports keep
 their established lookup identities. The [generated module index](module_index.md)
 lists packages; the owner rows above locate their implementation files.
+
+The permanent suite is capped at 150 collected pytest cases, counting every
+parameterized instance: 70 compiler/runtime, 50 independent verification and 30
+contracts. Run the repository-wide budget guard before execution:
+
+```sh
+python build_tools/scripts/check_test_budget.py --output out/build/python/ci/test-budget.json
+python -m pytest merlin/tests -q -ra
+```
+
+The guard discovers owned collectors through Git rather than relying only on
+`testpaths`; another project root cannot bypass the ceiling. Collection errors,
+collection-time skips and deselection refuse the guard. Exact frozen companion
+inputs retain their declared byte identities without becoming active regression
+collectors. Retired matrices remain historical Git/frozen evidence, and source
+verification algorithms remain under their production owners. A missing external
+tool stays an explicit prerequisite, not successful qualification.
 
 Use `merlin experiment runs --target TARGET --experiment EXPERIMENT` to discover
 stored phase orchestrations under the configured run root. Omit either filter to

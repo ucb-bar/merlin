@@ -3,7 +3,7 @@ title: "Component launch qualification"
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-09
+last_verified: 2026-11-09
 code_refs:
   - src/merlin_experiments/phase1/component_qualification.py
   - src/merlin_experiments/phase1/component_witness.py
@@ -14,9 +14,7 @@ code_refs:
   - src/merlin_experiments/phase2/component_runtime.py
   - src/merlin_experiments/phase2/authoring_cli.py
   - src/merlin_experiments/phase2/broker.py
-  - packages/merlin-experiments/tests/test_component_launch.py
-  - packages/merlin-experiments/tests/test_component_qualification.py
-  - packages/merlin-experiments/tests/test_component_source_applicability.py
+  - src/merlin_experiments/phase2/component_runtime_authority.py
 ---
 
 # Component launch qualification
@@ -158,3 +156,9 @@ while the selected public interpreter can read admitted inputs and write its
 candidate. These controls establish only their observed boundary and tool
 usability. An actual fresh author session and independent target execution
 qualification remain separate requirements.
+
+`component_launch_inputs.py` assembles the closed launch data from live owners.
+`component_launch.py` performs qualification and launch;
+`component_runtime_authority.py` owns the independent runtime capability.
+Serializing these fields or satisfying a readiness command cannot reconstruct
+that capability or authorize a changed compiler.

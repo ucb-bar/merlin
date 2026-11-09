@@ -3,18 +3,29 @@ title: Set up Phase 0 and Phase 1
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-23
+last_verified: 2026-11-09
 related: [gsim_worker_setup, neutral_runtime_tooling, phase0_specification, target_resolution]
-code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/targetgen/generalization_prompt.py, src/merlin_experiments/cli.py, src/merlin_experiments/corpus/preparation.py, src/merlin_experiments/phase1/timing.py, src/merlin_experiments/phase1/feedback/private_source_demand.py, src/merlin_experiments/phase1/feedback/private_source_preflight.py]
+code_refs:
+  - src/merlin/runtime/backends/rocc_selection.py
+  - src/merlin/runtime/backends/chipyard_rocc.py
+  - src/merlin/targetgen/generalization_prompt.py
+  - src/merlin_experiments/cli.py
+  - src/merlin_experiments/corpus/preparation.py
+  - src/merlin_experiments/phase1/timing.py
+  - src/merlin_experiments/phase1/feedback/private_source_demand.py
+  - src/merlin_experiments/phase1/feedback/private_source_preflight.py
+  - src/merlin_experiments/corpus/preparation_generation.py
+  - src/merlin_experiments/corpus/release.py
 ---
 
 # Set up Phase 0 and Phase 1
 
-This guide covers input and execution-boundary preparation. The current joint
-experiment uses the native Phase 1 infrastructure for correctness and performance
-development together; a separate frozen Phase 2 is not a prerequisite. Use
-[artifact setup](artifact_evaluation.md) for the selected twenty-core joint
-launch and [terminal monitoring](experiment_dashboard.md) for its live view.
+This guide covers input and execution-boundary preparation. A selected joint
+experiment can use native Phase1 infrastructure for correctness and performance
+development together; a separate frozen Phase2 is not a prerequisite. Use
+[artifact setup](artifact_evaluation.md) for its explicit launch selection and
+[terminal monitoring](experiment_dashboard.md) for its live view. CPU, memory,
+disk and engine budgets come from that selection rather than this guide.
 Legacy target templates are not automatically the current launch configuration.
 
 Select and record an exact Merlin revision before preparing inputs. Install
@@ -166,7 +177,7 @@ from `diagnostic` to `verified` does not repair missing evidence.
 
 Set `SPEC` to that reviewed definition, `CONFORMANCE` to its exact requirements,
 and the other variables to fresh generated destinations. Run these commands on
-AWS, after its inputs are prepared:
+the prepared execution worker after its inputs are available:
 
 ```sh
 merlin experiment inspect "$SPEC" --phase 0 --run-dir "$P0"
@@ -552,3 +563,9 @@ async certificate worker budget explicitly (1–86400 seconds). The default,
 override the sealed native process ceiling or `--model-budget-s`; select those
 resource bounds consistently before launching. Expired budgets remain
 unmeasured and never supply numerical or hardware qualification.
+
+The setup commands prepare or verify selected files and explicit execution
+services. Merlin does not provision a FireSim deployment or start its
+infrastructure. A separately started execution environment may consume the
+generated executable and handoff files; its deployment identity and successful
+execution remain independently recorded evidence.

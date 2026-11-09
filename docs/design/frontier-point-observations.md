@@ -3,7 +3,7 @@ title: Finite point observations at the BF16 quantization frontier
 kind: design
 status: current
 owner: compiler
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: []
 code_refs:
   - src/merlin/llvmlower/frontier_point_cells.py
@@ -73,5 +73,8 @@ they do not provide accelerator or whole model cycle estimates.
 
 Whole model and target capsule receipts belong to their qualification owner.
 No performance or production admission follows from these unit tests alone.
-Exact per-change token billing is unavailable; do not assign the session's
-aggregate token meter to this optimization.
+
+`frontier_point_cells.c_header` checks and specializes the owned row helper.
+The regular frontier emitter controls selection and composition; the shared
+runtime header remains the source of the scale/quantizer arithmetic. OOT
+providers still supply the actual product and physical ABI.

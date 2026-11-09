@@ -3,9 +3,11 @@ title: Debug companion PC attribution
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-08
-code_refs: [src/merlin/perf/debug_companion.py, src/merlin/perf/whole_model_group_timing.py,
-            src/merlin_experiments/group_inspect.py]
+last_verified: 2026-11-09
+code_refs:
+  - src/merlin/perf/debug_companion.py
+  - src/merlin/perf/whole_model_group_timing.py
+  - src/merlin_experiments/group_inspect.py
 ---
 
 # Debug companion PC attribution
@@ -44,3 +46,8 @@ candidate's functional model with its PC histogram on, symbolizes every PC with 
 beside the compiler the target's build recipe names, and attributes the histogram. A missing machine,
 companion or symbolizer, or a refused companion, leaves the attribution `UNKNOWN` with the reason. See
 [compile_debugging](../guides/compile_debugging.md).
+
+The companion verifier consumes bytes; it does not choose a debug build.
+`whole_model_group_timing` owns the selected recipe relink and `group_inspect`
+owns execution/symbolization. This separation keeps source attribution distinct
+from the original executable and its measurement window.

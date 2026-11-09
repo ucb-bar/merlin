@@ -22,14 +22,27 @@ def _present(tool: Path) -> bool:
     return tool.is_file() or (not tool.is_absolute() and shutil.which(str(tool)) is not None)
 
 
+def _refuse_selected_missing(absent, selection_keys, *, reason):
+    """Missing optional tools may skip; an explicit unavailable selection fails."""
+    from merlin.llvmlower import toolchain
+
+    if absent and any(toolchain._env(key) for key in selection_keys):
+        pytest.fail("selected " + reason, pytrace=False)
+
+
 def missing_lowering() -> list[str]:
     """The pieces of the host lowering toolchain this host lacks, named as the library resolves them."""
     from merlin.llvmlower import toolchain
 
     absent = []
-    python = toolchain.compiler_python()
-    if not _present(python):
-        absent.append(f"compiler Python {python} (MERLIN_COMPILER_PYTHON / MERLIN_M2M_VENV)")
+    if toolchain._env("MERLIN_COMPILER_DRIVER", "python") == "stock-cli":
+        for tool in (toolchain.llvm_install() / "bin" / "mlir-opt", toolchain.mlir_translate()):
+            if not _present(tool):
+                absent.append(str(tool))
+    else:
+        python = toolchain.compiler_python()
+        if not _present(python):
+            absent.append(f"compiler Python {python} (MERLIN_COMPILER_PYTHON / MERLIN_M2M_VENV)")
     clang = toolchain.clang()
     if not _present(clang):
         absent.append(f"clang {clang} (MERLIN_CLANG / MERLIN_MLIR_INSTALL)")
@@ -39,7 +52,25 @@ def missing_lowering() -> list[str]:
 def requires_lowering():
     """A ``skipif`` marker for a test that lowers through the host compiler Python and clang."""
     absent = missing_lowering()
-    return pytest.mark.skipif(bool(absent), reason=f"host lowering toolchain not available: {'; '.join(absent)}")
+    reason = f"host lowering toolchain not available: {'; '.join(absent)}"
+    _refuse_selected_missing(
+        absent,
+        (
+            "MERLIN_CLANG",
+            "MERLIN_MLIR_INSTALL",
+            "MERLIN_IREE_BIN",
+            "MERLIN_EXT_MERLIN_IREE",
+            "MERLIN_COMPILER_DRIVER",
+            "MERLIN_COMPILER_PYTHON",
+            "MERLIN_COMPILER_VENV",
+            "MERLIN_M2M_VENV",
+            "MERLIN_MODEL2MLIR",
+            "MERLIN_M2M_DIR",
+            "MERLIN_MLIR_TRANSLATE",
+        ),
+        reason=reason,
+    )
+    return pytest.mark.skipif(bool(absent), reason=reason)
 
 
 def missing_checkout_llvm(*tools: str) -> list[str]:

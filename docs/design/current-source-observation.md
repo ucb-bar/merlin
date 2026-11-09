@@ -3,9 +3,12 @@ title: Closed scalar observations from current fused source
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: [lowering_pipeline, architecture, source_expression_interval]
-code_refs: [src/merlin/llvmlower/source_observation_stage.py, src/merlin/llvmlower/source_expression_interval.py, src/merlin/llvmlower/pipeline.py, merlin/tests/ir/test_source_observation_stage.py, merlin/tests/runtime/test_source_observation_stage_runtime.py]
+code_refs:
+  - src/merlin/llvmlower/source_observation_stage.py
+  - src/merlin/llvmlower/source_expression_interval.py
+  - src/merlin/llvmlower/pipeline.py
 ---
 
 # Closed scalar observations from current fused source
@@ -57,3 +60,8 @@ Stale source/use/context proofs, missing dependencies, invalid ABI names and
 conflicting trace records refuse. Helper lowering and linkage use ordinary
 compiler interfaces. Reification supplies neither a placement policy nor
 consumer coordinates, ownership, floating-mode guards or performance routing.
+
+`source_observation_stage.validate_pipeline` owns the supported native seam.
+`source_expression_interval` owns the typed observer theorem and revalidation.
+The retained checkpoint is an analysis input, not an automatically selected OOT
+region or a numerical relaxation.

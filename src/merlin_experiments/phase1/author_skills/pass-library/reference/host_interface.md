@@ -14,4 +14,4 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: No copy/ownership inference from descriptor construction
 - **evidence to request**: Descriptor overhead, copies and pointer/lifetime checks
 - **access**: requires_reviewed_library_extension
-- **test that calls it**: `merlin/tests/ir/test_host_descriptor_selection.py`: `transport = HostDescriptorTransport(selected, layout, tmp_path, tmp_path / "model.so", (), ())`
+- **test that calls it**: none found

@@ -3,8 +3,10 @@ title: Retained joint-store capacity controls
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-20
-code_refs: [src/merlin_experiments/phase0/development_joint_capacity.py, src/merlin_experiments/phase0/development_capacity_materialize.py]
+last_verified: 2026-11-09
+code_refs:
+  - src/merlin_experiments/phase0/development_joint_capacity.py
+  - src/merlin_experiments/phase0/development_capacity_materialize.py
 ---
 
 # Retained joint-store capacity controls
@@ -77,3 +79,9 @@ completion and spill traffic still need the independent target effect owner.
 Double-buffer fit does not prove DMA/compute overlap. No target cycle floor,
 timing qualification, sealed capture, writer publication or formal performance
 cohort admission follows from these artifacts.
+
+`development_joint_capacity.selected_stores` validates the selected logical
+views and `prove` derives complete conditional placements.
+`development_capacity_materialize` separately reopens and stages original
+source/reference bytes. Neither layer observes the candidate kernel's actual
+live physical storage or supplies overlap/timing qualification.

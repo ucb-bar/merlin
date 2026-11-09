@@ -40,6 +40,7 @@ delete its entry. Run::
     python build_tools/scripts/check_no_target_name.py --staged   # only git-staged files
     python build_tools/scripts/check_no_target_name.py --stop-hook # emit Claude Code Stop-hook JSON
 """
+
 from __future__ import annotations
 
 import ast
@@ -128,14 +129,18 @@ class _TargetNameVisitor(ast.NodeVisitor):
 
     def __init__(self, names: frozenset[str] | None = None) -> None:
         self.names = TARGET_NAMES if names is None else names
-        self.docstrings: set[int] = set()      # id() of Constant nodes that are docstrings
-        self.hits: list[tuple[int, str, str, int]] = []   # + end_lineno, so the marker may sit anywhere
+        self.docstrings: set[int] = set()  # id() of Constant nodes that are docstrings
+        self.hits: list[tuple[int, str, str, int]] = []  # + end_lineno, so the marker may sit anywhere
         #                                                   inside a multi-line implicit concatenation
 
     def _mark_docstring(self, node: ast.AST) -> None:
         body = getattr(node, "body", None)
-        if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) \
-                and isinstance(body[0].value.value, str):
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
             self.docstrings.add(id(body[0].value))
 
     def visit_Module(self, node: ast.Module) -> None:
@@ -185,7 +190,7 @@ def _scan_file(path: Path, names: frozenset[str] | None = None) -> list[tuple[in
     lines = src.splitlines()
     out = []
     for lineno, name, snippet, end in sorted(set(v.hits)):
-        span = lines[max(lineno - 1, 0):min(end, len(lines))]
+        span = lines[max(lineno - 1, 0) : min(end, len(lines))]
         if not any(INLINE_MARKER in line for line in span):
             out.append((lineno, name, snippet))
     return out
@@ -245,11 +250,12 @@ def substrate_report(targets: list[Path]) -> tuple[list[str], list[str], int]:
                 healed.append(relstr)
             continue
         for lineno, name, snippet in hits:
-            violations.append(f"{relstr}:{lineno}: hardcoded substrate name {name!r} in literal {snippet!r} "
-                              f"(derive it from the board/simulator registry or the target contract, or add "
-                              f"`# target-ok: <why>`)")
+            violations.append(
+                f"{relstr}:{lineno}: hardcoded substrate name {name!r} in literal {snippet!r} "
+                f"(derive it from the board/simulator registry or the target contract, or add "
+                f"`# target-ok: <why>`)"
+            )
     return violations, healed, carried
-
 
 
 # --- the token check: identifiers and every program string, case-insensitively ----------------------
@@ -418,9 +424,11 @@ def token_report(targets: list[Path], exact: set[str], prefixes: list[str]) -> t
                 healed.append(relstr)
             continue
         for lineno, name, kind, snippet in hits:
-            violations.append(f"{relstr}:{lineno}: target name {name!r} in {kind} {snippet!r} (resolve the "
-                              f"target at runtime, move the target's facts to its example, or add "
-                              f"`# target-ok: <why>`)")
+            violations.append(
+                f"{relstr}:{lineno}: target name {name!r} in {kind} {snippet!r} (resolve the "
+                f"target at runtime, move the target's facts to its example, or add "
+                f"`# target-ok: <why>`)"
+            )
     return violations, healed, carried
 
 
@@ -461,11 +469,17 @@ def _scan_coupling(path: Path) -> list[tuple[int, str, str, str]]:
     docstrings: set[int] = set()
     for node in ast.walk(tree):
         body = getattr(node, "body", None)
-        if isinstance(body, list) and body and isinstance(body[0], ast.Expr) \
-                and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str):
+        if (
+            isinstance(body, list)
+            and body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
             docstrings.add(id(body[0].value))
 
     hits: list[tuple[int, str, str, str]] = []
+    lines = src.splitlines()
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             parts = [node.module or ""] if isinstance(node, ast.ImportFrom) else []
@@ -475,16 +489,19 @@ def _scan_coupling(path: Path) -> list[tuple[int, str, str, str]]:
                     if _mentions(part, name):
                         hits.append((node.lineno, name, "import", part))
                         break
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str) \
-                and id(node) not in docstrings:
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings:
+            # Match the literal/token scans: a declaration beside the closing
+            # fragment belongs to this literal, never to an adjacent import.
+            end = getattr(node, "end_lineno", None) or node.lineno
+            span = lines[node.lineno - 1 : end]
+            if any(INLINE_MARKER in line for line in span):
+                continue
             for name in TARGET_NAMES:
                 # only what the whole-identifier check MISSES -- otherwise every literal is double-reported
                 if _mentions(node.value, name) and not _contains_identifier(node.value, name):
                     hits.append((node.lineno, name, "symbol", node.value.strip()[:60]))
                     break
-    lines = src.splitlines()
-    return [h for h in sorted(set(hits))
-            if INLINE_MARKER not in (lines[h[0] - 1] if 0 < h[0] <= len(lines) else "")]
+    return [h for h in sorted(set(hits)) if INLINE_MARKER not in (lines[h[0] - 1] if 0 < h[0] <= len(lines) else "")]
 
 
 def lift_candidates(staged: bool = False) -> list[str]:
@@ -509,7 +526,7 @@ def lift_candidates(staged: bool = False) -> list[str]:
             continue
         path = ROOT / rel
         if _scan_coupling(path) or _scan_file(path):
-            continue                      # names a target in its code: the filename is earned
+            continue  # names a target in its code: the filename is earned
         out.append(f"{relstr}: named after a target, but its code names none — audit for a lift")
     return out
 
@@ -538,8 +555,10 @@ def _unexaminable(stop_hook: bool, exc: BaseException) -> int:
     Reported in whichever dialect the caller speaks (a Stop hook BLOCKS via JSON on stdout, not via
     the exit status), so the two cannot drift apart.
     """
-    reason = (f"{_GATE}: could not list the files to examine ({exc}); NOTHING was examined, which is "
-              f"not the same as clean. Fix the tree/index and re-run.")
+    reason = (
+        f"{_GATE}: could not list the files to examine ({exc}); NOTHING was examined, which is "
+        f"not the same as clean. Fix the tree/index and re-run."
+    )
     if stop_hook:
         print(json.dumps({"decision": "block", "reason": reason}))
         return 0  # stop-hook signals via JSON, not exit code
@@ -564,14 +583,18 @@ def main(argv: list[str] | None = None) -> int:
         if not found:
             print("[  ok] target-coupling: no generic module depends on a specific target.")
             return 0
-        print(f"[DEBT] target-coupling: {len(found)} dependency(ies) on a specific target in modules "
-              "whose own name claims to be generic:")
+        print(
+            f"[DEBT] target-coupling: {len(found)} dependency(ies) on a specific target in modules "
+            "whose own name claims to be generic:"
+        )
         for line in found:
             print(f"  - {line}")
         lifts = lift_candidates(staged)
         if lifts:
-            print(f"\n[NOTE] {len(lifts)} module(s) named after a target name none in their code — the "
-                  "inverse case, where a general capability is filed as one vendor's plumbing:")
+            print(
+                f"\n[NOTE] {len(lifts)} module(s) named after a target name none in their code — the "
+                "inverse case, where a general capability is filed as one vendor's plumbing:"
+            )
             for line in lifts:
                 print(f"  - {line}")
         return 0
@@ -586,9 +609,11 @@ def main(argv: list[str] | None = None) -> int:
         if _allowed(relstr, exact, prefixes):
             continue
         for lineno, name, snippet in _scan_file(ROOT / rel):
-            violations.append(f"{relstr}:{lineno}: hardcoded target name {name!r} "
-                              f"in literal {snippet!r} (resolve the target at runtime, add "
-                              f"`# target-ok: <why>`, or allowlist the file)")
+            violations.append(
+                f"{relstr}:{lineno}: hardcoded target name {name!r} "
+                f"in literal {snippet!r} (resolve the target at runtime, add "
+                f"`# target-ok: <why>`, or allowlist the file)"
+            )
 
     sub_violations, healed, carried = substrate_report(targets)
     violations.extend(sub_violations)
@@ -597,10 +622,17 @@ def main(argv: list[str] | None = None) -> int:
 
     if stop_hook:
         if violations:
-            print(json.dumps({"decision": "block",
-                              "reason": ("Hardcoded target name outside the allowlist (see "
-                                         "build_tools/scripts/target_name_allowlist.txt):\n- "
-                                         + "\n- ".join(violations))}))
+            print(
+                json.dumps(
+                    {
+                        "decision": "block",
+                        "reason": (
+                            "Hardcoded target name outside the allowlist (see "
+                            "build_tools/scripts/target_name_allowlist.txt):\n- " + "\n- ".join(violations)
+                        ),
+                    }
+                )
+            )
         else:
             print(json.dumps({}))
         return 0  # stop-hook signals via JSON, not exit code
@@ -614,23 +646,35 @@ def main(argv: list[str] | None = None) -> int:
     # Report the exemptions as DEBT, not as part of a pass. An allowlist announced on an "ok" line reads
     # as "nothing to see"; it is 36 places where the core is welded to a specific target.
     n_coupling = len(coupling_inventory(staged))
-    print(f"[  ok] no-target-name: no stray target-name literal, identifier or string in scope "
-          f"({len(TARGET_NAMES)} derived target names, {len(SUBSTRATE_NAMES)} substrates).")
+    print(
+        f"[  ok] no-target-name: no stray target-name literal, identifier or string in scope "
+        f"({len(TARGET_NAMES)} derived target names, {len(SUBSTRATE_NAMES)} substrates)."
+    )
     if healed:
-        print(f"[note] {len(healed)} file(s) in {SUBSTRATE_RATCHET.name} no longer name a substrate; delete "
-              f"their lines: {', '.join(healed)}")
+        print(
+            f"[note] {len(healed)} file(s) in {SUBSTRATE_RATCHET.name} no longer name a substrate; delete "
+            f"their lines: {', '.join(healed)}"
+        )
     if tok_healed:
-        print(f"[note] {len(tok_healed)} file(s) in {TOKEN_RATCHET.name} no longer name a target in an identifier "
-              f"or string; delete their lines: {', '.join(tok_healed)}")
-    print(f"[DEBT] {n_allow} allowlisted file(s) still name a target, and {n_coupling} dependency(ies) on "
-          f"a specific target sit in modules whose own name claims to be generic (--coupling to list). "
-          f"Both counts may only fall.")
+        print(
+            f"[note] {len(tok_healed)} file(s) in {TOKEN_RATCHET.name} no longer name a target in an identifier "
+            f"or string; delete their lines: {', '.join(tok_healed)}"
+        )
+    print(
+        f"[DEBT] {n_allow} allowlisted file(s) still name a target, and {n_coupling} dependency(ies) on "
+        f"a specific target sit in modules whose own name claims to be generic (--coupling to list). "
+        f"Both counts may only fall."
+    )
     if carried:
-        print(f"[DEBT] {carried} generic file(s) still name a board/simulator/unit ({SUBSTRATE_RATCHET.name}); "
-              f"the list may only shrink.")
+        print(
+            f"[DEBT] {carried} generic file(s) still name a board/simulator/unit ({SUBSTRATE_RATCHET.name}); "
+            f"the list may only shrink."
+        )
     if tok_carried:
-        print(f"[DEBT] {tok_carried} file(s) still name a target in an identifier or string "
-              f"({TOKEN_RATCHET.name}); the list may only shrink.")
+        print(
+            f"[DEBT] {tok_carried} file(s) still name a target in an identifier or string "
+            f"({TOKEN_RATCHET.name}); the list may only shrink."
+        )
     return 0
 
 

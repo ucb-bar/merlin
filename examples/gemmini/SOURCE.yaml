@@ -6,6 +6,10 @@
 # merlin/tests/infra/test_example_support.py recomputes the tree id and refuses any non-data member.
 # Regenerate contracts/ with build_tools/scripts/sync_support_contract.py gemmini after a reviewed
 # contract edit, then update tree here and in build_tools/upstreams/target_support.json.
+# Source-parity correction: 41788c72c recorded d858e65967f358d7e85875ce161fa39ace1314f2,
+# but its retained support tree was 738f6119c54042979d2cb630df1716bcc64de55a.
+# The current tree synchronizes generated copies with unchanged reviewed inputs.
+# Historical runtime-probe execution does not qualify this regenerated tree.
 schema: merlin.generic_data_support.v1
 target: gemmini
 provider_id: gemmini-support
@@ -13,7 +17,7 @@ path: support
 role: support
 visibility: experimenter_only
 file_count: 8
-tree: d858e65967f358d7e85875ce161fa39ace1314f2
+tree: 5c5d8292eed80621c031d7db94ae1997d6752743
 backend: merlin.runtime.backends.chipyard_rocc
 # Experimenter-side tooling kept inside the masked provider tree (never selected by a plugin key):
 # the ISA probe package that exercises the grading path (probe_compiler/README.md).

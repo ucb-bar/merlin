@@ -3,17 +3,23 @@ title: "Running the Gemmini recipe-select agent campaigns"
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [fresh_compiler_origin]
-code_refs: [merlin/experiments/agent_recipe_select_v0/scripts/_track.py, merlin/experiments/agent_recipe_select_v0/scripts/run_census_campaign.py, merlin/experiments/agent_recipe_select_v0/scripts/census_workloads.py, merlin/experiments/agent_recipe_select_v0/scripts/compare_arms.py, merlin/experiments/agent_recipe_select_v0/scripts/agent_compile.py]
+code_refs:
+  - merlin/experiments/agent_recipe_select_v0/scripts/_track.py
+  - merlin/experiments/agent_recipe_select_v0/scripts/run_census_campaign.py
+  - merlin/experiments/agent_recipe_select_v0/scripts/census_workloads.py
+  - merlin/experiments/agent_recipe_select_v0/scripts/compare_arms.py
+  - merlin/experiments/agent_recipe_select_v0/scripts/agent_compile.py
 ---
 
 # Running the recipe-select agent campaigns
 
 Two agent arms over a frozen, RTL-certified Gemmini backend, measured on the ResNet-50 and TinyLlama
 kernel census. For *why* the experiment is shaped this way, read
-[the design note](../design/fresh_compiler_origin.md) first — in particular the section on
-why the two arms cannot be ranked by their own speedups.
+[the origin boundary](../design/fresh_compiler_origin.md) and the absolute-cycle
+comparison rules below. This historical seeded track is distinct from fresh
+compiler authoring.
 
 This is a checkout-local reproduction guide for a historical target example, not Merlin's generic
 installed Phase-0→1→2 entry point. The pinned emulator digest and campaign receipts identify that
@@ -132,3 +138,11 @@ buckets, so fresh input is a *subtraction*; adding them overstated a measured ro
 and takes the `fsq.py` queue lock, then `kill → infrasetup → runworkload → kill`, every run. **The
 two never share an axis** — the same capsule reads 510 cycles on FireSim and 317 under Verilator — so
 `oracle_engine` is mandatory on every row carrying a cycle count.
+
+This archived track still discovers and guards the historical `merlin/python`
+source layout in `_track.py`. Current active code lives under `src`; an installed
+current wheel or an empty legacy directory does not satisfy that source guard.
+Replay therefore also needs the matching historical checkout/import environment,
+in addition to the exact external compiler and emulator. The guide preserves
+the archived commands and model labels; it does not claim current one-wheel
+compatibility or a newly executed campaign.

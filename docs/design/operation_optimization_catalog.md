@@ -3,7 +3,7 @@ title: "Per-operation optimization principles for compiler authors"
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-26
+last_verified: 2026-11-09
 related: [joint_optimization_catalog, optimization_suggestions, compiler_authoring_prompts]
 code_refs:
   - docs/design/operation_optimization_catalog.json
@@ -13,7 +13,8 @@ code_refs:
   - src/merlin_experiments/phase1/feedback/performance_brief.py
   - src/merlin_experiments/phase1/feedback/composition_next.py
   - src/merlin_experiments/phase1/author_skills/heavy-pass-recipes/scripts/composition_routes.py
-  - packages/merlin-experiments/tests/test_operation_optimizations.py
+  - src/merlin/analysis/instruction_roles.py
+  - src/merlin/compiler/passes/composition.py
 ---
 
 # Per-operation optimization principles
@@ -56,7 +57,7 @@ UNKNOWN timing is missing evidence, instruction counts are diagnostics, defaults
 Each entry has a `focus` sentence, `principles` (kind `principle`, `pitfall` or `evidence`),
 `mechanisms` (`catalog`, `skill` or `recipe`), `evidence` to compare, an optional `panel_family` for
 `--panel`, and `related` families. A principle or mechanism may declare `uses_instruction_roles` from
-the closed role vocabulary (`merlin.compile.analysis.instruction_roles.ROLES`).
+the closed role vocabulary (`merlin.analysis.instruction_roles.ROLES`).
 
 `validate` checks the schema and every cross reference: catalogue ids exist in the architecture
 catalogue, skills and recipe scripts exist among the author skills, roles are known, ids are unique.
@@ -82,7 +83,7 @@ id in the staged file, its focus and the panel command, plus any secondary famil
 ## Composition routes and source-composition requests
 
 Chains of operations have their own library routes in the composition catalog
-(`merlin.compile.composition_catalog`), and whole-model and program checks accept
+(`merlin.compiler.passes.composition`), and whole-model and program checks accept
 `submission/source_composition.json` requests. Authors did not find either from the catalogue alone,
 so the general entry carries `chains_have_composition_routes`, `connected_chain` carries
 `source_composition_requests`, and the chain families (`connected_chain`, `elementwise_epilogue`,
@@ -103,3 +104,9 @@ routes first. They are pointers only: nothing gates, ranks or applies.
 Edit the JSON, keep every statement architecture-agnostic and free of run names and numbers, run
 `packages/merlin-experiments/tests/test_operation_optimizations.py`, and bump `review.reviewed_on`.
 A lesson that only holds for one target belongs in that target's operator guidance, not here.
+
+The editable guidance data is separate from compiler algorithms and independent
+acceptance. `operation_optimizations.py` validates and stages the data; actual
+transformation implementations remain in their shared source/scheduling owners
+or selected OOT backend. Editing advice cannot grant a missing implementation
+or change a numerical, instruction or performance gate.

@@ -3,7 +3,7 @@ title: Complete integer product families
 kind: design
 status: current
 owner: compiler
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: []
 code_refs:
   - src/merlin/llvmlower/integer_product_family.py
@@ -70,7 +70,7 @@ original five degree calls.
 Qualification artifacts separately retain original whole output validation,
 all target integer readouts, target FENV and complete cost receipts. Neither
 Python/Numpy correctness stand-ins nor functional Spike instruction counts are
-FPGA cycle measurements. Exact per-optimization token billing is unavailable.
+FPGA cycle measurements.
 
 The family contract exposes a useful compiler choice for automatic loops:
 select bounded common operand storage and multiple live destinations, while
@@ -81,3 +81,9 @@ Phase 2 must measure complete source composition, including host preparation
 and consumers, and retain negative whole or complete cost results. These choices
 are driven by semantic contracts and resource facts, never benchmark identities
 or sampled golden outputs.
+
+`integer_product_family` owns the mathematical family and complete bounds;
+`source_product_family.source_product_families` derives the actual source
+shapes, and `prepare_source_product_family` materializes the distinct callback.
+That callback is offered to a selected physical backend; its availability is not
+a placement decision or a target-resource reservation.

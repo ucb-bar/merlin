@@ -3,7 +3,7 @@ title: Prepared private endpoint DAG
 kind: reference
 status: current
 owner: compiler
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: []
 code_refs:
   - src/merlin/llvmlower/prepared_endpoint_dag.py
@@ -94,3 +94,9 @@ Private cache words may be partially written before numerical refusal and must
 then be discarded. They are never public results. Metadata, snapshots, initial
 evaluation, subset tests, replay, fallback and output publication are real costs;
 dependency reuse alone proves no whole-model or device-cycle improvement.
+
+Both Python modules emit portable private C helpers.
+`prepared_endpoint_dag.c_header` requires `PreparedEndpointContract`; the
+additional `endpoint_narrowing.c_header` requires both that contract and
+`EndpointNarrowingContract`. This is an explicit provider assembly seam, not an
+automatic pass that discovers or grants those physical effect proofs.

@@ -3,19 +3,21 @@ title: Compile debugging — stop at a stage, dump its IR, trace a build, inspec
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [optional_passes, model_lowering, whole_model_on_accelerator]
-code_refs: [src/merlin/common/compile_trace.py,
-            src/merlin/perf/debug_companion.py,
-            src/merlin/perf/whole_model_group_timing.py,
-            src/merlin/compiler/inspect.py,
-            src/merlin/compile/command.py,
-            src/merlin/llvmlower/pipeline.py,
-            src/merlin/perf/whole_model_build_cli.py,
-            src/merlin/perf/whole_model_partial.py,
-            src/merlin_experiments/group_inspect.py,
-            src/merlin_experiments/group_probes.py,
-            src/merlin/perf/census_cli.py]
+code_refs:
+  - src/merlin/common/compile_trace.py
+  - src/merlin/perf/debug_companion.py
+  - src/merlin/perf/whole_model_group_timing.py
+  - src/merlin/compiler/inspect.py
+  - src/merlin/compile/command.py
+  - src/merlin/llvmlower/pipeline.py
+  - src/merlin/perf/whole_model_build_cli.py
+  - src/merlin/perf/whole_model_partial.py
+  - src/merlin_experiments/group_inspect.py
+  - src/merlin_experiments/group_probes.py
+  - src/merlin/perf/census_cli.py
+  - src/merlin/service_cli.py
 ---
 
 # Compile debugging
@@ -168,3 +170,9 @@ Inside a phase-1 sandbox, the equivalent instruction-level view of a capsule is
   indexes the audit's native dumps rather than printing a second copy.
 - `MERLIN_PASS_LOG` and `MERLIN_VERIFY_LOG` record xDSL pass invocations and verdicts. A trace turns on
   the first one by default.
+
+The detailed stage switches above belong to the retained workload/model and
+builder routes. The current explicit-provider service (`merlin compile SOURCE
+--backend PROVIDER`) has its own declared provider options and artifacts; do
+not assume every provider exposes the legacy model stage names or the same
+dump controls. Inspect the selected provider and its actual compilation manifest.

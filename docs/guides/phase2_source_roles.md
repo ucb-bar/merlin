@@ -3,7 +3,7 @@ title: Select prospective public source roles before Phase 2 evaluation
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-19
+last_verified: 2026-11-09
 related: [phase2_test_justification, phase2_corpus_search, phase0_specification]
 code_refs:
   - src/merlin_experiments/phase0/public_source_roles.py
@@ -61,3 +61,8 @@ ordinary admission gates remain mandatory. Reusing an immutable historical captu
 for a new publication does not rewrite its capture date or original role. Record
 that chronology and perform all newly required checks before evaluation. Legacy
 public-program selections and publications retain their original interpretation.
+
+`phase0.public_source_roles` owns prospective selection and scoped live
+authority. `requirements.py` binds it to actual materialized members; the writer
+and Phase 2 corpus freeze retain every selected obligation. A serialized role
+record supplies custody metadata, not a new live operator choice.

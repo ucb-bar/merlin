@@ -3,7 +3,7 @@ title: Automatic host tensor destination reuse
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-18
+last_verified: 2026-11-09
 related: [shared_compiler_passes, optional_passes, lowering_pipeline, whole_model_op_profile]
 code_refs:
   - src/merlin/llvmlower/automatic_destinations.py
@@ -112,3 +112,9 @@ bufferization and machine optimization can still be perturbed.
 Compare actual pass reports and paired complete executions before using a
 profile to prioritize later work. Runtime copy counters cover the wrapped copy
 routine only; inlined transfers and accelerator traffic require separate evidence.
+
+The source entrypoint is `automatic_destinations.prepare_automatic_destinations`.
+`insert_slice_destination.py` materializes the selected regions and
+`destination_check.py` checks the realized writes. These are shared host
+transformations before OOT device lowering, and supply no device memory or
+synchronization contract.

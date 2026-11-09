@@ -8,7 +8,6 @@ related: [artifact_evaluation, ../reference/repo_structure]
 code_refs:
   - build_tools/scripts/replay_paper_kernels.py
   - examples/gemmini/phase2/artifact-replay.json
-  - merlin/tests/infra/test_paper_kernel_replay.py
 ---
 
 # Replay the paper's preserved kernel images

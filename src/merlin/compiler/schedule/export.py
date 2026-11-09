@@ -257,6 +257,10 @@ def public_modules(version=26):
             "merlin.compiler.transforms.matmul",
             "merlin.compiler.transforms.dead",
             "merlin.compiler.lower.scalar.casts",
+            # These already transported generic implementations are advertised
+            # callable APIs in the current capability catalog.
+            "merlin.compiler.schedule.affine_gather_runs",
+            "merlin.compiler.schedule.compact_dense_group",
         )
     return {
         6: PUBLIC_MODULES_V6,

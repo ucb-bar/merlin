@@ -15,7 +15,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Candidate assertions alone cannot establish state equivalence
 - **evidence to request**: Config counts, state checks and issue cost
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_configuration_elimination.py`: `result = eliminate_redundant_configuration(kernel, adapter())`
+- **test that calls it**: none found
 
 ### dead_private_writes
 
@@ -28,7 +28,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Observable stores, MMIO and fault semantics excluded without proof
 - **evidence to request**: Removed writes and original observable outputs
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_dead_payload_writes.py`: `result = eliminate_dead_writes(source, objects, banks, adapter, **kwargs)`
+- **test that calls it**: none found
 
 ### command_loops
 
@@ -41,7 +41,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Code-size reduction not a dynamic command-count reduction
 - **evidence to request**: IR/text size, loop bounds, emitted command equivalence
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_command_compaction.py`: `result = compact_command_stream(original, index_bits=64)`
+- **test that calls it**: none found
 
 ### encoded_reroll
 
@@ -54,7 +54,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Loop-aware dynamic trace adapter needed for unresolved induction
 - **evidence to request**: Static bytes versus actual dynamic instructions
 - **access**: selected_public_library
-- **test of its module** (none calls this symbol directly): `merlin/tests/ir/test_reroll.py`
+- **test that calls it**: none found
 
 ### host_address_arithmetic
 
@@ -66,7 +66,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Expression representation exists; general emitted-host strength-reduction/hoisting policy and instruction-cost feedback not established by this API
 - **evidence to request**: Host integer instructions, pointer materialization and command-submission window
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_compact_dense.py`: `concrete = replace(call, args=tuple((k, evaluate(v, env)) for k, v in call.args))`
+- **test that calls it**: none found
 
 ### counted_configuration_cleanup
 
@@ -79,4 +79,4 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Selected target configuration persistence law decides what may be hoisted
 - **evidence to request**: Configuration command count per inner iteration, issue cycles and exact outputs
 - **access**: full_compiler_source_and_scheduling_capabilities_v19
-- **test that calls it**: `merlin/tests/infra/test_counted_configuration_cleanup.py`: `r=eliminate_counted_configuration(k,A)`
+- **test that calls it**: none found

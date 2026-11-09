@@ -3,9 +3,16 @@ title: Selecting a target definition package
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-10
+last_verified: 2026-11-09
 related: [adding_a_target, generated_target_repos, targetgen, target_publishing, neutral_runtime_tooling]
-code_refs: [src/merlin/targetgen/target_registry.py, src/merlin/targetgen/providers.py, src/merlin/targetgen/capability_manifests.py, src/merlin/runtime/backends/base.py, build_tools/upstreams/target_support.json]
+code_refs:
+  - src/merlin/targetgen/target_registry.py
+  - src/merlin/compiler/backend/load.py
+  - src/merlin/targetgen/capability_manifests.py
+  - src/merlin/runtime/backends/base.py
+  - build_tools/upstreams/target_support.json
+  - examples/gemmini/support/provider.yaml
+  - examples/gemmini/support/contracts/target_contract.yaml
 ---
 
 # Selecting a target definition package
@@ -31,8 +38,9 @@ field — not the directory name — so a package can live anywhere and be versi
 
 Support packages declare `provider.yaml` at their own root, separate from a compiler candidate's
 `manifest.yaml`. An independently selected repository can use the declaration at
-`merlin-support/provider.yaml`. Gemmini has no in-repo executable support default:
-its handwritten provider and copied headers have been removed from this repository.
+`merlin-support/provider.yaml`. Gemmini retains an in-repo data-only support declaration naming the generic
+core runtime and legality readers. Its handwritten compiler/support implementation
+and copied vendor headers are not that default.
 Fresh compiler experiments use reviewed data with shared execution tooling, or an
 independently reviewed execution provider that contains no compiler solution.
 The handwritten compiler's support cannot substitute for independent tooling.
@@ -216,3 +224,10 @@ overwrite an existing provider or substitute fabricated facts.
 - [Adding a target](adding_a_target.md) — the end-to-end onboarding flow.
 - [Generated target repositories](../reference/generated_target_repos.md) — the full package layout.
 - [Target publishing](target_publishing.md) — publishing a champion package to its `<target>-mlir` repo.
+
+The canonical data-only provider parser is
+`merlin.compiler.backend.load.read_provider`; `targetgen.providers` preserves
+its compatibility identity. Provider metadata and a support contract are not
+backend implementation proposals or a model placement plan. Keep compiler
+implementations, independently selected execution tooling and approved target
+facts as distinct inputs.

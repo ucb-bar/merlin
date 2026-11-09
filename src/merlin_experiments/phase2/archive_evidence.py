@@ -10,10 +10,6 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from merlin_timing import archive as A
-from merlin_timing import archive_union as UNION
-from merlin_timing import contracts as C
-
 from merlin.runtime import _native_files as F
 
 from . import archive_spike_runtime as RT
@@ -29,6 +25,9 @@ class AdditionalArchiveEvidence:
 
 
 def declarations(additional):
+    from merlin_timing import archive_union as UNION
+    from merlin_timing import contracts as C
+
     if (
         type(additional) is not tuple
         or len(additional) >= UNION.MAX_ARCHIVES
@@ -67,6 +66,8 @@ def paths(selection):
 
 
 def component(runtime, *, archive, archive_sha256, binding_path, observations_path):
+    from merlin_timing import archive as A
+
     inventory = A.inspect_archive(archive, archive_sha256)
     binding, binding_pin = RT.metadata(binding_path)
     observations, observations_pin = RT.metadata(observations_path)
@@ -98,6 +99,9 @@ def component(runtime, *, archive, archive_sha256, binding_path, observations_pa
 
 
 def review(runtime, primary, additional):
+    from merlin_timing import archive_union as UNION
+    from merlin_timing import contracts as C
+
     declarations(additional)
     items = [
         primary,
@@ -138,6 +142,8 @@ def check_inputs(components):
 
 def catalog(reviewed, *, archive, archive_sha256, binding_path):
     """Use each original descriptive source consumer on its exact component."""
+    from merlin_timing import archive_union as UNION
+
     from . import _archive_feedback as HISTORY
 
     if "archive_components" not in reviewed:

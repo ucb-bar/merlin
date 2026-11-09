@@ -13,9 +13,6 @@ code_refs:
   - src/merlin/llvmlower/c_runtime.py
   - src/merlin/common/mlir_query.py
   - src/merlin/runtime/backends/zephyr_model.py
-  - merlin/tests/rvv/test_vision_workloads_rvv.py
-  - merlin/tests/rvv/test_microkernel_shape_policy.py
-  - merlin/tests/runtime/test_zephyr_ram_sizing.py
 ---
 
 # Vision, audio and control workloads on Kodiak

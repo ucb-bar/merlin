@@ -3,22 +3,23 @@ title: Optional lowering passes — list, select, copy
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-21
+last_verified: 2026-11-09
 related: [model_lowering, whole_model_on_accelerator, extending_the_stack]
-code_refs: [src/merlin/llvmlower/optional_passes.py,
-            src/merlin/llvmlower/repeated_pointwise.py,
-            src/merlin/llvmlower/int_softmax_table.py,
-            src/merlin/llvmlower/normalization_reassociation.py,
-            src/merlin/llvmlower/passes_xdsl.py,
-            src/merlin/compile/command.py,
-            src/merlin/perf/whole_model_builder.py]
+code_refs:
+  - src/merlin/llvmlower/optional_passes.py
+  - src/merlin/llvmlower/repeated_pointwise.py
+  - src/merlin/llvmlower/int_softmax_table.py
+  - src/merlin/llvmlower/normalization_reassociation.py
+  - src/merlin/compiler/frontend/preprocess.py
+  - src/merlin/compile/command.py
+  - src/merlin/perf/whole_model_builder.py
 ---
 
 # Optional lowering passes
 
 Merlin's optional transforms expose explicit defaults and controls. They derive eligibility from
 IR semantics, shapes and declared capabilities. Merlin owns reusable algorithms; target-specific
-extensions belong in out-of-tree packages. `merlin.llvmlower.optional_passes` is the one list of them. For each pass it records
+extensions belong in out-of-tree packages. `merlin.llvmlower.optional_passes` is the catalog of these optional user-facing lowering switches. For each pass it records
 the stage it acts in, whether it is exact, its default, and what it changes in the program.
 
 ## List them
@@ -154,3 +155,9 @@ seam, and that the rewritten sum equals the source sum on inputs whose partial s
 3. Add an `OptionalPass` entry. Give it an honest `exactness`: if you claim `exact`, add a test that
    runs the original and the rewritten program on the same inputs and compares the bits.
 4. `merlin/tests/ir/test_optional_passes.py` checks that every entry names a real switch.
+
+For source navigation, `compiler/frontend/preprocess.py` owns the shared
+pre-bufferization preparation, while `llvmlower/optional_passes.py` owns these
+user-facing switches. The complete shared transformation library also includes
+compiler schedule and source-IR APIs; not every library algorithm is an optional
+lowering switch. See [shared compiler passes](../reference/shared_compiler_passes.md).

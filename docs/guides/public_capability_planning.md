@@ -3,7 +3,7 @@ title: Plan compiler construction from public capabilities
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-23
+last_verified: 2026-11-09
 related: [conditional_compiler_pipelines, ../reference/compiler_optimization_workflow, artifact_evaluation]
 code_refs:
   - src/merlin_experiments/phase1/capability_inventory.py
@@ -17,6 +17,8 @@ code_refs:
   - examples/gemmini/phase1/launch/prepare_source_release.py
   - examples/gemmini/phase1/launch/prepare_author_launch.py
   - examples/gemmini/phase1/launch/resource_reservation.py
+  - src/merlin/targetgen/tool_profile_shared.py
+  - src/merlin/compiler/schedule/export.py
 ---
 
 # Plan compiler construction from public capabilities
@@ -27,11 +29,12 @@ Shared library preparation uses a target-independent package CLI. The remaining
 operator examples in `examples/gemmini/phase1/launch/` assemble prospective inputs;
 none launches an author or reserves CPUs:
 
-1. `python -m merlin_experiments.phase1.prepare_author_library` refreshes the existing explicit reviewed source
+1. The current `python -m merlin_experiments.phase1.prepare_author_library` route refreshes the existing explicit reviewed source
    membership from a committed compiler revision. It retains the editable generic
    compiler grant, closes imports, and refuses newly discovered SDK leaves without
    a separate review. Both generic-only and optional scaffold selections are
-   recorded, so the latter is never silently enabled.
+   recorded, so the latter is never silently enabled. Fresh preparation uses inventory26 only; older inventories require their
+   exact frozen environment.
 2. `prepare_source_release.py` calls ordinary corpus release preparation from the
    original generated lineage, public supplement and scalability selections. It
    selects the new SDK and preserves the hash-checked explicit formal toolchain.
@@ -55,10 +58,11 @@ none launches an author or reserves CPUs:
 The proposed full command wraps the controller with `resource_reservation.py`.
 It uses a valid `merlinphase1` service identifier and restores the exact selected
 environment **inside** the reservation helper's restricted environment boundary.
-All twenty CPUs remain shared across authoring, builds, grading and calibration;
-reservation acquisition and restoration occur only if that command is explicitly
-executed. Rendering it does not reserve the cores. The launch retains the 40M
-aggregate soft token target with an 8M integration reserve.
+The explicitly selected CPU and token budgets remain operator inputs shared
+across their declared authoring, build, grading and calibration scope. Reservation
+acquisition and environment restoration occur only when the proposed command is
+explicitly executed; rendering it reserves nothing. A previous campaign's
+allocation is not a default for another worker or experiment.
 
 Treat scaffold source identities separately from timing qualification. A scaffold
 derived from augmented facts/declarations is not automatically the same treatment
@@ -188,3 +192,11 @@ measurements attached to the exact compiler and model versions.
 The inventory carries no qualification authority. Final hidden and complete-model
 obligations remain outside this public denominator and retain their existing
 independent owners.
+
+Current fresh shared SDK export uses inventory 26 through
+`merlin.compiler.schedule.export` and the matching host source-release preparer.
+The current `prepare_author_library` helper defaults to and accepts inventory26
+only. It requires the exact source revision and an existing explicit reviewed
+base selection; new generic leaves still need their original explicit review.
+Keep existing frozen selections unchanged. Export/preparation validates source
+custody and availability, not compiler execution or numerical correctness.

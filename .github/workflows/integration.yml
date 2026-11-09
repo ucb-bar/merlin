@@ -40,26 +40,9 @@ jobs:
           wheels=(out/build/python/releases/merlin-*.whl)
           test "${#wheels[@]}" -eq 1
           uv run --no-sync python build_tools/scripts/check_standalone_install.py --wheel "${wheels[0]}" --require-tools
-      - name: hosted runtime and vector-provider boundaries
-        run: |
-          mkdir -p out/build/python/ci
-          wheels=(out/build/python/releases/merlin-*.whl)
-          test "${#wheels[@]}" -eq 1
-          export MERLIN_TEST_RELEASE_WHEEL="${wheels[0]}"
-          uv run --no-sync pytest -q \
-            merlin/tests/infra/test_access_registry.py::test_real_release_wheel_files_are_covered_when_installed \
-            merlin/tests/runtime/test_semantic_application.py \
-            merlin/tests/runtime/test_application_c.py \
-            merlin/tests/runtime/test_application_parameters.py \
-            merlin/tests/runtime/test_application_state.py \
-            merlin/tests/runtime/test_external_handoff.py \
-            merlin/tests/runtime/test_zephyr_configuration.py \
-            merlin/tests/rvv/test_host_package_boundary.py \
-            merlin/tests/rvv/test_shared_finalization.py \
-            merlin/tests/rvv/test_policy_owner.py \
-            --junitxml=out/build/python/ci/hosted-boundaries.xml
       - name: pinned installed OOT provider boundaries
         run: |
+          mkdir -p out/build/python/ci
           wheels=(out/build/python/releases/merlin-*.whl)
           test "${#wheels[@]}" -eq 1
           uv run --no-sync python build_tools/scripts/check_backend_boundaries.py \

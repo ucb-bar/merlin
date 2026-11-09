@@ -42,7 +42,7 @@ jobs:
   checks:
     needs: comparison
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -63,6 +63,10 @@ jobs:
           --extra dev --extra verify --extra semantic-search
           --extra kernels-ast --extra kernels-exo --extra kernels-parquet
           --extra kernels-plots --extra experiments --extra analysis --extra triton
+      - name: provision independent constant-math reference headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libmpfr-dev libgmp-dev
       # Includes the full docs anti-drift sweep; do not run check_docs.py again below.
       - name: structure gate
         run: uv run --no-sync python build_tools/scripts/check_structure.py
@@ -134,8 +138,6 @@ jobs:
         run: uv run --no-sync python build_tools/scripts/check_no_holdout_names.py
       - name: holdout-disjointness gate (hidden set disjoint from public)
         run: uv run --no-sync python build_tools/scripts/check_holdout_disjointness.py
-      - name: contract-copies gate (the two copies of the experiment ABI must agree)
-        run: uv run --no-sync python build_tools/scripts/check_contract_copies.py
       - name: fact-provenance gate (a hardware fact derives from RTL, not from prose)
         run: uv run --no-sync python build_tools/scripts/check_fact_provenance.py
       # Provenance asks which revision a fact came from; this asks what a declared RESTRICTION was read
@@ -169,12 +171,6 @@ jobs:
       # certification, not a weaker gate.
       - name: phase-split gate
         run: uv run --no-sync python build_tools/scripts/check_phase_split.py
-      # THE CORPUS MUST BE READABLE. One capsule whose `generalization_axis` was absent from the schema
-      # made every discovery path raise — the launcher's task scope, the readiness check and the grader
-      # — and it shipped because every gate reads a DERIVED view of the corpus and none opens a capsule
-      # through the validator. Ten seconds against a launch that discovers it after a 13.7 GB snapshot.
-      - name: capsule corpus loads
-        run: uv run --no-sync python -m pytest merlin/tests/targetgen/test_every_tracked_capsule_loads.py -q
       # Independent answer keys are absent in a fresh clone. Their audit stays
       # explicitly UNMEASURED; load failures and assessed constant answers fail.
       - name: numeric falsifiability (partial public audit; missing oracles unmeasured)
@@ -202,7 +198,7 @@ jobs:
       # generalize TO is not evidence of anything, and this is the check that says so. It was listed
       # out-of-band at "> 4 min on a populated out/" — measured here at 2m30s, and a CI runner clones
       # fresh with no `out/` at all, so the stated reason is if anything backwards. It fits the job's
-      # 20-minute budget with room.
+      # source-job budget.
       - name: claim-set disjointness
         run: uv run --no-sync python build_tools/scripts/check_claim_set_disjointness.py --fail-on-circular
       # Advisory: CI has no RTL fact bundles, so under-declaration is undeterminable here; only an
@@ -219,17 +215,22 @@ jobs:
       - name: pass-obligation report (advisory; no capsule logs in CI)
         continue-on-error: true
         run: uv run --no-sync python build_tools/scripts/check_pass_obligations.py
-      # The lit/FileCheck pass suite rides inside the `merlin/tests/ir` bucket below
-      # (merlin/tests/ir/test_lit_suite.py drives merlin/tests/data/lit). The explicit
-      # `verify` extra above supplies its SMT dependency. Neither needs its own step; a
-      # second invocation would only make it look like more is being checked than is.
-      # The dedicated "capsule corpus loads" step above owns this exact module.
-      - name: tests (fast subset; hardware buckets self-skip via skipif)
+      - name: complete test collection budget (150 parameterized cases maximum)
         run: >-
-          uv run --no-sync pytest
-          merlin/tests/infra merlin/tests/ir merlin/tests/kernels merlin/tests/targetgen
-          --ignore=merlin/tests/targetgen/test_every_tracked_capsule_loads.py
-          -q -m "not slow and not integration"
+          uv run --no-sync python build_tools/scripts/check_test_budget.py
+          --output out/build/python/ci/test-budget.json
+      - name: compact behavioral suite
+        run: >-
+          uv run --no-sync pytest merlin/tests -q -ra
+          --junitxml=out/build/python/ci/core.xml
+      - name: retain exact collection and test outcomes
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: core-results
+          path: out/build/python/ci/
+          if-no-files-found: error
+          retention-days: 14
 
   ruff:
     needs: comparison

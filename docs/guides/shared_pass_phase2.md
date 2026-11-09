@@ -3,18 +3,20 @@ title: Shared passes in ordinary compiler authoring
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-21
+last_verified: 2026-11-09
 related: [shared_source_lowering, shared_offload_selection, ../reference/shared_compiler_passes, phase2_corpus_search]
 code_refs:
+  - src/merlin/compiler/schedule/export.py
+  - src/merlin/compiler/schedule/library_sources.py
   - src/merlin/targetgen/tool_profile.py
   - src/merlin/targetgen/tool_profile_shared.py
   - src/merlin/targetgen/common_transforms.py
-  - src/merlin/compile/baremetal_model.py
-  - src/merlin/compile/scheduling/compact_dense.py
-  - src/merlin/compile/scheduling/dense_contracts.py
-  - src/merlin/compile/scheduling/configuration_ir.py
-  - src/merlin/compile/scheduling/pointwise_source.py
-  - src/merlin/compile/scheduling/row_softmax.py
+  - src/merlin/model.py
+  - src/merlin/compiler/schedule/compact_dense.py
+  - src/merlin/compiler/schedule/dense_contracts.py
+  - src/merlin/compiler/schedule/configuration_ir.py
+  - src/merlin/compiler/schedule/pointwise_source.py
+  - src/merlin/compiler/schedule/row_softmax.py
   - src/merlin/llvmlower/source_dense.py
   - src/merlin/llvmlower/source_choices.py
   - src/merlin/targetgen/capsule_common.py
@@ -22,9 +24,7 @@ code_refs:
   - src/merlin_experiments/phase2/ordinary_search_stage.py
   - src/merlin/targetgen/compiler_library.py
   - src/merlin/targetgen/compiler_source_optimizations.py
-  - merlin/tests/infra/test_compiler_source_optimizations.py
   - src/merlin_experiments/phase1/feedback/private_source_optimizations.py
-  - packages/merlin-experiments/tests/test_private_source_optimizations.py
   - src/merlin_experiments/phase1/compiler_library.py
   - src/merlin_experiments/phase1/controller.py
   - src/merlin_experiments/phase2/compiler_libraries.py
@@ -34,17 +34,17 @@ code_refs:
 
 # Shared passes in ordinary compiler authoring
 
-The **V6 common compiler substrate** makes the reviewed shared scheduling
-library available to ordinary compiler candidates. The implemented ordinary
-inheritance route freezes one release in Phase 1 and preserves its grants and
-source identities in Phase 2. Versions 1–5 retain their original public APIs
-and proof policies.
+Fresh compiler authoring uses **SDK26**, with
+`merlin.common_compiler_substrate.v26` and canonical `merlin.compiler` source
+owners. `compiler/schedule/export.py:export_shared_scheduling` writes that
+inventory; `targetgen/tool_profile_shared.py:prepare_shared_source_release`
+stages it for initial authoring. Exporting or staging alone grants no access.
 
-This guide covers the `merlin.common_compiler_substrate.v6` and
-`merlin.common_compiler_substrate.v7` release profiles. Versions 1–6 retain their
-existing API inventories and verification policies. An already certified
-compiler keeps its frozen profile; changing ordinary Phase 2 options cannot add
-library access to it.
+Earlier profiles remain frozen reproduction inputs. Their manifests, source
+bytes, legacy module names and grants retain their original meanings; current
+code cannot mint a replacement V6–V25 release by selecting an older number.
+The APIs below use current canonical names. For an inherited older profile,
+consume its recorded release and interpreter instead of rewriting its sources.
 
 A separate Phase 2 experiment may explicitly select additional reviewed compiler
 libraries without rerunning Phase 1 authoring. It must preserve the original
@@ -55,11 +55,12 @@ run or claim the original same-grant ablation. All compared Phase 2 treatments
 must receive the same selected shared algorithms. Selecting a library does not
 complete an outstanding resource certificate or supply execution admission.
 
-The expanded scheduling inventory is selected explicitly as version 8.
+Version 8 introduced the expanded scheduling inventory. Fresh exports now select
+version 26, including its explicitly declared current source closure.
 
 An explicit source-binding release adds two narrow public compiler APIs:
-`merlin.compile.scheduling.direct_source.bind_direct_source_contraction` and
-`merlin.compile.scheduling.source_tokens.llvm_tokens`. The first reads a closed,
+`merlin.compiler.schedule.direct_source.bind_direct_source_contraction` and
+`merlin.compiler.schedule.source_tokens.llvm_tokens`. The first reads a closed,
 zero-initialized signed rank-two dot and its positional pointer declaration;
 supplied scalar-analysis data is a compilation hypothesis, not an original
 proof receipt. The second returns bounded lexical spans without running an
@@ -70,16 +71,16 @@ source/effect checkers rebind the actual emitted program independently.
 Create this separate export in a fresh operator-owned directory with:
 
 ```sh
-python -m merlin.compile.scheduling.export --shared-library --library-version 8 --source-binding \
+python -m merlin.compiler.schedule.export --shared-library --library-version 26 --source-binding \
   --output-dir "$NEW_LIBRARY" --license-directory "$MERLIN_SOURCE"
 ```
 
-The explicit flag produces `merlin.shared_scheduling_library.v3` with
-`source_binding_protocol=merlin.shared_source_binding.v1` and exactly those two
-additional public leaves. Versions 6 and 7 retain their existing inventories. Existing frozen releases,
-profiles and grants stay unchanged. For a prospective common source profile,
-`tool_profile_shared.prepare_shared_source_release(..., version=8, source_binding=True)`
-uses that same exact version 8 inventory; it does not modify a historical profile.
+For SDK26 the manifest is `merlin.shared_scheduling_library.v20`, with
+`inventory_version: 26`. The explicit flag retains
+`source_binding_protocol=merlin.shared_source_binding.v1` and adds the two
+canonical public source-binding leaves named above.
+`tool_profile_shared.prepare_shared_source_release(..., version=26, source_binding=True)`
+uses that same inventory. Neither operation modifies a historical profile.
 
 Review the new manifest with the existing `freeze_compiler_library`, including
 its declared manifest/license resources, then select its exact
@@ -493,12 +494,13 @@ the current managed task's `TMPDIR`; retain a release needed by an active run.
 python -m merlin.targetgen.tool_profile_shared \
   --python-source-root "$MERLIN_SOURCE_ROOT" \
   --license-directory "$MERLIN_LICENSE_ROOT" \
-  --output-dir "$TMPDIR/common-v6"
+  --library-version 26 \
+  --output-dir "$TMPDIR/common-v26"
 ```
 
-This stages the existing shared SDK plus exact preceding common facilities and
-host checker sources in **one Python source root**. It retains the exporter's
-three fixed namespace replacements, excluding backend discovery from the public
+This stages the selected shared SDK and its declared compiler support source
+closure in **one Python source root**. It records the exporter's
+explicit namespace replacements, excluding backend discovery from the public
 namespace. Profile checks bind both the original host namespace hashes and the
 published namespace hashes. Algorithm files remain byte-identical to the selected
 source release. The manifest, LICENSE and NOTICE receive exact resource grants.
@@ -513,8 +515,8 @@ containing staged host checker files is never itself a candidate grant.
 Use the normal bundle generator with:
 
 ```text
---common-substrate merlin.common_compiler_substrate.v6
---python-source-root <the prepared common-v6 root>
+--common-substrate merlin.common_compiler_substrate.v26
+--python-source-root <the prepared common-v26 root>
 ```
 
 Keep the usual descriptor, public corpus, numerical policy, RTL/software input
@@ -568,37 +570,31 @@ resource qualification. The host still owns those independent selections. A
 reviewed request-data leaf alone does not expose the lowering implementation or
 make a formal source-pass service available.
 
-### Select a versioned inventory
+### Replay an older inventory
 
-For a fresh V7 selection, prepare the release explicitly:
+The current preparer accepts version 26 only. A retained V6–V25 release must
+come from its exact reviewed frozen directory and original profile environment.
+For example, copying an already frozen V7 export uses the current export CLI:
 
 ```sh
-python -m merlin.targetgen.tool_profile_shared \
-  --python-source-root "$MERLIN_SOURCE_ROOT" \
-  --license-directory "$MERLIN_LICENSE_ROOT" \
-  --library-version 7 \
-  --output-dir "$TMPDIR/common-v7"
+python -m merlin.compiler.schedule.export --shared-library --library-version 7 \
+  --frozen-release "$EXACT_FROZEN_V7_RELEASE" \
+  --output-dir "$NEW_REPLAY_COPY"
 ```
 
-Select `--common-substrate merlin.common_compiler_substrate.v7` and the prepared
-`common-v7` root when generating the new bundles. The Python exporter and release
-preparer likewise accept `version=7`; their default remains version 6.
+This copies and rechecks the release's own manifest and member bytes; it does
+not rebuild old algorithms from today's checkout. A V8 release carrying source
+binding likewise requires its matching frozen directory and `--source-binding`.
+An unavailable release cannot be reconstructed by relabeling SDK26 or regenerating
+its hashes. Keep the old substrate selection with its recorded source root,
+interpreter, dependencies and grants; fresh initial preparation uses v26 above.
 
-V7 has separate closed source, public-module and namespace inventories. Its
-manifest uses `merlin.shared_scheduling_library.v2` with `inventory_version: 7`;
-V6 retains its v1 manifest. Relabeling a release or recomputing a manifest hash
-does not convert it between versions. Reviewed V7 additions cannot enlarge the
-V6 inventories or an inherited compiler's access.
-
-Fresh V6 exports retain 62 source modules and 28 public modules. Fresh V7
-exports add the two staged-dense source owners and their public entry, for 64
-source modules and 29 public modules. Exact historical V6 inventories and the
-initial 62/28 V7 inventory remain replayable with their recorded grants; replay
-does not add the staged-dense entry. Neither release supplies target capabilities
-or execution qualification. Existing host-side optimizations in ordinary lowering do not
-become candidate-importable APIs merely by selecting V7. A new pass entry or
-bounded service needs its own reviewed inventory and original selection before
-authoring, equally across treatments.
+V6 and V7 retain separate closed inventories and their original v1/v2 manifest
+schemas. The exact archived manifest determines membership, including whether
+its V7 snapshot predates staged-dense additions. Replaying it cannot enlarge
+an inherited compiler's access or qualify a target implementation. A new pass
+or bounded service still needs its own reviewed inventory and original host
+selection, equally across the compared treatments.
 
 ## Choose optimization policies in Phase 2
 
@@ -674,7 +670,8 @@ that a reusable rule has been learned.
 
 ## Comparison and verified scope
 
-Every V6 treatment receives the same shared algorithms and release identity.
+Every compared treatment receives the same selected shared algorithms and
+release identity. Retained V6 comparisons keep their original selection.
 V6 includes generic ISA parsing/generation algorithms as common infrastructure;
 historical ISA-tool ablations therefore need a new interpretation. Target facts,
 software declarations, runtime tools and independent qualification keep their
@@ -851,7 +848,8 @@ provider interfaces in [shared source lowering](shared_source_lowering.md) and
 [whole-model offload selection](shared_offload_selection.md). They do not select a
 qualified generated-target adapter, change the original numerical contracts, or
 enable hardware mechanisms from facts alone. Frozen releases retain their exact
-recorded source inventories. New staged-dense exports belong to V7; they do not enlarge V6 or a historical profile. Selecting
+recorded source inventories. Staged-dense first appeared in V7 and remains in the current explicitly selected
+SDK26 inventory; it does not enlarge V6 or an inherited historical profile. Selecting
 updated exported code requires an explicit reviewed release shared by both
 treatments.
 

@@ -758,7 +758,7 @@ def group_scf_command_loops(
                 tail_loop = scf.ForOp(start.result, end.result, increment.result, [], Region(remainder))
                 tail_loop.attributes[ISSUE_GROUP] = marker
                 replacements.extend((start, end, increment, tail_loop))
-            rewriter.replace(op, replacements)
+            rewriter.replace_op(op, replacements)
 
     PatternRewriteWalker(Group(), apply_recursively=False).rewrite_module(actual)
     verify_scf_commands(actual, max_operations=max_operations, allow_persistent_state=allow_persistent_state)

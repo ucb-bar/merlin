@@ -3,9 +3,12 @@ title: "Encoder row equality"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [ordered_fma_certificates, quantized_host_optimizations]
-code_refs: [src/merlin/llvmlower, merlin/runtime/c]
+code_refs:
+  - src/merlin/llvmlower/encoded_row_equality.py
+  - src/merlin/llvmlower/source_attention_frontier.py
+  - merlin/runtime/c/encoded_row_equality.h
 ---
 
 # Encoder row equality

@@ -3,7 +3,7 @@ title: "Design: rules for citable agentic-compiler experiments"
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [derived_capsule_axes, capsule_phase_split, radiance_staged_evaluation]
 code_refs:
   - src/merlin/targetgen/capsule_grade.py
@@ -21,7 +21,8 @@ code_refs:
   - src/merlin_experiments/phase1/providers/codex_agent.py
   - build_tools/scripts/check_no_answer_keys.py
   - build_tools/scripts/check_provenance.py
-  - merlin/tests/infra/test_continuous_is_the_default.py
+  - build_tools/scripts/check_mutation_proofs.py
+  - build_tools/scripts/gate_mutations.yaml
 ---
 
 # Rules for citable agentic-compiler experiments
@@ -184,3 +185,9 @@ between documents.
 These rules make a single measurement honest. They do not replace **repetition**: one run per arm
 cannot separate a treatment effect from run-to-run variance. Repeated matched runs remain the requirement
 for a causal claim about authoring treatments.
+
+Current source relocation is represented by the Phase1 implementation inventory,
+not by rewriting archived campaign manifests. For a new run, the exact current
+controller, selected provider and reviewed corpus are separately frozen. The
+archived harness paths cited above remain reproduction inputs; importing a
+current replacement does not qualify that archive's original execution.

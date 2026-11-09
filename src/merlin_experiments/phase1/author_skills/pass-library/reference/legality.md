@@ -15,7 +15,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Noncoherent host cache maintenance cannot be invented by a fence checker
 - **evidence to request**: Happens-before paths, outstanding work and visibility boundary
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_scf_carried_events.py`: `report = check_sync(pipeline(), SimpleNamespace(hazard_resolution="explicit", units=()))`
+- **test that calls it**: none found
 
 ### placement_legality
 
@@ -28,7 +28,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Bank conflicts and throughput need separate performance model
 - **evidence to request**: Address ranges, live operands and refused overlaps
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/ir/test_sched_placement.py`: `report = check_placement(k, _machine())`
+- **test that calls it**: none found
 
 ### schedule_tokens
 
@@ -41,4 +41,4 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Structural legality alone does not prove target semantics
 - **evidence to request**: IR plus selected pass order and actual lowering receipt
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_compute_radix_checking.py`: `assert not check_structure(actual) and actual != original`
+- **test of its module** (none calls this symbol directly): `merlin/tests/infra/test_dense_array_retention.py`

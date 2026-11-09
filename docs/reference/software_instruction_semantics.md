@@ -3,9 +3,18 @@ title: Software instruction semantics declarations
 kind: reference
 status: current
 owner: targetgen
-last_verified: 2026-10-23
+last_verified: 2026-11-09
 related: [phase0_specification, independent_instruction_policy, verified_compiler_tooling]
-code_refs: [src/merlin/targetgen/instruction_semantics.py, src/merlin/targetgen/corpus_instruction_roles.py, src/merlin/targetgen/isa_spec.py, src/merlin/targetgen/isa_codegen_cli.py]
+code_refs:
+  - src/merlin/target/spec/instructions.py
+  - src/merlin/targetgen/corpus_instruction_roles.py
+  - src/merlin/targetgen/isa_spec.py
+  - src/merlin/targetgen/isa_codegen_cli.py
+  - src/merlin/target/spec/load.py
+  - src/merlin/target/spec/source.py
+  - src/merlin/target/spec/computation.py
+  - src/merlin/target/spec/quantization.py
+  - src/merlin/targetgen/software_spec.py
 ---
 
 # Software instruction semantics declarations
@@ -34,8 +43,9 @@ generation route remains unchanged and cannot be combined with `--inspect`.
 
 ## Declare effects and operand interpretation
 
-The SW spec states which behavior software may rely on. It does not define an
-accelerator instruction set. When a target has an independently reviewed instruction
+The SW spec states which behavior software may rely on. It may carry an
+explicit target-owned `isa` declaration; software dtypes and operation names do
+not independently determine an accelerator instruction set. When a target has an independently reviewed instruction
 description, keep it in its target-owned declaration package and select its relative path with
 `instruction_semantics` in the target contract. Phase 0 validates its SW-operation
 links and binds it to the selected CIRCT facts, then freezes both the exact
@@ -199,3 +209,11 @@ nonzero zero points are refused. Remaining float contractions still block an
 integer-accelerator claim; native FP8 tensors projected to FP32 are explicitly
 reported as a precision-realization blocker. A framework lowering receipt does
 not qualify the target's numerical semantics or compiler implementation.
+
+The canonical instruction model is `merlin.target.spec.instructions`;
+`targetgen.instruction_semantics` preserves its compatibility module identity.
+Compact `merlin.software_spec.v2` composes exact-source numerical, operation,
+quantization, optional ISA and computation records through `target.spec.load`.
+It currently projects existing supported v1 records; arbitrary typed scalar
+computations do not acquire an executable v1 projection. Inspection and lossless
+source composition establish neither a general quantizer nor hardware truth.

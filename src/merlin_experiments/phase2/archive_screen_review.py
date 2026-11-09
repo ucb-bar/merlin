@@ -5,9 +5,6 @@ This standalone preflight supplies no Phase 1, corpus, queue or timing owner.
 
 import json
 
-from merlin_timing import archive as A
-from merlin_timing import validation as V
-
 from merlin.runtime import _native_files as F
 
 from . import archive_spike_runtime as RT
@@ -37,6 +34,8 @@ def review_archive(
     additional_archives=(),
 ):
     """Reopen actual original records; no saved qualified flag substitutes."""
+    from merlin_timing import archive as A
+
     if type(additional_archives) is not tuple:
         raise StageGateError("additional native archives require an immutable declaration tuple")
     if additional_archives:
@@ -81,6 +80,8 @@ def review_archive(
 
 
 def _review_dataset(dataset, screen, prediction_kind, *, original_reports=None):
+    from merlin_timing import validation as V
+
     report = V.validate(dataset, screen, prediction_kind=prediction_kind)
     if (
         not report["qualified"]

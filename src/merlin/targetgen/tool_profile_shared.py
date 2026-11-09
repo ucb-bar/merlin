@@ -753,27 +753,39 @@ def _tool_sources(root, tools, *, withhold=False):
 
     if type(tools) is not tuple or any(type(name) is not str for name in tools) or len(set(tools)) != len(tools):
         raise ValueError("shared release requires an explicit unique tool tuple")
-    selected = set()
+    selected = {}
     for name in tools:
         for logical in spec(name).bundle_paths:
             prefix = "merlin/python/"
             if not logical.startswith(prefix):
                 raise ValueError("shared release tool source is outside its existing Python grant")
             relative = logical.removeprefix(prefix).rstrip("/")
-            path = root / relative
-            if path.is_symlink() or not path.exists():
-                raise ValueError("shared release selected tool source is absent or linked")
-            for source in path.rglob("*") if path.is_dir() else (path,):
-                if "__pycache__" in source.parts:
-                    continue
-                if source.is_symlink() or (not source.is_dir() and not source.is_file()):
-                    raise ValueError("shared release tool grant contains linked or special sources")
-                staged = source.relative_to(root).as_posix()
-                if source.is_file() and not (withhold and author_inaccessible(staged_module(staged))):
-                    selected.add(staged)
-                if len(selected) > 4096:
-                    raise ValueError("shared release tool sources exceed the fixed file bound")
-    return sorted(selected)
+            sources = {relative: relative}
+            if name == "lean_proof_authoring":
+                if relative == "merlin/verify/lean/Merlin/Foundation.lean":
+                    # The historical resource slot is an exact generated copy of its one owner.
+                    sources[relative] = "merlin/verification/lean/Merlin/Foundation.lean"
+                elif relative.endswith(".py"):
+                    canonical = canonical_module(staged_module(relative)).replace(".", "/") + ".py"
+                    sources[canonical] = canonical
+            for destination, selected_source in sources.items():
+                path = root / selected_source
+                if path.is_symlink() or not path.exists():
+                    raise ValueError("shared release selected tool source is absent or linked")
+                for source in path.rglob("*") if path.is_dir() else (path,):
+                    if "__pycache__" in source.parts:
+                        continue
+                    if source.is_symlink() or (not source.is_dir() and not source.is_file()):
+                        raise ValueError("shared release tool grant contains linked or special sources")
+                    original = source.relative_to(root).as_posix()
+                    staged = (Path(destination) / source.relative_to(path)).as_posix() if path.is_dir() else destination
+                    if source.is_file() and not (
+                        withhold and any(author_inaccessible(staged_module(p)) for p in (original, staged))
+                    ):
+                        selected[staged] = original
+                    if len(selected) > 4096:
+                        raise ValueError("shared release tool sources exceed the fixed file bound")
+    return dict(sorted(selected.items()))
 
 
 def prepare_shared_source_release(
@@ -810,22 +822,27 @@ def prepare_shared_source_release(
     relatives = [name.replace(".", "/") + ".py" for name in (*namespaces, *public, *implementation, *automatic)]
     relatives += ["merlin/" + relative for relative in substrate_data(substrate)]
     withhold = withholds_author_packages(version)
-    relatives += _tool_sources(root, tools, withhold=withhold)
+    tool_sources = _tool_sources(root, tools, withhold=withhold)
     relatives += ["merlin/" + relative for relative in sdk_support_sources(version)]
+    sources = {relative: relative for relative in relatives}
+    sources.update(tool_sources)
     if withhold:
         from merlin.common.access import author_inaccessible
 
-        leaked = sorted({relative for relative in relatives if author_inaccessible(staged_module(relative))})
+        leaked = sorted(
+            {relative for relative in (*sources, *sources.values()) if author_inaccessible(staged_module(relative))}
+        )
         if leaked:
             raise ValueError("author SDK release would stage withheld sources: " + ", ".join(leaked[:4]))
-    if sum((root / relative).stat().st_size for relative in set(relatives)) > 32 << 20:
+    if sum((root / relative).stat().st_size for relative in sources.values()) > 32 << 20:
         raise ValueError("shared source release exceeds the fixed 32 MiB preparation bound")
-    before = {relative: _read(root, relative) for relative in dict.fromkeys(relatives)}
+    before = {relative: _read(root, relative) for relative in dict.fromkeys(sources.values())}
     for module, digest in document["replaced_namespace_source_sha256"].items():
         relative = module.replace(".", "/") + "/__init__.py"
         if hashlib.sha256(before[relative]).hexdigest() != digest:
             raise ValueError("shared namespace source changed during preparation")
-    for relative, payload in before.items():
+    for relative, selected_source in sources.items():
+        payload = before[selected_source]
         module = relative.removesuffix("/__init__.py").replace("/", ".")
         if module in replacements:
             continue

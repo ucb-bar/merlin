@@ -11,9 +11,6 @@ code_refs:
   - src/merlin/llvmlower/passes_quant_int.py
   - src/merlin/runtime/backends/spike.py
   - src/merlin/mining/k1.py
-  - merlin/tests/rvv/test_rvv_spike.py
-  - merlin/tests/rvv/test_smolvla_rvv.py
-  - merlin/tests/rvv/test_vla_models_rvv.py
 ---
 
 # RVV end-to-end

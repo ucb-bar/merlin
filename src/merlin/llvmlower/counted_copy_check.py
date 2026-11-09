@@ -272,7 +272,7 @@ def _emitted_copy(text, storage, observed, entry_symbol):
         and isinstance(body[2], llvm.LoadOp)
         and isinstance(body[3], llvm.StoreOp)
         and type(body[4]) is llvm.AddOp
-        and type(body[5]) is llvm.ICmpOp
+        and isinstance(body[5], llvm.ICmpOp)
         and isinstance(body[6], llvm.CondBrOp),
         "loop has unsupported operations, control flow or effects",
     )

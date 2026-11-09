@@ -65,6 +65,18 @@ MUTABLE_NAMESPACES = tuple("merlin." + p for p in SOURCE_ROOTS) + (
     "merlin.runtime",
     "merlin.targetgen",
     "merlin.verify",
+    # Relocated compiler authoring families, not new copy roots. Existing import
+    # closure still determines the baseline; stored selections keep their tuple.
+    "merlin.compiler.frontend",
+    "merlin.compiler.ir",
+    "merlin.compiler.planning",
+    "merlin.compiler.partition",
+    "merlin.compiler.passes",
+    "merlin.compiler.transforms",
+    "merlin.compiler.selection",
+    "merlin.compiler.schedule",
+    "merlin.compiler.lower",
+    "merlin.compiler.quantization",
 )
 PUBLIC_HELPERS = (
     "merlin.targetgen.contract.linalg_iface",
@@ -298,9 +310,11 @@ def prepare(repo, destination, *, review_id, modules=None, include_runtime_suppo
     if destination.exists() or not review_id:
         raise ValueError("public compiler preparation needs a new destination and review identity")
     source = repo / "src"
-    pending = [
-        p.relative_to(source).as_posix() for name in SOURCE_ROOTS for p in (source / "merlin" / name).rglob("*.py")
-    ] if modules is None else []
+    pending = (
+        [p.relative_to(source).as_posix() for name in SOURCE_ROOTS for p in (source / "merlin" / name).rglob("*.py")]
+        if modules is None
+        else []
+    )
     if modules is None:
         pending += ["merlin/__init__.py", "merlin/compile_core.py", "merlin/compile_cli.py"]
         pending += [name.replace(".", "/") + ".py" for name in PUBLIC_HELPERS]
@@ -406,9 +420,12 @@ def compose(baseline, component, destination, *, review_id):
         rows.append(dict(path=relative, sha256=digest, module=module))
     data = json.loads(baseline.manifest_path.read_bytes())
     provided = {module for _, _, module in selected.values() if module}
-    data.update(review_id=review_id, members=rows,
-                component_manifests=[baseline.manifest_sha256, component.manifest_sha256],
-                unavailable_dependencies=sorted((set(baseline.diagnostics) | set(component.diagnostics)) - provided))
+    data.update(
+        review_id=review_id,
+        members=rows,
+        component_manifests=[baseline.manifest_sha256, component.manifest_sha256],
+        unavailable_dependencies=sorted((set(baseline.diagnostics) | set(component.diagnostics)) - provided),
+    )
     manifest = destination / "manifest.json"
     manifest.write_text(json.dumps(data, sort_keys=True, indent=2) + "\n")
     manifest.chmod(0o444)

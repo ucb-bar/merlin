@@ -3,7 +3,7 @@ title: Portable generated-target instruction admission
 kind: guide
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [shared_pass_phase2, ../design/independent_instruction_policy]
 code_refs:
   - src/merlin/targetgen/contract/elf_admission.py
@@ -11,15 +11,12 @@ code_refs:
   - src/merlin/targetgen/rtl/unit_correspondence.py
   - src/merlin/targetgen/rtl/source_relocations.py
   - src/merlin/targetgen/rocc/operand_selection_recipe.py
-  - src/merlin/compile/route_before_build.py
+  - src/merlin/compiler/planning/model.py
   - src/merlin/transforms/dense_ir.py
   - src/merlin/targetgen/model_coverage.py
   - merlin/tests/gemmini/packing_execution_inputs.py
-  - merlin/tests/gemmini/test_public_packing_execution.py
-  - merlin/tests/gemmini/test_public_destination_execution.py
   - merlin/tests/gemmini/parameter_chain_execution_inputs.py
   - merlin/tests/gemmini/parameter_chain_reference.py
-  - merlin/tests/gemmini/test_public_parameter_chain_execution.py
   - merlin/tests/ir/destination_forwarding_connected.mlir
   - src/merlin_experiments/phase0/rtl_intake.py
   - src/merlin_experiments/phase0/accessor_intake.py
@@ -27,6 +24,7 @@ code_refs:
   - src/merlin_experiments/phase1/feedback/private_instruction_coordinator.py
   - src/merlin_experiments/phase1/feedback/instruction_admission_preparation.py
   - src/merlin_experiments/phase1/feedback/instruction_admission_facts.py
+  - src/merlin/runtime/modelinputs.py
 ---
 
 # Portable generated-target instruction admission
@@ -257,7 +255,7 @@ not paths supplied by a compiler candidate:
 import json
 from pathlib import Path
 from merlin.common.digest import sha256_file
-from merlin.compile.model_execution_inputs import strict_tree_sha256
+from merlin.runtime.modelinputs import strict_tree_sha256
 
 def file_pin(path):
     return {"path": str(path), "sha256": sha256_file(Path(path))}
@@ -668,3 +666,10 @@ complete V26's resource/capsule certificate, qualify shared transformations or
 full models, or transfer the frozen Spike model's calibrated domain. The published
 capsule-certified Phase 2 route still requires its original certificate and
 publication; passing capsule counts cannot replace those inputs.
+
+Here V26 identifies the archived Gemmini experiment/submission. It is distinct
+from the current shared compiler SDK inventory26 and from any newly selected
+OOT provider commit. Keep all three identities explicit. Relocating exact
+source bytes or statically admitting a linked executable does not qualify its
+compiler semantics, runtime, memory system, physical timing or a different
+configuration.

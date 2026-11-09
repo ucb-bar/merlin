@@ -3,7 +3,7 @@ title: Run bounded Phase 2 search from the Phase 1 compiler
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-21
+last_verified: 2026-11-09
 related: [phase0_phase1_setup, phase2_cpu_timing_study, normal_search_feedback, neutral_runtime_tooling]
 code_refs:
   - src/merlin_experiments/phase1/feedback/candidate_observations.py
@@ -512,3 +512,10 @@ Before launching, verify the sealed inputs, functional baseline, selected engine
 sandbox canary and allocated resource boundary. Measure tool costs on that worker
 before using them to plan evaluations. Compiler performance and search convergence
 require completed experiment observations.
+
+For implementation navigation, `ordinary_search_policy.py` binds the original
+functional/evaluation owners, `search_configuration.py` freezes typed operator
+budgets, and `search_resource_launch.py` verifies the already allocated enclosing
+worker. `ordinary_fast_feedback.py` owns cheap observations; measured selection
+remains with the original coordinator/evaluator. None of these records creates
+a cgroup, provisions a simulator or starts FireSim infrastructure.

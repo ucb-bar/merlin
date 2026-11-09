@@ -3,9 +3,12 @@ title: "Owned BF16 producer facts"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: [fused_encoded_witness, prepared_probability_bins, ordered_fma_certificates]
-code_refs: [src/merlin/llvmlower/produced_bf16_row_facts.py, src/merlin/llvmlower/source_attention_frontier.py, merlin/runtime/c/source_rms_produced_maximum.h]
+code_refs:
+  - src/merlin/llvmlower/produced_bf16_row_facts.py
+  - src/merlin/llvmlower/source_attention_frontier.py
+  - merlin/runtime/c/source_rms_produced_maximum.h
 ---
 
 # Owned BF16 producer facts

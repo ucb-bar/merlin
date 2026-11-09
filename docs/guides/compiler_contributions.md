@@ -3,7 +3,7 @@ title: Contributing compiler transformations and coverage
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-26
+last_verified: 2026-11-09
 related: [../reference/shared_compiler_passes, conditional_compiler_pipelines, verified_compiler_tooling, phase0_specification, ../design/compiler_verification, artifact_evaluation]
 code_refs:
   - src/merlin/transforms/evaluated_exploration.py
@@ -11,13 +11,13 @@ code_refs:
   - src/merlin/llvmlower/source_program.py
   - src/merlin/transforms/pipeline_state.py
   - src/merlin/transforms/pipeline_policy.py
-  - src/merlin/compile/scheduling/dense_source.py
-  - src/merlin/compile/fusion_workflow.py
-  - src/merlin/compile/connected_regions.py
-  - src/merlin/compile/connected_host.py
+  - src/merlin/compiler/schedule/dense_source.py
+  - src/merlin/compiler/planning/explore.py
+  - src/merlin/compiler/lower/connected.py
+  - src/merlin/compiler/lower/connectedhost.py
   - src/merlin/verification/lean_checker.py
   - src/merlin/targetgen/software_spec.py
-  - src/merlin/targetgen/quantization_spec.py
+  - src/merlin/compiler/quantization/admission.py
   - src/merlin_experiments/phase0/source_requirement_ledger.py
 ---
 
@@ -33,9 +33,9 @@ instructions and [development setup](getting_started.md), then choose a boundary
 
 | Work | Start in code | Reference and focused checks |
 | --- | --- | --- |
-| Pass selection and efficient generated code | [pipeline_policy.py](../../src/merlin/transforms/pipeline_policy.py): `evaluate_variants`; [dense_source.py](../../src/merlin/compile/scheduling/dense_source.py): `schedule_source_dense`; [fusion_workflow.py](../../src/merlin/compile/fusion_workflow.py): `realize_candidate` | [Shared passes](../reference/shared_compiler_passes.md), [conditional pipelines](conditional_compiler_pipelines.md); `test_pipeline_policy.py`, `test_dense_source_catalog.py`, `test_fusion_exploration.py` |
-| Graph and state preservation | [connected_regions.py](../../src/merlin/compile/connected_regions.py): `plan_connected_region`; [lean_checker.py](../../src/merlin/verification/lean_checker.py): `verify_pipeline_change`; [Lean sources](../../src/merlin/verification/lean/Merlin/) | [Verification boundaries](../design/compiler_verification.md), [toolchain integration](verified_compiler_tooling.md); `test_connected_regions.py`, `test_lean_state_effects.py` |
-| Phase 0 coverage and quantization | [software_spec.py](../../src/merlin/targetgen/software_spec.py): `admit_operation`; [quantization_spec.py](../../src/merlin/targetgen/quantization_spec.py): `build_quantization_contract`; [Phase 0](../../src/merlin_experiments/phase0/) | [Specification](phase0_specification.md), [quantization methodology](../design/target_quantization_methodology.md); `test_quantization_spec.py`, `test_phase0_support_accounting.py` |
+| Pass selection and efficient generated code | [pipeline_policy.py](../../src/merlin/transforms/pipeline_policy.py): `evaluate_variants`; [dense_source.py](../../src/merlin/compiler/schedule/dense_source.py): `schedule_source_dense`; [fusion_workflow.py](../../src/merlin/compiler/planning/explore.py): `realize_candidate` | [Shared passes](../reference/shared_compiler_passes.md), [conditional pipelines](conditional_compiler_pipelines.md); `test_pipeline_policy.py`, `test_dense_source_catalog.py`, `test_fusion_exploration.py` |
+| Graph and state preservation | [connected_regions.py](../../src/merlin/compiler/lower/connected.py): `plan_connected_region`; [lean_checker.py](../../src/merlin/verification/lean_checker.py): `verify_pipeline_change`; [Lean sources](../../src/merlin/verification/lean/Merlin/) | [Verification boundaries](../design/compiler_verification.md), [toolchain integration](verified_compiler_tooling.md); `test_connected_regions.py`, `test_lean_state_effects.py` |
+| Phase 0 coverage and quantization | [software_spec.py](../../src/merlin/targetgen/software_spec.py): `admit_operation`; [quantization_spec.py](../../src/merlin/compiler/quantization/admission.py): `build_quantization_contract`; [Phase 0](../../src/merlin_experiments/phase0/) | [Specification](phase0_specification.md), [quantization methodology](../design/target_quantization_methodology.md); `test_quantization_spec.py`, `test_phase0_support_accounting.py` |
 
 Test files are under `merlin/tests/ir/`, `merlin/tests/infra/` or
 `merlin/tests/targetgen/`; run the affected family, not a full campaign for every
@@ -89,3 +89,8 @@ The compact scheduling SDK exposes these APIs only when its selected inventory
 contains their modules. The editable full compiler has a separate reviewed
 inventory. Inspect availability before choosing a route; do not infer a grant
 from an advertised name or copy a target implementation into the shared library.
+
+The public compile service is `merlin.api.compile`; library transformations
+remain explicit implementation building blocks. The selected backend must consume
+their actual products. Keep source-IR passes, counted schedules, target lowering
+and independent verification connected through their existing contracts.

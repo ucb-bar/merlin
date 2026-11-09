@@ -3,7 +3,7 @@ title: Explicit operation and form coverage
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: [targetgen]
 code_refs:
   - src/merlin/targetgen/opset_contract.py
@@ -22,7 +22,7 @@ metadata against independent form-axis obligations. This is a coverage diagnosti
 not a compiler, hardware or numerical qualification.
 
 The core owns the vocabulary, capability check, form classifier and coverage join.
-The optional experiments distribution owns builder execution, independent integer
+The experiments namespace owns builder execution, independent integer
 golden falsifiability and recipe proposals. Importing the core does not import the
 optional generator or load its source files.
 
@@ -45,7 +45,7 @@ provenance. Empty/malformed schemas, hidden or duplicate members, stale exclusio
 unknown homes and uncovered cells cannot silently pass. `--ratchet FILE` permits
 explicit existing debt, but stale entries also fail; the tool never writes debt.
 
-For proposals, install the optional experiments package and run:
+For proposals, install `merlin[experiments]` and run:
 
 ```sh
 python build_tools/scripts/synth_op_cell_capsules.py \
@@ -84,3 +84,9 @@ such evidence the axis is `UNDERIVABLE`; synthesis does not fabricate it.
 Duplicate cell signatures are reported, never deleted automatically. Sharing a
 form signature does not make numerical, whole-model or independent-source tests
 redundant. Defaults and existing corpus generation remain unchanged.
+
+The current distribution is `merlin`; install the `experiments` extra for the
+optional generator dependencies. `targetgen.opset_coverage_input` reads the
+explicit metadata request, while `merlin_experiments.phase0.op_cell_synth` owns
+actual proposal construction. Namespace ownership remains distinct even though
+these sources share one wheel.

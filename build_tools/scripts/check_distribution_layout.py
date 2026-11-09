@@ -6,6 +6,7 @@ import argparse
 import collections
 import configparser
 import fnmatch
+import json
 import os
 import tomllib
 import zipfile
@@ -165,6 +166,40 @@ def audit_sources(wheels: list[Path], root: Path) -> list[str]:
                     errors.append(f"Python member excluded by package configuration: {name}:{member}")
                 elif canonical.read_bytes() != archive.read(member):
                     errors.append(f"Python member differs from canonical source: {name}:{member}")
+            if name == "merlin":
+                errors.extend(audit_resources(archive, root))
+    return errors
+
+
+def audit_resources(archive: zipfile.ZipFile, root: Path) -> list[str]:
+    """Compare the actual wheel's complete public data payload to its reviewed authority."""
+    manifest = root / "build_tools/package_resources.json"
+    if not manifest.is_file():
+        return []  # Historical and synthetic source layouts have no curated data manifest.
+    document = json.loads(manifest.read_text())
+    names = document.get("files")
+    if document.get("version") != 1 or not isinstance(names, list) or not names:
+        return ["public resource manifest is unsupported or empty"]
+    expected = {}
+    for name in names:
+        if not isinstance(name, str):
+            return ["public resource manifest contains a non-path member"]
+        path = Path(name)
+        if path.is_absolute() or ".." in path.parts or "\\" in name or not name.startswith("merlin/"):
+            return [f"public resource escapes its canonical owner: {name}"]
+        member = "merlin/_data/" + name.removeprefix("merlin/")
+        if member in expected:
+            return [f"duplicate public resource: {name}"]
+        expected[member] = root / path
+    actual = {name for name in archive.namelist() if name.startswith("merlin/_data/") and not name.endswith("/")}
+    errors = [f"required public resource missing: {name}" for name in sorted(expected.keys() - actual)]
+    errors.extend(f"unreviewed public resource shipped: {name}" for name in sorted(actual - expected.keys()))
+    for name in sorted(expected.keys() & actual):
+        path = expected[name]
+        if path.is_symlink() or not path.is_file() or path.resolve() != path.absolute():
+            errors.append(f"public resource source is absent, linked or noncanonical: {name}")
+        elif path.read_bytes() != archive.read(name):
+            errors.append(f"public resource differs from canonical source: {name}")
     return errors
 
 
@@ -181,7 +216,7 @@ def main() -> int:
     if not errors:
         print(f"{len(args.wheels)} wheels: unique file/CLI ownership; source parity and corpus exclusions checked")
         if args.source_root is not None:
-            print("packaged Python matches canonical source bytes")
+            print("packaged Python and reviewed public resources match canonical source bytes")
     return int(bool(errors))
 
 

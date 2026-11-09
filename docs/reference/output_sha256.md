@@ -3,14 +3,18 @@ title: "Compact whole-output evidence"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [ordered_fma_certificates, quantized_host_optimizations]
-code_refs: [src/merlin/llvmlower, merlin/runtime/c]
+code_refs:
+  - src/merlin/runtime/backends/spike_model.py
+  - src/merlin/runtime/output_digest.py
+  - merlin/runtime/baremetal/spike/output_sha256.h
+  - merlin/runtime/baremetal/spike/model_main.c
 ---
 
 # Compact whole-output evidence
 
-`spike_model.build_app(output_sha256=True, output_dump_cap=1)` prints the
+`spike_model.build(..., output_sha256=True, output_dump_cap=1)` prints the
 existing first-value `OUT` record and a compact record:
 
 ```
@@ -37,3 +41,8 @@ The actual C helper is tested against SHA-256 known vectors (empty, `abc`,
 multi-block, one million `a` bytes), every relevant padding boundary, streaming
 updates, and float bit patterns. Record parsing tests reject missing/duplicate
 records, mismatched byte/element counts and a mismatched digest.
+
+The current builder is `merlin.runtime.backends.spike_model.build`; its selected
+output policy contributes to build identity. The shared bare-metal
+`model_main.c` emits the record after the final forward-cycle read, and
+`merlin.runtime.output_digest` checks it independently of compilation.

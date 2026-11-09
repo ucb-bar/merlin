@@ -1,14 +1,31 @@
 ---
-title: "Design note: a target's quantization methodology, applied to every model"
+title: "Numerical contracts and application preparation methodologies"
 kind: design
 status: current
 owner: targetgen
-last_verified: 2026-10-18
+last_verified: 2026-11-09
 related: [output_epilogue_capabilities, accumulator_load_order]
-code_refs: [src/merlin/targetgen/quant_methodology.py, src/merlin/targetgen/quant_recipe.py, src/merlin/targetgen/_integer_epilogue.py, src/merlin/targetgen/_recipe_quantizer.py, src/merlin/targetgen/_recipe_observers.py, src/merlin/targetgen/_m2m_capture_artifacts.py, src/merlin/targetgen/quantization_spec.py, src/merlin/targetgen/output_path.py, src/merlin/xdsl_dialects/lowering/output_fusion.py, src/merlin_experiments/phase0/capture_recipe.py, src/merlin_experiments/phase0/requirements.py, examples/gemmini/target/software-spec.yaml]
+code_refs:
+  - src/merlin/compiler/quantization/methodology.py
+  - src/merlin/compiler/quantization/capabilities.py
+  - src/merlin/targetgen/_integer_epilogue.py
+  - src/merlin/targetgen/_recipe_quantizer.py
+  - src/merlin/targetgen/_recipe_observers.py
+  - src/merlin/targetgen/_m2m_capture_artifacts.py
+  - src/merlin/compiler/quantization/admission.py
+  - src/merlin/targetgen/output_path.py
+  - src/merlin/xdsl_dialects/lowering/output_fusion.py
+  - src/merlin_experiments/phase0/capture_recipe.py
+  - src/merlin_experiments/phase0/requirements.py
+  - examples/gemmini/target/software-spec.yaml
+  - src/merlin/target/spec/load.py
+  - src/merlin/target/spec/quantization.py
+  - src/merlin/compiler/quantization/preparation.py
+  - src/merlin/compiler/quantization/torchao/pt2e.py
+  - src/merlin/compiler/quantization/torchao/application.py
 ---
 
-# A target's quantization methodology, applied to every model
+# Numerical contracts and preparation methodologies
 
 A recipe says which number formats a unit computes. That does not quantize a model the way the unit
 computes it. The output path (`output_path_v1`, see the
@@ -21,9 +38,12 @@ numbers rather than on hardware:
 - a float bias off the accumulator grid: `inexact`;
 - three float roundings (`* s_x`, `* s_w`, `* 1/s_out`) where the unit rounds once: `inexact`.
 
-So each target declares ONE methodology, and every model's recipe is derived from it automatically.
+The output-path-driven v1 compatibility route derives recipes from a selected
+methodology and output path. New application preparation keeps the requested
+numerical meaning separate from calibration/recovery policy and requires
+explicit selection before admitting an alternative that changes that meaning.
 
-## Where it is declared
+## The retained v1 methodology declaration
 
 In the target's software spec, under `quantization.methodology`
 (`examples/<target>/target/software-spec.yaml`). It is validated with the rest of the spec
@@ -233,3 +253,13 @@ the original single-operand grid. This additional precision also requires measur
   bias, not their exit.
 - Bias correction uses each input channel's mean over all positions, so a convolution's padded border
   is approximated.
+
+The current preparation entrypoint is
+`compiler.quantization.preparation.select_recipe`. Its immutable profile owns
+calibration, recovery and reviewed variants; the selected SW spec owns requested
+mathematical behavior. Under `preserve_request_v1`, changed numerical intent
+raises `PreparationAlternativeRequired` with exact requested/proposed recipes
+and their bound alternative digest. Only explicit selection of that alternative
+permits the changed recipe. `legacy_output_path_v1` retains the recorded v1
+compatibility policy; it is not an implicit fresh-request default. Independent
+model quality and compiled-correctness gates remain outside either profile.

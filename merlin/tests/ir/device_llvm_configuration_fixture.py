@@ -80,15 +80,18 @@ def run(argv):
 
 
 def imported(source, work, *, context=None):
+    from logical_device_target import require_native_tools
+
+    require_native_tools(device=True)
     path = work / "imported.mlir"
     run([TRANSLATOR(), "--import-llvm", "--mlir-print-op-generic", source, "-o", path])
     return Parser(context or make_llvm_context(), path.read_text()).parse_module()
 
 
 def _call(op):
-    if type(op) is llvm.ConstantOp:
+    if isinstance(op, llvm.ConstantOp):
         return Call("constant", ())
-    if type(op) is llvm.CallOp and not op.attributes and not op.results and op.callee is not None:
+    if isinstance(op, llvm.CallOp) and not op.attributes and not op.results and op.callee is not None:
         name = op.callee.root_reference.data
         if name == "set_register" and len(op.operands) == 2:
             values = tuple(constant_integer(value) for value in op.operands)

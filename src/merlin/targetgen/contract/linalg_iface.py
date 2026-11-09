@@ -530,15 +530,17 @@ def _linalg_dialect():
     """The ``linalg`` dialect with the round-trippable ``linalg.generic`` substituted in."""
     global _LINALG_DIALECT
     if _LINALG_DIALECT is None:
-        from xdsl.dialects.linalg import Linalg
         from xdsl.dialects.linalg.ops import GenericOp
         from xdsl.ir import Dialect
 
+        from merlin.xdsl_dialects._common import linalg_dialect
+
+        base = linalg_dialect()
         fixed = _multi_result_generic_op()
         _LINALG_DIALECT = Dialect(
-            Linalg.name,
-            [fixed if op is GenericOp else op for op in Linalg.operations],
-            list(Linalg.attributes),
+            base.name,
+            [fixed if op is GenericOp else op for op in base.operations],
+            list(base.attributes),
         )
     return _LINALG_DIALECT
 
@@ -944,7 +946,12 @@ def bind_logical_io_metadata(text: str, inputs, outputs):
             if not isinstance(row, dict) or not isinstance(typ, builtin.TensorType):
                 raise ValueError("public logical ABI needs typed tensor rows")
             name = row.get("name")
-            if type(name) is not str or not name or row.get("shape") != list(typ.get_shape()) or row.get("dtype") != str(typ.element_type):
+            if (
+                type(name) is not str
+                or not name
+                or row.get("shape") != list(typ.get_shape())
+                or row.get("dtype") != str(typ.element_type)
+            ):
                 raise ValueError("public logical ABI name/shape/dtype differs from typed source")
             if not isinstance(typ.encoding, builtin.NoneAttr) or any(n <= 0 for n in typ.get_shape()):
                 raise ValueError("public logical ABI needs positive static unencoded tensors")
@@ -956,10 +963,12 @@ def bind_logical_io_metadata(text: str, inputs, outputs):
         names.append(group)
     if len(set(names[0] + names[1])) != len(names[0]) + len(names[1]):
         raise ValueError("public logical ABI contains duplicate or aliased names")
-    values = {"merlin.logical_io": builtin.StringAttr("merlin.logical_io.v1"),
-              "merlin.logical_inputs": builtin.ArrayAttr(builtin.StringAttr(n) for n in names[0]),
-              "merlin.logical_outputs": builtin.ArrayAttr(builtin.StringAttr(n) for n in names[1]),
-              "merlin.logical_input_roles": builtin.ArrayAttr(builtin.StringAttr(n) for n in roles)}
+    values = {
+        "merlin.logical_io": builtin.StringAttr("merlin.logical_io.v1"),
+        "merlin.logical_inputs": builtin.ArrayAttr(builtin.StringAttr(n) for n in names[0]),
+        "merlin.logical_outputs": builtin.ArrayAttr(builtin.StringAttr(n) for n in names[1]),
+        "merlin.logical_input_roles": builtin.ArrayAttr(builtin.StringAttr(n) for n in roles),
+    }
     for key, value in values.items():
         if key in fn.attributes and fn.attributes[key] != value:
             raise ValueError("existing logical ABI differs from selected public metadata")
@@ -971,9 +980,14 @@ def bind_logical_io_metadata(text: str, inputs, outputs):
     if not projected.is_structurally_equivalent(original_module):
         raise ValueError("logical ABI enrichment changed source body, type or arity")
     rendered = str(module)
-    return rendered, {"schema": "merlin.public_logical_io_enrichment.v1",
-                      "source_sha256": hashlib.sha256(text.encode()).hexdigest(),
-                      "metadata_sha256": hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest(),
-                      "normalized_sha256": hashlib.sha256(rendered.encode()).hexdigest(),
-                      "body_transformations": 0, "body_type_arity_unchanged": True, "inputs": names[0], "outputs": names[1],
-                      "authority": "metadata transport only; original owner custody and numerical checks required"}
+    return rendered, {
+        "schema": "merlin.public_logical_io_enrichment.v1",
+        "source_sha256": hashlib.sha256(text.encode()).hexdigest(),
+        "metadata_sha256": hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest(),
+        "normalized_sha256": hashlib.sha256(rendered.encode()).hexdigest(),
+        "body_transformations": 0,
+        "body_type_arity_unchanged": True,
+        "inputs": names[0],
+        "outputs": names[1],
+        "authority": "metadata transport only; original owner custody and numerical checks required",
+    }

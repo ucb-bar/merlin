@@ -3,9 +3,24 @@ title: Reference-guided kernel reconstruction
 kind: guide
 status: current
 owner: mining
-last_verified: 2026-10-28
+last_verified: 2026-11-09
 related: [kernel_mining, rvv_kernel_mining_methodology, core_dialects, reference_guided_compilation]
-code_refs: [src/merlin/kernels/reconstruction.py, src/merlin/kernels/kernel_evidence.py, src/merlin/kernels/instruction_comparison.py, src/merlin/kernels/mechanism_inference.py, src/merlin/kernels/source_product_views.py, src/merlin/kernels/consumer_structure.py, src/merlin/compile/scheduling/dense_panel_pipeline.py, src/merlin/mining/reconstruction_cli.py, src/merlin_experiments/phase1/feedback/reference_mechanisms.py, src/merlin_experiments/phase1/feedback/candidate_build_views.py, src/merlin_experiments/phase1/feedback/public_scalability_inspection.py]
+code_refs:
+  - src/merlin/kernels/reconstruction.py
+  - src/merlin/kernels/kernel_evidence.py
+  - src/merlin/kernels/instruction_comparison.py
+  - src/merlin/kernels/mechanism_inference.py
+  - src/merlin/kernels/source_product_views.py
+  - src/merlin/kernels/consumer_structure.py
+  - src/merlin/compiler/schedule/dense_panel_pipeline.py
+  - src/merlin/mining/reconstruction_cli.py
+  - src/merlin_experiments/phase1/feedback/reference_mechanisms.py
+  - src/merlin_experiments/phase1/feedback/candidate_build_views.py
+  - src/merlin_experiments/phase1/feedback/public_scalability_inspection.py
+  - src/merlin/transforms/pass_exploration.py
+  - src/merlin/compiler/schedule/api_catalog.py
+  - src/merlin/compiler/schedule/library_sources.py
+  - pyproject.toml
 ---
 
 # Reference-guided kernel reconstruction
@@ -73,7 +88,7 @@ them. The endpoint supplies no optimization implementation or success verdict.
 
 ## Install and inspect a corpus
 
-Install the optional mining distribution with its `reconstruction` extra alongside core.
+Install Merlin with its `reconstruction` dependency extra (`merlin[reconstruction]`).
 The extra includes xDSL, the solver used by the existing compact schedule verifier, and
 qualified C AST parser versions. There is no download of reference kernels or target tools.
 
@@ -528,3 +543,11 @@ execution of emitted neutral commands on aligned/ragged/thin shapes, replay, CCA
 semantic-fusion mismatch rejection, and isolated proposal retries. A neutral-machine test
 qualifies those compiler mechanisms, not target hardware performance. Physical performance
 parity requires matched numerical and measurement scopes and actual timing observations.
+
+The manifest's `library_version` selects the exact discovery inventory; the
+example explicitly selects23, which is also the retained CLI default. It does
+not regenerate that historical SDK or grant its sources to an author. A current
+SDK26 experiment selects its actual inventory and source/profile contract
+explicitly. Generic schedule owners live under `compiler/schedule/`; reference
+reconstruction stays in the mining/kernel workflow and cannot redefine a
+backend's production applicability or evaluator policy.

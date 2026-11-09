@@ -3,8 +3,6 @@
 import json
 from pathlib import Path
 
-from merlin_timing import observations as O
-
 from merlin.common import invocation_record as I
 from merlin.runtime import _native_files as F
 
@@ -58,18 +56,23 @@ def validate(value, *, receipt_sha256, runtime_sha256, numerical=None, capsule_s
         or value["status"] != "observed"
         or value["scope"] != SCOPE
         or value["authority"] != "descriptive counts only; no performance ranking or promotion"
-        or value["unknown"] != {
-            "physical_memory_traffic": None, "overlap": None, "cycles": None, "attainment": None
-        }
+        or value["unknown"] != {"physical_memory_traffic": None, "overlap": None, "cycles": None, "attainment": None}
     ):
         raise StageGateError("public observed counts changed their descriptive-only contract")
     provenance = value["provenance"]
     fields = {
-        "receipt_sha256", "report_sha256", "runtime_sha256", "numerical_receipt_sha256",
-        "elf_sha256", "input_sha256", "capsule_sha256", "scope_binding",
+        "receipt_sha256",
+        "report_sha256",
+        "runtime_sha256",
+        "numerical_receipt_sha256",
+        "elf_sha256",
+        "input_sha256",
+        "capsule_sha256",
+        "scope_binding",
     }
     if (
-        type(provenance) is not dict or set(provenance) != fields
+        type(provenance) is not dict
+        or set(provenance) != fields
         or any(not _digest(provenance[k]) for k in fields - {"scope_binding"})
         or provenance["receipt_sha256"] != receipt_sha256
         or provenance["runtime_sha256"] != runtime_sha256
@@ -78,9 +81,16 @@ def validate(value, *, receipt_sha256, runtime_sha256, numerical=None, capsule_s
     binding = provenance["scope_binding"]
     if (
         type(binding) is not dict
-        or set(binding) != {
-            "schema", "elf_sha256", "input_sha256", "scope_sha256", "begin_pc", "end_pc",
-            "occurrence", "evidence_sha256",
+        or set(binding)
+        != {
+            "schema",
+            "elf_sha256",
+            "input_sha256",
+            "scope_sha256",
+            "begin_pc",
+            "end_pc",
+            "occurrence",
+            "evidence_sha256",
         }
         or binding["schema"] != "merlin.spike_scope_binding.v1"
         or any(not _digest(binding[k]) for k in ("elf_sha256", "input_sha256", "scope_sha256", "evidence_sha256"))
@@ -103,10 +113,13 @@ def validate(value, *, receipt_sha256, runtime_sha256, numerical=None, capsule_s
         raise StageGateError("public observed counts require a bounded original metric roster")
     for name, metric in metrics.items():
         if (
-            type(name) is not str or unit(name) is None
-            or type(metric) is not dict or set(metric) != {"value", "unit"}
+            type(name) is not str
+            or unit(name) is None
+            or type(metric) is not dict
+            or set(metric) != {"value", "unit"}
             or metric["unit"] != unit(name)
-            or type(metric["value"]) is not int or not 0 <= metric["value"] < 2**64
+            or type(metric["value"]) is not int
+            or not 0 <= metric["value"] < 2**64
         ):
             raise StageGateError("public observed count metric has unknown units or modeled activity")
     return value
@@ -114,24 +127,33 @@ def validate(value, *, receipt_sha256, runtime_sha256, numerical=None, capsule_s
 
 def project(owner, policy, member, workspace, numerical, receipt_path):
     """Reopen original private products; no saved numerical or count verdict is accepted."""
+    from merlin_timing import observations as O
+
     workspace = F.canonical(workspace)
     receipt_path = F.canonical(receipt_path)
     if receipt_path != workspace / "public_native_counts_receipt.json":
         raise StageGateError("public observed count receipt escaped its original arm workspace")
     original, numeric_pin = NATIVE.original_numerical_observation(
-        workspace, numerical,
+        workspace,
+        numerical,
         checked_source=(policy._checked_source_diagnostic, policy._compiler_pass_selection),
     )
     owner.selection.runtime.verify()
     receipt_pin = F.pin(receipt_path, max_bytes=16 << 20)
     receipt = json.loads(receipt_path.read_bytes())
     if (
-        type(receipt) is not dict or type(receipt.get("report")) is not dict
+        type(receipt) is not dict
+        or type(receipt.get("report")) is not dict
         or set(receipt["report"]) != {"path", "sha256"}
-        or type(receipt.get("processes")) is not list or len(receipt["processes"]) != 2
-        or any(type(p) is not dict or set(p) != {"path", "sha256", "stdout_sha256"}
-               or not _digest(p["sha256"]) or not _digest(p["stdout_sha256"])
-               for p in receipt["processes"])
+        or type(receipt.get("processes")) is not list
+        or len(receipt["processes"]) != 2
+        or any(
+            type(p) is not dict
+            or set(p) != {"path", "sha256", "stdout_sha256"}
+            or not _digest(p["sha256"])
+            or not _digest(p["stdout_sha256"])
+            for p in receipt["processes"]
+        )
         or receipt["processes"][0]["stdout_sha256"] != receipt["processes"][1]["stdout_sha256"]
     ):
         raise StageGateError("public observed counts require their original complete count receipt")
@@ -176,36 +198,53 @@ def project(owner, policy, member, workspace, numerical, receipt_path):
         actual = I.verify(path)
         scopes = [p for p in actual["inputs"] if Path(p["path"]).name == "scope.json"]
         if (
-            actual.get("kind") != "subprocess" or actual.get("status") != "completed"
-            or actual.get("returncode") != 0 or actual.get("stage") != "archive_screen_count"
+            actual.get("kind") != "subprocess"
+            or actual.get("status") != "completed"
+            or actual.get("returncode") != 0
+            or actual.get("stage") != "archive_screen_count"
             or actual.get("stdout", {}).get("sha256") != process["stdout_sha256"]
             or not any(p["sha256"] == receipt["elf_sha256"] for p in actual["inputs"])
             or not all({"path": p, "sha256": d} in actual["dependencies"] for p, d in owner.selection.runtime.files)
-            or len(scopes) != 1 or json.loads(Path(scopes[0]["path"]).read_bytes()) != receipt["scope_binding"]
-            or arm == "annotated" and not any(p["sha256"] == report_pin["sha256"] for p in actual["outputs"])
+            or len(scopes) != 1
+            or json.loads(Path(scopes[0]["path"]).read_bytes()) != receipt["scope_binding"]
+            or arm == "annotated"
+            and not any(p["sha256"] == report_pin["sha256"] for p in actual["outputs"])
         ):
             raise StageGateError("public observed counts differ from their original complete process")
     metrics = {
         name: {"value": count, "unit": unit(name)}
-        for name, count in report["feature_counts"].items() if unit(name) is not None
+        for name, count in report["feature_counts"].items()
+        if unit(name) is not None
     }
     metrics["scope_instructions"] = {
-        "value": report["feature_observation"]["scope_instructions"], "unit": "instructions"
+        "value": report["feature_observation"]["scope_instructions"],
+        "unit": "instructions",
     }
     result = {
-        "schema": SCHEMA, "status": "observed", "scope": SCOPE,
+        "schema": SCHEMA,
+        "status": "observed",
+        "scope": SCOPE,
         "provenance": {
-            "receipt_sha256": receipt_pin["sha256"], "report_sha256": report_pin["sha256"],
-            "runtime_sha256": receipt["runtime_sha256"], "numerical_receipt_sha256": numeric_pin["sha256"],
-            "elf_sha256": receipt["elf_sha256"], "input_sha256": receipt["input_sha256"],
-            "capsule_sha256": member.source_sha256, "scope_binding": receipt["scope_binding"],
+            "receipt_sha256": receipt_pin["sha256"],
+            "report_sha256": report_pin["sha256"],
+            "runtime_sha256": receipt["runtime_sha256"],
+            "numerical_receipt_sha256": numeric_pin["sha256"],
+            "elf_sha256": receipt["elf_sha256"],
+            "input_sha256": receipt["input_sha256"],
+            "capsule_sha256": member.source_sha256,
+            "scope_binding": receipt["scope_binding"],
         },
         "metrics": metrics,
         "unknown": {"physical_memory_traffic": None, "overlap": None, "cycles": None, "attainment": None},
         "authority": "descriptive counts only; no performance ranking or promotion",
     }
-    validate(result, receipt_sha256=receipt_pin["sha256"], runtime_sha256=owner.selection.runtime.sha256,
-             numerical=numerical, capsule_sha256=member.source_sha256)
+    validate(
+        result,
+        receipt_sha256=receipt_pin["sha256"],
+        runtime_sha256=owner.selection.runtime.sha256,
+        numerical=numerical,
+        capsule_sha256=member.source_sha256,
+    )
     owner.selection.runtime.verify()
     if (
         F.pin(receipt_path, max_bytes=16 << 20) != receipt_pin
@@ -231,15 +270,19 @@ def recheck_child_result(owner, *, policy, document, work_root, selected_members
         raise StageGateError("public observed count job escaped its original private owner")
     members = sorted(policy.search_corpus.capsules, key=lambda row: (row.family, row.capsule))
     if (
-        type(document) is not dict or document.get("selected_members") != [list(k) for k in selected_members]
-        or type(document.get("cells")) is not list or len(document["cells"]) != len(members)
+        type(document) is not dict
+        or document.get("selected_members") != [list(k) for k in selected_members]
+        or type(document.get("cells")) is not list
+        or len(document["cells"]) != len(members)
     ):
         raise StageGateError("public observed count feedback changed its original admitted roster")
     with shared_compute_pool(timeout_s=CHECKED._queue_wait(limit)):
         owner.verify_for(policy)
         for index, (member, row) in enumerate(zip(members, document["cells"], strict=True)):
             if type(row) is not dict or (row.get("family"), row.get("capsule"), row.get("source_sha256")) != (
-                member.family, member.capsule, member.source_sha256
+                member.family,
+                member.capsule,
+                member.source_sha256,
             ):
                 raise StageGateError("public observed count feedback changed its original member order")
             if (member.family, member.capsule) not in selected_members:

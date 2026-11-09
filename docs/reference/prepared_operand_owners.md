@@ -3,9 +3,14 @@ title: "Prepared operand owners"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: [prepared_polynomial_batch]
-code_refs: [src/merlin/llvmlower/prepared_operand_owner.py, src/merlin/llvmlower/prepared_operand_effects.py, src/merlin/llvmlower/prepared_operand_schedule.py, src/merlin/llvmlower/prepared_attention_rhs.py]
+code_refs:
+  - src/merlin/llvmlower/prepared_operand_owner.py
+  - src/merlin/llvmlower/prepared_operand_effects.py
+  - src/merlin/llvmlower/prepared_operand_schedule.py
+  - src/merlin/llvmlower/prepared_attention_rhs.py
+  - src/merlin/llvmlower/tensor_preparation_identity.py
 ---
 
 # Prepared operand owners
@@ -112,3 +117,10 @@ original quantized observer. Refusal must call the retained source writer before
 publishing output. Normal ABI wrappers and target products belong to the selected
 provider. Their complete link, numeric, effect and resource evidence is still
 required; these APIs do not enable a target or predict whole-model cycles.
+
+For navigation, start with `plan_prepared_borrows` and
+`install_prepared_borrows` in `prepared_operand_schedule.py`. Source effect
+closure is checked by `prepared_operand_effects.py`; linear owner state lives
+in `prepared_operand_owner.py`. `prepared_attention_rhs.py` implements the
+optional owned C representation and explicit invalidation/borrow entrypoints.
+The physical validator remains mandatory at the installation boundary.

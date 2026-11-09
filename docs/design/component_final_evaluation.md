@@ -3,7 +3,7 @@ title: "Protected component campaign final evaluation"
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-09
+last_verified: 2026-11-09
 related: [component_compiler_convergence, component_phase2_workflow]
 code_refs:
   - src/merlin_experiments/phase2/component_final_policy.py
@@ -12,14 +12,13 @@ code_refs:
   - src/merlin_experiments/phase2/physical_final_admission.py
   - src/merlin_experiments/phase2/protected_verifier_qualification.py
   - src/merlin_experiments/phase2/numerical_readback.py
-  - packages/merlin-experiments/tests/test_component_final_policy.py
-  - packages/merlin-experiments/tests/test_protected_final_evaluation.py
-  - packages/merlin-experiments/tests/test_protected_verifier_qualification.py
+  - merlin/tests/targetgen/test_verification_protected_final_evaluation.py
+  - merlin/tests/infra/test_verification_protected_verifier_qualification.py
 ---
 
 # Protected final evaluation
 
-The new `merlin.component_final_gate.v2` policy requires the sealed compiler to
+The `merlin.component_final_gate.v2` policy requires the sealed compiler to
 match or beat the frozen handwritten compiler for **every** final member. A
 one-cycle regression fails, including at counters too large for exact floating
 point comparison. Faster members cannot compensate for a slower member.
@@ -138,3 +137,9 @@ tests do not qualify a FireSim verifier, an actual image, final workload parity,
 fresh participant convergence or historical elapsed-time accounting.
 They also check that every diagnostic qualification and supplied physical
 declaration is refused by final physical admission.
+
+`component_final_policy.py` owns strict comparison arithmetic.
+`protected_final_observation.py` owns the separately typed observation lifecycle;
+`physical_final_admission.py` continues to refuse final physical admission until
+its independent issuer exists. Keeping these owners distinct prevents observed
+callback cycles from being relabeled as authenticated hardware comparisons.

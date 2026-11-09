@@ -222,6 +222,10 @@ Rules for the cross-subsystem suite (enforced by
   workflow test directories explicitly when validating those workflows. Install their selected
   optional dependency extras; a base Merlin installation need not include research engines.
   Historical replay retains its recorded source/distribution selection and test inputs.
+- Apply the strict behavioral review bar in `merlin/tests/AGENT.md` to both the
+  cross-subsystem suite and retained package tests. Keep distinct core and
+  acceptance obligations; consolidate redundant snapshots and implementation
+  trivia rather than requiring a test for every helper or option.
 
 # Documentation convention — durable docs vs reports
 

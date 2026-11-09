@@ -3,7 +3,7 @@ title: Construct fresh connected public development sources
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [phase2_corpus_search, phase0_phase1_setup]
 code_refs:
   - src/merlin_experiments/phase0/development_sources.py
@@ -26,6 +26,9 @@ code_refs:
   - src/merlin_experiments/phase0/operator_structured_exclusion.py
   - src/merlin_experiments/phase0/operator_registered_exclusion.py
   - src/merlin_experiments/phase0/operator_windowed_ir.py
+  - src/merlin_experiments/phase0/development_patterns.py
+  - src/merlin_experiments/phase0/development_controls.py
+  - src/merlin_experiments/phase0/development_attention.py
 ---
 
 # Construct fresh connected public development sources
@@ -101,8 +104,9 @@ Run `python -m pytest packages/merlin-experiments/tests/test_development_sources
 Torch is optional for source-only checks. The last test uses the explicitly
 selected Model2MLIR runtime when available; it starts no simulator.
 
-The selected CPU Torch build returns incorrect native `_int_mm` results for the
-retained `head_dim=1` regression. That case remains an expected failure against
+A previously selected CPU Torch build returned incorrect native `_int_mm`
+results for the retained `head_dim=1` regression; its strict expected-failure
+control remains in the source test. That case remains an expected failure against
 the independent reference and is not numerically qualified. A new environment
 that fixes it produces a strict unexpected pass for review. No input padding,
 golden substitution or tolerance change hides the failure.
@@ -646,3 +650,10 @@ remain unproved. `development_decisive_roster.matrix` records source, capture,
 writer, native execution, exclusion and timing separately. Queue source counts
 are not occupancy evidence; source strides are not physical DMA address evidence.
 All physical coverage starts UNEXERCISED and requires the actual emitted witness.
+
+`development_sources.describe/render/stage` is the explicit factory boundary;
+versioned pattern, legality-control and attention-source implementations retain
+their own declarations. `development_capture.py` connects selected source members
+to ordinary capture/writer owners and records `phase0_admitted: false`. A new
+pattern schema does not reinterpret the v1 integer-mixing contract, admit a
+complete model or widen a frozen source/exclusion policy.

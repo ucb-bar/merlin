@@ -3,7 +3,7 @@ title: Architecture
 kind: reference
 status: current
 owner: core
-last_verified: 2026-11-08
+last_verified: 2026-11-09
 related: [repo_structure, core_dialects, lowering_pipeline]
 code_refs: [src/merlin, packages, experiments/catalog.yaml]
 ---
@@ -634,7 +634,7 @@ versioned public inventory lives in `compiler/schedule/export.py`, with the
 implementation closure in `compiler/schedule/library_sources.py` and author
 exposure in `targetgen/tool_profile.py` and `tool_profile_shared.py`. The selected
 release determines availability; the newest inventory does not enlarge a frozen
-experiment's grants. SDK26 currently names 125 public modules and 246 source modules, including
+experiment's grants. SDK26 currently names 133 public modules and 269 source modules, including
 analyses, contracts and emitters as well as transformations; this is not a pass count.
 The pinned Gemmini paper [shared-library manifest](https://github.com/ucb-bar/gemmini-mlir/blob/7cd030e13360fd0961bd83fa288bd9009ba813df/dependencies/generic-library/shared-library.json)
 has 123 public modules, 220 source members and 44 capability entries. Its exact
@@ -769,8 +769,9 @@ been retired by these changes.
 All active Merlin implementation lives under `src/` in one distribution:
 `merlin`, `merlin_experiments` and `merlin_dse`. Shared compiler mechanisms,
 trusted evaluation and research retain distinct logical ownership and access;
-optional dependency extras enable their engines. `packages/` retains focused
-tests and the independent timing observer distribution. Historical imports remain
+optional dependency extras enable their engines. Active Merlin regression cases
+live under `merlin/tests/`; `packages/` retains historical inputs and the independent
+timing observer distribution. Historical imports remain
 compatible, and an import prefix alone grants no candidate access.
 `merlin/python/merlin` is a compatibility symlink, not a second implementation.
 
@@ -812,14 +813,17 @@ for navigation and the remaining qualification boundaries.
 
 ## Continuous integration and maintained obligations
 
-`.github/workflows/ci.yml` retains the visible `pr-fast` workflow and required
-`fast`, `ruff` and `docs-freshness` check names. Source and documentation gates
-run once; the aggregate reports failure, cancellation or skipped required jobs.
+The repository has three workflows. `.github/workflows/ci.yml` retains the visible
+`pr-fast` workflow and required `fast`, `ruff` and `docs-freshness` check names.
+Source and documentation gates run once. `check_test_budget.py` discovers owned
+collectors across the repository and counts actual parameterized cases before
+execution; errors, collection skips, deselection and totals above 150 refuse the
+budget check. The aggregate reports failure, cancellation or skipped required jobs.
 The primary workflow waits for the reusable `integration.yml`, which also has
 weekly and manual triggers. It builds the main Merlin wheel and source archive,
 audits namespace ownership, installs that exact wheel outside the checkout and
-exercises hosted runtime and vector-provider boundaries. JUnit results and
-release artifacts are retained together. The independent timing observer is a
+checks pinned OOT provider boundaries and wiring. Exact outcomes and release
+artifacts are retained together. The independent timing observer is a
 separate distribution. These are configured workflows, not evidence that a
 remote GitHub run or accelerator execution has occurred.
 
@@ -831,15 +835,15 @@ commit references and repository permissions are read-only. A required package
 installation gate fails when its installer is unavailable; optional local
 invocation retains its explicit skip behavior.
 
-Test consolidation starts with obligation-level fixtures and negative controls.
-The artifact-layout pilot replaces repeated product-manifest setup and lifecycle
-tests with one maintained family, preserving source-layout guards, staged scans
-and failure cases. This is a checked pilot, not completion of the overall test
-reduction. The content-identity family likewise combines ordinary/guarded file
-digests, strict JSON and readable/legacy serialization controls around shared
-fixtures, retaining actual kernel-watch mutation, same-size restored-mtime and
-end-of-scope failures. Parameterized cases expose existing obligations while
-reducing maintained setup; case counts alone do not measure that reduction.
+The permanent suite has a 150-case ceiling, including parameterization: 70
+compiler/runtime cases, 50 independent verification cases and 30 contract cases.
+Direct test bodies retain independent references and distinct positive/refusal
+witnesses. Shared support contains reachable producers, fixtures and references;
+retired helper/spelling/Cartesian matrices are not hidden in large loops or
+qualification runners. Exact historical paper instruments remain Git/frozen inputs.
+Production verifier algorithms, approved facts, numerical thresholds and source
+grants are unchanged. Missing Lean, translator or hardware prerequisites remain
+explicitly unavailable; collection and host execution do not establish those claims.
 Dead-code removal likewise requires real caller and registry review;
 removing an unused Zephyr workspace helper does not remove actual tree, SDK,
 linker or deployment requirements.

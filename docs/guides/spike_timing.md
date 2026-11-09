@@ -3,9 +3,22 @@ title: Calibrating and validating annotated timing
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-19
+last_verified: 2026-11-09
 related: [architecture, performance_budget_unit]
-code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/capacities.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/replay.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, examples/gemmini/verification/extract_rtl_timing_facts.py, src/merlin/targetgen/rtl/timing_structure.py, src/merlin/targetgen/rtl/unit_correspondence.py]
+code_refs:
+  - packages/merlin-timing/src/merlin_timing/contracts.py
+  - packages/merlin-timing/src/merlin_timing/capacities.py
+  - packages/merlin-timing/src/merlin_timing/fitting.py
+  - packages/merlin-timing/src/merlin_timing/validation.py
+  - packages/merlin-timing/src/merlin_timing/design.py
+  - packages/merlin-timing/src/merlin_timing/feedback.py
+  - packages/merlin-timing/src/merlin_timing/cli.py
+  - packages/merlin-timing/src/merlin_timing/archive.py
+  - packages/merlin-timing/src/merlin_timing/replay.py
+  - packages/merlin-timing/src/merlin_timing/provider_bundle.py
+  - examples/gemmini/verification/extract_rtl_timing_facts.py
+  - src/merlin/targetgen/rtl/timing_structure.py
+  - src/merlin/targetgen/rtl/unit_correspondence.py
 ---
 
 # Calibrating and validating annotated timing
@@ -649,3 +662,10 @@ before held checks. An improvement in training error alone cannot replace the
 incumbent; preserve the prior model and all rejected candidates, original labels,
 counter reviews and missing observations. New capacity or attention regimes need
 their own compatible evidence even when archived-domain accuracy passes.
+
+`merlin_timing` is an independent distribution built from
+`packages/merlin-timing/`; it is not implicitly installed by the core Merlin
+wheel. Select its exact wheel/source alongside the simulator observer and
+calibration inputs. The `strict_per_case_v1` and `legacy_v1` profiles keep their
+own fixed acceptance rules. Fitting or replaying a descriptive record cannot
+convert an empirical screen into a qualified native timing engine.

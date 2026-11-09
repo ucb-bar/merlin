@@ -3,8 +3,10 @@ title: Conditional compiler pipelines
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-23
-code_refs: [src/merlin/transforms/pipeline_policy.py, src/merlin/transforms/pipeline_state.py]
+last_verified: 2026-11-09
+code_refs:
+  - src/merlin/transforms/pipeline_policy.py
+  - src/merlin/transforms/pipeline_state.py
 ---
 
 # Conditional compiler pipelines
@@ -232,3 +234,9 @@ qualification. Compact summaries contain options, executed passes, source/IR/pro
 identities, measured host pass times and duplicate links; full IR and independent
 execution receipts remain in caller-owned artifacts. Read-only analyses may commute,
 while transformations with dependencies or invalidated facts constrain legal order.
+
+`pipeline_policy.execute_policy` performs first-match selection;
+`evaluate_variants` runs explicit alternatives, and `pass_exploration` constructs
+bounded orders/options. `pipeline_state.PipelineSession` owns analysis validity
+and failure state. These services reuse the selected pass implementations and
+return artifacts; they do not generate a target compiler or an acceptance verdict.

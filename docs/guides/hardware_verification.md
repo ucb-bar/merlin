@@ -3,7 +3,7 @@ title: Verify selected hardware properties
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-05
+last_verified: 2026-11-09
 related: [verification, phase0_specification, simulator_selection]
 code_refs:
   - src/merlin_experiments/phase0/hardware_validation.py
@@ -113,3 +113,9 @@ and numerical tolerances. A passing Phase 2 optimization test is scoped to its
 frozen inputs and selected target; coverage of unseen PyTorch models or
 operators requires separate inventory, explicit unsupported/fallback handling
 and model-level qualification.
+
+`phase0.hardware_validation.prove_combinational_property` owns the
+combinational query and `verify_property_receipt` replays it. `cell_probe` owns
+finite native vectors. The core compiler consumes only their declared evidence
+scopes; neither result automatically selects a backend implementation or
+discharges complete program execution.

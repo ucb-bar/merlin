@@ -3,16 +3,19 @@ title: Typed preprocessing correspondence
 kind: reference
 status: current
 owner: ir
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [lowering_pipeline, architecture]
-code_refs: [src/merlin/llvmlower/typed_preprocessing_correspondence.py, src/merlin/llvmlower/passes_xdsl.py, src/merlin/common/ir_audit.py]
+code_refs: [src/merlin/llvmlower/typed_preprocessing_correspondence.py, src/merlin/compiler/frontend/preprocess.py, src/merlin/common/ir_audit.py]
 ---
 
 # Typed preprocessing correspondence
 
 `merlin.llvmlower.typed_preprocessing_correspondence.check_result_types` checks a
 specific boundary: exact captured MLIR to the output of Merlin's xDSL
-preprocessing. It takes both exact byte streams and the audited invocation's
+preprocessing. The preprocessing coordinator is
+`compiler/frontend/preprocess.py`; the independent type correspondence checker
+remains in `llvmlower/typed_preprocessing_correspondence.py`.
+It takes both exact byte streams and the audited invocation's
 `index.json`. Compact audits retain hashes and inspection views rather than the
 executable IR, so callers must supply the original bytes separately.
 

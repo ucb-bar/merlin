@@ -3,7 +3,7 @@ title: Native full-value output readback
 kind: reference
 status: current
 owner: targetgen
-last_verified: 2026-10-09
+last_verified: 2026-11-09
 related: [runtime, experiment_abi]
 code_refs:
   - src/merlin/targetgen/contract/readback_policy.py
@@ -12,6 +12,7 @@ code_refs:
   - src/merlin_experiments/phase1/feedback/native_output_readback.py
   - src/merlin_experiments/phase1/feedback/native_packet_readback.py
   - src/merlin/runtime/out_packet.py
+  - src/merlin/runtime/out_packet_v2.py
   - src/merlin/targetgen/capsule_runner.py
   - src/merlin/runtime/backends/chipyard_rocc.py
   - src/merlin/runtime/out_digest.py
@@ -22,30 +23,17 @@ code_refs:
 
 Readback is an invocation choice, not a candidate command-buffer field. Phase 1
 accepts `--readback-policy out_b64_v1`, `out_bin_v1`, `coherent_dump_v1`, or
-`coherent_packet_v1`.
+`coherent_packet_v1`, or `coherent_packet_v2`.
 Omitting the flag preserves the existing provider behavior. A frozen run keeps
 its selected policy; changing transport requires a new run/tooling identity.
 
 **Outputs on a serial-console engine.** Without an explicit policy, the
-capsule grader's simulator adapter (`capsule_runner.simulator_adapter`) picks
-the readback with `readback_policy.large_output_readback`. On gsim, verilator
-and vcs the console travels HTIF over the elaborated design's TSI port, so every
-printed byte and every formatting instruction costs simulated cycles. For a
-3136x64 i32 output the counts are (spike instruction counts; the kernel itself
-retires 0.8M):
-
-| Transport | Instructions |
-|---|---|
-| Text `OUT` lines | 175.9M |
-| `out_bin_v1` | 26.3M |
-| `coherent_dump_v1` | 1.1M |
-
-This applies to outputs of every size: each console line is one HTIF syscall,
-a TSI round trip through the design. On gSIM a 16x16 i32 output ran 494,792
-cycles (311 s) with text against 21,892 (14.3 s) without serial values, and
-the kernel window was 1,110 cycles. A 16x64 output graded through the adapter
-took 554 s as text and 53 s by memory dump, both exact. Emulator construction
-and load take 1.3 s, so the "~50 s gSIM startup" was the text console.
+capsule grader's simulator adapter (`capsule_runner.simulator_adapter`) chooses
+full-value readback with `readback_policy.large_output_readback`. On serial-console
+engines, formatting and transferring output can dominate diagnostic runtime;
+the kernel counter window and complete invocation cost must be reported
+separately. Transport choice changes neither the logical output nor its original
+comparison policy. Actual costs depend on the selected engine and output roster.
 
 The grader uses:
 
@@ -99,6 +87,7 @@ disagreement falls back to the full gSIM readback.
 | `out_bin_v1` | Complete framed binary values | `merlin_readback_build_v1` |
 | `coherent_dump_v1` | Admitted output storage exported by the selected backend | `merlin_readback_build_v2` |
 | `coherent_packet_v1` | All actual logical values packed losslessly in admitted memory | `merlin_readback_build_v3` |
+| `coherent_packet_v2` | One-pass full-value packet with canonical wider-word escapes | `merlin_readback_build_v4` |
 
 Coherent readback stages no serial codec. The OOT harness provider must explicitly
 accept the policy and declare its memory export protocol. The trusted evaluator
@@ -155,3 +144,12 @@ Readback admission establishes transport and attribution, not numerical
 correctness, accelerator placement, performance improvement, or universal model
 coverage. The ordinary independent golden comparison, host-compute audit,
 mandatory tiers and private full-model gates remain separate obligations.
+
+The separate `coherent_packet_v2` policy uses `out_packet_v2.h` and the
+independent `runtime.out_packet_v2` decoder. It encodes actual values in one pass
+with canonical escapes for wider integer words and preserves FP32 source bits.
+Its conservative capacity derives from the full declared output roster;
+truncation, noncanonical escapes, extra data or mismatched frames refuse. The
+build receipt is `merlin_readback_build_v4`. Explicit provider support, exact
+ELF storage admission, normal exit and independent numerical comparison remain
+required; choosing the new wire format grants none of them.

@@ -3,7 +3,7 @@ title: Reuse public Phase 1 timing archives in ordinary Phase 2 search
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [phase2_corpus_search, spike_timing, phase2_capsule_feedback]
 code_refs:
   - src/merlin_experiments/phase2/archive_screen_selection.py
@@ -12,7 +12,7 @@ code_refs:
   - src/merlin_experiments/phase2/archive_count_observation.py
   - src/merlin_experiments/phase2/ordinary_archive_screen.py
   - src/merlin_experiments/phase2/ordinary_search_stage.py
-  - packages/merlin-experiments/tests/test_ordinary_archive_screen.py
+  - src/merlin_experiments/phase2/timing_domain_readiness.py
 ---
 
 # Public archive screening
@@ -163,3 +163,9 @@ executes no compiler or simulator, fits no model, and grants no timing, formal
 launch or promotion authority. A statistical preflight pass still requires the
 original queue-selected runtime/Count/native-semantics owners and fresh complete
 source, output and event observations before prediction.
+
+The nonexecuting readiness report is owned by
+`phase2/timing_domain_readiness.py`; live queue installation is owned by
+`ArchiveScreenSelection.install`. Keep those APIs distinct: a written report
+can retain unresolved source/support rows, while installation must reissue its
+original live selection and unchanged applicability checks.

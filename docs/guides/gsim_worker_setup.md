@@ -3,9 +3,20 @@ title: Set up gSIM on a Linux worker
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-10-12
+last_verified: 2026-11-09
 related: [getting_started, target_resolution, simulator_selection, phase0_specification]
-code_refs: [src/merlin/targetgen/gsim_emulator.py, src/merlin/runtime/backends/chipyard_rocc.py, build_tools/scripts/package_worker_inputs.py, src/merlin_experiments/phase0/rtl_intake.py, src/merlin_experiments/runner.py, src/merlin_experiments/cli.py, src/merlin_experiments/phase1/timing.py, src/merlin_experiments/phase1/preflight.py, src/merlin_experiments/phase1/canary.py, src/merlin_experiments/phase1/providers/codex_runtime.py]
+code_refs:
+  - src/merlin/targetgen/gsim_emulator.py
+  - src/merlin/runtime/backends/chipyard_rocc.py
+  - build_tools/scripts/package_worker_inputs.py
+  - src/merlin_experiments/phase0/rtl_intake.py
+  - src/merlin_experiments/runner.py
+  - src/merlin_experiments/cli.py
+  - src/merlin_experiments/phase1/timing.py
+  - src/merlin_experiments/phase1/preflight.py
+  - src/merlin_experiments/phase1/canary.py
+  - src/merlin_experiments/phase1/providers/codex_runtime.py
+  - src/merlin/runtime/backends/rocc_selection.py
 ---
 
 # Set up gSIM on a Linux worker
@@ -306,3 +317,9 @@ partitioning; affinity alone does not exclude unrelated workloads.
 `MERLIN_GSIM_SLOT_ROOT` can select an existing-parent, private task-local lock
 directory. Keep the same selection across all experiment workers. These controls
 allocate capacity; actual concurrency depends on ready grading work.
+
+Treat this as operator-owned worker provisioning. The common runtime selects
+and checks the already prepared engine, executable, facts and ABI; Python
+installation does not build them. A generated run/handoff file may invoke a
+prepared executable inside an externally started FireSim environment. Merlin
+does not provision or launch FireSim infrastructure.

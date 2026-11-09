@@ -15,7 +15,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: May change compile latency and call overhead; must measure
 - **evidence to request**: Compile latency, code size and runtime cost
 - **access**: requires_reviewed_library_extension
-- **test that calls it**: `merlin/tests/ir/test_llvm_loop_outline.py`: `transformed = outline_loops(SOURCE, tmp_path / "transform", merge_identical=merge_identical)`
+- **test that calls it**: none found
 
 ### owned_scalar_host
 
@@ -28,4 +28,4 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Unsupported host signatures require narrow reviewed closure
 - **evidence to request**: Host operation coverage and host/accelerator seam costs
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/ir/test_host_tensor_codegen.py`: `lower = HostLinalg(`
+- **test that calls it**: none found

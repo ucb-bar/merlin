@@ -3,7 +3,7 @@ title: Mandatory original source-only compiler evaluation
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-09
+last_verified: 2026-11-09
 related: [component_compile_sources, component_scale_generalization, fresh_compiler_origin, component_launch_qualification, counted_copy_static_proof]
 code_refs:
   - src/merlin_experiments/phase1/component_compile_admission.py
@@ -112,3 +112,9 @@ explicit host toolchain requiring zero skips throughout its original test
 roster. The core-only `invocation-record` suite checks actual subprocess
 environment and executable provenance. These suites establish packaging and
 their stated regression scope, not fresh compiler, runtime or hardware authority.
+
+`component_compile_roles.evaluate_component_compile_roles` owns the ordinary
+transport evaluation. `component_compile_admission.qualification_compile_roles`
+checks that exact live result at qualification. Neither a candidate report nor
+a successful object/link command replaces the independently required static
+obligation producers.

@@ -1,5 +1,3 @@
-"""An unclassified source operation must change the real coverage gate's exit."""
-
 from __future__ import annotations
 
 import importlib.util
@@ -44,8 +42,7 @@ def test_an_unclassified_operation_changes_the_real_gate_verdict(tmp_path, monke
 
     def source_operation(name):
         vocabulary.write_text(
-            json.dumps({"properties": {"operation": {"properties": {"op": {"enum": [name]}}}}}),
-            encoding="utf-8",
+            json.dumps({"properties": {"operation": {"properties": {"op": {"enum": [name]}}}}}), encoding="utf-8"
         )
 
     source_operation("model")
@@ -54,7 +51,6 @@ def test_an_unclassified_operation_changes_the_real_gate_verdict(tmp_path, monke
     assert clean["problems"] == []
     assert clean["report"]["under"] == clean["report"]["unknown_homes"] == []
     assert clean["report"]["refused_members"] == {}
-
     missing = "unclassified_fixture_op"
     assert opset_contract.sf.from_op(missing) is None
     assert opset_contract.sf.structural_reason(missing) is None
@@ -65,8 +61,6 @@ def test_an_unclassified_operation_changes_the_real_gate_verdict(tmp_path, monke
     assert rejected["report"]["unknown_homes"] == [missing]
     assert rejected["report"]["under"] == []
     assert rejected["report"]["refused_members"] == {}
-
-    # Restoring the same legitimate home clears the failure; no debt is minted.
     source_operation("model")
     assert gate.main(["--input", str(request)]) == 0
     assert json.loads(capsys.readouterr().out)["problems"] == []

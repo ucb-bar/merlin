@@ -3,7 +3,7 @@ title: Compiler optimization surfaces and execution evidence
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-23
+last_verified: 2026-11-09
 related: [shared_compiler_passes, optimization_pass_pipeline, ../guides/conditional_compiler_pipelines, ../guides/artifact_evaluation]
 code_refs:
   - src/merlin/xdsl_dialects/lowering/passes.py
@@ -12,15 +12,18 @@ code_refs:
   - src/merlin/transforms/pipeline_state.py
   - src/merlin/transforms/pipeline_policy.py
   - src/merlin/sched/ir/kernel.py
-  - src/merlin/compile/scheduling/schedule_pipeline.py
-  - src/merlin/compile/fusion_workflow.py
-  - src/merlin/compile/connected_regions.py
-  - src/merlin/compile/connected_runtime.py
+  - src/merlin/compiler/schedule/schedule_pipeline.py
+  - src/merlin/compiler/planning/explore.py
+  - src/merlin/compiler/lower/connected.py
+  - src/merlin/runtime/connected.py
   - examples/compiler/connected_composition.py
   - src/merlin/targetgen/compiler_library_fork.py
   - src/merlin/targetgen/isa_dialect_gen.py
   - src/merlin_experiments/phase1/compiler_library.py
   - build_tools/scripts/audit_compiler_integration.py
+  - src/merlin/api.py
+  - src/merlin/compiler/schedule/export.py
+  - src/merlin_experiments/phase1/prepare_author_library.py
 ---
 
 # Compiler optimization surfaces and execution evidence
@@ -72,7 +75,8 @@ are compiler development costs, not target cycles or evidence of a faster kernel
    describe a counted device schedule. Calls can express completion tokens,
    execution units, configuration state and storage staging. These are Python
    scheduling IR objects, separate from xDSL schedule-dialect operations.
-3. Emitted target/LLVM MLIR and the executable carry the actual instructions.
+3. Emitted target/native IR, objects, command streams or device binaries carry
+   the selected implementation; the artifact ABI determines how they are consumed.
    The target owns instruction encoding, physical layouts and completion.
 
 Using the counted scheduling IR is meaningful even without a custom registered
@@ -89,7 +93,7 @@ flowchart TD
     L --> H
     L --> P
     P --> K[Counted Kernel / Loop / Call schedule]
-    K --> E[Target encoding and LLVM emission]
+    K --> E[Target encoding and declared artifact emission]
     H --> E
     E --> B[Immutable compiler and executable identities]
     B --> C[Independent numerical and placement checks]
@@ -258,13 +262,11 @@ review evidence, not proof that a transitive or dynamically loaded path never ra
 
 ## Making compiler improvements compound
 
-Prepare reviewed shared libraries for any target with
-`python -m merlin_experiments.phase1.prepare_author_library --help`.
-The same command selects source inventories and optionally includes explicitly
-pinned neutral ISA products; it supplies no target backend or schedule.
-The older Gemmini example path is a compatibility wrapper for this shared CLI.
-Inventory 20 includes the loop-carried event implementation and requires its
-matching source profile. Frozen earlier runs retain their existing selections.
+Select the exact reviewed shared library and source inventory before authoring.
+Current fresh exports and historical frozen inventories have different source
+ownership; availability in one does not imply a grant or compatible import in
+another. Neutral ISA products, when explicitly selected, supply no target
+backend or preferred schedule.
 
 Promote reusable graph algorithms and host code from the candidate fork into
 Merlin only after reviewing their contracts and relevant independent cases.
@@ -324,3 +326,11 @@ host-issue tradeoff, not an assumed performance improvement.
 Reference schedules can contain manual guards or unchecked transformations.
 Re-derive their dependencies and storage conditions for the selected target;
 those annotations do not grant Merlin a hardware or numerical premise.
+
+The current source-only SDK export is
+`merlin.compiler.schedule.export` with inventory 26. Historical inventories
+require their exact frozen releases. The current `prepare_author_library` helper
+defaults to and accepts inventory26 only, checks the exact source revision, and
+requires an existing explicit reviewed source selection. Additional leaves
+still require their original explicit review. A fresh export does not rewrite
+frozen source membership or confer evaluator, runtime or numerical authority.

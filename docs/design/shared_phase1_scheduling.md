@@ -3,16 +3,20 @@ title: Shared Phase 1 scheduling
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-19
+last_verified: 2026-11-09
 related: [../reference/shared_compiler_passes.md]
 code_refs:
   - src/merlin/transforms/pipeline.py
   - src/merlin/transforms/pipeline_state.py
-  - src/merlin/compile/scheduling/schedule_pipeline.py
-  - src/merlin/compile/scheduling/device_spills.py
-  - src/merlin/compile/scheduling/row_softmax.py
-  - src/merlin/compile/scheduling/program_limits.py
+  - src/merlin/compiler/schedule/schedule_pipeline.py
+  - src/merlin/compiler/schedule/device_spills.py
+  - src/merlin/compiler/schedule/row_softmax.py
+  - src/merlin/compiler/schedule/program_limits.py
   - src/merlin/model_check/program_admission.py
+  - src/merlin/compiler/schedule/export.py
+  - src/merlin/compiler/schedule/standalone.py
+  - src/merlin/compiler/schedule/model.py
+  - src/merlin/compiler/schedule/residency.py
 ---
 
 # Shared Phase 1 scheduling
@@ -150,8 +154,9 @@ the footprint and checks bounds. The operation executes no command. Target
 realization checks remain required; this metadata alone does not prove
 aliases, asynchronous completion, or preservation of numerical boundaries.
 
-Both regular Gemmini implementations consume these exact shared sources in
-their ordinary compiler entrypoints. Their constraints differ: the generated
+The recorded regular Gemmini integrations consumed these shared sources in
+their ordinary compiler entrypoints. Each current provider selection still needs
+its own consumption and execution checks. Their constraints differ: the generated
 backend supports bounded loop bodies; the handwritten backend retains its
 straight-line emission limit. A shared decision algorithm does not promise
 identical instruction sequences or equal supported shape ranges.
@@ -203,7 +208,7 @@ RTL configurations or numerical modes.
 
 ## Synchronous schedule lifetimes
 
-`compile.scheduling.block_schedule.check_residency` now checks both operand
+`compiler.schedule.residency.check_residency` now checks both operand
 residency and accumulator lifetimes. `schedule_contraction` and
 `schedule_convolution` invoke it before returning a schedule. No model selection
 or additional user annotation is required for this existing representation.
@@ -226,7 +231,7 @@ Tests exercise such reuse with a smaller accumulator than the original layout,
 as well as all six loop orders, matrix tails and gathered convolution.
 
 ```python
-from merlin.compile.scheduling.block_schedule import check_residency
+from merlin.compiler.schedule.residency import check_residency
 
 # Recheck an adapter's transformed BlockSchedule before lowering it.
 check_residency(transformed_schedule)
@@ -275,19 +280,18 @@ on the currently tested runtime: its local-store instruction traps.
 
 ## Fresh Phase 1 releases and standalone packages
 
-Select `--common-substrate merlin.common_compiler_substrate.v5` for a fresh
-Phase 1 release that includes the checked block scheduler. V5 adds exactly
-`merlin.compile.scheduling.block_schedule` to the V4 public source inventory.
-Its isolated source closure supports importing that module without the broader
-compile package, RTL derivation helpers or a local Merlin installation.
-V4 adds the dense planner and decision IR to V3. V4 and V5 retain V3's checker
-inventory and formal coverage policy. Historical V1/V2/V3/V4 releases keep
-their original inventories; existing grants are not silently expanded.
+Fresh shared scheduling releases select SDK26 and
+`merlin.common_compiler_substrate.v26`. Earlier inventories remain frozen
+reproduction inputs; they cannot be regenerated from current sources merely by
+selecting their old version number. In particular, V5 historically added the
+block scheduler to V4, but that is an archival inventory description rather than
+a current fresh-authoring command. Use the exact recorded release and verifier
+for an inherited experiment.
 
 Standalone compilers can export the exact canonical sources:
 
 ```sh
-python -m merlin.compile.scheduling.export --output-dir /path/to/backend/mlir_oot
+python -m merlin.compiler.schedule.export --output-dir /path/to/backend/mlir_oot
 ```
 
 The command prints the release schema and both source hashes. Package both
@@ -295,8 +299,10 @@ The command prints the release schema and both source hashes. Package both
 The planner requires only Python's standard library; the decision IR uses
 xDSL. Two independent backends and rectangular synthetic geometries exercise
 the same planner; an isolated test imports only the published source closure.
-Add `--include-block-schedule` to export the byte-exact canonical checker as
-`common_block_schedule.py`. This opt-in export returns schema v2; the original
+Add `--include-block-schedule` to assemble the current canonical owner
+definitions into `common_block_schedule.py`. `standalone.py` removes internal
+imports and owner docstrings and records each contributing source hash; the
+artifact is derived, rather than a second editable implementation. This opt-in export returns schema v2; the original
 two-file v1 export is unchanged. Standalone copies contain no target-specific
 fork of the shared scheduling or lifetime algorithms.
 
@@ -432,3 +438,9 @@ payload and functional simulator observations. They do not qualify real-target
 latency or physical bus traffic. General device attention, broader fusion and
 qualified Gemmini/MX/Atlas integration still require their actual public
 execution, numerical, decoding, ownership and continuation contracts.
+
+Canonical scheduling code now lives under `merlin.compiler.schedule`. Open
+`model.py` for schedule records, `residency.py` for synchronous lifetime checks,
+and `schedule_pipeline.py` for finite pass execution and final decoded-program
+checks. The legacy `compile.scheduling` identities preserve compatibility;
+fresh source exports use the explicit canonical inventory.

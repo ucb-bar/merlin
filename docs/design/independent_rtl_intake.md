@@ -3,7 +3,7 @@ title: Independent RTL intake for fresh compiler authoring
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [docs/design/component_compiler_convergence.md]
 code_refs:
   - src/merlin_experiments/phase0/rtl_intake.py
@@ -15,6 +15,7 @@ code_refs:
   - src/merlin_experiments/phase0/component_coverage.py
   - src/merlin/targetgen/rtl/source_selection.py
   - src/merlin/targetgen/rtl/introspect.py
+  - src/merlin_experiments/phase0/minimal_software.py
 ---
 
 # Independent RTL intake for fresh compiler authoring
@@ -186,3 +187,10 @@ execution, complete output and ownership checks, zero prohibited instructions,
 independent feedback qualification, actual author isolation, and matched final
 FireSim evaluation. Local native producer fixtures test replay and exclusions;
 they do not qualify a hardware target or claim model cycles.
+
+For navigation, `rtl_intake.py` owns structural hardware issuance;
+`command_intake.py`, `accessor_intake.py` and `source_predicate_intake.py` own
+their narrower observations. `software_intake.py` and `minimal_software.py` own
+the independently reviewed minimal numerical/operation selection. These owners
+remain outside candidate compiler source exports and cannot be replaced by a
+backend capability claim.

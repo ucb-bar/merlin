@@ -374,8 +374,7 @@ The ones that carry the story:
   `…_vf_mr4` (the turn-3 MR=4 A-reuse register block).
 - `erase_self_copy` — the micro-kernel recipes' lowering HYGIENE: erases the per-tile
   `memref.copy %x, %x` bufferization leaves behind, which otherwise survives as an opaque
-  `@memrefCopy` rank-generic runtime call. Not listed per package — `from_strategy.
-  _rvv_microkernel_resolver` appends it to EVERY realization of the `microkernel` knob block, so
+  `@memrefCopy` rank-generic runtime call. Not listed per package — the selected RVV provider's microkernel policy, reached through `from_strategy.microkernel_features`, appends it to EVERY realization of the `microkernel` knob block, so
   every point in the space and every `dtype_strategy` inherits it at once. It is a property of the
   recipe shape, not of the dtype: on `accumulator_resident_wholemodel_vf` there is no self-copy and
   the feature is inert (same object bytes), while on the v3 recipe it removes the call for int8 and

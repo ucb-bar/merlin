@@ -3,7 +3,7 @@ title: "Host integer primitive source witnesses: what the shift and mask probe p
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [verified_compiler_roadmap]
 code_refs:
   - src/merlin_experiments/phase1/feedback/private_literal_arange.py
@@ -62,3 +62,9 @@ equivalences it did not prove:
   host capabilities request one. A witness for them should be built as a closed source-body
   schema with its witness under the dispatch, and it has to prove the two open equivalences
   above. A diagnostic that cannot detect a swapped operand cannot admit anything.
+
+The current arange admission remains in the experiments-owned independent
+witness path. Shared frontend pattern recognition describes source bodies; it
+does not itself issue host support or linked-build acceptance. The rejected
+probe described here must not be restored as an authority merely to broaden
+pattern coverage.

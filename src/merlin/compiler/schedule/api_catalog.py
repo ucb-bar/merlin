@@ -63,6 +63,8 @@ def _canonical(value):
     if isinstance(value, str):
         from .library_sources import canonical_module
 
+        if value == _LEGACY + "dense_contracts.DenseTiledIntegerReadout":
+            return "merlin.compiler.schedule.dense_panel_contracts.DenseTiledIntegerReadout"
         if value.startswith("merlin."):
             renamed = canonical_module(value)
             if renamed != value:

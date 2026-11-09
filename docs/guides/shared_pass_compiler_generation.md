@@ -3,7 +3,7 @@ title: Generate compilers that consume shared passes
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-26
+last_verified: 2026-11-09
 related: [phase0_phase1_setup, shared_pass_phase2, default_pass_evaluation, verified_compiler_tooling]
 code_refs:
   - src/merlin/targetgen/shared_pass_contract.py
@@ -13,9 +13,10 @@ code_refs:
   - src/merlin/targetgen/package_runtime.py
   - src/merlin/targetgen/capsule_common.py
   - src/merlin/llvmlower/target_schedule.py
-  - merlin/tests/targetgen/test_shared_pass_consumption.py
   - src/merlin_experiments/phase1/controller.py
   - src/merlin_experiments/phase1/compiler_library.py
+  - src/merlin/compiler/schedule/schedule_pipeline.py
+  - src/merlin_experiments/phase1/prepare_author_library.py
 ---
 
 # Generate compilers that consume shared passes
@@ -72,15 +73,20 @@ Add `--require-shared-passes` to the installed Phase 1 invocation described in
 `--compiler-library-contract-sha256` selections. This does not start a run by
 itself and does not alter saved compiler submissions.
 
-The v1 authoring integration requires the selected library to expose these
-exact reviewed public modules:
+The v1 authoring integration requires one exact reviewed public API cohort.
+A frozen library exposing the legacy schedule owner uses:
 
 - `merlin.transforms.pipeline_state`
 - `merlin.sched.ir.kernel`
 - `merlin.compile.scheduling.schedule_pipeline`
 
-These are minimum interface APIs, not a claim that every transformation is
-included or that a target can execute it. Actual read access must match the
+A current SDK26 library instead uses the same first two APIs and
+`merlin.compiler.schedule.schedule_pipeline`.
+`generate_prompt.shared_pass_prompt_record` selects the cohort from the original
+library contract and requires each exact member in the observed tool grants.
+Aliases, package prefixes or a new import alone do not issue access. These are
+minimum interface APIs, not a claim that every transformation is included or
+that a target can execute it. Actual read access must match the
 selection. This version uses the existing finite `Kernel` scheduling interface;
 arbitrary counted-loop or opaque programs need their own supported integration.
 It does not prescribe one representation for every future target.
@@ -418,3 +424,9 @@ references and readonly inputs. Mutations that ignore the selection, alter a
 fused operand or width, omit a wait, reuse a pending slot or exceed a queue
 bound must refuse or fail independently. Existing neutral checks demonstrate
 particular mechanisms; they do not qualify every family or a generated target.
+
+Fresh source preparation uses SDK26 through
+`merlin_experiments.phase1.prepare_author_library`; earlier inventories are
+replayed only from their original frozen releases. Canonical prompt navigation
+does not widen those historical source memberships or change shared-pass v1
+semantics, target consumption requirements or independent acceptance checks.

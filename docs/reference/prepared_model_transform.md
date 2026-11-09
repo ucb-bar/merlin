@@ -3,13 +3,12 @@ title: Prepared model transformation
 kind: reference
 status: current
 owner: compiler
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: [reference/architecture.md]
 code_refs:
   - src/merlin/llvmlower/prepared_model_transform.py
   - src/merlin/runtime/backends/spike_model.py
   - src/merlin/runtime/backends/zephyr_model.py
-  - merlin/tests/runtime/test_prepared_model_transform.py
 ---
 
 # Prepared model transformation
@@ -40,3 +39,8 @@ Empty selection returns the original path without reading it, parsing it or
 creating callback output. Explicit transforms must derive decisions from the
 current IR semantics, shapes, layouts and contracts. This interface installs no
 default selection or workload-specific route.
+
+`apply_prepared_model_transform` owns callback isolation and the
+`prepared_model_transform.json` receipt. The selected Spike and Zephyr builders
+consume that seam; they retain responsibility for actual lowering, objects and
+linking. A successful receipt is not a semantic-equivalence certificate.

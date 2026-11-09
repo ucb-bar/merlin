@@ -150,8 +150,14 @@ class FnBuilderControlAdapter(FnBuilderIndexAdapter):
         if opcode not in operations or dtype not in ("i64", "i1") or dtype == "i1" and opcode != "and":
             raise ValueError("unsupported typed LLVM control arithmetic")
         if dtype == "i1":
-            if any(not isinstance(x, SSAValue) or x.type != i1 for x in (lhs, rhs)):
+            if any(type(x) is not bool and (not isinstance(x, SSAValue) or x.type != i1) for x in (lhs, rhs)):
                 raise ValueError("LLVM predicate conjunction requires i1 operands")
+            # cmp folds static coordinates to bool; retain that exact predicate
+            # when combining an unrolled coordinate with a counted-loop value.
+            if type(lhs) is bool:
+                return rhs if lhs else False
+            if type(rhs) is bool:
+                return lhs if rhs else False
         else:
             lhs, rhs = self.value(lhs), self.value(rhs)
         return self.builder.add(operations[opcode](lhs, rhs)).results[0]

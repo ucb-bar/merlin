@@ -9,8 +9,10 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import signal
 import stat
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -115,7 +117,6 @@ def selection_record(options) -> dict | None:
     }
 
 
-
 def failed_round_retry(home_root: Path, run_dir: Path, rnd: int) -> tuple[Path, dict]:
     """Allocate a fresh sibling only from an exact retained failed driver record.
 
@@ -141,31 +142,45 @@ def failed_round_retry(home_root: Path, run_dir: Path, rnd: int) -> tuple[Path, 
         raise ValueError("failed round retry summary must be an original regular file")
     raw = summary_path.read_bytes()
     summary = json.loads(raw)
-    failed = (type(summary.get("exit_code")) is int and summary["exit_code"] != 0)
+    failed = type(summary.get("exit_code")) is int and summary["exit_code"] != 0
     if not failed:
         raise ValueError("fresh authoring refuses retry of a successful or incomplete attempt record")
     recorded = summary.get("codex_home") or {}
     prior = Path(recorded.get("codex_home", ""))
     prefix = base.name + "_attempt_"
-    if (prior.parent != root or not (prior == base or prior.name.startswith(prefix))
-            or prior.resolve() != prior or prior.is_symlink() or not prior.is_dir()):
+    if (
+        prior.parent != root
+        or not (prior == base or prior.name.startswith(prefix))
+        or prior.resolve() != prior
+        or prior.is_symlink()
+        or not prior.is_dir()
+    ):
         raise ValueError("failed round retry summary names a foreign home")
     config = prior / "config.toml"
-    if (config.is_symlink() or not config.is_file()
-            or hashlib.sha256(config.read_bytes()).hexdigest() != recorded.get("config_sha256")):
+    if (
+        config.is_symlink()
+        or not config.is_file()
+        or hashlib.sha256(config.read_bytes()).hexdigest() != recorded.get("config_sha256")
+    ):
         raise ValueError("failed round retry lost its original config identity")
     attempt = uuid.uuid4().hex
     home = root / (prefix + attempt)
     home.mkdir(mode=0o700)  # Atomic, never consume an existing retry directory.
     stat = home.stat()
     return home, {
-        "schema": "merlin.codex_failed_round_retry.v1", "attempt_id": attempt,
-        "logical_round": rnd, "home": str(home), "previous_home": str(prior),
+        "schema": "merlin.codex_failed_round_retry.v1",
+        "attempt_id": attempt,
+        "logical_round": rnd,
+        "home": str(home),
+        "previous_home": str(prior),
         "previous_summary": str(summary_path),
         "previous_summary_sha256": hashlib.sha256(raw).hexdigest(),
-        "home_device": stat.st_dev, "home_inode": stat.st_ino,
-        "retained_compiler": True, "reused_session": False,
+        "home_device": stat.st_dev,
+        "home_inode": stat.st_ino,
+        "retained_compiler": True,
+        "reused_session": False,
     }
+
 
 @dataclass(frozen=True)
 class SelectedCodexRuntime:
@@ -220,7 +235,9 @@ class SelectedCodexRuntime:
             companions = ["--ro-bind", selected["code_mode_host"], selected["code_mode_host"]]
         return [
             *companions,
-            "--ro-bind", selected["sandbox_binary"], "/usr/bin/bwrap",
+            "--ro-bind",
+            selected["sandbox_binary"],
+            "/usr/bin/bwrap",
             "--ro-bind",
             selected["binary"],
             selected["binary"],
@@ -239,7 +256,9 @@ class SelectedCodexRuntime:
             "--setenv",
             "CODEX_HOME",
             str(home),
-            "--ro-bind", str(alias_root), str(alias_root),
+            "--ro-bind",
+            str(alias_root),
+            str(alias_root),
         ]
 
     def round_kwargs(self) -> dict:
@@ -325,3 +344,63 @@ def select(
         ):
             raise ValueError("client read grant overlaps private selections")
     return SelectedCodexRuntime(tuple(sorted(selected.items())), read_paths, mounts, python_paths, tool_environment)
+
+
+def _terminate_process_group(pgid: int, proc: subprocess.Popen | None = None) -> None:
+    """Terminate a saved child process group even after its leader has exited."""
+    if pgid <= 1 or pgid == os.getpgrp():
+        raise ValueError("refusing to signal an unsafe process-group id")
+    for sig, grace in ((signal.SIGTERM, 5.0), (signal.SIGKILL, 5.0)):
+        try:
+            os.killpg(pgid, sig)
+        except ProcessLookupError:
+            return
+        except (PermissionError, OSError):
+            if proc is not None:
+                try:
+                    proc.kill()
+                except OSError:
+                    return
+        deadline = time.monotonic() + grace
+        while time.monotonic() < deadline:
+            if proc is not None:
+                proc.poll()  # reap an exited group leader so an empty group disappears
+                if proc.returncode is not None and _process_group_quiescent(pgid):
+                    return
+            try:
+                os.killpg(pgid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.05)
+
+
+def _process_group_quiescent(pgid: int) -> bool:
+    """Confirm no remaining writer in the owned Linux group; zombies cannot write."""
+    if pgid <= 1 or pgid == os.getpgrp():
+        raise ValueError("cannot establish custody of the evaluator process group")
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return True
+    # A killed orphan may remain a zombie until its parent reaps it. killpg(0)
+    # alone cannot distinguish that harmless state from a still-running writer.
+    procfs = Path("/proc")
+    if not procfs.is_dir():
+        return False
+    for entry in procfs.iterdir():
+        if not entry.name.isdecimal():
+            continue
+        try:
+            fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+        except FileNotFoundError:
+            continue
+        except (OSError, IndexError):
+            return False
+        if int(fields[2]) == pgid and fields[0] not in {"Z", "X"}:
+            return False
+    return True
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """SIGTERM then SIGKILL the child's saved process group."""
+    _terminate_process_group(proc.pid, proc)

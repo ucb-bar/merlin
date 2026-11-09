@@ -3,9 +3,10 @@ title: "Numerical provider evidence identity"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [ordered_fma_certificates, quantized_host_optimizations]
-code_refs: [src/merlin/llvmlower, merlin/runtime/c]
+code_refs:
+  - src/merlin/runtime/numeric_provider_identity.py
 ---
 
 # Numerical provider evidence identity
@@ -29,3 +30,8 @@ using this native-provider manifest format must invoke this validator before
 constructing those contracts. A successful numerical run remains an observed
 result even if its accompanying evidence seal fails; the seal must be repaired
 in a fresh record without rewriting historical evidence.
+
+The checker lives in `merlin.runtime.numeric_provider_identity`, alongside
+runtime artifact admission. It consumes supplied query results and exact files;
+loading the provider, establishing its numerical theorem, and collecting actual
+execution evidence remain separate operations.

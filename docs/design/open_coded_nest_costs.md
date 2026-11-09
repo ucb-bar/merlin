@@ -3,9 +3,11 @@ title: "Design note: what open-coding the mesh stream costs, and which lever pay
 kind: design
 status: current
 owner: compiler
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: [verified_compiler_roadmap, accumulator_load_order, performance_levers_per_archetype, macro_scheduling]
-code_refs: [examples/gemmini/verification/probe_load_placement.py, merlin/tests/gemmini/test_load_placement_probe.py, merlin/contract/perf_reference_targets.yaml]
+code_refs:
+  - examples/gemmini/verification/probe_load_placement.py
+  - merlin/contract/perf_reference_targets.yaml
 ---
 
 # What open-coding the mesh stream costs, and which lever pays where
@@ -121,3 +123,10 @@ behind them. The instruction stream is the same in both arms; only its order cha
    759's per-group cycles estimates 36.4M to 39.5M cycles, against 43.9M today. That is necessary
    and visibly not sufficient. The probe contains no convolution address stream, and the residual-add
    and mean groups were not in scope. Do not quote the estimate as a result.
+
+The measurements and job identities above are historical observations of the
+recorded ELFs and selected hardware. Reviewing the current probe and ledger
+does not recreate those builds or runtime conditions. Generic compiler policies
+must derive applicable alternatives from source and selected resources, then
+qualify their complete cost; these measured shapes are not a dispatch table or
+a universal scheduling rule.

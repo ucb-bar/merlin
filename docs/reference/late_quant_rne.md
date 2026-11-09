@@ -3,9 +3,14 @@ title: Exact bounded host rounding
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [architecture, lowering_pipeline]
-code_refs: [src/merlin/llvmlower/late_quant_rne.py, src/merlin/compile/baremetal_model.py, src/merlin/llvmlower/bounded_rne_maps.py, src/merlin/llvmlower/bounded_rne_packet_llvm.py, src/merlin/llvmlower/bounded_rne_lanes.py, merlin/tests/ir/test_late_quant_rne.py, merlin/tests/ir/test_late_quant_rne_intrinsic.py, merlin/tests/runtime/test_bounded_roundeven_spike.py]
+code_refs:
+  - src/merlin/llvmlower/late_quant_rne.py
+  - src/merlin/model.py
+  - src/merlin/llvmlower/bounded_rne_maps.py
+  - src/merlin/llvmlower/bounded_rne_packet_llvm.py
+  - src/merlin/llvmlower/bounded_rne_lanes.py
 ---
 
 # Exact bounded host rounding

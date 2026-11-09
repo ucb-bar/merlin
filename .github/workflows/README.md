@@ -2,16 +2,38 @@
 
 | Workflow | Trigger | What it gates |
 |---|---|---|
-| [`ci.yml`](ci.yml) | push / PR / merge queue | Existing source, corpus, documentation and test gates; changed-file format gate; waits for hosted integration. |
-| [`integration.yml`](integration.yml) | called by CI / weekly / manual | Wheel and source builds, distribution ownership, exact core-wheel installation outside the checkout, hosted runtime and vector-provider boundaries. |
+| [`ci.yml`](ci.yml) | push / PR / merge queue | Source, corpus and documentation gates; changed-file formatting; complete 150-case collection budget and compact behavioral suite; requires installed integration. |
+| [`integration.yml`](integration.yml) | called by CI / weekly / manual | Wheel and source builds, distribution ownership, exact core-wheel installation outside the checkout, six pinned installed OOT provider boundaries. |
 | [`release.yml`](release.yml) | manual | Reuses integration and its retained distributions as a release qualification run. Package publication and hardware deployment are not configured. |
 
 The primary workflow runs structure and documentation checking once. The visible
 `pr-fast` workflow name and `fast`, `ruff` and `docs-freshness` check names are
 retained. `fast` always reports the combined source/format/integration outcome;
 `docs-freshness` reports its shared source gate's outcome without rerunning it.
-The current-document freshness ratchet remains mandatory. The capsule-corpus
-tests retain their early step and exclusion from the later broad pytest command.
+The current-document freshness ratchet remains mandatory.
+Integration compares Python and the complete reviewed public-resource payload,
+including contracts, directly in the actual wheel against canonical sources.
+It does not depend on a temporary build tree surviving the source-archive build.
+Integration remains a required dependency of the aggregate check.
+The permanent Merlin suite has a hard **150 collected-case maximum**, including
+parameterization. `check_test_budget.py` discovers collectors across the owned
+repository, including package, example and build-tool roots. Collection errors,
+collection-time skips, deselection and an empty suite fail. Two exact SHA-bound
+copied Atlas test files remain immutable reproduction inputs under its
+`SOURCE.yaml`; changed copies cannot use that classification. External OOT suites
+are separately owned and their selected results are reported separately.
+
+The compact suite runs once without a slow/integration exclusion. JUnit and
+collection identities are retained. Execution skips expose missing prerequisites;
+they do not establish that the skipped obligation passed. The ordinary CI time
+goal is 10–15 minutes, pending measurement. Existing source gates retain their
+enforcement.
+
+Runtime verification remains production code under `src/merlin/verification/`
+and the independent evaluation owners. Prepared qualification environments handle
+real native/prover dependencies, generated conformance inputs, device execution,
+model quality and performance. Retired pytest matrices must not become hidden
+qualification scripts. FireSim setup and infrastructure launch remain external.
 
 The comparison job resolves one real revision for both format and ratchet checks.
 For a new branch push, whose previous revision is all zeros, it uses the merge
@@ -24,6 +46,9 @@ in `build_tools/upstreams/backend-boundaries.json`, builds their wheels and runs
 the selected cases outside source checkouts against the same main wheel. It uses
 separate xDSL 0.68 and 0.65 environments; selected cases must execute without skips.
 Native toolchain and hardware lanes remain separate qualification work.
+The core semantic checks build the independent MPFR/GMP constant-math reference;
+the source job provisions those development headers explicitly. Their helper
+receipt records the actual compiler and linked reference-library identities.
 
 The wiring gate runs after the pinned provider matrix, so real OOT consumers
 participate in its source graph. It rechecks the current pins, clean Git heads

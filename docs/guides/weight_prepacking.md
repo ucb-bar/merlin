@@ -3,10 +3,10 @@ title: Prepacking immutable weight layouts
 kind: guide
 status: current
 owner: ir
-last_verified: 2026-10-18
+last_verified: 2026-11-09
 related: [model_lowering, shared_phase1_scheduling]
 code_refs:
-  - src/merlin/compile/baremetal_model.py
+  - src/merlin/model.py
   - src/merlin/llvmlower/weight_prepack.py
   - src/merlin/llvmlower/weight_prepack_runtime.py
   - src/merlin/capture/rewrite.py
@@ -28,7 +28,7 @@ Use the saved-model API with the same capture, selected target, numerical policy
 and execution/readback settings as the baseline:
 
 ```python
-from merlin.compile.baremetal_model import compile_saved_model
+from merlin.model import compile_saved_model
 
 baseline = compile_saved_model(**options, output=baseline_directory)
 optimized = compile_saved_model(
@@ -135,3 +135,9 @@ latency result. Logical bytes removed from transpose outputs are movement
 accounting, not measured bus traffic. Functional Spike instruction counts are
 not accelerator cycles. Use an appropriate paired timing source before claiming
 a model speedup.
+
+The public saved-model call is `merlin.model.compile_saved_model`. The
+`weight_prepack` module owns bundle preparation and validation;
+`weight_prepack_runtime` supplies the generated caller ownership analysis.
+Target packing and backend-specific representation changes remain outside this
+byte-preserving stored-layout transformation.

@@ -3,25 +3,17 @@ title: Source closure for guarded ordered floating contractions
 kind: reference
 status: current
 owner: llvmlower
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [docs/reference/architecture.md]
 code_refs:
   - src/merlin/llvmlower/ordered_fma_groups.py
   - src/merlin/llvmlower/ordered_fma_rewrite.py
-  - merlin/tests/ir/test_ordered_fma_groups.py
   - src/merlin/llvmlower/ordered_fma_group_outline.py
-  - merlin/tests/ir/test_ordered_fma_group_outline.py
   - src/merlin/llvmlower/ordered_bf16_group_binding.py
-  - merlin/tests/ir/test_ordered_bf16_group_binding.py
   - src/merlin/llvmlower/quantized_consumer_frontier.py
-  - merlin/tests/ir/test_quantized_consumer_frontier.py
   - src/merlin/llvmlower/consumer_observed_group_writer.py
-  - merlin/tests/ir/test_consumer_observed_group_writer.py
   - src/merlin/llvmlower/private_workspace_pool.py
-  - merlin/tests/ir/test_private_writer_workspace.py
-  - merlin/tests/ir/test_private_workspace_pool.py
   - src/merlin/llvmlower/closed_group_writer.py
-  - merlin/tests/ir/test_closed_group_source_fallback.py
 ---
 
 # Source closure for guarded ordered floating contractions
@@ -251,3 +243,8 @@ actual target resources and whole performance remain separately qualified.
 The combined preparation validates pooling ownership on the original live source
 call graph before replacing any producer. Unsupported multiple owners or symbolic
 escapes therefore leave the source module unchanged, without cloning a second IR.
+
+These retained typed-source utilities are explicit preparation and writer-binding
+APIs. They do not replace global backend proposal selection. The selected backend
+still owns an implementation contract, while independent numerical, ABI and
+execution verification retain their own authority.

@@ -3,7 +3,7 @@ title: Queued evaluation deadlines
 kind: reference
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [phase2_corpus_search, phase2_component_search]
 code_refs:
   - src/merlin_experiments/phase2/search_coordinator.py
@@ -40,3 +40,8 @@ promotion or final qualification gates. Process supervision and cleanup retain
 their existing practical limits; this clock selection does not establish a new
 OS resource guarantee. Neutral local-worker tests demonstrate transport and
 lifecycle behavior only.
+
+`SearchSettings` and the coordinator own the selected campaign boundary;
+`queued_search_actions.py` carries it into `evaluation_pool.py`. The pool checks
+before submission and dispatch, then bounds the worker by the remaining
+allowance. A broker acknowledgment is not completion evidence.

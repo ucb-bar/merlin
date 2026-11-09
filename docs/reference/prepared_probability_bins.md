@@ -3,9 +3,12 @@ title: "Prepared probability bins"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [ordered_fma_certificates, quantized_host_optimizations]
-code_refs: [src/merlin/llvmlower, merlin/runtime/c]
+code_refs:
+  - src/merlin/llvmlower/source_attention_frontier.py
+  - src/merlin/llvmlower/probability_point_spans.py
+  - merlin/runtime/c/prepared_bf16_interval.h
 ---
 
 # Prepared probability bins
@@ -58,3 +61,9 @@ neighborhood in four native rounding modes, stale/mismatched epochs, changed
 producer grammar, unsupported plans, and the complete source executor's dirty
 workspace, masked/strided input and refusal behavior. Whole-model and target
 performance qualification remain separate.
+
+The regular emitter owns bin insertion and replay refresh.
+`probability_point_spans.prepare_probability_point_spans` owns the stricter
+producer/copy/consumer specialization; `prepared_bf16_interval.h` contains the
+value snapshot and epoch checks. These layers do not establish a target product
+implementation or choose an application accuracy threshold.

@@ -3,20 +3,22 @@ title: Affine panel packing and transfer aggregation
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [architecture, shared_pass_phase2]
-code_refs: [src/merlin/compile/scheduling/panel_transfers.py, merlin/tests/infra/test_panel_transfers.py]
+code_refs:
+  - src/merlin/compiler/schedule/panel_transfers.py
 ---
 
 # Affine panel packing and transfer aggregation
 
-`merlin.compile.scheduling.panel_transfers` derives packed panel addresses from an
+`merlin.compiler.schedule.panel_transfers` derives packed panel addresses from an
 immutable two-dimensional source view and explicit storage and transfer contracts.
 Adjacent primitive tiles can share a wider packed row, so transfer width can exceed
 compute width. The caller chooses panel dimensions; the pass checks those choices
 against supplied capabilities without discovering a target or choosing instructions.
 
-Existing `block_schedule.gather_runs` groups equally spaced gathered source rows at
+The public `merlin.compiler.schedule.blocks` surface retains `gather_runs`, whose
+implementation lives in `compiler/schedule/model.py`. It groups equally spaced gathered source rows at
 one column. `window_transfer.Window2D` constructs an affine rectangle predicate for
 runtime convolution coordinates. This family addresses the separate column-layout
 problem: represent adjacent tiles in one packed panel and combine compatible actual

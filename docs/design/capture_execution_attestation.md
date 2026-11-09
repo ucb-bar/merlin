@@ -3,7 +3,7 @@ title: Capture execution attestation boundary
 kind: design
 status: current
 owner: targetgen
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [phase0_specification, model2mlir, reproducibility]
 code_refs:
   - src/merlin_experiments/phase0/capture_execution_attestation.py
@@ -14,6 +14,7 @@ code_refs:
   - src/merlin_experiments/capture_execution/sealed_python.py
   - src/merlin_experiments/capture_execution/python_preflight.py
   - src/merlin/targetgen/application_inventory.py
+  - src/merlin/targetgen/_m2m_capture_worker.py
 ---
 
 # Capture execution attestation boundary
@@ -86,7 +87,7 @@ For a proposed Python capture, run the separate preflight with explicit paths:
 
 ```sh
 python -m merlin_experiments.capture_execution.python_preflight \
-  --worker /selected/merlin/_m2m_capture_worker.py \
+  --worker /selected/merlin/src/merlin/targetgen/_m2m_capture_worker.py \
   --loader /selected/model2MLIR/workloads/model/loader.py \
   --m2m-root /selected/model2MLIR \
   --python /selected/model2MLIR/.venv/bin/python \
@@ -233,3 +234,9 @@ agreement and actual integer contractions. Stages with no recipe-eligible work
 retain FP32 semantics; they do not acquire an int8 claim merely by belonging to
 the session. The v3 attestation binds all stages, selected inputs and replay,
 retaining the same unsigned-receipt and selected-runtime provenance limits.
+
+The current worker source is `src/merlin/targetgen/_m2m_capture_worker.py`.
+Select that actual file and its complete declared capture closure; a relocated
+source path neither authenticates a historical capture nor enlarges its admitted
+issuer policy. Capture attestation remains separate from application quality,
+importer fidelity and compiled execution.

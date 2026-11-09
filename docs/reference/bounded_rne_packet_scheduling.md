@@ -3,9 +3,10 @@ title: Bounded integer observation packet scheduling
 kind: reference
 status: current
 owner: ir
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [lowering_pipeline]
-code_refs: [src/merlin/llvmlower/bounded_rne_maps.py, merlin/tests/ir/test_bounded_rne_maps.py]
+code_refs:
+  - src/merlin/llvmlower/bounded_rne_maps.py
 ---
 
 # Bounded integer observation packet scheduling

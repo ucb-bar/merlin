@@ -48,7 +48,6 @@ import json
 import os
 import selectors
 import shlex
-import signal
 import subprocess
 import sys
 import time
@@ -96,6 +95,8 @@ from merlin_experiments.phase1.providers.codex_transcript import (
 )
 from merlin_experiments.phase1.providers.codex_usage import usage_to_claude_shape as usage_to_claude_shape
 from merlin_experiments.phase1.telemetry import startup as _START
+
+from .codex_runtime import _kill_tree, _process_group_quiescent, _terminate_process_group
 
 # --- The measured event contract (codex-cli 0.147.0) ------------------------
 # Verified by capturing a live run, not read from documentation. Envelope types
@@ -484,66 +485,6 @@ def codex_runtime_binds(codex_home: Path) -> list[str]:
     return binds
 
 
-def _terminate_process_group(pgid: int, proc: subprocess.Popen | None = None) -> None:
-    """Terminate a saved child process group even after its leader has exited."""
-    if pgid <= 1 or pgid == os.getpgrp():
-        raise ValueError("refusing to signal an unsafe process-group id")
-    for sig, grace in ((signal.SIGTERM, 5.0), (signal.SIGKILL, 5.0)):
-        try:
-            os.killpg(pgid, sig)
-        except ProcessLookupError:
-            return
-        except (PermissionError, OSError):
-            if proc is not None:
-                try:
-                    proc.kill()
-                except OSError:
-                    return
-        deadline = time.monotonic() + grace
-        while time.monotonic() < deadline:
-            if proc is not None:
-                proc.poll()  # reap an exited group leader so an empty group disappears
-                if proc.returncode is not None and _process_group_quiescent(pgid):
-                    return
-            try:
-                os.killpg(pgid, 0)
-            except ProcessLookupError:
-                return
-            time.sleep(0.05)
-
-
-def _process_group_quiescent(pgid: int) -> bool:
-    """Confirm no remaining writer in the owned Linux group; zombies cannot write."""
-    if pgid <= 1 or pgid == os.getpgrp():
-        raise ValueError("cannot establish custody of the evaluator process group")
-    try:
-        os.killpg(pgid, 0)
-    except ProcessLookupError:
-        return True
-    # A killed orphan may remain a zombie until its parent reaps it. killpg(0)
-    # alone cannot distinguish that harmless state from a still-running writer.
-    procfs = Path("/proc")
-    if not procfs.is_dir():
-        return False
-    for entry in procfs.iterdir():
-        if not entry.name.isdecimal():
-            continue
-        try:
-            fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
-        except FileNotFoundError:
-            continue
-        except (OSError, IndexError):
-            return False
-        if int(fields[2]) == pgid and fields[0] not in {"Z", "X"}:
-            return False
-    return True
-
-
-def _kill_tree(proc: subprocess.Popen) -> None:
-    """SIGTERM then SIGKILL the child's saved process group."""
-    _terminate_process_group(proc.pid, proc)
-
-
 def _link_for_aet(run_dir: Path, raw_path: Path, rnd: int) -> Path | None:
     """Expose this round's RAW codex stream under ``<run_dir>/agent/`` for ``aet import --format codex``.
 
@@ -682,7 +623,9 @@ def _preflight_candidate_sandbox(
         rounds,
         rnd,
         -1,
-        prepared_plan.command(inner) if prepared_plan is not None else sandbox_command(
+        prepared_plan.command(inner)
+        if prepared_plan is not None
+        else sandbox_command(
             inner, ws, bundle, extra_binds=(codex_runtime_binds if runtime_binds is None else runtime_binds)(codex_home)
         ),
     )
@@ -806,6 +749,7 @@ def run_round(
         selected_home = Path(codex_home_root) / f"{run_dir.name}_r{rnd:02d}"
         if allow_failed_home_retry:
             from .codex_runtime import failed_round_retry
+
             selected_home, home_attempt = failed_round_retry(Path(codex_home_root), run_dir, rnd)
         if not home_attempt and (selected_home.exists() or selected_home.is_symlink()):
             raise ValueError("fresh authoring refuses an existing Codex home or session history")
@@ -840,9 +784,13 @@ def run_round(
             "workspace_skills": _CTX.staged_skills(ws),
             "tiering_requested_but_unsupported": bool(subagent_model or background_model),
             "started_at": _now(),
-            "conformance_context": conformance_context if conformance_context is not None else {
-                "schema": "merlin.phase1.conformance_execution.v1", "workspace": str(ws.absolute()),
-                "target": getattr(te, "target", None), "selected_facts": None,
+            "conformance_context": conformance_context
+            if conformance_context is not None
+            else {
+                "schema": "merlin.phase1.conformance_execution.v1",
+                "workspace": str(ws.absolute()),
+                "target": getattr(te, "target", None),
+                "selected_facts": None,
             },
         }
     )
@@ -877,9 +825,12 @@ def run_round(
             raise ValueError("isolated CODEX_HOME must not overlap the candidate workspace")
         if home_attempt:
             state = codex_home.stat()
-            if (codex_home.is_symlink() or codex_home.resolve() != codex_home
-                    or (state.st_dev, state.st_ino) != (home_attempt["home_device"], home_attempt["home_inode"])
-                    or any(codex_home.iterdir())):
+            if (
+                codex_home.is_symlink()
+                or codex_home.resolve() != codex_home
+                or (state.st_dev, state.st_ino) != (home_attempt["home_device"], home_attempt["home_inode"])
+                or any(codex_home.iterdir())
+            ):
                 raise ValueError("fresh retry home changed before preparation")
         elif require_fresh_home and (codex_home.exists() or codex_home.is_symlink()):
             raise ValueError("fresh authoring refuses an existing Codex home or session history")
@@ -899,6 +850,7 @@ def run_round(
         preflight_options = {"runtime_binds": runtime_selector} if runtime_binds is not None else {}
         # Only the trusted composition owner supplies the launch-local plan.
         from .execution import CodexSandboxCommand
+
         prepared_plan = None
         if type(sandbox_command) is CodexSandboxCommand:
             binds = _START.call("runtime_bindings", runtime_selector, codex_home)
@@ -909,9 +861,19 @@ def run_round(
         )
         inner = " ".join(shlex.quote(c) for c in run_cmd)
         cmd = _sandbox_script(
-            script_rounds, rnd, 0, prepared_plan.command(inner) if prepared_plan is not None else
-            _START.call("sandbox_assembly", sandbox_command, inner, ws, bundle,
-                extra_binds=_START.call("runtime_bindings", runtime_selector, codex_home))
+            script_rounds,
+            rnd,
+            0,
+            prepared_plan.command(inner)
+            if prepared_plan is not None
+            else _START.call(
+                "sandbox_assembly",
+                sandbox_command,
+                inner,
+                ws,
+                bundle,
+                extra_binds=_START.call("runtime_bindings", runtime_selector, codex_home),
+            ),
         )
     else:
         cmd = run_cmd
@@ -938,7 +900,8 @@ def run_round(
     _CONTINUE_MSG = (
         continuation_prompt
         if continuation_prompt is not None
-        else profile_authoring_prompt(continuation=True) or (
+        else profile_authoring_prompt(continuation=True)
+        or (
             "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
             "backend under submission/. Follow TASK.md for the selected engine routing and physical "
             "qualification gates. With agent_selfcheck, check capsules an edit affects in one request with "
@@ -954,11 +917,31 @@ def run_round(
     _CONTINUE_MSG += _AS.continuation_guidance(capacity, max_concurrent_subagents)
     _CONTINUE_MSG += _CTX.continuation_note(author_context)
     from .token_admission import ManagedTokens
-    token_control = ManagedTokens(run_dir, rnd, homes=(codex_home,) if sandbox == 'bwrap' else ())
+
+    token_control = ManagedTokens(run_dir, rnd, homes=(codex_home,) if sandbox == "bwrap" else ())
     turn_index = 0
     rc = 0
     active_proc: subprocess.Popen | None = None
     active_pgid: int | None = None
+    control_refusal = None
+
+    def poll_host_control():
+        nonlocal control_refusal, rc
+        if control_refusal is not None:
+            return control_refusal
+        if continuation_stop is None:
+            return None
+        try:
+            reason = continuation_stop()
+            if reason is not None and (type(reason) is not str or not reason.strip()):
+                raise ValueError("continuation control must return None or a nonempty reason")
+            return reason
+        except Exception as exc:
+            control_refusal = f"continuation control refused ({type(exc).__name__})"
+            errors.append(control_refusal)
+            rc = 1
+            return control_refusal
+
     try:
         while True:
             turn_errors_start = len(errors)
@@ -966,29 +949,33 @@ def run_round(
             _START.turn(turn_index)
             admission = token_control.admit(turn_index)
             if admission is not None:
-                tr.emit({'type': 'codex_token_admission', **admission})
-                if not admission['admitted']:
-                    rc = 75; errors.append('author token admission: ' + admission['reason']); break
+                tr.emit({"type": "codex_token_admission", **admission})
+                if not admission["admitted"]:
+                    rc = 75
+                    errors.append("author token admission: " + admission["reason"])
+                    break
             cur_prompt = (
                 prompt_path
                 if turn_index == 0
                 else prompt_path.with_name(f"{prompt_path.stem}.cont{turn_index:02d}{prompt_path.suffix}")
             )
             if not turn_index and admission is not None:
-                cur_prompt.write_text(('' if token_control.phase == 'integration' else msg) + token_control.prompt())
+                cur_prompt.write_text(("" if token_control.phase == "integration" else msg) + token_control.prompt())
             if turn_index:
                 # A previous attempt's final is not this resumed turn's answer.
                 if inner_final.is_file():
                     previous_final = rounds / f"{artifact_prefix}.turn{turn_index - 1:02d}.final.txt"
                     previous_final.write_text(inner_final.read_text())
                     inner_final.unlink()
-                standing = '' if token_control.phase == 'integration' else _CONTINUE_MSG
-                note = _CAP.RESUME_NOTE if resumed_after_capacity else ''
+                standing = "" if token_control.phase == "integration" else _CONTINUE_MSG
+                note = _CAP.RESUME_NOTE if resumed_after_capacity else ""
                 cur_prompt.write_text(standing + note + token_control.prompt())
                 resumed_after_capacity = False
                 if sandbox == "bwrap":
                     _START.call("config_verify", _verify_frozen_config, codex_home, home_info["config_sha256"])
-                resume_argv = _START.call("resume_argv", build_resume_cmd,
+                resume_argv = _START.call(
+                    "resume_argv",
+                    build_resume_cmd,
                     ws,
                     model=resolved,
                     effort=effort,
@@ -1006,8 +993,14 @@ def run_round(
                         rounds,
                         rnd,
                         turn_index,
-                        _START.call("sandbox_assembly", sandbox_command, _inner, ws, bundle,
-                            extra_binds=_START.call("runtime_bindings", runtime_selector, codex_home)),
+                        _START.call(
+                            "sandbox_assembly",
+                            sandbox_command,
+                            _inner,
+                            ws,
+                            bundle,
+                            extra_binds=_START.call("runtime_bindings", runtime_selector, codex_home),
+                        ),
                     )
                 else:
                     cmd = resume_argv
@@ -1016,7 +1009,9 @@ def run_round(
                     from merlin.common.cpu_pool import parse_roster, selected_pool
 
                     with selected_pool(parse_roster(os.environ.get("MERLIN_CODEX_CPUS", ""))):
-                        proc = _START.call("provider_popen", subprocess.Popen,
+                        proc = _START.call(
+                            "provider_popen",
+                            subprocess.Popen,
                             cmd,
                             stdin=in_f,
                             stdout=subprocess.PIPE,
@@ -1088,18 +1083,29 @@ def run_round(
                     sel.register(proc.stdout.fileno(), selectors.EVENT_READ)
                     while True:
                         now = time.monotonic()
-                        if operator_interrupted is None and (continuation_stop is not None or token_control.policy is not None) and now >= next_control_poll:
+                        if (
+                            operator_interrupted is None
+                            and (continuation_stop is not None or token_control.policy is not None)
+                            and now >= next_control_poll
+                        ):
                             next_control_poll = now + _CONTROL_POLL_S
-                            reason = continuation_stop() if continuation_stop is not None else None
+                            reason = poll_host_control()
                             reason = reason or token_control.poll()
                             if reason is not None:
                                 if type(reason) is not str or not reason.strip():
                                     raise ValueError("host continuation stop must return a nonempty reason or None")
                                 operator_interrupted = reason
                                 interrupted_turn = not turn_completed
-                                tr.emit({"type": "codex_operator_interrupt", "reason": reason,
-                                         "turn": turn_index + 1, "turn_incomplete": interrupted_turn,
-                                         "author_process_group": proc.pid, "arrived_at": _now()})
+                                tr.emit(
+                                    {
+                                        "type": "codex_operator_interrupt",
+                                        "reason": reason,
+                                        "turn": turn_index + 1,
+                                        "turn_incomplete": interrupted_turn,
+                                        "author_process_group": proc.pid,
+                                        "arrived_at": _now(),
+                                    }
+                                )
                                 _kill_tree(proc)
                                 if not _process_group_quiescent(proc.pid):
                                     raise RuntimeError("author process group remains live; refusing snapshot handoff")
@@ -1284,6 +1290,8 @@ def run_round(
                 if timed_out:
                     _kill_tree(proc)
                 rc = proc.wait()
+                if control_refusal is not None:
+                    rc = rc or 1
                 # A successful leader exit is not proof that its compiler/tool descendants exited.
                 _terminate_process_group(proc.pid, proc)
                 active_proc, active_pgid = None, None
@@ -1297,18 +1305,29 @@ def run_round(
             remaining = deadline - time.monotonic()
             turn_errors = errors[turn_errors_start:]
             token_control.finish()
-            if (token_control.can_resume_checkpoint(operator_interrupted, thread_id=thread_id,
-                    continuous=continue_session, remaining_s=remaining)
-                    and not timed_out and turn_index < _CONTINUE_MAX_TURNS and remaining > _CONTINUE_MIN_S
-                    and (continuation_stop is None or continuation_stop() is None)):
-                tr.emit({'type': 'codex_token_checkpoint', 'reason': operator_interrupted,
-                         'turn_incomplete': interrupted_turn, 'usage_complete': False})
-                operator_interrupted = None; rc = 0
+            if (
+                token_control.can_resume_checkpoint(
+                    operator_interrupted, thread_id=thread_id, continuous=continue_session, remaining_s=remaining
+                )
+                and not timed_out
+                and turn_index < _CONTINUE_MAX_TURNS
+                and remaining > _CONTINUE_MIN_S
+                and control_refusal is None
+                and poll_host_control() is None
+            ):
+                tr.emit(
+                    {
+                        "type": "codex_token_checkpoint",
+                        "reason": operator_interrupted,
+                        "turn_incomplete": interrupted_turn,
+                        "usage_complete": False,
+                    }
+                )
+                operator_interrupted = None
+                rc = 0
                 recovered_errors.update(range(turn_errors_start, len(errors)))
                 continue
-            host_stop = operator_interrupted or (continuation_stop() if continuation_stop is not None else None)
-            if host_stop is not None and (type(host_stop) is not str or not host_stop.strip()):
-                raise ValueError("host continuation stop must return a nonempty reason or None")
+            host_stop = operator_interrupted or poll_host_control()
             if turn_completed or turn_progress:  # the model served this turn: earlier refusals have passed
                 capacity_consecutive = 0
             backoff_s = _CAP.backoff_s(capacity_consecutive + 1)
@@ -1345,14 +1364,7 @@ def run_round(
                 continue
             control_stop = None
             if continue_session and continuation_stop is not None and not timed_out and rc == 0:
-                try:
-                    control_stop = continuation_stop()
-                    if control_stop is not None and (type(control_stop) is not str or not control_stop):
-                        raise ValueError("continuation control must return None or a nonempty reason")
-                except Exception as exc:
-                    control_stop = f"continuation control refused ({type(exc).__name__})"
-                    errors.append(control_stop)
-                    rc = 1
+                control_stop = poll_host_control()
                 remaining = deadline - time.monotonic()
             stop = (
                 ("host: " + host_stop if host_stop is not None else "")
@@ -1403,8 +1415,13 @@ def run_round(
     final_text = final_path.read_text() if final_path.is_file() else ""
     usage_complete = turns_started > 0 and turns_reported >= turns_started
     unrecovered_errors = [error for index, error in enumerate(errors) if index not in recovered_errors]
-    result_rc = (OPERATOR_INTERRUPTED_EXIT_CODE if operator_interrupted is not None else
-                 124 if timed_out else ((rc or 1) if unrecovered_errors else rc))
+    result_rc = (
+        OPERATOR_INTERRUPTED_EXIT_CODE
+        if operator_interrupted is not None
+        else 124
+        if timed_out
+        else ((rc or 1) if unrecovered_errors else rc)
+    )
     summary = {
         "thread_id": thread_id,
         "turns_started": turns_started,
@@ -1444,9 +1461,15 @@ def run_round(
     _link_for_aet(run_dir, raw_path, rnd)
 
     if operator_interrupted is not None:
-        tr.emit({"type": "result", "subtype": "interrupted", "is_error": True,
-                 "result": "trusted host interrupted author: " + operator_interrupted,
-                 "turn_incomplete": interrupted_turn})
+        tr.emit(
+            {
+                "type": "result",
+                "subtype": "interrupted",
+                "is_error": True,
+                "result": "trusted host interrupted author: " + operator_interrupted,
+                "turn_incomplete": interrupted_turn,
+            }
+        )
         tr.close()
         return result_rc, tpath
     if timed_out:

@@ -3,7 +3,7 @@ title: Original reduction source geometry
 kind: design
 status: current
 owner: targetgen
-last_verified: 2026-10-10
+last_verified: 2026-11-09
 related: [architecture, conditional_source_value_cones]
 code_refs:
   - src/merlin/targetgen/original_reduction_sources.py
@@ -54,3 +54,9 @@ operation ownership, alias/effect domain, command/resource mapping, runtime or
 phase admission. Independently selected references and packing remain optional
 source inputs with their existing mandatory gaps. Neither factory availability
 nor finite synthetic controls reissue the historical original coverage ledger.
+
+`original_reduction_sources` owns supported reduction construction and shape
+relations. `phase0.original_call_sources` observes the original call roster;
+`declared_run` selects the independent construction route. A later transport or
+ordinary-emission context must retain the selected source schema and complete
+unknowns; it cannot silently reinterpret a frozen earlier record.

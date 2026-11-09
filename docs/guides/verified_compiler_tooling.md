@@ -3,9 +3,36 @@ title: Shared transformations, ISA generation and Lean verification
 kind: guide
 status: current
 owner: ir
-last_verified: 2026-10-19
+last_verified: 2026-11-09
 related: [verified_compiler_roadmap, compiler_verification, phase0_specification, compiler_authoring_prompts, phase0_phase1_setup]
-code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, src/merlin/llvmlower/graph_optimizations.py, src/merlin/llvmlower/host_graph_policy.py, src/merlin/llvmlower/host_optimization_request.py, src/merlin/llvmlower/layout_conformance.py, src/merlin/llvmlower/layout_propagation.py, src/merlin/llvmlower/automatic_gathers.py, src/merlin/llvmlower/im2col_padding.py, src/merlin/llvmlower/im2col_padding_check.py, src/merlin/llvmlower/lower.py, src/merlin/llvmlower/device_build.py, src/merlin/llvmlower/device_object_optimization.py, src/merlin/llvmlower/host_transform_chain.py, src/merlin/runtime/backends/spike_model.py, src/merlin/compile/baremetal_model.py, src/merlin_experiments/phase1/brokers, src/merlin_experiments/phase1/feedback/compiler_profile_child.py]
+code_refs:
+  - src/merlin/llvmlower/graph_optimizations.py
+  - src/merlin/llvmlower/host_graph_policy.py
+  - src/merlin/llvmlower/host_optimization_request.py
+  - src/merlin/llvmlower/layout_conformance.py
+  - src/merlin/llvmlower/layout_propagation.py
+  - src/merlin/llvmlower/automatic_gathers.py
+  - src/merlin/llvmlower/im2col_padding.py
+  - src/merlin/llvmlower/im2col_padding_check.py
+  - src/merlin/llvmlower/lower.py
+  - src/merlin/llvmlower/device_build.py
+  - src/merlin/llvmlower/device_object_optimization.py
+  - src/merlin/llvmlower/host_transform_chain.py
+  - src/merlin/runtime/backends/spike_model.py
+  - src/merlin/model.py
+  - src/merlin_experiments/phase1/feedback/compiler_profile_child.py
+  - src/merlin/transforms/pipeline.py
+  - src/merlin/transforms/analyses.py
+  - src/merlin/transforms/resource_allocation.py
+  - src/merlin/verification/lean_checker.py
+  - src/merlin/verification/lean_contract.py
+  - src/merlin/verification/lean_emission_context.py
+  - src/merlin/targetgen/common_transforms.py
+  - src/merlin/targetgen/tool_profile_shared.py
+  - src/merlin/compiler/lower/scalar/pipeline.py
+  - src/merlin/compiler/backend/scalar.py
+  - src/merlin/verification/lean_cli.py
+  - src/merlin_experiments/phase1/brokers/common_transforms.py
 ---
 
 # Shared transformations, ISA generation and Lean verification
@@ -19,9 +46,11 @@ records the remaining pass groups and their required evidence.
 
 ## Select a fresh experiment release
 
-Fresh `corpus prepare` selects `merlin.common_compiler_substrate.v3`. Direct
+Fresh `corpus prepare` selects `merlin.common_compiler_substrate.v26`. Direct
 bundle generation selects it with
-`--common-substrate merlin.common_compiler_substrate.v3`. Supply an explicit
+`--common-substrate merlin.common_compiler_substrate.v26`. The V1/V2/V3
+descriptions below describe when those capabilities entered the retained
+protocol; earlier inventories require their exact frozen releases. Supply an explicit
 `--lean-toolchain-manifest` and the reviewed `--host-index-bits` of the selected
 host ABI. Missing formal tools cannot satisfy covered obligations. V1 retains
 its original source membership and formal registry; it cannot request the new
@@ -118,7 +147,7 @@ SHA256 of the actual source. A finished LLVM artifact cannot request tensor
 fusion or structured buffer passes. Device operations are not rewritten as
 host computation.
 
-For a fresh V3 experiment, a compiler can emit the optional command-buffer
+For an explicitly selected release admitting this V3 capability, a compiler can emit the optional command-buffer
 `host_optimization_request` defined in the original command-buffer schema.
 The same normal and compile-only object paths consume it. It supplies neither
 a pass pipeline nor semantic/runtime permissions. The original typed build
@@ -170,7 +199,7 @@ verification. One exercised dependency is Lean-MLIR revision
 Prepare the shared mathematical library and its file inventory explicitly:
 
 ```sh
-python -m merlin.verify.lean_cli prepare-toolchain \
+python -m merlin.verification.lean_cli prepare-toolchain \
   --executable "$LEAN_EXECUTABLE" \
   --library-root "$LEAN_STANDARD_LIBRARY" \
   --library-root "$LEAN_MLIR_BUILD_LIBRARY" \
@@ -392,7 +421,8 @@ check those addresses during terminal instruction lowering; metadata alone
 does not demonstrate generated instruction use or RTL conformance.
 
 These additional APIs require their exact leaves in the selected common source
-inventory; fresh V2 includes them. Earlier frozen inventories retain their membership. Their structural
+inventory; V2 introduced them, and the selected current inventory must retain
+their exact source leaves. Earlier frozen inventories retain their membership. Their structural
 and allocation checks are not new Lean proof receipts or a complete memory
 safety theorem; extending formal coverage remains a separate admission step.
 
@@ -643,7 +673,7 @@ gather, convolution primitive, residency or asynchronous transfer capability.
 For example, an original caller can compare the same ordinary build arguments:
 
 ```python
-from merlin.compile.baremetal_model import compile_saved_model
+from merlin.model import compile_saved_model
 from merlin.llvmlower.optional_passes import Selection, applied
 
 with applied(Selection.parse("automatic-host-gathers")):
@@ -1142,7 +1172,7 @@ verifiers, encoding/decoding mechanics, semantic/effect records and documentatio
 It belongs in the candidate's OOT workspace. It supplies neither a tensor-to-ISA
 lowering nor a device schedule, tiling policy or allocation strategy.
 
-In EL6, `python -m merlin.verify.lean_cli inspect` reports the fixed formal domain.
+In EL6, `python -m merlin.verification.lean_cli inspect` reports the fixed formal domain.
 `check --before ... --after ... --entry ... --toolchain ... --work-root ...`
 checks actual supported scalar IR. An optional resolved ISA model supplies
 admitted primitive meanings; it cannot turn unknown stateful instructions into
@@ -1162,3 +1192,10 @@ build/link success and measured performance separately. A proof or generated
 dialect cannot replace those other gates. Derive development tests from public
 semantics, selected hardware constraints and allowed development programs;
 compiler answers and private validation programs remain outside author inputs.
+
+Current scalar pass construction lives in `compiler/lower/scalar/pipeline.py`;
+`compiler/backend/scalar.py` supplies the generic scalar provider. The legacy
+`llvmlower` interfaces above retain their explicitly selected host workflows.
+RVV implementation belongs to its OOT provider. Non-LLVM device artifacts remain
+valid backend outputs; the LLVM transform-chain example applies only to a route
+with that admitted object consumer.

@@ -3,11 +3,11 @@ title: Scalar pointwise lane packets
 kind: reference
 status: current
 owner: llvmlower
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [docs/reference/scalar_pointwise_unroll.md, docs/reference/architecture.md]
 code_refs:
   - src/merlin/llvmlower/scalar_pointwise_packet.py
-  - merlin/tests/ir/test_scalar_pointwise_packet.py
+  - src/merlin/compiler/selection/features.py
 ---
 
 # Scalar pointwise lane packets
@@ -67,3 +67,9 @@ together. Existing features and the empty policy keep their original behavior.
 The multiplication choice supplies no profitability or floating environment
 permission. Complete matched body costs and unchanged whole-model accuracy are
 required before a schedule is enabled for a build.
+
+All these shared alternatives are registered by
+`scalar_pointwise_packet.ensure_registered`. Registration adds an available
+choice; it does not select a CPU resource or an OOT implementation. The separate
+`packet_scalar_pointwise_two_multiplications_4` choice admits exactly two
+rounded multiplications and retains the same typed ordering and tail obligations.

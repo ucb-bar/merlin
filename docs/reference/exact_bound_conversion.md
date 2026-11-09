@@ -3,9 +3,11 @@ title: "Exact finite bound conversion"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-06
+last_verified: 2026-11-09
 related: [ordered_fma_certificates, quantized_host_optimizations]
-code_refs: [src/merlin/llvmlower, merlin/runtime/c]
+code_refs:
+  - src/merlin/llvmlower/exact_bound_conversion.py
+  - src/merlin/llvmlower/source_attention_frontier.py
 ---
 
 # Exact finite bound conversion
@@ -18,8 +20,9 @@ nontrapping and exception flags unobserved. The default is no capability.
 
 The source attention emitter accepts `exact_bound_conversion=contract` and
 requires separately provided `MERLIN_F32_EXACT_FLOOR_FROM_F64` and
-`MERLIN_F32_EXACT_CEIL_FROM_F64` hooks. Merlin contains no CPU instructions.
-Provider/compiler/ABI evidence belongs to the selected host provider.
+`MERLIN_F32_EXACT_CEIL_FROM_F64` hooks. This capability emitter supplies no CPU instruction encoding; it only
+selects and checks the required hook declarations. Provider/compiler/ABI evidence
+and the hook implementation belong to the selected host provider.
 
 Only the original bound finish, admitted product-row finish and admitted
 separable-radius finish consume the hooks. Their existing contracts prove

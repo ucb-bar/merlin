@@ -3,7 +3,7 @@ title: Shared compiler pass contracts
 kind: reference
 status: current
 owner: core
-last_verified: 2026-11-08
+last_verified: 2026-11-09
 related: [../design/shared_phase1_scheduling.md, ../guides/shared_offload_selection.md]
 code_refs:
   - src/merlin/transforms/pipeline.py
@@ -83,6 +83,16 @@ code_refs:
 
 # Shared compiler pass contracts
 
+The active permanent suite is capped at 150 collected cases, including
+parameterization. Current direct scheduling and custody examples include
+`merlin/tests/infra/test_schedule_pipeline.py`, `test_dense_array_retention.py`
+and `test_sdk_custody.py`. Use the collection-budget and execution commands in
+[repository structure](repo_structure.md). Regression family names and measured
+controls below describe their original Git/frozen evidence; they are not a
+second active suite. Their retired pytest commands remain in that original
+instrument rather than being presented as runnable commands for this checkout. Retiring those matrices changes neither the shared
+algorithms nor independent acceptance thresholds, facts or source grants.
+
 The ordinary captured-policy host preparation path automatically legalizes
 eligible bounded quantization arithmetic. Compact dense scheduling is a shared
 compiler entry point over the existing counted-loop kernel IR. Its encoder and
@@ -137,14 +147,10 @@ see [checked whole-model offload alternatives](../guides/shared_offload_selectio
 The source plan cannot grant target support or substitute for realized-program
 and complete-execution verification.
 
-Executable examples include
-`merlin/tests/infra/test_configuration_elimination.py` (persistent writes,
-resets and launch-state changes),
-`merlin/tests/infra/test_readout_model_fusion.py` (complete integer graphs and
-unsupported physical compositions), and
-`merlin/tests/ir/test_row_normalization.py` (complete rows, projected masks,
-carried state and source mutations). Their neutral execution models test shared
-mechanisms; they do not independently qualify a hardware adapter.
+The original configuration, readout-model fusion and row-normalization
+regression inputs remain historical mechanism evidence. Current direct tests
+exercise selected schedule realization, actual-byte decoding and source custody;
+their neutral models do not independently qualify a hardware adapter.
 
 ## Inputs and ownership
 
@@ -152,6 +158,9 @@ mechanisms; they do not independently qualify a hardware adapter.
 through a caller's LLVM builder. The caller owns instruction encoding and
 physical qualification. Completion and configuration annotations are rejected
 before emission; this bridge does not infer asynchronous execution semantics.
+Its typed i1 conjunction preserves statically folded boolean coordinates when
+combined with an SSA predicate. Unsupported arithmetic and non-i1 predicate
+operands still refuse; this is no new effect or completion model.
 
 `Window2D.emit_row_run` emits a target-neutral predicate for an NHWC window's
 rows to form one in-bounds affine rectangle. It checks output-row crossings,
@@ -318,14 +327,8 @@ are checked, but imported native/system headers and implicit linker/library
 resolution still need independent closure. Rechecking complete mutable input
 trees and direct tools/objects costs I/O; no stat-only shortcut or performance
 gain is claimed. They confer no new
-numerical or hardware execution qualification. The focused transaction tests
-and real ordinary build/relink/functional-simulator state test run with:
-
-```bash
-python -B -m pytest merlin/tests/infra/test_full_model_lowering_cache.py \
-  merlin/tests/infra/test_model_check_relink.py merlin/tests/infra/test_model_check_full.py \
-  -p no:cacheprovider --basetemp "$TMPDIR/full-model-input-cache"
-```
+numerical or hardware execution qualification. The original frozen transaction
+and ordinary build/relink/functional-simulator controls retain that stated scope.
 
 `verify_completed_recipe(..., terminal_read_policy="once")` is the ordinary
 default. The terminal command's output metadata is checked first; its content
@@ -388,13 +391,6 @@ changed file bytes, waive numerical checks or qualify a hardware cost model.
 No target callback timing fields or opaque output are interpreted as cycle costs.
 The same shared clock/verification rules apply to all selected targets.
 
-```bash
-python -B -m pytest merlin/tests/infra/test_compile_wall_timing.py \
-  merlin/tests/runtime/test_compilation_recipe.py \
-  merlin/tests/infra/test_model_check_compute.py \
-  -p no:cacheprovider --basetemp "$TMPDIR/compile-wall-timing"
-```
-
 ### Generated weight storage
 
 Ordinary `c_runtime.generate` defaults to streamed weight assembly. It retains
@@ -454,14 +450,6 @@ payload length and the compiler's 1 MiB I/O work buffer are not device traffic
 or physical transfer granules. The pointer ABI is not converted to the separate
 memref-descriptor model runtime.
 
-```bash
-python -B -m pytest merlin/tests/runtime/test_weight_payload.py \
-  merlin/tests/runtime/test_entry_weight_projection.py \
-  merlin/tests/runtime/test_blob_weights.py \
-  merlin/tests/infra/test_full_model_lowering_cache.py \
-  -p no:cacheprovider --basetemp "$TMPDIR/streamed-weights"
-```
-
 Shared pass-state types now live in `merlin.transforms.pipeline_state`.
 `transforms.pipeline` reexports the identical objects and retains its existing
 host verification broker and structured-transform gate. Newly generated
@@ -500,6 +488,12 @@ and a deterministic library digest. Source/resource changes during export
 prevent completed manifest publication. Existing standalone dense exports keep
 their original format.
 
+Current SDK26 explicitly exposes `affine_gather_runs` and `compact_dense_group`,
+whose generic implementations were already in its source closure. Current
+compact-dense receipts name SDK26 independently of whether loop transforms are
+selected. This corrects source attribution; it does not change loop-transform
+legality or widen an earlier frozen SDK's membership or grants.
+
 From an installed source package, also pass `--license-directory` naming the
 explicitly selected directory containing its `LICENSE` and `NOTICE`. Checkout
 exports use their own project files. The writer does not search another
@@ -528,15 +522,13 @@ formal-verifier authority and optional native e-graph build resources are not
 public SDK services. External version observations do not qualify dependency
 implementations or hardware, and the bundle is not a Python sandbox.
 
-The export regression runs twelve cases covering all seven families in an isolated
-`python -I -S` process. Only the bundle, selected third-party roots and neutral
-test fixtures are available; every imported Merlin module and package path is
-checked to originate in the bundle. Existing ordinary entry points emit actual
-C/encoded programs, execute independent native primitives, and check complete
-outputs/state, rectangular tiling, widths, separate/aliased storage, actual
-completion, asynchronous allocation through final bytes, source admission and
-missing drains. These are portable
-mechanism tests, not qualification of a real accelerator or complete model.
+Historical export qualification exercised all seven families in an isolated
+`python -I -S` process, with imported Merlin origins restricted to the selected
+bundle. Those original controls remain frozen evidence rather than a hidden
+twelve-case matrix in the permanent suite. Current SDK custody tests retain
+actual source/package membership, shared-algorithm mutation, namespace and
+proof-policy refusal, public/private grants and frozen inventory checks.
+Such custody evidence does not qualify a real accelerator or complete model.
 
 `repair(stage=..., reason=...)` clears analyses and restarts an already selected
 legal fallback within an explicit repair budget. It cannot revive a failed
@@ -659,14 +651,6 @@ canaries and carried state are checked independently. These instrumented host
 observations do not measure cache/DRAM traffic, device transfers, machine spill
 traffic or accelerator timing. Final native/model execution remains necessary.
 
-```bash
-python -B -m pytest merlin/tests/ir/test_permuted_destinations.py \
-  merlin/tests/ir/test_packed_producer_destinations.py \
-  merlin/tests/ir/test_automatic_destinations.py \
-  merlin/tests/ir/test_automatic_rounding.py \
-  -p no:cacheprovider --basetemp "$TMPDIR/permuted-destinations"
-```
-
 The separate public synthetic fixture
 `merlin/tests/ir/producer_packing_connected.mlir` connects two exact signed
 integer contractions through an activation cast/clamp and channel shuffle. The
@@ -678,24 +662,12 @@ input/weight and caller guard. Full raw output, input-after-call and guard array
 are retained for independent inspection. Both contractions remain in the source;
 this fixture supplies no accelerator implementation.
 
-```bash
-python -B -m pytest merlin/tests/ir/test_packed_producer_connected.py \
-  -p no:cacheprovider -o tmp_path_retention_policy=all \
-  --basetemp "$TMPDIR/connected-packing"
-```
-
 An optional public compiler intake test selects the exact original 16-file V26
 package explicitly. It invokes only the package's declared parse command on
 original and transformed source, reopens actual invocation receipts, and checks
 that malformed input refuses. It preserves the three-result logical ABI. Set
 `MERLIN_TEST_GEMMINI_V26_PACKAGE` to the compiler directory documented in
 [portable instruction admission](../guides/portable_generated_target_admission.md).
-
-```bash
-python -B -m pytest merlin/tests/gemmini/test_public_packing_source_intake.py \
-  -p no:cacheprovider -o tmp_path_retention_policy=all \
-  --basetemp "$TMPDIR/public-packing-intake"
-```
 
 Parser acceptance is separate from target emission, fresh capture, live
 linked-ELF admission and complete accelerator execution. These tests neither
@@ -965,14 +937,6 @@ To reproduce the paired experiment from the repository root, select the existing
 MLIR/native toolchain and functional simulator, set `TMPDIR` to the task's
 temporary directory, and run:
 
-```sh
-PYTHONPATH="$PWD/src" python -B -m pytest -p no:cacheprovider \
-  merlin/tests/infra/test_dense_source_whole_model.py \
-  merlin/tests/infra/test_dense_source_profile.py \
-  --basetemp "$TMPDIR/source-dense-reproduction" \
-  -o tmp_path_retention_policy=all
-```
-
 Each retained case writes `out/pair.json`, actual build recipes, console bytes,
 catalog commands and the admitted source. Missing native tools skip execution;
 a skip does not qualify the source-to-program path. The adjacent
@@ -1078,13 +1042,7 @@ Actual command/load counters match reconstructed loop effects. Host
 packing and postprocessing counts are reported separately and remain unchanged.
 This is a neutral graph experiment, not a real full-model or hardware result.
 
-Reproduce the paired records without downloads:
-
-```sh
-python -B -m pytest merlin/tests/infra/test_selected_dense_contracts.py \
-  -p no:cacheprovider --basetemp "$TMPDIR/selected-dense" \
-  -o junit_family=xunit1 --junitxml "$TMPDIR/selected-dense-results.xml"
-```
+Reproduce the paired records with their original Git/frozen instrument.
 
 JUnit properties record scheduling times, per-arm C source bytes, joint native
 library size, actual commands, requested load bytes, host packing traffic,
@@ -1497,14 +1455,7 @@ overwrites, falsely synchronous final decoding and removal of the encoded wait
 must fail. A runtime that acknowledges a wait without completing its copy has
 matching command/byte counters but fails the complete numerical reference.
 These tests qualify neither a real accelerator nor its whole-model integration.
-Run them with the selected native C compiler and task-local temporary storage:
-
-```sh
-PYTHONPATH="$PWD/src" python -B -m pytest -p no:cacheprovider \
-  merlin/tests/infra/test_async_schedule_pipeline.py \
-  --basetemp "$TMPDIR/async-schedule-reproduction" \
-  -o tmp_path_retention_policy=all
-```
+These original records require their recorded Git/frozen instrument and toolchain.
 
 Each paired case retains source/realized schedules, selected RTL/software files,
 actual encoded segments, native machine source/library, complete invocation
@@ -1523,13 +1474,7 @@ checks but fails independent execution, demonstrating the qualification boundary
 Mutations also cover capacities, selectors, ownership, missing initialization,
 waits, lying projections, rewritten addresses, final words and stale inputs.
 
-Reproduce the paired records:
-
-```sh
-python -B -m pytest merlin/tests/infra/test_selected_storage_contracts.py \
-  -p no:cacheprovider --basetemp "$TMPDIR/selected-storage" \
-  -o junit_family=xunit1 --junitxml "$TMPDIR/selected-storage-results.xml"
-```
+These original records require their recorded Git/frozen instrument and toolchain.
 
 JUnit records both compilation times, exact encoded sizes, actual commands,
 requested read/write bytes, observed temporary address high-water marks and
@@ -1761,23 +1706,6 @@ compositions and a source-preserving runtime ABI; the dense-only catalog cannot
 stand in for those missing hooks. No target repository is modified.
 
 Reproduce source mutations, native execution and ordinary paired model builds:
-
-```sh
-python -B -m pytest -p no:cacheprovider \
-  merlin/tests/infra/test_pointwise_source.py \
-  merlin/tests/infra/test_source_pointwise_lowering.py \
-  merlin/tests/infra/test_source_model_transaction.py \
-  merlin/tests/infra/test_mixed_source_model.py \
-  merlin/tests/infra/test_spilled_pointwise_source.py \
-  merlin/tests/infra/test_spilled_pointwise_model.py \
-  merlin/tests/infra/test_pointwise_source_whole_model.py \
-  merlin/tests/infra/test_configured_pointwise.py \
-  merlin/tests/infra/test_configured_pointwise_model.py \
-  merlin/tests/infra/test_shared_scheduling_export.py \
-  --basetemp "$TMPDIR/source-pointwise" \
-  -o tmp_path_retention_policy=all \
-  -o junit_family=xunit1 --junitxml "$TMPDIR/source-pointwise.xml"
-```
 
 The recurrent model retains two host contractions, host addition, input packing,
 output copies, history, positions and unchanged inputs/weights. Baseline and
@@ -2035,12 +1963,6 @@ also cover observers, overwrites, shifted aliases and unsupported completion.
 
 Reproduce the selected-interface pair without downloads:
 
-```sh
-python -B -m pytest merlin/tests/infra/test_selected_fusion_contracts.py \
-  -p no:cacheprovider --basetemp "$TMPDIR/selected-fusion" \
-  -o junit_family=xunit1 --junitxml "$TMPDIR/selected-fusion-results.xml"
-```
-
 JUnit records compiler time, exact encoded size, executed commands, actual
 requested read/write bytes, selected inputs and shared source hashes. Native
 host-call samples include marshalling/interpreter costs and establish no device
@@ -2190,13 +2112,7 @@ final code growth are exercised. A faulty native spill changes results despite
 identical declarations and command/traffic counters, disproving qualification
 based solely on those declarations.
 
-Reproduce with the project's Python environment:
-
-```sh
-python -B -m pytest merlin/tests/infra/test_selected_spill_contracts.py \
-  merlin/tests/infra/test_device_spills.py \
-  -p no:cacheprovider --basetemp "$TMPDIR/selected-spill-check"
-```
+These original records require their recorded Git/frozen instrument and toolchain.
 
 These neutral executions do not qualify a real hardware implementation. Existing
 targets still need public selected device-register windows, exact software
@@ -2455,13 +2371,6 @@ the same library version, source program, hardware limits and inputs. Observed
 launch counts, commands and requested bytes are separate results; fewer launches
 do not establish latency improvement.
 
-```sh
-python -B -m pytest merlin/tests/infra/test_selected_program_contracts.py \
-  merlin/tests/infra/test_selected_program_control.py \
-  merlin/tests/infra/test_program_limits.py \
-  -p no:cacheprovider --basetemp "$TMPDIR/selected-program-check"
-```
-
 No target repository supplies this boundary through this change. Real-target
 decoder/launch qualification and complete model integration remain unresolved.
 These word-stream checks do not count instructions in arbitrary target C or a
@@ -2533,12 +2442,6 @@ source exercises different widths, arithmetic order and separate memories.
 An intentionally incorrect per-chunk lane reset fails independent output checks.
 
 Reproduce with the native toolchain and pinned reference available:
-
-```sh
-python -B -m pytest merlin/tests/infra/test_row_softmax.py \
-  merlin/tests/ir/test_cpu_softmax.py -p no:cacheprovider \
-  --basetemp "$TMPDIR/row-softmax-check"
-```
 
 The entry returns the actual `Kernel`, physical views, realization and pass
 records. `result.emit_c(instruction_set, symbol=...)` uses the existing emitter
@@ -2785,22 +2688,7 @@ expand primitive bodies. Static call budgets do not replace final linked-image
 checks. Host-only call samples include dispatch and surrounding arithmetic and
 do not establish an accelerator speedup or a calibrated cost model.
 
-Reproduce with the existing native toolchain and pinned reference:
-
-```sh
-python -B -m pytest merlin/tests/infra/test_selected_row_contracts.py \
-  merlin/tests/infra/test_source_rows.py \
-  merlin/tests/infra/test_selected_row_attention.py \
-  merlin/tests/infra/test_row_softmax.py \
-  -p no:cacheprovider --basetemp "$TMPDIR/selected-row-check"
-
-# Keep the ordinary model artifacts for independent reopening.
-python -B -m pytest merlin/tests/infra/test_source_row_model.py \
-  merlin/tests/infra/test_source_row_lowering.py \
-  merlin/tests/infra/test_source_row_device_admission.py \
-  -o tmp_path_retention_policy=all \
-  --basetemp "$TMPDIR/source-row-model-check"
-```
+These original records require their recorded Git/frozen instrument and toolchain.
 
 Limits of this selected C route remain explicit: source/output windows must be
 zero-based logical argument windows; general physical pointer relocation is a
@@ -2871,13 +2759,7 @@ conformance use the existing `PipelineSession` with numerical, resource and
 library identities. These are structural source checks outside the existing
 integer Lean domains; machine equivalence is not claimed.
 
-Reproduce the paired native experiment without model downloads:
-
-```sh
-python -B -m pytest merlin/tests/ir/test_row_normalization.py \
-  -p no:cacheprovider --basetemp "$TMPDIR/source-row-test" \
-  -o junit_family=xunit1 --junitxml "$TMPDIR/source-row-pair.xml"
-```
+These original records require their recorded Git/frozen instrument and toolchain.
 
 Native tests compare all output bits with the unchanged baseline and independent
 ordered arithmetic/libm references, including tails, NaNs and infinities. Complete

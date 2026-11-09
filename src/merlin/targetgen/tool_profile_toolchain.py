@@ -63,7 +63,7 @@ class _SelectedMembers:
         result = {}
         while position < len(self.keys):
             parts, path = self.keys[position]
-            if parts[:len(prefix)] != prefix:
+            if parts[: len(prefix)] != prefix:
                 break
             result[path] = self.members[path]
             position += 1
@@ -159,11 +159,17 @@ def _private_root_records(bundle, document, manifest, roots, manifest_sha):
             continue
         members = inventory.under(root)
         for closed in _closed_subdirectories(root, members, (*existing, *protected)):
-            record.append({
-                "path": str(closed), "note": "closed private formal verification library",
-                "closed_toolchain_root": {"schema": _PRIVATE_ROOT_SCHEMA, "manifest": str(manifest),
-                                          "manifest_sha256": manifest_sha},
-            })
+            record.append(
+                {
+                    "path": str(closed),
+                    "note": "closed private formal verification library",
+                    "closed_toolchain_root": {
+                        "schema": _PRIVATE_ROOT_SCHEMA,
+                        "manifest": str(manifest),
+                        "manifest_sha256": manifest_sha,
+                    },
+                }
+            )
     return record
 
 
@@ -186,7 +192,8 @@ def validate_private_toolchain_roots(bundle, *, snapshot_root=None, repo=None):
             continue
         selection = row["closed_toolchain_root"]
         if (
-            type(selection) is not dict or set(selection) != {"schema", "manifest", "manifest_sha256"}
+            type(selection) is not dict
+            or set(selection) != {"schema", "manifest", "manifest_sha256"}
             or selection["schema"] != _PRIVATE_ROOT_SCHEMA
         ):
             raise ValueError("private toolchain root selection is malformed")
@@ -279,12 +286,18 @@ def attach_selected_toolchain(bundle: dict, tools: tuple[str, ...], manifest: Pa
         runtime_paths = _public_runtime_members(document, resolve_member)
         for path in sorted(runtime_paths):
             if not any(row.get("path") == path for row in bundle["allowed"]):
-                bundle["allowed"].append({"path": path, "mode": "ro",
-                    "note": "selected ordinary OS runtime; not formal authoring capability"})
+                bundle["allowed"].append(
+                    {
+                        "path": path,
+                        "mode": "ro",
+                        "note": "selected ordinary OS runtime; not formal authoring capability",
+                    }
+                )
         role = "allowed" if "lean_proof_authoring" in tools else "host_inputs"
         private_roots = (
             _private_root_records(bundle, document, selected, import_roots, manifest_sha)
-            if role == "host_inputs" else []
+            if role == "host_inputs"
+            else []
         )
         grouped = [Path(row["path"]) for row in private_roots]
         for path in (str(selected), *paths):
@@ -315,7 +328,13 @@ def attach_selected_toolchain(bundle: dict, tools: tuple[str, ...], manifest: Pa
     return toolchain
 
 
-def require_packaged_mathematics(manifest: Path, source_root: Path, modules: tuple[str, ...]) -> None:
+def require_packaged_mathematics(
+    manifest: Path,
+    source_root: Path,
+    modules: tuple[str, ...],
+    *,
+    mathematics_directory: Path | None = None,
+) -> None:
     """Presence and exact source pins, not runtime or source/product qualification."""
     selected = Path(manifest)
     document = json.loads(selected.read_text())
@@ -325,8 +344,13 @@ def require_packaged_mathematics(manifest: Path, source_root: Path, modules: tup
         return path if path.is_absolute() else selected.parent / path
 
     members = {resolve(row["path"]): row["sha256"] for row in document["files"]}
+    # The selected substrate owns its data paths. Preserve the original direct
+    # caller contract while fresh profiles pass their declared resource owner.
+    mathematics = (
+        mathematics_directory if mathematics_directory is not None else source_root / "merlin/verify/lean/Merlin"
+    )
     for module in modules:
-        source = source_root / "merlin/verify/lean/Merlin" / (module + ".lean")
+        source = mathematics / (module + ".lean")
         expected = hashlib.sha256(source.read_bytes()).hexdigest()
         if not any(
             path.name == module + ".lean" and path.parent.name == "Merlin" and sha == expected

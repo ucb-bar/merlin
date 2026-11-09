@@ -3,7 +3,7 @@ title: Select checked whole-model offload alternatives
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-19
+last_verified: 2026-11-09
 related: [../reference/shared_compiler_passes.md, shared_pass_phase2.md]
 code_refs:
   - src/merlin/llvmlower/offload_plan.py
@@ -17,6 +17,7 @@ code_refs:
   - src/merlin/llvmlower/native_source_model.py
   - src/merlin/perf/offload_profitability.py
   - src/merlin/runtime/host_provider.py
+  - src/merlin/compiler/planning/execution.py
 ---
 
 # Select checked whole-model offload alternatives
@@ -240,7 +241,7 @@ different entry require a new plan rather than an ordinal-only rebinding.
 ```python
 from dataclasses import replace
 
-from merlin.compile.baremetal_model import compile_saved_model
+from merlin.model import compile_saved_model
 from merlin.llvmlower.device_offload_selection import bind_device_offload_source
 from merlin.llvmlower.offload_plan import realize_offload_plan
 
@@ -393,3 +394,10 @@ integration must carry the original qualified candidate and runtime/cost owners,
 preregister the same versioned implementation and checks for all treatments,
 and refuse missing public backend hooks. It must not supply a protected
 reference compiler through a host service.
+
+The current compiler's general execution-plan records live under
+`compiler/planning/`. The source-bound interfaces in this guide are narrower
+ordinary-build adapters: they realize only their admitted singleton unchanged-ABI
+choices. They do not automatically materialize heterogeneous handoffs, arbitrary
+fusion or new backend proposal kinds. Such routes require their separately
+checked boundary, artifact and dispatch contracts.

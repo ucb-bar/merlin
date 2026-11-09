@@ -3,13 +3,12 @@ title: Bounded independent graph topology coverage
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-08
+last_verified: 2026-11-09
 related: [component_execution_budget, component_integer_bounds, component_scale_generalization]
 code_refs:
   - src/merlin_experiments/phase0/component_graph_variants.py
   - src/merlin_experiments/phase0/component_graph_relations.py
   - src/merlin_experiments/phase0/component_coverage_inputs.py
-  - packages/merlin-experiments/tests/test_component_graph_variants.py
 ---
 
 # Graph interaction coverage
@@ -124,3 +123,8 @@ They inspect actual operation counts in emitted MLIR, logical epoch/source
 effects, oversized preallocation refusals, missing pair denominators, exact
 overflow refusals, immutable roster replay, and identical corruption of escaped
 outputs in both variants while final outputs remain correct.
+
+`component_graph_variants.program` constructs the selected representation only
+after budget admission. `component_graph_relations` reopens both complete source
+and golden rosters. The separate source-only graph plan can reuse the topology
+owner, but cannot convert its compile/link results into these numerical witnesses.

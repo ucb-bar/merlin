@@ -14,8 +14,6 @@ from dataclasses import asdict
 from pathlib import Path
 from types import MethodType
 
-from merlin_timing import observations as O
-
 from merlin.llvmlower.reviewed_pass_capabilities import PassCapabilityBinding, ReviewedPassCapability
 from merlin.perf import capsule_roofline as R
 from merlin.runtime import _native_files as F
@@ -25,16 +23,31 @@ from .contracts import StageGateError, document_sha256
 MECHANISM = "emitted_schedule_service_effects"
 SCHEMA = "merlin.original_emitted_service_selection.v1"
 _EFFECT_FIELDS = {
-    "schema", "source_sha256", "elf_sha256", "scope_sha256", "device_sha256", "scope",
-    "resources", "events", "completion_chains", "unresolved", "provenance", "interpretation",
-    "attainment", "measurement_comparability", "convergence_eligible",
+    "schema",
+    "source_sha256",
+    "elf_sha256",
+    "scope_sha256",
+    "device_sha256",
+    "scope",
+    "resources",
+    "events",
+    "completion_chains",
+    "unresolved",
+    "provenance",
+    "interpretation",
+    "attainment",
+    "measurement_comparability",
+    "convergence_eligible",
 }
 
 
 def _callback(owner, name):
     callback = getattr(owner, name, None)
-    if (type(callback) is not MethodType or callback.__self__ is not owner
-            or callback.__func__ is not getattr(type(owner), name, None)):
+    if (
+        type(callback) is not MethodType
+        or callback.__self__ is not owner
+        or callback.__func__ is not getattr(type(owner), name, None)
+    ):
         raise StageGateError("service effects require the original bound owner callback")
     source = Path(inspect.getsourcefile(callback.__func__) or "")
     if not source.is_absolute():
@@ -94,29 +107,39 @@ class SelectedServiceEffects:
 
     def project(self, *, member_source_sha256, compiled, report_path, invocation_path, counter_review_path):
         """Consume current original products, leaving all performance gates alone."""
+        from merlin_timing import observations as O
+
         self.revalidate()
         if not _source_digest(member_source_sha256):
             raise StageGateError("service effects require the original frozen member source")
         diagnostics = compiled.get("candidate_diagnostics") or {}
         artifacts = diagnostics.get("artifacts") or {}
         join = diagnostics.get("source_emission_join") or {}
-        if (compiled.get("status") != "observed" or join.get("status") != "verified"
-                or not _source_digest(join.get("source_sha256"))
-                or join["source_sha256"] != (artifacts.get("source") or {}).get("sha256")):
+        if (
+            compiled.get("status") != "observed"
+            or join.get("status") != "verified"
+            or not _source_digest(join.get("source_sha256"))
+            or join["source_sha256"] != (artifacts.get("source") or {}).get("sha256")
+        ):
             return unknown("current compiled product has no original complete source/emission join")
         report_path = Path(report_path)
         pin = F.pin(report_path, max_bytes=16 << 20)
         report = json.loads(report_path.read_bytes())
-        if (F.pin(report_path, max_bytes=16 << 20) != pin or not O.feature_complete(report)
-                or report.get("schema") != O.REPORT_V2
-                or report.get("elf_sha256") != compiled.get("elf_sha256")
-                or report.get("input_sha256") != document_sha256(
-                    {"kind": "original_frozen_public_capsule", "sha256": member_source_sha256})
-                or report.get("model_sha256") != self._binding.runtime):
+        if (
+            F.pin(report_path, max_bytes=16 << 20) != pin
+            or not O.feature_complete(report)
+            or report.get("schema") != O.REPORT_V2
+            or report.get("elf_sha256") != compiled.get("elf_sha256")
+            or report.get("input_sha256")
+            != document_sha256({"kind": "original_frozen_public_capsule", "sha256": member_source_sha256})
+            or report.get("model_sha256") != self._binding.runtime
+        ):
             raise StageGateError("service effects changed their current original count report or ELF")
         try:
             evidence = self._owner.evidence(
-                report_path, Path(invocation_path), Path(counter_review_path),
+                report_path,
+                Path(invocation_path),
+                Path(counter_review_path),
                 source_sha256=member_source_sha256,
             )
         except (ValueError, OSError) as error:
@@ -124,24 +147,29 @@ class SelectedServiceEffects:
             return unknown("original service owner refused this scope: " + str(error)[:240])
         self.revalidate()
         events = evidence.get("events") if isinstance(evidence, dict) else None
-        if (not isinstance(evidence, dict)
-                or not set(evidence) <= _EFFECT_FIELDS
-                or evidence.get("schema") != "merlin.phase2.service_effect_evidence.v1"
-                or evidence.get("scope") != "emitted_schedule"
-                or evidence.get("source_sha256") != member_source_sha256
-                or evidence.get("elf_sha256") != compiled["elf_sha256"]
-                or any(evidence.get(key) != report.get(key) for key in ("scope_sha256", "device_sha256"))
-                or evidence.get("attainment") is not None
-                or evidence.get("convergence_eligible") is not False
-                or type(events) is not list
-                or any(not isinstance(row, dict) or row.get("compulsory") is not False for row in events)):
+        if (
+            not isinstance(evidence, dict)
+            or not set(evidence) <= _EFFECT_FIELDS
+            or evidence.get("schema") != "merlin.phase2.service_effect_evidence.v1"
+            or evidence.get("scope") != "emitted_schedule"
+            or evidence.get("source_sha256") != member_source_sha256
+            or evidence.get("elf_sha256") != compiled["elf_sha256"]
+            or any(evidence.get(key) != report.get(key) for key in ("scope_sha256", "device_sha256"))
+            or evidence.get("attainment") is not None
+            or evidence.get("convergence_eligible") is not False
+            or type(events) is not list
+            or any(not isinstance(row, dict) or row.get("compulsory") is not False for row in events)
+        ):
             raise StageGateError("service owner returned foreign or compulsory-workload effects")
         try:
             floor = R.compose_service_floor(
-                evidence.get("resources"), evidence.get("events"),
+                evidence.get("resources"),
+                evidence.get("events"),
                 completion_chains=evidence.get("completion_chains", ()),
-                unresolved={**(evidence.get("unresolved") or {}),
-                            "fixed_workload": "emitted effects do not prove a compulsory workload floor"},
+                unresolved={
+                    **(evidence.get("unresolved") or {}),
+                    "fixed_workload": "emitted effects do not prove a compulsory workload floor",
+                },
                 scope="emitted_schedule",
             )
         except (ValueError, TypeError, KeyError, OverflowError) as error:
@@ -151,8 +179,7 @@ class SelectedServiceEffects:
         return {
             "status": "partial_emitted_service",
             "selection_sha256": self._identity,
-            "source_binding": {"member_sha256": member_source_sha256,
-                               "interface_sha256": join["source_sha256"]},
+            "source_binding": {"member_sha256": member_source_sha256, "interface_sha256": join["source_sha256"]},
             "evidence": copy.deepcopy(evidence),
             "floor": floor,
             "measured_cycles": None,
@@ -164,8 +191,15 @@ class SelectedServiceEffects:
 
 
 def unknown(reason):
-    return {"status": "UNKNOWN", "reason": reason, "evidence": None, "floor": None,
-            "attainment": None, "convergence_eligible": False, "promotion_authority": "NONE"}
+    return {
+        "status": "UNKNOWN",
+        "reason": reason,
+        "evidence": None,
+        "floor": None,
+        "attainment": None,
+        "convergence_eligible": False,
+        "promotion_authority": "NONE",
+    }
 
 
 def select(capability, binding):

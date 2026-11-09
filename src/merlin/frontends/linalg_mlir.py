@@ -129,11 +129,12 @@ def make_context():
     from xdsl.dialects.builtin import Builtin
     from xdsl.dialects.cf import Cf
     from xdsl.dialects.func import Func
-    from xdsl.dialects.linalg import Linalg
     from xdsl.dialects.math import Math
     from xdsl.dialects.memref import MemRef
     from xdsl.dialects.scf import Scf
     from xdsl.dialects.tensor import Tensor
+
+    from ..xdsl_dialects._common import linalg_dialect
 
     # Teach the parser the fp8 element types (and let them satisfy arith/math's float constraints)
     # BEFORE any parse, exactly as `xdsl_dialects._common.make_context` does. Without this the two
@@ -146,7 +147,7 @@ def make_context():
     register_fp8_linalg_named_ops()
 
     ctx = Context(allow_unregistered=True)
-    for d in (Builtin, Func, Arith, Linalg, Tensor, Scf, Math, Cf, MemRef, layout_bufferization_dialect()):
+    for d in (Builtin, Func, Arith, linalg_dialect(), Tensor, Scf, Math, Cf, MemRef, layout_bufferization_dialect()):
         ctx.load_dialect(d)
     return ctx
 

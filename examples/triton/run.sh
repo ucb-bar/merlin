@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Triton -> Merlin -> an accelerator: write an ordinary Triton kernel, compile it for hardware that is
-# not a GPU, and certify the result on that hardware's own RTL.
+# not a GPU. Historical convergence/RTL regression actions require their original Git checkout.
 #
 # Stages are ordered by what they cost and what they need. Run `preflight` first; it says which of them
-# this machine can do. Everything through `converge` needs only the repo and its venv.
+# this machine can do. Current compile and route actions use the repo and its venv.
 #
 #   ./run.sh preflight            what this machine can run, and what would fix the rest
 #   ./run.sh walk                 the whole pipeline, stage by stage, explained     (seconds)
 #   ./run.sh compile              what you would actually run: the CLI, end to end   (seconds)
 #   ./run.sh route                why an elementwise kernel takes a DIFFERENT route  (seconds)
 #   ./run.sh compare              the same kernels against two accelerators          (seconds)
-#   ./run.sh converge             prove no Triton-specific compiler grew beside ours (seconds)
-#   ./run.sh certify              run the command buffer on the target's own RTL     (~3 min)
+#   ./run.sh converge             retired: replay in its original immutable Git checkout
+#   ./run.sh certify              retired: replay in its original immutable Git checkout
 #
 # Flags: --dry-run prints every command without running it, so this file reads as documentation on a
 #                  machine with no toolchain at all
@@ -109,25 +109,13 @@ compare)
   ex_note "so nothing above is a hardware claim about it. 'certify' runs on gemmini for that reason."
   ;;
 
-converge)
-  # The guard that correctness cannot provide. If a Triton-specific lowering stack were growing
-  # beside the main one, every numerical test would still pass; only identity catches it.
-  ex_say "Triton vs hand-written linalg: identical stage modules and command buffer"
-  ex_run "$PY" "$HERE/preflight.py" --package "$PACKAGE" --require converge
-  ex_run "$PY" -m pytest merlin/tests/ir/test_triton_convergence.py -q
-  ex_note "Byte-identical, SSA numbering included, with no canonicalization step."
-  ;;
-
-certify)
-  # The only stage that produces a HARDWARE result. L1 is a functional model and says so; L2 is the
-  # RTL. Both compare against the same independent reference the numpy check uses.
-  ex_say "run the Triton-derived command buffer on the target's own simulator and RTL"
-  ex_run "$PY" "$HERE/preflight.py" --package "$PACKAGE" --require certify-l2
-  ex_note "L2 is ~3 minutes of Verilator; L1 is seconds. Both are in this one test file."
-  ex_run "$PY" -m pytest merlin/tests/gemmini/test_triton_gemmini_c0.py -q \
-    -k "l1_spike or l2_verilator" --durations=2
-  ex_note "L1 asserts derived_from_rtl is FALSE and L2 asserts it is TRUE -- the distinction is"
-  ex_note "checked, not just documented, so a functional-model result cannot be reported as RTL."
+converge|certify)
+  echo "'$STAGE' is an archived regression action; its pytest inputs are not part of the current example." >&2
+  echo "Replay it from the same immutable historical Git revision as those inputs and simulator/RTL dependencies:" >&2
+  echo "  git worktree add --detach <replay-directory> <historical-full-commit>" >&2
+  echo "  cd <replay-directory> && ./examples/triton/run.sh $STAGE" >&2
+  echo "The current compile/route actions do not claim historical convergence or RTL qualification." >&2
+  exit 2
   ;;
 
 *)

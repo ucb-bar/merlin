@@ -3,9 +3,11 @@ title: Closed row domains and private partition plans
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: [architecture, lowering_pipeline]
-code_refs: [src/merlin/llvmlower/closed_row_domain.py, src/merlin/llvmlower/row_partition_storage.py]
+code_refs:
+  - src/merlin/llvmlower/closed_row_domain.py
+  - src/merlin/llvmlower/row_partition_storage.py
 ---
 
 # Closed row domains and private partition plans

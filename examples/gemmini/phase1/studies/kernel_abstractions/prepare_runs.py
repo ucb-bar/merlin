@@ -34,6 +34,14 @@ def ordinary(root):
     return root
 
 
+def phase1_sources(framework):
+    """Use the selected checkout's layout; archived studies retain their source tree."""
+    current = Path(framework) / "src/merlin_experiments/phase1"
+    if current.is_dir():
+        return current
+    return Path(framework) / "packages/merlin-experiments/src/merlin_experiments/phase1"
+
+
 def copy_source(source, destination):
     ordinary(source)
     shutil.copytree(
@@ -394,9 +402,12 @@ def prepare(
         raise ValueError("select distinct existing treatment presets")
     shared_pool = bool(study) or agent_only_control or treatments is not None
     study_pool = base.get("cpus", [0, 1, 2, 3])
-    if shared_pool and (not isinstance(study_pool, list) or len(study_pool) != 4
-            or any(type(cpu) is not int or cpu < 0 for cpu in study_pool)
-            or study_pool != sorted(set(study_pool))):
+    if shared_pool and (
+        not isinstance(study_pool, list)
+        or len(study_pool) != 4
+        or any(type(cpu) is not int or cpu < 0 for cpu in study_pool)
+        or study_pool != sorted(set(study_pool))
+    ):
         raise ValueError("shared study pool requires four distinct sorted CPU IDs")
     quota = 400 // (len(selected) * replicas) if shared_pool else 100
     contract_pin = None
@@ -411,7 +422,7 @@ def prepare(
                 raise ValueError("selected library differs from reviewed contract")
         contract_pin = {"path": str(library_contract), "sha256": digest(library_contract)}
     runner = Path(__file__).with_name("run.py").resolve()
-    shim_path = framework / "packages/merlin-experiments/src/merlin_experiments/phase1/tools/selfcheck.py"
+    shim_path = phase1_sources(framework) / "tools/selfcheck.py"
     spec = importlib.util.spec_from_file_location("study_source_digest", shim_path)
     shim = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(shim)
@@ -471,9 +482,7 @@ def prepare(
                             certificate_reuse="none; prior verdicts are historical evidence",
                         )
                     else:
-                        seed_owner.strip_stale(
-                            workspace / name, private / "baseline-seed-notes", continuation["notes"]
-                        )
+                        seed_owner.strip_stale(workspace / name, private / "baseline-seed-notes", continuation["notes"])
                 else:
                     copy_source(seed, workspace / name)
                 if study:
@@ -522,9 +531,7 @@ def prepare(
             if not sdk_readonly and discovery.is_file():
                 shutil.copy2(discovery, workspace / "shared-library.json")
             skill_framework = Path(continuation["run"]["framework"]) if study and study != "cca" else framework
-            skills_module = (
-                skill_framework / "packages/merlin-experiments/src/merlin_experiments/phase1/skill_staging.py"
-            )
+            skills_module = phase1_sources(skill_framework) / "skill_staging.py"
             if not sdk_readonly and skills_module.is_file():
                 spec = importlib.util.spec_from_file_location("study_skill_staging", skills_module)
                 skills = importlib.util.module_from_spec(spec)
@@ -740,7 +747,9 @@ def prepare(
                     "cpu": cpu if not shared_pool else None,
                     "cpus": cpus,
                     "cpu_quota_percent": config["cpu_quota_percent"],
-                    "launcher_obligation": f"systemd AllowedCPUs={cpu_selection} CPUQuota={quota}%" if shared_pool else None,
+                    "launcher_obligation": f"systemd AllowedCPUs={cpu_selection} CPUQuota={quota}%"
+                    if shared_pool
+                    else None,
                     "config": str(private / "config.json"),
                     "config_sha256": digest(private / "config.json"),
                     "launch_argv": launch,
@@ -779,8 +788,11 @@ def main():
     parser.add_argument("--study", choices=tuple(STUDIES), help="matched post-Fresh6 capability study")
     for flag in ("cca", "library-guidance", "schedule-guidance"):
         parser.add_argument("--" + flag, choices=("off", "on"))
-    parser.add_argument("--abstraction-feedback", choices=("off", "on"),
-                        help="advisory admission/seed-fallback fields and named-shape sweeps; default: base config")
+    parser.add_argument(
+        "--abstraction-feedback",
+        choices=("off", "on"),
+        help="advisory admission/seed-fallback fields and named-shape sweeps; default: base config",
+    )
     args = parser.parse_args()
     full_fields = (args.full_compiler_root, args.full_compiler_manifest, args.full_compiler_manifest_sha256)
     if any(full_fields) and not all(full_fields):

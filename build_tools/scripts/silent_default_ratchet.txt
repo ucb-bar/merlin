@@ -34,7 +34,6 @@ build_tools/scripts/check_holdout_disjointness.py::main::get-default::_debt_key(
 build_tools/scripts/check_inert_capabilities.py::_safe_rglob::swallowed-error::OSError
 build_tools/scripts/check_inert_capabilities.py::detect_always_empty_field::get-default::key
 build_tools/scripts/check_inert_capabilities.py::_safe_rglob::swallowed-error::OSError~2
-build_tools/scripts/check_inert_capabilities.py::Finding.as_dict::get-default::kind
 build_tools/scripts/check_inert_capabilities.py::detect_unproduced_member::get-default::m
 build_tools/scripts/check_inert_capabilities.py::detect_dead_env_knob::swallowed-error::OSError
 build_tools/scripts/check_inert_capabilities.py::run::swallowed-error::OSError

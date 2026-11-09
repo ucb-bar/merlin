@@ -1167,6 +1167,14 @@ SHARED_PASS_PROMPT_APIS = (
     "merlin.compile.scheduling.schedule_pipeline",
 )
 
+# SDK26 exposes the relocated schedule owner. Frozen v1 contracts retain the
+# legacy cohort; exact selected public membership chooses the spelling.
+SHARED_PASS_CANONICAL_PROMPT_APIS = (
+    "merlin.transforms.pipeline_state",
+    "merlin.sched.ir.kernel",
+    "merlin.compiler.schedule.schedule_pipeline",
+)
+
 
 def shared_pass_prompt_record(requirement, *, granted_tools, library):
     """Check original v1 Kernel-library access; this issues no new grants."""
@@ -1179,7 +1187,12 @@ def shared_pass_prompt_record(requirement, *, granted_tools, library):
         raise ValueError("shared-pass requirements need explicit observed tool grants")
     required = validate_shared_pass_requirement(requirement)
     selected = library.record()
-    for module in SHARED_PASS_PROMPT_APIS:
+    apis = (
+        SHARED_PASS_PROMPT_APIS
+        if library.contract.permits(SHARED_PASS_PROMPT_APIS[-1])
+        else SHARED_PASS_CANONICAL_PROMPT_APIS
+    )
+    for module in apis:
         if not library.contract.permits(module):
             raise ValueError(f"shared-pass v1 selected library lacks required public API: {module}")
         member = next(member for member in library.contract.members if member.module == module)

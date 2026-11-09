@@ -8,7 +8,6 @@ related: [architecture, source_fma_batch, ordered_fma_certificates]
 code_refs:
   - src/merlin/runtime/host_arithmetic.py
   - src/merlin/runtime/host_outward.py
-  - merlin/tests/runtime/test_host_arithmetic.py
 ---
 
 # Shared host CPU arithmetic

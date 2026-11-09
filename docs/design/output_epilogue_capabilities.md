@@ -3,16 +3,28 @@ title: "Design note: output-epilogue capabilities are derived, and fused only wh
 kind: design
 status: current
 owner: targetgen
-last_verified: 2026-10-18
+last_verified: 2026-11-09
 related: [accumulator_load_order, capsule_phase_split]
-code_refs: [src/merlin/targetgen/rtl/output_epilogue.py, src/merlin/targetgen/output_path.py, src/merlin/xdsl_dialects/lowering/output_fusion.py, src/merlin/targetgen/capability_manifests.py, src/merlin/targetgen/readout_facet.py, src/merlin/xdsl_dialects/lowering/compute_groups.py, src/merlin/xdsl_dialects/lowering/group_exact_float.py, src/merlin/llvmlower/source_compute_groups.py, src/merlin/targetgen/conformance.py, src/merlin/targetgen/corpus_synth.py, src/merlin_experiments/phase1/feedback/private_full_models.py, merlin/schemas/target_contract.schema.yaml]
+code_refs:
+  - src/merlin/targetgen/rtl/output_epilogue.py
+  - src/merlin/targetgen/output_path.py
+  - src/merlin/xdsl_dialects/lowering/output_fusion.py
+  - src/merlin/targetgen/capability_manifests.py
+  - src/merlin/targetgen/readout_facet.py
+  - src/merlin/xdsl_dialects/lowering/compute_groups.py
+  - src/merlin/xdsl_dialects/lowering/group_exact_float.py
+  - src/merlin/llvmlower/source_compute_groups.py
+  - src/merlin/targetgen/conformance.py
+  - src/merlin/targetgen/corpus_synth.py
+  - src/merlin_experiments/phase1/feedback/private_full_models.py
+  - merlin/schemas/target_contract.schema.yaml
 ---
 
 # Output-epilogue capabilities are derived, and fused only when exact
 
-A quantized model follows every integer contraction with the same chain: convert the
-accumulator, scale it, add a bias, rectify, requantize, and sometimes add a residual or pool a
-window. Many accelerators do part of this as they move the accumulator out. Three questions decide
+An integer contraction can feed conversion, scaling, bias, rectification,
+requantization, residual addition or pooling. The actual source determines their
+order and which intermediate values remain observable. Many accelerators do part of this as they move the accumulator out. Three questions decide
 how much a compiler is asked to use that hardware: what the design's output path does, which part of
 the source chain it can compute *exactly*, and what Phase 0 demands. Each is answered from the target's
 own sources, and nowhere by a target name.
@@ -124,3 +136,9 @@ residual, remain unstated demands with their reasons.
 - A decision is per group, all channels or none, so a few exact channels do not split a group.
 - A selected contract carries the path only once it is declared from its facts. Until then grouping
   behaves as before.
+
+`targetgen.output_path` is the shared capability vocabulary;
+`xdsl_dialects.lowering.output_fusion` proves a supported source cut against it.
+A backend must still accept and materialize that cut with its actual resource,
+layout, ABI and completion contract. Exact source fusion is one input to
+planning, not proof that a complete heterogeneous execution plan is valid.

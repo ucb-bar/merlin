@@ -131,7 +131,12 @@ entries:
     generic: true
     owner: sched
     primitive: [divide_loop, reorder, fuse, unroll]
-    test: merlin/tests/ir/test_sched_primitives.py::test_primitives_compose_and_each_step_preserves_the_instances
+    # Historical witness (9e53f0fd5da6cafee5d137def2be01f872f01b2d): merlin/tests/ir/test_sched_primitives.py::test_primitives_compose_and_each_step_preserves_the_instances
+    test: null
+    missing_input: >-
+      An admitted source-bound expert/ours CCA pair for systolic_rocc_tests and this axis.
+      The compact permanent suite retired the historical primitive-level witness above;
+      corpus availability alone supplies neither this measurement nor execution evidence.
     evidence:
       corpus: systolic_rocc_tests
       cca_axes: [compute.contraction_form]
@@ -146,7 +151,12 @@ entries:
     generic: true
     owner: sched
     primitive: [peel, specialize]
-    test: merlin/tests/ir/test_sched_primitives.py::test_peeling_both_ends_leaves_the_middle
+    # Historical witness (9e53f0fd5da6cafee5d137def2be01f872f01b2d): merlin/tests/ir/test_sched_primitives.py::test_peeling_both_ends_leaves_the_middle
+    test: null
+    missing_input: >-
+      An admitted source-bound expert/ours CCA pair for systolic_rocc_tests and this axis.
+      The compact permanent suite retired the historical primitive-level witness above;
+      corpus availability alone supplies neither this measurement nor execution evidence.
     note: >-
       `peel` splits an iteration off either end and renumbers what is left; `specialize` then gives that
       copy an operand the uniform body cannot carry, because an operand being PRESENT or ABSENT is not a
@@ -172,7 +182,12 @@ entries:
     generic: true
     owner: sched
     primitive: [stage_mem, bind_bank]
-    test: merlin/tests/ir/test_sched_placement.py::test_stage_mem_inserts_the_move_and_records_both_ends
+    # Historical witness (9e53f0fd5da6cafee5d137def2be01f872f01b2d): merlin/tests/ir/test_sched_placement.py::test_stage_mem_inserts_the_move_and_records_both_ends
+    test: null
+    missing_input: >-
+      An admitted source-bound expert/ours CCA pair for systolic_rocc_tests and this axis.
+      The compact permanent suite retired the historical primitive-level witness above;
+      corpus availability alone supplies neither this measurement nor execution evidence.
     note: >-
       `stage_mem` brings data into a named on-chip memory ahead of the call that reads it, recording
       that the move WRITES those rows and the consumer READS them -- which is what makes the capacity,
@@ -194,7 +209,12 @@ entries:
     generic: true
     owner: sched
     primitive: [hoist_config]
-    test: merlin/tests/ir/test_sched_config.py::test_a_call_that_assumes_a_different_value_than_is_live_is_caught
+    # Historical witness (9e53f0fd5da6cafee5d137def2be01f872f01b2d): merlin/tests/ir/test_sched_config.py::test_a_call_that_assumes_a_different_value_than_is_live_is_caught
+    test: null
+    missing_input: >-
+      An admitted source-bound expert/ours CCA pair for systolic_rocc_tests and this axis.
+      The compact permanent suite retired the historical primitive-level witness above;
+      corpus availability alone supplies neither this measurement nor execution evidence.
     note: >-
       A call declares the configuration it SETS and the configuration it ASSUMES, so the dependence is a
       def-use chain on a value rather than a distance in statement order. `check_config` then asks one
@@ -226,7 +246,12 @@ entries:
     generic: false
     owner: sched
     primitive: [bind_bank]
-    test: merlin/tests/ir/test_sched_placement.py::test_a_write_over_a_live_operand_is_caught
+    # Historical witness (9e53f0fd5da6cafee5d137def2be01f872f01b2d): merlin/tests/ir/test_sched_placement.py::test_a_write_over_a_live_operand_is_caught
+    test: null
+    missing_input: >-
+      An admitted source-bound expert/ours CCA pair for simt_kernels and this axis.
+      The compact permanent suite retired the historical primitive-level witness above;
+      corpus availability alone supplies neither this measurement nor execution evidence.
     note: >-
       A call records where its operands sit on chip, and `check_placement` catches both measured failures: a result written over an operand still being read (zero correct elements out of 16,384 on a shipped kernel, silently), and a bank two contending engines share under a declared arbiter. A bank named against a store whose bank count was never derived is refused rather than accepted -- that is a guess wearing a placement's clothes.
     evidence:
@@ -244,7 +269,12 @@ entries:
     generic: true
     owner: sched
     primitive: [place, pipeline]
-    test: merlin/tests/ir/test_sched_sync.py::test_the_same_kernel_gets_opposite_verdicts_on_the_two_archetypes
+    # Historical witness (9e53f0fd5da6cafee5d137def2be01f872f01b2d): merlin/tests/ir/test_sched_sync.py::test_the_same_kernel_gets_opposite_verdicts_on_the_two_archetypes
+    test: null
+    missing_input: >-
+      An admitted source-bound expert/ours CCA pair for npu_baremetal_assembly and this axis.
+      The compact permanent suite retired the historical primitive-level witness above;
+      corpus availability alone supplies neither this measurement nor execution evidence.
     note: >-
       A launch names a token and a consumer awaits it, in the PAYLOAD rather than in statement order, so the dependence survives a reordering. Both ends are inserted by one move: a producer whose token nothing awaits is the state the explicit-machine check rejects.
     evidence:
@@ -266,7 +296,12 @@ entries:
    
     owner: sched
     primitive: [pipeline]
-    test: merlin/tests/ir/test_sched_sync.py::test_pipeline_refuses_an_instruction_with_nothing_to_wait_for
+    # Historical witness (9e53f0fd5da6cafee5d137def2be01f872f01b2d): merlin/tests/ir/test_sched_sync.py::test_pipeline_refuses_an_instruction_with_nothing_to_wait_for
+    test: null
+    missing_input: >-
+      An admitted source-bound expert/ours CCA pair for npu_baremetal_assembly and this axis.
+      The compact permanent suite retired the historical primitive-level witness above;
+      corpus availability alone supplies neither this measurement nor execution evidence.
     note: >-
       The completion kind is read from the machine, never assumed: an instruction whose result is visible to the next one has no completion, and pipelining it would record a dependence the hardware never has.
     evidence:
@@ -290,7 +325,12 @@ entries:
    
     owner: sched
     primitive: [pipeline]
-    test: merlin/tests/ir/test_sched_cost.py::test_an_underived_cost_makes_the_whole_schedule_undecidable
+    # Historical witness (9e53f0fd5da6cafee5d137def2be01f872f01b2d): merlin/tests/ir/test_sched_cost.py::test_an_underived_cost_makes_the_whole_schedule_undecidable
+    test: null
+    missing_input: >-
+      An admitted source-bound expert/ours CCA pair for npu_baremetal_assembly and this axis.
+      The compact permanent suite retired the historical primitive-level witness above;
+      corpus availability alone supplies neither this measurement nor execution evidence.
     note: >-
       Cost is keyed by the (instruction, unit) pair with issue occupancy separate from result visibility, and a schedule containing one instruction whose cost was never derived prices as UNDECIDABLE rather than as the sum of the rest -- a partial sum is smaller than the truth by an unknown amount and would rank a schedule of unmeasured instructions as the cheapest available.
       EXPRESSED BUT INERT, measured 2026-09-18: derive() takes schedule_contract as an injectable
@@ -319,7 +359,12 @@ entries:
    
     owner: sched
     primitive: [pipeline]
-    test: merlin/tests/ir/test_sched_cost.py::test_a_floor_measured_on_an_idle_machine_can_only_bound_from_below
+    # Historical witness (9e53f0fd5da6cafee5d137def2be01f872f01b2d): merlin/tests/ir/test_sched_cost.py::test_a_floor_measured_on_an_idle_machine_can_only_bound_from_below
+    test: null
+    missing_input: >-
+      An admitted source-bound expert/ours CCA pair for npu_baremetal_assembly and this axis.
+      The compact permanent suite retired the historical primitive-level witness above;
+      corpus availability alone supplies neither this measurement nor execution evidence.
     note: >-
       A declared cost marked as a floor can only bound a schedule from below, and `sched.cost` reports the KIND of claim alongside the number so a lower bound is never read as a prediction. `pipeline` asks the machine whether two units can be in flight at once and refuses an edge between units that share a resource -- which buys no overlap and costs every later reordering a constraint.
     evidence:
@@ -343,7 +388,12 @@ entries:
    
     owner: sched
     primitive: [pipeline]
-    test: merlin/tests/ir/test_sched_sync.py::test_the_wrong_kind_of_wait_is_caught_on_both_archetypes
+    # Historical witness (9e53f0fd5da6cafee5d137def2be01f872f01b2d): merlin/tests/ir/test_sched_sync.py::test_the_wrong_kind_of_wait_is_caught_on_both_archetypes
+    test: null
+    missing_input: >-
+      An admitted source-bound expert/ours CCA pair for simt_kernels and this axis.
+      The compact permanent suite retired the historical primitive-level witness above;
+      corpus availability alone supplies neither this measurement nor execution evidence.
     note: >-
       CORRECTED 2026-09-18 by re-measuring forced_by: the authored [muon, atlas] matched neither kind
       of evidence. `compute_endpoints.yaml` declares sync roles for gemmini (FLUSH_CMD), muon and
@@ -384,7 +434,12 @@ entries:
    
     owner: sched
     primitive: [pipeline]
-    test: merlin/tests/ir/test_sched_sync.py::test_a_machine_with_no_hazard_model_answers_neither
+    # Historical witness (9e53f0fd5da6cafee5d137def2be01f872f01b2d): merlin/tests/ir/test_sched_sync.py::test_a_machine_with_no_hazard_model_answers_neither
+    test: null
+    missing_input: >-
+      An admitted source-bound expert/ours CCA pair for systolic_rocc_tests and this axis.
+      The compact permanent suite retired the historical primitive-level witness above;
+      corpus availability alone supplies neither this measurement nor execution evidence.
     note: >-
       `check_sync` asks the question the machine poses -- an absent wait is not a defect where hardware tracks dependencies and is a wrong answer where the compiler separates them -- and refuses both answers where no hazard model was derived.
     evidence:
@@ -476,7 +531,12 @@ entries:
     generic: true
     owner: sched
     primitive: [multi_buffer]
-    test: merlin/tests/ir/test_sched_primitives.py::test_multi_buffer_reserves_the_copies
+    # Historical witness (9e53f0fd5da6cafee5d137def2be01f872f01b2d): merlin/tests/ir/test_sched_primitives.py::test_multi_buffer_reserves_the_copies
+    test: null
+    missing_input: >-
+      An admitted source-bound expert/ours CCA pair for simt_kernels and this axis.
+      The compact permanent suite retired the historical primitive-level witness above;
+      corpus availability alone supplies neither this measurement nor execution evidence.
     surfaced_by: PHASE2_V2_SCHEDULE_IR.md section 3.2, re-measured against the register 2026-09-19
     surfaced_on: 2026-09-19
     note: >-
@@ -509,6 +569,11 @@ entries:
       silently returns wrong data when it is wrong, and it is the half that is checked.
       The field prints only when it exceeds one, so every schedule written before it existed keeps its
       text and its digest; this landed without re-pinning the twelve recipe digests or the C they emit.
+    # Provisional qualification-input selection, not accepted hardware/corpus evidence.
+    # No corpus agreement or executed measurement is established by these pointers.
+    evidence:
+      corpus: simt_kernels
+      cca_axes: [dispatch.double_buffered_banks]
 
   - id: placement_order_hazard
     axis: >-
@@ -565,7 +630,12 @@ entries:
     generic: false
     owner: sched
     primitive: [replace]
-    test: merlin/tests/ir/test_sched_primitives.py::test_replace_substitutes_the_declared_nest
+    # Historical witness (9e53f0fd5da6cafee5d137def2be01f872f01b2d): merlin/tests/ir/test_sched_primitives.py::test_replace_substitutes_the_declared_nest
+    test: null
+    missing_input: >-
+      An admitted source-bound expert/ours CCA pair for systolic_rocc_tests and this axis.
+      The compact permanent suite retired the historical primitive-level witness above;
+      corpus availability alone supplies neither this measurement nor execution evidence.
     note: >-
       This is what reconciles two standing positions rather than choosing between them. The macro buys
       offload completeness -- on the systolic target the host otherwise runs hundreds of millions of
@@ -584,3 +654,8 @@ entries:
       A TARGET EXTENSION, and honestly so. One ISA in the roster has an FSM macro. The universal config
       of the same generator has the same one because it is the same generator, which is not a second
       independent need; promote this when a second ISA brings its own.
+    # Provisional qualification-input selection, not accepted hardware/corpus evidence.
+    # No corpus agreement or executed measurement is established by these pointers.
+    evidence:
+      corpus: systolic_rocc_tests
+      cca_axes: [compute.contraction_form]

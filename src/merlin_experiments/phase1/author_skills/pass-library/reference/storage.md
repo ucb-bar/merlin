@@ -15,7 +15,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Target geometry and allocation obligations must be supplied; fit is not performance selection
 - **evidence to request**: Chosen tile, capacities, actual allocated bytes and edge work
 - **access**: requires_reviewed_library_extension
-- **test that calls it**: `merlin/tests/targetgen/test_capacity_fit_second_target.py`
+- **test that calls it**: none found
 
 ### resident_rhs
 
@@ -28,7 +28,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Plan alone grants no overlap or synchronization
 - **evidence to request**: Loads eliminated versus decoded emitted loads
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_dense_rhs_residency.py`: `return plan_dense_rhs_residency(m, k, n, **(dict(block=16, operand_rows=16384,`
+- **test that calls it**: none found
 
 ### sibling_input_reuse
 
@@ -41,7 +41,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Needs target primitive and storage bindings
 - **evidence to request**: Source identities, load bytes and live ranges
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_shared_input_schedule.py`: `return schedule_shared_input(module, group, primitive_tile=tile, storage=storage, resources=resources)`
+- **test that calls it**: none found
 
 ### temporary_reuse
 
@@ -54,7 +54,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Finite straight-line scope; loop lifetimes require separate proof
 - **evidence to request**: Peak live bytes, placements and emitted object offsets
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_temporary_storage.py`: `result = allocate_temporary_storage(kernel, objects, banks, ADAPTER, **model)`
+- **test of its module** (none calls this symbol directly): `merlin/tests/infra/test_copy_coalescing.py`
 
 ### device_spills
 
@@ -67,7 +67,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Spill pricing and target transport adapter required
 - **evidence to request**: Spill bytes, inserted transfers and preserved numerics
 - **access**: selected_public_library
-- **test of its module** (none calls this symbol directly): `merlin/tests/infra/test_device_spills.py`
+- **test that calls it**: none found
 
 ### operand_vs_accumulator_lifetimes
 
@@ -79,7 +79,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Target adapter must not release staging or accumulator storage on descriptor issue alone
 - **evidence to request**: Independent operand and partial-sum live intervals
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_staged_dense.py`: `ComputeConsume(0, mr, kr),`
+- **test that calls it**: none found
 
 ### array_weight_retention
 
@@ -105,4 +105,4 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Supported source window shapes and producer activation are checked per source
 - **evidence to request**: Readout rows reloaded versus retained, scratchpad occupancy and exact pooled outputs
 - **access**: full_compiler_source_and_scheduling_capabilities_v19
-- **test that calls it**: `merlin/tests/ir/test_spatial_readout_cache.py`: `cache = propose_spatial_readout_cache(`
+- **test that calls it**: none found

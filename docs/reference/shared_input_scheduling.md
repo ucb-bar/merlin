@@ -3,12 +3,20 @@ title: Shared-input contraction scheduling
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-20
+last_verified: 2026-11-09
 related: [shared_pass_phase2, architecture]
-code_refs: [src/merlin/compile/scheduling/shared_input_groups.py, src/merlin/compile/scheduling/shared_input_schedule.py, src/merlin/compile/scheduling/shared_input_verification.py, merlin/tests/infra/test_shared_input_schedule.py]
+code_refs:
+  - src/merlin/compiler/schedule/shared_input_groups.py
+  - src/merlin/compiler/schedule/shared_input_schedule.py
+  - src/merlin/compiler/schedule/shared_input_verification.py
 ---
 
 # Shared-input contraction scheduling
+
+Source discovery lives in `compiler/schedule/shared_input_groups.py`, scheduling
+in `shared_input_schedule.py`, and the independent emitted-effect checks in
+`shared_input_verification.py`. These owners expose distinct APIs; selecting a
+group does not itself select or qualify its schedule.
 
 `find_shared_input_groups` recognizes consecutive, independent signed integer
 contractions that read the **same immutable tensor SSA value**. It reuses the

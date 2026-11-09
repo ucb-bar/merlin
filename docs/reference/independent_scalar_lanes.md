@@ -3,9 +3,13 @@ title: "Independent scalar lane schedules"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-07
+last_verified: 2026-11-09
 related: [prepared_operand_owners]
-code_refs: [src/merlin/llvmlower/independent_lane_schedule.py, src/merlin/llvmlower/radius_stage_schedule.py, src/merlin/llvmlower/source_attention_frontier.py, merlin/runtime/c/separable_fma_radius.h]
+code_refs:
+  - src/merlin/llvmlower/independent_lane_schedule.py
+  - src/merlin/llvmlower/radius_stage_schedule.py
+  - src/merlin/llvmlower/source_attention_frontier.py
+  - merlin/runtime/c/separable_fma_radius.h
 ---
 
 # Independent scalar lane schedules

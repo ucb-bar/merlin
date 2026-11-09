@@ -3,14 +3,11 @@ title: Round-even runtime value contract
 kind: reference
 status: current
 owner: runtime
-last_verified: 2026-10-18
+last_verified: 2026-11-09
 related: [runtime, whole_model_op_profile, shared_compiler_passes]
 code_refs:
   - merlin/runtime/abi/mlir_runtime.c
   - src/merlin/model_check/full_build.py
-  - merlin/tests/runtime/test_roundeven_runtime.py
-  - merlin/tests/runtime/test_roundeven_runtime_identity.py
-  - merlin/tests/infra/test_full_model_lowering_cache.py
 ---
 
 # Round-even runtime value contract
@@ -44,3 +41,8 @@ Run those tests with the declared `verify` extra installed. The runtime itself
 does not depend on Z3. Whole-model image reuse includes the actual MLIR ABI runtime
 source bytes, so changing this implementation invalidates the image even if the
 file size is unchanged. This pin is not a complete header/toolchain/runtime closure.
+
+The implementation is the `MERLIN_ROUNDEVEN` macro in
+`runtime/abi/mlir_runtime.c`; `model_check.full_build._lowering_identity` records
+the actual ABI runtime source digest. The arithmetic theorem and actual compiled
+execution remain separate evidence, rather than being inferred from that digest.

@@ -3,7 +3,7 @@ title: Replaying compiler construction actions
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-23
+last_verified: 2026-11-09
 code_refs:
   - src/merlin_experiments/phase1/construction_actions.py
   - src/merlin_experiments/phase1/construction_study.py
@@ -38,16 +38,17 @@ fixed per-role CPU partitions. Use explicit `after` dependencies for edits or
 builds that share ownership of outputs or sources; independent actions must own disjoint
 files. Builds must respect the selected shared pool rather than assume each
 command independently owns all CPUs.
-Automatic authors retain their separately recorded helper ceiling (up to 16) and
-20 shared CPUs; this scripted driver does not pretend to spawn model helpers.
+Automatic authors retain their separately recorded helper and shared CPU
+ceilings; this scripted driver does not spawn model helpers or acquire an
+additional allocation.
 
 Each action names a semantic capability and compiler boundary. The supported
 boundaries are `graph`, `numeric_layout`, `schedule_storage`, `isa_lowering`,
 `host_runtime`, and `integration`. Optional `after` lists explicit earlier action
 IDs. A failed prerequisite defers only those dependent actions. There is no
-all-capsule readiness barrier. The full 153 correctness + 20 calibration + 77
-scalability obligations remain unchanged; the 77 are the primary performance
-optimization cohort.
+all-capsule readiness barrier. The complete selected correctness, calibration and scalability rosters remain
+unchanged. Their roles and membership come from the sealed experiment inputs,
+not fixed counts in this guide.
 
 A plan has `schema: "merlin.construction_actions.v1"` and an `actions` array:
 
@@ -120,3 +121,9 @@ Use the [construction study milestones](../design/compiler_coevolution_study.md#
 to distinguish tool admission, first target execution, corpus completion and
 complete-model validation. A successful scripted action is insufficient to
 advance any numerical execution milestone.
+
+`construction_actions.py` is the public standalone action runner.
+`construction_study.py` selects it through the ordinary fresh controller after
+validating the original admission choices. It executes operator-authored actions
+without a model provider; this is a distinct treatment from autonomous authoring,
+with unchanged independent numerical and source gates.

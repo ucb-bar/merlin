@@ -9,20 +9,12 @@ code_refs:
   - merlin/runtime/c/ordered_fma_bounds.h
   - merlin/runtime/c/fma_product_norms.h
   - merlin/runtime/c/bf16_radix_pack.h
-  - merlin/tests/runtime/test_ordered_fma_bounds.py
-  - merlin/tests/runtime/test_bf16_radix_pack.py
   - merlin/runtime/c/monotone_bit_polynomial.h
-  - merlin/tests/runtime/test_monotone_bit_polynomial.py
   - merlin/runtime/c/bf16_quant_frontier.h
-  - merlin/tests/runtime/test_bf16_quant_frontier.py
   - merlin/runtime/c/positive_scalar_interval.h
-  - merlin/tests/runtime/test_positive_scalar_interval.py
-  - merlin/tests/runtime/test_outward_numeric_capability.py
   - merlin/runtime/c/f32_floor_bits.h
-  - merlin/tests/runtime/test_f32_floor_bits.py
   - src/merlin/llvmlower/source_numeric_capability.py
   - merlin/runtime/c/source_f32_math.h
-  - merlin/tests/runtime/test_source_numeric_capability.py
 ---
 
 # Ordered FMA certificates

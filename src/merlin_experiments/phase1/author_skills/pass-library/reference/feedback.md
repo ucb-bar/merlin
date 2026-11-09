@@ -15,7 +15,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Queue waits, noncoherent cache traffic and host costs may be unknown
 - **evidence to request**: Scope/model hashes, uncertainty and non-additive resources
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/ir/test_sched_cost.py`: `bound = price(_pipelined(), _machine())`
+- **test that calls it**: none found
 
 ### compiler_observation
 
@@ -28,4 +28,4 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Runtime waits and savings absent until independently observed
 - **evidence to request**: Bounded diagnostics with artifact references; UNKNOWN stays UNKNOWN
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_compiler_observations.py`: `records = C.write_receipt(path, **kwargs)`
+- **test that calls it**: none found

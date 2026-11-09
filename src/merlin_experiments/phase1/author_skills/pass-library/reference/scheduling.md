@@ -15,7 +15,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: No universal traversal winner; shape/cost policy must choose
 - **evidence to request**: Per-shape packing, traffic and whole-call cost
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_staged_dense_tile_order.py`: `assert order_output_tiles_n_before_m(before, problem, selected(**{premise: False})) is before`
+- **test that calls it**: none found
 
 ### block_order
 
@@ -28,7 +28,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Schedule must lower through target adapter and completion validation
 - **evidence to request**: Schedule IR, physical mapping and decoded sequence
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_block_schedule.py`: `once = schedule_contraction(contraction, geometry, Knobs(load_on_index_change=True))`
+- **test of its module** (none calls this symbol directly): `merlin/tests/infra/test_dense_array_retention.py`
 
 ### convolution_tiles
 
@@ -41,7 +41,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Host packing/accelerator gather tradeoff needs complete-cost feedback
 - **evidence to request**: Window reuse, buffer sizes and packing cost
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/infra/test_shared_scheduling_export.py`: `result = schedule_tiled_convolution(`
+- **test of its module** (none calls this symbol directly): `merlin/tests/infra/test_dense_array_retention.py`
 
 ### source_axis_loop_transforms
 
@@ -54,4 +54,4 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Proposals carry no legality; the complete verifier decides each transformed schedule
 - **evidence to request**: Chosen axis order and unroll factors, command count and cycles per variant
 - **access**: full_compiler_source_and_scheduling_capabilities_v19
-- **test that calls it**: `merlin/tests/infra/test_loop_schedule.py`: `actual = propose_loop_transforms(original, (LoopTransform(action, ("i",), factor=4),))`
+- **test that calls it**: none found

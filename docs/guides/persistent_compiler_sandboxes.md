@@ -3,23 +3,20 @@ title: Reuse one compiler sandbox per grading worker
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-27
+last_verified: 2026-11-09
 related: [bubblewrap_argument_budget, fresh_campaign_launch]
 code_refs:
   - src/merlin_experiments/phase1/feedback/sandbox_pool.py
   - src/merlin_experiments/phase1/feedback/snapshot_execution.py
   - src/merlin_experiments/phase1/options.py
-  - packages/merlin-experiments/tests/test_compiler_sandbox_reuse.py
 ---
 
 # Reuse one compiler sandbox per grading worker
 
-Under `--compiler-execution snapshot_external_v1`, the self-check, grader and model-child processes
-used to run every candidate compiler entrypoint in a new bwrap. Each start copies the host mount
-table and replays every bind under the kernel's global namespace lock (wchan `m_start` /
-`do_lock_mount`). On 2026-10-27 two live runs had about 400 sandboxes alive at once. All 224
-top-level grading sandboxes in one sample were these per-call compiler boxes, and each start waited
-20-120 s for the lock. That wait, not the compiler, set grading wall time.
+Under `--compiler-execution snapshot_external_v1`, compiler calls can reuse a
+sandbox built from the original per-call policy. This avoids repeating namespace
+and mount setup for every entrypoint while retaining a required reset boundary.
+Actual startup cost depends on the selected host, policy and concurrent work.
 
 ## What changed
 
@@ -74,28 +71,14 @@ behave as before. `run_config.sandbox_reuse` records the selection. A resumed ru
 recorded value, and a record without one means `per_call`, so an older run keeps one sandbox per
 call after a restart. Fresh-campaign specs do not pass the flag, so a new launch gets `persistent`.
 
-## Agent commands are unchanged
+## Author commands are separate
 
-The author session already runs in one outer sandbox (`rounds/round_*.sandbox.turn*.sh`). The
-per-command sandboxes come from Codex itself: `codex-linux-sandbox` starts a bwrap for every model
-command to enforce the `merlin-candidate` permission profile. Codex 0.162 refuses
-filesystem-restricted execution without bubblewrap ("filesystem-restricted execution requires
-bubblewrap"), even with `use_legacy_landlock`. A profile with `":root" = "write"` and network off
-does run commands under seccomp only, with no namespaces and network still denied. However, it
-exposes `CODEX_HOME/auth.json` to agent commands, so it is not used. Codex's per-command sandbox
-stays: about 12-16 sandboxes alive at once, each copying only the outer sandbox's small mount table.
+This pool is used by the candidate compiler executor. The author session and its
+tool commands keep their selected provider permission profile and transport;
+the compiler reuse option does not alter them. A new provider or sandbox version
+still needs its ordinary independent deployment checks.
 
-## Benchmark
-
-`N=50` sequential compiler-style case steps on CPUs 0-7 at nice 19, with a 13-mount policy, run
-while the two live runs were active:
-
-| mode | sandboxes started | wall |
-|---|---|---|
-| one bwrap per step | 50 | 6.31 s |
-| persistent | 1 | 2.21 s |
-
-The persistent per-step cost (about 44 ms) is mostly the step's own Python start. Under the lock
-contention measured in the live runs, each per-call start cost 20-120 s instead of about 80 ms. The
-saving per step therefore grows with contention and with policy size. The real policy has hundreds
-of binds.
+`sandbox_pool.py` owns policy eligibility, worker reset and disposal.
+`snapshot_execution.py` owns the exact per-call staging and invocation records;
+`phase1/options.py` owns the fresh-controller selection. This reuse does not
+change the author provider transport or its selected permission profile.

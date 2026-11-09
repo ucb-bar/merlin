@@ -15,7 +15,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Does not permit float reassociation or mutable storage reuse
 - **evidence to request**: Preparation count and byte count before/after
 - **access**: requires_reviewed_library_extension
-- **test that calls it**: `merlin/tests/ir/test_tensor_provenance_cse.py`: `assert deduplicate_tensor_preparation(module) == {"linalg.generic": 1}`
+- **test that calls it**: none found
 
 ### persistent_prepack
 
@@ -28,7 +28,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Manifest weight role alone insufficient; invalidation adapter required
 - **evidence to request**: Preparation lifetime, setup cost and amortization horizon
 - **access**: requires_reviewed_library_extension
-- **test that calls it**: `merlin/tests/infra/test_scheduling_api_export_v24.py`: `assert fixed_arguments(bundle,manifest) == (3,)`
+- **test that calls it**: none found
 
 ### borrowed_preparation
 
@@ -41,7 +41,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Target layout and lifetime witness required
 - **evidence to request**: Borrow scope, producer identity and overwritten-byte checks
 - **access**: selected_public_library
-- **test that calls it**: `merlin/tests/ir/test_prepared_operand_schedule.py`: `return install_prepared_borrows(`
+- **test that calls it**: none found
 
 ### direct_padding_gather
 
@@ -54,7 +54,7 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Need physical buffer correspondence and measured host cost
 - **evidence to request**: Removed intermediate bytes and packing instructions
 - **access**: requires_reviewed_library_extension
-- **test that calls it**: `merlin/tests/ir/test_im2col_padding.py`: `reports = rewrite_padding_gathers(module, index_bits=64)`
+- **test that calls it**: none found
 
 ### cold_warm_state_policy
 
@@ -67,4 +67,4 @@ Paths are under `submission/compiler_library/`. Read the call's docstring and th
 - **your target supplies**: Existing fixed-argument support is not a complete cold/warm benchmark or cache-state contract
 - **evidence to request**: Setup cost, first-call cost, repeated-call distribution, persistent bytes and invalidation events
 - **access**: requires_reviewed_library_extension
-- **test that calls it**: `merlin/tests/infra/test_scheduling_api_export_v24.py`: `assert fixed_arguments(bundle,manifest) == (3,)`
+- **test that calls it**: none found

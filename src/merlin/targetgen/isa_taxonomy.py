@@ -496,6 +496,15 @@ def taxonomy_for_target(target: str, *, timeout: int = 120) -> Taxonomy:
             subject,
             f"the descriptor {str(p)!r} could not be loaded ({type(e).__name__}: {e}); the taxonomy is UNDETERMINED",
         )
+    if te.target != target:
+        from .target_registry import declared_target_for
+
+        if declared_target_for(target) != te.target:
+            return _unknown(
+                subject,
+                f"the selected descriptor {str(p)!r} declares target {te.target!r}, not {target!r}; "
+                "no declared directory alias binds that identity, so this target's taxonomy is UNDETERMINED",
+            )
     try:
         return derive_isa_taxonomy(te, timeout=timeout)
     except Exception as e:  # noqa: BLE001 — record WHAT failed; never report it as "no ISA"

@@ -55,12 +55,14 @@ DEFERRED_OPCODES = {
     "padding edge; not built",
     "BATCHED_MATMUL": "encodable in principle as a per-batch loop of 2-D matmuls, but this encoder's "
     "Tensor is rank-2 and would need a batch layer; not built",
+    "ROW_MAJOR_VIEW": "the reference changes a produced buffer's logical shape without copying, but this "
+    "encoder does not model the corresponding shape/index and output-ownership change; not built",
 }
 
 #: Opcodes the reference simulator itself implements in float, so a bit-exact check would be the
 #: wrong specification rather than merely an expensive one. Named individually so an abstention can
 #: say WHICH class it fell into instead of "unknown".
-FLOAT_ONLY_OPCODES = frozenset({"RMSNORM", "SOFTMAX", "GELU", "SOFTCAP", "ROPE"})
+FLOAT_ONLY_OPCODES = frozenset({"RMSNORM", "SOFTMAX", "GELU", "SOFTCAP", "ROPE", "MAXPOOL2D", "RESIDUAL_ADD"})
 
 #: In the command-buffer schema's opcode enum but with no branch in ``simulate`` at all — the
 #: reference raises ``unknown opcode`` on them, so there is nothing here to mirror.

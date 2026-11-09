@@ -3,10 +3,10 @@ title: Compose shared compiler transformations in an authoring loop
 kind: guide
 status: current
 owner: compile
-last_verified: 2026-10-26
+last_verified: 2026-11-09
 code_refs:
-  - src/merlin/compile/composition_catalog.py
-  - src/merlin/compile/scheduling/api_catalog.py
+  - src/merlin/compiler/passes/composition.py
+  - src/merlin/compiler/schedule/api_catalog.py
   - src/merlin_experiments/phase1/prepare_author_library.py
   - src/merlin_experiments/phase1/full_compiler_workspace.py
   - src/merlin_experiments/phase1/author_skills/heavy-pass-recipes/scripts/composition_routes.py
@@ -24,10 +24,11 @@ the target emitter and the original independent checks.
 ## Select and discover sources
 
 Use `python -m merlin_experiments.phase1.prepare_author_library` with
-`--library-version 22`, an exact source revision, the previous reviewed library
+`--library-version 26`, an exact source revision, the previous reviewed library
 selection and a fresh output directory. Additional generic leaves require explicit
 `--reviewed-module` selections. The normal preparation retains existing access
-policy and checks the source export and contract. Inventory V20 corresponds to
+policy and checks the source export and contract. Fresh preparation accepts inventory26 only; replay older inventories in their
+exact frozen environment. The following relationships are historical: inventory V20 corresponds to
 `merlin.common_compiler_substrate.v13` (shared-library schema
 `merlin.shared_scheduling_library.v14`), V21 to `merlin.common_compiler_substrate.v14`
 (schema `v15`) and V22 to `merlin.common_compiler_substrate.v15` (schema `v16`).
@@ -42,15 +43,15 @@ clients, and the bundle records those grants as denials. It stages the generic
 `merlin.compile.analysis` modules the remaining tools import instead. Inventories
 V19 to V21 remain unchanged for frozen runs and sealed bundles.
 
-Inspect `scheduling_capabilities(22)` from
-`merlin.compile.scheduling.api_catalog`. For composition, pass the exact available
+Inspect `scheduling_capabilities(26)` from
+`merlin.compiler.schedule.api_catalog`. For composition, pass the exact available
 module roster to the separate catalog:
 
 ```python
-from merlin.compile.composition_catalog import composition_capabilities
-from merlin.compile.scheduling.library_sources import library_modules
+from merlin.compiler.passes.composition import composition_capabilities
+from merlin.compiler.schedule.library_sources import library_modules
 
-small_sdk = composition_capabilities(selected_modules=library_modules(22))
+small_sdk = composition_capabilities(selected_modules=library_modules(26))
 # For an additional reviewed library, use its selected contract instead:
 additional = composition_capabilities(
     selected_modules=tuple(selected_contract.public_modules),
@@ -260,3 +261,11 @@ lowered scalar operands and must preserve the selected decoding and numerical
 configuration. Source, plan, admission and shared-library identities are checked
 again after emission. This interface is available to ordinary schedule proposals;
 it contains no shape choice, target instruction recipe or performance claim.
+
+New full-source selections admit the bounded canonical authoring families
+listed by `full_compiler_workspace.MUTABLE_NAMESPACES`, including frontend, IR,
+planning, partition, passes, transforms, selection, schedule, lowering and
+quantization. Baseline copying still follows the existing reviewed source
+closure and protected registries. This is no blanket grant of `merlin.compiler`,
+checker sources or evaluator authority; stored selections retain their exact
+recorded namespace tuple and source bytes.

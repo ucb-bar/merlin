@@ -30,7 +30,6 @@ import yaml
 from merlin.common.paths import module_source_path
 from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
 from merlin.targetgen.capsule_common import discover_capsules
-from merlin.targetgen.contract.materialize import materialize_public_cohort
 from merlin.targetgen.sandbox import preflight as SANDBOX_PREFLIGHT
 from merlin.targetgen.sandbox.answer_surfaces import dropped_declarations
 from merlin.targetgen.target_experiment import load_target_experiment
@@ -605,29 +604,6 @@ def _verify_functional_certificate(
         "independently_verified_workload_sha256": coverage["selected"],
         "unsampled_workload_sha256": coverage["unsampled"],
     }
-
-
-def _functional_regrade_inputs(
-    target: object, cohort: FC.FunctionalGradeCohort, *, contract_root: Path, public_destination: Path
-) -> tuple[str, str]:
-    """Build the canonical public grade view and bind both CLI inputs to ``cohort``.
-
-    The public CLI input is already admission-filtered and carries the materializer's source/admitted
-    record.  The hidden CLI input deliberately remains the full source root: ``grade_agent_run`` applies
-    the same post-freeze capability selector used by :func:`_functional_grade_cohort`, preserving the
-    honest hidden source/admitted counts without exposing its excluded names.
-    """
-    current = FC.functional_grade_cohort(target, contract_root=contract_root)
-    if current != cohort:
-        raise ExperimentError("functional grade cohort changed after preflight")
-    public_root = materialize_public_cohort(target, tier_ceiling="L3", destination=public_destination)
-    materialized_public = discover_capsules(public_root, labels={"public", "dev"}, contract=contract_root)
-    if {str(cap.get("name")) for cap in materialized_public} != {capsule.name for capsule in cohort.public}:
-        raise ExperimentError("materialized public regrade cohort differs from certificate cohort")
-    hidden_roots = ",".join(str(path) for path in target.hidden_roots())
-    if not hidden_roots:
-        raise ExperimentError("full functional regrade needs nonempty hidden source roots")
-    return str(public_root), hidden_roots
 
 
 def _functional_qualification_descriptor(

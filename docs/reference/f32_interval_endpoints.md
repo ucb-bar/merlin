@@ -4,7 +4,10 @@ kind: reference
 status: draft
 owner: core
 last_verified: 2026-10-05
-code_refs: [merlin/runtime/c/f32_interval_endpoint.h, merlin/runtime/c/prepared_bit_polynomial.h, merlin/runtime/c/prepared_dot_norms.h, merlin/tests/runtime/test_f32_interval_endpoint.py, merlin/tests/runtime/test_prepared_bit_polynomial.py, merlin/tests/runtime/test_prepared_dot_norms.py]
+code_refs:
+  - merlin/runtime/c/f32_interval_endpoint.h
+  - merlin/runtime/c/prepared_bit_polynomial.h
+  - merlin/runtime/c/prepared_dot_norms.h
 ---
 
 # Source-rounded interval endpoints

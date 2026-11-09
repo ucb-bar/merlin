@@ -1,6 +1,7 @@
 """Typed comparison masks with checked singleton projections."""
 
 from itertools import product
+from math import isnan
 from struct import unpack
 
 from .model import IndexMap, SemanticNode, TensorType
@@ -103,7 +104,7 @@ def evaluate_mask(node: SemanticNode, operands):
         elif operation == "arith.xori":
             value = lhs ^ rhs
         else:
-            ordered = lhs == lhs and rhs == rhs
+            ordered = operation != "arith.cmpf" or not (isnan(lhs) or isnan(rhs))
             compare = predicate[1:] if operation == "arith.cmpf" or predicate.startswith("s") else predicate
             value = (
                 ordered

@@ -160,11 +160,13 @@ class PublicNativeExploration:
             or self.source_domain_protocol != issued[12]
             or self.count_feedback_protocol != issued[13]
             or self.exploratory_estimate_protocol != issued[14]
-            or self.count_feedback_protocol is not None and (
+            or self.count_feedback_protocol is not None
+            and (
                 type(self.count_feedback_protocol) is not str
                 or self.count_feedback_protocol != OBSERVED_COUNT_FEEDBACK_PROTOCOL
             )
-            or self.source_domain_protocol is not None and self.source_domain_protocol != DIRECT.PROTOCOL
+            or self.source_domain_protocol is not None
+            and self.source_domain_protocol != DIRECT.PROTOCOL
             or (self.reviewed_json, self.catalog_json, self.files) != issued[1:4]
             or canonical_json(EVIDENCE.selected(self.selection)) != issued[11]
             or any(
@@ -200,14 +202,11 @@ class PublicNativeExploration:
             "schema": (
                 "merlin.public_native_exploration.v7"
                 if self.exploratory_estimate_protocol is not None
-                else
-                "merlin.public_native_exploration.v6"
+                else "merlin.public_native_exploration.v6"
                 if self.count_feedback_protocol is not None
-                else
-                "merlin.public_native_exploration.v5"
+                else "merlin.public_native_exploration.v5"
                 if self.source_domain_protocol is not None
-                else
-                "merlin.public_native_exploration.v4"
+                else "merlin.public_native_exploration.v4"
                 if self.selection.additional_archives
                 else "merlin.public_native_exploration.v3"
                 if self.count_protocol is not None
@@ -233,21 +232,28 @@ class PublicNativeExploration:
             "source_files_sha256": document_sha256(self.files),
             "native_semantics_identity": self.selection.native_semantics.identity,
             "prediction_kind": "event_timing",
-            "scope": ("fixed-model exploratory estimates; qualified-domain predictions separately"
-                      if self.exploratory_estimate_protocol is not None
-                      else "qualified-domain public exploration only"),
+            "scope": (
+                "fixed-model exploratory estimates; qualified-domain predictions separately"
+                if self.exploratory_estimate_protocol is not None
+                else "qualified-domain public exploration only"
+            ),
             "measured_cycles": None,
             "promotion_authority": "NONE",
             **({"count_protocol": self.count_protocol} if self.count_protocol is not None else {}),
             **(
                 {"count_feedback_protocol": self.count_feedback_protocol}
-                if self.count_feedback_protocol is not None else {}
+                if self.count_feedback_protocol is not None
+                else {}
             ),
-            **({"exploratory_estimate_protocol": self.exploratory_estimate_protocol}
-               if self.exploratory_estimate_protocol is not None else {}),
+            **(
+                {"exploratory_estimate_protocol": self.exploratory_estimate_protocol}
+                if self.exploratory_estimate_protocol is not None
+                else {}
+            ),
             **(
                 {"source_domain_protocol": self.source_domain_protocol}
-                if self.source_domain_protocol is not None else {}
+                if self.source_domain_protocol is not None
+                else {}
             ),
             **(
                 {"compiler_source_native_correspondence": self.binding_correspondence.record()}
@@ -293,8 +299,14 @@ class PublicNativeExploration:
 
 
 def prepare_public_native_exploration(
-    selection, *, binding_correspondence=None, metadata_protocol=None, count_protocol=None, source_domain_protocol=None,
-    count_feedback_protocol=None, exploratory_estimate_protocol=None,
+    selection,
+    *,
+    binding_correspondence=None,
+    metadata_protocol=None,
+    count_protocol=None,
+    source_domain_protocol=None,
+    count_feedback_protocol=None,
+    exploratory_estimate_protocol=None,
 ):
     """Reconstruct public gates, optionally joining distinct binding namespaces.
 
@@ -383,17 +395,27 @@ def prepare_public_native_exploration(
     )
     modules = (HISTORY, DOMAIN, *DOMAIN.source_modules(), COUNTS, NATIVE, REVIEW, OBSERVATION, FEEDBACK, EVIDENCE)
     if count_feedback_protocol is not None:
-        modules = (*modules, COUNT_PROJECTION, COUNT_PROJECTION.O, COUNT_PROJECTION.I)
+        from merlin_timing import observations as COUNT_OBSERVATIONS
+
+        modules = (*modules, COUNT_PROJECTION, COUNT_OBSERVATIONS, COUNT_PROJECTION.I)
     if exploratory_estimate_protocol is not None:
         modules = (*modules, ESTIMATE)
     if source_domain_protocol is not None:
         from merlin_experiments.phase0 import connected_integer_qualification as SOURCE
 
-        (binder, selector_module, checked_module, invocation_module,
-         native_binding_module, products_module) = DIRECT.source_modules()
+        (binder, selector_module, checked_module, invocation_module, native_binding_module, products_module) = (
+            DIRECT.source_modules()
+        )
         modules = (
-            *modules, DIRECT, binder, selector_module, checked_module, invocation_module,
-            native_binding_module, products_module, SOURCE
+            *modules,
+            DIRECT,
+            binder,
+            selector_module,
+            checked_module,
+            invocation_module,
+            native_binding_module,
+            products_module,
+            SOURCE,
         )
     if selection.additional_archives:
         from merlin_timing import archive, archive_union, contracts, validation
@@ -439,20 +461,31 @@ def prepare_public_native_exploration(
             (PublicNativeExploration, ("verify", "record", "verify_for", "observe_member", "_metadata_operation")),
             (PublicNativeExploration._metadata_operation, ("__wrapped__",)),
             (OBSERVATION, ("observe", "validate_projection", "schema", "unknown")),
-            *(((COUNT_PROJECTION, ("project", "validate", "unit", "_digest", "recheck_child_result")),
-               (COUNT_PROJECTION.O, ("feature_complete",)),
-               (COUNT_PROJECTION.I, ("verify",))) if count_feedback_protocol is not None else ()),
+            *(
+                (
+                    (COUNT_PROJECTION, ("project", "validate", "unit", "_digest", "recheck_child_result")),
+                    (COUNT_OBSERVATIONS, ("feature_complete",)),
+                    (COUNT_PROJECTION.I, ("verify",)),
+                )
+                if count_feedback_protocol is not None
+                else ()
+            ),
             *(((ESTIMATE, ("project", "validate")),) if exploratory_estimate_protocol is not None else ()),
             (NATIVE, ("inference_case", "original_numerical_observation", "compare", "verify_semantics")),
             (COUNTS, ("observe",)),
             (FEEDBACK, ("join", "validate", "unavailable_reason")),
             (DOMAIN, ("current", "emitted_source", "train_support", "typed_profile")),
-            *(((DIRECT, ("current", "emitted_source", "selection_record", "source_modules")),
-               (binder, ("bind_direct_source_contraction",)),
-               (DIRECT.CHECKED, ("record",)),
-               (invocation_module, ("verify",)),
-               (products_module, ("reopen_native_products", "_reopen_product")))
-              if source_domain_protocol is not None else ()),
+            *(
+                (
+                    (DIRECT, ("current", "emitted_source", "selection_record", "source_modules")),
+                    (binder, ("bind_direct_source_contraction",)),
+                    (DIRECT.CHECKED, ("record",)),
+                    (invocation_module, ("verify",)),
+                    (products_module, ("reopen_native_products", "_reopen_product")),
+                )
+                if source_domain_protocol is not None
+                else ()
+            ),
             (REVIEW, ("review_archive", "domain_reason", "_review_dataset")),
             (HISTORY, ("prepare",)),
             (EVIDENCE, ("declarations", "selected", "paths", "component", "review", "catalog", "check_inputs")),
