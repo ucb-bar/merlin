@@ -89,3 +89,9 @@ the per-backend adapters under `backends/`.
   Shared raw ticks retain one declared epoch; local counters stay separate.
   Malformed/status-contradictory records refuse; clock errors/regressions null
   durations. No Hz, controller tracks, physical busy or causal stalls are inferred.
+- `outlined_chain` emits a genuine deployable staged driver for admitted static
+  tensor DAGs. Controller code owns views/descriptors/byte copies; only the
+  explicitly assigned compute callback invokes arithmetic. Persistent workers
+  must acknowledge quiescence and external joins before fresh sequenced teams.
+  Inputs are immutable and unique intermediate storage spans the whole chain;
+  unsupported views/effects refuse rather than executing model math on a controller.

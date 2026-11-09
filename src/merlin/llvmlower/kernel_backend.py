@@ -120,6 +120,102 @@ def compile_host(kernel_module, workdir: str | Path):
     )
 
 
+def compile_deployable_kernel(
+    kernel_module,
+    workdir: str | Path,
+    *,
+    entry: str,
+    extra_cflags: tuple[str, ...],
+    vectorize: bool = False,
+    codegen_target: str = "rvv",
+) -> dict:
+    """Compile one closed tensor kernel for the explicit LP64 compute-worker ABI.
+
+    This initial deployable subset refuses heap/LLVM-stack allocation and OpenMP
+    rather than borrow an unbounded allocator or an implicit worker team. The
+    selected target flags, compiler layout and exact emitted ABI are recorded.
+    It does not build a parent forward, launch hardware or supply runtime libs.
+    """
+    import hashlib
+
+    from merlin.common.digest import sha256_file
+
+    from ..xdsl_dialects._common import text
+    from . import codegen, target_data_layout, toolchain
+    from .lower import lower_model
+
+    if (
+        not isinstance(entry, str)
+        or not entry.isascii()
+        or not entry.isidentifier()
+        or not isinstance(extra_cflags, tuple)
+        or not extra_cflags
+        or any(not isinstance(flag, str) or not flag or "\0" in flag for flag in extra_cflags)
+    ):
+        raise ValueError("explicit safe kernel entry and literal target flag tuple required")
+    functions = [op for op in kernel_module.body.block.ops if op.name == "func.func"]
+    if len(functions) != 1 or functions[0].sym_name.data != entry:
+        raise ValueError("deployable kernel requires one independently named entry")
+    from .deployable_outline import static_tensor_contract
+
+    ranks = [
+        len(static_tensor_contract(t)[0])
+        for t in (*functions[0].function_type.inputs.data, *functions[0].function_type.outputs.data)
+    ]
+    flags = (*codegen.RISCV_FLAGS, *extra_cflags)
+    observation = target_data_layout.observe_index_width(toolchain.clang(), flags)
+    if observation["index_bits"] != 64 or not observation["data_layout"].startswith("e"):
+        raise ValueError("deployable descriptors require observed little-endian LP64/index64 lowering")
+    work = Path(workdir)
+    result = lower_model(
+        text(kernel_module),
+        work,
+        targets=(),
+        vectorize=vectorize,
+        codegen_target=codegen_target,
+        parallel=False,
+        features=frozenset(),
+        static_arena=False,
+        data_layout=observation["data_layout"],
+        index_bits=64,
+    )
+    llvm = result.ll_path.read_text()
+    if any(
+        token in llvm
+        for token in ("@malloc(", "@calloc(", "@realloc(", "@aligned_alloc(", "@free(", "__kmpc_", "alloca ")
+    ):
+        raise ValueError("deployable kernel needs unsupported internal allocation or OpenMP team")
+    raw_prefix = f"define void @{entry}("
+    wrapper_prefix = f"define void @_mlir_ciface_{entry}("
+    raw = [line for line in llvm.splitlines() if line.startswith(raw_prefix)]
+    wrapper = [line for line in llvm.splitlines() if line.startswith(wrapper_prefix)]
+    expected = [kind for rank in ranks for kind in ("ptr", "ptr", "i64", *(["i64"] * (2 * rank)))]
+    if len(raw) != 1 or len(wrapper) != 1:
+        raise ValueError("missing unique void kernel and C-interface entries")
+    actual = [item.strip().split()[0] for item in raw[0][len(raw_prefix) :].split(")", 1)[0].split(",")]
+    pointer_args = [item.strip().split()[0] for item in wrapper[0][len(wrapper_prefix) :].split(")", 1)[0].split(",")]
+    if actual != expected or pointer_args != ["ptr"] * len(ranks):
+        raise ValueError("emitted kernel ABI disagrees with rank-exact descriptor contract")
+    obj = codegen.compile_ll(result.ll_path, work / "kernel.o", extra_flags=extra_cflags)
+    return {
+        "entry": entry,
+        "ciface_entry": "_mlir_ciface_" + entry,
+        "object": str(obj),
+        "object_sha256": sha256_file(obj),
+        "llvm": str(result.ll_path),
+        "llvm_sha256": sha256_file(result.ll_path),
+        "source_ir_sha256": hashlib.sha256(text(kernel_module).encode()).hexdigest(),
+        "argument_ranks": ranks,
+        "index_observation": observation,
+        "effective_cflags": list(flags),
+        "vectorize": vectorize,
+        "codegen_target": codegen_target,
+        "heap_allocations": False,
+        "LLVM_stack_allocations": False,
+        "OpenMP": False,
+    }
+
+
 def run_random(model, sig: KernelSignature, seed: int = 0) -> tuple[list[np.ndarray], list[np.ndarray]]:
     """Invoke the kernel on seeded random inputs; return (inputs, outputs)."""
     rng = np.random.default_rng(seed)

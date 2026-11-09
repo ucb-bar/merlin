@@ -53,3 +53,8 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
   supported; unknown or contradictory evidence refuses and requests recapture.
   The canonical signed ABI may require exact modular unsigned compensation.
   Preserve source quantization rather than applying W8A8 conversion a second time.
+- `outlined_program` is an explicit closed-chain build, separate from the
+  monolithic model path. It compiles isolated arithmetic entries and emits a
+  controller/worker driver; no parent forward is compiled. Code reuse requires
+  exact canonical IR and lowering identity, never equal shapes/signatures.
+  All attributes remain in the initial key; source/FQN mappings remain separate.

@@ -113,3 +113,10 @@ def test_baremetal_runtime_source_closure_is_publicly_packaged():
         "vlen_probe.c",
     }
     assert {"merlin/runtime/baremetal/spike/" + name for name in required} <= files
+    assert {
+        "merlin/runtime/c/merlin_descriptor_internal.h",
+        "merlin/runtime/c/merlin_descriptors.c",
+        "merlin/runtime/c/merlin_model.h",
+        "merlin/runtime/c/merlin_staged.c",
+        "merlin/runtime/c/merlin_staged.h",
+    } <= files

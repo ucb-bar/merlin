@@ -771,3 +771,8 @@ with explicit extensions and unflagged wrapping arithmetic. The signed-byte dot
 plus column-sum correction is exact modulo 2³²; it never infers unsigned intent
 from storage alone or repairs a contradictorily signed source capture. Keep the
 original FP32 quantization/scaling DAG and account for the added correction work.
+- `deployable_outline` reuses the existing outliner and typed dispatch program.
+  It admits only closed static tensor kernels and exact supported views, with
+  immutable input/effect checks and unique whole-chain storage lifetimes.
+  `kernel_backend.compile_deployable_kernel` verifies compiler-owned LP64/index64
+  ABI and refuses heap/LLVM-stack allocation or nested OpenMP in this first path.

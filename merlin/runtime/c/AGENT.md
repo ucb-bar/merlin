@@ -87,6 +87,10 @@ The **Merlin C runtime**: a generic, data-driven driver that executes a compiled
   behavior retains the leader-only legacy clock hook. Window read errors and
   regressions invalidate timing without cancelling numerical callbacks. Rebuild
   all consumers against matching header/source; never swap a live image's ABI.
+- `merlin_descriptors.c` exposes checked no-invoke descriptor preparation. It
+  shares rank-exact packing through `merlin_descriptor_internal.h` with the
+  existing monolithic driver. Validate all extents/capacities before writes;
+  arithmetic invocation stays outside this metadata-only helper.
 
 ## Testing expectations
 

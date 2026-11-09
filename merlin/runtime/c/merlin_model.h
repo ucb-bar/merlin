@@ -17,6 +17,7 @@
 #define MERLIN_OUTPUT 2
 
 #define MERLIN_MAX_RANK 8
+#define MERLIN_MAX_DESCRIPTOR_ARGS 4096
 
 typedef struct {
   int kind;                       /* MERLIN_WEIGHT | INPUT | OUTPUT */
@@ -39,6 +40,16 @@ typedef struct {
 /* Generated per model (model_call.c): unrolls the N-pointer ciface call. */
 void merlin_invoke(void **descriptor_ptrs);
 typedef void (*merlin_invoke_fn_t)(void **descriptor_ptrs);
+
+/* Prepare rank-exact dense descriptors without invoking arithmetic. The caller
+ * supplies already resolved data pointers and capacities, with private descriptor
+ * storage. kind/weight offsets are not interpreted by this explicit-pointer API.
+ * Static positive extents, overflow-safe byte sizes and capacities are checked
+ * for every argument before any descriptor is written. Return 0 or -1.
+ */
+int merlin_prepare_descriptors(const merlin_arg_t *args, int n_args,
+                               void *const *data_ptrs, const size_t *capacities,
+                               merlin_descriptor_t *descs, void **descriptor_ptrs);
 
 /* Run forward() once.
  *   args        : the generated MERLIN_ARGS table (length n_args, OUTPUT last).
