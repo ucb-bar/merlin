@@ -17,6 +17,24 @@ from merlin.runtime.staged_dispatch import StagedRoles
 def _views(views, positions) -> list[str]:
     lines = []
     for view in views:
+        if view["kind"] == "pack_insert_slice":
+            source, initial = (positions[bid] for bid in view["inputs"])
+            dst = positions[view["output"]]
+            lines.append(f"    memcpy(c->buffers[{dst}],c->buffers[{initial}],{view['initial_bytes']});")
+            rem = "rem=span, " if view["copy_iteration_shape"] else ""
+            lines.append(
+                f"    for(size_t span=0;span<{view['copy_count']};++span) {{ "
+                f"size_t {rem}destination={view['copy_base_elements']};"
+            )
+            for size, pitch in reversed(
+                list(zip(view["copy_iteration_shape"], view["copy_destination_pitches"], strict=True))
+            ):
+                lines.append(f"      destination += (rem%{size})*{pitch}; rem/={size};")
+            lines.append(
+                f"      memcpy((unsigned char*)c->buffers[{dst}]+destination*{view['element_bytes']},"
+                f"(const unsigned char*)c->buffers[{source}]+span*{view['copy_bytes']},{view['copy_bytes']});\n    }}"
+            )
+            continue
         if view["kind"] == "pack_concat":
             dst = positions[view["output"]]
             lines.append(f"    for(size_t block=0;block<{view['outer_blocks']};++block) {{")
