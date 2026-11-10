@@ -8,6 +8,9 @@ from math import prod
 
 
 def validate_dimensions(spec, buffers, scalars):
+    effect_only = spec["schema"] == "t2m.shared-tensor-abi.v6"
+    if effect_only and (spec.get("effect_only") is not True or any(b.get("effect") != "read" for b in buffers)):
+        raise ValueError("effect-only ABI requires readonly buffers and no functional results")
     names = set()
     for buffer in buffers:
         shape = buffer.get("shape")
@@ -44,6 +47,6 @@ def validate_dimensions(spec, buffers, scalars):
         raise ValueError("kernel logical launch product exceeds its i64 domain")
     if any(bounds.get(name) is None or bounds[name][0] < 0 for name in names):
         raise ValueError("runtime dimensions require nonnegative bounded integer scalar bindings")
-    if dynamic != (spec["schema"] == "t2m.shared-tensor-abi.v5"):
+    if not effect_only and dynamic != (spec["schema"] == "t2m.shared-tensor-abi.v5"):
         raise ValueError("runtime dimensions and grids require explicit ABI v5")
     return dynamic

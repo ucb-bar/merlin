@@ -127,6 +127,7 @@ def _checked_word_intent(entry, members):
 
 
 def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw: bytes) -> dict:
+    observable = receipt.get("schema") == "t2m.effect-kernel-receipt.v1"
     def digest(raw):
         return hashlib.sha256(raw).hexdigest()
 
@@ -150,8 +151,12 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
     if provenance.get("profile", "shared-functional-tensor") != receipt["profile"]:
         raise ValueError("kernel receipt and memory provenance profiles differ")
     memory_members = _checked_memory_members(checked, provenance)
-    if spec.get("schema") not in tuple("t2m.shared-tensor-abi.v" + str(i) for i in range(1, 6)):
+    if spec.get("schema") not in tuple("t2m.shared-tensor-abi.v" + str(i) for i in range(1, 7)):
         raise ValueError("unsupported standalone tensor ABI")
+    effect_only = spec["schema"] == "t2m.shared-tensor-abi.v6"
+    if (effect_only and (not observable or spec.get("effect_only") is not True)
+            or not effect_only and spec.get("effect_only", False) is not False):
+        raise ValueError("effect-only ABI requires its explicit observable-effect receipt")
     if (provenance.get("spec") != spec or provenance.get("mlir_sha256") != digest(raw)
             or provenance.get("source_sha256") != digest(ttir)):
         raise ValueError("kernel source/provenance/ABI correspondence failed")
@@ -159,17 +164,17 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
     if weights["weights.safetensors"] != struct.pack("<Q", 8) + b"{}      ":
         raise ValueError("standalone profile requires an empty parameter container")
     buffers = spec.get("buffers", [])
-    if (not buffers or any(b.get("effect") not in ("read", "write", "readwrite") for b in buffers)
+    if (not buffers and not effect_only or any(b.get("effect") not in ("read", "write", "readwrite") for b in buffers)
             or len({b.get("name") for b in buffers}) != len(buffers)):
         raise ValueError("standalone profile has an incomplete memory ABI")
     inputs = [b for b in buffers if b["effect"] != "write"]
     scalars = spec.get("runtime_scalars", [])
-    if bool(scalars) != (spec["schema"] in ("t2m.shared-tensor-abi.v3", "t2m.shared-tensor-abi.v4", "t2m.shared-tensor-abi.v5")):
+    if not effect_only and bool(scalars) != (spec["schema"] in ("t2m.shared-tensor-abi.v3", "t2m.shared-tensor-abi.v4", "t2m.shared-tensor-abi.v5")):
         raise ValueError("runtime scalar inputs require the explicit ABI v3 profile")
     if any(set(s) != {"name", "dtype", "source_arg"} | ({"bounds"} if "bounds" in s else set())
            or not isinstance(s["name"], str) or not s["name"].isidentifier() for s in scalars):
         raise ValueError("runtime scalar declarations carry names/types/positions, never invocation values")
-    if spec["schema"] != "t2m.shared-tensor-abi.v5" and (spec["schema"] == "t2m.shared-tensor-abi.v4") != any("bounds" in s for s in scalars):
+    if spec["schema"] not in ("t2m.shared-tensor-abi.v5", "t2m.shared-tensor-abi.v6") and (spec["schema"] == "t2m.shared-tensor-abi.v4") != any("bounds" in s for s in scalars):
         raise ValueError("guarded runtime scalar ranges require ABI v4")
     for scalar in scalars:
         if "bounds" not in scalar:
@@ -189,7 +194,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
         raise ValueError("runtime scalar declaration has an invalid type/name/source position")
     inputs.extend({**s, "shape": [], "abi_kind": "scalar"} for s in scalars)
     outputs = [b for b in buffers if b["effect"] != "read"]
-    if (not outputs or receipt.get("materialized_abi") !=
+    if (not outputs and not effect_only or receipt.get("materialized_abi") !=
             {"complete": True, "inputs": len(inputs), "outputs": len(outputs)}):
         raise ValueError("kernel receipt does not bind its complete functional ABI")
     if json.loads(weights["weights.safetensors.manifest.json"]) != {
@@ -232,6 +237,8 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
                  "inputs": abi(entry.function_type.inputs, inputs), "outputs": abi(entry.function_type.outputs, outputs),
                  "shape_scope": "runtime_scalar_bound_dimensions" if dynamic else "static_captured_signature", "capture_dtype": "typed-per-argument",
                  "input_mutability": "borrowed-immutable-tensors"}
+    if observable:
+        signature["effect_abi"] = "source-encoded-observable-effects; evaluator-outcome-excluded"
     if receipt["profile"] in ("shared-guarded-buffer", "shared-source-word-buffer"):
         contract = entry.attributes.get("prov.memory_guard_bytes_per_result_element")
         admission = json.loads(memory_members["memory-admission.json"])
@@ -265,13 +272,14 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
                "source/compiler-provenance.json": encoded({k: provenance[k] for k in fields if k in provenance}),
                **{"source/" + name: data for name, data in memory_members.items()},
                "source-correspondence.json": encoded(correspondence)}
-    manifest = {"schema": "merlin.compile-inputs.v1", "source_profile": "standalone-tensor-kernel",
+    manifest = {"schema": "merlin.compile-inputs.v1", "source_profile": "standalone-effect-kernel" if observable else "standalone-tensor-kernel",
                 "payload_profile": receipt["profile"],
                 "scope": "compiler_only_declared_runtime_shapes; source_closure_and_numerical_admission_unverified" if dynamic else "compiler_only_static_capture; source_closure_and_numerical_admission_unverified",
                 "source": {"capture_receipt_sha256": digest(receipt_raw), "capture_schema": receipt["schema"],
                            "model_mlir_sha256": digest(raw), "correspondence": "source-correspondence.json"},
                 "members": {name: digest(data) for name, data in members.items()},
-                "excluded_evaluator_members": ["inputs.npz", "golden.npy", "extra.npz", "execution.json"]}
+                "excluded_evaluator_members": ["inputs.npz", "golden.npy", "extra.npz", "execution.json",
+                    *(["reference.json", "native/"] if observable else [])]}
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))
     try:

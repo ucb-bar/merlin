@@ -23,6 +23,11 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   checks receipt-bound compiler members, and excludes evaluator values and digests from its staged view.
   Staging grants byte custody only, never source equivalence or numeric admission.
   `kernel_compile_inputs.py` separately stages standalone functional tensor kernels,
+  including explicit observable-effect receipts. ABI v6 permits void entries
+  only under `effect_only: true`, with readonly inputs and no discarded writes.
+  Preserve real result types in initially failing tensor cases. Outcome
+  references, native observations and their individual digests stay outside
+  compiler staging; source effects grant no implementation/target permission.
   validates declared buffer/result order, projects compiler provenance and records
   the entry-symbol adaptation to `forward` without inventing an FX capture.
   Its ABI v3 profile retains explicitly positioned by-value runtime scalars,

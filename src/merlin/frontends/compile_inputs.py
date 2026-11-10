@@ -66,7 +66,7 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path) -> di
         raise ValueError("capture directory is absent")
     receipt_raw = _read_member(source, "capture_receipt.json")
     receipt = json.loads(receipt_raw)
-    if receipt.get("schema") == "t2m.capture-receipt.v2":
+    if receipt.get("schema") in ("t2m.capture-receipt.v2", "t2m.effect-kernel-receipt.v1"):
         from .kernel_compile_inputs import _stage_kernel_inputs
 
         return _stage_kernel_inputs(source, target, receipt, receipt_raw)
