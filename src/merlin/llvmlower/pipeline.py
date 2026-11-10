@@ -1392,6 +1392,8 @@ def _select_runner(
     source = _bind_literal_diagnostics(source, selected=_LITERAL_DIAGNOSTICS in feats)
     from .scalar_diagnostics import FEATURE as _SCALAR_DIAGNOSTICS, bind_runner as _bind_scalar_diagnostics
     source = _bind_scalar_diagnostics(source, selected=_SCALAR_DIAGNOSTICS in feats)
+    from .bfloat_elementwise import FEATURE as _BFLOAT_ELEMENTWISE, bind_runner as _bind_bfloat_elementwise
+    source = _bind_bfloat_elementwise(source, selected=_BFLOAT_ELEMENTWISE in feats)
     from .bfloat_transport import FEATURE as _BFLOAT_TRANSPORT, bind_runner as _bind_bfloat_transport
     source = _bind_bfloat_transport(source, selected=_BFLOAT_TRANSPORT in feats)
     from .atomic_compare_exchange import FEATURE as _INTEGER_COMPARE_EXCHANGE, bind_runner as _bind_integer_compare_exchange
