@@ -596,6 +596,26 @@ def test_atomic_staging_retains_v3_source_contract_and_thirty_bit_cost(tmp_path)
     assert (target / "source/memory-admission.json").read_bytes() == (source / "memory-admission.json").read_bytes()
 
 
+@pytest.mark.parametrize("source_view", ["per-event", "legacy", "wrong-view", "wrong-primitive"])
+def test_word_storage_facts_do_not_replace_shared_source_primitive(tmp_path, source_view):
+    from merlin.frontends.kernel_atomic_evidence import checked_atomic_effects
+    source = tmp_path / "capture"
+    atomic_fixture(source, word=True)
+    admission = json.loads((source / "memory-admission.json").read_text())
+    provenance = json.loads((source / "provenance.json").read_text())
+    records = provenance["normalized_operations"]
+    if source_view == "per-event": records[0]["atomic"].pop("word_view")
+    elif source_view == "wrong-view": records[0]["atomic"]["word_view"]["storage_dtype"] = "f64"
+    elif source_view == "wrong-primitive": records[0]["atomic"]["operation"] = "xor"
+    args = (admission, provenance["memory"], records,
+            {b["name"]: b for b in provenance["spec"]["buffers"]})
+    if source_view in ("per-event", "legacy"):
+        checked_atomic_effects(*args)
+    else:
+        with pytest.raises(ValueError, match="atomic memory"):
+            checked_atomic_effects(*args)
+
+
 @pytest.mark.parametrize("change", [None, "f32", "integer", "ftz", "rounding", "kind", "legacy", "payload"])
 @pytest.mark.parametrize("dtype,policy", [("f64", None), ("f64", "quiet"), ("f32", "ieee"), ("f32", "ftz")])
 def test_floating_atomic_add_retains_its_operation_specific_numeric_contract(tmp_path, change, dtype, policy):

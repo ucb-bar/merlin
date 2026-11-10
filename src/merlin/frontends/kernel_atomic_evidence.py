@@ -43,11 +43,13 @@ def checked_atomic_effects(admission, memory, records, buffers):
         floating = isinstance(info, dict) and info.get("value_dtype") in ("f32", "f64")
         dtype = info.get("value_dtype") if floating else "i" + str(info.get("word_bits")) if isinstance(info, dict) else None
         word = isinstance(info, dict) and "word_view" in info
+        # Accept the original primitive or the exact legacy enriched record.
+        primitive = {key: value for key, value in info.items() if key != "word_view"} if word else info
         expected_view = {"storage_dtype": "f" + str(info.get("word_bits")), "value_dtype": "i" + str(info.get("word_bits")),
             "element_bits": info.get("word_bits"), "address_units": "equal-width-elements"} if word else None
         if word:
             dtype = expected_view["storage_dtype"]
-        if (not isinstance(info, dict) or not candidates or any(c != info for c in candidates)
+        if (not isinstance(info, dict) or not candidates or any(c != info and c != primitive for c in candidates)
                 or buffer.get("dtype") != dtype
                 or word and (profile != TYPED_EFFECT_PROFILE or floating or info.get("operation") == "cas"
                     or info.get("word_bits") not in (32, 64) or info["word_view"] != expected_view)
