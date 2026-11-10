@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from merlin.sched.ir.expr import Expr, render
+from merlin.sched.ir.expr import Const, Expr, Scaled, Select, Sum, Var, render
 from merlin.sched.ir.kernel import NULL, Call, Kernel, Loop, Ptr
 from merlin.sched.isa import InstructionSet, IsaError
 
@@ -50,13 +50,13 @@ UNRENDERABLE = (
 )
 
 
-def _c_value(v) -> str:
+def _c_value(v, *, index_bits=None) -> str:
     if isinstance(v, Ptr):
-        return f"((uint8_t *){v.tensor} + {render(v.offset, c=True)})"
+        return f"((uint8_t *){v.tensor} + {render(v.offset, c=True, index_bits=index_bits)})"
     if v is NULL:
         return "NULL"
     if isinstance(v, Expr):
-        return render(v, c=True)
+        return render(v, c=True, index_bits=index_bits)
     if isinstance(v, float):
         return float(np.float32(v)).hex() + "f"
     raise IsaError(f"cannot render operand value {v!r}")
@@ -97,7 +97,63 @@ def _spelled(call: Call, field: str, hook: str, description: str, spell, target:
     return text
 
 
-def emit_c_function(kernel: Kernel, iset: InstructionSet, *, symbol: str, spell=None) -> str:
+def _check_integer_domain(kernel, bits):
+    """Conservative bounds for every emitted integer intermediate, without expansion."""
+    limit = (1 << (bits - 1)) - 1
+
+    def bounds(expression, domains):
+        if isinstance(expression, Const):
+            result = expression.value, expression.value
+        elif isinstance(expression, Var):
+            result = domains[expression.name]
+        elif isinstance(expression, Sum):
+            lo = hi = 0
+            for term in expression.terms:
+                term_lo, term_hi = bounds(term, domains)
+                lo, hi = lo + term_lo, hi + term_hi
+                if lo < -limit - 1 or hi > limit:
+                    raise IsaError(
+                        f"integer sum intermediate may overflow the selected signed {bits}-bit C index domain"
+                    )
+            result = lo, hi
+        elif isinstance(expression, Scaled):
+            lo, hi = bounds(expression.expr, domains)
+            result = tuple(sorted((lo * expression.factor, hi * expression.factor)))
+        elif isinstance(expression, Select):
+            lo, hi = domains[expression.var]
+            parts = []
+            if lo <= expression.equals <= hi:
+                parts.append(
+                    bounds(expression.then, {**domains, expression.var: (expression.equals, expression.equals)})
+                )
+            if lo != hi or lo != expression.equals:
+                parts.append(bounds(expression.other, domains))
+            result = min(a for a, _b in parts), max(b for _a, b in parts)
+        else:
+            raise IsaError("unknown integer expression in selected C index domain")
+        if result[0] < -limit - 1 or result[1] > limit:
+            raise IsaError(f"integer expression may overflow the selected signed {bits}-bit C index domain")
+        return result
+
+    def walk(body, domains):
+        for statement in body:
+            if isinstance(statement, Loop):
+                if not 0 < statement.extent <= limit:
+                    raise IsaError(f"loop extent exceeds the selected signed {bits}-bit C index domain")
+                walk(statement.body, {**domains, statement.var: (0, statement.extent - 1)})
+            else:
+                for _name, value in statement.args:
+                    if isinstance(value, Expr):
+                        bounds(value, domains)
+                    elif isinstance(value, Ptr):
+                        bounds(value.offset, domains)
+
+    walk(kernel.body, {})
+
+
+def emit_c_function(
+    kernel: Kernel, iset: InstructionSet, *, symbol: str, spell=None, index_bits: int | None = None
+) -> str:
     """The kernel as one C function.
 
     ``spell``, when given, is the target's speller for the annotations the operand list cannot carry.
@@ -114,6 +170,11 @@ def emit_c_function(kernel: Kernel, iset: InstructionSet, *, symbol: str, spell=
     """
     if not symbol.isidentifier():
         raise IsaError(f"symbol {symbol!r} is not a C identifier")
+    if index_bits is not None and (type(index_bits) is not int or index_bits not in (32, 64)):
+        raise IsaError("C index width must be an explicitly selected 32 or 64 bits")
+    if index_bits is not None:
+        _check_integer_domain(kernel, index_bits)
+    index_type = "int" if index_bits is None else f"int{index_bits}_t"
     params = []
     for t in kernel.args:
         if t.dtype not in iset.c_types:
@@ -125,7 +186,7 @@ def emit_c_function(kernel: Kernel, iset: InstructionSet, *, symbol: str, spell=
         pad = "    " * depth
         for s in stmts:
             if isinstance(s, Loop):
-                lines.append(f"{pad}for (int {s.var} = 0; {s.var} < {s.extent}; {s.var}++) {{")
+                lines.append(f"{pad}for ({index_type} {s.var} = 0; {s.var} < {s.extent}; {s.var}++) {{")
                 body(s.body, depth + 1)
                 lines.append(f"{pad}}}")
                 continue
@@ -139,7 +200,7 @@ def emit_c_function(kernel: Kernel, iset: InstructionSet, *, symbol: str, spell=
             for field in ("awaits", "unit"):
                 if spelled.get(field):
                     lines.append(pad + spelled[field])
-            lines.append(pad + d.render_c([_c_value(v) for _, v in s.args]))
+            lines.append(pad + d.render_c([_c_value(v, index_bits=index_bits) for _, v in s.args]))
             if spelled.get("produces"):
                 lines.append(pad + spelled["produces"])
 

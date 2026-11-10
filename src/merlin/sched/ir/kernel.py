@@ -20,7 +20,10 @@ from typing import Any, Iterator, Mapping
 
 from .expr import Expr, ExprError, as_expr, evaluate, free_vars, render
 
-DTYPE_BYTES = {"i8": 1, "i16": 2, "i32": 4, "f32": 4}
+DTYPE_BYTES = {
+    "i8": 1, "i16": 2, "i32": 4, "f32": 4, "f64": 8,
+    "bf16": 2, "fp8_e4m3": 1, "fp8_e5m2": 1,
+}
 ACCESS = ("read", "write", "readwrite")
 
 

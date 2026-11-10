@@ -76,6 +76,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.targetgen.semantic_search` | Bounded semantic instruction selection and scratchpad allocation. |
 | `merlin.targetgen.synthesize` | Synthesize the five plan artifacts from collected evidence. |
 | `merlin.targetgen.validate` | Validation layer: check synthesized plans + the generated repo, render a report. |
+| `merlin.transforms` | Reusable compiler transformations and explicit numerical contracts. |
 | `merlin.triton` | Triton as a target-independent KERNEL FRONTEND to Merlin (not a per-target backend). |
 | `merlin.validation` | Structural/artifact validation for generated target repos + contract plans. |
 | `merlin.verify` | Compiler-pass verification: the static (lit/FileCheck) and formal (SMT) layers. |
