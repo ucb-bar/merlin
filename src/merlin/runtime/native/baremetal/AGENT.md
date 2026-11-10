@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/runtime/native/baremetal
+# src/merlin/runtime/native/baremetal
 
 ## Purpose
 

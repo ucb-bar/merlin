@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from merlin.development.backend.feedback import joint_performance as P
+from merlin.development.backend.feedback import rolling_scalability as R
 from merlin.evaluation.capsule import eligibility as capsule_eligibility
-from merlin.experiments.phase1.feedback import joint_performance as P
-from merlin.experiments.phase1.feedback import rolling_scalability as R
 from merlin.targetgen import capsule_common
 
 

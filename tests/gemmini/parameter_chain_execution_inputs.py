@@ -101,12 +101,12 @@ def prepare(selected, destination, monkeypatch):
     from merlin.capture import pytorch as source_pytorch
     from merlin.common import quant_formats as QF
     from merlin.compiler.frontend.materialized import MaterializedModelInputs
+    from merlin.development.testgen import capture_execution_attestation as A
+    from merlin.development.testgen import capture_selection as selection_owner
+    from merlin.development.testgen import sealed_native_program as N
     from merlin.evaluation.capsule import bundle_worker
     from merlin.experiments.capture_execution.m2m_origin import git_origin
     from merlin.experiments.corpus import model_sources as source_model_sources
-    from merlin.experiments.phase0 import capture_execution_attestation as A
-    from merlin.experiments.phase0 import capture_selection as selection_owner
-    from merlin.experiments.phase0 import sealed_native_program as N
     from merlin.targetgen import target_registry as TR
     from merlin.targetgen.contract import schemas as CS
     from merlin.targetgen.corpus_spec import CorpusBinding

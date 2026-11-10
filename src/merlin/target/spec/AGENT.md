@@ -1,4 +1,4 @@
-# AGENT.md ? src/merlin/target/spec
+# src/merlin/target/spec
 
 Reuse existing v1 numerical, ISA and typed computation records. This adapter
 composes records; it does not execute Python authoring callbacks or establish

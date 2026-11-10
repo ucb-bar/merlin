@@ -2,8 +2,8 @@
 
     python -m merlin.targetgen.cli build \\
         --target-name toy_npu \\
-        --source-dir examples/toy_npu/target/docs \\
-        --examples-dir examples/toy_npu/target/examples \\
+        --source-dir examples/targets/toy_npu/target/docs \\
+        --examples-dir examples/targets/toy_npu/target/examples \\
         --out out/build/generated/merlin-target-toy-npu \\
         --emit xdsl,mlir,zephyr,llvm-plan,runtime
 

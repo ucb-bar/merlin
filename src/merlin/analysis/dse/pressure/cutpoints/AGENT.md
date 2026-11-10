@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/design_pressure/cutpoints
+# src/merlin/analysis/dse/pressure/cutpoints
 
 ## Purpose
 

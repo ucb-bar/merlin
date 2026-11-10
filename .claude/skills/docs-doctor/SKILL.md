@@ -10,7 +10,7 @@ description: >-
 # docs-doctor — keep docs from falling behind the code
 
 The linters (`check_docs.py`, wired into the Stop/pre-commit/CI gates) catch *mechanical* drift:
-stale generated files, invalid front-matter, retired paths. They CANNOT catch *semantic* drift —
+stale optional generated caches, invalid front-matter, retired paths. They CANNOT catch *semantic* drift —
 a guide that still parses fine but describes code that has since changed. That is this skill's job.
 
 ## The deterministic backbone (LLM proposes, gate disposes)
@@ -43,7 +43,7 @@ Returns `{"drift": [...], "uncategorized": [...]}`. Each `drift` entry is a doc 
 4. **Never bump `last_verified` without having actually reconciled the doc against the diff.** The
    date is a claim that a human/agent verified the doc against the code as of that day.
 5. After edits, **regenerate the hub and re-check:**
-   `.venv/bin/python build_tools/scripts/gen_docs_index.py && .venv/bin/python build_tools/scripts/check_docs.py`.
+   `.venv/bin/python build_tools/scripts/check_docs.py`.
 6. Commit in a small batch (shared tree — see `CLAUDE.md`): `docs(doctor): re-verify <doc> vs <ref>`.
 
 Also handle `uncategorized` (docs with no front-matter): either add front-matter (if durable) or

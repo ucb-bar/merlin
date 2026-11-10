@@ -16,6 +16,18 @@ from uuid import uuid4
 
 import yaml
 
+from merlin.common.paths import GENERATION_SUITES as ENGINE_STAGES
+from merlin.common.paths import generation_run_roots
+
+STAGE_ENGINES = {"test-generation": "0", "backend-generation": "1"}
+
+
+def engine_definitions(document: dict) -> dict:
+    """Normalize named authored stages once; numeric IDs remain legacy engine protocol."""
+    if document.get("schema_version") == 2:
+        return {STAGE_ENGINES[name]: value for name, value in document["stages"].items()}
+    return document.get("phases", {})
+
 
 class SpecError(ValueError):
     """An experiment definition or frozen execution identity is invalid."""
@@ -72,20 +84,81 @@ class ExperimentSpec:
         return list((self.document.get("policy") or {}).get("prohibited_instruction_roles") or ())
 
 
-def default_run_dir(spec: ExperimentSpec, phase: str = "all") -> Path:
-    """Where a new orchestration lives when the operator names no ``--run-dir``.
+def backend_launch_inputs(
+    spec: ExperimentSpec,
+    selected: list[str],
+    *,
+    corpus_seal: Path | None,
+    joint_campaign: Path | None,
+    oracle_timing: Path | None,
+    driver: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+    provider: str | None = None,
+) -> dict[str, str]:
+    """Resolve the two reviewed backend launch inputs without inventing campaign defaults."""
+    named_backend = spec.document["schema_version"] == 2 and "1" in selected
+    if named_backend and corpus_seal is None:
+        raise SpecError(
+            "backend-generation requires a fresh reviewed --corpus-seal and --bundle-manifest; "
+            "run test-generation, review its release, then select --workflow backend-generation"
+        )
+    overrides = {
+        name: value
+        for name, value in (("driver", driver), ("model", model), ("effort", effort), ("provider", provider))
+        if value is not None
+    }
+    if overrides and selected != ["1"]:
+        raise SpecError("backend launch overrides require --workflow backend-generation")
+    defaults = engine_definitions(spec.document).get("1", {}).get("config", {})
+    for name, path in (("joint_campaign", joint_campaign), ("oracle_timing", oracle_timing)):
+        flag = "--backend-" + name.replace("_", "-")
+        if path is not None:
+            if selected != ["1"]:
+                raise SpecError("backend input overrides require --workflow backend-generation")
+            selected_path = path.expanduser().absolute()
+            if selected_path.is_symlink() or not selected_path.is_file():
+                raise SpecError(f"{flag} must select an existing ordinary file: {selected_path}")
+            overrides[name] = str(selected_path)
+        elif named_backend:
+            selected_path = spec.resolve(defaults[name]) if defaults.get(name) else None
+            if selected_path is None or selected_path.is_symlink() or not selected_path.is_file():
+                raise SpecError(f"backend-generation requires reviewed {flag} FILE (or its definition field)")
+    return overrides
 
-    A single-phase run is a phase run: ``out/runs/<target>/phase<N>/<TS>_<experiment>_<sha7>/``, so
-    a Phase 0 run owns its evidence, capsules and coverage at the phase address every later phase
-    and the target index cite. A multi-phase orchestration keeps
-    ``out/runs/<target>/<experiment>/<TS>_<uuid8>/``.
-    """
+
+def selected_engines(document: dict, *, workflow: str | None = None, phase: str | None = None) -> tuple[str, list[str]]:
+    """Select named work once; explicit numeric selection is the legacy Python interface."""
+    if workflow is not None and phase is not None:
+        raise SpecError("select workflow or the legacy phase argument, never both")
+    if workflow is not None and workflow not in (*STAGE_ENGINES, "all"):
+        raise SpecError(f"unknown workflow {workflow!r}; select test-generation, backend-generation or all")
+    engine = phase if phase is not None else STAGE_ENGINES.get(workflow or "all", "all")
+    declared = engine_definitions(document)
+    selected = sorted(declared) if engine == "all" else [engine]
+    if any(number not in declared for number in selected):
+        raise SpecError(f"definition does not declare selected workflow {workflow or engine!r}")
+    return engine, selected
+
+
+def require_plan_selection(plan: dict, *, workflow: str | None = None, phase: str | None = None) -> None:
+    """A run may assert its selection; admitted plan inputs are never silently rebuilt."""
+    if workflow is None and phase is None:
+        return
+    _, selected = selected_engines(plan["spec"], workflow=workflow, phase=phase)
+    if set(selected) != set(plan["phases"]):
+        raise SpecError("requested workflow differs from the resolved plan; resolve that workflow first")
+
+
+def default_run_dir(spec: ExperimentSpec, phase: str | None = None, *, workflow: str | None = None) -> Path:
+    """Place new single-workflow runs in their named suite; keep multi-workflow runs together."""
     from merlin.common.artifacts import phase_run_id
-    from merlin.common.paths import phase_runs_root, runs_dir
+    from merlin.common.paths import runs_dir
 
+    _, selected = selected_engines(spec.document, workflow=workflow, phase=phase)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    if phase in ("0", "1", "2"):
-        base = phase_runs_root(spec.target, phase)
+    if len(selected) == 1:
+        base = generation_run_roots(spec.target, selected[0])[0]
         candidate = base / phase_run_id(spec.id, timestamp=stamp)
         return candidate if not candidate.exists() else base / f"{candidate.name}_{uuid4().hex[:6]}"
     return runs_dir() / spec.target / spec.id / f"{stamp}_{uuid4().hex[:8]}"
@@ -140,13 +213,23 @@ def load_spec(path: str | Path) -> ExperimentSpec:
                 f"{source}: policy.prohibited_instruction_roles names unknown role(s) {unknown}; "
                 f"the closed vocabulary is {sorted(ROLES)}"
             )
-    for number, phase in document["phases"].items():
+    for number, phase in engine_definitions(document).items():
         adapter = ADAPTERS.get(phase["adapter"])
         if adapter is None or adapter.phase != number:
             raise SpecError(f"phase {number}: unknown or incompatible adapter {phase['adapter']!r}")
         if phase.get("mode") != adapter.mode:
             raise SpecError(f"phase {number}: {adapter.name} requires mode {adapter.mode!r}")
         adapter.validate(phase["config"])
+        if document["schema_version"] == 2 and number == "1":
+            config = phase["config"]
+            if not config.get("joint_campaign"):
+                raise SpecError(
+                    "backend-generation requires joint_campaign: POLICY_JSON for the combined "
+                    "correctness/performance engine; use a reviewed policy and select fresh_backend "
+                    "or its reviewed authored checkpoint"
+                )
+            if config.get("schedule", "continuous") != "continuous":
+                raise SpecError("backend-generation requires the native continuous schedule")
     return ExperimentSpec(source, document)
 
 

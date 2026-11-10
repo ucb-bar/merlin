@@ -325,13 +325,13 @@ def oracle_source_scope(capsule, command_buffer, lowered_mlir, *, target=None):
     # The live original-snapshot owner selects the compiler transport. Recreate
     # its bytes from the trusted capsule, never from submitted plan metadata or
     # a candidate-controlled path. Shared/historical transports remain exact.
-    from merlin.experiments.phase1.feedback.snapshot_execution import active_snapshot
+    from merlin.development.backend.feedback.snapshot_execution import active_snapshot
 
     executor = active_snapshot()
     if executor is not None:
         disclosure = (executor.owner.bundle.get("author_profile") or {}).get("disclosure") or {}
         if disclosure.get("input_format") == "neutral_math_v1":
-            from merlin.experiments.phase1.neutral_program_inputs import encode_source
+            from merlin.development.backend.neutral_program_inputs import encode_source
 
             source_bytes = encode_source(source_bytes)
 

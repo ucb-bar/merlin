@@ -34,7 +34,7 @@ class Invitation:
 
 
 def _exchange(endpoint, message, fds=(), *, timeout=10):
-    from merlin.experiments.phase2.external_resources import refuse_unbound_native_executor
+    from merlin.development.backend.optimization.external_resources import refuse_unbound_native_executor
 
     if message.get("operation") in {"session", "reserve", "attach", "start"}:
         refuse_unbound_native_executor()
@@ -169,7 +169,7 @@ class Session:
 
 def setup(invitation: Invitation) -> None:
     """Public Chia setup hook; no subprocess is created in the worker."""
-    from merlin.experiments.phase2.external_resources import refuse_unbound_native_executor
+    from merlin.development.backend.optimization.external_resources import refuse_unbound_native_executor
 
     refuse_unbound_native_executor()
     if getattr(_state, "connection", None) is not None:
@@ -219,7 +219,7 @@ def cleanup(invitation: Invitation) -> None:
 
 def run(argv: list[str], *, cwd: str | Path, env: dict[str, str] | None = None) -> int:
     """Run exactly one native command with original worker stdio and explicit env."""
-    from merlin.experiments.phase2.external_resources import refuse_unbound_native_executor
+    from merlin.development.backend.optimization.external_resources import refuse_unbound_native_executor
 
     refuse_unbound_native_executor()
     connection = getattr(_state, "connection", None)

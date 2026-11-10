@@ -1,4 +1,4 @@
-# AGENT.md ? src/merlin/analysis/dse
+# src/merlin/analysis/dse
 
 This owner groups hardware/interface search, design-pressure reports and
 workload-based guidance. Search explores declared spaces; pressure derives

@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/triton
+# src/merlin/triton
 
 ## Purpose
 
@@ -24,7 +24,7 @@ Triton as a target-independent KERNEL FRONTEND to Merlin (not a per-target backe
 Design + the numbered invariants: `docs/guides/12-experiments.md`. Guarded by
 `tests/infra/test_triton_target_independence.py` (run it before committing here).
 
-- **Target-blind.** No target-name literal, no `merlin.targets.*` / `merlin.rvvgen.*` import. The
+- **Target-blind.** No target-name literal, no `merlin.targets.*` / `merlin.mining.*` import. The
   target is a parameter threaded in from the contract. If making a second target work requires
   editing a file here, the abstraction failed — fix Merlin's shared lowering instead.
 - **No `import re`.** TTIR is parsed structurally (tokenizer / xDSL IR). A regex line-matcher

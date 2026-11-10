@@ -412,8 +412,11 @@ def phase1(
         liveness = {
             "state": FINISHED,
             "hours": None,
-            "detail": (f"qa_loop_summary.yaml: formal_complete={summary['formal_complete']}"
-                       if summary is not None else "run_manifest.yaml: formal_grade_complete=True"),
+            "detail": (
+                f"qa_loop_summary.yaml: formal_complete={summary['formal_complete']}"
+                if summary is not None
+                else "run_manifest.yaml: formal_grade_complete=True"
+            ),
         }
     elif freeze is not None:
         liveness = {
@@ -450,12 +453,12 @@ def phase1(
 
 # --------------------------------------------------------------------------- phase 2
 def _phase2_names() -> dict[str, Any]:
-    from ..phase2.whole_model_measured import batch as B
-    from ..phase2.whole_model_measured import jobs as J
-    from ..phase2.whole_model_measured import ledger as L
-    from ..phase2.whole_model_measured import runs as R
-    from ..phase2.whole_model_measured import sessions as S
-    from ..phase2.whole_model_measured import watchdog as W
+    from merlin.development.backend.optimization.whole_model_measured import batch as B
+    from merlin.development.backend.optimization.whole_model_measured import jobs as J
+    from merlin.development.backend.optimization.whole_model_measured import ledger as L
+    from merlin.development.backend.optimization.whole_model_measured import runs as R
+    from merlin.development.backend.optimization.whole_model_measured import sessions as S
+    from merlin.development.backend.optimization.whole_model_measured import watchdog as W
 
     return {"B": B, "J": J, "L": L, "R": R, "S": S, "W": W}
 
@@ -474,10 +477,9 @@ def failure_class(job: Mapping[str, Any], result: Mapping[str, Any] | None) -> t
     infrastructure's, never a fact about the bytes), ``prohibited_instruction`` (the whole-ELF
     instruction rule refused it), ``declined`` (the coverage gate: groups declined to the library) and
     ``refused`` (no admissible reading, for any other recorded reason)."""
+    from merlin.development.backend.optimization.whole_model_measured import gates as G
+    from merlin.development.backend.optimization.whole_model_measured import jobs as J
     from merlin.perf import whole_model_verdict as V
-
-    from ..phase2.whole_model_measured import gates as G
-    from ..phase2.whole_model_measured import jobs as J
 
     state = job.get("state")
     if state == J.SUPERSEDED:
@@ -526,7 +528,7 @@ def _group_rows(result: Mapping[str, Any] | None) -> dict[str, Mapping[str, Any]
 
 def _coverage(result: Mapping[str, Any], reference: Mapping[str, Any] | None) -> dict[str, Any] | None:
     """The package-authored share recorded by the candidate's own build routes (feedback's projection)."""
-    from ..phase2.whole_model_measured import feedback as F
+    from merlin.development.backend.optimization.whole_model_measured import feedback as F
 
     if not ((result.get("build") or {}).get("groups")):
         return None
@@ -536,7 +538,7 @@ def _coverage(result: Mapping[str, Any], reference: Mapping[str, Any] | None) ->
 
 def _roofline(result: Mapping[str, Any], reference: Mapping[str, Any] | None) -> list[dict[str, Any]]:
     """Per-group distance to the derived roofline the result recorded (``diagnostics.per_group``)."""
-    from ..phase2.whole_model_measured import feedback as F
+    from merlin.development.backend.optimization.whole_model_measured import feedback as F
 
     if not ((result.get("diagnostics") or {}).get("per_group")):
         return []
@@ -563,7 +565,7 @@ def _standing_result(job_dir: Path) -> dict[str, Any] | None:
     (:func:`..phase2.whole_model_measured.attempts.effective_result`): a re-queued job whose current
     attempt was lost to the host still shows the earlier verdict about its bytes, marked
     ``from_attempt``, instead of the infrastructure outcome that displaced its ``result.json``."""
-    from ..phase2.whole_model_measured import attempts as A
+    from merlin.development.backend.optimization.whole_model_measured import attempts as A
 
     try:
         result = A.effective_result(job_dir)
@@ -574,7 +576,7 @@ def _standing_result(job_dir: Path) -> dict[str, Any] | None:
 
 def load_store(root: Path, inventory: Inventory, cache: StoreCache) -> dict[str, Any]:
     """Every job of one measurement store, classified, plus the store's own plateau and board records."""
-    from ..phase2.whole_model_measured.machines import INFRA_BOARD_UNAVAILABLE
+    from merlin.development.backend.optimization.whole_model_measured.machines import INFRA_BOARD_UNAVAILABLE
 
     names = _phase2_names()
     B, J, S = names["B"], names["J"], names["S"]
@@ -1152,6 +1154,7 @@ def target_summary(
     import time
 
     from merlin.common import paths
+    from merlin.common.paths import generation_run_roots
     from merlin.targetgen import package_records, target_index
 
     from ..history import runs
@@ -1168,11 +1171,15 @@ def target_summary(
     phase_runs: dict[str, list[dict[str, Any]]] = {}
     truncated: dict[str, int] = {}
     for phase in ("0", "1", "2"):
-        root = paths.phase_runs_root(target, phase)
-        directories = (
-            sorted((p for p in root.iterdir() if p.is_dir() and not p.is_symlink()), reverse=True)
-            if root.is_dir()
-            else []
+        directories = sorted(
+            (
+                p
+                for root in generation_run_roots(target, phase)
+                if root.is_dir()
+                for p in root.iterdir()
+                if p.is_dir() and not p.is_symlink() and not (phase == "1" and p.name == "optimization")
+            ),
+            reverse=True,
         )
         truncated[phase] = max(0, len(directories) - max_runs)
         rows = []

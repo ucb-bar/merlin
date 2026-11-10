@@ -42,7 +42,7 @@ from .insight_common import Needles, activity, ago, line, panel, row, table
 
 SHARED = "shared-library.json"
 SUGGESTIONS = "OPTIMIZATION_SUGGESTIONS.json"
-_SCRIPT = ("phase1", "author_skills", "scheduling-api", "scripts", "library_inventory.py")
+_SCRIPT = ("author_skills", "scheduling-api", "scripts", "library_inventory.py")
 MAX_REQUESTS = 65536
 MAX_EVIDENCE_FILES = 400
 EVIDENCE_FILE_BYTES = 1 << 20
@@ -59,9 +59,9 @@ _NEEDLES: dict[str, tuple[tuple, Any]] = {}
 def inventory():
     """The scheduling-api skill's stdlib-only inventory script, loaded once by path."""
     if not _INVENTORY:
-        import merlin.experiments
+        from merlin.common.paths import module_source_path
 
-        _INVENTORY.append(load_script(Path(merlin.experiments.__file__).parent.joinpath(*_SCRIPT)))
+        _INVENTORY.append(load_script(module_source_path("merlin.development.backend").parent.joinpath(*_SCRIPT)))
     return _INVENTORY[0]
 
 

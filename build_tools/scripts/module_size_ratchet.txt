@@ -10,11 +10,9 @@
 # growth-accepted: the ceilings of llvmlower/pipeline.py, runtime/backends/zephyr_model.py,
 # targetgen/capsule_grade.py and targetgen/capsule_runner.py are main's sizes at f9dd427d0, merged on
 # 2026-10-08: main grew them before any ceiling existed there. From here each may only fall.
-merlin/python/merlin/baselines/executorch_session.py  # 1808
 merlin/python/merlin/baselines/voyager_schedule.py  # 1621
 merlin/python/merlin/compare/host_experiment.py  # 2811
 merlin/python/merlin/compare/paper_k1_orchestrator.py  # 2112
-merlin/python/merlin/compare/paper_measurement_controller.py  # 1941
 merlin/python/merlin/dse_guidance/case_study.py  # 1662
 merlin/python/merlin/dse_guidance/presentation_plots.py  # 1520
 merlin/python/merlin/llvmlower/passes_quant_int.py  # 1886

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Living schema reference: generate docs/reference/schemas.md from src/merlin/resources/schemas/*.schema.yaml.
+"""Living schema reference: generate out/artifacts/documentation/schemas.md from src/merlin/resources/schemas/*.schema.yaml.
 
 The schemas are the cross-workstream contract; this emits one row per schema -> its title +
 purpose (the single source of truth is the schema file's own `title`/`purpose`). Mirrors
 gen_cli_docs.py / gen_package_docs.py: generate, and `--check` fails if stale.
 
 Usage:
-  gen_schema_docs.py            # (re)write docs/reference/schemas.md
+  gen_schema_docs.py            # (re)write out/artifacts/documentation/schemas.md
   gen_schema_docs.py --check    # exit 1 if stale vs src/merlin/resources/schemas/
 """
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMAS = ROOT / "src/merlin/resources/schemas"
-OUT = ROOT / "docs" / "reference" / "schemas.md"
+OUT = ROOT / "out/artifacts/documentation/schemas.md"
 
 HEADER = (
     "# Schema reference\n\n"
@@ -70,12 +70,12 @@ def main(argv: list[str]) -> int:
     new = render()
     if "--check" in argv:
         cur = OUT.read_text(encoding="utf-8") if OUT.exists() else ""
-        if cur != new:
+        if OUT.exists() and cur != new:
             sys.stderr.write(
-                "docs/reference/schemas.md is stale — run: python build_tools/scripts/gen_schema_docs.py\n"
+                "out/artifacts/documentation/schemas.md is stale — run: python build_tools/scripts/gen_schema_docs.py\n"
             )
             return 1
-        print("docs/reference/schemas.md: up to date")
+        print("Schema descriptions: valid (generated reference is optional)")
         return 0
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(new, encoding="utf-8")

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 
+from merlin.development.backend.feedback import setup_timing as _host_timing
 from merlin.evaluation.capsule.cpu import _grade_cpu_step
 from merlin.evaluation.capsule.numerics import _bind_positional_output_name, _readout_epilogue_capabilities
 from merlin.evaluation.capsule.source import _capture_compiler_source
-from merlin.experiments.phase1.feedback import setup_timing as _host_timing
 from merlin.runtime import commandbuffer as _CB
 from merlin.targetgen import capsule_golden as CG
 from merlin.targetgen.capsule_common import _cat, run_entrypoints

@@ -1,0 +1,37 @@
+schema_version: 2
+kind: template
+id: saturn-opu-functional
+target: saturn_opu_mxv256d128
+description: Test generation and combined correctness/performance backend generation; select reviewed operator inputs before execution.
+stages:
+  test-generation:
+    adapter: capsule_derivation
+    config:
+      recipe: test-generation/recipe.yaml
+      performance_template: ../../../experiments/templates/test-generation/performance.yaml
+      synth_profile: ../../../out/operator-inputs/saturn_opu_mxv256d128/saturn_opu.synth.yaml
+      smt_profile: ../../../out/operator-inputs/saturn_opu_mxv256d128/saturn_opu.smt.yaml
+      hidden_profile: ../../../out/operator-inputs/saturn_opu_mxv256d128/saturn_opu.hidden.yaml
+      descriptor: target/descriptor.yaml
+      profile: saturn_opu
+  backend-generation:
+    adapter: capsule_bench
+    config:
+      # Supply --corpus-seal and --bundle-manifest from the same reviewed release.
+      require_reviewed_corpus: true
+      # Select actual reviewed files with --backend-joint-campaign / --backend-oracle-timing.
+      joint_campaign: ../../../out/operator-inputs/saturn_opu_mxv256d128/joint-policy.json
+      fresh_backend: true
+      schedule: continuous
+      descriptor: target/descriptor.yaml
+      level: EL4
+      bundle: OPERATOR_BUNDLE_ID
+      bundle_manifest: ../../../out/operator-inputs/saturn_opu_mxv256d128/input_bundle_manifest.yaml
+      oracle_timing: ../../../out/operator-inputs/saturn_opu_mxv256d128/oracle-timing.json
+      model: claude-opus-4-8
+      effort: high
+      driver: claudecode
+      provider: subscription
+      max_wall_s: 43200
+      round_timeout: 43200
+      grade_interval: 900

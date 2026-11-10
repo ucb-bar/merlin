@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/targetgen/oot_starterkit
+# src/merlin/targetgen/oot_starterkit
 
 ## Purpose
 

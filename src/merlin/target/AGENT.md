@@ -1,4 +1,4 @@
-# AGENT.md ? src/merlin/target
+# src/merlin/target
 
 This package owns shared, explicitly selected target specification loading.
 Target facts and implementations remain in OOT packages. Preserve original

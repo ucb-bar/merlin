@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/compile/scheduling
+# src/merlin/compile/scheduling
 
 ## Purpose
 

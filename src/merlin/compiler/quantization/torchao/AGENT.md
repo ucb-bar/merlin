@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/compiler/quantization/torchao
+# src/merlin/compiler/quantization/torchao
 
 These files own the existing recipe application, configurations, annotations,
 graph rewrites, effects and calibration. Import framework packages lazily.

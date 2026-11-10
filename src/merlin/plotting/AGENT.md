@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/plotting
+# src/merlin/plotting
 
 ## Purpose
 

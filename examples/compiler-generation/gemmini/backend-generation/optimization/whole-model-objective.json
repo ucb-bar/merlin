@@ -1,0 +1,48 @@
+{
+  "schema": "merlin_whole_model_objective_config_v1",
+  "mechanism_policy": "derive_from_capture",
+  "exactness": "/ABSOLUTE/examples/compiler-generation/gemmini/backend-generation/optimization/exactness.yaml",
+  "primary_name": "objective model",
+  "repeats_on_best": 2,
+  "stop_at_bar": false,
+  "plateau_hours": 6,
+  "plateau_min_sessions": 8,
+  "screen": {
+    "machine": {
+      "registry": "/ABSOLUTE/examples/compiler-generation/gemmini/backend-generation/optimization/whole-model-machines.yaml",
+      "name": "batched_board",
+      "overrides": {
+        "control": {
+          "board_request": "/ABSOLUTE/full-gemmini-reference-arm/board_request.json",
+          "solo_result": "/ABSOLUTE/full-gemmini-reference-arm/result.json",
+          "cycles_tolerance": 0.02
+        }
+      }
+    },
+    "build_options": {
+      "model_capsule": "{input:model_capsule}",
+      "machine": "firesim_gemmini_rocket_u250_30mhz",
+      "header": "/ABSOLUTE/full-gemmini/gemmini_params.h",
+      "phase0_recipe": "/ABSOLUTE/examples/compiler-generation/gemmini/test-generation/recipe.yaml",
+      "chunk_ops": "auto"
+    },
+    "reference": "/ABSOLUTE/full-gemmini-reference-arm/result.json",
+    "slots": 3,
+    "max_pending": 8,
+    "timeout_seconds": 5400
+  },
+  "certifier": {
+    "machine": {"registry": "/ABSOLUTE/examples/compiler-generation/gemmini/backend-generation/optimization/whole-model-machines.yaml", "name": "gsim_certifier"},
+    "build_options": {
+      "model_capsule": "{input:model_capsule}",
+      "machine": "gemmini_gsim_emulator",
+      "header": "/ABSOLUTE/curated/gemmini_params.h",
+      "verify": "host_dump",
+      "phase0_recipe": "/ABSOLUTE/examples/compiler-generation/gemmini/test-generation/recipe.yaml",
+      "chunk_ops": "auto"
+    },
+    "reference": "/ABSOLUTE/certifier-reference/result.json",
+    "slots": 2,
+    "timeout_seconds": 144000
+  }
+}

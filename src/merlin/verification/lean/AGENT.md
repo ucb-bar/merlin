@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/verification/lean
+# src/merlin/verification/lean
 
 Shared mathematical verification sources, not target compiler solutions. The
 operator selects and pins the Lean/Lean-MLIR toolchain explicitly; checking never

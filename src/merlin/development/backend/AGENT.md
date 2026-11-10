@@ -1,0 +1,437 @@
+# src/merlin/development/backend
+
+`joint_calibration_readiness.py` projects the declared panel before variant selection.
+Check the currently selected runtime's structural denial even with no products;
+missing or changed denial evidence fails closed. Only current public source hashes,
+reviewed independent groups and passing native candidate Spike products enter the
+existing selector. Ready means native identifiability review remains pending, not
+physical authorization. Keep original ELF custody, budgets, train/held separation,
+fit gates and reviewed epoch promotion in their existing owners.
+
+`joint_calibration_intake.py` records selected public numerical products separately
+from the reviewed calibration fit registry. Reopen source selection and original
+ELF producer custody; retain native numerical/structural evidence independently.
+New shapes do not establish independent source groups. Entries remain pending
+protocol, source-group, missing-question, cost and exact physical identity review.
+The descriptive index grants no fitting, dispatch, physical whitelist or runtime
+qualification authority. Exclude hidden/unselected cases and final-model execution.
+
+`audit_shell.py` recognizes only exact published workflow feedback and inert data
+assignments in literal quoted Python heredocs for the answer-access observer.
+Unknown syntax retains conservative matching; actual calls, substitutions, escaped
+paths and mixed public/withheld reads remain audited. No directory or basename
+grant is inferred, oracle-use inspection receives the original command, and a
+historical re-audit never rewrites its original qualification record.
+
+`component_package_execution` explicitly composes its qualified transport/view/
+runtime with a live original compiler-profile owner. Reopen exact compiler source
+before and after calls; preserve original public imports and final answer masks.
+Use the same original common-call channel, one isolated canonical output workspace
+and a separately readonly input. Foreign execution owners cannot be replaced.
+Composition supplies no new proof, numerical or physical runtime authority.
+
+`conformance.py` owns transcript-derived treatment conformance and replay, not core
+capsule requirement derivation or numerical grading. Preserve historical tool-set
+applicability, persisted-result evidence, vendored-byte attribution and fail-closed
+scanner behavior. It is grader-only; the native path is a CLI adapter, not an import API.
+
+`context.py` owns explicit invocation context and descriptor/environment initialization.
+Import must not discover a target, run git, source experiment.env or mutate process state.
+Installed callers supply descriptor and repository/work root. Native defaults and permissive
+legacy target-name fallback remain exclusively in the checkout `_common` adapter.
+
+`options.py` owns the one functional-loop CLI parser and typed invocation values.
+Defaults are computed at invocation, not import; parsing/help never initializes a target.
+Keep scheduling defaults and policy validation separate from mutable runtime session state.
+`author_subagents.py` resolves the Codex author's helper-thread ceiling once (option,
+delegation bound, environment, else pool-derived) into `run_config.author_subagents`;
+the provider applies that recorded value, and resume refuses a changed explicit one.
+`providers/codex_context.py` records the Codex context ceiling, its compaction prompt text and the
+task-skill switch once into `run_config.author_context` (same resume rule). `task_disclosure.py`
+stages verbatim copies of the sealed TASK.md's longer sections as `.agents/skills/` after every
+TASK.md append and before the treatment seal, which binds them; TASK.md itself is never rewritten.
+`skill_staging.py` stages every `author_skills/<name>/` (SKILL.md, optional `reference/*.md`, stdlib
+`scripts/*.py`, target-agnostic, procedural) byte-identically into `.agents/skills/` (Codex) and
+`.claude/skills/` (Claude Code) right after them, recorded with its digest in
+`run_config.author_skills` (`--author-skills`, same resume rule) and sealed via `author_skills.json`.
+Its `feedback-files` skill replaces the generated `qa-feedback-files` guide when staged. A new skill
+needs only its directory; `tests/test_author_skill_staging.py` checks every one generically.
+
+`controller.py` composes real admission, task staging, workspace transport and authoring under
+one workspace lease and one restored environment. Native launchers select legacy defaults and
+call this same owner; they must not retain a second execution composition. Initialize invocation
+context before execution imports. Installed callers provide operator paths explicitly.
+`__main__.py` is the installed command using the same option parser and controller.
+Keep parsing/help target-inert; require explicit operator inputs instead of native defaults.
+`--preflight-only` uses the same ordinary `session.prepare` and stops before authoring
+or submission qualification. Require an explicit reviewed corpus seal and exact bundle
+identity, native bwrap, oracle and hidden checks, without candidate/resume/bypass modes.
+An explicit seal must agree with an existing environment selection; absent CLI selection
+preserves legacy behavior. The private `preflight.py` continuation reopens complete prepared
+inputs and the frozen manifest/snapshot/seal. Its result records only startup checks;
+it is not a compiler verdict, fresh-client canary, runtime or phase qualification.
+`workspace_transport.py` owns frozen friendly views, copy grants and mask probes. Resolve grants
+through the shared resolver and inspect frozen membership for frozen views. Missing probe
+completion, failed execution or unreadable public controls are not successful isolation evidence.
+Copy mode is diagnostic, not OS isolation; its resume still verifies source/task/treatment
+receipts but must not require a bwrap snapshot it never created.
+
+`runtime_environment.py` prepares explicit host environment/account inputs without mutation.
+Native compatibility library directories are supplied by the edge, never guessed here.
+Apply the complete prepared baseline across admission and authoring, restoring the exact prior
+environment on exit, including continuation changes; concurrent experiments require separate processes. Account probes receive that same
+environment. Do not serialize credentials, mutate grading policy, or claim another Python ABI
+is compatible merely because active-interpreter package paths are present.
+
+`task_staging.py` owns actual task composition, runtime-scope prose and selected-bundle tool
+resolution. Immutable invocation configuration produces inventoried function callbacks; retain
+admission's observation order and reread tool declarations after trusted task staging. Authored
+tasks and bundles are operator inputs, not files located relative to this module. Runtime language
+is captured explicitly. Do not regenerate sealed task bytes during resume/provider launch.
+
+`recovery.py` owns transcript interruption detection, quota/reset interpretation and
+checkpoint/resume guidance shared by authoring and reporting. Preserve classification
+precedence, no-tool-work guards, exact status/banner bytes and historical exit codes.
+It never launches providers or decides numerical grades. Native recovery is CLI-only.
+
+`session.py` owns fresh/resumed admission, source/treatment checks, private snapshot views,
+the existing environment record and pre-authoring refusal gates. `PreparedRun` carries
+these inputs into `authoring.execute` for authoring/completion. Keep the caller's existing
+`workspace_session` wrapper alive across both preparation and continuation: ordinary returns
+release its lease, uncertain exceptions retain it. Native provider/account initialization and
+candidate-view transport/task composition remain explicit adapters, not package imports.
+Resolve tool declarations after trusted task staging, at the original observation point.
+Callback source owners must belong to the existing inventory; this does not freeze closure
+state, import graphs or external tools. This boundary alone is not the installed full engine.
+Bundle manifests use the canonical `input_bundle_manifest.yaml` filename; alternate names
+are refused before mutation rather than reading one declaration and freezing another.
+Fresh repository attribution uses the explicit context root (not an unrelated ambient root);
+resume preserves the original environment record, including its repository identity.
+An optional invocation readback policy is recorded separately from capsule bytes and
+is immutable during resume and formal grading. Context arguments carry that same
+selection to trusted grading children; absent selection preserves legacy calls.
+The transport changes output serialization, never numerical tolerances or host placement.
+
+`run_inputs.py` owns private seed/errata/treatment and frozen-input verification helpers.
+It is a grader identity; context itself is not. Preserve original observation order,
+failure behavior and archived identities. Native initialization and admission adapters
+remain; these modules alone do not establish a standalone installed phase-1 engine.
+
+`authoring.py` sequences the admitted author lifecycle. `authoring_session.py` owns
+the original invocation bindings and shared checkpoint/resume progress;
+`authoring_rounds.py` owns author turns, background feedback, quota recovery and
+stopping budgets. `authoring_certification.py` owns the cert checkpoint and repair
+turns; `authoring_completion.py` owns report finalization, official grading and
+completion telemetry. These are direct callers, not independent policy engines.
+`AuthoringRuntime` supplies the authored bundle identity, timing path and captured legacy
+public-root override. Ordinary rounds and L3 repair share the same state and authority;
+do not replace them with disconnected callback records. Public-root derivation stays lazy,
+after submission/language refusal gates. `feedback/certification.py` owns cert eligibility,
+promotion/tally, measured size-scaled budgets and official-evidence checks, not an agent loop.
+Supplemental integrity markers are immutable `GradingInputs` chosen only from trusted
+invocation options. Propagate them through ordinary/fast QA, treatment callbacks, shape
+probes and in-process L3 repairs; never mutate core scanner defaults, weaken AST restrictions,
+read policy from candidates or silently extend fresh official/selfcheck child policy.
+
+`timing.py` binds readiness's actual passed L3 grade wall-time observation to the
+selected engine/config/binary before and after measurement. gSIM additionally
+requires existing strict-v3 receipt and byte-verified selected FIRRTL facts;
+these file/transcript checks grant no emitter-build, counter, runtime or physical
+authority. Selfcheck exposes only actual barrier engine/digests, never raw paths.
+Legacy Verilator observations apply only to Verilator selection.
+Verilator timing uses the explicitly selected backend executable and observed
+build receipt bound to selected original FIRRTL facts; no conventional build
+path substitutes for that identity. The ordinary passed tier must carry its
+actual engine and simulator digest before wall-time publication.
+
+`audit.py` owns `AnswerAudit`: immutable descriptor-derived tokens plus an explicit absolute
+bundle directory. Grant files are reread at their historical observation points. Importing
+these owners never selects a target or imports native controllers. All are host-private,
+bound by the recursive backend generation source inventory. The five retained host text-audit regex
+calls have reviewed local rationales; moving them is not parser-hardening qualification.
+
+`providers/` owns trusted host agent transports and provider routing, not candidate SDKs.
+The native controller injects its sandbox command; providers must not import the controller.
+Provider discovery stays target-inert. The recursive implementation source inventory pins
+these modules, including the standalone resource sampler.
+
+`conformance_sources.py` is a grader-only, bounded observer of persisted command/source custody.
+It accepts reachable admitted SDK imports rather than incidental printing/alias spelling. Successful
+literal saved-script writes must precede their successful execution, and every required discovery
+must finish before the first submission mutation. It does not execute source, read current scripts
+to backdate evidence, or make opaque shell/Python behavior pass. Unsupported forms remain explicit
+unattributed evidence; the numerical, offload and final formal gates remain separate.
+
+`treatments.py` owns invocation-local callback selection and attribution for the native
+fullsuite/RTL adapters. Callback owners must belong to the existing implementation source
+inventory; record references in the native environment receipt, never a second source seal.
+Keep public-root overrides separate from descriptor-derived hidden/task scope. RTL feedback
+is advisory both in round QA and certification repair; timing observers must not replace
+controller globals or accumulate across invocations.
+
+`corpus_inputs.py` owns private staging and effective bundle declarations for one native
+run's public grading, descriptor-policy and schema views. Preserve those distinct policies:
+fullsuite's public override must not redefine task scope or promotion eligibility. The existing
+native snapshot is the byte authority; environment records refer to it, never a second seal.
+Resume reads archived effective declarations and frozen views, with no live-corpus fallback.
+Do not grant staging or snapshot private views to candidates, or put their bytes in public CAS.
+
+`source_inputs.py` owns one implementation inventory/fingerprint shared by the native
+controller and outer runner. Native records live in the existing environment receipt;
+resume refuses missing historical attribution rather than minting replacement evidence.
+The explicitly broad interim closure includes retained native harness Python, extracted
+backend generation sources/providers, complete cross-phase corpus and managed execution Python packages, public clients
+and declared startup owners. It is not all core
+or upstream dependencies, and source-attribution checks are not a frozen Python sandbox.
+Explicit descriptor-target support adds its complete Python membership, provider
+identity and contract to the same inventory. Loaded-plugin ownership is rechecked;
+changed selection, members or bytes refuse resume. This binds the live selected
+provider, not an automatically copied or relocated backend generation execution environment.
+
+`brokers/` owns ISA/CCA and synchronous/asynchronous feedback tools selected by the
+core registry. They run as canonical modules with explicit invocation context;
+old native entrypoints are CLI-only launchers, never private-helper import aliases.
+Public clients remain byte-identical standalone files.
+
+`feedback/` owns trusted selfcheck execution, QA redaction, promotion and private
+enqueue-time snapshot creation/recovery. `dispatch` is the one async simulator
+allowlist/certification-token policy; sync request policy remains deliberately
+distinct. Public grading roots and descriptor-policy roots are separate explicit
+inputs. Context and schema roots do not freeze independently loaded target/toolchain
+or grading-policy resources. This extraction does not qualify the full controller.
+
+`oot_history.py` owns the run's harness-written compiler history at `<run_dir>/oot`
+(`merlin.common.oot_repo`). Loop grading commits the operator-only snapshot it is about to grade,
+once per graded round, and round records carry that commit sha; the official freeze tags `frozen`
+on the exact submission it hashed. The agent never writes the repo, and it is refused inside the
+agent's writable workspace. Only bwrap runs keep it (copy mode is a tool-free diagnostic). New runs
+live at `out/runs/<target>/phase1/<run-id>/`; a run that began under the legacy
+`capsule-bench/<arm>/` root resumes there and keeps no history. A failed commit is recorded in
+`oot_commits.jsonl` / `freeze.json`, never silent.
+
+`component_origin.py` owns experiment-only fresh OOT origin. Generate the inert
+scaffold inside the actual normal authoring lifecycle; never accept a supplied
+working compiler or mint origin from a receipt. Independently issued hardware
+and protected minimal software intakes, reviewed generic library and exact
+public runtime grants remain separate. The minimal software authority must share
+the exact live hardware origin, coverage software-intake binding and complete
+public software projection. Reviewed labels or historical source hashes cannot
+grant legacy software specifications access to a fresh author session.
+`component_generation_admission.py` requires actual budgeted test generation coverage
+v2 and the normal reader's complete source-cost, membership and policy replay.
+Fresh input identity binds the exact budget and admission ledger commitments.
+Legacy v1 remains inspection-only for this bounded-generation claim; no JSON
+cost or resigned hash replaces actual replay. These logical reference bounds
+do not qualify compiler execution limits, large compile-only legality, process
+heap, physical runtime effects or timing.
+backend generation shared-tool preflight cannot require the initial inert candidate to work.
+`component_lineage.py` binds actual backend optimization author transport and broker receipts
+to descendants of the exact qualified fresh baseline. Qualification consumes
+these issued objects before invoking candidate code.
+`component_compile_admission.py` requires the exact live original source-only
+roster, sharing the same hardware, software and descriptor selection, before a
+fresh public author grant. Guard and withheld transfer members are both required.
+`component_compile_roles.py` evaluates every original source through ordinary
+scoped package lowering, translation, object/link and whole-ELF instruction
+policy. No tensor/golden allocation, numerical execution or simplified compiler
+route is permitted. Keep compilation and all original static obligations in
+separate mandatory denominators. Reopen complete candidate/private clone,
+source/ABI, contract, actual transport products and invocation records. Static
+obligations remain UNKNOWN without independent proof producers; successful
+linking cannot discharge them or qualify the compiler. Functional qualification
+must consume this exact live evaluation and retain its unresolved obligations,
+including expected static refusals, even when small numerical execution passes.
+`component_pointer_storage` freezes an optional independently selected original
+software pointer policy, exact live source roster and public policy projection
+before authoring. `component_copy_proof` admits only the fixed core counted-copy
+checker with actual original lowering, stock translation, unchanged object/link
+and selected native layout joins. Reopening rederives every proved/refuted facet
+from the exact artifacts. Unsupported original members and resource/numerical,
+physical/lifetime/timing roles stay UNKNOWN in the full original denominator.
+Saved flags, compiler metadata and arbitrary proof callbacks supply no authority.
+`component_qualification_evidence.py` reopens the exact private compiler copy,
+complete actual invocation membership and every recorded dependency/product,
+including files outside the grade tree. Each mandatory member needs observed
+invocations. Replay the original complete stage, source, output and effect joins;
+unchanged result rows or grade-tree bytes cannot replace that check. Retain
+failed attempts as refused evidence, never mint authority from saved records.
+`component_qualification_domain.py` selects the original input owner from the
+exact issued compiler origin. Legacy qualification retains concrete coverage
+and receipt v1. An explicitly selected live `SourcePreparation` must replay all
+original source requirements before grading; receipt v2 binds their complete
+denominator and pending candidate predicates. Every mandatory member, including
+mandatory development, needs fresh numerical/executable/stage evidence and
+actual invocation reopening. Source completion never grants candidate static,
+numerical, effect, hardware or runtime authority; source-only guards remain
+unestablished for backend optimization. Missing source premises refuse before the grader.
+`component_original_members` binds the exact live standard-IR/reference roster
+to private ordinary candidate inputs. Preserve every original call, guard and
+private slot, exact ordered types and original operation-local numerical policy;
+unsupported or budget-denied slots remain unavailable. Only the current standard
+source file enters the compiler namespace. Reference bytes, replay/comparison
+owners and private envelopes remain grader-only. `component_qualification_members`
+joins those slots to all original requirement IDs and requires actual candidate
+execution and stage evidence for each; complete source inputs cannot qualify a
+compiler or establish descriptor storage, resources, effects or hardware runtime.
+The `original-candidate-members` installed suite requires the complete selected
+test roster, including the actual source-only namespace check. An unavailable
+namespace is retained as a prerequisite failure, never an isolation qualification.
+The `source-preparation-qualification` installed suite retains actual native
+clone/dependency/output controls and preparation refusals. Its positive wiring
+facets use synthetic author/runtime/static authority and cannot admit an
+experiment. An explicit native selection requires zero skips in its full roster.
+Neither origin nor lineage proves
+numeric correctness, target runtime independence or performance. The handwritten
+implementation and its adapter remain protected final reference inputs only.
+
+Shared-tool readiness selects the existing `strict_tool_policy` with
+`candidate_writable=False`; do not rewrite a constructed mount argument list.
+Native client readiness keeps its disposable copy for temporary mountpoints and
+read-only original source members, then rechecks complete source membership.
+
+`component_source_applicability` treats rank-zero tensors as one logical element
+under the registered tensor SSA contract. This source-only observation grants no
+native ABI, numerical, tail/resource, physical ownership or runtime effects.
+The `original-pointwise-host` installed suite retains ordinary source factory,
+upstream conversion and complete host value controls with explicit tool selection.
+
+`--codex-canary` uses the normal reviewed preparation and stops before authoring.
+Explicit binary/auth-source/home-root selections are also accepted by ordinary
+installed authoring, through the same private `providers/codex_runtime.py` owner.
+Seal the executable bytes, read grants, toolchain mounts, import paths and environment;
+replay them on resume and dispatch. Credential selection is path/stat only, never
+content or a hash. Require a fresh individual round home, allowing a shared parent
+for distinct run IDs. Legacy routes without any selection preserve their defaults.
+`canary.py` issues one immutable literal isolated-Python probe, reusing selected public
+tool probes and frozen public interfaces, with synthetic protected-negative controls.
+Raw paired command completion must have exact command/id, completed status and explicit
+integer exit zero; extra tools/edits refuse. Marker files and usage corroborate only.
+Reopen complete prepared inputs after execution. Fake controls certify no real isolation.
+A real result covers its selected installed invocation, not an unselected catalog route
+or compiler, target runtime, correctness or phase qualification. Do not rewrite TASK.md.
+
+`convergence_report.py` is a read-only operator diagnostic over one run directory (and,
+optionally, its operator directory): author blocked time by wait kind, the in-turn grade
+cycle, the self-check/grade capsule taxonomy, measured L3 cost, pool capacity and per-agent
+accounting (lead and sub-agents, `telemetry/author_agents.py`). It reads status, timing,
+usage and client-invocation fields only, never answer material, and refuses to write inside its inputs.
+An absent or partially written input is reported unavailable, never as a zero. Its budget and
+verdict thresholds are published in the report; it decides no grade and gates nothing.
+
+`launch_config.py` renders and verifies one operator launch from a checked-in
+`merlin.phase1.launch_config.v1` file (and the `merlin.phase0.release_config.v1`
+release config it names): controller argv, the complete environment, CPU policy,
+runtime pins, numerics lineage and exclusions. Machine roots are variables; the target
+is data, so no target name, opcode or regex belongs here. It never starts a run, reads
+a credential or rewrites a prepared input in place; every disagreement is a listed
+drift, never a silent default. Bind new controller options in one place (`_argv`,
+`SUBAGENT_FLAGS`) and keep the schema in `resources/` fail-closed.
+`annotated_spike_evidence.py` is an operator-side, evidence-only pass over a finished run.
+It runs each training-eligible public gSIM program on the observer-enabled Spike with an
+explicitly selected provider and a count-only model (no prices), scoped by counter PCs it
+derives from the linked ELF with a selected disassembler, the caller's reviewed counter
+template and the contract's entry/completion symbols. It must reproduce the run's own
+functional console byte-for-byte; it grades nothing, never runs during authoring, and
+leases shared compute at AUXILIARY priority.
+
+`joint_source_append.py` admits only explicitly reviewed new standalone integer contraction
+members. Reopen the original graph projection and exact admitted source, derive geometry
+from the native interface, and retain every original member. The source revision carries
+no calibration witness, runtime price, policy or qualification authority. Unknown additions
+and changed existing geometries remain errors under the original calibration profile.
+
+`joint_handoff.py` skips new post-turn jobs only after an explicit operator epoch stop
+and the native author/background owner join. Commit and verify the returned source through
+original OOT custody; retain prior evidence with its original source in a pinned archive.
+The returned checkpoint is ungraded, all development obligations remain pending, and the
+ordinary immutable freeze still verifies inputs. This is not final certification or grade reuse.
+
+`joint_seed` admits only an operator-policy-bound authored checkpoint and exact
+review for a new isolated campaign. It uses native source copying with stable
+source checks, preserving sparse library overrides and separately reviewed
+authored alternatives. New state has no inherited clock, ledgers or verdicts;
+no empty-origin assertion is manufactured. Ordinary seed lineage and empty
+backend checks remain unchanged; existing empty-origin model epochs do not
+implicitly admit this new origin.
+
+`capability_inventory` stages compact whole-public-corpus guidance only for fresh
+joint campaigns, using native public discovery and the verified frozen scalability
+selection. `capability_source` reads only each declared public interface through
+existing parsers. Preserve every original physical obligation, unknown source
+analysis and source/numeric/layout grouping; no oracle arrays or private sources
+are inputs. Canaries are advisory, never coverage or dispatch authority. Seal both
+served and archived inventory/summary bytes in the ordinary treatment record;
+resume must not regenerate them. The short task points to on-demand details.
+`capability_query.py` is served byte-for-byte as a standard-library-only, bounded,
+read-only helper. It opens only its adjacent inventory and has no private imports
+or dispatch authority; seal its served/archived bytes with the guidance.
+
+`generated_isa_library` prepares only an explicitly reviewed future additional
+library selection. Pin public facts/declaration and manifest identities, re-render
+the exact generated source and require the selected generator implementation.
+Copy enumerated leaves only; never mount a companion checkout. Existing library
+freeze/seal/transport and resume rules remain authoritative. Label the treatment
+as a fresh optimized backend atop generated scaffolding; do not manufacture an
+empty-input comparison, optimized backend, encoding proof or timing qualification.
+
+`construction_actions.py` is an explicitly staged, standard-library-only public
+client, like `capability_query.py`; seal its exact served/archived bytes in the
+ordinary treatment record. It executes authored argv and the existing standalone
+self-check client. It creates no grader, compilation, pass, or access authority.
+`construction_study.py` is private orchestration for `--offline-actions`: ordinary
+fresh preparation followed by the same sandbox composition and broker lifecycle.
+Require empty-backend origin, a bounded wall budget, no retained seed/epoch or
+resume, and no isolation/oracle bypass. Operator-authored scripts are not a model
+transcript or a fresh automatic compiler achievement. Preserve source-bound raw
+feedback separately from compact action status; command success is not a grade.
+A failed capability defers only explicit dependent actions, never independent
+construction. Automatic authors can use the identical client; it is not a second
+controller or a different offline validation policy.
+
+`joint_scoped_revision` is the narrow `scoped_observer_diagnostics` runtime
+ancestry review. Only a pinned observer/source identity and explicit bounded
+scoped-resource diagnostics can change. Preserve the complete model otherwise,
+provider and functional runtime, dependencies, hardware facts, counter scope,
+shared ABI source pins and prior denial rows. Reopen the exact no-fit public
+baseline/off/on products and the current model's continued denial. This grants
+implementation ancestry only: no measurement, fit, native epoch or qualification.
+
+Calibration admission additionally binds an enabled scoped-observer model to its
+exact selected ancestry and active continued-denial environment pin. Readiness
+supplies the current selected document; frozen rounds supply its original pin.
+A stale or missing admission review refuses before native sensitivities, labels
+or retained selections. Updating diagnostics cannot evade a model-hash denial.
+
+`joint_provider_revision` permits a narrowly reviewed provisional timing-provider
+implementation correction after scoped diagnostics. Observer/source identity,
+functional runtime, hardware facts, coefficients, resources, diagnostic settings
+and timing boundary stay unchanged. Reopen compiled source/binary pins and paired
+public replay products, including exact ELF/input/window and numerical outputs.
+Carry every earlier denial forward and bind the active denial to the successor
+model. Source/binary ancestry is not calibration or held-out accuracy authority.
+
+`joint_readout_revision` admits an explicitly reviewed provisional readout-stage
+successor: separate request admission, private-probe service and response arrival,
+plus aligned disjoint full rows. Existing prices, capacities, functional runtime
+and counter window remain fixed. Pin source snapshots, public development replays
+and stage assumptions; preserve active inherited fit denial. This review grants
+neither independent accuracy qualification nor automatic model activation.
+
+The provisional load-frontend successor admits only its source-bound six-stage
+arrival offset, enablement selector and explicit no-backpressure assumption.
+It cannot alter service occupancy, prices, existing memory facts or scope, and
+must retain the current-model fitting denial and exact public replay bindings.
+
+Loader cache bootstrap is a separate provisional observer revision, bound to a
+source receipt and original ELF loading order. It permits only the selected TSI
+loader and one loaded line per cache set; no warm-address hints, replacement
+approximation, provider change or implicit large-image qualification is allowed.
+
+`joint_calibration_eligibility` is the shared compiler-correctness admission
+screen for passive intake, fit registration, panel selection, freeze and replay.
+A numeric PASS/Spike L2 PASS never overrides trace/source-placement failures or
+missing declared obligations. Only the existing exact pending-required-L3
+boundary may remain incomplete, including its stable source and complete outputs.
+Recheck older round results before reusing probes or outcomes. This predicate
+issues no provenance, physical, fitting or timing authority; existing independent
+product reopening and calibration/model-admission gates remain mandatory.

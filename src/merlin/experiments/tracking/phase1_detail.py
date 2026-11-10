@@ -265,7 +265,7 @@ def cost_and_time(run_dir: Path, inventory: R.Inventory) -> dict[str, Any]:
     cost = inventory.yaml("cost_time_toolcalls.yaml", run_dir / "cost_time_toolcalls.yaml")
     timing = inventory.json("timing_detailed.json", run_dir / "timing_detailed.json")
     state = inventory.yaml("qa_loop_state.yaml", run_dir / "qa_loop_state.yaml")
-    from merlin.experiments.phase1.telemetry import evidence, report, timeline
+    from merlin.development.backend.telemetry import evidence, report, timeline
 
     live_usage = evidence.declared_home_usage(run_dir)
     if live_usage["available"]:

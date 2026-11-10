@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/verification
+# src/merlin/verification
 
 Own independently checked program and transformation obligations. Preserve the
 original source, selected semantics, verifier identity and exact checked scope.

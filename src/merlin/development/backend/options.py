@@ -1,0 +1,659 @@
+"""Functional compiler invocation options, independent of target initialization.
+
+The parser is the single owner of CLI defaults. Construct it at invocation time so
+explicit process-environment values retain their existing precedence. Parsing does
+not discover a repository, select a descriptor, or execute an experiment.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+from collections.abc import Mapping
+from dataclasses import dataclass
+
+from merlin.targetgen import tool_registry as _TR
+from merlin.targetgen.contract.readback_policy import READBACK_TRANSPORTS
+
+MAX_SIM_PER_CAPSULE_TIMEOUT_S = 86400
+
+
+def sim_per_capsule_timeout(value):
+    """Explicit broker resource budget; zero retains the historical derivation."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("sim per-capsule timeout must be an integer") from exc
+    if not 0 <= parsed <= MAX_SIM_PER_CAPSULE_TIMEOUT_S:
+        raise argparse.ArgumentTypeError("sim per-capsule timeout must be 0..86400 seconds")
+    return parsed
+
+
+@dataclass(frozen=True)
+class RunOptions:
+    """Parsed invocation values; runtime state and evidence belong to the session."""
+
+    arm: str
+    run_id: str
+    model: str
+    effort: str
+    driver: str
+    codex_max_subagents: int | None
+    subagent_model: str
+    background_model: str
+    provider: str
+    aws_region: str
+    aws_profile: str
+    schedule: str
+    max_wall_s: int
+    max_rounds: int
+    min_rounds: int
+    plateau_rounds: int
+    round_timeout: int
+    qa_timeout: int
+    sim_max_jobs: int
+    model_budget_s: int | None
+    continuous: bool
+    grade_interval: int
+    sandbox: str
+    allow_unsandboxed: bool
+    no_oracle: bool
+    skip_hidden: bool
+    experiment: str
+    bundle: str
+    max_rate_limit_waits: int
+    rl_test_reset_epoch: int
+    resume: bool
+    seal_current: bool
+    seed_submission: str
+    qualify_submission: str
+    operator_errata: str
+    with_tool: list[str]
+    without_tool: list[str]
+    account_config_dir: str
+    sim_per_capsule_timeout: int = 0
+    private_full_model_spec: str = ""
+    public_owned_host_inputs: str = ""
+    public_owned_host_inputs_sha256: str = ""
+    readback_policy: str = ""
+    public_object_build_budget_s: int = 0
+    preflight_only: bool = False
+    corpus_seal: str = ""
+    instruction_selection: str = ""
+    codex_canary: bool = False
+    codex_binary: str = ""
+    codex_auth_source: str = ""
+    codex_home_root: str = ""
+    hidden_capsule_mode: str = ""
+    native_result_format_selection: str = ""
+    author_max_subagents: int | None = None
+    author_helper_effort: str | None = None
+    author_compact_limit: str | None = None
+    author_task_skills: str | None = None
+    author_skills: str | None = None
+    live_conformance_feedback: bool = False
+    validation_scope: str = "full"
+    fresh_backend: bool = False
+    joint_campaign: str = ""
+    joint_epoch: str = ""
+    author_token_target: int | None = None
+    author_token_reserve: int | None = None
+    author_token_admission: bool = False
+    author_token_turn_allowance: int | None = None
+    author_token_unbounded: bool = False
+    offline_actions: str = ""
+    compiler_execution: str = "profile_strict_v1"
+    sandbox_reuse: str = "persistent"
+    compiler_access: str = "selected_library"
+    full_compiler_root: str = ""
+    full_compiler_manifest: str = ""
+    full_compiler_manifest_sha256: str = ""
+    reference_experiments: str = ""
+    reference_experiments_sha256: str = ""
+    reference_experiments_tasks: str = "on"
+    author_profile: str = ""
+
+
+def _public_object_build_budget(value: str) -> int:
+    try:
+        budget = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("public object-build budget must be 0..120 seconds") from exc
+    if not 0 <= budget <= 120:
+        raise argparse.ArgumentTypeError("public object-build budget must be 0..120 seconds")
+    return budget
+
+
+def author_profile_names():
+    """Every selectable versioned author profile, including the pinned CCA coverage bank arms."""
+    from merlin.development.backend import fresh10_profiles as F10
+    from merlin.development.backend.author_profiles import NAMES
+
+    return tuple(dict.fromkeys((*NAMES, *F10.coverage_names())))
+
+
+def build_parser(
+    *, default_arm: str = "raw_baseline", environ: Mapping[str, str] | None = None
+) -> argparse.ArgumentParser:
+    environment = os.environ if environ is None else environ
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--offline-actions",
+        default="",
+        metavar="PUBLIC_JSON",
+        help="run an explicit public construction action study through ordinary admission, "
+        "sandbox and brokers; no provider",
+    )
+    ap.add_argument(
+        "--author-token-target",
+        type=int,
+        default=None,
+        help="soft aggregate input (including cache) plus output token target across all authors; "
+        "joint campaigns default to 40000000, not a hard token cap",
+    )
+    ap.add_argument(
+        "--author-token-reserve",
+        type=int,
+        default=None,
+        help="portion of the author token target reserved for integration/repairs; joint default 8000000",
+    )
+    ap.add_argument(
+        "--author-token-admission",
+        action="store_true",
+        help="opt in to managed author token admission/checkpointing using live all-thread usage; not a hard token cap",
+    )
+    ap.add_argument(
+        "--author-token-turn-allowance",
+        type=int,
+        default=None,
+        help="planning allowance per outstanding author turn; requires token admission; "
+        "default 1000000, not a provider bound",
+    )
+    ap.add_argument(
+        "--author-token-unbounded",
+        action="store_true",
+        help="select no aggregate author token target, even for a joint campaign; excludes the other token options",
+    )
+    ap.add_argument(
+        "--validation-scope",
+        choices=("full", "capsules"),
+        default="full",
+        help="explicit completion scope; capsules exports a frozen compiler before external model validation",
+    )
+    ap.add_argument(
+        "--arm",
+        choices=["raw_baseline", "merlin_assisted", "cpp_merlininfra"],
+        default=default_arm,
+        help="stable runner arm: EL1 raw_baseline, EL2 cpp_merlininfra, or EL3–EL6 merlin_assisted "
+        "(the selected bundle and treatment distinguish EL3 from EL4; default EL1)",
+    )
+    ap.add_argument(
+        "--author-profile",
+        choices=author_profile_names(),
+        default="",
+        help="versioned author environment; historical experiment levels remain unchanged",
+    )
+    ap.add_argument("--run-id", required=True)
+    ap.add_argument(
+        "--joint-campaign",
+        default="",
+        metavar="POLICY_JSON",
+        help="opt into joint correctness/performance development in the native loop",
+    )
+    ap.add_argument(
+        "--joint-epoch",
+        default="",
+        metavar="REVIEW_JSON",
+        help="continue this campaign's frozen compiler with a reviewed new library epoch",
+    )
+    ap.add_argument(
+        "--fresh-backend",
+        action="store_true",
+        help="require an empty isolated submission before author launch; refuse prior compiler seeds",
+    )
+    ap.add_argument(
+        "--codex-canary", action="store_true", help="stop after an explicit sealed fresh-client canary; no authoring"
+    )
+
+    def positive_subagent_count(value):
+        count = int(value)
+        if count < 1:
+            raise argparse.ArgumentTypeError("Codex subagent limit must be positive")
+        return count
+
+    ap.add_argument(
+        "--codex-max-subagents",
+        type=positive_subagent_count,
+        default=None,
+        metavar="N",
+        help="opt in to at most N concurrent Codex child agents in the existing bwrap sandbox",
+    )
+    ap.add_argument(
+        "--author-max-subagents",
+        type=positive_subagent_count,
+        default=None,
+        metavar="N",
+        help="recorded Codex helper-thread ceiling for the author session (no prompt change); default "
+        "MERLIN_AUTHOR_MAX_SUBAGENTS, else min(16, compute-pool CPUs)",
+    )
+    ap.add_argument(
+        "--author-helper-effort",
+        default=None,
+        metavar="EFFORT",
+        help="recorded reasoning effort for Codex helpers spawned without a full-history fork "
+        "(agents.default_subagent_reasoning_effort); full-history forks keep the lead's; default: unset, "
+        "helpers keep --effort",
+    )
+    ap.add_argument(
+        "--author-compact-limit",
+        default=None,
+        metavar="TOKENS|off",
+        help="recorded Codex context ceiling (model_auto_compact_token_limit, with a workspace-aware "
+        "compact_prompt) in the frozen home; applies to the lead and helpers; default 175000 for an "
+        "isolated Codex run, off keeps the CLI's own compaction",
+    )
+    ap.add_argument(
+        "--author-task-skills",
+        default=None,
+        choices=("on", "off"),
+        help="stage TASK.md's longer sections and a feedback-file guide as workspace skills "
+        "(.agents/skills, native Codex discovery; TASK.md unchanged); default on for an isolated Codex run",
+    )
+    ap.add_argument(
+        "--author-skills",
+        default=None,
+        choices=("on", "off"),
+        help="stage the harness's procedural author skills (development/backend/author_skills) byte-identically into "
+        ".agents/skills and .claude/skills for native Codex and Claude Code discovery; recorded with their "
+        "digest; default on for those drivers",
+    )
+    ap.add_argument(
+        "--codex-binary", default="", help="explicit canonical Codex executable; requires complete client selection"
+    )
+    ap.add_argument(
+        "--codex-auth-source",
+        default="",
+        help="explicit credential file for the client only; never copied or exposed to tools",
+    )
+    ap.add_argument(
+        "--codex-home-root",
+        default="",
+        help="fresh isolated per-run client home root, shared selection policy for canary and authoring",
+    )
+    ap.add_argument("--model", default="claude-opus-4-8")
+    ap.add_argument("--effort", default="high")
+    # AGENT DRIVER (Claude-Code-like interfaces). auto (default) preserves today's behavior: route by model
+    # id — the Bedrock Converse loop for a non-Anthropic id, else the claude CLI.
+    ap.add_argument(
+        "--driver",
+        choices=["auto", "converse", "claudecode", "opencode", "codex"],
+        default="auto",
+        help="agent driver: auto (route by model id), converse (Bedrock Converse loop), "
+        "claudecode (claude CLI; Bedrock via --provider bedrock), opencode (OpenCode CLI), "
+        "codex (Codex CLI; ChatGPT auth = subscription_notional cost, never metered)",
+    )
+    ap.add_argument(
+        "--subagent-model",
+        default="",
+        help="delegate/subagent model (alias or Bedrock id) for tier-within-agent; default per "
+        "driver (Anthropic: sonnet; non-Anthropic: qwen-coder)",
+    )
+    ap.add_argument(
+        "--background-model",
+        default="",
+        help="background/mechanical model (alias or Bedrock id) for chores; default per driver "
+        "(Anthropic: haiku; non-Anthropic: nova-lite)",
+    )
+    # PROVIDER for the agent's `claude` CLI — experiments-only, so the interactive Claude Code keeps the
+    # subscription. subscription (default) = the machine's ~/.claude creds; bedrock = Claude Code's own
+    # Bedrock mode (CLAUDE_CODE_USE_BEDROCK=1 + AWS creds + a Bedrock inference-profile model id).
+    ap.add_argument(
+        "--provider",
+        choices=["subscription", "bedrock"],
+        default="subscription",
+        help="model provider for the agent CLI (experiments-only; subscription keeps ~/.claude)",
+    )
+    ap.add_argument(
+        "--aws-region", default=environment.get("AWS_REGION", "us-east-1"), help="AWS region for --provider bedrock"
+    )
+    ap.add_argument(
+        "--aws-profile",
+        default=environment.get("AWS_PROFILE", ""),
+        help="AWS profile (~/.aws) for --provider bedrock; else the env-var cred chain",
+    )
+    ap.add_argument(
+        "--schedule",
+        choices=("rounds", "continuous"),
+        default="continuous",
+        help="CONTINUOUS (default): the round COUNT stops being a terminator and the run "
+        "ends on convergence, plateau, or a declared wall/spend budget. ROUNDS is the "
+        "explicit legacy-reproduction mode: the loop is bounded by "
+        "--max-rounds, and the run ends when that budget is spent whether or not the "
+        "submission was still improving. Per-capsule promotion is unaffected by this "
+        "flag: a capsule's cert tier "
+        "is enqueued the moment its loop tier passes (tier_promote fires on EVERY "
+        "verdict — both brokers and the round grade), never at a round boundary. What "
+        "continuous removes is the ARTIFICIAL end, not the grading cadence.\n"
+        "Rounds remain the unit of agent invocation and of the artifact layout in both "
+        "modes, so every downstream reader (round_NN transcripts, qa_history verdicts, "
+        "the cost rollup) is unchanged.",
+    )
+    ap.add_argument(
+        "--max-wall-s",
+        type=int,
+        default=0,
+        help="continuous only (0 = no wall cap): stop after this much ACTIVE agent wall "
+        "time. With --schedule continuous and no wall cap and no plateau, the only "
+        "terminators left are convergence and the spend ceiling — which is what you "
+        "want for a run whose whole point is to finish the work, but say so on purpose.",
+    )
+    ap.add_argument("--max-rounds", type=int, default=12)
+    ap.add_argument(
+        "--min-rounds",
+        type=int,
+        default=0,
+        help="OPT-IN (0 = disabled, the default). Refuse the agent's READY_FOR_BARRIER "
+        "self-declaration before round N unless it is actually passing. A model that "
+        "writes the marker while scoring zero has not converged, it has given up: GLM-5 "
+        "did exactly that in four consecutive runs, once after only two rounds, leaving "
+        "ten of its twelve rounds unspent. Declining the marker deletes it (the agent "
+        "must re-declare) and returns the loop to the agent with the same failing "
+        "verdict. Never overrides a genuine all_pass, which always ends the loop.",
+    )
+    ap.add_argument(
+        "--plateau-rounds",
+        type=int,
+        default=0,
+        help="OPT-IN (0 = disabled, the default — never cut a productive run). When set to N, "
+        "stop early (not converged) after N consecutive rounds with NO progress: neither "
+        "the pass count NOR the total numeric mismatch improved. The mismatch-aware metric "
+        "means a run making ANY numeric progress is never stopped (verified: it would not "
+        "have fired on the productive glm5 15/20 run, whose flat-pass stretches kept "
+        "reducing mismatch). Enable it only for a run you know is pathologically stuck "
+        "(re-sending its uncached context each round with zero movement), e.g. N=3-4.",
+    )
+    ap.add_argument(
+        "--round-timeout",
+        type=int,
+        default=14400,
+        help="per-round agent wall cap (s). Default 4h (matches launch_ab_batch): a TIGHT "
+        "cap is net-detrimental — it doesn't cut the work (fixed by difficulty), it "
+        "just forces more rounds, each adding a full grading pass + context re-read + "
+        "rate-limit-boundary exposure, and can cut a productive round mid-fix (rc=124). "
+        "The original abc runs used 4h and converged in ~1 productive round.",
+    )
+    ap.add_argument("--qa-timeout", type=int, default=900)
+    ap.add_argument(
+        "--sim-max-jobs",
+        type=int,
+        default=0,
+        metavar="N",
+        help="how many async oracle jobs the simjob broker may run at once (0 = the "
+        "broker's own default of 4). The default was chosen when the cert tier meant "
+        "Verilator, which is separately capped at 2 global slots because one instance "
+        "holds a core for ~45 min. A cheap cert engine is a different machine problem: "
+        "Raise this when the cert engine is cheap; leave it alone when it is not. "
+        "Verilator's own global slot budget is unaffected either way.",
+    )
+    ap.add_argument(
+        "--sim-per-capsule-timeout",
+        type=sim_per_capsule_timeout,
+        default=0,
+        metavar="SECONDS",
+        help="explicit async certificate worker budget (1..86400 seconds); 0 retains engine-derived "
+        "budget. This does not override the sealed native engine ceiling or whole-model budget.",
+    )
+    ap.add_argument(
+        "--model-budget-s",
+        type=int,
+        default=None,
+        help="wall-clock ceiling for ONE whole-model capsule inside a round grade (s). "
+        "Default: --qa-timeout, i.e. the capstone may cost at most what this operator "
+        "already said one grading step may. --qa-timeout itself is a PER-STEP "
+        "subprocess cap and a whole-model grade makes many such calls, so it cannot "
+        "bound the capsule. "
+        "0 = no ceiling (an operator certification run wants that; a per-round gate "
+        "does not).",
+    )
+    # NOT default-on, and deliberately so: this is the LEGACY single-session path. It keeps one agent
+    # session and re-grades underneath it, but it does NOT run the post-freeze public+hidden L3 grade, so
+    # it can report progress and can NEVER report a formal success (it returns 1 and hardcodes
+    # formal_complete=False). The certified continuous path is `--schedule continuous`, where the round
+    # COUNT is not a terminator: the run stops on EVIDENCE (converged, plateaued) or on a declared budget,
+    # and `--max-rounds` is ignored. Pair it with a long `--round-timeout` (e.g. 43200) so each agent
+    # session is long and barriers are rare.
+    #
+    # Historical progress-only sessions ended after ~1.5h at 18/33
+    # with `grades=2` and `formal_complete=False` -- the session closed when the agent stopped, well inside
+    # a 12h --round-timeout, and no formal verdict was reachable.
+    ap.add_argument(
+        "--continuous",
+        action="store_true",
+        help="LEGACY single-session mode: one long-lived agent session with a background "
+        "grader every --grade-interval seconds, instead of round relaunches. Reports "
+        "progress only -- it does NOT run the post-freeze public+hidden L3 grade and so "
+        "can never report a formal success. For the certified continuous path use "
+        "`--schedule continuous` with a long --round-timeout.",
+    )
+    ap.add_argument(
+        "--grade-interval",
+        type=int,
+        default=900,
+        help="seconds between background grades in --continuous mode, and between the "
+        "in-turn full-ladder grades under `--schedule continuous` (default 900). The "
+        "FIRST grade of a turn is never on this interval: it is the fast loop-tier "
+        "grade, published as soon as there is a submission, so an agent whose turn "
+        "outlives the interval is not working blind. 0 disables the interval grades "
+        "(the fast first verdict still lands).",
+    )
+    ap.add_argument(
+        "--live-conformance-feedback",
+        action="store_true",
+        help="publish current advisory workflow check booleans and authored regex locations to "
+        "qa/workflow_conformance.json during authoring; does not run capsule grades or change formal gates",
+    )
+    # Default sandbox=bwrap: enforced FS isolation (the agent cannot read a masked answer surface at all),
+    # AND the driver-side broker tools (async simjob oracle, self-check, arc-model isa_tools, CCA) only
+    # start under bwrap. The earlier "bwrap crashes claude" blocker was a sandbox-config bug, now fixed in
+    # sandbox/bwrap.base_argv (bind the systemd-resolved dir so DNS works; drop inherited CLAUDE_CODE_*
+    # nesting markers; provide an XDG runtime dir) — validated end-to-end by smoke_agent_check. "none" stays
+    # available as an escape hatch (golden-masked COPY workspace + post-run transcript audit), but it is
+    # detection-not-prevention and must not be used for scored runs.
+    ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap")
+    ap.add_argument(
+        "--compiler-execution",
+        choices=("profile_strict_v1", "snapshot_external_v1"),
+        default="profile_strict_v1",
+        help="compiler execution boundary; snapshot_external_v1 uses an isolated compiler snapshot "
+        "and external grading",
+    )
+    ap.add_argument(
+        "--sandbox-reuse",
+        choices=("persistent", "per_call"),
+        default="persistent",
+        help="persistent: each compiler worker reuses one sandbox, reset between calls; "
+        "per_call: a new sandbox for every compiler call",
+    )
+    ap.add_argument("--compiler-access", choices=("selected_library", "full_compiler"), default="selected_library")
+    ap.add_argument("--full-compiler-root", default="", help="operator-selected public compiler source tree")
+    ap.add_argument("--full-compiler-manifest", default="", help="public compiler source inventory")
+    ap.add_argument("--full-compiler-manifest-sha256", default="", help="exact selected inventory digest")
+    ap.add_argument(
+        "--allow-unsandboxed",
+        action="store_true",
+        help="explicitly permit a real (spending) run under --sandbox none; without it a "
+        "'none' run is refused (workspace assembly alone does not hide denied paths).",
+    )
+    ap.add_argument("--no-oracle", action="store_true", help="QA = L0+trace only (fast dev)")
+    ap.add_argument("--skip-hidden", action="store_true")
+    ap.add_argument(
+        "--hidden-capsule-mode",
+        choices=("rtl", "functional_spike"),
+        default="",
+        help="operator hidden validation after freeze; functional_spike is L2 corroboration only",
+    )
+    ap.add_argument(
+        "--public-object-build-budget-s",
+        type=_public_object_build_budget,
+        default=0,
+        metavar="SECONDS",
+        help="fresh-run operator opt-in: compile each of four public scalability emissions as an advisory "
+        "object-only probe, with this per-sample subprocess budget (0 = emit-only default)",
+    )
+    ap.add_argument(
+        "--readback-policy",
+        choices=READBACK_TRANSPORTS,
+        default="",
+        help="global explicit full-value transport for every selected engine; incompatible selections refuse "
+        "before authoring. Omit to retain original per-engine transports; immutable on resume",
+    )
+    ap.add_argument(
+        "--private-full-model-spec",
+        default="",
+        metavar="FILE",
+        help="operator-only frozen complete-network validation declaration for the official post-freeze gate",
+    )
+    ap.add_argument(
+        "--public-owned-host-inputs",
+        default="",
+        metavar="FILE",
+        help="operator-only pinned public host build inputs; enables no private model campaign",
+    )
+    ap.add_argument(
+        "--public-owned-host-inputs-sha256",
+        default="",
+        metavar="SHA256",
+        help="exact SHA256 of the explicit operator-only host input record",
+    )
+    ap.add_argument(
+        "--instruction-selection",
+        default="",
+        metavar="FILE",
+        help="operator-private source-bound instruction policy for formal full-model grading",
+    )
+    ap.add_argument(
+        "--native-result-format-selection",
+        default="",
+        metavar="FILE",
+        help="original operator-only negative native output-format proof selection; "
+        "frozen privately for formal grading",
+    )
+    ap.add_argument(
+        "--experiment",
+        choices=["full", "realistic"],
+        default="full",
+        help="'realistic' (abc2): whole-repo + self-check tool + READY_FOR_BARRIER self-pacing "
+        "+ TASK_realistic; 'full' (abc1, default): spike-loop then verilator checkpoint",
+    )
+    ap.add_argument("--bundle", default="", help="override the arm's bundle id (e.g. *_realistic_v0)")
+    # Rate-limit awareness: when the org five-hour session budget rejects a round (zero work), sleep
+    # until resetsAt and RETRY the same round instead of burning it. Lets an n>=3 sweep span windows
+    # unattended. --max-rate-limit-waits caps total resets waited across the run (then stop honestly).
+    ap.add_argument("--max-rate-limit-waits", type=int, default=3)
+    ap.add_argument(
+        "--rl-test-reset-epoch",
+        type=int,
+        default=0,
+        help="TEST ONLY: override the reset epoch to wait toward (verification, not 5h)",
+    )
+    ap.add_argument(
+        "--resume",
+        action="store_true",
+        help="continue an existing run_dir (cross-window robustness) instead of refusing",
+    )
+    ap.add_argument(
+        "--seal-current",
+        action="store_true",
+        help="resume-only: stop authoring at the last completed checkpoint, then run the "
+        "ordinary official public/hidden grade and immutable freeze. This records an "
+        "incomplete operator seal; it never reports convergence or bypasses integrity",
+    )
+    ap.add_argument(
+        "--seed-submission",
+        default="",
+        metavar="DIR",
+        help="fresh run only: initialize submission/ from a preserved candidate while the "
+        "new run seals its current bundle and records the candidate's exact identity",
+    )
+    ap.add_argument(
+        "--qualify-submission",
+        default="",
+        metavar="DIR",
+        help="fresh unpaid run: grade a preserved submission without launching an author; "
+        "requires reviewed corpus and operator-private inputs",
+    )
+    ap.add_argument(
+        "--operator-errata",
+        default="",
+        metavar="FILE",
+        help="fresh run only: archive a correction as ERRATA.md before the first round brief "
+        "is assembled, with exact provenance in environment.yaml",
+    )
+    # Use a SECOND subscription account (separate org five-hour budget) by pointing claude at a
+    # different config dir. This is the only real way to run two agent arms truly concurrently: the
+    # five-hour limit is org-wide and non-overage, so process parallelism on ONE account just
+    # time-shares the same bucket; a second account = a second bucket. Log in once with
+    # `CLAUDE_CONFIG_DIR=<dir> claude auth login`, then pass --account-config-dir <dir> here.
+    ap.add_argument(
+        "--with-tool",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help=f"ABLATION: grant this arm-gated tool on top of the arm's rung (repeatable). "
+        f"Known: {', '.join(_TR.ablatable_tools())}",
+    )
+    ap.add_argument(
+        "--without-tool",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="ABLATION: withhold this arm-gated tool from the arm's rung (repeatable). Pair "
+        "with a bundle generated for the same cell so the file grants match the brokers.",
+    )
+    ap.add_argument(
+        "--account-config-dir",
+        default=environment.get("CLAUDE_CONFIG_DIR", ""),
+        help="CLAUDE_CONFIG_DIR for the agent's claude CLI (a different subscription account)",
+    )
+    ap.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="run ordinary sealed native readiness, then stop before authoring or completion",
+    )
+    ap.add_argument("--corpus-seal", default="", help="explicit reviewed corpus seal; required with --preflight-only")
+    ap.add_argument(
+        "--reference-experiments",
+        default="",
+        metavar="SELECTION_JSON",
+        help="explicit operator-selected reference experiment feedback; requires its exact SHA256",
+    )
+    ap.add_argument("--reference-experiments-sha256", default="", help="SHA256 of the reference experiment selection")
+    ap.add_argument(
+        "--reference-experiments-tasks",
+        default="on",
+        choices=("on", "off"),
+        help="off keeps the selection's reference analysis but serves none of its prior tasks "
+        "(no REFERENCE_EXPERIMENTS.json)",
+    )
+    return ap
+
+
+def parse_options(
+    argv: list[str] | None = None,
+    *,
+    default_arm: str = "raw_baseline",
+    environ: Mapping[str, str] | None = None,
+) -> RunOptions:
+    parser = build_parser(default_arm=default_arm, environ=environ)
+    options = RunOptions(**vars(parser.parse_args(argv)))
+    from merlin.development.backend.providers.codex_context import selection as context_selection
+    from merlin.development.backend.skill_staging import selection as skill_selection
+    from merlin.development.backend.telemetry.token_budget import selection
+
+    try:
+        selection(options)
+        context_selection(options)
+        skill_selection(options)
+    except ValueError as exc:
+        parser.error(str(exc))
+    return options

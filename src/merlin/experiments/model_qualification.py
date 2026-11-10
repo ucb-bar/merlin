@@ -389,10 +389,9 @@ def _worker(request: dict, root: Path) -> dict:
     accounting = {"status": "not_measured", "reason": "no immutable selected target evidence bundle supplied"}
     selection = None
     if request.get("evidence_bundle"):
+        from merlin.development.testgen.evidence import load_exported_evidence
         from merlin.targetgen.application_inventory import application_operation_inventory
         from merlin.targetgen.operation_accounting import build_operation_accounting
-
-        from .phase0.evidence import load_exported_evidence
 
         selection = load_exported_evidence(request["evidence_bundle"])
         if selection.target != request["target"]:
@@ -636,7 +635,7 @@ def _worker(request: dict, root: Path) -> dict:
                         package_runtime.certify = original_certify
                     else:
                         del package_runtime.certify
-    from .phase1.model_routes import summarize_model_routes
+    from merlin.development.backend.model_routes import summarize_model_routes
 
     model_routes = summarize_model_routes(workflow, accounting, observations, native_lowerings)
     return {
@@ -848,7 +847,7 @@ def qualify(
     evidence_before = None
     if evidence_bundle is not None:
         evidence_bundle = _plain(evidence_bundle, directory=True)
-        from .phase0.evidence import load_exported_evidence
+        from merlin.development.testgen.evidence import load_exported_evidence
 
         load_exported_evidence(evidence_bundle)
         for path in evidence_bundle.rglob("*"):

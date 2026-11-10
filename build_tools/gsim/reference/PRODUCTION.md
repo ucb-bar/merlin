@@ -104,5 +104,5 @@ implemented and functionally demonstrated, but whole-system timing must remain
 provisional until deployment identities and the independent per-case timing
 gates pass. Do not activate it as a qualified model based on these probes.
 
-Curated evidence: `experiments/reference-data/fased-simdram-20261023/`.
+Curated evidence: `experiments/archive/hardware-models/fased-simdram-20261023/`.
 Full task-local artifacts: `out/artifacts/fased-simdram-20261023/`.

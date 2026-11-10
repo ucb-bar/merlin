@@ -25,20 +25,20 @@ from typing import Any, Callable
 
 import yaml
 
-from merlin.baselines import executorch_session
-from merlin.baselines.executorch import et_identity, et_source_dir, et_venv_python
-from merlin.baselines.executorch_identity import ExecuTorchIdentityError
-from merlin.baselines.executorch_session import (
-    ExecuTorchSessionError,
-    capture_session_identity,
-    load_session_package,
-    session_identity_sha256,
-)
 from merlin.capture import bundle as capture_bundle
 from merlin.common import jsonio as _mjson
 from merlin.common.artifacts import ProductDir, new_product
 from merlin.common.paths import repo_root
 from merlin.common.yaml import write_yaml
+from merlin.evaluation.frameworks import executorch_session
+from merlin.evaluation.frameworks.executorch import et_identity, et_source_dir, et_venv_python
+from merlin.evaluation.frameworks.executorch_identity import ExecuTorchIdentityError
+from merlin.evaluation.frameworks.executorch_session import load_session_package
+from merlin.evaluation.frameworks.executorch_session_contract import (
+    ExecuTorchSessionError,
+    capture_session_identity,
+    session_identity_sha256,
+)
 
 from .capture_workflow import _render_environment
 from .executorch_sources import selected_source_paths
@@ -298,7 +298,7 @@ def _toolchain_identity(root: str | Path | None = None) -> dict[str, Any]:
     if not requested:
         raise ValueError("paper package preflight requires explicit MERLIN_K1_TOOLCHAIN or --k1-toolchain")
     candidate = Path(requested).resolve()
-    from merlin.baselines import toolchain_locator
+    from merlin.common import toolchain_locator
 
     found = toolchain_locator.find_prefix(candidate, "MERLIN_K1_TOOLCHAIN", tools=("clang", "clang++"))
     resolved = found.resolve() if found is not None else None
@@ -573,7 +573,7 @@ def _tasks(
         command = (
             sys.executable,
             "-m",
-            "merlin.baselines.executorch_session",
+            "merlin.evaluation.frameworks.executorch_session",
             "build",
             "--model",
             model.capture,
@@ -749,7 +749,7 @@ def _paper_measurement_templates(
     product: ProductDir,
 ) -> dict[str, dict[str, dict[str, dict[str, str]]]]:
     """Create receipt-bound sealed-executable templates for the production paper registry."""
-    from merlin.compare.paper_measurement_controller import _EXECUTORCH_PRODUCTION_BUILD_ARGV
+    from merlin.compare.paper_measurement_protocol import _EXECUTORCH_PRODUCTION_BUILD_ARGV
     from merlin.compare.paper_model_object_builder import (
         EXECUTORCH_RECIPE,
         executorch_session_resources,

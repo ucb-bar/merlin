@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin
+# src/merlin
 
 ## Purpose
 
@@ -22,4 +22,5 @@ The canonical, installed `merlin` Python package. See the repository ownership m
 - One distribution owns every active Merlin implementation; no duplicate source trees.
 - Wheel membership never grants candidate access to graders, references or hidden inputs.
 - Keep shared primitives independent of optional workflows and heavy frontend imports.
-- Every subdirectory must also contain an AGENT.md.
+- Add local instructions only for distinct ownership, numerical or evaluation constraints.
+  Other directories inherit these rules; do not duplicate module indexes in AGENT.md.

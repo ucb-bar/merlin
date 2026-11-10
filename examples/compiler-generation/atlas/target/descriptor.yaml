@@ -1,0 +1,101 @@
+# Experiment resources and workload policy; hardware facts are extracted inputs.
+# See ../test-generation/README.md for deterministic derivation and evidence selection.
+target: atlas
+resources_root: examples/compiler-generation/atlas/backend-generation
+numeric_profile: examples/compiler-generation/atlas/test-generation/recipe.yaml
+
+rtl:
+  via: mlc            # ISA/memory/DIM DERIVED from atlas's RTL via mlc discovery
+  elaboration:
+    ext_root: bringup_chipyard
+    config: EE290SimConfig
+    generator: atlas-npu
+    source_revision: "426a862f97f98938660772bd8a5d8f41316d15c3"
+    gitlinks:
+      generators/atlas-npu: "0079c0541111197741a231c002e3843fa6f545b2"
+
+hardware_spec:
+  isa_headers:
+    - examples/compiler-generation/atlas/backend-generation/contracts/hwbringup_atlas_v0/isa_include/atlas_isa_green_card.md
+    - examples/compiler-generation/atlas/backend-generation/contracts/hwbringup_atlas_v0/isa_include/isa_definition.py
+  hwbringup_set: examples/compiler-generation/atlas/backend-generation/contracts/hwbringup_atlas_v0
+
+capsule_corpus: experiments/corpora/atlas/isa
+
+toolchain:
+  sim_via: ""         # arc-only (the mlc arc MXU model is the RTL tier)
+
+preflight:
+  smoke_program: MatmulProgram
+  capability_probes:
+    - capability: control_flow.relative_branch
+      adapter: merlin.targetgen.inline_assembly_probe:run_capability_probe
+      fixture:
+        kind: inline_assembly_memory
+        source: examples/compiler-generation/atlas/backend-generation/contracts/hwbringup_atlas_v0/preflight/taken_backward_branch.S
+        assembler: examples/compiler-generation/atlas/backend-generation/contracts/hwbringup_atlas_v0/preflight/adapter.py:assemble
+        runner: examples/compiler-generation/atlas/backend-generation/contracts/hwbringup_atlas_v0/preflight/adapter.py:run
+        assembler_root: atlas_npu
+        assembler_path: baremetal/assembler.py
+        assembler_callable: assemble
+        max_cycles: 1000
+      requirements:
+        operations:
+          - {domain: instruction, dialect: atlas, operation: BNE}
+    - capability: scalar_memory.load_store_roundtrip
+      adapter: merlin.targetgen.inline_assembly_probe:run_capability_probe
+      fixture:
+        kind: inline_assembly_memory
+        source: examples/compiler-generation/atlas/backend-generation/contracts/hwbringup_atlas_v0/preflight/scalar_memory_nonzero.S
+        assembler: examples/compiler-generation/atlas/backend-generation/contracts/hwbringup_atlas_v0/preflight/adapter.py:assemble
+        runner: examples/compiler-generation/atlas/backend-generation/contracts/hwbringup_atlas_v0/preflight/adapter.py:run
+        assembler_root: atlas_npu
+        assembler_path: baremetal/assembler.py
+        assembler_callable: assemble
+        max_cycles: 10000
+      requirements:
+        operations:
+          - {domain: instruction, dialect: atlas, operation: LW}
+          - {domain: instruction, dialect: atlas, operation: SW}
+          - {domain: instruction, dialect: atlas, operation: LBU}
+          - {domain: instruction, dialect: atlas, operation: SB}
+          - {domain: instruction, dialect: atlas, operation: LHU}
+          - {domain: instruction, dialect: atlas, operation: SH}
+
+answer_surfaces:
+  prior_backends: [agent_spec_v1_mlir_oot]
+
+workload_spec:
+  models: [resnet50, tiny_llama, smolvla]
+  applications:
+    - coverage_mlp
+    - residual_cnn
+    - causal_decoder
+    - multimodal_policy
+  historical_application_suites:
+    model_scale: [deepjscc_int8_consistent, lstmnetvit_fp8_consistent,
+                  lstmnetvit_int8_consistent, lstmnetvit_int8_w8a8_consistent]
+  cert_budget_s: 300
+  model_budget_s: 3600
+  precision_preference: [int8, fp8_e4m3, mxfp8, fp16, bf16, fp32]
+  max_synthesized_capsules: 160
+
+host_lane:
+  capability_spec: examples/compiler-generation/atlas/target/host-capabilities.yaml
+  description: >-
+    The RVV host compiler: the scalar/vector lane every partitioned capsule falls back to for the work
+    the accelerator does not admit (normalization, reduction, activation tails). Frozen for the
+    duration of the experiment.
+  repo_canonical: https://github.com/ucb-bar/rvv-mlir.git
+  branch: stable/rvv_tuned_v1_d1_vfmacc_outerproduct
+  commit: UNKNOWN
+  dtype_strategy: fp32
+  package: out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct
+  requires_paths:
+    - manifest.yaml
+    - schedule.mlir
+    - knobs.yaml
+  read_only:
+    - out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/
+  deny_modification:
+    - merlin/python/merlin/llvmlower/

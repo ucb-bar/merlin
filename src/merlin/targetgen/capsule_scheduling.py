@@ -692,7 +692,7 @@ def run_pipelined(
         )
 
     def submit(pool, capsule, parallel):
-        from merlin.experiments.phase1.feedback import setup_timing
+        from merlin.development.backend.feedback import setup_timing
 
         with setup_timing.queued():
             return pool.submit(copy_context().run, run_one, capsule, parallel)

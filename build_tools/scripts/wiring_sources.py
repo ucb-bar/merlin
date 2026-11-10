@@ -237,8 +237,8 @@ def closed_source_imports(path: Path, root: Path, tree: ast.AST) -> set[str]:
             return set()
         return {"merlin.targetgen." + name for name in _strings(tree, "DEPENDENCIES")}
     if relative not in {
-        "src/merlin/experiments/phase1/full_compiler_workspace.py",
-        "src/merlin/experiments/phase1/raw_interface_sources.py",
+        "src/merlin/development/backend/full_compiler_workspace.py",
+        "src/merlin/development/backend/raw_interface_sources.py",
     }:
         return set()
     prepare = _function(tree, "prepare")
@@ -267,7 +267,7 @@ def published_source_modules(root: Path) -> set[str]:
     boundary as literal module_source_path reads. It grants no new source and
     does not claim any exported function executed or any result was verified.
     """
-    base = root / "src/merlin/experiments/phase1"
+    base = root / "src/merlin/development/backend"
     producer, staging = base / "fresh10_sources.py", base / "full_compiler_workspace.py"
     inventory = base / "fresh10_profile_data.json"
     if not all(p.is_file() for p in (producer, staging, inventory)):
@@ -323,8 +323,8 @@ def compiler_source_inputs(root: Path) -> set[str]:
     names = published_source_modules(root)
     for relative in (
         "src/merlin/targetgen/tool_profile_shared.py",
-        "src/merlin/experiments/phase1/full_compiler_workspace.py",
-        "src/merlin/experiments/phase1/raw_interface_sources.py",
+        "src/merlin/development/backend/full_compiler_workspace.py",
+        "src/merlin/development/backend/raw_interface_sources.py",
     ):
         path = root / relative
         if path.is_file():

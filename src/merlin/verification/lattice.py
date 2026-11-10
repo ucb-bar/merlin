@@ -24,6 +24,7 @@ pass is actually broken, and then the smallest failing shape is the one you want
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
@@ -36,23 +37,34 @@ ENCODABLE_FAMILIES = frozenset({"contraction"})
 ENCODABLE_DTYPES = frozenset({"i8"})
 
 
-def spec_path(target: str):
-    from merlin.targetgen.corpora import conformance_reference
+def spec_path(target: str, *, conformance_spec: str | Path | None = None) -> Path:
+    if conformance_spec is None:
+        raise ValueError(f"select the generated conformance requirement for {target!r} explicitly with --spec PATH")
+    return Path(conformance_spec)
 
-    return conformance_reference(target)
+
+def load_spec(target: str, *, conformance_spec: str | Path | None = None) -> dict[str, Any]:
+    """The explicitly selected derived conformance requirement for one target."""
+    spec, _ = _selected_spec(target, conformance_spec=conformance_spec)
+    return spec
 
 
-def load_spec(target: str) -> dict[str, Any]:
-    """The tracked, derived conformance spec for one target."""
+def _selected_spec(target: str, *, conformance_spec: str | Path | None) -> tuple[dict[str, Any], dict[str, str]]:
+    """Parse and fingerprint the same bytes; selection alone does not approve their scope."""
     import yaml
 
-    p = spec_path(target)
+    p = spec_path(target, conformance_spec=conformance_spec)
     if not p.is_file():
         raise FileNotFoundError(
             f"no derived conformance spec for {target!r} at {p}. The lattice is derived from the "
             f"target's own facts; without the spec there is nothing to sweep and nothing to assume."
         )
-    return yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    source = p.read_bytes()
+    return yaml.safe_load(source) or {}, {
+        "path": str(p.resolve()),
+        "sha256": hashlib.sha256(source).hexdigest(),
+        "scope": "caller_selected_requirement; independent approval not established by this sweep",
+    }
 
 
 def lattice_points(spec: dict[str, Any]) -> list[int]:
@@ -62,13 +74,19 @@ def lattice_points(spec: dict[str, Any]) -> list[int]:
 
 
 def sweep(
-    target: str, *, timeout_ms: int = 300_000, acc_width: int = 32, reuse: int = 2, max_points: int | None = None
+    target: str,
+    *,
+    conformance_spec: str | Path | None = None,
+    timeout_ms: int = 300_000,
+    acc_width: int = 32,
+    reuse: int = 2,
+    max_points: int | None = None,
 ) -> dict[str, Any]:
     """Validate the compilation at every (cell, extent) the target's own facts define."""
     from .evaluate import _finish_lowering, _lower_to_interface
     from .refine import validate_compilation
 
-    spec = load_spec(target)
+    spec, selected = _selected_spec(target, conformance_spec=conformance_spec)
     available_points = lattice_points(spec)
     points = available_points
     if max_points is not None:
@@ -150,6 +168,7 @@ def sweep(
     cells_covered = cells_verified_at_sampled_points if points == available_points else []
     errors = [r for r in results if r["status"] == "error"]
     return {
+        "conformance_spec": selected,
         "schema": "verify_lattice/v2",
         "target": target,
         "lattice_points": points,
@@ -302,6 +321,7 @@ def render(rec: dict[str, Any]) -> str:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0], allow_abbrev=False)
     ap.add_argument("--target", required=True)
+    ap.add_argument("--spec", type=Path, required=True, help="explicit generated conformance requirement")
     ap.add_argument("--timeout-ms", type=int, default=300_000)
     ap.add_argument("--reuse", type=int, default=2)
     ap.add_argument(
@@ -324,7 +344,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.smt_profile is not None and args.smt_profile.exists() and not args.smt_profile.is_file():
         ap.error("--smt-profile must name a file, not a directory")
 
-    rec = sweep(args.target, timeout_ms=args.timeout_ms, reuse=args.reuse, max_points=args.max_points)
+    rec = sweep(
+        args.target,
+        conformance_spec=args.spec,
+        timeout_ms=args.timeout_ms,
+        reuse=args.reuse,
+        max_points=args.max_points,
+    )
     print(json.dumps(rec, indent=1) if args.json else render(rec))
     if args.write:
         _write(rec)
@@ -359,7 +385,11 @@ def emit_counterexamples(rec: dict[str, Any], *, profile: Path) -> None:
         )
         for r in refuted
     ]
-    write_profile(profile, entries, provenance={"lattice_source": rec["lattice_source"]})
+    write_profile(
+        profile,
+        entries,
+        provenance={"lattice_source": rec["lattice_source"], "conformance_spec": rec["conformance_spec"]},
+    )
     path = write_evidence(target, refuted)
     if path:
         print(f"counterexample values: {path}")
@@ -374,7 +404,7 @@ def _write(rec: dict[str, Any]):
         version=1,
         target=rec["target"],
         sources=[
-            f"derived lattice: {spec_path(rec['target'])}",
+            f"derived lattice: {rec['conformance_spec']['path']} (sha256={rec['conformance_spec']['sha256']})",
             f"extents: {rec['lattice_points']}",
             f"lattice source: {rec['lattice_source']}",
             f"solver bound: {rec['timeout_ms']} ms per point",
@@ -384,6 +414,8 @@ def _write(rec: dict[str, Any]):
             "compiled program computes the declared contraction for EVERY input at that shape, "
             "while declared dynamic capsules are counted without grade receipts. Cells and extents "
             "come from the target's own capability manifest and RTL facts."
+            " The selected requirement fixes this proof's scope; this run does not independently approve it "
+            "or establish hardware execution."
         ),
     )
     out = prod.add_artifact("lattice.json")

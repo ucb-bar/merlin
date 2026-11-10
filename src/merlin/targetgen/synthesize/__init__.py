@@ -1,7 +1,7 @@
 """Synthesize the five plan artifacts from collected evidence.
 
 For ``toy_npu`` the synthesizers emit concrete, schema-valid plans consistent with the
-authored ``examples/toy_npu/target/contracts/``. For real targets they emit conservative
+authored ``examples/targets/toy_npu/target/contracts/``. For real targets they emit conservative
 plans derived from keyword-detected concepts, with every result flagged
 ``confidence: low|medium`` and ``requires_human_review: true``.
 

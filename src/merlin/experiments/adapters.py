@@ -17,9 +17,9 @@ from pathlib import Path
 from merlin.experiments.definition import SpecError
 from merlin.targetgen.contract.readback_policy import READBACK_TRANSPORTS
 
-PHASE0_MODULE = "merlin.experiments.phase0"
-PHASE1_MODULE = "merlin.experiments.phase1"
-WMM_MODULE = "merlin.experiments.phase2.whole_model_measured"
+PHASE0_MODULE = "merlin.development.testgen"
+PHASE1_MODULE = "merlin.development.backend"
+WMM_MODULE = "merlin.development.backend.optimization.whole_model_measured"
 
 
 def phase1_entrypoint() -> Path:
@@ -63,6 +63,7 @@ def phase0_startup_inputs() -> dict[str, Path]:
         "spec_definition": module_source_path("merlin.experiments.definition"),
         "experiment_schema": initializer.parent / "resources/experiment.schema.json",
         "specir_integration": module_source_path("merlin.integrations.specir"),
+        "capsule_description": module_source_path("merlin.targetgen.contract.description"),
         "provenance_binding": initializer.parent / "resources/legacy_entrypoints.json",
     }
     if any(path.is_symlink() or not path.is_file() for path in inputs.values()):
@@ -158,7 +159,7 @@ class Adapter:
 
     def validate(self, config: dict) -> None:
         if self.name == "capsule_bench":
-            from .phase1.levels import materialize_level
+            from merlin.development.backend.levels import materialize_level
 
             try:
                 materialize_level(config)
@@ -330,7 +331,7 @@ class Adapter:
         elif self.name == "capsule_bench":
             env["MERLIN_TARGET_EXPERIMENT"] = values["descriptor"]
             env["MERLIN_CORPUS_SEAL"] = values.get("corpus_seal", "")
-            argv += ["--run-id", run_dir.name, "--schedule", "continuous", "--sandbox", "bwrap"]
+            argv += ["--run-id", run_dir.name, "--schedule", values.get("schedule", "continuous"), "--sandbox", "bwrap"]
             if module == PHASE1_MODULE:
                 argv += ["--repo", str(root), "--descriptor", values["descriptor"]]
         elif self.name == "measured_claims":
@@ -358,13 +359,25 @@ class Adapter:
                     argv += [flag, item]
             else:
                 argv += [flag, str(value)]
+        if self.name == "capsule_bench" and values.get("joint_campaign"):
+            from merlin.development.backend.joint_control import validate as validate_joint
+            from merlin.development.backend.options import build_parser
+
+            try:
+                # The closed adapter owns argv; native defaults and policy checks remain native.
+                native, _ = build_parser().parse_known_args(argv[3:])
+                validate_joint(native)
+            except (OSError, ValueError) as exc:
+                raise SpecError(f"backend-generation native selection refused: {exc}") from exc
+        elif self.name == "capsule_bench" and values.get("joint_epoch"):
+            raise SpecError("joint_epoch requires an explicit joint_campaign policy")
         engine_output = str(run_dir / "phase2") if self.phase == "2" else None
         if self.name == "capsule_derivation":
             engine_output = str(run_dir / "phase0" / "capsules")
         if self.name == "capsule_bench":
-            from merlin.common.paths import phase_runs_root
+            from merlin.common.paths import runs_root
 
-            engine_output = str(phase_runs_root(spec.target, 1) / run_dir.name)
+            engine_output = str(runs_root(spec.target, "backend-generation") / run_dir.name)
         return {
             "adapter": self.name,
             "mode": self.mode,
@@ -440,6 +453,10 @@ ADAPTERS = {
         _legacy_script("capsule_bench"),
         {
             "descriptor": Option("input", True, flag=""),
+            "joint_campaign": Option("input"),
+            "joint_epoch": Option("input"),
+            "fresh_backend": Option("bool"),
+            "schedule": Option(choices=("continuous", "rounds"), flag=""),
             "corpus_seal": Option("input", flag=""),
             "require_reviewed_corpus": Option("bool", flag=""),
             "level": Option(choices=("EL1", "EL2", "EL3", "EL4", "EL3-E", "EL4-V", "EL5", "EL6"), flag=""),
@@ -517,7 +534,7 @@ ADAPTERS = {
         },
         mode="measured_claims",
         resume="native_chain",
-        module="merlin.experiments.phase2.chia_envelope_cli",
+        module="merlin.development.backend.optimization.chia_envelope_cli",
     ),
     "model_portfolio": Adapter(
         "model_portfolio",
@@ -547,7 +564,7 @@ ADAPTERS = {
         },
         mode="model_portfolio",
         resume="checkpoint_segment",
-        module="merlin.experiments.phase2.portfolio_cli",
+        module="merlin.development.backend.optimization.portfolio_cli",
     ),
     "whole_model_measured": Adapter(
         "whole_model_measured",

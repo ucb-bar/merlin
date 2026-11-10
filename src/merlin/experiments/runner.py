@@ -13,13 +13,21 @@ from pathlib import Path
 from yaml import YAMLError
 
 from merlin.common.digest import sha256_file as _sha
-from merlin.experiments.definition import ExperimentSpec, SpecError, read_yaml
+from merlin.development.backend.source_inputs import fingerprint
+from merlin.experiments.definition import (
+    ExperimentSpec,
+    SpecError,
+    backend_launch_inputs,
+    engine_definitions,
+    read_yaml,
+    require_plan_selection,
+    selected_engines,
+)
 from merlin.experiments.definition import default_run_dir as default_run_dir
 from merlin.experiments.runner_records import _read_json as _read_json
 from merlin.experiments.runner_records import _write_json as _write_json
 
 from .adapters import ADAPTERS, PHASE0_MODULE, PHASE1_MODULE, phase0_sources, phase0_startup_inputs, phase1_entrypoint
-from .phase1.source_inputs import fingerprint
 from .runner_process import _process_active as _process_active
 from .runner_process import _process_group_active as _process_group_active
 from .runner_process import _stop_process_group as _stop_process_group
@@ -74,10 +82,10 @@ def _verify_corpus_closures(plan: dict) -> None:
                 "select its seal and release descriptor before starting Phase 1"
             )
         if seal:
+            from merlin.development.backend.corpus_inputs import require_reviewed_bundle
             from merlin.targetgen.target_experiment import load_target_experiment
 
             from .corpus.release import verify
-            from .phase1.corpus_inputs import require_reviewed_bundle
 
             if command["env"].get("MERLIN_CORPUS_SEAL") != seal:
                 raise SpecError("native corpus seal differs from the explicitly selected input")
@@ -136,7 +144,7 @@ def _verify_phase0_sources(plan: dict) -> None:
         if command["module"] != PHASE0_MODULE or command["argv"][1:3] != ["-m", PHASE0_MODULE]:
             raise SpecError("phase-0 module binding is not the supported derivation implementation")
         if plan.get("phase0_source_snapshot"):
-            from .phase0.freeze import verify
+            from merlin.development.testgen.freeze import verify
 
             try:
                 verify(plan)
@@ -145,7 +153,7 @@ def _verify_phase0_sources(plan: dict) -> None:
             continue
         selection = command.get("phase0_m2m_selection")
         if selection is not None:
-            from .phase0.m2m_runtime import observe
+            from merlin.development.testgen.m2m_runtime import observe
 
             try:
                 profile = command["inputs"].get("synth_profile")
@@ -204,7 +212,7 @@ def _phase0_input_paths(membership: dict) -> dict[str, str]:
 
 def _phase0_operator_inputs(command: dict) -> dict[str, dict | None]:
     """Bind explicit file membership, including deliberately absent sidecars."""
-    from .phase0.profiles import application_inventory_path
+    from merlin.development.testgen.profiles import application_inventory_path
 
     inputs = command["inputs"]
     argv = command["argv"]
@@ -245,7 +253,7 @@ def _phase0_operator_inputs(command: dict) -> dict[str, dict | None]:
 
 def _phase0_synthesis_status(plan: dict) -> dict:
     """Evaluate selected synthesis from the plan's explicit inputs, never a checkout default."""
-    from .phase0.profiles import verify_selected_synthesis
+    from merlin.development.testgen.profiles import verify_selected_synthesis
 
     results = {}
     for number, command in plan["phases"].items():
@@ -270,15 +278,16 @@ def _phase0_synthesis_status(plan: dict) -> dict:
 @contextmanager
 def _phase1_environment(command: dict):
     """Observe the same frozen selectors that native launch/resume receives."""
+    from merlin.development.backend.runtime_environment import PreparedEnvironment, applied_environment
+
     from .measured_launch import execution_environment
-    from .phase1.runtime_environment import PreparedEnvironment, applied_environment
 
     with applied_environment(PreparedEnvironment(execution_environment(command), {})):
         yield
 
 
 def _phase1_source_inputs(command: dict) -> dict[str, str]:
-    from .phase1.source_inputs import paths
+    from merlin.development.backend.source_inputs import paths
 
     with _phase1_environment(command):
         return paths(
@@ -289,7 +298,7 @@ def _phase1_source_inputs(command: dict) -> dict[str, str]:
 
 
 def _verify_phase1_sources(plan: dict) -> None:
-    from .phase1.source_inputs import PREFIXES
+    from merlin.development.backend.source_inputs import PREFIXES
 
     commands = [command for command in plan["phases"].values() if command["adapter"] == "capsule_bench"]
     if not commands:
@@ -436,10 +445,13 @@ def _phase1_operator_paths(command: dict) -> dict[str, str | None]:
 def resolve_plan(
     spec: ExperimentSpec,
     *,
-    phase: str = "all",
+    workflow: str | None = None,
+    phase: str | None = None,
     run_dir: Path | None = None,
     corpus_seal: Path | None = None,
     bundle_manifest: Path | None = None,
+    backend_joint_campaign: Path | None = None,
+    backend_oracle_timing: Path | None = None,
     phase1_driver: str | None = None,
     phase1_model: str | None = None,
     phase1_effort: str | None = None,
@@ -459,28 +471,26 @@ def resolve_plan(
     phase0_rtl_source_relocations: Path | None = None,
     phase0_bwrap: Path | None = None,
 ) -> dict:
+    """Resolve named work and explicit inputs into a frozen execution plan."""
     from merlin.common.paths import out_dir, repo_root
 
+    phase, selected = selected_engines(spec.document, workflow=workflow, phase=phase)
     root = repo_root().resolve()
     destination = (run_dir or default_run_dir(spec, phase)).expanduser().resolve()
-    phases = spec.document["phases"]
-    selected = sorted(phases) if phase == "all" else [phase]
-    if any(number not in phases for number in selected):
-        raise SpecError(f"definition does not declare phase {phase}")
+    phases = engine_definitions(spec.document)
     if (corpus_seal is not None or bundle_manifest is not None) and selected != ["1"]:
         raise SpecError("a reviewed corpus and replacement bundle can only select Phase 1")
-    phase1_selection = {
-        name: value
-        for name, value in (
-            ("driver", phase1_driver),
-            ("model", phase1_model),
-            ("effort", phase1_effort),
-            ("provider", phase1_provider),
-        )
-        if value is not None
-    }
-    if phase1_selection and selected != ["1"]:
-        raise SpecError("Phase 1 launch overrides require a Phase 1-only plan")
+    phase1_selection = backend_launch_inputs(
+        spec,
+        selected,
+        corpus_seal=corpus_seal,
+        joint_campaign=backend_joint_campaign,
+        oracle_timing=backend_oracle_timing,
+        driver=phase1_driver,
+        model=phase1_model,
+        effort=phase1_effort,
+        provider=phase1_provider,
+    )
     if (corpus_seal is None) != (bundle_manifest is None):
         raise SpecError("select both --corpus-seal and --bundle-manifest for a new reviewed Phase 1 run")
     if (phase0_conformance_spec is None) != (phase0_synth_profile is None):
@@ -537,14 +547,14 @@ def resolve_plan(
         if path is not None:
             phase0_selection[name] = str(path.expanduser().absolute())
     if phase0_capture_timeout_seconds is not None:
-        from .phase0.m2m_runtime import capture_timeout
+        from merlin.development.testgen.m2m_runtime import capture_timeout
 
         try:
             capture_timeout(phase0_capture_timeout_seconds)
         except ValueError as exc:
             raise SpecError(str(exc)) from exc
     if phase0_bwrap is not None:
-        from .phase0.m2m_runtime import capture_bwrap
+        from merlin.development.testgen.m2m_runtime import capture_bwrap
 
         try:
             phase0_bwrap = Path(capture_bwrap(phase0_bwrap))
@@ -552,7 +562,7 @@ def resolve_plan(
             raise SpecError(str(exc)) from exc
     capture_runtime_reuse = None
     if phase0_capture_runtime_reuse is not None:
-        from .phase0.m2m_runtime import read_runtime_reuse
+        from merlin.development.testgen.m2m_runtime import read_runtime_reuse
 
         phase0_capture_runtime_reuse = phase0_capture_runtime_reuse.expanduser().absolute()
         try:
@@ -561,7 +571,7 @@ def resolve_plan(
             raise SpecError(f"invalid Phase 0 capture runtime reuse selection: {exc}") from exc
     rtl_source_relocations = None
     if phase0_rtl_source_relocations is not None:
-        from .phase0.selected_records import read_mapping
+        from merlin.development.testgen.selected_records import read_mapping
 
         phase0_rtl_source_relocations = phase0_rtl_source_relocations.expanduser().absolute()
         try:
@@ -666,7 +676,7 @@ def resolve_plan(
         if adapter.name == "capsule_derivation" and command.get("phase0_m2m_selection"):
             if not command["inputs"].get("software_spec"):
                 raise SpecError("selected Model2MLIR capture requires explicit Phase 0 software evidence")
-            from .phase0.m2m_runtime import observe, sealed_capture_config
+            from merlin.development.testgen.m2m_runtime import observe, sealed_capture_config
 
             choice = command["phase0_m2m_selection"]
             try:
@@ -686,9 +696,9 @@ def resolve_plan(
                 # (operator policy, 2026-10-01): every PyTorch capture this run makes is preselected,
                 # sandboxed, replayed and attested against the runtime selected here.
                 from merlin.common.artifacts import cache_dir
+                from merlin.development.testgen.sealed_generation import CONFIG_ENV
 
                 from .capture_execution.runtime_store import STORE_ENV
-                from .phase0.sealed_generation import CONFIG_ENV
 
                 selection = command["phase0_m2m_selection"]
                 if phase0_capture_timeout_seconds is not None:
@@ -729,7 +739,7 @@ def resolve_plan(
             if rtl_source_relocations is not None:
                 command["phase0_rtl_source_relocations"] = rtl_source_relocations
             if command["inputs"].get("software_spec"):
-                from .phase0.freeze import selected_inputs
+                from merlin.development.testgen.freeze import selected_inputs
 
                 try:
                     evidence_inputs, command["phase0_evidence"] = selected_inputs(command, spec.target)
@@ -829,13 +839,10 @@ def resolve_plan(
 
 
 def _verify_toolchain(plan: dict) -> list[str]:
-    """Every grading phase's compiler must resolve to a real executable before anything is graded.
+    """Resolve each grading command's compiler before starting any grading work.
 
-    ``merlin.llvmlower.toolchain.clang`` resolves from the process environment, the checkout's
-    ``.env`` and its ``third_party`` install, and its fallback chain ends in a bare name, so an
-    absent install otherwise surfaces capsule by capsule as compile failures of the candidate
-    rather than once, here, as the missing toolchain it is. Each command is resolved as its
-    engine will see it: the engine's checkout and launch environment, not this process's.
+    Use the selected checkout and launch environment. A missing compiler is an
+    input error, rather than a compilation failure attributed to every candidate.
     """
     import shutil
 
@@ -924,7 +931,7 @@ def preflight(plan: dict) -> dict:
         _verify_corpus_closures(plan)
         _verify_phase0_sources(plan)
         _verify_phase1_sources(plan)
-        from .phase1.timing import read_verified_timing, requires_chipyard_timing
+        from merlin.development.backend.timing import read_verified_timing, requires_chipyard_timing
 
         for command in plan["phases"].values():
             if (
@@ -948,7 +955,7 @@ def preflight(plan: dict) -> dict:
 
         verify_portfolio_plan(plan)
         synthesis = _phase0_synthesis_status(plan)
-        from .phase0.performance_readiness import check_performance_oracles
+        from merlin.development.testgen.performance_readiness import check_performance_oracles
 
         for command in plan["phases"].values():
             if (
@@ -1009,9 +1016,9 @@ def preflight(plan: dict) -> dict:
                 errors.append(f"candidate workspace missing: {workspace}")
     errors.extend(_verify_toolchain(plan))
     errors.extend(_verify_rtlcheck_support(plan))
-    from .phase1.levels import level_for_phase1
+    from merlin.development.backend.levels import level_for_phase1
 
-    phase1 = plan.get("spec", {}).get("phases", {}).get("1") if "1" in plan["phases"] else None
+    phase1 = engine_definitions(plan.get("spec", {})).get("1") if "1" in plan["phases"] else None
     return {
         "configuration_ready": not errors,
         "engine_readiness": "not_executed",
@@ -1039,7 +1046,7 @@ def status(run_dir: Path) -> dict:
     if _sha(root / "resolved-plan.json") != record.get("plan_sha256"):
         raise SpecError("frozen resolved plan changed")
     phases = {}
-    from .phase1.levels import level_for_phase1
+    from merlin.development.backend.levels import level_for_phase1
 
     for number, command in plan.get("phases", {}).items():
         attempts = [entry for entry in record["attempts"] if entry.get("phase") == number]
@@ -1047,7 +1054,7 @@ def status(run_dir: Path) -> dict:
         phases[number] = {
             "adapter": command["adapter"],
             **(
-                {"level": level_for_phase1(plan["spec"]["phases"][number]["config"])}
+                {"level": level_for_phase1(engine_definitions(plan["spec"])[number]["config"])}
                 if command["adapter"] == "capsule_bench"
                 else {}
             ),
@@ -1068,7 +1075,8 @@ def status(run_dir: Path) -> dict:
     }
 
 
-def run(plan: dict) -> int:
+def run(plan: dict, *, workflow: str | None = None, phase: str | None = None) -> int:
+    require_plan_selection(plan, workflow=workflow, phase=phase)
     if plan["spec"].get("kind") == "template":
         raise SpecError(
             "template cannot execute: copy it, supply the required operator inputs, and set kind: experiment"
@@ -1087,7 +1095,7 @@ def run(plan: dict) -> int:
         raise SpecError(f"run directory already exists; use resume: {root}") from exc
     frozen = dict(plan, frozen_at=_now(), inputs=check["inputs"])
     if any(command.get("phase0_evidence") for command in frozen["phases"].values()):
-        from .phase0.freeze import stage
+        from merlin.development.testgen.freeze import stage
 
         try:
             frozen = stage(frozen)
@@ -1131,11 +1139,7 @@ _PHASE1_COMPLETION_MEMBERS = (
 
 
 def _phase1_completion_inputs(command: dict) -> dict[str, dict[str, str]]:
-    """Bind the installed functional compiler and its final formal evidence.
-
-    The native run may also contain mutable workspaces and caches. Those are not
-    the compiler handed to Phase 2; pin the four final handoff members instead.
-    """
+    """Bind the compiler and its four final handoff members, excluding mutable workspaces/caches."""
     root = Path(command["engine_output"])
     if root.resolve() != root or root.is_symlink():
         raise SpecError("installed Phase 1 handoff output changed location")
@@ -1193,7 +1197,7 @@ def _installed_phase2_output(command: dict, attempt: dict) -> dict[str, dict[str
         return {"path": str(path), "sha256": fingerprint(path)}
 
     if command["adapter"] == "measured_claims":
-        from .phase2.checkpoint_admission import SCHEMA
+        from merlin.development.backend.optimization.checkpoint_admission import SCHEMA
 
         finals = sorted(output.glob("experiment_manifest.*.json"))
         if len(finals) != 1:

@@ -314,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--insight-mining",
         action="store_true",
-        help="meta-analysis over the committed case-study artifacts: mine evidence, "
+        help="meta-analysis over the selected case-study artifacts: mine evidence, "
         "score DSE-usefulness, extract presentation findings + plots. Writes a "
         "regeneratable (non-committed) timestamped run under results/ per network "
         "and a combined 'all' run. Use --workload to scope to one network.",
@@ -322,14 +322,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--case-study-dir",
         default=None,
-        help="case-study input for mining/query (default: committed experiments/reference-data/dse/case_study)",
+        help="case-study input for mining/query (or set MERLIN_DSE_REFERENCE_DIR)",
     )
     ap.add_argument(
         "--query",
         default=None,
         help="consume the case-study contract manifest: one of summary | knobs | "
         "boundary[:<abstraction>] | missing | index (reads dse_contract.json under "
-        "--case-study-dir, legacy --out, or the committed reference dir)",
+        "--case-study-dir, legacy --out, or MERLIN_DSE_REFERENCE_DIR)",
     )
     ap.add_argument(
         "--devils-advocate",

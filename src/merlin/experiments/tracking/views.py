@@ -48,9 +48,9 @@ class Options:
         """Directories this page reads (an output path must never be inside one)."""
         out = [self.run_dir, self.phase0, self.measurement_root, self.stage_root, self.store, *self.corpus]
         if self.explorer and self.target:
-            from merlin.common import paths
+            from merlin.common.paths import generation_run_roots
 
-            out += [paths.phase_runs_root(self.target, n) for n in (0, 1, 2)]
+            out += [root for n in ("0", "1", "2") for root in generation_run_roots(self.target, n)]
         if self.compare:
             out += list(self.compare)
         return [Path(p) for p in out if p is not None]

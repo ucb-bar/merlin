@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/llvmlower
+# src/merlin/llvmlower
 
 Mixed borrowed composition retains distinct live ordinary descriptor and plural
 writer owners for one exact source epoch. Disjoint ABI rows, original effect

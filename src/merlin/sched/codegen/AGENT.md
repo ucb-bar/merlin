@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/sched/codegen
+# src/merlin/sched/codegen
 
 ## Purpose
 

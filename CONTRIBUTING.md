@@ -6,7 +6,7 @@ the conventions the tooling enforces so your PRs land smoothly.
 ## Setup
 
 Use Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). To try the
-compiler before contributing, start with the [small compilation example](examples/quickstart/README.md).
+compiler before contributing, start with the [small compilation example](examples/compilation/quickstart/README.md).
 The contributor environment adds the compact suite's dependencies:
 
 ```bash
@@ -17,8 +17,7 @@ uv pip install -e '.[dev,verify,semantic-search,targetgen]'
 
 One Merlin distribution contains compiler and research code. Select additional
 dependency extras such as `experiments` or `analysis` on that same package when
-needed; do not install the retired code distributions from `packages/`. The timing
-observer is an independent package. See [getting started](docs/guides/01-inputs.md)
+needed. The console and independent timing observer live under `tools/`. See [getting started](docs/guides/01-inputs.md)
 for workflow-specific extras and external prerequisites.
 
 External dependencies (chipyard, model2MLIR, boards, sibling repos) are **not vendored** — point at
@@ -27,11 +26,15 @@ them via environment variables (copy `.env.example` → `.env` and edit). The re
 
 ## Where things go
 
-- **Code**: shared compiler machinery in `src/merlin`; research workflows in
-  `src/merlin/experiments` and analysis in `src/merlin/analysis`. There is one installed
+- **Code**: shared compiler machinery in `src/merlin`; test and backend generation engines in
+  `src/merlin/development`, workflow selection/tracking in `src/merlin/experiments`,
+  external-framework comparisons in `src/merlin/evaluation/frameworks`, and analysis
+  in `src/merlin/analysis`. There is one installed
   `merlin` namespace; do not create another root package or project-named façade.
   Experiment definitions live in
-  `experiments/catalog.yaml`, not in ad-hoc launch scripts. See the
+  `experiments/catalog.yaml`; the root experiments tree contains only nine authored
+  catalog/definition/template/instruction files. Generated corpora, input bundles and
+  historical run payloads stay under ignored `out/` and are selected explicitly. See the
   [repository structure](docs/reference/repo_structure.md).
 - **Tests**: the compact suite in `tests/<bucket>/test_<area>.py` has a
   repository-wide maximum of 150 collected cases, including parameterization.
@@ -40,10 +43,10 @@ them via environment variables (copy `.env.example` → `.env` and edit). The re
 - **Generated output**: only under `out/{runs,artifacts,build}` — via
   `merlin.common.artifacts` (`start_run`/`new_product`/`cache_dir`), never hand-built paths. A
   PreToolUse/pre-commit gate blocks writes outside `out/`. See `.claude/skills/artifact-layout`.
-- **Docs**: durable docs live in `docs/` under `reference/` (code-derived), `guides/` (how-to),
-  `design/` (rationale), each with YAML front-matter. Point-in-time reports go under
-  `out/artifacts/`, not `docs/`. Generated docs (CLI/module/schema indexes, the hub) are regenerated,
-  not hand-edited. See `.claude/skills/docs-layout`.
+- **Docs**: follow the authored reading order in `docs/README.md`. Keep the numbered
+  chapters and compact references source-backed. Generated references and run reports
+  belong under ignored `out/`; private audit notes belong in `tmp/`. Add local
+  instructions only when a directory has distinct constraints.
 
 ## Module ownership and readability
 

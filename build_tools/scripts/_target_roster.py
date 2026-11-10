@@ -4,11 +4,9 @@ The no-target-name gate used to hunt a hand-written set of seven names, so every
 after that set was written was invisible to it: a literal naming one passed the gate by construction.
 The roster is now the union of every place the repository DECLARES a target:
 
-  * ``name:`` in ``experiments/reference-data/target-inputs/*/contracts/target_contract.yaml`` (curated reference targets);
-  * ``target:`` in ``experiments/studies/capsule_bench/targets/*/target_experiment.yaml``;
-  * ``target:`` in ``examples/*/experiment.yaml`` (including uncatalogued declarations);
+  * ``name:`` in ``examples/*/*/target/contracts/target_contract.yaml``;
+  * ``target:`` in ``examples/compiler-generation/*/experiment.yaml`` (including uncatalogued declarations);
   * every ``targets:`` list in ``src/merlin/resources/contracts/hardware_pins.yaml``;
-  * the stem of every ``experiments/corpora/profiles/<target>[.hidden|.synth].yaml``.
 
 Registering a target in any of them extends the gate with zero edits. Stdlib only (no PyYAML, no
 merlin import) and structural -- column-0 ``key: value`` lines and flow/block lists, no regex -- so it
@@ -20,11 +18,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-CONTRACTS = "experiments/reference-data/target-inputs"
-EXPERIMENTS = "experiments/studies/capsule_bench/targets"
 EXAMPLES = "examples"
 PINS = "src/merlin/resources/contracts/hardware_pins.yaml"
-PROFILES = "experiments/corpora/profiles"
 
 
 class RosterError(RuntimeError):
@@ -67,21 +62,15 @@ def sources(root: Path) -> dict[str, set[str]]:
     root = Path(root)
     out: dict[str, set[str]] = {
         "contracts": set(),
-        "experiments": set(),
         "examples": set(),
         "hardware_pins": set(),
-        "profiles": set(),
     }
-    for p in sorted((root / CONTRACTS).glob("*/contracts/target_contract.yaml")):
+    for p in sorted((root / EXAMPLES).glob("*/*/target/contracts/target_contract.yaml")):
         name = _top_level_scalar(p.read_text(encoding="utf-8"), "name")
         if name:
             out["contracts"].add(name)
-    for p in sorted((root / EXPERIMENTS).glob("*/target_experiment.yaml")):
-        name = _top_level_scalar(p.read_text(encoding="utf-8"), "target")
-        if name:
-            out["experiments"].add(name)
     pins = root / PINS
-    for p in sorted((root / EXAMPLES).glob("*/experiment.yaml")):
+    for p in sorted((root / EXAMPLES).glob("*/*/experiment.yaml")):
         name = _top_level_scalar(p.read_text(encoding="utf-8"), "target")
         if name:
             out["examples"].add(name)
@@ -90,11 +79,6 @@ def sources(root: Path) -> dict[str, set[str]]:
         for i, line in enumerate(lines):
             if line.strip().startswith("targets:"):
                 out["hardware_pins"].update(_list_value(lines, i))
-    profiles = root / PROFILES
-    if profiles.is_dir():
-        for p in profiles.glob("*.yaml"):
-            if not p.name.startswith("_"):
-                out["profiles"].add(p.name.split(".", 1)[0])
     return out
 
 
@@ -103,8 +87,8 @@ def target_names(root: Path) -> set[str]:
     found: set[str] = set().union(*sources(root).values())
     if not found:
         raise RosterError(
-            f"no target is declared under {root} (looked in {CONTRACTS}, {EXPERIMENTS}, "
-            f"{EXAMPLES}, {PINS}, {PROFILES}); refusing to gate on an empty name set"
+            f"no target is declared under {root} (looked in {EXAMPLES} and {PINS}); "
+            "refusing to gate on an empty name set"
         )
     return found
 

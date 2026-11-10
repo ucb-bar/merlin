@@ -41,7 +41,7 @@ def audit(root: Path) -> list[str]:
         components = _source_layout.logical_components(root)
     except (OSError, ValueError, TypeError) as exc:
         return [f"cannot read logical component inventory: {exc}"]
-    for source in [core, *sorted((root / "packages").glob("*/src"))]:
+    for source in [core, root / "tools/timing/src"]:
         for path in sorted(source.rglob("*.py")):
             if "__pycache__" in path.parts:
                 continue

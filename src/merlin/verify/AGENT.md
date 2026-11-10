@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/verify
+# src/merlin/verify
 
 Actual verifier algorithms and mathematical resources moved to
 `src/merlin/verification`. The Python leaves here are exact compatibility

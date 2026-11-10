@@ -273,7 +273,7 @@ def _copy_candidate(candidate: Path, dest: Path) -> Path:
             continue
         mode = path.stat().st_mode
         path.chmod(mode | (0o700 if path.is_dir() else 0o600))
-    from merlin.experiments.phase1 import run_inputs
+    from merlin.development.backend import run_inputs
 
     run_inputs.strip_build_state(dest)
     return dest
@@ -469,7 +469,7 @@ def cmd_grade(args: argparse.Namespace) -> int:
     staged = _stage_cohort(selected, cohort, tiers, drop_tier_cap=args.drop_tier_cap)
     runs_root = work / "runs"
 
-    from merlin.experiments.phase1.feedback import qa as QA
+    from merlin.development.backend.feedback import qa as QA
     from merlin.targetgen import capsule_grade as CG
     from merlin.targetgen import rtl_check_runner as RUN
 

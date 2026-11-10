@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/targetgen/fixed_format
+# src/merlin/targetgen/fixed_format
 
 ## Purpose
 

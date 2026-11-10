@@ -110,7 +110,11 @@ def board_catalog_path(target: str, catalog: str | Path | None = None) -> Path:
     from merlin.runtime import boards
 
     selected = catalog or os.environ.get(boards.BOARD_CATALOG_ENV)
-    path = Path(selected) if selected else repo_root() / "examples" / target / "platform" / "board-catalog.yaml"
+    path = (
+        Path(selected)
+        if selected
+        else repo_root() / "examples/compiler-generation" / target / "platform" / "board-catalog.yaml"
+    )
     if not path.is_file():
         raise EngineError(f"no board catalog at {path}")
     return path

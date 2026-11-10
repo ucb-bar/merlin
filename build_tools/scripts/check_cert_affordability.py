@@ -61,7 +61,7 @@ for _p in (_REPO / "src",):
 import yaml  # noqa: E402
 
 from merlin.common.paths import capsules_dir
-from merlin.experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
+from merlin.development.testgen.declarations import all_declarations, for_target  # noqa: E402
 from merlin.targetgen import cert_affordability as CA  # noqa: E402
 from merlin.targetgen import cert_cost as CC  # noqa: E402
 

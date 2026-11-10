@@ -286,7 +286,7 @@ def capture_python(m2m_root: Path, model: str) -> Path:
 
 
 def m2m_root() -> Path:
-    from merlin.baselines.bundle import model2mlir_root
+    from merlin.capture.bundle import model2mlir_root
 
     return model2mlir_root()
 

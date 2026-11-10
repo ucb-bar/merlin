@@ -41,7 +41,7 @@ TEXT_LIMIT = 400
 
 
 def _vocabulary() -> Any:
-    from ..phase1.providers import codex_agent as CA
+    from merlin.development.backend.providers import codex_agent as CA
 
     return CA
 
@@ -372,7 +372,7 @@ def read(run_dir: Path, inventory: R.Inventory, tails: Tails | None = None) -> d
         inventory.note(f"rounds/{path.name}", path, "read" if tail.present else "absent", detail)
         info[path.name] = {"offset": tail.offset, "rows": tail.rows_read, "bad": tail.bad}
     result = state.snapshot(files, info)
-    from merlin.experiments.phase1.telemetry.evidence import declared_home_usage
+    from merlin.development.backend.telemetry.evidence import declared_home_usage
 
     live_usage = declared_home_usage(run_dir)
     if live_usage["available"]:

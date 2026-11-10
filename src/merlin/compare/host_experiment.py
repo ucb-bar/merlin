@@ -501,13 +501,9 @@ def _calibration_private_capsule(row: dict[str, Any], *, nonce: bytes, phase: st
 
 def _calibration_k1_state_gates():
     """Use the exact source-sealed grader gate functions; do not duplicate their policy."""
-    path = (repo_root() / "experiments/studies/cpu_host_compiler_v0/grader.py").resolve()
-    spec = importlib.util.spec_from_file_location("merlin_calibration_state_gates", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("cannot load source-sealed K1 environment gates")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module._k1_state_ready, module._k1_state_pair_ok
+    from merlin.evaluation.host_environment import paired_state_ok, state_ready
+
+    return state_ready, paired_state_ok
 
 
 def _calibration_space_problem(recorded: Any) -> str | None:
@@ -520,7 +516,9 @@ def _calibration_space_problem(recorded: Any) -> str | None:
     caller-supplied source map, because a noise authority deliberately omits ``search_space``
     from its own executable source seal.
     """
-    expected = (repo_root() / "experiments/studies/cpu_host_compiler_v0/optimization_space_v1.yaml").resolve()
+    from merlin.common.paths import data_path
+
+    expected = data_path("benchmarks", "host_calibration", "optimization-space.yaml")
     try:
         if not expected.is_file():
             return "the frozen optimization space is absent from this tree"

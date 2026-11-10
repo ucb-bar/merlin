@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/targetgen/rocc
+# src/merlin/targetgen/rocc
 
 ## Purpose
 

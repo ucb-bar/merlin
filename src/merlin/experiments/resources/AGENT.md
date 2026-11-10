@@ -1,4 +1,4 @@
-# Public definition resources
+# src/merlin/experiments/resources
 
 Ship the versioned schema in the package wheel. Changing its accepted meaning
 requires compatibility tests; unknown command and configuration fields fail closed.
@@ -15,5 +15,5 @@ not an agent grant. Missing or malformed bytes refuse sandbox startup; frozen
 run inventories bind these exact bytes.
 
 `phase1_launch_config.schema.json` and `phase0_release_config.schema.json` validate
-operator launch and release configs (`merlin.experiments.phase1.launch_config`).
+operator launch and release configs (`merlin.development.backend.launch_config`).
 They select operator inputs; they grant nothing to an author and qualify nothing.

@@ -49,7 +49,7 @@ def test_actual_observation_controls_cannot_authorize_physical_final_admission(n
                 original_campaign=request.original_binding.parent / "campaign.json",
                 expected_members=(request.binding.member,),
             )
-    from merlin.experiments.phase2.component_final_policy import strict_final_component_campaign_gate
+    from merlin.development.backend.optimization.component_final_policy import strict_final_component_campaign_gate
 
     with pytest.raises(StageGateError, match="typed immutable comparison"):
         strict_final_component_campaign_gate((observed,), expected_members=(observed.member,))

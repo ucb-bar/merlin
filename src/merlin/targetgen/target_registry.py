@@ -2,7 +2,7 @@
 
 Target identity used to be smeared across three hardcoded maps (`pipeline.DEFAULT_BACKEND`,
 `target_lowering._specs()`/`LOWERING_TABLES`, `synthesize.dialect_plan.CURATED_TARGETS`) plus ~6
-ad-hoc `parents[N]/"experiments/reference-data/target-inputs/..."` path readers. This module resolves everything a target needs
+ad-hoc `parents[N]/"experiments/inputs/target-inputs/..."` path readers. This module resolves everything a target needs
 from one place, reusing the path resolvers in `merlin.targetgen.rtl.facts`.
 
 Two kinds of target:
@@ -45,11 +45,11 @@ from .rtl.facts import rtl_facts_path
 #   1. ``MERLIN_TARGET_PATH`` entries  — EXPLICIT selection: a specific versioned/named package, or a
 #      user's separately-cloned ``<target>-mlir`` repo. ``os.pathsep``-separated, left-to-right; each
 #      entry is either a package root (has ``contracts/target_contract.yaml``) or a dir OF such roots.
-#      UNSET, it defaults to the checkout's vendored support providers (``examples/*/support``, keyed
+#      UNSET, it defaults to the checkout's vendored support providers (``examples/*/*/support``, keyed
 #      by each provider's declared target; see :func:`in_repo_support`). Set to the EMPTY string, it
 #      selects nothing, which is how a caller asks for no executable support at all.
-#   2. physical-checkout ``examples/<name>/target/`` first, then legacy
-#      ``experiments/reference-data/target-inputs/<name>/`` compatibility links. MERLIN_TARGETS_DIR replaces this search.
+#   2. physical-checkout ``examples/<category>/<name>/target/`` first, then legacy
+#      ``experiments/inputs/target-inputs/<name>/`` compatibility links. MERLIN_TARGETS_DIR replaces this search.
 #   3. ``out/build/generated/<name>/``  — the FRESHLY-GENERATED OOT home (``write_oot_target`` /
 #      onboarding drop packages here), so a just-generated target resolves with ZERO env.
 #   4. ``out/artifacts/targets/<name>/``  — legacy generated location (fallback).
@@ -213,7 +213,7 @@ def _roots_under(entry: Path) -> list[Path]:
     return []
 
 
-#: Where a checkout keeps a target's vendored support provider: ``examples/<example>/<this>``. The
+#: Where a checkout keeps a target's vendored support provider: ``examples/<category>/<example>/<this>``. The
 #: example directory is not the target's identity; the provider's own declaration is.
 IN_REPO_SUPPORT_DIR = "support"
 
@@ -226,7 +226,7 @@ def in_repo_support() -> dict[str, Path]:
     """The checkout's vendored support providers -> ``{declared target: provider root}``.
 
     Target support is target-specific code, so it lives beside the target's example, at
-    ``examples/<example>/support``. Each root is keyed by the target its ``provider.yaml`` declares,
+    ``examples/<category>/<example>/support``. Each root is keyed by the target its ``provider.yaml`` declares,
     never by its directory name, so a lookup takes the target as a parameter and this module names
     none. Only support providers count; an invalid declaration raises rather than vanishing from
     the selection, and two examples declaring one target are refused instead of picked by sort order.
@@ -238,7 +238,7 @@ def in_repo_support() -> dict[str, Path]:
     if checkout is None:
         return {}
     found: dict[str, Path] = {}
-    for candidate in sorted((checkout / "examples").glob(f"*/{IN_REPO_SUPPORT_DIR}")):
+    for candidate in vendored_support_dirs():
         if not candidate.is_dir() or not _is_target_root(candidate):
             continue
         root = candidate.resolve()
@@ -250,7 +250,7 @@ def in_repo_support() -> dict[str, Path]:
 
 
 def vendored_support_dirs() -> tuple[Path, ...]:
-    """Every ``examples/<example>/support`` directory in the checkout, whether or not it declares a
+    """Every ``examples/<category>/<example>/support`` directory in the checkout, whether or not it declares a
     provider.
 
     :func:`in_repo_support` SELECTS, so it counts only valid declarations. What must be WITHHELD is
@@ -261,7 +261,7 @@ def vendored_support_dirs() -> tuple[Path, ...]:
     checkout = checkout_root()
     if checkout is None:
         return ()
-    found = (checkout / "examples").glob(f"*/{IN_REPO_SUPPORT_DIR}")
+    found = (checkout / "examples").glob(f"*/*/{IN_REPO_SUPPORT_DIR}")
     return tuple(sorted(path.resolve() for path in found if path.is_dir()))
 
 
@@ -427,7 +427,7 @@ def _physical_reference_alias(base: Path, name: str) -> Path:
     """Resolve a checkout compatibility link only against an explicitly selected repo.
 
     Installed distributions do not discover arbitrary ``examples/`` under cwd.
-    An explicitly selected repository may, however, contain old ``experiments/reference-data/target-inputs``
+    An explicitly selected repository may, however, contain old ``experiments/inputs/target-inputs``
     links to its own physical example packages.  Use the self-contained package
     for provider ownership; never accept a link to another root or target.
     """
@@ -446,7 +446,8 @@ def _physical_reference_alias(base: Path, name: str) -> Path:
         contract.name == "target_contract.yaml"
         and contract.parent.name == "contracts"
         and candidate.name == "target"
-        and candidate.parent.parent == examples
+        and candidate.parent.parent.parent == examples
+        and candidate.parent.parent.name in {"compiler-generation", "targets"}
         and _target_name(candidate) == name
     ):
         return candidate
@@ -533,7 +534,7 @@ def reference_targets() -> dict[str, Path]:
     checkout = checkout_root() if "MERLIN_TARGETS_DIR" not in os.environ else None
     if checkout is not None:
         examples: dict[str, Path] = {}
-        for contract in sorted((checkout / "examples").glob("*/target/contracts/target_contract.yaml")):
+        for contract in sorted((checkout / "examples").glob("*/*/target/contracts/target_contract.yaml")):
             if contract.is_file():
                 base = contract.parent.parent
                 name = _target_name(base)

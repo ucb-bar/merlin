@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/runtime/backends/outlined_int8_board
+# src/merlin/runtime/backends/outlined_int8_board
 
 ## Purpose
 

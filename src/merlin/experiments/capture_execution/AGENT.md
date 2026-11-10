@@ -35,15 +35,15 @@ source store. Preserve the default writable-CAS owner and its historical behavio
 This package owns the independent, fresh capture execution boundary. The static
 issuer runs only static ELF programs inside a private bubblewrap namespace. The
 sealed Model2MLIR CPU runner (`sealed_m2m`, schema `merlin.sealed_m2m_cpu.v2`) is
-admitted as a Phase 0 issuer by an operator policy decision, only for runs that
+admitted as a test generation issuer by an operator policy decision, only for runs that
 were preselected (`phase0/capture_selection.py`) and replayed in a fresh sandbox;
 the admission gate lives in `phase0/capture_execution_attestation.py` and records
 the accepted residuals (unsigned receipt, copied venv rather than a pinned
 dependency closure). Do not widen it to another runner or schema without a new
 reviewed decision. Replay the fixed sandbox policy and compare every input/output
-byte before admitting a receipt. Keep this package separate from Phase 0 source hashing.
+byte before admitting a receipt. Keep this package separate from test generation source hashing.
 
-`m2m_origin.py` owns the narrow Git-origin inspection and staged Phase 0
+`m2m_origin.py` owns the narrow Git-origin inspection and staged test generation
 runtime-receipt binding used by checkpoint-free sealed M2M captures. Its Git
 revision is only an origin hint; copied package bytes remain execution authority.
 `runtime_rehydrate.py` owns offline recovery of a new source venv from an

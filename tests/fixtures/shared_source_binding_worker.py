@@ -15,7 +15,7 @@ sys.path[:0] = [str(bundle), *config["dependencies"]]
 for name in (
     "merlin.llvmlower.direct_source_contraction",
     "merlin.targetgen.common_transforms",
-    "merlin.experiments.phase0.connected_integer_bounds",
+    "merlin.development.testgen.connected_integer_bounds",
     "merlin.runtime.reference",
 ):
     try:

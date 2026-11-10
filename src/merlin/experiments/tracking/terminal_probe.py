@@ -117,14 +117,14 @@ def classify(argv, selection):
         if index + 1 < len(argv):
             module = argv[index + 1]
     services = {
-        "merlin.experiments.phase1.brokers.selfcheck": "host_selfcheck_broker",
-        "merlin.experiments.phase1.brokers.simjob": "host_simjob_broker",
-        "merlin.experiments.phase1.brokers.model_check": "host_model_check_broker",
-        "merlin.experiments.phase1.brokers.model_check_worker": "host_model_check_worker",
-        "merlin.experiments.phase1.brokers.isa_tools": "host_isa_tools_broker",
-        "merlin.experiments.phase1.brokers.cca": "host_cca_broker",
-        "merlin.experiments.phase1.feedback.selfcheck": "host_selfcheck_worker",
-        "merlin.experiments.phase1.joint_calibration_service": "calibration_service",
+        "merlin.development.backend.brokers.selfcheck": "host_selfcheck_broker",
+        "merlin.development.backend.brokers.simjob": "host_simjob_broker",
+        "merlin.development.backend.brokers.model_check": "host_model_check_broker",
+        "merlin.development.backend.brokers.model_check_worker": "host_model_check_worker",
+        "merlin.development.backend.brokers.isa_tools": "host_isa_tools_broker",
+        "merlin.development.backend.brokers.cca": "host_cca_broker",
+        "merlin.development.backend.feedback.selfcheck": "host_selfcheck_worker",
+        "merlin.development.backend.joint_calibration_service": "calibration_service",
     }
     if module in services:
         return services[module], "exact Python -m service identity; execution stage unknown"
@@ -155,9 +155,9 @@ def classify(argv, selection):
         return "agentic", "agent executable in argv; remote inference time is not local CPU work"
     if any(x.startswith(("clang", "riscv64-unknown-elf-gcc", "ld.lld", "llc", "mlir-opt")) for x in names):
         return "compile", "compiler executable in argv"
-    if "merlin.experiments.phase1.joint_calibration_owner" in argv:
+    if "merlin.development.backend.joint_calibration_owner" in argv:
         return "calibration_supervisor", "exact module argv"
-    if "merlin.experiments.phase1" in argv:
+    if "merlin.development.backend" in argv:
         return "native_evaluator", "exact module argv; worker thread action unknown"
     return "unknown", "no exact stage mapping"
 

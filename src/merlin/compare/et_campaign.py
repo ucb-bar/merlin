@@ -32,10 +32,10 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from merlin.baselines import accuracy_policy
 from merlin.capture import bundle as _bundle
 from merlin.common.artifacts import recaptures_dir
 from merlin.compare import executorch_column as _etc
+from merlin.evaluation.frameworks import accuracy_policy
 
 #: What OUR arm computes. A CONSTANT, never derived from what the reference happened to run — a
 #: recipe derived from the comparand compares the reference against itself and the guard can never

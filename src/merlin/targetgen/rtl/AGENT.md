@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/targetgen/rtl
+# src/merlin/targetgen/rtl
 
 ## Purpose
 

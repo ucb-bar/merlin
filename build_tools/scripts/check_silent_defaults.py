@@ -72,24 +72,15 @@ EVIDENCE_ROOTS: tuple[str, ...] = (
     # Phase 1: the controller modules that PRODUCE a verdict -- grading, certification, promotion,
     # freeze, the audit and the conformance check -- not the providers, brokers or task staging that
     # merely carry one.
-    "src/merlin/experiments/phase1/feedback",
-    "src/merlin/experiments/phase1/audit.py",
-    "src/merlin/experiments/phase1/conformance.py",
-    "src/merlin/experiments/phase1/tools/await_verdict.py",
-    # The retained native capsule-bench drivers that still grade or audit a run.
-    "experiments/studies/capsule_bench/harness/conformance.py",
-    "experiments/studies/capsule_bench/harness/freeze_run.py",
-    "experiments/studies/capsule_bench/harness/freeze_state.py",
-    "experiments/studies/capsule_bench/harness/full_suite_audit.py",
-    "experiments/studies/capsule_bench/harness/generalization_difftest.py",
-    "experiments/studies/capsule_bench/harness/grade_agent_run.py",
-    "experiments/studies/capsule_bench/harness/qa_check.py",
-    "experiments/studies/capsule_bench/harness/qa_check_rtlchecks.py",
-    "experiments/studies/capsule_bench/harness/regrade_run_snapshot.py",
-    "experiments/studies/capsule_bench/harness/verify_no_cheat.py",
+    "src/merlin/development/backend/feedback",
+    "src/merlin/development/backend/audit.py",
+    "src/merlin/development/backend/conformance.py",
+    "src/merlin/development/backend/tools/await_verdict.py",
+    # Former conformance/freeze/grading/QA wrappers delegate to the owners above.
+    # Standalone historical study commands are no longer part of the active source.
     # Phase 2: what chains a candidate to a certified whole-model number -- the measured mode's gates
     # and the champion export that records it.
-    "src/merlin/experiments/phase2/whole_model_measured/gates.py",
+    "src/merlin/development/backend/optimization/whole_model_measured/gates.py",
     "src/merlin/targetgen/champions.py",
 )
 

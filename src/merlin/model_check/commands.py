@@ -660,8 +660,13 @@ def check(args: argparse.Namespace, report: dict) -> dict:
             }
             return report
         report["gates"]["kernel_exact"]["partial"] = False
-        return full.check(args, report, models=load_models(args.models), bundle=_bundle(args),
-                          build_provider=getattr(args, "_full_build_provider", None))
+        return full.check(
+            args,
+            report,
+            models=load_models(args.models),
+            bundle=_bundle(args),
+            build_provider=getattr(args, "_full_build_provider", None),
+        )
     from merlin.model_check.approximations import declared
 
     approximations = declared(Path(args.submission))
@@ -736,20 +741,30 @@ def inputs_prepare(args: argparse.Namespace, report: dict) -> dict:
         if not sep:
             raise INP.InputError(f"--set expects KEY=VALUE, got {item!r}")
         extra[key] = Path(value) if key.endswith("_python") else value
+    public = getattr(args, "public", None)
+    if public is None:
+        from merlin.common.artifacts import new_product
+
+        public = new_product("model-inputs", version=1, target=models.target, update_latest=False).path
+    public = Path(public).expanduser().resolve()
     record = INP.prepare(
         args.model,
         sources,
         data_root=args.data,
-        public=sources.parent,
+        public=public,
         private=args.private,
         python=args.python,
         scratch=build_dir() / "model_check" / "inputs",
         **extra,
     )
     report["programs"].append({"inputs": {k: len(v) for k, v in record.items() if isinstance(v, dict)}})
-    size = INP.stored_bytes(sources.parent)
+    report["programs"][-1]["generated_inputs"] = {
+        "public": str(public),
+        "manifest": {"path": str(public / "MANIFEST.json"), "sha256": INP.sha256_file(public / "MANIFEST.json")},
+    }
+    size = INP.stored_bytes(public)
     report["gates"]["inputs"] = {
         "status": "pass" if size <= INP.PUBLIC_BUDGET else "fail",
-        "detail": f"public example holds {size} bytes (budget {INP.PUBLIC_BUDGET})",
+        "detail": f"generated public inputs hold {size} bytes (budget {INP.PUBLIC_BUDGET})",
     }
     return report

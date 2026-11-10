@@ -61,7 +61,7 @@ def screen_carry(capsule_name: str, tier: str) -> bool:
     if seed_run() is None:
         return False
     try:
-        from merlin.experiments.phase1.feedback.rolling_model_gate import needs_original_execution
+        from merlin.development.backend.feedback.rolling_model_gate import needs_original_execution
     except ImportError:
         return True
     return not needs_original_execution(capsule_name, tier)

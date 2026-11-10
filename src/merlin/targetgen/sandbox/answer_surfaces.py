@@ -932,17 +932,18 @@ def audit_tokens(te: TargetExperiment) -> dict[str, tuple[str, ...]]:
     # which is the cry-wolf failure `test_audit_token_precision` exists to stop. Derived by walking the
     # package's own children, so a new sibling dir of derivations is covered without an edit here.
     # A package inside the checkout is named by its repo-relative path: every vendored support root is
-    # spelled ``examples/<example>/support``, and the bare "support/<child>" would match any tree an agent
+    # spelled ``examples/<category>/<example>/support``, and the bare "support/<child>" would match any tree an agent
     # happens to call ``support`` -- including its own workspace.
     # The ``<example>/support/<child>`` spelling is emitted too, for a read made from inside
-    # ``examples/`` (``cd examples && cat <example>/support/...``), which the full path never matches.
+    # ``examples/`` or its category (``cd examples/targets && cat <example>/support/...``), which the full path never matches.
     _repo = repo_root()
     for _bp in _backend_package_dirs(te):
         _name = _bp.relative_to(_repo).as_posix() if _bp.is_relative_to(_repo) else _bp.name
         _parts = _name.split("/")
         _names = [_name]
-        if len(_parts) == 3 and _parts[0] == "examples":
+        if len(_parts) == 4 and _parts[0] == "examples":
             _names.append("/".join(_parts[1:]))
+            _names.append("/".join(_parts[2:]))
         for _child in sorted(_bp.iterdir()):
             if _child.name != PACKAGE_CONTRACT_SUBDIR:
                 answer.extend(f"{name}/{_child.name}" for name in _names)

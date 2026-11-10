@@ -38,12 +38,9 @@ from merlin.common.artifacts import finish_run, start_run
 from merlin.common.paths import artifacts_dir, repo_root
 
 from .paper import validate_paper_result
-from .paper_measurement_controller import (
-    _contract,
-    issuance_fingerprint,
-    normalize_receipt,
-    produce_receipt,
-)
+from .paper_measurement_contract import _contract
+from .paper_measurement_controller import normalize_receipt, produce_receipt
+from .paper_measurement_protocol import implementation_paths, issuance_fingerprint
 
 
 def _controller_pythonpath(remote_controller: str) -> str:
@@ -233,8 +230,7 @@ def _controller_rows(root: Path) -> list[dict[str, Any]]:
         source = root / prefix
         for row in _regular_tree(source, controller_source=source_filter):
             rows.append({**row, "path": (prefix / row["path"]).as_posix()})
-    required = {
-        "paper_measurement_controller.py",
+    required = {source.name for source in implementation_paths()} | {
         "paper_k1_orchestrator.py",
         "paper_model_abi_runner.c",
         "paper_k1_board_probe.c",
@@ -1234,7 +1230,7 @@ def create_remote_environment_receipt(
         raise ValueError("remote systemd-run identity query failed")
     _openssl_ed25519_selftest()
 
-    from .paper_measurement_controller import _compile_probe, _frequency_rows, _probe
+    from .paper_measurement_execution import _compile_probe, _frequency_rows, _probe
 
     source = Path(__file__).with_name("paper_k1_board_probe.c")
     with tempfile.TemporaryDirectory(prefix="merlin-paper-k1-preflight-") as temporary:

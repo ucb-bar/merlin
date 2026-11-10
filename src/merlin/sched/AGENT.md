@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/sched
+# src/merlin/sched
 
 ## Purpose
 
@@ -22,7 +22,7 @@ checkable before any simulator runs.
 ## Direction (user decision, 2026-09-14)
 
 No per-target recipes or hand-written legality rules. The current Gemmini binding
-(`experiments/reference-data/target-inputs/gemmini/backend/gemmini_sched.py`: a LOOP_WS matmul recipe and rules read off
+(`experiments/inputs/target-inputs/gemmini/backend/gemmini_sched.py`: a LOOP_WS matmul recipe and rules read off
 `LoopMatmul.scala`) is measured ONCE to validate IR -> C -> harness -> GSIM, then replaced by:
 
 - recipes here, over abstract tile operations (load a tile into an operand store, multiply-accumulate

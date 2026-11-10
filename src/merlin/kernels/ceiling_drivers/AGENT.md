@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/kernels/ceiling_drivers
+# src/merlin/kernels/ceiling_drivers
 
 ## Purpose
 

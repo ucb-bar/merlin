@@ -30,7 +30,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "merlin" / "python"))
-from merlin.baselines import bundle as _bundle  # noqa: E402
+from merlin.capture import bundle as _bundle  # noqa: E402
 from merlin.llvmlower import custom_isa  # noqa: E402
 from merlin.mining import k1 as k1mod  # noqa: E402
 from merlin.mining import load_rvv_package  # noqa: E402

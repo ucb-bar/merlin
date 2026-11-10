@@ -127,7 +127,7 @@ def execute_component(
     from . import capsule_golden as CG
 
     if original_member is not None:
-        from merlin.experiments.phase1.component_original_members import OriginalCandidateMember
+        from merlin.development.backend.component_original_members import OriginalCandidateMember
 
         if type(original_member) is not OriginalCandidateMember:
             raise NativeComponentExecutionError("original execution requires the actual live original candidate member")

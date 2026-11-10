@@ -10,8 +10,10 @@ changes; the same gates run in pre-commit and CI.
 
 ## Source ownership
 
-`src/merlin/` owns the single installed package. Experiment engines live in
-`merlin.experiments`; design-space analysis lives in `merlin.analysis.dse`.
+`src/merlin/` owns the single installed package. Test generation lives in `merlin.development.testgen`; backend generation lives in
+`merlin.development.backend`. `merlin.experiments` selects and tracks workflows;
+design-space analysis lives in `merlin.analysis.dse`, and external-framework comparisons
+live in `merlin.evaluation.frameworks`.
 The root `merlin/` tree and separate project-named source packages are gone.
 The src layout keeps imports bound to the installed distribution rather than an
 incidental checkout directory. Optional dependencies stay lazy, and wheel membership
@@ -20,10 +22,11 @@ does not grant candidate access to graders, independent references or hidden inp
 `src/merlin/resources/` holds installed public contracts, schemas, prompts and benchmark
 definitions; `src/merlin/runtime/native/` holds reusable native runtime sources.
 `tests/` owns the compact permanent suite. `examples/` owns walkthroughs and public target
-inputs. Experiment definitions start at `experiments/catalog.yaml`; unbundled captures,
-corpora and reproduction inputs stay under `experiments/`, separate from generated `out/`.
-`packages/` retains historical metadata/inputs and the independent timing observer;
-do not duplicate active Merlin code there. See `docs/reference/repo_structure.md`.
+inputs. The nine authored files under `experiments/` provide a catalog, one generic definition,
+a shared test-generation template and local instructions. Generated captures, corpora,
+input bundles and retained study payloads belong under ignored `out/`; current runs select
+their reviewed inputs explicitly. The standalone console and independent timing observer
+live under `tools/`. See `docs/reference/repo_structure.md`.
 
 ## Compiler and OOT ownership rule
 
@@ -42,7 +45,7 @@ the companion OOT repository. Trusted functional simulators, timing observers an
 correctness oracles belong in simulator repositories, independently of the
 compiler under evaluation. Their source, vendor headers and selfcheck fixtures
 are operator build inputs; candidate grants expose only the reviewed runtime
-endpoints through the broker. Phase 1 produces the OOT compiler from scratch;
+endpoints through the broker. backend generation produces the OOT compiler from scratch;
 grading or timing must not require a handwritten or candidate compiler provider.
 A historical compiler-support snapshot may be
 retained only with exact companion provenance and explicit evaluation scope;
@@ -79,7 +82,7 @@ hard prohibitions, each gate-enforced (pre-commit + CI); do not add allowlist en
 them without a written, reviewed rationale:
 
 1. **No target-name literals in library code.** No `"gemmini"` / `"atlas"` / `"radiance"` (or any
-   target string) in `src/merlin/**`, `packages/*/src/**`, or `build_tools/scripts/**`. The target is a *parameter*
+   target string) in `src/merlin/**`, `tools/*/src/**`, or `build_tools/scripts/**`. The target is a *parameter*
    threaded from the descriptor/manifest; functions take `target=`, they do not assume one. A target
    name may appear only at a genuine edge where that target is legitimately the subject (a per-target
    data dir, a target-specific test, a caller that is *about* that one target) — never in a shared code
@@ -170,9 +173,9 @@ Root names come from `merlin.common.paths` — `out_dir()` / `runs_dir()` / `art
   **`out/artifacts/targets/<target>/<package_id>/`** is the codegen-package home (schedules/knobs/dialects
   minted by `merlin-rvv-mine` / `merlin-rvv-autotune` / `merlin-targetgen`). It **replaces the retired
   top-level `generated_targets/`** — all references point at `out/artifacts/targets/` directly (no compat
-  symlink; paths are repo-root-relative). Packages are **tool-generated**: only the hand-authored
-  reference baselines + promoted champions are tracked (`rvv/hand_v0`, `rvv/hand_v0_int8`,
-  `rvv/impr_tuned_*`, via `.gitignore` negations); forks and `mlir_oot/build/` trees stay ignored.
+  symlink; paths are repo-root-relative). Packages are **tool-generated** and stay ignored, including candidate forks,
+  compiled products and promoted copies. Active compiler implementations belong in their
+  selected OOT repositories; review a candidate's source and provenance before publication.
   Full buildable OOT repos live under `out/build/generated/`, not here.
 
   **`output/` is DEPRECATED and retired** — model recaptures now live at `out/artifacts/recaptures/`
@@ -224,8 +227,9 @@ Rules for the cross-subsystem suite (enforced by
 
 - A test file is `tests/<bucket>/test_<area>.py` — **never at the `tests/` root**, and
   `<bucket>` must be one of the eight above. Place a new test in the subsystem it exercises.
-- Shared inputs live in `tests/fixtures/` and `tests/data/`.
-- Resolve repo paths via `merlin.common.paths.repo_root()` / `merlin_dir()` — **never** `Path(__file__).parents[N]`
+- Keep only the compact suite's distinct authored or pinned regression inputs in
+  `tests/fixtures/` and `tests/data/`; generated workflow corpora belong under ignored `out/`.
+- Resolve repo paths via `merlin.common.paths.repo_root()`, `module_source_path()` or `data_path()` as appropriate — **never** `Path(__file__).parents[N]`
   (so tests are location-independent and survive moves).
 - Run `build_tools/scripts/check_test_budget.py --output out/build/python/ci/test-budget.json`
   before `.venv/bin/python -m pytest tests`. Install the selected
@@ -236,23 +240,18 @@ Rules for the cross-subsystem suite (enforced by
   acceptance obligations; consolidate redundant snapshots and implementation
   trivia rather than requiring a test for every helper or option.
 
-# Documentation convention — durable docs vs reports
+# Documentation convention
 
-Start at the generated hub **`docs/README.md`**. Durable documentation lives in **`docs/`** under
-three kind-subdirs — **`reference/`** (code-derived facts), **`guides/`** (how-tos), **`design/`**
-(rationale) — each file carrying YAML front-matter (`title, kind, status, owner, last_verified,
-related, code_refs`). **Point-in-time reports** (results/findings/status/presentations) are NOT docs
-— they live under `artifacts/` (concern-first; see "Generated-output convention"). Rules (see
-`.claude/skills/docs-layout`; enforced by `check_structure.py` + the `check_docs.py` Stop/pre-commit/CI gates):
+`docs/README.md` is the authored reading order for twelve short chapters following
+compilation, execution and backend generation. `docs/reference/` holds the compact
+architecture and source map. Update existing chapters rather than adding another
+per-change guide. Handwritten pages carry source-backed YAML front matter.
 
-- Generated docs are regenerated, never hand-edited: `gen_cli_docs.py` (`reference/cli.md`),
-  `gen_package_docs.py` (`reference/module_index.md`), `gen_schema_docs.py` (`reference/schemas.md`),
-  `gen_docs_index.py` (`README.md` hub). Run them after touching CLIs/schemas/packages/docs.
-- Front-matter must be schema-valid; `check_doc_paths.py` blocks retired paths; the root README/AGENT.md
-  may not carry scaffold-era phrasing.
-- **Semantic drift** (a doc whose `code_refs` moved past its `last_verified`) is surfaced by
-  `check_docs_freshness.py --json` and fixed by the **`docs-doctor`** skill (reconcile, then bump the date).
-- Enable the pre-commit gate per clone: `python build_tools/scripts/install_git_hooks.py`.
+Generated CLI/module/schema tables belong under ignored `out/artifacts/documentation/`.
+Run their generators when you need those references; do not commit their output.
+Local AGENT.md files describe specific constraints, not duplicate module indexes.
+Point-in-time findings and run reports belong in `out/`; private audit notes in `tmp/`.
+Run `build_tools/scripts/check_docs.py` after changing maintained documentation.
 
 # Experiment-run convention — one continuous session, per-capsule tiering
 
@@ -275,7 +274,7 @@ Three properties are **gated, not documented-and-hoped-for**
    seconds and refreshes `qa/verdict.json`, so feedback reaches the agent while it works.
 2. **Per-capsule tiering, never a batch** — `capsule_runner` walks each capsule cheapest-first, so a
    capsule clearing the loop tier (L2) continues to the cert tier (L3) *in the same grade*; and
-   `merlin.experiments.phase1.feedback.promotion.promote` enqueues a cert job the moment a loop verdict
+   `merlin.development.backend.feedback.promotion.promote` enqueues a cert job the moment a loop verdict
    lands, so **capsule 2's L3 starts while the agent is still on capsule 1's L2**.
 3. **The certificate is kept** — the same module's `record_cert` resolves the `pending` entry against the
    digest of the bytes that earned it (never re-hashed, so a cert is not re-attributed to bytes edited

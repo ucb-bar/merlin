@@ -7,8 +7,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
 
+from merlin.development.backend.feedback import setup_timing as _host_timing
 from merlin.evaluation.capsule.tier import TierResult as TierResult
-from merlin.experiments.phase1.feedback import setup_timing as _host_timing
 from merlin.runtime.backends import base as _backends_mod
 from merlin.targetgen import capsule_golden as CG
 from merlin.targetgen import completion_order_gate as _CO_GATE

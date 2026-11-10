@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/targetgen
+# src/merlin/targetgen
 
 `public_source_abi` transports exact public component-program IO metadata into
 function attributes before ordinary lowering. The original source, complete

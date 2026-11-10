@@ -5,12 +5,12 @@
   "branch": "refactor/merlin-phase-architecture",
   "runtime_defaults_changed": true,
   "canonical_sources_removed": true,
-  "selection": "MERLIN_TARGET_PATH selects support explicitly and always wins. Unset, each target's in-repo provider under examples/<example>/support is selected, keyed by its provider.yaml target, never by directory name; an empty value selects none. Historical companion paths are provenance, never runtime defaults.",
+  "selection": "MERLIN_TARGET_PATH selects support explicitly and always wins. Unset, each target's in-repo provider under examples/<category>/<example>/support is selected, keyed by its provider.yaml target, never by directory name; an empty value selects none. Historical companion paths are provenance, never runtime defaults.",
   "qualification_scope": "Read-only provider identity, exact source SHA256 parity, plugin reference existence, schema diagnostic parity. No hardware execution or compiler qualification.",
-  "candidate_boundary": "Support plugins are experimenter-side answer-bearing code, not candidate payload. Every in-repo examples/*/support tree, canonical or vendored, is an answer surface whatever MERLIN_TARGET_PATH selects: agent sandboxes, bundle snapshots and clean rooms withhold it (only an explicit contracts/ grant can reach inside, and no bundle declares one), and publication refuses a support provider as a candidate. Existing recursive integrity policy remains unchanged.",
+  "candidate_boundary": "Support plugins are experimenter-side answer-bearing code, not candidate payload. Every in-repo examples/*/*/support tree, canonical or vendored, is an answer surface whatever MERLIN_TARGET_PATH selects: agent sandboxes, bundle snapshots and clean rooms withhold it (only an explicit contracts/ grant can reach inside, and no bundle declares one), and publication refuses a support provider as a candidate. Existing recursive integrity policy remains unchanged.",
   "vendoring": {
-    "root": "examples/<example>/support",
-    "record": "examples/<example>/SOURCE.yaml",
+    "root": "examples/<category>/<example>/support",
+    "record": "examples/<category>/<example>/SOURCE.yaml",
     "date": "2026-10-07",
     "verification": "merlin/tests/infra/test_example_support.py recomputes each vendored tree id from the tracked bytes, and the companion tree id with each normalized file's companion blob put back",
     "normalization": "A vendored file may differ from its companion only where SOURCE.yaml lists it under normalized, with the companion blob id and the change. Absolute vendoring-host paths in provenance records are rewritten repo-relative there."
@@ -29,8 +29,8 @@
       "provider_root": ".",
       "provider_role": "support",
       "vendored": {
-        "path": "examples/muon/support",
-        "source_record": "examples/muon/SOURCE.yaml",
+        "path": "examples/targets/muon/support",
+        "source_record": "examples/targets/muon/SOURCE.yaml",
         "commit": "5d52f2bb5660a909ba947420ed6f44ba92a43986",
         "tree": "6293adbf1e53084daec008a08119680f557032d1",
         "vendored_tree": "6293adbf1e53084daec008a08119680f557032d1",
@@ -69,8 +69,8 @@
       "provider_root": "saturn-support",
       "provider_role": "support",
       "vendored": {
-        "path": "examples/saturn/support",
-        "source_record": "examples/saturn/SOURCE.yaml",
+        "path": "examples/targets/saturn/support",
+        "source_record": "examples/targets/saturn/SOURCE.yaml",
         "commit": "d6863380d43f61dcc22ebe498c0f6b9341018e29",
         "tree": "8febeda8958c9edcae820d5b50c3247dec31c4b4",
         "vendored_tree": "8febeda8958c9edcae820d5b50c3247dec31c4b4",
@@ -108,8 +108,8 @@
       "provider_root": "merlin-support",
       "provider_role": "support",
       "vendored": {
-        "path": "examples/rvv/support",
-        "source_record": "examples/rvv/SOURCE.yaml",
+        "path": "examples/targets/rvv/support",
+        "source_record": "examples/targets/rvv/SOURCE.yaml",
         "commit": "d6863380d43f61dcc22ebe498c0f6b9341018e29",
         "tree": "cdfed452de48491da2f09a772b251b8b827e8bda",
         "vendored_tree": "0e857f223910460294bd028998534883ca81238a",
@@ -138,8 +138,8 @@
       "provider_root": "merlin-support",
       "provider_role": "support",
       "vendored": {
-        "path": "examples/atlas/support",
-        "source_record": "examples/atlas/SOURCE.yaml",
+        "path": "examples/compiler-generation/atlas/support",
+        "source_record": "examples/compiler-generation/atlas/SOURCE.yaml",
         "commit": "392eb077c8a48bd3a21b253d9e488ba3d7ad74cf",
         "tree": "42315503deaf7d52b1196354abd9b24eabaf7dc4",
         "vendored_tree": "c68fb5508610f67372b73936231edd476c6fe2e0",
@@ -166,11 +166,11 @@
     {
       "target": "gemmini",
       "ownership": "generic_data_support",
-      "provider_root": "examples/gemmini/support",
+      "provider_root": "examples/compiler-generation/gemmini/support",
       "provider_role": "support",
       "generic_data_support": {
-        "path": "examples/gemmini/support",
-        "source_record": "examples/gemmini/SOURCE.yaml",
+        "path": "examples/compiler-generation/gemmini/support",
+        "source_record": "examples/compiler-generation/gemmini/SOURCE.yaml",
         "tree": "5c5d8292eed80621c031d7db94ae1997d6752743",
         "file_count": 8,
         "backend": "merlin.runtime.backends.chipyard_rocc"

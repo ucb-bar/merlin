@@ -8,6 +8,9 @@ import configparser
 import fnmatch
 import json
 import os
+import subprocess
+import sys
+import tempfile
 import tomllib
 import zipfile
 from pathlib import Path
@@ -132,7 +135,7 @@ def audit_sources(wheels: list[Path], root: Path) -> list[str]:
     errors = []
     projects = [
         root / "pyproject.toml",
-        *sorted((root / "packages").glob("*/pyproject.toml")),
+        *sorted((root / "tools").glob("timing/pyproject.toml")),
         *sorted((root / "examples").glob("*/pyproject.toml")),
     ]
     for project in projects:
@@ -171,6 +174,7 @@ def audit_sources(wheels: list[Path], root: Path) -> list[str]:
                     errors.append(f"Python member differs from canonical source: {name}:{member}")
             if name == "merlin":
                 errors.extend(audit_resources(archive, root))
+                errors.extend(audit_generated_skill(archive, root))
     return errors
 
 
@@ -213,6 +217,56 @@ def audit_resources(archive: zipfile.ZipFile, root: Path) -> list[str]:
             errors.append(f"public resource source is absent, linked or noncanonical: {name}")
         elif path.read_bytes() != archive.read(name):
             errors.append(f"public resource differs from canonical source: {name}")
+    return errors
+
+
+def audit_generated_skill(archive: zipfile.ZipFile, root: Path) -> list[str]:
+    """Admit the closed generated pass-library payload against its actual producer."""
+    prefix = "merlin/development/backend/author_skills/pass-library/"
+    catalog = root / "src/merlin/resources/optimizations/authoring.json"
+    generator = root / "build_tools/scripts/gen_author_pass_library.py"
+    try:
+        document = json.loads(catalog.read_text(encoding="utf-8"))
+        facets = {row["facet"] for row in document["mechanisms"]}
+        if any(not isinstance(facet, str) or Path(facet).name != facet or facet in {".", ".."} for facet in facets):
+            raise ValueError("invalid pass-library facet path")
+        names = {"SKILL.md", *(f"reference/{facet}.md" for facet in facets)}
+        with tempfile.TemporaryDirectory(prefix="merlin-pass-library-audit-") as temporary:
+            if generator.is_file():
+                output = Path(temporary) / "pass-library"
+                completed = subprocess.run(
+                    [sys.executable, str(generator.resolve()), "--output", str(output)],
+                    cwd=root,
+                    env=dict(os.environ, PYTHONPATH=str((root / "src").resolve())),
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+                if completed.returncode:
+                    raise ValueError("pass-library renderer failed: " + completed.stderr[-1000:])
+            else:
+                # Source releases retain the original build payload; their
+                # pruned tests/registries cannot reproduce the checkout render.
+                output = root / "src" / prefix.rstrip("/")
+            expected = {}
+            for path in output.rglob("*"):
+                if path.is_symlink():
+                    raise ValueError("pass-library source payload contains a link")
+                if path.is_file():
+                    expected[path.relative_to(output).as_posix()] = path.read_bytes()
+            if expected.keys() != names:
+                raise ValueError("pass-library source payload is absent or has changed membership")
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
+        return [f"generated pass-library expectation unavailable: {exc}"]
+    actual = {
+        name.removeprefix(prefix) for name in archive.namelist() if name.startswith(prefix) and not name.endswith("/")
+    }
+    errors = [f"required generated skill member missing: {prefix}{name}" for name in sorted(names - actual)]
+    errors.extend(f"unexpected generated skill member: {prefix}{name}" for name in sorted(actual - names))
+    for name in sorted(names & actual):
+        if archive.read(prefix + name) != expected[name]:
+            errors.append(f"generated skill member differs from its source: {prefix}{name}")
     return errors
 
 

@@ -1,16 +1,44 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Merlin ExperimentSpec version 1",
+  "title": "Merlin experiment definition: named stages and legacy engine records",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "id", "target", "phases"],
+  "required": [
+    "schema_version",
+    "id",
+    "target"
+  ],
   "properties": {
-    "schema_version": {"const": 1},
-    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"},
-    "target": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"},
-    "description": {"type": "string"},
-    "kind": {"enum": ["experiment", "template"]},
-    "inputs": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}},
+    "schema_version": {
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "target": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "experiment",
+        "template"
+      ]
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
     "policy": {
       "type": "object",
       "additionalProperties": false,
@@ -19,7 +47,10 @@
         "prohibited_instruction_roles": {
           "type": "array",
           "uniqueItems": true,
-          "items": {"type": "string", "pattern": "^[a-z][a-z_]*$"},
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z_]*$"
+          },
           "description": "Closed-vocabulary instruction roles (merlin.kernels.roles) no candidate program may emit anywhere in its linked ELF, in Phase 1 and in the Phase 2 candidate arm; Phase 0 resolves them to the target's own instructions."
         }
       }
@@ -29,9 +60,28 @@
       "minProperties": 1,
       "additionalProperties": false,
       "properties": {
-        "0": {"$ref": "#/$defs/phase"},
-        "1": {"$ref": "#/$defs/phase"},
-        "2": {"$ref": "#/$defs/phase"}
+        "0": {
+          "$ref": "#/$defs/phase"
+        },
+        "1": {
+          "$ref": "#/$defs/phase"
+        },
+        "2": {
+          "$ref": "#/$defs/phase"
+        }
+      }
+    },
+    "stages": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "test-generation": {
+          "$ref": "#/$defs/phase"
+        },
+        "backend-generation": {
+          "$ref": "#/$defs/phase"
+        }
       }
     }
   },
@@ -39,12 +89,56 @@
     "phase": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["adapter", "config"],
+      "required": [
+        "adapter",
+        "config"
+      ],
       "properties": {
-        "adapter": {"type": "string"},
-        "mode": {"enum": ["measured_claims", "model_portfolio", "whole_model_measured"]},
-        "config": {"type": "object"}
+        "adapter": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "measured_claims",
+            "model_portfolio",
+            "whole_model_measured"
+          ]
+        },
+        "config": {
+          "type": "object"
+        }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": 1
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "phases"
+        ],
+        "not": {
+          "required": [
+            "stages"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "stages"
+        ],
+        "not": {
+          "required": [
+            "phases"
+          ]
+        }
+      }
+    }
+  ]
 }

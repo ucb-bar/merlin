@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/perf/layer_bench
+# src/merlin/perf/layer_bench
 
 ## Purpose
 

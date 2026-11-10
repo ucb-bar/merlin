@@ -1,149 +1,105 @@
 ---
-title: "10. Generate a target compiler"
+title: 10. Generate a backend
 kind: guide
 status: current
-owner: experiments
+owner: development
 last_verified: 2026-11-09
 related: [09-verification, 11-optimization, 12-experiments]
-code_refs: [src/merlin/experiments/phase0/generation.py, src/merlin/experiments/phase1/controller.py, src/merlin/experiments/phase1/component_origin.py, src/merlin/experiments/phase1/task_staging.py, src/merlin/targetgen/compiler_library.py, src/merlin/compiler/passes, src/merlin/compiler/transforms, src/merlin/compiler/schedule, src/merlin/evaluation/capsule, examples/gemmini/experiment.yaml]
+code_refs: [src/merlin/development/testgen, src/merlin/development/backend, src/merlin/experiments/adapters.py, src/merlin/compiler/schedule, src/merlin/evaluation/capsule, examples/compiler-generation]
 ---
 
-# 10. Generate a target compiler
+# 10. Generate a backend
 
 [Previous](09-verification.md) | [Guide index](../README.md) | [Next](11-optimization.md)
 
-Compiler generation builds a backend for a target; ordinary compilation uses an
-existing backend to compile a program. Merlin's generation workflow gives an agent
-the target description, public tests and permitted compiler tools. The agent
-authors an out-of-tree compiler, then independent evaluators check its output.
+Ordinary compilation uses an existing backend. Backend generation gives an agent
+the selected target specification, reviewed tests and compiler tools, then checks
+the compiler it writes. Correctness and performance development share one native
+backend-generation session.
 
-Start by inspecting a configured example. These commands do not launch an agent:
+There are two workflows:
 
-```sh
-merlin experiment inspect gemmini-functional --phase 0
-merlin experiment inspect gemmini-functional --phase 1
-merlin experiment levels
-```
+| Workflow | Produces | Source owner |
+| --- | --- | --- |
+| Test generation | Programs, references, coverage and a reviewable corpus | `development/testgen/` |
+| Backend generation | An OOT compiler, revisions and independent correctness/performance evidence | `development/backend/` |
 
-The definition is currently at
-[`examples/gemmini/experiment.yaml`](../../examples/gemmini/experiment.yaml).
-It selects inputs and phase adapters; it is not a self-contained hardware setup
-or a certificate that a compiler works. See [experiments](12-experiments.md) for
-catalogs, definitions and run records.
+Start with the [target examples](../../examples/compiler-generation/README.md)
+and [experiment commands](12-experiments.md). The examples are configuration
+templates, not ready-made hardware installations or qualified compilers.
 
-## 1. Describe the target and its arithmetic
+## Describe the target
 
-Keep three inputs distinct:
+The software specification declares the arithmetic and supported operation forms.
+Hardware selection identifies the RTL, configuration and extracted facts.
+A compiler capability declaration says what that implementation claims to support.
+These are different inputs; an implementation claim cannot redefine the hardware
+or loosen the evaluator's numerical policy.
 
-| Input | What it tells Merlin |
+Try [notebook 1](../../examples/tutorials/01_contracts.ipynb) to inspect these
+relationships without installing hardware tools. Real extraction uses the selected
+ModeLIR/CIRCT readers and records their versions, observations and unknowns.
+
+## Generate and review tests
+
+Test generation derives programs from the selected operation and effect
+requirements. Shape combinations, numerical boundaries, memory constraints and
+composition cases each need their own coverage. Missing requirements stay visible.
+
+[Notebook 2](../../examples/tutorials/02_test_generation.ipynb) calls the actual
+coverage algorithm and corpus builder. It generates small example programs;
+a real release additionally needs its approved specifications, source inputs,
+references and any required RTL execution evidence.
+
+A capsule combines a test declaration with its program and expected behavior.
+Generate capsules under a run/artifact directory, review them, then select the
+sealed release and its input bundle for backend generation. Public development
+inputs and withheld evaluation inputs have different access roles.
+
+Generated corpora and input bundles are not committed fixtures. Authored program
+sources that cannot be reconstructed from those declarations live under
+[`examples/workloads/`](../../examples/workloads/README.md). Descriptions and other
+derived views are generated before the output corpus is sealed.
+
+## Develop correctness and performance together
+
+The native backend engine stages the task, selected input bundle, tool permissions
+and runtime interfaces. A fresh backend starts from an inert entry point and
+manifest. Handwritten reference compilers are independent inputs, not solutions
+to be copied into the candidate.
+
+The selected joint policy controls the continuous session and measurement windows.
+Passing functional checks does not terminate the joint session: the agent can
+continue improving the compiler under the same declared budgets and independent
+evaluation. The operator supplies the reviewed policy and timing authority.
+
+The agent can compose existing passes, modify them or add a transformation.
+Shared IR rewrites, tiling, operand retention, transfer merging and command
+ordering live in Merlin's libraries. The OOT backend supplies resource descriptions,
+command effects, instruction selection and encoders. See
+[transformations](05-transformations.md) and [optimization/CCA](11-optimization.md).
+
+## Keep implementation and evaluation separate
+
+The candidate emits an admitted artifact: compatible IR, objects, device binaries
+or commands. LLVM is one route, not a required output format for every backend.
+The selected wrapper/runtime must explain how that artifact executes.
+
+Independent evaluators check numerical behavior, source/ABI requirements, memory
+and completion, and actual execution where required. A successful scalar fallback
+cannot count as observed vector or accelerator execution. Missing hardware evidence
+is unavailable, not a pass. [Verification](09-verification.md) separates these claims.
+
+The source ownership is:
+
+| Work | Open first |
 | --- | --- |
-| Software specification | The operation forms and numerical behavior to preserve: types, accumulation, rounding, overflow, layouts and composition. |
-| Hardware specification and extracted facts | Which hardware source was selected and the observed instructions, resources and constraints. |
-| Backend capability declaration | Which forms a particular implementation claims to support. |
+| Test construction and source declarations | [`development/testgen/generation.py`](../../src/merlin/development/testgen/generation.py) |
+| Native authoring lifecycle | [`development/backend/authoring.py`](../../src/merlin/development/backend/authoring.py) |
+| Joint policy | [`development/backend/joint_control.py`](../../src/merlin/development/backend/joint_control.py) |
+| Agent task and permissions | [`development/backend/task_staging.py`](../../src/merlin/development/backend/task_staging.py) |
+| Specialized optimization mechanisms | [`development/backend/optimization/`](../../src/merlin/development/backend/optimization/) |
+| Independent capsule assessment | [`evaluation/capsule/`](../../src/merlin/evaluation/capsule/) |
 
-The target example's `target/` and `platform/` folders select these inputs.
-Facts and tool outputs belong to the selected run, rather than being regenerated
-inside the authored example. A backend capability claim cannot change the
-software specification's arithmetic or the evaluator's acceptance policy.
-
-Try the [contracts and facts notebook](../../examples/tutorials/01_contracts.ipynb)
-before using a real RTL extraction. It shows the input relationships with a small
-example that needs no hardware installation.
-
-## 2. Generate tests from those requirements
-
-Phase 0 turns selected operation and effect requirements into test programs.
-Finite shape domains, numerical cases, resource boundaries and composition cases
-serve different purposes; a list of matmul sizes cannot stand in for all of them.
-The generator records missing or unavailable requirements explicitly.
-
-The [test-generation notebook](../../examples/tutorials/02_test_generation.ipynb)
-calls the real coverage algorithm and corpus builder. Change its coverage budget
-to see generated points, missing combinations and interface MLIR.
-
-For a real target, Phase 0 additionally binds the selected software, numerical and
-hardware inputs, chooses the matching reference engines, and writes complete
-capsules. A capsule is one test declaration together with its program, reference
-outputs and expected execution properties. Development, functional guards and
-withheld transfer tests have separate roles.
-
-Run Phase 0 separately, review its result, then select a sealed corpus for Phase 1.
-The current catalog workflow does not silently promote freshly generated tests
-into the next phase. It refuses a combined invocation that would bypass this
-handoff. The Gemmini example's default diagnostic mode retains unresolved evidence.
-
-## 3. Let the agent build the compiler
-
-Phase 1 stages the selected task, input bundle, tool permissions and runtime
-interfaces before starting the author. The fresh compiler route starts from an
-inert entrypoint and manifest. Historical or handwritten backends are separate
-reference inputs, not substitutes for a newly generated compiler.
-
-The agent can **compose existing passes, modify permitted passes, or add passes**.
-The run's compiler-library selection determines which shared implementation bytes
-and tools are available. An agent does not automatically receive every repository
-module or permission to modify the grader.
-
-| Shared implementation | Where to start under `src/merlin/` |
-| --- | --- |
-| Pass invocation and pipeline composition | `compiler/passes/` |
-| Reusable IR transformations | `compiler/transforms/` |
-| Shared scheduling and storage choices | `compiler/schedule/` and `sched/` |
-| Named optimization strategies | `compiler/optimizations/` |
-| Selected author-visible library contract | `targetgen/compiler_library.py` |
-
-These mechanisms include tiling, operand retention, transfer merging and command
-ordering. Their applicability depends on the selected numerical contract,
-resource descriptions and command effects. The backend supplies target-specific
-instruction selection, encoders, layouts and ABI details.
-
-Use the [scheduling](../../examples/tutorials/03_scheduling.ipynb) and
-[transformation](../../examples/tutorials/04_transformations.ipynb) notebooks to
-inspect the shared mechanisms before changing a pipeline. Keep the generic
-algorithm in Merlin and target facts or implementations in the backend.
-
-## 4. Keep the generated backend out of tree
-
-The candidate is its own compiler package, with its own dialect or lowering,
-passes and invocation interface. The selected adapter transports the input and
-returns the declared artifacts. Those artifacts can be IR, objects, command data
-or device binaries; device code does not have to pass through LLVM.
-
-The artifact's format, ABI and runtime requirements still have to match its
-consumer. Producing a binary is different from integrating it into a callable
-region and executing that region. Inspect the selected backend's actual route
-before assuming it provides all three.
-
-Preserve the candidate source and actual build products with the run. Compiler
-history, source selection and evaluation records must refer to the implementation
-that produced the artifact, rather than whichever checkout is current later.
-
-## 5. Evaluate the result independently
-
-The author can improve its compiler; it cannot choose its own accuracy threshold
-or change the reference that accepts it. Check the numerical program, generated
-code and observed execution separately. For quantized models, first distinguish
-the quantized program from the original floating model.
-
-Correct outputs alone do not prove that an accelerator region executed. Required
-placement, instruction use, ABI, memory and synchronization checks also need their
-own evidence. A successful scalar fallback cannot satisfy a required device path.
-See [verification](09-verification.md) for those responsibilities.
-
-Once the reviewed corpus and input bundle are available, inspect preflight before
-launching the selected agent:
-
-```sh
-merlin experiment preflight gemmini-functional --phase 1 \
-  --corpus-seal /absolute/reviewed/corpus-seal.json \
-  --bundle-manifest /absolute/reviewed/input_bundle_manifest.yaml
-```
-
-The corresponding `run` command uses those same selections. It also needs the
-definition's toolchains, independent runtime/oracles, agent credentials and budgets.
-Preflight checks configuration and inputs; it does not perform the compiler
-experiment. Continue to [optimization](11-optimization.md) once a functional
-compiler and its required evidence have been frozen.
-
-[Back to verification](09-verification.md) | [Next: optimization](11-optimization.md) |
-[Guide index](../README.md)
+Older records retain their schema identifiers and recorded paths for exact replay.
+They do not define separate stages in the current workflow.

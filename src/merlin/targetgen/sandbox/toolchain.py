@@ -176,7 +176,7 @@ def paths_for_bundle(ws: Path, bundle: dict, *, paths: ToolchainPaths | None = N
     profile = verify_tool_profile(bundle)
     author = bundle.get("author_profile")
     if author is not None:
-        from merlin.experiments.phase1.author_profiles import resolve, verify_bundle
+        from merlin.development.backend.author_profiles import resolve, verify_bundle
 
         verify_bundle(resolve(author.get("name")), bundle)
         # The legacy SDK remains a host-only judge input. Its metadata cannot

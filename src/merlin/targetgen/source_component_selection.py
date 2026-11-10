@@ -6,7 +6,7 @@ def resolve_components(module, groups, eligible_groups, *, eligible_source_regio
 
     from xdsl.dialects import func
 
-    from merlin.experiments.phase1.feedback.private_group_provenance import eligible_source_identity
+    from merlin.development.backend.feedback.private_group_provenance import eligible_source_identity
     from merlin.llvmlower.borrowed_effects import BorrowedBufferEffects
     from merlin.llvmlower.sibling_components import prepare_sibling_components
     from merlin.llvmlower.sibling_source_route import SiblingSourceRoute

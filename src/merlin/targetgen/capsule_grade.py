@@ -1179,7 +1179,7 @@ def _bounded_grade_workers(requested: int, oracle_adapters: dict | None) -> int:
     # Their shared CPU pool bounds preparation; the native GSIM slot lock still
     # enforces its smaller emulator cap at dispatch.
     from merlin.common.cpu_pool import grading_cpus, shared_compute_enabled
-    from merlin.experiments.phase1.feedback.operator_child import enabled
+    from merlin.development.backend.feedback.operator_child import enabled
 
     if "gsim" in engines and enabled() and shared_compute_enabled():
         requested = min(requested, len(grading_cpus()))

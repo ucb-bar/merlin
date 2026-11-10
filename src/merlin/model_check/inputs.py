@@ -4,15 +4,14 @@
 each split's selection rule. :func:`prepare` applies the rule, runs the model's own preprocessing in its
 pinned environment (:mod:`merlin.model_check.input_worker`), and writes:
 
-- the stored forms of the VISIBLE inputs to the public example (small: a uint8 crop or frame, a token list);
+- the stored forms of the VISIBLE inputs to the selected public artifact root (small: a uint8 crop or frame, a token list);
 - the stored forms of the SEALED inputs, and every input's model-ready arrays, to the private root;
-- calibration items, privately, with their ids and hashes committed so the set is reproducible;
-- ``MANIFEST.json`` beside ``sources.yaml``: the sha256 of every file, sealed ones included.
+- calibration items privately, with their ids and hashes in generated metadata;
+- ``MANIFEST.json`` in the selected public artifact root: the sha256 of every file, sealed ones included.
 
 The stored forms of one model and split are two files (:func:`stored_paths`): ``<split>.npz`` with one
 array per input and field (key ``<id>.<field>``) and ``<split>.json`` with each input's metadata. The
-model-ready arrays stay one file per input. A public example never holds a holdout: sealed inputs are
-committed to by sha256 only.
+model-ready arrays stay one file per input. Public artifacts never hold a holdout: sealed inputs are recorded by sha256 only.
 """
 
 from __future__ import annotations
@@ -44,7 +43,7 @@ def _save_npz(path: Path, **arrays: np.ndarray) -> None:
     module.save_npz(str(path), **arrays)
 
 
-#: The committed example stays small: every visible input, the manifests and the calibration ids.
+#: The public artifact remains bounded: visible inputs, manifests and calibration ids.
 PUBLIC_BUDGET = 10 << 20
 
 
@@ -108,7 +107,7 @@ def run_worker(
 def stored_paths(root: Path, model: str, split: str) -> tuple[Path, Path]:
     """The arrays (``<split>.npz``) and metadata (``<split>.json``) of ``model``'s stored ``split``.
 
-    ``root`` is the public example for the visible split (``inputs/<model>/``) and the private root for
+    ``root`` is the selected public artifact for the visible split (``inputs/<model>/``) and the private root for
     the sealed one (``stored/<model>/``).
     """
     directory = Path(root) / ("inputs" if split == "visible" else "stored") / model

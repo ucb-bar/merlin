@@ -18,7 +18,7 @@ class SharedCompilerSource:
 
         from merlin.common.bundle_snapshot import _RosterGuard
         from merlin.common.tree_hash import hash_tree
-        from merlin.experiments.phase2.retained_revisions import source_inventory
+        from merlin.development.backend.optimization.retained_revisions import source_inventory
 
         self.source, self.results = Path(source), Path(results)
         self.pid, self.closed = os.getpid(), False
@@ -55,7 +55,7 @@ class SharedCompilerSource:
 
     def _verify_full(self):
         from merlin.common.tree_hash import hash_tree
-        from merlin.experiments.phase2.retained_revisions import source_inventory
+        from merlin.development.backend.optimization.retained_revisions import source_inventory
 
         for root in (self.source, self.destination):
             source_inventory(root, max_bytes=128 << 20, max_files=16384, exclude_generated=True)
@@ -133,7 +133,7 @@ def _source_members(root):
 
 
 def _shared_source(package=None):
-    from merlin.experiments.phase1.feedback.snapshot_execution import active_snapshot
+    from merlin.development.backend.feedback.snapshot_execution import active_snapshot
 
     owner = active_snapshot()
     evidence = getattr(owner, "source_evidence", None)
@@ -145,7 +145,7 @@ def _shared_source(package=None):
 def _capture_compiler_source(package_dir, generated):
     """Retain the actual compiler before lowering, without generated build state."""
     from merlin.common.tree_hash import hash_tree
-    from merlin.experiments.phase2.retained_revisions import source_inventory
+    from merlin.development.backend.optimization.retained_revisions import source_inventory
     from merlin.targetgen import executed_program
 
     # A reused build directory still holds an earlier invocation's executed programs; the receipt

@@ -137,38 +137,40 @@ def describe_grant(spec: ToolSpec, granted) -> str:
 #: because they leak anything, but because unaided raw-ISA authoring is what the baseline measures.
 _ISA_BROKER = BrokerSpec(
     ".isa_channel",
-    "merlin.experiments.phase1.brokers.isa_tools",
+    "merlin.development.backend.brokers.isa_tools",
     "isa_tools_broker.log",
-    (("merlin.experiments.phase1.tools.isa", "isa_tools.py"),),
+    (("merlin.development.backend.tools.isa", "isa_tools.py"),),
 )
 _CCA_BROKER = BrokerSpec(
     ".cca_channel",
-    "merlin.experiments.phase1.brokers.cca",
+    "merlin.development.backend.brokers.cca",
     "cca_broker.log",
     (
-        ("merlin.experiments.phase1.tools.cca", "cca_contract.py"),
-        ("merlin.experiments.phase1.tools.cca", "action_catalog.py"),
+        ("merlin.development.backend.tools.cca", "cca_contract.py"),
+        ("merlin.development.backend.tools.cca", "action_catalog.py"),
     ),
     ("check_bijection", "escalation_ladder"),
 )
 
 # Public standalone clients common to every treatment; brokers remain host-owned.
 COMMON_CLIENTS = (
-    ("merlin.experiments.phase1.tools.selfcheck", "agent_selfcheck.py"),
-    ("merlin.experiments.phase1.tools.simjob", "simjob.py"),
-    ("merlin.experiments.phase1.tools.await_verdict", "await_verdict.py"),
-    ("merlin.experiments.phase1.tools.model_check", "agent_model_check.py"),
-    ("merlin.experiments.phase1.tools.result_details", "qa_result_details.py"),
+    ("merlin.development.backend.tools.selfcheck", "agent_selfcheck.py"),
+    ("merlin.development.backend.tools.simjob", "simjob.py"),
+    ("merlin.development.backend.tools.await_verdict", "await_verdict.py"),
+    ("merlin.development.backend.tools.model_check", "agent_model_check.py"),
+    ("merlin.development.backend.tools.result_details", "qa_result_details.py"),
+    ("merlin.development.backend.tools.qa_selfcheck_protocol", "qa_selfcheck_protocol.py"),
+    ("merlin.development.backend.tools.qa_selfcheck_sweeps", "qa_selfcheck_sweeps.py"),
 )
 
 # Common feedback is not an ablatable tool treatment. Its host owners share the
 # same mapping shape so staging and launch never guess native filenames.
 COMMON_BROKERS = (
-    BrokerSpec(".qa_channel", "merlin.experiments.phase1.brokers.selfcheck", "broker.log", (COMMON_CLIENTS[0],)),
-    BrokerSpec(".qa_channel", "merlin.experiments.phase1.brokers.simjob", "simjob_broker.log", (COMMON_CLIENTS[1],)),
+    BrokerSpec(".qa_channel", "merlin.development.backend.brokers.selfcheck", "broker.log", (COMMON_CLIENTS[0],)),
+    BrokerSpec(".qa_channel", "merlin.development.backend.brokers.simjob", "simjob_broker.log", (COMMON_CLIENTS[1],)),
     BrokerSpec(
         ".model_check_channel",
-        "merlin.experiments.phase1.brokers.model_check",
+        "merlin.development.backend.brokers.model_check",
         "model_check_broker.log",
         (COMMON_CLIENTS[3],),
     ),

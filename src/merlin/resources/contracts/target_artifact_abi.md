@@ -26,7 +26,7 @@ memory-space access and the actual realization of dependency edges remain OOT
 provider obligations. A declared full write is not a proved initialization.
 Partial writes need a richer ownership contract. The core verifier checks the
 declared graph only; it does not launch, link or execute artifacts, and no new
-normal runtime path or Phase 1 certificate is available from this draft.
+normal runtime path or backend generation certificate is available from this draft.
 
 A future executor must explicitly consume this carrier and bind the selected
 OOT linker/runtime, actual storage/ABI/capability proofs, synchronization and

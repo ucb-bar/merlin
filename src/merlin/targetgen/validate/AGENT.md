@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/targetgen/validate
+# src/merlin/targetgen/validate
 
 ## Purpose
 

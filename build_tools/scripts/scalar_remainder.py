@@ -69,10 +69,10 @@ from collections import defaultdict
 from dataclasses import replace
 from pathlib import Path
 
-from merlin.baselines import rvv_audit as ra
 from merlin.common.artifacts import new_product
 from merlin.mining import k1
 from merlin.mining.registry import load_rvv_package
+from merlin.runtime import rvv_audit as ra
 
 #: Symbol the instrumentation calls once per top-level op. Imported, never spelled twice.
 MARK_SYM = None  # resolved from merlin.llvmlower.op_profile at import time below

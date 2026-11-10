@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/compare
+# src/merlin/compare
 
 ## Purpose
 
@@ -26,7 +26,7 @@ capture and numerical/precision policy meanings remain unchanged. The first
 supported positive domain is narrow rank-two signed-i8/i32 mm; unknown original
 calls, geometry, multiplicity and fragments refuse explicit complete-integer
 registration. This source-format gate is neither measurement nor offload,
-runtime, physical timing or full Phase 0 admission.
+runtime, physical timing or full test generation admission.
 
 Study v3 explicitly declares per-precision `contraction_format_requirements`.
 Normal capture dispatch requires a complete independently selected original

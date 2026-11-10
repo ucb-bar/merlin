@@ -1,4 +1,4 @@
-# AGENT.md - src/merlin/evaluation
+# src/merlin/evaluation
 
 Independent execution assessment lives here, outside compiler implementations.
 Candidates cannot import this package or change acceptance thresholds. Keep

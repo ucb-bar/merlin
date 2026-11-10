@@ -17,9 +17,9 @@ from merlin.common.source_membership import SourceMembershipError, python_member
 
 from .spec import SpecError
 
-MODULE = "merlin.experiments.phase2.chia_envelope_cli"
-COORDINATOR = "merlin.experiments.phase2.checkpoint_cli"
-OWNER = "merlin.experiments.phase2.chia_envelope"
+MODULE = "merlin.development.backend.optimization.chia_envelope_cli"
+COORDINATOR = "merlin.development.backend.optimization.checkpoint_cli"
+OWNER = "merlin.development.backend.optimization.chia_envelope"
 PREFIX = "phase2:installed:"
 ENVELOPE_FIELDS = {"managed_native_endpoint", "codex_slots", "gsim_slots"}
 FROZEN_PHASE0_ENV_POLICY = "merlin.phase0.selected_environment.v1"
@@ -193,8 +193,8 @@ def source_inputs(command: dict) -> dict[str, str]:
             raise SpecError(f"measured launch resource is absent or linked: {path}")
         paths[PREFIX + "resource:" + resource] = str(path)
     if values.get("published_compiler_root"):
-        from .phase2.contracts import StageGateError
-        from .phase2.published_payload import selection_paths
+        from merlin.development.backend.optimization.contracts import StageGateError
+        from merlin.development.backend.optimization.published_payload import selection_paths
 
         try:
             paths.update(selection_paths(Path(values["published_compiler_root"])))
@@ -222,7 +222,7 @@ def execution_environment(command: dict) -> dict[str, str]:
             **command["env"],
         }
     environment = dict(os.environ, **command["env"])
-    if command.get("module") in {MODULE, "merlin.experiments.phase2.portfolio_cli"}:
+    if command.get("module") in {MODULE, "merlin.development.backend.optimization.portfolio_cli"}:
         environment.pop("PYTHONHOME", None)
         environment.pop("PYTHONUSERBASE", None)
     if command.get("module"):

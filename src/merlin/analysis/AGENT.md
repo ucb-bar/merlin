@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/analysis
+# src/merlin/analysis
 
 The observation SDK owners at this level observe actual IR, instruction words, artifact bytes and selected
 target declarations. They supply no kernels, schedules, tuned choices, measured

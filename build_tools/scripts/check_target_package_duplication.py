@@ -17,8 +17,8 @@ COMPARISON IS BY SHAPE, NOT BY TEXT. Identifiers, attribute names, constants and
 erased before hashing, so a copy that renamed its variables and swapped its constants still matches.
 Renaming is exactly what someone does while copying, which is why comparing text would miss it.
 
-WHERE TARGET PACKAGES LIVE. The legacy in-tree packages under ``experiments/reference-data/target-inputs/<target>/`` and the
-vendored support providers under ``examples/<example>/support/`` -- the target support that was
+WHERE TARGET PACKAGES LIVE. The legacy in-tree packages under ``experiments/inputs/target-inputs/<target>/`` and the
+vendored support providers under ``examples/<category>/<example>/support/`` -- the target support that was
 extracted to companion repositories and is now tracked beside its example. A provider's own tests are
 not implementations and are not compared: each provider carries the same contract-identity test.
 
@@ -83,7 +83,7 @@ def shape_of(fn: ast.FunctionDef) -> str:
 #: ``(directory holding one package per child, glob of a package's implementation files)``. The vendored
 #: support directory name is ``merlin.targetgen.target_registry.IN_REPO_SUPPORT_DIR``; this gate stays
 #: free of a merlin import so it runs before the tree is importable.
-PACKAGE_ROOTS = (("experiments/reference-data/target-inputs", "*/**/*.py"), ("examples", "*/support/**/*.py"))
+PACKAGE_ROOTS = (("experiments/inputs/target-inputs", "*/**/*.py"), ("examples", "*/*/support/**/*.py"))
 #: A package's own test directory: provider contract tests repeat by design and implement nothing.
 TEST_DIR = "tests"
 

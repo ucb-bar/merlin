@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/experiments
+# src/merlin/experiments
 
 `spec.py` validates public definitions, `adapters.py` owns allowed options and
 installed/native command mapping, `runner.py` owns frozen process attempts, and `cli.py` owns
@@ -8,7 +8,7 @@ discovery. `spec.default_run_dir` owns declaration-based phase/output navigation
 exporter. Explicit evidence records retain their original phase/source checks;
 preserved project entry points are metadata claims, not installed or qualified
 services. Never synthesize wrappers, import providers, install or push on export.
-New baseline and RTL-check plans use the installed Phase 1 command with explicit
+New baseline and RTL-check plans use the installed backend generation command with explicit
 authored inputs and treatment selection; stored native plans keep their native command identity. Optional
 operator timing/environment inputs bind absence as well as present bytes. Scientific
 verdicts remain phase-engine evidence, never inferred from process completion. Preserve independent
@@ -53,9 +53,9 @@ never rewrite an archive or substitute current code for its historical verifier.
 `runner_process` owns bounded process/group inspection and shutdown; `runner`
 retains its existing imports and overrides at plan execution boundaries.
 
-`timing_probes/` owns the operator calibration stage between Phase 1 and Phase 2
+`timing_probes/` owns the operator calibration stage between backend generation and backend optimization
 (`python -m merlin.experiments.timing_probes`). It derives probe requests from a target's
-timing space, existing labels and the Phase 2 domain. A per-target backend realizes them
+timing space, existing labels and the backend optimization domain. A per-target backend realizes them
 from the target's data directory. Phase code never imports it, and its inputs and labels
 are never author-visible.
 

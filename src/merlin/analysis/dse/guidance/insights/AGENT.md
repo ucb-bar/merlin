@@ -1,4 +1,4 @@
-# AGENT.md - src/merlin/analysis/dse/guidance/insights
+# src/merlin/analysis/dse/guidance/insights
 
 These owners consume explicit case-study artifacts and produce source-traced
 facts, design questions, analytical envelopes and reports. Keep evidence tiers,

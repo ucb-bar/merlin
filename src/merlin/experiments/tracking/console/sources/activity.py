@@ -88,7 +88,7 @@ LANES = {
     "queue": "harness",
 }
 #: Python modules (``-m``) the grader runs as workers, by activity.
-MODULES = {"merlin.experiments.phase1.brokers.compiler_call_channel": ("build", "compiler call")}
+MODULES = {"merlin.development.backend.brokers.compiler_call_channel": ("build", "compiler call")}
 _HISTORIES: dict[str, History] = {}
 
 

@@ -37,9 +37,8 @@ for _p in (_HERE.parents[2] / "src",):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from merlin.experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
-from merlin.experiments.phase0.synthesis_policy import apply_model_gates  # noqa: E402
-from merlin.targetgen.corpora import conformance_reference, conformance_reference_dir  # noqa: E402
+from merlin.development.testgen.declarations import for_target  # noqa: E402
+from merlin.development.testgen.synthesis_policy import apply_model_gates  # noqa: E402
 from merlin.targetgen.corpus_synth import SynthesisError, synthesize  # noqa: E402
 
 _HEADER = (
@@ -49,13 +48,6 @@ _HEADER = (
     "# them: each carries the cell it was synthesized for in `source_reference`. Editing one here is a\n"
     "# claim the requirement does not make, and the next regeneration discards it.\n"
 )
-
-
-def _targets(explicit: list[str]) -> list[str]:
-    if explicit:
-        return explicit
-    root = conformance_reference_dir()
-    return sorted(item.target for item in all_declarations() if (root / f"{item.target}.yaml").is_file())
 
 
 def _workload_spec(target: str) -> dict:
@@ -174,7 +166,7 @@ _MX_ONLY_GOLDEN = frozenset({"attention_mx"})
 
 
 def _binding(target: str, *, software_spec: Path | None = None, evidence=None):
-    from merlin.experiments.phase0 import profiles
+    from merlin.development.testgen import profiles
     from merlin.targetgen import corpus_spec as CSPEC
     from merlin.targetgen.target_experiment import load_target_experiment
 
@@ -206,14 +198,14 @@ def synth_for(
 ) -> dict:
     import yaml
 
-    from merlin.experiments.phase0.profiles import selected_software_spec_path, synthesis_input_identity
+    from merlin.development.testgen.profiles import selected_software_spec_path, synthesis_input_identity
 
     declaration = for_target(target)
     try:
         selected_spec = selected_software_spec_path(declaration.recipe, software_spec)
         evidence = None
         if evidence_input is not None:
-            from merlin.experiments.phase0.evidence import load_exported_evidence
+            from merlin.development.testgen.evidence import load_exported_evidence
 
             evidence = load_exported_evidence(evidence_input)
             if evidence.target != declaration.target:
@@ -224,7 +216,7 @@ def synth_for(
                 if load_software_spec(selected_spec, target=declaration.target) != evidence.software_spec:
                     raise ValueError("selected software spec differs from captured hardware evidence")
         elif selected_spec is not None or rtl_facts is not None:
-            from merlin.experiments.phase0.evidence import select_evidence
+            from merlin.development.testgen.evidence import select_evidence
 
             evidence = select_evidence(
                 declaration.target,
@@ -234,13 +226,12 @@ def synth_for(
             )
     except (OSError, ValueError, yaml.YAMLError) as exc:
         return {"target": target, "status": "invalid_synthesis_inputs", "detail": str(exc)}
-    spec_path = conformance_spec or declaration.conformance_spec or conformance_reference(declaration.target)
-    if not spec_path.is_file():
+    spec_path = conformance_spec or declaration.conformance_spec
+    if spec_path is None or not spec_path.is_file():
         return {
             "target": target,
             "status": "no_conformance_spec",
-            "detail": f"no derived requirement at {spec_path}; write one with "
-            f"check_conformance_coverage.py --target {target} --write",
+            "detail": "select the generated requirement explicitly with --conformance-spec PATH",
         }
     doc = yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}
     if selected_spec is not None:
@@ -408,7 +399,7 @@ def main(argv=None) -> int:
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
 
-    targets = _targets(a.target)
+    targets = a.target
     if a.conformance_spec and len(targets) != 1:
         ap.error("--conformance-spec requires exactly one --target")
     if any((a.software_spec, a.evidence_input, a.rtl_facts)) and len(targets) != 1:
@@ -417,8 +408,7 @@ def main(argv=None) -> int:
         ap.error("--evidence-input and --rtl-facts are mutually exclusive selections")
     if not targets:
         print(
-            "no --target given and no tracked conformance spec found; write one with "
-            "check_conformance_coverage.py --target NAME --write",
+            "select --target NAME and the generated requirement with --conformance-spec PATH",
             file=sys.stderr,
         )
         return 2
@@ -466,9 +456,7 @@ def main(argv=None) -> int:
                     str(declaration.definition),
                     str(declaration.descriptor),
                     str(declaration.recipe),
-                    str(
-                        a.conformance_spec or declaration.conformance_spec or conformance_reference(declaration.target)
-                    ),
+                    str(a.conformance_spec or declaration.conformance_spec),
                 ]
                 + [
                     str(res[field])

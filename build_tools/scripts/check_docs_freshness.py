@@ -76,7 +76,7 @@ def schema_errors() -> list[str]:
         # A code_ref that does not resolve makes the drift signal unmeasurable for that doc: the
         # ref reads as infinitely old and the doc is drifted forever, or -- worse -- the reader
         # silently drops it. Four such refs were pointing at files that had moved under
-        # experiments/reference-data/target-inputs/<target>/backend/ when this rule was added (2026-09-16).
+        # experiments/inputs/target-inputs/<target>/backend/ when this rule was added (2026-09-16).
         for ref in fm.get("code_refs") or []:
             if not (ROOT / ref).exists():
                 errs.append(f"{rel}: code_ref {ref!r} does not exist")

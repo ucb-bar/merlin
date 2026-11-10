@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/compiler/schedule
+# src/merlin/compiler/schedule
 
 This is the canonical library for target-neutral scheduling algorithms. Backends
 supply derived resource geometry, instruction effects and physical encoders.

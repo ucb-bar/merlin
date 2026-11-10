@@ -541,7 +541,7 @@ class TargetExperiment:
     # operations its target-owned fixture must actually demonstrate. Empty means no additional claim.
     preflight_capability_probes: tuple[PreflightCapabilityProbe, ...] = ()
     # OPTIONAL: repo-relative dir of the BACKEND package whose ``contracts/`` hold this target's
-    # rtl_facts / irdl pins, when it is NOT ``experiments/reference-data/target-inputs/<target>``. An experiment target can be
+    # rtl_facts / irdl pins, when it is NOT ``experiments/inputs/target-inputs/<target>``. An experiment target can be
     # served by a differently-named core package; leaving that to be inferred from the target name
     # yields bundle grants pointing at paths that cannot exist (a CIRCT arm granted nothing while the
     # manifest claims otherwise). Declared, never inferred; default preserves same-name targets.
@@ -794,14 +794,14 @@ class TargetExperiment:
     def backend_package(self) -> str:
         """Repo-relative dir of the target's BACKEND package, where its contracts/ live.
 
-        Defaults to ``experiments/reference-data/target-inputs/<target>`` — true whenever the experiment target and the backend
+        Defaults to ``experiments/inputs/target-inputs/<target>`` — true whenever the experiment target and the backend
         package share a name. It is NOT universally true: an experiment target may
         be served by a differently-named core package (a SIMT experiment served by its core's package),
         and assuming otherwise silently produces grant paths that can never exist — a bundle that
         *looks* like it hands the CIRCT arm its RTL facts while handing it nothing. So the mapping is a
         DECLARED fact (``backend_package`` in the descriptor) whenever it differs, never inferred."""
         d = self.backend_package_dir
-        return str(d).rstrip("/") if d else f"experiments/reference-data/target-inputs/{self.target}"
+        return str(d).rstrip("/") if d else f"experiments/inputs/target-inputs/{self.target}"
 
     @property
     def rtl_facts_pin(self) -> str:
@@ -1003,7 +1003,7 @@ def descriptor_for(target: str) -> Path | None:
         # conventions below rather than be treated as found.
         if p.is_file() and _declared_target(p) == target:
             return p
-    for candidate in sorted((repo_root() / "examples").glob("*/target/descriptor.yaml")):
+    for candidate in sorted((repo_root() / "examples").glob("*/*/target/descriptor.yaml")):
         if candidate.is_file() and _declared_target(candidate) == target:
             return candidate
     root = repo_root()

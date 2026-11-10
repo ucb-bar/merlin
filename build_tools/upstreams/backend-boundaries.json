@@ -47,7 +47,7 @@
     {
       "id": "kodiak",
       "repository": "https://github.com/ucb-bar/kodiak-mlir.git",
-      "revision": "bc419901d73d4e1f537ce00a778f3a82b35d92d8",
+      "revision": "be5328faecc2e4e972892d2e2ae76b346d73b1e0",
       "xdsl": "0.68.0",
       "provider_module": "merlin_kodiak.service",
       "tests": [

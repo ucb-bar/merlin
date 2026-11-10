@@ -1,4 +1,4 @@
-# AGENT.md ? src/merlin/compiler/quantization
+# src/merlin/compiler/quantization
 
 Keep numerical intent separate from calibration and application policy. Existing
 v1 methodology derivation is an explicit compatibility mechanism. New profile

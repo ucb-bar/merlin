@@ -6,6 +6,7 @@
     "src/merlin/resources/benchmarks/dse_guidance/measured_cycles.yaml",
     "src/merlin/resources/benchmarks/dse_guidance/measured_dispatch.yaml",
     "src/merlin/resources/benchmarks/dse_guidance/region_maps/rdt2.yaml",
+    "src/merlin/resources/benchmarks/host_calibration/optimization-space.yaml",
     "src/merlin/resources/benchmarks/rvv_paper/baseline_sources.yaml",
     "src/merlin/resources/benchmarks/rvv_paper/development_corpus_v1.yaml",
     "src/merlin/resources/benchmarks/rvv_paper/development_corpus_v2.yaml",

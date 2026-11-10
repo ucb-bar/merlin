@@ -501,7 +501,7 @@ def interprocedural_contexts(regions, edges, *, machine=None):
 def machine_regions(root, artifact, *, facts, decoder, structure=None, stream_max_steps=STREAM_MAX_STEPS):
     from merlin.compile.analysis.artifact_reader import PinnedELF, open_ordinary
     from merlin.compile.analysis.riscv_machine import region_index
-    from merlin.experiments.phase1.feedback import reference_analysis as analysis
+    from merlin.development.backend.feedback import reference_analysis as analysis
     from merlin.perf.pc_instruction_listing import normalized_text
 
     path = Path(root) / artifact["path"]

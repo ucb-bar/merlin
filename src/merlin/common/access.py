@@ -93,6 +93,7 @@ def module_matches(module: str, prefix: str) -> bool:
 #: the full-compiler copy boundary, the author SDK staging and the pre-launch acceptance suite.
 AUTHOR_WITHHELD_PREFIXES = (
     "merlin.baselines",
+    "merlin.capture.pretranspose",
     "merlin.kernels",
     "merlin.mining",
     "merlin.model_check",

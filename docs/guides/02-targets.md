@@ -30,10 +30,11 @@ must describe shared resources, memory access and synchronization.
 
 ## Read the target inputs
 
-The current target examples place authored inputs under
-`examples/<target>/target/`. Some retained examples use `software-spec.yaml`;
-other workflows select `spec.yaml` and `hardware.yaml`. Read the example's README
-for its actual inputs rather than assuming the filenames are interchangeable.
+Target declarations used by compilation examples live under
+`examples/targets/<target>/target/`. Compiler-generation workflows keep their
+inputs beside the workflow at `examples/compiler-generation/<target>/target/`.
+Some examples use `software-spec.yaml`; others select `spec.yaml` and
+`hardware.yaml`. Read the example's README for its actual input names.
 
 The software specification declares operation meaning: operand and accumulator
 types, quantization, instruction behavior and constraints. Hardware selection
@@ -43,7 +44,7 @@ Extracted facts record what the selected readers observed, including unknowns.
 ```python
 from merlin.api import inspect_spec
 
-record = inspect_spec("examples/gemmini/target/software-spec.yaml", expanded=True)
+record = inspect_spec("examples/compiler-generation/gemmini/target/software-spec.yaml", expanded=True)
 ```
 
 Compact specifications are loaded through `target/spec/load.py` and expanded into

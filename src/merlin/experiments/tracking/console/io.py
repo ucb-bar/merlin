@@ -287,7 +287,7 @@ class Reader:
     def _details(self, document, path):
         """Expand public result indexes using this reader's ordinary IO budget."""
         if isinstance(document, dict) and document.get("result_index"):
-            from ...phase1.feedback.result_details import hydrate
+            from merlin.development.backend.feedback.result_details import hydrate
 
             cached = self._result_indexes.get(str(path))
             if cached and cached[0] is document:

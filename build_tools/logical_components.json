@@ -6,7 +6,8 @@
         "merlin.benchharness",
         "merlin.targetgen.sandbox",
         "merlin.experiments",
-        "merlin.evaluation"
+        "merlin.evaluation",
+        "merlin.development"
       ],
       "modules": [
         "merlin.perf.analysis_worker",
@@ -130,36 +131,10 @@
     "merlin-analysis": {
       "namespaces": [
         "merlin.agentreport",
-        "merlin.baselines.exo_kernels",
         "merlin.compare",
         "merlin.plotting"
       ],
       "modules": [
-        "merlin.baselines._et_export",
-        "merlin.baselines._et_inspect",
-        "merlin.baselines._et_ops",
-        "merlin.baselines._et_session_export",
-        "merlin.baselines.accuracy_policy",
-        "merlin.baselines.aggregate",
-        "merlin.baselines.buddy",
-        "merlin.baselines.buddy_harness",
-        "merlin.baselines.buddy_native_import",
-        "merlin.baselines.contract",
-        "merlin.baselines.executorch",
-        "merlin.baselines.executorch_console",
-        "merlin.baselines.executorch_identity",
-        "merlin.baselines.executorch_session",
-        "merlin.baselines.exo",
-        "merlin.baselines.external_source",
-        "merlin.baselines.ggml",
-        "merlin.baselines.k1_exec",
-        "merlin.baselines.k1_workload_policy",
-        "merlin.baselines.pretranspose_cli",
-        "merlin.baselines.profile",
-        "merlin.baselines.tvm",
-        "merlin.baselines.voyager",
-        "merlin.baselines.voyager_ir",
-        "merlin.baselines.voyager_schedule",
         "merlin.kernels.ceiling_drivers.multishape_compare",
         "merlin.kernels.ceiling_drivers.run_expert_gemm",
         "merlin.perf.recovery",

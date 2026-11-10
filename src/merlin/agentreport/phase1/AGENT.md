@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/agentreport/phase1
+# src/merlin/agentreport/phase1
 
 `runs` owns shared run/evidence readers and explicit `ReportInputs`.
 `by_treatment` and `by_model` aggregate those same artifacts. These are post-hoc

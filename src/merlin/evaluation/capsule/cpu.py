@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from merlin.development.backend.feedback import setup_timing as _host_timing
 from merlin.evaluation.capsule.numerics import _match_by_policy
 from merlin.evaluation.capsule.source import _capture_compiler_source, _finish_compiler_source
-from merlin.experiments.phase1.feedback import setup_timing as _host_timing
 from merlin.targetgen import capsule_golden as CG
 
 

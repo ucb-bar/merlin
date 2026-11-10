@@ -20,7 +20,8 @@ def full_source(value):
 
 def project(rosters, progress, ledger, physical, responses):
     """Count exact-source native evidence; never combine engines across sources."""
-    from ..phase1.feedback.joint_curriculum import _passed
+    from merlin.development.backend.feedback.joint_curriculum import _passed
+
     from .terminal_metadata import capsule_metric
 
     sets, aliases, perf, failures, gsim_instruments = {}, {}, set(), {}, set()

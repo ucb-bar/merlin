@@ -12,7 +12,6 @@ build_tools/scripts/check_cert_affordability.py::audit::get-default::unsized_sam
 build_tools/scripts/check_cert_affordability.py::audit::swallowed-error::Exception
 build_tools/scripts/check_cert_affordability.py::audit::get-default::engine
 build_tools/scripts/check_claim_set_disjointness.py::audit::get-default::admitted_status
-build_tools/scripts/check_conformance_coverage.py::_target_experiment::swallowed-error::OSError/YAMLError
 build_tools/scripts/check_conformance_coverage.py::main::swallowed-error::ValueError
 build_tools/scripts/check_conformance_coverage.py::_certifying_members::swallowed-error::YAMLError
 build_tools/scripts/check_conformance_coverage.py::main::get-default::kind
@@ -69,15 +68,6 @@ build_tools/scripts/check_stage_parameters.py::offenders::swallowed-error::YAMLE
 build_tools/scripts/check_stage_parameters.py::offenders::get-default::label
 build_tools/scripts/check_target_package_duplication.py::shapes::swallowed-error::OSError/SyntaxError
 build_tools/scripts/check_target_package_duplication.py::shapes::swallowed-error::RecursionError/ValueError
-experiments/studies/capsule_bench/harness/freeze_state.py::_count_pass::swallowed-error::Exception
-experiments/studies/capsule_bench/harness/full_suite_audit.py::_write_md::get-default::r
-experiments/studies/capsule_bench/harness/generalization_difftest.py::datapath_policy::get-default::compare
-experiments/studies/capsule_bench/harness/generalization_difftest.py::default_package::swallowed-error::Exception
-experiments/studies/capsule_bench/harness/generalization_difftest.py::corpus_oracle_tiers::swallowed-error::OSError/YAMLError
-experiments/studies/capsule_bench/harness/regrade_run_snapshot.py::main::swallowed-error::OSError/RuntimeError
-experiments/studies/capsule_bench/harness/verify_no_cheat.py::scan_workload_constants::swallowed-error::OSError/SyntaxError
-experiments/studies/capsule_bench/harness/verify_no_cheat.py::_granted_roots::swallowed-error::OSError/YAMLError
-experiments/studies/capsule_bench/harness/verify_no_cheat.py::_scan_root::swallowed-error::ValueError
 packages/merlin-experiments/src/merlin/experiments/phase1/audit.py::AnswerAudit._result_text_by_id::swallowed-error::Exception
 packages/merlin-experiments/src/merlin/experiments/phase1/audit.py::AnswerAudit.audit_transcript::swallowed-error::Exception
 packages/merlin-experiments/src/merlin/experiments/phase1/conformance.py::_tool_calls::swallowed-error::Exception

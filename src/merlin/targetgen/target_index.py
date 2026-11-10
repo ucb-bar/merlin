@@ -103,7 +103,9 @@ def _repo_rows(phase_root: Path, tag_name: str, problems: list) -> list[tuple[Pa
 
 def _phase1(target: str, problems: list) -> list[dict]:
     out = []
-    for run, repo, tags, history in _repo_rows(paths.phase_runs_root(target, 1), oot_repo.FROZEN_TAG, problems):
+    roots = paths.generation_run_roots(target, "1")
+    rows = [row for root in roots for row in _repo_rows(root, oot_repo.FROZEN_TAG, problems)]
+    for run, repo, tags, history in rows:
         frozen = history[-1]
         out.append(
             {
@@ -120,7 +122,9 @@ def _phase1(target: str, problems: list) -> list[dict]:
 
 def _phase2(target: str, problems: list) -> list[dict]:
     out = []
-    for run, repo, tags, history in _repo_rows(paths.phase_runs_root(target, 2), oot_repo.BEST_TAG, problems):
+    roots = paths.generation_run_roots(target, "2")
+    rows = [row for root in roots for row in _repo_rows(root, oot_repo.BEST_TAG, problems)]
+    for run, repo, tags, history in rows:
         best = history[-1]
         out.append(
             {
@@ -219,7 +223,7 @@ def refresh_for_run(run_dir: str | Path, phase: int | str) -> Path | None:
 
     Called when a phase-1 run freezes and when a phase-2 run's ``best`` moves, so the index follows
     those events instead of waiting for someone to run ``merlin experiment index``.  A run outside the
-    canonical ``out/runs/<target>/phase<N>/`` root is not one the index lists, so nothing is written.
+    named or historical generation run root is not one the index lists, so nothing is written.
     NEVER RAISES: the event it follows has already happened and is recorded in its own run; a failed
     refresh is printed (and leaves the index stale, which ``index --check`` reports), never silent.
     """
@@ -227,8 +231,11 @@ def refresh_for_run(run_dir: str | Path, phase: int | str) -> Path | None:
 
     try:
         run = Path(run_dir).resolve()
-        target = run.parent.parent.name
-        if not target or paths.phase_runs_root(target, phase).resolve() != run.parent:
+        if not run.is_relative_to(paths.runs_dir().resolve()):
+            return None
+        relative = run.relative_to(paths.runs_dir().resolve())
+        target = relative.parts[0]
+        if run.parent not in (root.resolve() for root in paths.generation_run_roots(target, phase)):
             return None
         return write_index(target)
     except Exception as exc:  # noqa: BLE001 -- see the docstring: reported, never raised

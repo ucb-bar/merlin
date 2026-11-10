@@ -169,6 +169,7 @@ def runs(*, root: Path | None = None, target: str | None = None, experiment: str
     problems, never silently presented as successful runs.
     """
     from merlin.common.paths import runs_dir
+    from merlin.experiments.definition import ENGINE_STAGES
 
     from .runner import status
 
@@ -186,14 +187,18 @@ def runs(*, root: Path | None = None, target: str | None = None, experiment: str
             result["problems"].append({"run_dir": str(parent), "error": type(exc).__name__})
             return []
 
-    phase_suites = {"phase0", "phase1", "phase2"}
+    phase_suites = {"phase0", "phase1", "phase2", *ENGINE_STAGES.values()}
     for target_dir in directories(base):
         if target is not None and target_dir.name != target:
             continue
-        for experiment_dir in directories(target_dir):
+        owners = directories(target_dir)
+        optimization = target_dir / ENGINE_STAGES["2"]
+        if optimization.is_dir() and not optimization.is_symlink():
+            owners.append(optimization)
+        for experiment_dir in owners:
             # A single-phase orchestration lives under its phase (runs/<target>/phase<N>/), named
             # <TS>_<experiment>_<sha7>; every other one under runs/<target>/<experiment>/.
-            by_phase = experiment_dir.name in phase_suites
+            by_phase = experiment_dir.name in phase_suites or experiment_dir == optimization
             if experiment is not None and not by_phase and experiment_dir.name != experiment:
                 continue
             for run_dir in directories(experiment_dir):

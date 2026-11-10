@@ -82,14 +82,30 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--program", default=None)
     check.add_argument("--split", choices=SPLITS, required=True)
     check.add_argument("--mode", choices=MODES, default="fast")
-    check.add_argument("--full-comparison", choices=("host-twin", "quantized-reference"), default="host-twin",
-                       help="full: selected integration comparison (default: host-twin)")
-    check.add_argument("--quantized-reference-atol", type=float, default=None,
-                       help="full: confirm selected models atol; legacy configs allow an explicit tolerance")
-    check.add_argument("--quantized-reference-rtol", type=float, default=None,
-                       help="full: confirm selected models rtol; legacy configs allow an explicit tolerance")
-    check.add_argument("--host-elementwise-fusion", action=argparse.BooleanOptionalAction, default=None,
-                       help="full: override the host elementwise fusion build option")
+    check.add_argument(
+        "--full-comparison",
+        choices=("host-twin", "quantized-reference"),
+        default="host-twin",
+        help="full: selected integration comparison (default: host-twin)",
+    )
+    check.add_argument(
+        "--quantized-reference-atol",
+        type=float,
+        default=None,
+        help="full: confirm selected models atol; legacy configs allow an explicit tolerance",
+    )
+    check.add_argument(
+        "--quantized-reference-rtol",
+        type=float,
+        default=None,
+        help="full: confirm selected models rtol; legacy configs allow an explicit tolerance",
+    )
+    check.add_argument(
+        "--host-elementwise-fusion",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="full: override the host elementwise fusion build option",
+    )
     check.add_argument("--decode-steps", type=int, default=None)
     check.add_argument("--input", dest="inputs", action="append", default=None, help="full: judge only these inputs")
     check.add_argument("--jobs", type=int, default=None, help="full: inputs run at once (default: per CPU)")
@@ -180,6 +196,9 @@ def build_parser() -> argparse.ArgumentParser:
     _common(prep, submission=False)
     prep.add_argument("--model", required=True)
     prep.add_argument("--sources", type=Path, default=None, help="sources.yaml (default: the target's)")
+    prep.add_argument(
+        "--public", type=Path, help="generated visible inputs and manifest; default: a new product under out/"
+    )
     prep.add_argument("--data", type=Path, required=True, help="directory holding the pinned source files")
     prep.add_argument("--private", type=Path, required=True, help="private root (sealed and derived inputs)")
     prep.add_argument("--python", type=Path, required=True, help="the model's pinned environment interpreter")
@@ -230,8 +249,7 @@ def main(argv: Sequence[str] | None = None, *, full_build_provider=None) -> int:
     )
     started = time.monotonic()
     try:
-        if (getattr(args, "full_comparison", "host-twin") != "host-twin"
-                and getattr(args, "mode", None) != "full"):
+        if getattr(args, "full_comparison", "host-twin") != "host-twin" and getattr(args, "mode", None) != "full":
             raise ModelsFileError("--full-comparison quantized-reference requires --mode full")
         if submission and submission["tree_sha256"] is None:
             raise ModelsFileError(f"submission is not a directory: {args.submission}")

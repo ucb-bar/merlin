@@ -12,6 +12,7 @@ from verification_witnesses.sandbox_isolation import (
     audit_tokens,
     probe_sandbox,
     pytest,
+    remove_bundle_snapshot,
     sim_toolchain,
     subprocess,
     weight_files,
@@ -65,7 +66,7 @@ def test_snapshot_bytes_do_not_follow_later_source_edits(tmp_path):
         assert out.returncode == 0, out.stderr
         assert out.stdout.splitlines() == ["before", "before"]
     finally:
-        BW.remove_bundle_snapshot(ws)
+        remove_bundle_snapshot(ws)
 
 
 @pytest.mark.usefixtures("_sim_family_policy_without_its_checkout")
@@ -112,4 +113,4 @@ def test_post_snapshot_answer_file_is_not_mounted_inside_frozen_parent(tmp_path,
             )
             assert completed.returncode == 0, completed.stderr
     finally:
-        BW.remove_bundle_snapshot(ws)
+        remove_bundle_snapshot(ws)

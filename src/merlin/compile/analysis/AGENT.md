@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/compile/analysis
+# src/merlin/compile/analysis
 
 The actual public analysis implementations live in `src/merlin/analysis`.
 Contraction-shape observation lives in `compiler/ir/contraction_shapes.py`.

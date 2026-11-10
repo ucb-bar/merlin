@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/targetgen/sandbox
+# src/merlin/targetgen/sandbox
 
 ## Purpose
 
@@ -9,7 +9,7 @@ Shared, descriptor+manifest-driven agentic bwrap sandbox — a new target gets a
 New bundle freezes use V4 captured support ownership. Preserve historical V2/V3
 inspection, but require a newly frozen run for verified execution. Ownership
 metadata is bound by the existing host environment marker, never by the mutable
-marker alone; final masks and Phase 2 public projections use captured private
+marker alone; final masks and backend optimization public projections use captured private
 views even after original aliases or selected providers change.
 
 - `answer_surfaces.py` — The DERIVED answer-surface mask set (goldens/model weights/hidden/prior/oracle/grader/memory) and transcript-audit tokens, consuming shared identities from `merlin.common.access` and mandatory historical target identities from packaged `merlin.experiments.access_policy`.
@@ -51,7 +51,7 @@ views even after original aliases or selected providers change.
   schedule roles are not support. Only the existing explicit `contracts/` exemption
   survives; the descriptor's historical backend location remains withheld too.
 - The coverage guard is the drift/cheat gate: `bwrap.coverage_gap(argv, surfaces)` replays the ordered mount table and returns any answer surface still reachable — it MUST be empty. The historical cheat gap (a hard-coded slug that left the `~/.claude` memory dir unmasked) is exactly a non-empty gap; the memory dir is derived from the current repo path so it can never go stale.
-- Agent sandboxes never mount the operator's `~/.claude` or `~/.claude.json`: it holds every host session's history, plans, file-history backups, transcripts, settings/hooks and global instructions, and masking `projects/` alone left the rest readable. `full_argv` and the Phase 1 composer pass `include_claude_home=False` and drop operator state from `claude_runtime_binds()`; a `claude` launch gets `claude_home.stage(...)` (empty `.claude/`, minimal `.claude.json`) whose only operator bind is the OAuth credential file, writable for token rotation. `base_argv`'s legacy whole-tree bind remains for callers outside Phase 1 that still opt in.
+- Agent sandboxes never mount the operator's `~/.claude` or `~/.claude.json`: it holds every host session's history, plans, file-history backups, transcripts, settings/hooks and global instructions, and masking `projects/` alone left the rest readable. `full_argv` and the backend generation composer pass `include_claude_home=False` and drop operator state from `claude_runtime_binds()`; a `claude` launch gets `claude_home.stage(...)` (empty `.claude/`, minimal `.claude.json`) whose only operator bind is the OAuth credential file, writable for token rotation. `base_argv`'s legacy whole-tree bind remains for callers outside backend generation that still opt in.
 - `apply_answer_masks` only masks a surface a bind would otherwise RE-EXPOSE (so it never `/dev/null`-overlays a path whose parent is an empty tmpfs — that mount would fail). Surfaces already hidden by deny-by-default need no overlay.
 - `apply_final_answer_masks` is the shared final policy for complete runtime bind lists: descriptor
   answers plus verified host-input mappings, including live/frozen aliases and private snapshot
@@ -124,7 +124,7 @@ failures after 30 seconds with a fresh scan/verification. No digest survives an
 unwatched interval, and restored capacity alone does not qualify old observations.
 
 The existing preflight CLI also supports `--snapshot-guards`. When
-`MERLIN_SNAPSHOT_LEASE_CACHE=1`, ordinary Phase 1 preparation first exercises a
+`MERLIN_SNAPSHOT_LEASE_CACHE=1`, ordinary backend generation preparation first exercises a
 small real guard and mutation invalidation, before materializing the corpus.
 Unavailable selected guards refuse early with errno, runtime inotify limits and
 visible descriptor/watch reference counts; no host settings or checks change.

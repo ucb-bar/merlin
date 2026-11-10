@@ -39,7 +39,7 @@ def _final_answer_policy(
     Only internal policy composition consumes the roster; no unmasked policy
     object is created. Explicit selected-input surfaces supplement live discovery.
     """
-    from merlin.experiments.phase1.feedback import setup_timing as timing
+    from merlin.development.backend.feedback import setup_timing as timing
     from merlin.targetgen.sandbox import bwrap as BW
 
     with timing.stage("package_policy.private_alias_discovery"):
@@ -72,7 +72,7 @@ def _final_answer_policy(
             raise RuntimeError("selected support package remains exposed after final masking")
 
     if bundle.get("author_profile") is not None:
-        from merlin.experiments.phase1.author_profiles import runtime_masks
+        from merlin.development.backend.author_profiles import runtime_masks
 
         result = runtime_masks(result, bundle, target=te)
     return [*result, "--unsetenv", "MERLIN_FROZEN_PYTHON_CONTEXT"], tuple(answers)

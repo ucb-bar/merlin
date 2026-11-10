@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/agentreport/campaign
+# src/merlin/agentreport/campaign
 
 Draws one agentic compiler-construction campaign (a chain of continuations, each possibly restarted)
 as a single-column figure of ONE stitched run: agent trajectory (activity share, token rates, agents

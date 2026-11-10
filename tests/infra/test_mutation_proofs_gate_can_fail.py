@@ -124,7 +124,7 @@ def test_a_skipped_boundary_case_changes_the_real_runner_verdict(tmp_path, pinne
 
 def test_missing_reference_region_evidence_changes_the_real_readiness_verdict(tmp_path, monkeypatch):
     """Only the upstream analyzer transport is substituted; assess/main are real."""
-    from merlin.experiments.phase1.feedback import reference_analysis
+    from merlin.development.backend.feedback import reference_analysis
 
     gate = _load("check_reference_readiness")
     workspace = tmp_path / "workspace"

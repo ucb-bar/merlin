@@ -47,12 +47,13 @@ from merlin.compare.executorch_column import (  # noqa: E402
     dtype_comparability,
     executorch_cell,
 )
+from merlin.mining.wholemodel_proposer import cca_asm_dir  # noqa: E402
 
 # expert objdump fixture per dtype (the CCA target); f16 carries the native-accumulate caveat.
 _EXPERT_OBJDUMP = {
-    "fp32": "experiments/reference-data/cca-asm/xnnpack_f32_gemm_rvv.objdump",
-    "int8": "experiments/reference-data/cca-asm/xnnpack_qd8_gemm_rvv.objdump",
-    "fp16": "experiments/reference-data/cca-asm/xnnpack_f16_gemm_rvv.objdump",
+    "fp32": cca_asm_dir() / "xnnpack_f32_gemm_rvv.objdump",
+    "int8": cca_asm_dir() / "xnnpack_qd8_gemm_rvv.objdump",
+    "fp16": cca_asm_dir() / "xnnpack_f16_gemm_rvv.objdump",
 }
 
 
@@ -69,7 +70,7 @@ _EXPERT_OBJDUMP = {
 #: ExecuTorch reference exported from the other.
 def _bundle_for(dtype: str, model: str) -> str | None:
     """The capture bundle for this cell, or None when it is genuinely not on disk."""
-    from merlin.baselines import bundle as _bundle_mod
+    from merlin.capture import bundle as _bundle_mod
 
     try:
         b = _bundle_mod.resolve(model, dtype)

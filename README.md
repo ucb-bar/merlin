@@ -17,7 +17,7 @@ submodules, Torch, target checkout, or native MLIR toolchain.
 uv venv --python 3.12
 uv pip install -e '.[compiler]'
 uv run --no-sync merlin --help
-uv run --no-sync merlin compile examples/quickstart/flatten.mlir \
+uv run --no-sync merlin compile examples/compilation/quickstart/flatten.mlir \
   --backend merlin.layout --output out/build/quickstart/compiled
 uv run --no-sync merlin inspect out/build/quickstart/compiled
 ```
@@ -27,7 +27,7 @@ The output directory must be fresh. This example reshapes six `i32` values from
 `compilation.json`. The built-in `merlin.layout` provider supports this small layout
 subset; it is not a general model compiler. On Linux x86-64, an optional C compiler
 step exercises the runtime and prints `1 2 3 4 5 6`; see
-[the complete example](examples/quickstart/README.md).
+[the complete example](examples/compilation/quickstart/README.md).
 
 The Python API uses the same compilation service:
 
@@ -35,7 +35,7 @@ The Python API uses the same compilation service:
 from pathlib import Path
 from merlin.api import compile
 
-result = compile(Path("examples/quickstart/flatten.mlir"), backend="merlin.layout",
+result = compile(Path("examples/compilation/quickstart/flatten.mlir"), backend="merlin.layout",
                  output="out/build/quickstart/python")
 print(result.manifest)
 ```
@@ -50,13 +50,12 @@ See [setup and prerequisites](docs/guides/01-inputs.md).
 
 | Task | Start here |
 | --- | --- |
-| Compile and run a small input | [First example](examples/quickstart/README.md) |
+| Compile and run a small input | [First example](examples/compilation/quickstart/README.md) |
 | Explore specs, RTL facts, test generation, scheduling, transformations and CCA | [Interactive tutorials](examples/tutorials/README.md) |
 | Compile a model or use a target | [Examples](examples/README.md), [setup](docs/guides/01-inputs.md) |
 | Add a compiler transformation | [Contributor entry points](docs/guides/11-optimization.md), [shared pass library](docs/guides/12-experiments.md) |
 | Add or select an OOT backend | [Target integration](docs/guides/02-targets.md), [backend resolution](docs/guides/02-targets.md) |
 | Run agentic experiments | [Experiment catalog](experiments/README.md) |
-| Reproduce reported studies | [Paper artifact](experiments/reference-data/paper-artifact/README.md) |
 
 Backend, system, platform, and runner are separate selections. A **backend** is a
 compiler provider; a **system** selects hardware; a **platform** selects an image
@@ -78,13 +77,16 @@ checkout directory. Repository inputs and generated results stay outside it.
 | `src/merlin/compiler/` | Backend protocols, planning, quantization, lowering and build orchestration |
 | `src/merlin/transforms/`, `src/merlin/sched/` | Shared transformations and scheduling primitives |
 | `src/merlin/runtime/`, `src/merlin/verification/` | Artifact execution and independent verification, with separate contracts |
-| `src/merlin/experiments/`, `src/merlin/analysis/` | Research orchestration and analysis; evaluator access boundaries remain explicit |
+| `src/merlin/development/` | Test generation and backend authoring engines |
+| `src/merlin/experiments/`, `src/merlin/analysis/` | Experiment selection, tracking and analysis |
+| `src/merlin/evaluation/frameworks/` | Independent external-framework comparisons |
 | `src/merlin/resources/` | Installed schemas, prompts, public contracts and benchmark definitions |
 | `examples/` | Small walkthroughs and target-owned public inputs |
-| `experiments/` | Catalog, study definitions and retained reproduction inputs |
+| `experiments/` | Nine authored catalog, definition, template and instruction files |
+| `tools/` | Standalone console and independent timing observer |
 | `tests/` | Compact permanent regression suite, capped at 150 collected cases |
 | `docs/`, `build_tools/` | Guides and references; build, release and repository checks |
-| `out/` | Generated builds, artifacts and runs |
+| `out/` | Ignored generated builds, reviewed corpora, input bundles, captures, caches and runs |
 
 The [repository map](docs/reference/repo_structure.md) gives the complete source
 flow, including active legacy owners. Generic scalar and control generation live

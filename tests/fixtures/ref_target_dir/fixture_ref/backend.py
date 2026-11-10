@@ -3,7 +3,7 @@
 Imported BY FILE PATH under ``merlin._oot_backends.fixture_ref`` (because its reference-target contract
 names it via ``plugin.backend``, and ``base._oot_backend_modules`` now walks reference targets too, using
 the reference package root as the backend path). Self-registers at import — exactly as the gemmini
-reference backend will once evicted into ``experiments/reference-data/target-inputs/gemmini/backend/``.
+reference backend will once evicted into ``experiments/inputs/target-inputs/gemmini/backend/``.
 """
 
 from __future__ import annotations

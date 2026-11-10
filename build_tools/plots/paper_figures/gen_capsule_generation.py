@@ -143,7 +143,7 @@ def derive() -> dict:
         # required cell reports uncovered. `exclude` matters in the other direction -- a capsule
         # excluded from grading must not be allowed to represent its cell.
         coverage: dict[str, list | None] = {}
-        spec_path = REPO / "experiments" / "reference-data" / "phase0" / "conformance" / f"{target}.yaml"
+        spec_path = REPO / "experiments" / "inputs" / "phase0" / "conformance" / f"{target}.yaml"
         if spec_path.is_file():
             spec = yaml.safe_load(spec_path.read_text(encoding="utf-8")) or {}
             tile = (spec.get("boundaries") or {}).get("tile_edge")

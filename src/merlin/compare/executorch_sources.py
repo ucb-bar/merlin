@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from merlin.baselines import executorch as _executorch
 from merlin.common.paths import module_source_path
+from merlin.evaluation.frameworks import executorch as _executorch
 
 et_source_dir = _executorch.et_source_dir
 
 _PRODUCER_MODULES = (
     "merlin.common.paths",
-    "merlin.baselines.executorch",
+    "merlin.evaluation.frameworks.executorch",
     "merlin.compare.executorch_packages",
     _executorch.k1.__name__,
 )

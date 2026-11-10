@@ -507,7 +507,7 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         outputs[prelude["out"]] = _narrow_to_dtype(product, str(prelude.get("output_dtype", "i32"))).to_list()
         return outputs
     if capsule["operation"]["op"] == "component_program":
-        from merlin.experiments.phase0.component_numerics import evaluate
+        from merlin.development.testgen.component_numerics import evaluate
 
         return evaluate(capsule)
     if capsule["operation"]["op"] == "quantized_producer_sum":

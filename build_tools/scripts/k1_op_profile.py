@@ -98,7 +98,7 @@ def _rvv_coverage(binary: Path) -> dict | None:
     emitted compute is scalar-dominated regardless of what family a op claims. Best-effort: returns
     None if objdump/the binary is unreadable (honest, never a silent 'fully vectorized')."""
     try:
-        from merlin.baselines.rvv_audit import audit_binary
+        from merlin.runtime.rvv_audit import audit_binary
 
         rep = audit_binary(binary)
         fwd = rep.by_symbol.get("forward")

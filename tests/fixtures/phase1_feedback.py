@@ -7,17 +7,17 @@ into implementations, or make retired native imports work.
 from pathlib import Path
 
 from merlin.common.paths import checkout_root, module_source_path
-from merlin.experiments.phase1.context import InvocationContext
+from merlin.development.backend.context import InvocationContext
 
 MODULES = {
-    "loop_grading": "merlin.experiments.phase1.feedback.loop_grading",
-    "grade_agent_run": "merlin.experiments.phase1.feedback.formal",
-    "freeze_run": "merlin.experiments.phase1.feedback.freeze",
-    "qa_check": "merlin.experiments.phase1.feedback.qa",
-    "agent_selfcheck": "merlin.experiments.phase1.feedback.selfcheck",
-    "tier_promote": "merlin.experiments.phase1.feedback.promotion",
-    "selfcheck_broker": "merlin.experiments.phase1.brokers.selfcheck",
-    "simjob_broker": "merlin.experiments.phase1.brokers.simjob",
+    "loop_grading": "merlin.development.backend.feedback.loop_grading",
+    "grade_agent_run": "merlin.development.backend.feedback.formal",
+    "freeze_run": "merlin.development.backend.feedback.freeze",
+    "qa_check": "merlin.development.backend.feedback.qa",
+    "agent_selfcheck": "merlin.development.backend.feedback.selfcheck",
+    "tier_promote": "merlin.development.backend.feedback.promotion",
+    "selfcheck_broker": "merlin.development.backend.brokers.selfcheck",
+    "simjob_broker": "merlin.development.backend.brokers.simjob",
 }
 
 

@@ -1,4 +1,4 @@
-# Native e-graph bridge
+# src/merlin/semantic_compiler/egg_bridge
 
 This crate uses the general-purpose `egg` library. It only receives validated,
 versioned typed symbols and rewrite patterns from Merlin and returns e-classes.

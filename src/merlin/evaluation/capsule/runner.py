@@ -44,11 +44,11 @@ def main(argv: list[str] | None = None) -> int:
     # one result file out, so the parent can kill the process group without losing what it knows.
     _av = list(sys.argv[1:] if argv is None else argv)
     if "--operator-grade" in _av:
-        from merlin.experiments.phase1.feedback.operator_child import main as run_operator_grade
+        from merlin.development.backend.feedback.operator_child import main as run_operator_grade
 
         return run_operator_grade(_av)
     if "--model-grade" in _av:
-        from merlin.experiments.phase1.feedback.compiler_profile_child import run_model_grade
+        from merlin.development.backend.feedback.compiler_profile_child import run_model_grade
 
         return run_model_grade(_av)
 

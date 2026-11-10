@@ -2,7 +2,7 @@
 """Generate the author's ``pass-library`` skill from the optimization catalog and the compiler source.
 
 The catalog (``src/merlin/resources/optimizations/authoring.json``) lists every reusable mechanism with its
-facet, required traits, applicability, adapter obligations and evidence. The phase 1 author never read
+facet, required traits, applicability, adapter obligations and evidence. The backend author never read
 it as a menu of callable passes, so this generator turns it into an index skill
 (``author_skills/pass-library/SKILL.md``) and one reference file per facet
 (``author_skills/pass-library/reference/<facet>.md``). Each entry is joined with the compiler source
@@ -17,14 +17,16 @@ Every emitted catalog, source or test string is screened against the no-target-n
 (targets and substrates) and withheld when it names one. Target facts stay in the author's own
 workspace. Run::
 
-    python build_tools/scripts/gen_author_pass_library.py           # regenerate the committed files
-    python build_tools/scripts/gen_author_pass_library.py --check   # exit 1 if they are stale
+    python build_tools/scripts/gen_author_pass_library.py           # write ignored build output
+    python build_tools/scripts/gen_author_pass_library.py --check   # check that output against current source
 """
 
 from __future__ import annotations
 
+import argparse
 import ast
 import hashlib
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -34,8 +36,8 @@ import check_no_target_name as _names  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG = "src/merlin/resources/optimizations/authoring.json"
-OUTPUT = "src/merlin/experiments/phase1/author_skills/pass-library"
-TEST_ROOTS = ("tests", "packages")
+OUTPUT = "out/build/author-skills/pass-library"
+TEST_ROOTS = ("tests", "tools/timing/tests")
 WITHHELD = "(withheld: names a specific target; derive it from your workspace facts)"
 #: Generic timing-model resource names, one per kind the hint mapping distinguishes.
 RESOURCE_PROBES = (
@@ -68,7 +70,7 @@ def _screen(text, forbidden) -> str:
 
 
 def _resource_facets() -> list[tuple[str, str, tuple[str, ...]]]:
-    from merlin.experiments.phase1.feedback import mechanism_hints
+    from merlin.development.backend.feedback import mechanism_hints
 
     rows = []
     for label, probe in RESOURCE_PROBES:
@@ -164,7 +166,13 @@ def _symbol(root: Path, path: str, symbol: str, seen=frozenset()) -> dict:
 
 def current_binding(compiler: dict, root: Path = ROOT) -> dict:
     """Render current public owners without rewriting issued catalog records."""
-    from merlin.compiler.schedule.library_sources import canonical_module
+    path = root / "src/merlin/compiler/schedule/library_sources.py"
+    spec = importlib.util.spec_from_file_location("_pass_library_source_owner", path)
+    if spec is None or spec.loader is None:
+        raise ValueError("current compiler source owner is unavailable")
+    owner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(owner)
+    canonical_module = owner.canonical_module
 
     result = dict(compiler)
     module = canonical_module(result.get("module", ""))
@@ -354,25 +362,25 @@ def render(root: Path = ROOT) -> dict[str, str]:
     return out
 
 
-def stale(root: Path = ROOT) -> list[str]:
-    """Paths whose committed text differs from a fresh render, plus committed files no longer rendered."""
+def stale(root: Path = ROOT, *, output: Path | None = None) -> list[str]:
+    """Generated paths that differ from a fresh render, including obsolete files."""
     expected = render(root)
-    folder = root / OUTPUT
+    folder = output if output is not None else root / OUTPUT
     problems = [
         path
         for path, text in expected.items()
-        if not (folder / path).is_file() or (folder / path).read_text(encoding="utf-8") != text
+        if not (folder / path).is_file() or (folder / path).read_bytes() != text.encode("utf-8")
     ]
     present = {p.relative_to(folder).as_posix() for p in folder.rglob("*.md")} if folder.is_dir() else set()
     return problems + sorted(present - set(expected))
 
 
-def write(root: Path = ROOT) -> list[str]:
+def write(root: Path = ROOT, *, output: Path | None = None) -> list[str]:
     expected = render(root)
-    folder = root / OUTPUT
+    folder = output if output is not None else root / OUTPUT
     for path, text in expected.items():
         (folder / path).parent.mkdir(parents=True, exist_ok=True)
-        (folder / path).write_text(text, encoding="utf-8")
+        (folder / path).write_bytes(text.encode("utf-8"))
     removed = []
     for old in sorted(folder.rglob("*.md")):
         if old.relative_to(folder).as_posix() not in expected:
@@ -382,17 +390,20 @@ def write(root: Path = ROOT) -> list[str]:
 
 
 def main(argv=None) -> int:
-    argv = sys.argv[1:] if argv is None else argv
-    if "--check" in argv:
-        problems = stale()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=ROOT / OUTPUT, help="generated skill directory")
+    parser.add_argument("--check", action="store_true", help="compare the output to a fresh render")
+    args = parser.parse_args(argv)
+    if args.check:
+        problems = stale(output=args.output)
         if problems:
-            print("pass-library skill is stale; run build_tools/scripts/gen_author_pass_library.py:")
+            print("pass-library output is stale; regenerate with build_tools/scripts/gen_author_pass_library.py:")
             for path in problems:
-                print(f"  - {OUTPUT}/{path}")
+                print(f"  - {args.output / path}")
             return 1
-        print("pass-library skill is current")
+        print("pass-library output is current")
         return 0
-    for line in write():
+    for line in write(output=args.output):
         print(line)
     return 0
 

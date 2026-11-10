@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/kernels/ingest
+# src/merlin/kernels/ingest
 
 ## Purpose
 

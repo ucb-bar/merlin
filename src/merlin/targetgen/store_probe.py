@@ -179,9 +179,9 @@ def probe(
 
     out = DeclineBracket(target=target, dtype=dtype)
     try:
+        from merlin.development.testgen import profiles, writer
+        from merlin.development.testgen.declarations import for_target
         from merlin.evaluation.capsule import runner as CR
-        from merlin.experiments.phase0 import profiles, writer
-        from merlin.experiments.phase0.declarations import for_target
         from merlin.targetgen import corpus_spec
         from merlin.targetgen.target_experiment import load_target_experiment
     except Exception as exc:  # noqa: BLE001 — cannot ask: undecided, with the reason

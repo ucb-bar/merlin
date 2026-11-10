@@ -16,7 +16,7 @@ certificate ledger (``qa/tier_state.json``) and the capsule catalog. Per case:
 * **tile/fence, overlap** -- output stores per full-device fence from the newest grade row's timing
   census (``!`` when the stream is fenced after nearly every output tile) and the static overlap ratio
   (loads issued while compute is outstanding in the same fence epoch) of the grade's development
-  headroom (:mod:`merlin.experiments.phase1.feedback.fence_overlap`);
+  headroom (:mod:`merlin.development.backend.feedback.fence_overlap`);
 * **gain** -- per evidence kind, the first passing observation ÷ the best and ÷ the latest (above ×1 is
   faster), with when each was observed. Measured and modeled cycles are never put in one ratio.
 
@@ -204,7 +204,7 @@ def _primary(entry: dict, state: Any) -> tuple[dict | None, bool]:
 
 def _baselines(ctx) -> dict:
     """The workspace's staged reference-compiler baselines (``reference_baselines``), validated, else empty."""
-    from merlin.experiments.phase1.feedback import reference_baselines as RB
+    from merlin.development.backend.feedback import reference_baselines as RB
 
     workspace = ctx.experiment.get("workspace")
     if not workspace:
@@ -219,7 +219,7 @@ def _baselines(ctx) -> dict:
 
 def _reference(case: dict, rows: list[dict]) -> list[dict]:
     """The case's comparisons with each baseline: the newest gSIM cycles only, never a model estimate."""
-    from merlin.experiments.phase1.feedback import reference_baselines as RB
+    from merlin.development.backend.feedback import reference_baselines as RB
 
     measured = case["measured"]
     if measured:
@@ -245,7 +245,7 @@ def _fences(grade: dict, grade_rows: dict) -> dict[str, dict]:
     Output stores per fence come from each row's timing census; the static overlap ratio and the reading
     from the ``fence_overlap`` blocks of the grade's development headroom (:mod:`...fence_overlap`).
     """
-    from merlin.experiments.phase1.feedback.fence_overlap import dynamic_profile
+    from merlin.development.backend.feedback.fence_overlap import dynamic_profile
 
     out: dict[str, dict] = {}
     for name, graded in grade_rows.items():
@@ -457,7 +457,7 @@ def read(ctx) -> dict[str, Any]:
     ctx.state["keys"] = keys
     ctx.state["cases"] = {c["name"]: c for c in cases}
     totals = _totals(cases)
-    from merlin.experiments.phase1.feedback import reference_baselines as RB
+    from merlin.development.backend.feedback import reference_baselines as RB
 
     by_case = RB.index(baselines)
     labels = sorted({r["source"] for rows in by_case.values() for r in rows})

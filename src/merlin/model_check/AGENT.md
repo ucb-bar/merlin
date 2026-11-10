@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/model_check
+# src/merlin/model_check
 
 ## Purpose
 

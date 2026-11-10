@@ -13,6 +13,7 @@ from pathlib import Path
 import yaml
 
 from merlin.common.jsonio import readable_json
+from merlin.development.backend.feedback import setup_timing as _host_timing
 from merlin.evaluation.capsule.identity import CONTRACT_VERSION
 from merlin.evaluation.capsule.instructions import apply_executed_stream_rule
 from merlin.evaluation.capsule.instructions import (
@@ -25,7 +26,6 @@ from merlin.evaluation.capsule.lanes import (
     graded_execution_identity,
     operator_path_lane_execution,
 )
-from merlin.experiments.phase1.feedback import setup_timing as _host_timing
 from merlin.targetgen import seeded_grade as _seeded_grade
 from merlin.targetgen import tier_cache as _TC
 from merlin.targetgen.contract import schemas

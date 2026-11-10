@@ -267,30 +267,10 @@ def _captures(model_root: Path | None = None, *, include_claim_models: bool = Fa
 
 
 def _target_experiment(target: str) -> Path | None:
-    """The descriptor for ``target``, found by DIRECTORY NAME or by the name it DECLARES.
+    """Resolve an explicitly selected matching descriptor or its authored source owner."""
+    from merlin.targetgen.target_experiment import descriptor_for
 
-    The directory-only lookup is why `saturn_opu_mxv256d128` and `saturn_opu_mxv256d128_rvv` reported
-    `no_target_experiment` and this gate then exited 0 for both: their descriptors live in directories
-    named `saturn_opu`/`saturn_opu_rvv` and declare the configuration-qualified name in their own
-    ``target:``. Asked about the name everything else resolves by, the gate found nothing and called it
-    clean. Directory first (cheap, and the common case), then the declared name.
-    """
-    root = repo_root() / "experiments" / "studies" / "capsule_bench" / "targets"
-    cand = root / target / "target_experiment.yaml"
-    if cand.is_file():
-        return cand
-    if not root.is_dir():
-        return None
-    import yaml
-
-    for desc in sorted(root.glob("*/target_experiment.yaml")):
-        try:
-            doc = yaml.safe_load(desc.read_text(encoding="utf-8")) or {}
-        except (OSError, yaml.YAMLError):
-            continue
-        if str(doc.get("target") or "") == target:
-            return desc
-    return None
+    return descriptor_for(target)
 
 
 def _contract_target(target: str) -> str:
@@ -353,7 +333,7 @@ def audit(target: str, *, spec_path: Path | None = None) -> dict:
         app_demands = doc.get("application_demands") or {}
         sidecar = app_demands.get("sidecar")
         if sidecar:
-            from merlin.experiments.phase0.profiles import application_inventory_path
+            from merlin.development.testgen.profiles import application_inventory_path
 
             try:
                 inventory_path = application_inventory_path(spec_path)
@@ -660,14 +640,11 @@ def main(argv=None) -> int:
     # DEFAULT TARGET SET IS DISCOVERED, not named: every target that already has a tracked conformance
     # spec. A hardcoded default here would make this gate silently about one target forever, which is the
     # overfitting the whole module exists to prevent (and the no-target-name gate rightly rejects it).
-    from merlin.targetgen.corpora import conformance_reference_dir
-
-    targets = a.target or sorted(p.stem for p in conformance_reference_dir().glob("*.yaml"))
+    targets = a.target or []
     if not targets:
         print(
-            "no --target given and no tracked conformance spec found under "
-            "experiments/reference-data/phase0/conformance/; pass --target NAME "
-            "(with --write to create a reviewed reference)",
+            "pass --target NAME and select any comparison requirement with --spec PATH; "
+            "generated requirements are run inputs, not committed defaults",
             file=sys.stderr,
         )
         return 2
@@ -679,9 +656,9 @@ def main(argv=None) -> int:
                 file=sys.stderr,
             )
             return 2
-        from merlin.experiments.phase0.declarations import for_target
-        from merlin.experiments.phase0.evidence import export_evidence, select_evidence
-        from merlin.experiments.phase0.profiles import selected_software_spec_path
+        from merlin.development.testgen.declarations import for_target
+        from merlin.development.testgen.evidence import export_evidence, select_evidence
+        from merlin.development.testgen.profiles import selected_software_spec_path
         from merlin.targetgen.application_inventory import application_demand_inventory
         from merlin.targetgen.corpora import descriptor_path
         from merlin.targetgen.target_experiment import load_target_experiment

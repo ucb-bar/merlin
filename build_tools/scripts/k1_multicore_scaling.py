@@ -44,7 +44,7 @@ from pathlib import Path
 
 import numpy as np
 
-from merlin.baselines import bundle as _bundle
+from merlin.capture import bundle as _bundle
 from merlin.common.artifacts import artifacts_dir
 from merlin.mining import k1
 from merlin.mining.registry import load_rvv_package

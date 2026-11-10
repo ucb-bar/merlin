@@ -54,6 +54,19 @@ import the driver or backend loader. Framework dependencies are imported only
 by the workflows that need them. A package being installed does not grant a
 candidate access to graders, hidden inputs or independent references.
 
+## Compiler development
+
+`development/testgen/` derives compiler tests from selected specifications and source
+evidence. `development/backend/` owns the native authoring engine, which develops
+correctness and performance together. `experiments/` inside the Python package selects
+and tracks those workflows; the nine authored files at the repository root only provide
+the catalog, generic definition and template. External-framework comparisons belong in
+`evaluation/frameworks/`; the console and independent timing observer live in `tools/`.
+
+Generated corpora, bundles, captures, compiler snapshots and caches live under ignored
+`out/`. A run binds its explicitly selected reviewed inputs. Historical artifacts retain
+their original bytes and source identities; they are not discovered as fresh defaults.
+
 ## Representations
 
 The xDSL prototypes live in `src/merlin/xdsl_dialects/`:

@@ -284,7 +284,7 @@ def freeze_study(
     # complete tree, so even loading it is private I/O.  Keep that real loader strictly downstream of
     # the all-cell object-regeneration/result-relink barrier above.  The adjacent registration gives
     # us all public package paths/digests needed before this point; no session tree is needed earlier.
-    from merlin.baselines.executorch_session import load_session_package
+    from merlin.evaluation.frameworks.executorch_session import load_session_package
 
     for backend in raw["backends"]:
         if backend["kind"] != "external_runtime":
@@ -348,7 +348,7 @@ def freeze_study(
             long_lived_inputs.append((f"capture {model.name}/{precision}", [capture], artifact["sha256"]))
             artifact["path"] = str(capture)
             capture_roots[(model.name, precision)] = capture
-            from merlin.baselines.executorch_session import (
+            from merlin.evaluation.frameworks.executorch_session_contract import (
                 capture_session_identity,
                 session_identity_sha256,
             )

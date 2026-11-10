@@ -36,7 +36,7 @@ _GATE = "rtl-facts-schema"
 #: Where facts artifacts live. The cache is purgeable and usually absent; the fixtures are tracked and
 #: are what makes this gate non-vacuous where there is no RTL.
 SEARCH = (
-    "experiments/reference-data/target-inputs/*/contracts/rtl_facts/facts.json",
+    "experiments/inputs/target-inputs/*/contracts/rtl_facts/facts.json",
     "tests/fixtures/**/contracts/rtl_facts/facts.json",
     "tests/data/**/*facts*.json",
     "out/artifacts/cache/rtl_introspect/*/facts.json",

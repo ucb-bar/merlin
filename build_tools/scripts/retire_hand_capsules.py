@@ -49,7 +49,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 
-from merlin.experiments.phase0.declarations import all_declarations, for_target  # noqa: E402
+from merlin.development.testgen.declarations import all_declarations, for_target  # noqa: E402
 from merlin.targetgen import corpus_spec as CS  # noqa: E402
 from merlin.targetgen import tier_policy as TP  # noqa: E402
 

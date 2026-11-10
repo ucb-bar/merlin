@@ -28,7 +28,7 @@ def _gate():
 
 def _tree(tmp_path: Path, files: dict[str, str]) -> Path:
     for rel, body in files.items():
-        path = tmp_path / "experiments/reference-data/target-inputs" / rel
+        path = tmp_path / "experiments/inputs/target-inputs" / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(textwrap.dedent(body), encoding="utf-8")
     return tmp_path

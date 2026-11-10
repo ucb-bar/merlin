@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/integrations
+# src/merlin/integrations
 
 Owns upstream discovery/import/process adapters, not upstream compiler semantics.
 Keep PyTorch/model2MLIR capture separate from compiler Python bindings and ModeLIR
@@ -15,7 +15,7 @@ Preserve configured-root resolution inside the artifact lock; never move numeric
 semantics here. This is not multi-checkout or noncooperating-thread isolation.
 
 `specir.importable` scopes checkout paths while retaining normal module identities.
-Discovery remains caller-owned: capture has its sibling fallback, Phase 0 may use an
+Discovery remains caller-owned: capture has its sibling fallback, test generation may use an
 installed package. Explicit roots reject conflicting cached owners, never reload them.
-Phase-0 startup receipts and golden-cache identity include this adapter's source bytes;
+test-generation startup receipts and golden-cache identity include this adapter's source bytes;
 that does not establish a commitment to every upstream SpecIR source dependency.

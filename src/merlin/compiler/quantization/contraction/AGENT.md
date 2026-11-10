@@ -1,4 +1,4 @@
-# AGENT.md - src/merlin/compiler/quantization/contraction
+# src/merlin/compiler/quantization/contraction
 
 This package owns source-bound contraction precision: intake, exact numerical
 records, checked logical-value conversion, static operand preparation, explicit

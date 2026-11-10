@@ -1,8 +1,7 @@
 # Merlin repository
 
-Merlin derives capsule tests and develops target compilers. The joint experiment
-combines correctness and performance authoring using the native Phase 1 engine;
-historical Phase 0/1/2 names remain in the module layout and separate workflows.
+Merlin derives capsule tests and develops target compilers. Test generation derives a reviewed corpus; backend generation develops correctness
+and performance together through the native authoring engine.
 
 ## Ownership
 
@@ -10,18 +9,20 @@ historical Phase 0/1/2 names remain in the module layout and separate workflows.
   target/toolchain and verification primitives independent of research orchestration.
 - `src/merlin/evaluation/`: independent execution assessment and grading. Source
   relocation preserves withheld access roles and binds actual implementation bytes.
-- `src/merlin/experiments/` and `src/merlin/analysis/dse/`: experiment orchestration
+- `src/merlin/development/`, `src/merlin/experiments/` and `src/merlin/analysis/dse/`: backend generation, experiment orchestration
   and design-space analysis in the same namespace; optional dependencies stay lazy
   and compiler/research access boundaries remain explicit.
 - `src/merlin/resources/` and `src/merlin/runtime/native/`: installed public data
   and target-independent native runtime sources, respectively.
-- `packages/`: historical project metadata/inputs and the independent `merlin-timing` observer distribution.
+- `tools/`: the standalone console and independent timing observer; not split Merlin packages.
 - `examples/`: small walkthroughs and target-owned public inputs.
-- `experiments/`: the catalog, study definitions and unbundled reproduction inputs;
-  start here to select a study. These inputs are separate from installed engines.
+- `experiments/`: nine authored catalog, definition, template and instruction files.
+  Engine implementations live under `src/merlin/development/{testgen,backend}/`.
+  Generated corpora and historical study payloads are explicit artifacts under ignored `out/`.
 - `tests/`: the permanent suite, capped at 150 collected cases including parametrization.
 - `build_tools/`, `docs/`, `third_party/`: build/gates, durable docs, and opt-in upstream dependencies.
-- `out/{runs,artifacts,build}/`: generated state. Required source/reference fixtures belong elsewhere.
+- `out/{runs,artifacts,build}/`: generated runs, captures, corpora, bundles and caches.
+  Keep only small authored inputs and the compact suite's distinct pinned regressions in source.
 
 There is one installed package at `src/merlin/`; the root `merlin/` tree is gone.
 The src layout prevents the working directory from supplying an accidental second
@@ -61,7 +62,7 @@ into general passes and cost models. Check additional shapes, tails and independ
 and retain precise fallback/refusal when the optimization cannot be proved.
 
 Preserve corpus identities, hidden answers, frozen compiler/certificate attribution, and native
-phase grading semantics. Register access identities before relocating graders or oracles.
+generation and grading semantics. Register access identities before relocating graders or oracles.
 Never infer dead runs from age or a directory suffix; use leases and explicit retention pins.
 Do not modify historical evidence during migrations.
 

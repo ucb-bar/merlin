@@ -181,7 +181,7 @@ npm test --prefix build_tools/plots/snippet2svg
 ```
 
 The tests cover source integrity, full-file tokenization before cropping,
-original line numbers, semantic MLIR colors, all Phase 1/capsule snippet
+original line numbers, semantic MLIR colors, all backend generation/capsule snippet
 languages, XML escaping, deterministic bytes, source mtime/hash preservation,
 layout bounds, and the absence of browser-only or raster SVG features.
 

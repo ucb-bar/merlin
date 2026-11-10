@@ -240,21 +240,19 @@ def _contract_bases() -> dict[str, Path]:
 
     The name is the one the DOCUMENT declares, never the directory it sits in: the two differ, and a
     directory-keyed scan once attributed a pinned copy's capsules to a name no target owns. The reference
-    examples are searched before the bundled contract mirrors, so a target present in both is audited
-    where it is maintained.
+    examples are audited where their authored contracts are maintained.
     """
     repo = _repo_root()
     out: dict[str, Path] = {}
-    for pattern in (f"examples/*/target/{_CONTRACTS}", f"experiments/reference-data/target-inputs/*/{_CONTRACTS}"):
-        for contracts in sorted(repo.glob(pattern)):
-            for document in _DOCUMENTS:
-                path = contracts / document
-                if not path.is_file():
-                    continue
-                name = _declared_name(path)
-                if name is not None:
-                    out.setdefault(name, contracts.parent)
-                break
+    for contracts in sorted(repo.glob(f"examples/*/*/target/{_CONTRACTS}")):
+        for document in _DOCUMENTS:
+            path = contracts / document
+            if not path.is_file():
+                continue
+            name = _declared_name(path)
+            if name is not None:
+                out.setdefault(name, contracts.parent)
+            break
     return out
 
 

@@ -17,9 +17,9 @@ code_refs:
   - src/merlin/kernels/action_catalog.py
   - src/merlin/mining/fork_from_action.py
   - src/merlin/kernels/search_step.py
-  - src/merlin/experiments/phase1/optimization_suggestions.py
-  - src/merlin/experiments/phase1/operation_optimizations.py
-  - src/merlin/experiments/phase1/authoring.py
+  - src/merlin/development/backend/optimization_suggestions.py
+  - src/merlin/development/backend/operation_optimizations.py
+  - src/merlin/development/backend/authoring.py
   - src/merlin/resources/optimizations
   - examples/tutorials/05_cca.ipynb
 ---
@@ -47,7 +47,7 @@ Three things have different jobs:
 | Command scheduling | `src/merlin/compiler/schedule/` | `block.py`, `residency.py`, `derive.py` |
 | Selectable optimization strategies | `src/merlin/compiler/optimizations/` | `registry.py`, then the selected strategy |
 | Authoring advice | `src/merlin/resources/optimizations/` | The four JSON catalogs below |
-| Agent instructions | `src/merlin/experiments/phase1/author_skills/` | `pass-library`, `scheduling-api`, and the relevant skill |
+| Agent instructions | `src/merlin/development/backend/author_skills/` | `pass-library`, `scheduling-api`, and the relevant skill |
 
 A catalog entry describes a mechanism and points to code; it is not the pass
 implementation. A prompt tells the agent how to work; it does not make a missing
@@ -156,9 +156,9 @@ properties with the new emitted CCA. `search_step.make_step` distinguishes an
 unmet promise from an action with no checkable promise. Correctness and measured
 speedup enter separately through the evaluator's result.
 
-The Phase 1 assisted authoring loop exposes public CCA/action queries and stages
+The backend generation assisted authoring loop exposes public CCA/action queries and stages
 library advice. `authoring.execute` runs admitted author rounds, certification
-and completion. The mining beam and explicit Phase 2 component feedback are
+and completion. The mining beam and explicit backend optimization component feedback are
 separate existing consumers; CCA is not automatically run by every compile call.
 
 A property match is useful feedback, not independent execution evidence.

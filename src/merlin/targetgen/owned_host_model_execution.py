@@ -92,7 +92,7 @@ def _resolve_source_composition(module, groups, eligible_groups, *, preferences,
     from xdsl.dialects import func
 
     from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups
-    from merlin.experiments.phase1.feedback.private_group_provenance import eligible_source_identity
+    from merlin.development.backend.feedback.private_group_provenance import eligible_source_identity
     from merlin.llvmlower.borrowed_effects import BorrowedBufferEffects
     from merlin.llvmlower.sibling_source_route import SiblingSourceRoute
     from merlin.llvmlower.source_region_host import outline_source_siblings
@@ -192,9 +192,9 @@ def execute_owned_host_model(
     reachable_oracle_tiers=None,
     descriptor_effects=None,
 ):
+    from merlin.development.backend.feedback import private_instruction_coordinator as coordinator
+    from merlin.development.backend.feedback import private_instruction_declaration as declaration
     from merlin.evaluation.capsule.model_inputs import _resolve_model_host_lane
-    from merlin.experiments.phase1.feedback import private_instruction_coordinator as coordinator
-    from merlin.experiments.phase1.feedback import private_instruction_declaration as declaration
 
     if not isinstance(selection_record, dict):
         raise ValueError("public model needs coordinator-selected owned host build inputs")
@@ -465,9 +465,9 @@ def _audit_owned_host_device_build(
 ):
     """Recompute original group identities and audit the actual linked objects."""
     from merlin.common import mlir_query as mq
-    from merlin.experiments.phase1.feedback.private_device_audit import audit_built_device_host_compute
-    from merlin.experiments.phase1.feedback.private_full_models import _linked_symbols
-    from merlin.experiments.phase1.feedback.private_group_provenance import (
+    from merlin.development.backend.feedback.private_device_audit import audit_built_device_host_compute
+    from merlin.development.backend.feedback.private_full_models import _linked_symbols
+    from merlin.development.backend.feedback.private_group_provenance import (
         convolution_input_preparations,
         join_routed_source_groups,
         join_sibling_source_composition,
@@ -529,7 +529,7 @@ def _audit_owned_host_device_build(
         sibling_source.record()
         preparation = Path(output["elf"]).parent / "bundle_preparation.json"
         if type(sibling_source) is HeadBatchSourceRoute:
-            from merlin.experiments.phase1.feedback.private_head_provenance import join_heads
+            from merlin.development.backend.feedback.private_head_provenance import join_heads
 
             composition = join_heads(
                 emitted,
@@ -544,7 +544,7 @@ def _audit_owned_host_device_build(
                 shared_rhs_row_views=sibling_source.shared_rhs_row_views,
             )
         elif sibling_source.partial:
-            from merlin.experiments.phase1.feedback.private_component_provenance import join_components
+            from merlin.development.backend.feedback.private_component_provenance import join_components
 
             composition = join_components(
                 emitted,
@@ -575,7 +575,7 @@ def _audit_owned_host_device_build(
         "merlin.original_sibling_source_components.v1",
         "merlin.original_head_source_composition.v1",
     }:
-        from merlin.experiments.phase1.feedback.private_component_provenance import source_subset
+        from merlin.development.backend.feedback.private_component_provenance import source_subset
 
         ordinary = composition["ordinary_joined_groups"]
         source["conv_input_preparation"] = convolution_input_preparations(
@@ -1377,7 +1377,7 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None, des
             "n_eligible": len(dispatch["eligible_tasks"]),
             "n_completed_eligible": len(dispatch["eligible_tasks"]),
         }
-        from merlin.experiments.phase1.feedback.composition_brief import build as composition_feedback
+        from merlin.development.backend.feedback.composition_brief import build as composition_feedback
 
         composition_summary = composition_feedback(fresh_record, tiers=tiers)
         return {

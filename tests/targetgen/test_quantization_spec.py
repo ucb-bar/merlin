@@ -14,7 +14,7 @@ def test_mx_software_spec_keeps_three_formats_separate_and_epilogues_on_host():
     from merlin.common.paths import repo_root
 
     spec = software_spec.load_software_spec(
-        repo_root() / "examples/mx_gemmini/target/software-spec.yaml", target="mx_gemmini"
+        repo_root() / "examples/compiler-generation/mx_gemmini/target/software-spec.yaml", target="mx_gemmini"
     )
     assert spec["status"] == "unreviewed"
     declarations = validate_quantization_declarations(spec)

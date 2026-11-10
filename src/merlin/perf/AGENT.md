@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/perf
+# src/merlin/perf
 
 ## Purpose
 
@@ -85,7 +85,7 @@ The namespace is shared without duplicate implementations: experiments owns
 the isolated/controlled/paired probe providers, host-region/physical-transition/lane-migration
 qualifiers, source contraction/convolution preparation, source-program-pair binding and execution,
 initializer-elision admission, and `analysis_worker` (bounded experiment workers that load
-the installed Phase 2 emission analyzer). These owners consume concrete experiment revisions
+the installed backend optimization emission analyzer). These owners consume concrete experiment revisions
 and execution capabilities; they are not core primitives. Analysis owns
 `recovery` (known-answer benchmark scoring and `merlin-recovery`). Keep pure cost/evidence
 primitives here; sandbox capability enforcement stays with experiments. Audit classification
@@ -223,7 +223,7 @@ Its production caller is `group_headroom.group_rank`, reported beside each state
 candidate's own decoded stream. Every bound is derived through the selected support (the
 load-configuration layout and retain sentinel via `targetgen.rocc.decode`) or the target's RTL
 facts, and an underivable one REFUSES. Callers: `trace_check`'s declared residency modes and
-`merlin.experiments.phase2.claims.dispatch`. The measured-claims coordinator refuses to seal them:
+`merlin.development.backend.optimization.claims.dispatch`. The measured-claims coordinator refuses to seal them:
 they read no cycles.
 
 `staged_roofline` V2 preserves useful work independently from hypothetical tiling
@@ -270,7 +270,7 @@ with its parent. Requests supply explicit source and contract-root paths. Honor 
 active canonical import finder, verify its source origin and compile fresh loader-provided
 source; never fall back to native stages or cached bytecode. Preserve deadlines,
 process-group cleanup, frozen transport and output checks. Moving its owner does not
-qualify installed standalone Phase 2 execution or arbitrary managed-worker deployments.
+qualify installed standalone backend optimization execution or arbitrary managed-worker deployments.
 
 ## Research workflow responsibilities
 

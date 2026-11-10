@@ -22,5 +22,5 @@ counts are not MLIR operation counts or runtime invocation counts.
 For target-derived quantization, select a reviewed recipe using `--recipe` rather
 than assuming a dtype token expresses the accelerator's format. Missing original
 graphs, transformation lineage, host support or precision evidence remain diagnostic.
-See the [Phase 0 specification guide](../../../docs/guides/10-compiler-generation.md)
+See the [test generation specification guide](../../../docs/guides/10-compiler-generation.md)
 for operation accounting, capsule obligations and verified admission.

@@ -124,7 +124,7 @@ def phase0_run_rows(root: Path) -> list[dict[str, Any]]:
 def _level(env: Mapping[str, Any]) -> str | None:
     config = env.get("run_config") if isinstance(env.get("run_config"), Mapping) else {}
     try:
-        from ..phase1.levels import level_for_phase1
+        from merlin.development.backend.levels import level_for_phase1
 
         return level_for_phase1(
             {
@@ -225,7 +225,6 @@ def phase2_row(run_dir: Path, now: float, *, operator_private: bool) -> dict[str
 
 
 def collect(target: str, now: float, *, operator_private: bool) -> dict[str, Any]:
-    from merlin.common import paths
     from merlin.targetgen import target_index
 
     problems: list[dict[str, Any]] = []
@@ -234,10 +233,15 @@ def collect(target: str, now: float, *, operator_private: bool) -> dict[str, Any
     except Exception as exc:  # noqa: BLE001 -- an unreadable index is shown, never fatal
         index, problems = None, [{"path": "INDEX", "problem": f"{type(exc).__name__}: {exc}"}]
     rows: dict[str, list[dict[str, Any]]] = {"releases": release_rows(index, operator_private=operator_private)}
-    rows["0"] = phase0_run_rows(paths.phase_runs_root(target, 0))
+    from merlin.common.paths import generation_run_roots
+
+    rows["0"] = [row for root in generation_run_roots(target, "0") for row in phase0_run_rows(root)]
     for phase, reader in (("1", phase1_row), ("2", None)):
         out = []
-        for run in _dirs(paths.phase_runs_root(target, phase)):
+        discovered = [run for root in generation_run_roots(target, phase) for run in _dirs(root)]
+        for run in discovered:
+            if phase == "1" and run.name == "optimization":
+                continue
             try:
                 out.append(phase1_row(run, now) if reader else phase2_row(run, now, operator_private=operator_private))
             except Exception as exc:  # noqa: BLE001 -- one unreadable run never hides the others
@@ -560,9 +564,9 @@ def pages(opts, ctx, now: float) -> dict[str, str]:
 
     if opts.compare is not None:
         return {"": compare_page(opts.compare, now, operator_private=opts.operator_private)}
-    from merlin.common import paths
+    from merlin.common.paths import generation_run_roots
 
-    roots = [paths.phase_runs_root(opts.target, n) for n in (0, 1, 2)]
+    roots = [root for n in ("0", "1", "2") for root in generation_run_roots(opts.target, n)]
     runs = [run for root in roots for run in _dirs(root)]
     key = (
         tuple(views._listing(run) for run in runs),

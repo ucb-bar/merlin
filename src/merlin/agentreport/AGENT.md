@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/agentreport
+# src/merlin/agentreport
 
 ## Purpose
 Read a directory of agentic experiment runs and say, per run, **what it is and what it did** — arm,

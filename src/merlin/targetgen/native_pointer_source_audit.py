@@ -127,7 +127,7 @@ def _verify_current(emission, native, *, target, entry_symbol, readback_policy, 
     elf = original._pinned_native_file(native, "elf")
     if artifacts.get(elf.relative_to(build).as_posix()) != native["elf"]:
         raise NativeModelExecutionError("standalone source original ELF is outside its complete build")
-    from merlin.experiments.phase1.feedback.candidate_observations import reopen_native_products
+    from merlin.development.backend.feedback.candidate_observations import reopen_native_products
 
     emission_root = _plain(Path(emission["command_buffer"]["path"]).parent)
     if Path(emission["lowered_mlir"]["path"]).parent != emission_root:

@@ -19,6 +19,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
 from merlin.common import digest as _mdigest
 from merlin.common import jsonio as _mjson
 
@@ -175,110 +176,179 @@ def _receipt_rows(root: Path, value: object, label: str, *, verify_bytes: bool) 
         row = _closed(raw, {"path", "sha256", "size"}, f"{label}[{index}]")
         relative = Path(str(row["path"]))
         path_text = relative.as_posix()
-        if (relative.is_absolute() or not relative.parts or ".." in relative.parts
-                or path_text != str(row["path"]) or path_text <= previous
-                or not _is_sha(row["sha256"]) or type(row["size"]) is not int
-                or row["size"] < 0):
+        if (
+            relative.is_absolute()
+            or not relative.parts
+            or ".." in relative.parts
+            or path_text != str(row["path"])
+            or path_text <= previous
+            or not _is_sha(row["sha256"])
+            or type(row["size"]) is not int
+            or row["size"] < 0
+        ):
             raise ValueError(f"{label}[{index}] is unsafe or unordered")
         previous = path_text
         path = (root / relative).absolute()
         if verify_bytes and (
-                _has_symlink_component(root, relative) or path.is_symlink() or not path.is_file()
-                or path.stat().st_size != row["size"] or _sha(path) != row["sha256"]):
+            _has_symlink_component(root, relative)
+            or path.is_symlink()
+            or not path.is_file()
+            or path.stat().st_size != row["size"]
+            or _sha(path) != row["sha256"]
+        ):
             raise ValueError(f"{label}[{index}] identity differs")
         paths.append(path.resolve() if verify_bytes else path)
     return tuple(paths)
 
 
 def executorch_session_resources(
-    compiler_input: str | Path, *, include_private: bool = False,
+    compiler_input: str | Path,
+    *,
+    include_private: bool = False,
 ) -> ExecuTorchSessionResources:
     """Verify a producer handoff without opening private session tensors by default."""
-    from merlin.baselines import executorch_session as session
+    from merlin.evaluation.frameworks import executorch_session as session
 
     compiler_input = Path(compiler_input).absolute()
-    input_document = _load_canonical(compiler_input, {
-        "schema_version", "kind", "compiler_or_framework_source_sha256", "capture_sha256",
-        "capture_session_identity_sha256", "producer_receipt", "package_metadata",
-    }, "ExecuTorch compiler input")
-    if (input_document["schema_version"] != 1
-            or input_document["kind"] != session.PAPER_COMPILER_INPUT_KIND
-            or not all(_is_sha(input_document[name]) for name in (
-                "compiler_or_framework_source_sha256", "capture_sha256",
-                "capture_session_identity_sha256"))):
+    input_document = _load_canonical(
+        compiler_input,
+        {
+            "schema_version",
+            "kind",
+            "compiler_or_framework_source_sha256",
+            "capture_sha256",
+            "capture_session_identity_sha256",
+            "producer_receipt",
+            "package_metadata",
+        },
+        "ExecuTorch compiler input",
+    )
+    if (
+        input_document["schema_version"] != 1
+        or input_document["kind"] != session.PAPER_COMPILER_INPUT_KIND
+        or not all(
+            _is_sha(input_document[name])
+            for name in ("compiler_or_framework_source_sha256", "capture_sha256", "capture_session_identity_sha256")
+        )
+    ):
         raise ValueError("ExecuTorch compiler input schema or frozen identities differ")
     root = compiler_input.parent.resolve()
     producer = _safe_ref(root, input_document["producer_receipt"], "ExecuTorch producer receipt")
     metadata_path = _safe_ref(root, input_document["package_metadata"], "ExecuTorch package metadata")
-    receipt = _load_canonical(producer, {
-        "schema_version", "kind", "status", "producer_id", "producer_source_sha256", "target",
-        "model", "variant", "xnnpack", "session_package_schema", "session_manifest_sha256",
-        "runner", "runner_architecture", "public_files", "private_files", "identities",
-        "identity_sha256",
-    }, "ExecuTorch producer receipt")
-    identities = _closed(receipt["identities"], {
-        "capture_sha256", "capture_session_identity_sha256", "framework_source_sha256",
-        "build_environment_sha256", "build_invocation_environment_sha256", "executorch_identity",
-        "model2mlir_identity", "toolchain_identity", "external_model_source",
-    }, "ExecuTorch producer identities")
+    receipt = _load_canonical(
+        producer,
+        {
+            "schema_version",
+            "kind",
+            "status",
+            "producer_id",
+            "producer_source_sha256",
+            "target",
+            "model",
+            "variant",
+            "xnnpack",
+            "session_package_schema",
+            "session_manifest_sha256",
+            "runner",
+            "runner_architecture",
+            "public_files",
+            "private_files",
+            "identities",
+            "identity_sha256",
+        },
+        "ExecuTorch producer receipt",
+    )
+    identities = _closed(
+        receipt["identities"],
+        {
+            "capture_sha256",
+            "capture_session_identity_sha256",
+            "framework_source_sha256",
+            "build_environment_sha256",
+            "build_invocation_environment_sha256",
+            "executorch_identity",
+            "model2mlir_identity",
+            "toolchain_identity",
+            "external_model_source",
+        },
+        "ExecuTorch producer identities",
+    )
     architecture = _closed(
-        receipt["runner_architecture"], {"elf_class", "endianness", "machine", "machine_id"},
-        "ExecuTorch runner architecture")
-    if (receipt["schema_version"] != 1
-            or receipt["kind"] != session.PAPER_PRODUCER_RECEIPT_KIND
-            or receipt["status"] != "finalized" or receipt["producer_id"] != session.PAPER_PRODUCER_ID
-            or receipt["producer_source_sha256"] != _sha(Path(session.__file__))
-            or receipt["target"] != "k1-rv64gcv-linux" or receipt["xnnpack"] is not True
-            or receipt["session_package_schema"] != session.PACKAGE_SCHEMA
-            or architecture != {"elf_class": 64, "endianness": "little", "machine": "riscv",
-                                    "machine_id": 243}
-            or not _is_sha(receipt["session_manifest_sha256"])
-            or not _is_sha(receipt["identity_sha256"])
-            or receipt["identity_sha256"] != hashlib.sha256(_canonical(identities)).hexdigest()
-            or identities["framework_source_sha256"]
-            != input_document["compiler_or_framework_source_sha256"]
-            or identities["capture_sha256"] != input_document["capture_sha256"]
-            or identities["capture_session_identity_sha256"]
-            != input_document["capture_session_identity_sha256"]):
+        receipt["runner_architecture"],
+        {"elf_class", "endianness", "machine", "machine_id"},
+        "ExecuTorch runner architecture",
+    )
+    if (
+        receipt["schema_version"] != 1
+        or receipt["kind"] != session.PAPER_PRODUCER_RECEIPT_KIND
+        or receipt["status"] != "finalized"
+        or receipt["producer_id"] != session.PAPER_PRODUCER_ID
+        or receipt["producer_source_sha256"] != _sha(Path(session.__file__))
+        or receipt["target"] != "k1-rv64gcv-linux"
+        or receipt["xnnpack"] is not True
+        or receipt["session_package_schema"] != session.PACKAGE_SCHEMA
+        or architecture != {"elf_class": 64, "endianness": "little", "machine": "riscv", "machine_id": 243}
+        or not _is_sha(receipt["session_manifest_sha256"])
+        or not _is_sha(receipt["identity_sha256"])
+        or receipt["identity_sha256"] != hashlib.sha256(_canonical(identities)).hexdigest()
+        or identities["framework_source_sha256"] != input_document["compiler_or_framework_source_sha256"]
+        or identities["capture_sha256"] != input_document["capture_sha256"]
+        or identities["capture_session_identity_sha256"] != input_document["capture_session_identity_sha256"]
+    ):
         raise ValueError("ExecuTorch producer receipt identity differs")
     public = _receipt_rows(root, receipt["public_files"], "ExecuTorch public files", verify_bytes=True)
-    private = _receipt_rows(
-        root, receipt["private_files"], "ExecuTorch private files", verify_bytes=include_private)
+    private = _receipt_rows(root, receipt["private_files"], "ExecuTorch private files", verify_bytes=include_private)
     if set(public) & set(private) or metadata_path not in public:
         raise ValueError("ExecuTorch producer file classification is invalid")
     runner_row = _closed(receipt["runner"], {"path", "sha256", "size"}, "ExecuTorch runner")
-    runner_matches = [
-        path for path in public if path.relative_to(root).as_posix() == runner_row["path"]]
-    if (len(runner_matches) != 1 or _sha(runner_matches[0]) != runner_row["sha256"]
-            or runner_matches[0].stat().st_size != runner_row["size"]):
+    runner_matches = [path for path in public if path.relative_to(root).as_posix() == runner_row["path"]]
+    if (
+        len(runner_matches) != 1
+        or _sha(runner_matches[0]) != runner_row["sha256"]
+        or runner_matches[0].stat().st_size != runner_row["size"]
+    ):
         raise ValueError("ExecuTorch producer runner differs from its public graph")
     header = runner_matches[0].read_bytes()[:20]
-    if (len(header) < 20 or header[:4] != b"\x7fELF" or header[4] != 2 or header[5] != 1
-            or int.from_bytes(header[18:20], "little") != 243):
+    if (
+        len(header) < 20
+        or header[:4] != b"\x7fELF"
+        or header[4] != 2
+        or header[5] != 1
+        or int.from_bytes(header[18:20], "little") != 243
+    ):
         raise ValueError("ExecuTorch producer runner is not ELF64 little-endian RISC-V")
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    if (metadata.get("schema") != session.PACKAGE_SCHEMA
-            or metadata.get("model") != receipt["model"]
-            or metadata.get("variant") != receipt["variant"]
-            or metadata.get("xnnpack") is not True
-            or metadata.get("capture_sha256") != identities["capture_sha256"]
-            or metadata.get("capture_session_identity_sha256")
-            != identities["capture_session_identity_sha256"]
-            or metadata.get("framework_source_sha256") != identities["framework_source_sha256"]
-            or metadata.get("build_environment_sha256") != identities["build_environment_sha256"]
-            or metadata.get("build_invocation_environment_sha256")
-            != identities["build_invocation_environment_sha256"]):
+    if (
+        metadata.get("schema") != session.PACKAGE_SCHEMA
+        or metadata.get("model") != receipt["model"]
+        or metadata.get("variant") != receipt["variant"]
+        or metadata.get("xnnpack") is not True
+        or metadata.get("capture_sha256") != identities["capture_sha256"]
+        or metadata.get("capture_session_identity_sha256") != identities["capture_session_identity_sha256"]
+        or metadata.get("framework_source_sha256") != identities["framework_source_sha256"]
+        or metadata.get("build_environment_sha256") != identities["build_environment_sha256"]
+        or metadata.get("build_invocation_environment_sha256") != identities["build_invocation_environment_sha256"]
+    ):
         raise ValueError("ExecuTorch package metadata differs from producer receipt")
     if include_private:
         package = session.load_session_package(root)
-        if (package.runner != runner_matches[0]
-                or package.capture_sha256 != identities["capture_sha256"]
-                or package.capture_session_identity_sha256
-                != identities["capture_session_identity_sha256"]):
+        if (
+            package.runner != runner_matches[0]
+            or package.capture_sha256 != identities["capture_sha256"]
+            or package.capture_session_identity_sha256 != identities["capture_session_identity_sha256"]
+        ):
             raise ValueError("ExecuTorch full package differs from its producer receipt")
     return ExecuTorchSessionResources(
-        compiler_input.resolve(), root, metadata_path, producer, runner_matches[0], public, private,
-        dict(identities), str(receipt["session_manifest_sha256"]))
+        compiler_input.resolve(),
+        root,
+        metadata_path,
+        producer,
+        runner_matches[0],
+        public,
+        private,
+        dict(identities),
+        str(receipt["session_manifest_sha256"]),
+    )
 
 
 def _load_merlin_input(path: Path) -> tuple[Mapping[str, Any], dict[str, Path]]:
@@ -450,7 +520,11 @@ def merlin_session_resources(compiler_input: str | Path) -> MerlinSessionResourc
 
 
 def stage_compiler_input(
-    source: str | Path, destination: str | Path, *, recipe: str, include_private: bool = True,
+    source: str | Path,
+    destination: str | Path,
+    *,
+    recipe: str,
+    include_private: bool = True,
 ) -> Path:
     """Retain a compiler input and, for Merlin, its exact transitive producer graph."""
     source, destination = Path(source).absolute(), Path(destination).resolve()
@@ -462,8 +536,11 @@ def stage_compiler_input(
         destination_root = destination.parent
         destination_root.mkdir(parents=True, exist_ok=True)
         for original in (
-                resources.package_metadata, resources.producer_receipt,
-                *resources.public_files, *(resources.private_files if include_private else ())):
+            resources.package_metadata,
+            resources.producer_receipt,
+            *resources.public_files,
+            *(resources.private_files if include_private else ()),
+        ):
             relative = original.relative_to(resources.package_root)
             target = destination_root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -564,9 +641,11 @@ def regenerate_model_object(
     if recipe == EXECUTORCH_RECIPE:
         resources = executorch_session_resources(compiler_input, include_private=False)
         identities = resources.identities
-        if (identities["framework_source_sha256"] != source_identity_sha256
-                or identities["capture_sha256"] != capture_sha256
-                or _sha(resources.package_metadata) != runtime_artifact_sha256):
+        if (
+            identities["framework_source_sha256"] != source_identity_sha256
+            or identities["capture_sha256"] != capture_sha256
+            or _sha(resources.package_metadata) != runtime_artifact_sha256
+        ):
             raise ValueError("ExecuTorch compiler input differs from its frozen package identities")
         output.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(resources.runner, output)

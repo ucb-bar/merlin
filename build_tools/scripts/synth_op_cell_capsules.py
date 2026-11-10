@@ -8,8 +8,8 @@ import hashlib
 import json
 from pathlib import Path
 
-from merlin.experiments.phase0.generation import _require_distinct_corpus_destinations
-from merlin.experiments.phase0.op_cell_synth import synthesize_op_cells
+from merlin.development.testgen.generation import _require_distinct_corpus_destinations
+from merlin.development.testgen.op_cell_synth import synthesize_op_cells
 from merlin.targetgen.corpus_spec import derive_binding
 from merlin.targetgen.eligibility import capability_map_from_contract
 from merlin.targetgen.opset_coverage_input import read_request

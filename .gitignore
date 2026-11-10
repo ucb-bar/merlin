@@ -394,3 +394,6 @@ tests/data/lit/.lit_test_times.txt
 /examples/gemmini/phase2/el4_20261018/runtime_transport_experiment/
 /experiments/phase2_drafts/evidence-handoff.json
 /experiments/reference-data/joint-ready-epoch/
+
+# Descriptions are rendered from declarations into staged corpora; authored files stay tracked.
+/experiments/corpora/**/README.md

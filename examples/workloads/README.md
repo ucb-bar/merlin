@@ -45,13 +45,13 @@ is off or at its default when absent:
 | Causal decoder | `seq` (at most 16), `hidden` (at most 64), `heads`, `kv_heads` (grouped key/value heads), `ffn`, `rope`, `decode_step` with `cache_len` (one token with explicit key/value cache inputs) |
 | Multimodal policy | `tokens` (any count up to 32), `queries` (query length distinct from the key/value length), `gelu_mlp` (tanh GELU block on the context), `time_embedding` (sinusoidal timestep input added to the state) |
 
-These patterns stay small enough for Phase 1 iteration. Exercising one does not
+These patterns stay small enough for backend generation iteration. Exercising one does not
 establish the same pattern at headline scale, a session protocol or accuracy.
 
 ### Performance-scale generators
 
 A target may declare `workload_spec.performance_applications`: independent workloads whose forms
-feed only the Phase 2 form scope (`corpus derive --performance-capture LABEL=PATH`), never Phase 1
+feed only the backend optimization form scope (`corpus derive --performance-capture LABEL=PATH`), never backend generation
 forms or source capsules. These generators sit in the multi-tile regime of a small accelerator; each
 reads an optional adjacent `profile.json` that declares exactly its default keys.
 
@@ -63,7 +63,7 @@ reads an optional adjacent `profile.json` that declares exactly its default keys
 
 The residual CNN at a larger profile serves the same purpose. Widths are deliberately off the
 held-out headline models' layer widths and shapes, so a performance member is never one of their layers. A target's roster file (for example
-`examples/gemmini/target/phase0-workloads.yaml`) names the loader and profile of every label;
+`examples/compiler-generation/gemmini/target/phase0-workloads.yaml`) names the loader and profile of every label;
 `merlin experiment corpus stage-workloads` writes one fresh workload root per label for capture.
 
 The [host-control/math probes](host_control_math/README.md) independently exercise
@@ -79,14 +79,14 @@ and the PyTorch `quantized_decomposed.dequantize_per_tensor` frontend path.
 Capture it with `--dtype int8 --already-quantized`; the saved MLIR and golden can
 then be checked through `merlin.experiments.model_qualification --native-host-only`.
 That exact-input native-host result helps review a host fallback, but is not a
-generated Phase 1 capsule, a sealed source capture, or evidence of accelerator
+generated backend generation capsule, a sealed source capture, or evidence of accelerator
 execution or every scale and input value.
 
 The held-out headline roster is **TinyLlama, SmolVLA and ResNet50**, declared through
 the existing claim-model policy and each target's `workload_spec.models`. Do not
 feed their captures, layer frequencies or results into capsule derivation or
 performance selection. Independent model-scale derivation sources remain under
-`workload_spec.applications`. Changing the roster requires fresh Phase 0 evidence
+`workload_spec.applications`. Changing the roster requires fresh test generation evidence
 and corpora; saved runs retain their original inputs.
 
 ## Capture and inspect
@@ -132,10 +132,10 @@ and TinyLlama's prefill/decode workflow need their own interfaces and checks.
 commands for all three models, names each scope, and shows where to inspect the
 separate MLIR, tensor payload, session contract and lowering-stage artifacts.
 
-Phase 0 audits declarations and capsule obligations. Phase 1 must prove complete
-lowering, execution and numerical agreement; Phase 2 measures performance on a
+test generation audits declarations and capsule obligations. backend generation must prove complete
+lowering, execution and numerical agreement; backend optimization measures performance on a
 separate cohort. Report accelerator, host and unsupported work independently and
 never count host-only execution as successful accelerator coverage.
 
-See [the Phase 0 specification guide](../../docs/guides/10-compiler-generation.md)
+See [the test generation specification guide](../../docs/guides/10-compiler-generation.md)
 for the generated evidence layout and admission requirements.

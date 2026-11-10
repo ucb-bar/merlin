@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/experiments/execution
+# src/merlin/experiments/execution
 
 Original compiler-profile composition may explicitly select bounded process
 environment pairs and final directory/empty-file answer masks for the container

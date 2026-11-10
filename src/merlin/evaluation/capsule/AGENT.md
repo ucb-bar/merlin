@@ -1,4 +1,4 @@
-# AGENT.md - src/merlin/evaluation/capsule
+# src/merlin/evaluation/capsule
 
 `runner.py` exposes the established lifecycle API. `operation.py` orchestrates
 one operation; `model.py` prepares model execution and `model_assessment.py`

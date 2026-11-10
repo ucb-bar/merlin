@@ -8,10 +8,56 @@ import os
 import sys
 from pathlib import Path
 
-from merlin.experiments.definition import SpecError, load_spec
+from merlin.experiments.definition import ENGINE_STAGES, STAGE_ENGINES, SpecError, engine_definitions, load_spec
 from merlin.experiments.definition import catalog as catalog
 
 from . import runner
+
+# Explicit historical CLI spellings; unrelated inspector options keep their own parser.
+_LEGACY_OPTIONS = {
+    "--phase0": "--testgen",
+    "--phase0-bwrap": "--testgen-bwrap",
+    "--phase0-capability-contract": "--testgen-capability-contract",
+    "--phase0-capture-runtime-reuse": "--testgen-capture-runtime-reuse",
+    "--phase0-capture-timeout-seconds": "--testgen-capture-timeout-seconds",
+    "--phase0-component-coverage": "--testgen-component-coverage",
+    "--phase0-conformance-spec": "--testgen-conformance-spec",
+    "--phase0-evidence-mode": "--testgen-evidence-mode",
+    "--phase0-generation-scope": "--testgen-generation-scope",
+    "--phase0-hidden-profile": "--testgen-hidden-profile",
+    "--phase0-m2m-python": "--testgen-m2m-python",
+    "--phase0-m2m-root": "--testgen-m2m-root",
+    "--phase0-rtl-facts": "--testgen-rtl-facts",
+    "--phase0-rtl-source-relocations": "--testgen-rtl-source-relocations",
+    "--phase0-synth-profile": "--testgen-synth-profile",
+    "--phase1-driver": "--backend-driver",
+    "--phase1-effort": "--backend-effort",
+    "--phase1-model": "--backend-model",
+    "--phase1-policy-descriptor": "--backend-policy-descriptor",
+    "--phase1-provider": "--backend-provider",
+}
+
+
+def _present(value):
+    """Show named stages without rewriting frozen engine records on disk."""
+    if not isinstance(value, dict):
+        return value
+    result = dict(value)
+    phases = result.get("phases")
+    if isinstance(phases, dict):
+        result.pop("phases")
+        result["stages"] = {
+            ENGINE_STAGES.get(str(number), str(number)): {"legacy_engine_id": str(number), **command}
+            for number, command in phases.items()
+        }
+    if isinstance(result.get("spec"), dict) and result["spec"].get("schema_version") == 1:
+        result["legacy_definition"] = result.pop("spec")
+    if "attempts" in result:
+        result["legacy_attempts"] = result.pop("attempts")
+    for old, new in (("phase1_level", "backend_level"), ("phase0_synthesis", "test_generation")):
+        if old in result:
+            result[new] = result.pop(old)
+    return result
 
 
 def _source(value: str, catalog_path: Path | None) -> Path:
@@ -26,7 +72,7 @@ def _source(value: str, catalog_path: Path | None) -> Path:
 
 def _measured(call):
     """Run ``call`` with the whole-model measured mode's command module, its refusals as SpecErrors."""
-    from .phase2.whole_model_measured import cli as measured
+    from merlin.development.backend.optimization.whole_model_measured import cli as measured
 
     try:
         return call(measured)
@@ -45,8 +91,8 @@ def _measured_run(path: Path) -> Path | None:
 
 
 def _measured_status(run_dir: Path, *, stall_hours: float | None = None) -> dict:
-    from .phase2.whole_model_measured import cli as measured
-    from .phase2.whole_model_measured import progress
+    from merlin.development.backend.optimization.whole_model_measured import cli as measured
+    from merlin.development.backend.optimization.whole_model_measured import progress
 
     objective, error = measured.objective_or_error(run_dir)
     document = progress.run_status(run_dir, objective=objective, stall_hours=stall_hours)
@@ -119,8 +165,10 @@ def _capture_sources() -> tuple[Path, Path]:
 
 
 def _dashboard_arguments(dashboard: argparse.ArgumentParser) -> None:
-    """The richer dashboard views' options (Phase 0, explorer, comparison, operator records, live)."""
-    dashboard.add_argument("--phase0", type=Path, help="a Phase 0 derivation, generation run or corpus directory")
+    """The richer dashboard views' options (test generation, explorer, comparison, operator records, live)."""
+    dashboard.add_argument(
+        "--testgen", dest="phase0", type=Path, help="a test generation derivation, generation run or corpus directory"
+    )
     dashboard.add_argument("--explorer", action="store_true", help="with --target: every run, lineage and links")
     dashboard.add_argument(
         "--compare", type=Path, nargs=2, metavar=("RUN_A", "RUN_B"), help="two runs of the same phase side by side"
@@ -128,8 +176,10 @@ def _dashboard_arguments(dashboard: argparse.ArgumentParser) -> None:
     dashboard.add_argument("--monitor", type=Path, help="a monitor's notes (## <utc> headings, STATUS: lines)")
     dashboard.add_argument("--load", type=Path, help="host load samples (TSV: utc, load1, cpu_busy_pct, ...)")
     dashboard.add_argument("--corpus", type=Path, action="append", default=[], help="capsule corpus root(s)")
-    dashboard.add_argument("--measurement-root", type=Path, help="paired Phase 2: where cells are measured")
-    dashboard.add_argument("--stage-root", type=Path, help="paired Phase 2: where trials are authored")
+    dashboard.add_argument(
+        "--measurement-root", type=Path, help="paired backend optimization: where cells are measured"
+    )
+    dashboard.add_argument("--stage-root", type=Path, help="paired backend optimization: where trials are authored")
     dashboard.add_argument(
         "--operator-private", action="store_true", help="name hidden capsules, held-out members, reference ratios"
     )
@@ -159,17 +209,23 @@ def _dashboard_options(args: argparse.Namespace) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
+    legacy_options = [value for value in raw if value.partition("=")[0] in _LEGACY_OPTIONS]
+    raw = [
+        _LEGACY_OPTIONS.get(value.partition("=")[0], value.partition("=")[0])
+        + ("=" + value.partition("=")[2] if "=" in value else "")
+        for value in raw
+    ]
     if raw[:1] == ["export"]:
         from .backend_export import main as export_backend
 
         return export_backend(raw[1:])
     if raw[:1] == ["measured"]:
         # The whole-model measured mode's own command line, reachable from this one.
-        from .phase2.whole_model_measured import cli as measured
+        from merlin.development.backend.optimization.whole_model_measured import cli as measured
 
         return measured.main(raw[1:])
     if raw[:1] == ["cell"]:
-        from .phase2.whole_model_measured import cell_runs
+        from merlin.development.backend.optimization.whole_model_measured import cell_runs
 
         return cell_runs.main(raw[1:])
     if raw[:1] == ["census"]:
@@ -179,12 +235,12 @@ def main(argv: list[str] | None = None) -> int:
 
         return census_cli.main(raw[1:])
     if raw[:1] == ["instruction-admission"]:
-        from .phase1.feedback import instruction_admission_preparation
+        from merlin.development.backend.feedback import instruction_admission_preparation
 
         return instruction_admission_preparation.main(raw[1:])
     if raw[:1] == ["private-preflight"]:
         # The private full-model gate's compiler-independent input checks, before a launch.
-        from .phase1.feedback import private_source_preflight
+        from merlin.development.backend.feedback import private_source_preflight
 
         return private_source_preflight.main(raw[1:])
     if raw[:1] == ["study"]:
@@ -210,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser(
         "instruction-admission", help="check or explicitly prepare original linked-instruction admission"
     )
-    commands.add_parser("levels", help="show Phase 1 experiment levels and their stable bundle-arm ids")
+    commands.add_parser("levels", help="show backend generation experiment levels and their stable bundle-arm ids")
     stored = commands.add_parser("runs", help="discover stored phase orchestrations (read-only)")
     stored.add_argument("--root", type=Path, help="run root; defaults to the configured out/runs")
     stored.add_argument("--target", help="filter by exact target identity")
@@ -222,66 +278,120 @@ def main(argv: list[str] | None = None) -> int:
             help="definition path or catalog id"
             + ("; with --group, a measured job directory or a package directory" if verb == "inspect" else ""),
         )
-        child.add_argument("--phase", choices=("0", "1", "2", "all"), default="all")
+        child.add_argument(
+            "--workflow",
+            choices=(*STAGE_ENGINES, "all"),
+            help="test generation or combined correctness/performance backend generation; default: all declared stages",
+        )
+        child.add_argument("--phase", choices=("0", "1", "2", "all"), help=argparse.SUPPRESS)
         child.add_argument("--run-dir", type=Path, help="explicit output; otherwise use the configured run root")
-        child.add_argument("--corpus-seal", type=Path, help="reviewed Phase 0 release seal for Phase 1")
-        child.add_argument("--bundle-manifest", type=Path, help="reviewed replacement Phase 1 input bundle")
-        child.add_argument("--phase1-driver", help="Phase 1 agent driver; frozen with the selected run")
-        child.add_argument("--phase1-model", help="Phase 1 model; frozen with the selected run")
-        child.add_argument("--phase1-effort", help="Phase 1 reasoning effort; frozen with the selected run")
-        child.add_argument("--phase1-provider", help="Phase 1 provider; frozen with the selected run")
         child.add_argument(
-            "--phase0-conformance-spec", type=Path, help="new reviewed Phase 0 requirement (select with synth profile)"
+            "--corpus-seal", type=Path, help="reviewed test generation release seal for backend generation"
+        )
+        child.add_argument("--bundle-manifest", type=Path, help="reviewed replacement backend generation input bundle")
+        child.add_argument(
+            "--backend-joint-campaign", type=Path, help="reviewed combined correctness/performance campaign policy"
         )
         child.add_argument(
-            "--phase0-synth-profile", type=Path, help="new synthesized Phase 0 profile (select with requirement)"
+            "--backend-oracle-timing", type=Path, help="reviewed timing evidence for the selected backend run"
         )
-        child.add_argument("--phase0-generation-scope", choices=("full", "phase1-functional"))
         child.add_argument(
-            "--phase0-hidden-profile",
+            "--backend-driver",
+            dest="phase1_driver",
+            help="backend generation agent driver; frozen with the selected run",
+        )
+        child.add_argument(
+            "--backend-model", dest="phase1_model", help="backend generation model; frozen with the selected run"
+        )
+        child.add_argument(
+            "--backend-effort",
+            dest="phase1_effort",
+            help="backend generation reasoning effort; frozen with the selected run",
+        )
+        child.add_argument(
+            "--backend-provider",
+            dest="phase1_provider",
+            help="backend generation provider; frozen with the selected run",
+        )
+        child.add_argument(
+            "--testgen-conformance-spec",
+            dest="phase0_conformance_spec",
             type=Path,
-            help="operator-owned private Phase 0 profile; never put it in examples",
+            help="new reviewed test generation requirement (select with synth profile)",
         )
         child.add_argument(
-            "--phase0-component-coverage",
+            "--testgen-synth-profile",
+            dest="phase0_synth_profile",
+            type=Path,
+            help="new synthesized test generation profile (select with requirement)",
+        )
+        child.add_argument(
+            "--testgen-generation-scope", dest="phase0_generation_scope", choices=("full", "phase1-functional")
+        )
+        child.add_argument(
+            "--testgen-hidden-profile",
+            dest="phase0_hidden_profile",
+            type=Path,
+            help="operator-owned private test generation profile; never put it in examples",
+        )
+        child.add_argument(
+            "--testgen-component-coverage",
+            dest="phase0_component_coverage",
             type=Path,
             help="explicit reviewed private independent component coverage plan",
         )
-        child.add_argument("--phase0-rtl-facts", type=Path, help="select exact extracted facts for a new Phase 0 run")
         child.add_argument(
-            "--phase0-rtl-source-relocations",
+            "--testgen-rtl-facts",
+            dest="phase0_rtl_facts",
+            type=Path,
+            help="select exact extracted facts for a new test generation run",
+        )
+        child.add_argument(
+            "--testgen-rtl-source-relocations",
+            dest="phase0_rtl_source_relocations",
             type=Path,
             help="explicit byte-identical recorded RTL source custody mapping; grants no new extraction or audit",
         )
         child.add_argument(
-            "--phase0-capability-contract",
+            "--testgen-capability-contract",
+            dest="phase0_capability_contract",
             type=Path,
-            help="select exact same-target capability contract for a new Phase 0 run",
+            help="select exact same-target capability contract for a new test generation run",
         )
         child.add_argument(
-            "--phase0-evidence-mode",
+            "--testgen-evidence-mode",
+            dest="phase0_evidence_mode",
             choices=("diagnostic", "verified"),
             help="diagnostic preserves unknowns; verified refuses unresolved required evidence",
         )
         child.add_argument(
-            "--phase0-m2m-root", type=Path, help="explicit Model2MLIR source root for diagnostic capture"
+            "--testgen-m2m-root",
+            dest="phase0_m2m_root",
+            type=Path,
+            help="explicit Model2MLIR source root for diagnostic capture",
         )
         child.add_argument(
-            "--phase0-capture-timeout-seconds",
+            "--testgen-capture-timeout-seconds",
+            dest="phase0_capture_timeout_seconds",
             type=int,
             help="sandbox timeout (120..14400 s) frozen into the plan for every sealed generation-time "
             "capture; default keeps the historical fixed 120 s",
         )
         child.add_argument(
-            "--phase0-m2m-python", type=Path, help="explicit Model2MLIR venv Python for diagnostic capture"
+            "--testgen-m2m-python",
+            dest="phase0_m2m_python",
+            type=Path,
+            help="explicit Model2MLIR venv Python for diagnostic capture",
         )
         child.add_argument(
-            "--phase0-capture-runtime-reuse",
+            "--testgen-capture-runtime-reuse",
+            dest="phase0_capture_runtime_reuse",
             type=Path,
             help="exact read-only runtime selection JSON; independently checked against the selected capture runtime",
         )
         child.add_argument(
-            "--phase0-bwrap",
+            "--testgen-bwrap",
+            dest="phase0_bwrap",
             type=Path,
             help="absolute bubblewrap binary frozen into the plan for every sealed generation-time capture; "
             "default resolves the system bwrap",
@@ -557,7 +667,7 @@ def main(argv: list[str] | None = None) -> int:
     epoch.add_argument("--previous", type=Path, required=True, help="previous prepared release root")
     epoch.add_argument("--plan", type=Path, required=True, help="performance-demand plan.json")
     epoch.add_argument("--sources", type=Path, required=True, help="performance-demand sources/ directory")
-    epoch.add_argument("--evidence", type=Path, required=True, help="exported Phase 0 evidence root")
+    epoch.add_argument("--evidence", type=Path, required=True, help="exported test generation evidence root")
     epoch.add_argument("--chain-plan", type=Path, help="chain-demand plan.json (with --chain-sources)")
     epoch.add_argument("--chain-sources", type=Path, help="chain-demand sources/ directory")
     epoch.add_argument("--target", required=True)
@@ -576,7 +686,7 @@ def main(argv: list[str] | None = None) -> int:
     chains.add_argument("--policy", type=Path, required=True, help="merlin.phase0.chain_demand_policy.v1")
     chains.add_argument("--rtl-facts", type=Path, required=True, help="exact extraction artifact (tile edge)")
     chains.add_argument("--descriptor", type=Path, required=True, help="target descriptor (claim models, binding)")
-    chains.add_argument("--recipe", type=Path, required=True, help="Phase 0 recipe (datapath)")
+    chains.add_argument("--recipe", type=Path, required=True, help="test generation recipe (datapath)")
     chains.add_argument("--performance-template", type=Path, required=True, help="shared performance template")
     chains.add_argument("--software-spec", type=Path, required=True, help="selected software spec")
     chains.add_argument("--output", type=Path, required=True, help="fresh directory")
@@ -613,7 +723,7 @@ def main(argv: list[str] | None = None) -> int:
     group_capsules.configure_parser(groups)
     compare = operations.add_parser("compare", help="compare public recipes from explicit definitions; prints JSON")
     compare.add_argument("definitions", nargs="+", help="definition paths or catalog ids")
-    coverage = operations.add_parser("coverage", help="inspect public coverage of one completed Phase 0 run")
+    coverage = operations.add_parser("coverage", help="inspect public coverage of one completed test generation run")
     coverage.add_argument("run_dir", type=Path)
     coverage.add_argument("--spec", type=Path, required=True, help="explicit conformance requirement YAML")
     prepare = operations.add_parser("prepare")
@@ -657,7 +767,8 @@ def main(argv: list[str] | None = None) -> int:
         help="explicitly retain a historical public corpus; held-out validation sources are refused",
     )
     prepare.add_argument(
-        "--phase1-policy-descriptor",
+        "--backend-policy-descriptor",
+        dest="phase1_policy_descriptor",
         type=Path,
         help="explicit Phase-1 gate policy; all other descriptor fields must match the frozen Phase-0 source",
     )
@@ -694,8 +805,7 @@ def main(argv: list[str] | None = None) -> int:
                 return code
             if args.operation == "heldout-layers":
                 from merlin.common.paths import repo_root
-
-                from .phase0 import heldout_layers as HL
+                from merlin.development.testgen import heldout_layers as HL
 
                 if args.output.absolute().is_relative_to(repo_root()):
                     raise SpecError("the held-out layer file is operator-private; write it outside the repository")
@@ -704,7 +814,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps({"path": str(path), **HL.load(path).summary()}, indent=2))
                 return 0
             if args.operation == "performance-demand":
-                from .phase0.performance_corpus import derive_demand
+                from merlin.development.testgen.performance_corpus import derive_demand
 
                 try:
                     result = derive_demand(
@@ -717,10 +827,10 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc
-                print(json.dumps(result, indent=2))
+                print(json.dumps(_present(result), indent=2))
                 return 0
             if args.operation == "chain-demand":
-                from .phase0.chain_corpus import derive_chains
+                from merlin.development.testgen.chain_corpus import derive_chains
 
                 try:
                     result = derive_chains(
@@ -735,10 +845,10 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc
-                print(json.dumps(result, indent=2))
+                print(json.dumps(_present(result), indent=2))
                 return 0
             if args.operation == "performance-epoch":
-                from .phase0.performance_corpus import assemble_epoch
+                from merlin.development.testgen.performance_corpus import assemble_epoch
 
                 try:
                     result = assemble_epoch(
@@ -753,19 +863,19 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc
-                print(json.dumps(result, indent=2))
+                print(json.dumps(_present(result), indent=2))
                 return 0
             if args.operation == "stage-workloads":
-                from .phase0.workload_roster import stage
+                from merlin.development.testgen.workload_roster import stage
 
                 try:
                     result = stage(args.roster, args.output, descriptor=args.descriptor)
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc
-                print(json.dumps(result, indent=2))
+                print(json.dumps(_present(result), indent=2))
                 return 0
             if args.operation == "variants":
-                from .phase0.workload_variants import materialize
+                from merlin.development.testgen.workload_variants import materialize
 
                 try:
                     result = materialize(
@@ -776,10 +886,10 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc
-                print(json.dumps(result, indent=2))
+                print(json.dumps(_present(result), indent=2))
                 return 0
             if args.operation == "capture":
-                from .phase0 import capture_selection
+                from merlin.development.testgen import capture_selection
 
                 try:
                     if args.capture_operation == "select":
@@ -833,10 +943,10 @@ def main(argv: list[str] | None = None) -> int:
                                 )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc
-                print(json.dumps(result, indent=2))
+                print(json.dumps(_present(result), indent=2))
                 return 0
             elif args.operation == "derive":
-                from .phase0.requirements import (
+                from merlin.development.testgen.requirements import (
                     capture_selection_specs,
                     capture_selections,
                     derive,
@@ -858,12 +968,12 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc
-                print(json.dumps(result, indent=2))
+                print(json.dumps(_present(result), indent=2))
                 return 0
             if args.operation == "groups":
                 return group_capsules.run_from_args(args)
             if args.operation == "compare":
-                from .phase0.comparison import build
+                from merlin.development.testgen.comparison import build
 
                 print(json.dumps(build([_source(value, args.catalog) for value in args.definitions]), indent=2))
                 return 0
@@ -871,7 +981,7 @@ def main(argv: list[str] | None = None) -> int:
                 from .corpus.coverage import inspect_run
 
                 result = inspect_run(args.run_dir, args.spec)
-                print(json.dumps(result, indent=2))
+                print(json.dumps(_present(result), indent=2))
                 return 0
             from .corpus import release as corpus_release
 
@@ -901,7 +1011,7 @@ def main(argv: list[str] | None = None) -> int:
                     review_note=args.review_note,
                 )
         elif args.verb == "list":
-            from .phase1.levels import level_for_phase1
+            from merlin.development.backend.levels import level_for_phase1
 
             result = []
             for name, path in catalog(args.catalog).items():
@@ -912,19 +1022,20 @@ def main(argv: list[str] | None = None) -> int:
                     {
                         "id": name,
                         "target": spec.target,
-                        "phases": sorted(spec.document["phases"]),
+                        "stages": [ENGINE_STAGES[number] for number in sorted(engine_definitions(spec.document))],
+                        "legacy_definition": spec.document["schema_version"] == 1,
                         "definition": str(path),
                         "description": spec.document.get("description", ""),
                         "kind": spec.document.get("kind", "experiment"),
-                        "phase1_level": (
-                            level_for_phase1(spec.document["phases"]["1"]["config"])
-                            if "1" in spec.document["phases"]
+                        "backend_level": (
+                            level_for_phase1(engine_definitions(spec.document)["1"]["config"])
+                            if "1" in engine_definitions(spec.document)
                             else None
                         ),
                     }
                 )
         elif args.verb == "levels":
-            from .phase1.levels import LEVELS
+            from merlin.development.backend.levels import LEVELS
 
             result = list(LEVELS)
         elif args.verb == "runs":
@@ -1009,16 +1120,25 @@ def main(argv: list[str] | None = None) -> int:
             return run_console(args)
         elif args.verb == "resume":
             code = runner.resume(args.run_dir, checkpoint=args.checkpoint)
-            print(json.dumps(runner.status(args.run_dir), indent=2))
+            print(json.dumps(_present(runner.status(args.run_dir)), indent=2))
             return code
         else:
             spec = load_spec(_source(args.spec, args.catalog))
+            if args.phase is not None and args.workflow is not None:
+                raise SpecError("select --workflow; do not combine it with a legacy --phase selector")
+            if spec.document["schema_version"] == 2 and (args.phase is not None or legacy_options):
+                raise SpecError(
+                    "named definitions use --workflow, --testgen-* and --backend-*; numeric phase flags are legacy-only"
+                )
             plan = runner.resolve_plan(
                 spec,
                 phase=args.phase,
+                workflow=args.workflow if args.phase is None else None,
                 run_dir=args.run_dir,
                 corpus_seal=args.corpus_seal,
                 bundle_manifest=args.bundle_manifest,
+                backend_joint_campaign=args.backend_joint_campaign,
+                backend_oracle_timing=args.backend_oracle_timing,
                 phase1_driver=args.phase1_driver,
                 phase1_model=args.phase1_model,
                 phase1_effort=args.phase1_effort,
@@ -1042,13 +1162,13 @@ def main(argv: list[str] | None = None) -> int:
                 result = plan
             elif args.verb == "preflight":
                 result = runner.preflight(plan)
-                print(json.dumps(result, indent=2))
+                print(json.dumps(_present(result), indent=2))
                 return 0 if result["configuration_ready"] else 2
             else:
                 code = runner.run(plan)
-                print(json.dumps(runner.status(Path(plan["run_dir"])), indent=2))
+                print(json.dumps(_present(runner.status(Path(plan["run_dir"]))), indent=2))
                 return code
-        print(json.dumps(result, indent=2))
+        print(json.dumps(_present(result), indent=2))
         return 0
     except (SpecError, OSError) as exc:
         print(f"merlin experiment: {exc}", file=sys.stderr)

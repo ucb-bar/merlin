@@ -46,7 +46,7 @@ def _default_example_target() -> str | None:
     if checkout is None:
         return None
     selected = []
-    for path in sorted((checkout / "examples").glob("*/target/contracts/target_contract.yaml")):
+    for path in sorted((checkout / "examples").glob("*/*/target/contracts/target_contract.yaml")):
         contract = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         if isinstance(contract, dict) and contract.get("example_default") is True:
             selected.append(contract.get("name"))

@@ -49,9 +49,9 @@ from statistics import median
 
 import numpy as np
 
-from merlin.baselines import executorch as et
-from merlin.baselines.accuracy_policy import int8_accuracy_bar
 from merlin.common.paths import repo_root
+from merlin.evaluation.frameworks import executorch as et
+from merlin.evaluation.frameworks.accuracy_policy import int8_accuracy_bar
 from merlin.mining import k1
 from merlin.mining.registry import load_rvv_package
 from merlin.perf.paired import paired_speedup_confidence, shared_accuracy_verdict
@@ -152,7 +152,7 @@ def ours_arm(
     the "fp32" key grades int8 output by fp32 rules and, worse, hides that the w8a8 tier was never in
     play. `_gate` reports `tiers` / `tier_ok` for exactly that reason.
     """
-    from merlin.baselines import rvv_audit as _rvv_audit
+    from merlin.runtime import rvv_audit as _rvv_audit
 
     walls, gated, blocker = [], 0, None
     rvv_cov = None
@@ -435,7 +435,7 @@ def same_rule_both_arms(ours: dict, arm: dict, ours_bundle: str) -> dict:
     our stricter bar refused is exactly where the difference decides how the row reads.
     """
     try:
-        from merlin.baselines.accuracy_policy import FP32_TIER_MIN_COS
+        from merlin.evaluation.frameworks.accuracy_policy import FP32_TIER_MIN_COS
 
         cos_thr, rel_thr = FP32_TIER_MIN_COS, None
         g = ours.get("gate") or {}

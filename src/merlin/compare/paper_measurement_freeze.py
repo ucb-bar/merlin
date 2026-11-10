@@ -3,6 +3,7 @@
 This is deliberately invoked by :func:`freeze_study`; a draft may point at backend package
 resources, but it cannot author measurement inputs, framed references, or their receipts.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -26,7 +27,7 @@ from merlin.capture.contraction_formats import (
 from merlin.common import digest as _mdigest
 from merlin.common import jsonio as _mjson
 
-from .paper_measurement_controller import _EXECUTORCH_PRODUCTION_BUILD_ARGV, _PRODUCTION_BUILD_ARGV
+from .paper_measurement_protocol import _EXECUTORCH_PRODUCTION_BUILD_ARGV, _PRODUCTION_BUILD_ARGV
 from .paper_model_object_builder import (
     EXECUTORCH_RECIPE,
     MERLIN_RECIPE,
@@ -77,12 +78,18 @@ def _canonical_sha(value: object) -> str:
     return _mjson.canonical_sha256(value, allow_nan=True)
 
 
-def _validate_package_before_private_io(resources: Mapping[str, Mapping[str, str]], *,
-                                        backend: Mapping[str, Any], model: Mapping[str, Any],
-                                        precision: str, registry_id: str,
-                                        compiler_source_sha256: str, target: str,
-                                        toolchain_authority_path: Path,
-                                        toolchain_authority_sha256: str) -> None:
+def _validate_package_before_private_io(
+    resources: Mapping[str, Mapping[str, str]],
+    *,
+    backend: Mapping[str, Any],
+    model: Mapping[str, Any],
+    precision: str,
+    registry_id: str,
+    compiler_source_sha256: str,
+    target: str,
+    toolchain_authority_path: Path,
+    toolchain_authority_sha256: str,
+) -> None:
     """Materialize the package result before parsing private capture inputs/references.
 
     Merlin recipes rebuild it.  ExecuTorch verifies and copies its sealed host-cross-built runner;
@@ -91,78 +98,109 @@ def _validate_package_before_private_io(resources: Mapping[str, Mapping[str, str
     package_path = Path(resources["package_receipt"]["path"])
     document = json.loads(package_path.read_text(encoding="utf-8"))
     fields = {
-        "schema_version", "kind", "status", "registry_id", "build_adapter", "cell",
-        "package_identity_sha256", "compiler_or_framework_source_sha256",
-        "capture_sha256", "runtime_artifact_sha256", "runner_source_sha256",
-        "model_object_sha256", "compiler_input_sha256", "object_builder_source_sha256",
-        "object_recipe", "object_build_argv", "generated_model_source_sha256",
-        "build_tool_sha256", "build_source_identity_sha256", "build_argv",
-        "result_executable_sha256", "finalized_at",
+        "schema_version",
+        "kind",
+        "status",
+        "registry_id",
+        "build_adapter",
+        "cell",
+        "package_identity_sha256",
+        "compiler_or_framework_source_sha256",
+        "capture_sha256",
+        "runtime_artifact_sha256",
+        "runner_source_sha256",
+        "model_object_sha256",
+        "compiler_input_sha256",
+        "object_builder_source_sha256",
+        "object_recipe",
+        "object_build_argv",
+        "generated_model_source_sha256",
+        "build_tool_sha256",
+        "build_source_identity_sha256",
+        "build_argv",
+        "result_executable_sha256",
+        "finalized_at",
     }
     merlin_session = isinstance(document, Mapping) and document.get("object_recipe") == MERLIN_RECIPE
-    executorch_session = (
-        isinstance(document, Mapping) and document.get("object_recipe") == EXECUTORCH_RECIPE)
+    executorch_session = isinstance(document, Mapping) and document.get("object_recipe") == EXECUTORCH_RECIPE
     if merlin_session:
         fields.update({"session_protocol", "session_descriptor_sha256"})
     package = _closed(document, fields, "backend package receipt")
     compiler_input = Path(resources["compiler_input"]["path"])
     session_resources = merlin_session_resources(compiler_input) if merlin_session else None
-    executorch_resources = (
-        executorch_session_resources(compiler_input) if executorch_session else None)
-    runner = (session_resources.runner_source if session_resources is not None else
-              executorch_resources.runner if executorch_resources is not None else
-              Path(__file__).with_name("paper_model_abi_runner.c"))
-    expected_package_identity = (backend["options"].get("package_sha256")
-                                 if registry_id == "merlin_compile_v1" else
-                                 backend["options"]["packages"][model["name"]]
-                                 [precision]["sha256"])
-    expected_source_identity = (compiler_source_sha256
-                                if registry_id == "merlin_compile_v1" else
-                                backend["options"].get("framework_source_sha256"))
+    executorch_resources = executorch_session_resources(compiler_input) if executorch_session else None
+    runner = (
+        session_resources.runner_source
+        if session_resources is not None
+        else executorch_resources.runner
+        if executorch_resources is not None
+        else Path(__file__).with_name("paper_model_abi_runner.c")
+    )
+    expected_package_identity = (
+        backend["options"].get("package_sha256")
+        if registry_id == "merlin_compile_v1"
+        else backend["options"]["packages"][model["name"]][precision]["sha256"]
+    )
+    expected_source_identity = (
+        compiler_source_sha256
+        if registry_id == "merlin_compile_v1"
+        else backend["options"].get("framework_source_sha256")
+    )
     builder = Path(__file__).with_name("paper_model_object_builder.py")
-    source_set = _canonical_sha({
-        "compiler_input": resources["compiler_input"]["sha256"],
-        "model_object": resources["model_object"]["sha256"],
-        "object_builder": _sha(builder), "runner": _sha(runner),
-    })
-    expected_cell = {"model": model["name"], "backend": backend["name"],
-                     "precision": precision}
-    if (package["schema_version"] != (3 if merlin_session else 2)
-            or package["kind"] != ("paper_backend_package_receipt_v3" if merlin_session
-                                   else "paper_backend_package_receipt_v2")
-            or package["status"] != "finalized" or package["registry_id"] != registry_id
-            or package["build_adapter"] != (
-                "merlin_session_abi_c_v1" if merlin_session else
-                ("executorch_sealed_session_v1" if executorch_session
-                 else "executorch_model_abi_c_v1" if registry_id == "executorch_v1"
-                 else "merlin_model_abi_c_v1"))
-            or package["cell"] != expected_cell
-            or package["package_identity_sha256"] != expected_package_identity
-            or package["compiler_or_framework_source_sha256"] != expected_source_identity
-            or package["capture_sha256"] != model["artifacts"][precision]["sha256"]
-            or package["runtime_artifact_sha256"] != resources["runtime_artifact"]["sha256"]
-            or package["runner_source_sha256"] != _sha(runner)
-            or package["model_object_sha256"] != resources["model_object"]["sha256"]
-            or package["compiler_input_sha256"] != resources["compiler_input"]["sha256"]
-            or package["object_builder_source_sha256"] != _sha(builder)
-            or package["object_recipe"] != expected_recipe(registry_id, target)
-            or package["object_build_argv"]
-            != object_build_argv(str(package["object_recipe"]))
-            or package["build_tool_sha256"] != resources["build_tool"]["sha256"]
-            or package["build_source_identity_sha256"] != source_set
-            or package["build_argv"] != (
-                _EXECUTORCH_PRODUCTION_BUILD_ARGV if executorch_session
-                else _PRODUCTION_BUILD_ARGV)):
+    source_set = _canonical_sha(
+        {
+            "compiler_input": resources["compiler_input"]["sha256"],
+            "model_object": resources["model_object"]["sha256"],
+            "object_builder": _sha(builder),
+            "runner": _sha(runner),
+        }
+    )
+    expected_cell = {"model": model["name"], "backend": backend["name"], "precision": precision}
+    if (
+        package["schema_version"] != (3 if merlin_session else 2)
+        or package["kind"]
+        != ("paper_backend_package_receipt_v3" if merlin_session else "paper_backend_package_receipt_v2")
+        or package["status"] != "finalized"
+        or package["registry_id"] != registry_id
+        or package["build_adapter"]
+        != (
+            "merlin_session_abi_c_v1"
+            if merlin_session
+            else (
+                "executorch_sealed_session_v1"
+                if executorch_session
+                else "executorch_model_abi_c_v1"
+                if registry_id == "executorch_v1"
+                else "merlin_model_abi_c_v1"
+            )
+        )
+        or package["cell"] != expected_cell
+        or package["package_identity_sha256"] != expected_package_identity
+        or package["compiler_or_framework_source_sha256"] != expected_source_identity
+        or package["capture_sha256"] != model["artifacts"][precision]["sha256"]
+        or package["runtime_artifact_sha256"] != resources["runtime_artifact"]["sha256"]
+        or package["runner_source_sha256"] != _sha(runner)
+        or package["model_object_sha256"] != resources["model_object"]["sha256"]
+        or package["compiler_input_sha256"] != resources["compiler_input"]["sha256"]
+        or package["object_builder_source_sha256"] != _sha(builder)
+        or package["object_recipe"] != expected_recipe(registry_id, target)
+        or package["object_build_argv"] != object_build_argv(str(package["object_recipe"]))
+        or package["build_tool_sha256"] != resources["build_tool"]["sha256"]
+        or package["build_source_identity_sha256"] != source_set
+        or package["build_argv"]
+        != (_EXECUTORCH_PRODUCTION_BUILD_ARGV if executorch_session else _PRODUCTION_BUILD_ARGV)
+    ):
         raise ValueError("cannot freeze: backend package receipt linkage differs")
     if merlin_session and (
-            package["session_protocol"] != _MERLIN_SESSION_PROTOCOL
-            or package["session_descriptor_sha256"] != _sha(session_resources.descriptor_path)):
+        package["session_protocol"] != _MERLIN_SESSION_PROTOCOL
+        or package["session_descriptor_sha256"] != _sha(session_resources.descriptor_path)
+    ):
         raise ValueError("cannot freeze: Merlin package session ABI linkage differs")
     tool = Path(resources["build_tool"]["path"])
     model_object = Path(resources["model_object"]["path"])
     verify_build_tool(
-        tool, authority_path=toolchain_authority_path,
-        authority_sha256=toolchain_authority_sha256, target=target)
+        tool, authority_path=toolchain_authority_path, authority_sha256=toolchain_authority_sha256, target=target
+    )
     with tempfile.TemporaryDirectory(prefix="merlin-paper-freeze-build-") as temporary:
         temporary_path = Path(temporary)
         output = temporary_path / "cell_executable"
@@ -170,20 +208,25 @@ def _validate_package_before_private_io(resources: Mapping[str, Mapping[str, str
         retained_object = temporary_path / "model_object.o"
         shutil.copy2(runner, retained_runner)
         regeneration = regenerate_model_object(
-            recipe=str(package["object_recipe"]), registry_id=registry_id, target=target,
-            compiler_input=compiler_input, tool=tool, output=retained_object,
+            recipe=str(package["object_recipe"]),
+            registry_id=registry_id,
+            target=target,
+            compiler_input=compiler_input,
+            tool=tool,
+            output=retained_object,
             source_identity_sha256=str(expected_source_identity),
             capture_sha256=str(model["artifacts"][precision]["sha256"]),
-            runtime_artifact_sha256=str(resources["runtime_artifact"]["sha256"]))
-        if (_sha(retained_object) != _sha(model_object)
-                or regeneration["generated_source_sha256"]
-                != package["generated_model_source_sha256"]):
+            runtime_artifact_sha256=str(resources["runtime_artifact"]["sha256"]),
+        )
+        if (
+            _sha(retained_object) != _sha(model_object)
+            or regeneration["generated_source_sha256"] != package["generated_model_source_sha256"]
+        ):
             raise ValueError("cannot freeze: supplied model object differs from regeneration")
         if executorch_session:
             shutil.copy2(retained_object, output)
         else:
-            argv = [str(tool), "-O2", "-std=c11", str(retained_runner), str(retained_object),
-                    "-o", str(output)]
+            argv = [str(tool), "-O2", "-std=c11", str(retained_runner), str(retained_object), "-o", str(output)]
             completed = subprocess.run(argv, capture_output=True, timeout=120, check=False)
             if completed.returncode or not output.is_file():
                 raise ValueError("cannot freeze: independent package result materialization differs")
@@ -200,16 +243,14 @@ def _leaf(capture: Path) -> tuple[Path, dict[str, Any]]:
         programs = contract.get("programs")
         if not isinstance(quality, dict) or not isinstance(programs, list):
             raise ValueError("cannot freeze: multi-program quality owner is absent")
-        matches = [row for row in programs if isinstance(row, dict)
-                   and row.get("name") == quality.get("program")]
+        matches = [row for row in programs if isinstance(row, dict) and row.get("name") == quality.get("program")]
         if len(matches) != 1:
             raise ValueError("cannot freeze: multi-program quality owner is not unique")
         relative = Path(str(matches[0].get("bundle", "")))
         if relative.is_absolute() or ".." in relative.parts:
             raise ValueError("cannot freeze: quality child escapes capture")
         capture = (capture / relative).resolve()
-        contract = yaml.safe_load(
-            (capture / "session_contract.yaml").read_text(encoding="utf-8"))
+        contract = yaml.safe_load((capture / "session_contract.yaml").read_text(encoding="utf-8"))
         if not isinstance(contract, dict):
             raise ValueError("cannot freeze: quality child session is invalid")
     return capture, contract
@@ -223,7 +264,13 @@ def _trajectory(capture: Path, observations: int) -> tuple[list[bytes], list[byt
     input_path = owner / str(contract.get("inputs", "session_inputs.npz"))
     quality = contract.get("quality")
     if not isinstance(quality, dict) or not {
-            "scope", "reference", "metric", "golden", "key", "reference_sha256"} <= set(quality):
+        "scope",
+        "reference",
+        "metric",
+        "golden",
+        "key",
+        "reference_sha256",
+    } <= set(quality):
         raise ValueError("cannot freeze: eager FP32 quality reference is incomplete")
     if quality["scope"] != "trajectory" or quality["reference"] != "eager_fp32":
         raise ValueError("cannot freeze: quality reference is not eager FP32 trajectory")
@@ -246,20 +293,24 @@ def _trajectory(capture: Path, observations: int) -> tuple[list[bytes], list[byt
         if key not in values.files or values[key].shape[0] != observations:
             raise ValueError("cannot freeze: eager FP32 reference does not cover observations")
         reference = np.ascontiguousarray(values[key])
-        reference_frames = [np.ascontiguousarray(reference[index]).tobytes()
-                            for index in range(observations)]
+        reference_frames = [np.ascontiguousarray(reference[index]).tobytes() for index in range(observations)]
     actual_reference_sha = hashlib.sha256(reference.tobytes()).hexdigest()
     if actual_reference_sha != quality["reference_sha256"]:
         raise ValueError("cannot freeze: eager FP32 reference digest differs")
-    return input_frames, reference_frames, {
-        "input_source_sha256": _sha(input_path),
-        "eager_reference_source_sha256": _sha(golden_path),
-        "eager_reference_key": str(quality["key"]),
-    }
+    return (
+        input_frames,
+        reference_frames,
+        {
+            "input_source_sha256": _sha(input_path),
+            "eager_reference_source_sha256": _sha(golden_path),
+            "eager_reference_key": str(quality["key"]),
+        },
+    )
 
 
 def _session_program_contracts(
-        capture: Path, descriptor: SessionDescriptor) -> dict[int, tuple[Path, Mapping[str, Any]]]:
+    capture: Path, descriptor: SessionDescriptor
+) -> dict[int, tuple[Path, Mapping[str, Any]]]:
     root = yaml.safe_load((capture / "session_contract.yaml").read_text(encoding="utf-8"))
     if not isinstance(root, Mapping):
         raise ValueError("cannot freeze: MRLNSES2 root contract is invalid")
@@ -285,8 +336,7 @@ def _session_program_contracts(
     return result
 
 
-def _session_trajectory(capture: Path, expected: SessionDescriptor
-                        ) -> tuple[bytes, bytes, dict[str, Any]]:
+def _session_trajectory(capture: Path, expected: SessionDescriptor) -> tuple[bytes, bytes, dict[str, Any]]:
     """Encode the complete private capture against the public MRLNSES2 endpoint graph."""
     captured = load_session_descriptor(capture)
     if captured.canonical_bytes != expected.canonical_bytes:
@@ -303,23 +353,24 @@ def _session_trajectory(capture: Path, expected: SessionDescriptor
         with np.load(input_path, mmap_mode="r") as values:
             if endpoint.role == "stream":
                 rows = contract.get("streams")
-                matches = [row for row in rows if isinstance(row, Mapping)
-                           and row.get("name") == endpoint.name] if isinstance(rows, list) else []
+                matches = (
+                    [row for row in rows if isinstance(row, Mapping) and row.get("name") == endpoint.name]
+                    if isinstance(rows, list)
+                    else []
+                )
                 if len(matches) != 1:
                     raise ValueError("cannot freeze: MRLNSES2 stream name is not unique")
                 key = str(matches[0].get("key", ""))
                 if key not in values.files or values[key].shape[0] != endpoint.frames:
                     raise ValueError("cannot freeze: MRLNSES2 stream does not cover its endpoint")
-                frames.extend(InputFrame(
-                    endpoint.endpoint, step, np.ascontiguousarray(values[key][step]).tobytes())
-                    for step in range(endpoint.frames))
+                frames.extend(
+                    InputFrame(endpoint.endpoint, step, np.ascontiguousarray(values[key][step]).tobytes())
+                    for step in range(endpoint.frames)
+                )
             else:
                 if endpoint.name not in values.files:
-                    raise ValueError(
-                        f"cannot freeze: initial state {endpoint.name!r} is absent from session inputs")
-                frames.append(InputFrame(
-                    endpoint.endpoint, 0,
-                    np.ascontiguousarray(values[endpoint.name]).tobytes()))
+                    raise ValueError(f"cannot freeze: initial state {endpoint.name!r} is absent from session inputs")
+                frames.append(InputFrame(endpoint.endpoint, 0, np.ascontiguousarray(values[endpoint.name]).tobytes()))
     request = encode_request(expected, frames)
     owner, contract = _leaf(capture)
     quality = contract.get("quality")
@@ -333,18 +384,24 @@ def _session_trajectory(capture: Path, expected: SessionDescriptor
         if key not in values.files or values[key].shape[0] != expected.output.frames:
             raise ValueError("cannot freeze: MRLNSES2 eager quality trajectory is incomplete")
         reference = np.ascontiguousarray(values[key])
-        outputs = [OutputFrame(
-            expected.output.program, expected.output.output, step,
-            np.ascontiguousarray(reference[step]).tobytes())
-            for step in range(expected.output.frames)]
+        outputs = [
+            OutputFrame(
+                expected.output.program, expected.output.output, step, np.ascontiguousarray(reference[step]).tobytes()
+            )
+            for step in range(expected.output.frames)
+        ]
     if hashlib.sha256(reference.tobytes()).hexdigest() != quality.get("reference_sha256"):
         raise ValueError("cannot freeze: MRLNSES2 eager quality digest differs")
     response = encode_response(expected, expected.calls, outputs)
-    return request, response, {
-        "input_source_sha256": _canonical_sha(source_hashes),
-        "eager_reference_source_sha256": _sha(golden_path),
-        "eager_reference_key": key,
-    }
+    return (
+        request,
+        response,
+        {
+            "input_source_sha256": _canonical_sha(source_hashes),
+            "eager_reference_source_sha256": _sha(golden_path),
+            "eager_reference_key": key,
+        },
+    )
 
 
 def write_capture_measurement_source_receipt(
@@ -366,12 +423,14 @@ def write_capture_measurement_source_receipt(
     if path.exists():
         raise ValueError("paper measurement source receipt already exists; recapture is required")
     document = {
-        "schema_version": 1, "kind": "paper_measurement_capture_sources_v1",
-        "status": "finalized", "model": model, "precision": precision,
-        "observations": observations, "input_frame_sha256": [
-            hashlib.sha256(value).hexdigest() for value in input_frames],
-        "reference_frame_sha256": [hashlib.sha256(value).hexdigest()
-                                   for value in reference_frames],
+        "schema_version": 1,
+        "kind": "paper_measurement_capture_sources_v1",
+        "status": "finalized",
+        "model": model,
+        "precision": precision,
+        "observations": observations,
+        "input_frame_sha256": [hashlib.sha256(value).hexdigest() for value in input_frames],
+        "reference_frame_sha256": [hashlib.sha256(value).hexdigest() for value in reference_frames],
         **sources,
     }
     try:
@@ -380,14 +439,17 @@ def write_capture_measurement_source_receipt(
     except (OSError, KeyError, TypeError, ValueError):
         pass
     else:
-        document.update({
-            "schema_version": 2, "kind": "paper_measurement_capture_sources_v2",
-            "session_protocol": _MERLIN_SESSION_PROTOCOL,
-            "session_descriptor_sha256": descriptor.sha256,
-            "session_request_sha256": hashlib.sha256(request).hexdigest(),
-            "session_reference_response_sha256": hashlib.sha256(response).hexdigest(),
-            "session_input_source_sha256": session_sources["input_source_sha256"],
-        })
+        document.update(
+            {
+                "schema_version": 2,
+                "kind": "paper_measurement_capture_sources_v2",
+                "session_protocol": _MERLIN_SESSION_PROTOCOL,
+                "session_descriptor_sha256": descriptor.sha256,
+                "session_request_sha256": hashlib.sha256(request).hexdigest(),
+                "session_reference_response_sha256": hashlib.sha256(response).hexdigest(),
+                "session_input_source_sha256": session_sources["input_source_sha256"],
+            }
+        )
     if format_observation is not None:
         document.update(
             {
@@ -410,60 +472,77 @@ def _resource_sets(raw: Mapping[str, Any]):
         backend_name = str(backend["name"])
         contracts = backend["options"].get("measurement_contracts")
         if not isinstance(contracts, dict):
-            raise ValueError(
-                f"cannot freeze: backend {backend_name} lacks generated measurement contracts")
+            raise ValueError(f"cannot freeze: backend {backend_name} lacks generated measurement contracts")
         for model_name, model in models.items():
             for precision in model["precisions"]:
                 if precision not in backend["precisions"]:
                     continue
                 refs = contracts.get(model_name, {}).get(precision, {})
                 if set(refs) != {str(core) for core in raw["core_counts"]}:
-                    raise ValueError(
-                        f"cannot freeze: {backend_name}/{model_name}/{precision} template set incomplete")
+                    raise ValueError(f"cannot freeze: {backend_name}/{model_name}/{precision} template set incomplete")
                 resource_sets, template_paths = [], []
                 for core in raw["core_counts"]:
                     reference = _closed(refs[str(core)], {"path", "sha256"}, "template ref")
                     path = Path(str(reference["path"])).resolve()
                     if not path.is_file() or _sha(path) != reference["sha256"]:
                         raise ValueError("cannot freeze: backend template digest differs")
-                    template = _closed(yaml.safe_load(path.read_text(encoding="utf-8")), {
-                        "schema_version", "kind", "status", "registry_id", "backend_adapter",
-                        "cell", "resources", "environment", "execution", "memory_policy",
-                        "timeout_seconds"}, "measurement template")
-                    if (template["schema_version"] != 3
-                            or template["kind"] != "paper_backend_measurement_template_v3"
-                            or template["status"] != "frozen"):
-                        raise ValueError(
-                            "cannot freeze: backend measurement template is not v3/frozen")
-                    resources = _closed(template["resources"], {
-                        "package_receipt", "compiler_input", "model_object", "build_tool",
-                        "runtime_artifact"}, "template resources")
-                    resource_sets.append({
-                        name: {"path": str(_ref(path.parent, value, name)),
-                               "sha256": value["sha256"]}
-                        for name, value in resources.items()})
+                    template = _closed(
+                        yaml.safe_load(path.read_text(encoding="utf-8")),
+                        {
+                            "schema_version",
+                            "kind",
+                            "status",
+                            "registry_id",
+                            "backend_adapter",
+                            "cell",
+                            "resources",
+                            "environment",
+                            "execution",
+                            "memory_policy",
+                            "timeout_seconds",
+                        },
+                        "measurement template",
+                    )
+                    if (
+                        template["schema_version"] != 3
+                        or template["kind"] != "paper_backend_measurement_template_v3"
+                        or template["status"] != "frozen"
+                    ):
+                        raise ValueError("cannot freeze: backend measurement template is not v3/frozen")
+                    resources = _closed(
+                        template["resources"],
+                        {"package_receipt", "compiler_input", "model_object", "build_tool", "runtime_artifact"},
+                        "template resources",
+                    )
+                    resource_sets.append(
+                        {
+                            name: {"path": str(_ref(path.parent, value, name)), "sha256": value["sha256"]}
+                            for name, value in resources.items()
+                        }
+                    )
                     template_paths.append(path)
-                canonical = [{name: value["sha256"] for name, value in row.items()}
-                             for row in resource_sets]
+                canonical = [{name: value["sha256"] for name, value in row.items()} for row in resource_sets]
                 if any(row != canonical[0] for row in canonical[1:]):
-                    raise ValueError(
-                        "cannot freeze: per-core templates select different model resources")
+                    raise ValueError("cannot freeze: per-core templates select different model resources")
                 yield backend, model_name, model, precision, resource_sets[0], template_paths
 
 
-def validate_packages_before_private_io(raw: Mapping[str, Any], *,
-                                        toolchain_authority_path: Path,
-                                        toolchain_authority_sha256: str) -> None:
+def validate_packages_before_private_io(
+    raw: Mapping[str, Any], *, toolchain_authority_path: Path, toolchain_authority_sha256: str
+) -> None:
     """Materialize every unique package before capture/session files are opened."""
     for backend, _model_name, model, precision, resources, _templates in _resource_sets(raw):
         _validate_package_before_private_io(
-            resources, backend=backend, model=model, precision=precision,
-            registry_id=("executorch_v1" if backend["adapter"] == "executorch"
-                         else "merlin_compile_v1"),
+            resources,
+            backend=backend,
+            model=model,
+            precision=precision,
+            registry_id=("executorch_v1" if backend["adapter"] == "executorch" else "merlin_compile_v1"),
             compiler_source_sha256=str(raw["freeze"].get("compiler_source_sha256", "")),
             target=str(raw["target"]),
             toolchain_authority_path=toolchain_authority_path,
-            toolchain_authority_sha256=toolchain_authority_sha256)
+            toolchain_authority_sha256=toolchain_authority_sha256,
+        )
 
 
 def construct_measurement_evidence(
@@ -489,24 +568,25 @@ def construct_measurement_evidence(
     measurement_io: dict[str, Any] = {}
     consumed_formats: set[tuple[str, str]] = set()
     retained: list[Path] = []
-    grouped: dict[str, list[tuple[
-        str, Mapping[str, Any], str, Mapping[str, Any], list[Path]]]] = {}
+    grouped: dict[str, list[tuple[str, Mapping[str, Any], str, Mapping[str, Any], list[Path]]]] = {}
     for backend, model_name, model, precision, resources, templates in _resource_sets(raw):
-        grouped.setdefault(str(backend["name"]), []).append(
-            (model_name, model, precision, resources, templates))
+        grouped.setdefault(str(backend["name"]), []).append((model_name, model, precision, resources, templates))
     for backend in raw["backends"]:
         backend_name = str(backend["name"])
         by_model: dict[str, Any] = {}
         for model_name, model, precision, resources, templates in grouped.get(backend_name, []):
             by_precision = by_model.setdefault(model_name, {})
             _validate_package_before_private_io(
-                resources, backend=backend, model=model, precision=precision,
-                registry_id=("executorch_v1" if backend["adapter"] == "executorch"
-                             else "merlin_compile_v1"),
+                resources,
+                backend=backend,
+                model=model,
+                precision=precision,
+                registry_id=("executorch_v1" if backend["adapter"] == "executorch" else "merlin_compile_v1"),
                 compiler_source_sha256=str(raw["freeze"].get("compiler_source_sha256", "")),
                 target=str(raw["target"]),
                 toolchain_authority_path=toolchain_authority_path,
-                toolchain_authority_sha256=toolchain_authority_sha256)
+                toolchain_authority_sha256=toolchain_authority_sha256,
+            )
             capture = capture_roots[(model_name, precision)]
             format_selection = selected_formats.get((model_name, precision))
             if format_selection is not None:
@@ -514,32 +594,32 @@ def construct_measurement_evidence(
             format_observation = (
                 require_capture_contraction_formats(capture, format_selection) if format_selection is not None else None
             )
-            input_frames, reference_frames, sources = _trajectory(
-                capture, int(model["session"]["observations"]))
-            package_document = json.loads(
-                Path(resources["package_receipt"]["path"]).read_text(encoding="utf-8"))
+            input_frames, reference_frames, sources = _trajectory(capture, int(model["session"]["observations"]))
+            package_document = json.loads(Path(resources["package_receipt"]["path"]).read_text(encoding="utf-8"))
             merlin_session = package_document.get("object_recipe") == MERLIN_RECIPE
             session_resources = None
             request = response = None
             session_sources = None
             if merlin_session:
-                session_resources = merlin_session_resources(
-                    Path(resources["compiler_input"]["path"]))
-                request, response, session_sources = _session_trajectory(
-                    capture, session_resources.descriptor)
+                session_resources = merlin_session_resources(Path(resources["compiler_input"]["path"]))
+                request, response, session_sources = _session_trajectory(capture, session_resources.descriptor)
             capture_source_receipt = capture / "paper_measurement_sources.json"
             expected_capture_source = {
-                "schema_version": 1, "kind": "paper_measurement_capture_sources_v1",
-                "status": "finalized", "model": model_name, "precision": precision,
+                "schema_version": 1,
+                "kind": "paper_measurement_capture_sources_v1",
+                "status": "finalized",
+                "model": model_name,
+                "precision": precision,
                 "observations": model["session"]["observations"],
-                "input_frame_sha256": [hashlib.sha256(value).hexdigest()
-                                       for value in input_frames],
-                "reference_frame_sha256": [hashlib.sha256(value).hexdigest()
-                                           for value in reference_frames], **sources,
+                "input_frame_sha256": [hashlib.sha256(value).hexdigest() for value in input_frames],
+                "reference_frame_sha256": [hashlib.sha256(value).hexdigest() for value in reference_frames],
+                **sources,
             }
-            actual_capture_source = (json.loads(
-                capture_source_receipt.read_text(encoding="utf-8"))
-                if capture_source_receipt.is_file() else None)
+            actual_capture_source = (
+                json.loads(capture_source_receipt.read_text(encoding="utf-8"))
+                if capture_source_receipt.is_file()
+                else None
+            )
             if merlin_session or (
                 isinstance(actual_capture_source, Mapping)
                 and (
@@ -554,14 +634,17 @@ def construct_measurement_evidence(
                     request, response, session_sources = _session_trajectory(capture, descriptor)
                 else:
                     descriptor = session_resources.descriptor
-                expected_capture_source.update({
-                    "schema_version": 2, "kind": "paper_measurement_capture_sources_v2",
-                    "session_protocol": _MERLIN_SESSION_PROTOCOL,
-                    "session_descriptor_sha256": descriptor.sha256,
-                    "session_request_sha256": hashlib.sha256(request).hexdigest(),
-                    "session_reference_response_sha256": hashlib.sha256(response).hexdigest(),
-                    "session_input_source_sha256": session_sources["input_source_sha256"],
-                })
+                expected_capture_source.update(
+                    {
+                        "schema_version": 2,
+                        "kind": "paper_measurement_capture_sources_v2",
+                        "session_protocol": _MERLIN_SESSION_PROTOCOL,
+                        "session_descriptor_sha256": descriptor.sha256,
+                        "session_request_sha256": hashlib.sha256(request).hexdigest(),
+                        "session_reference_response_sha256": hashlib.sha256(response).hexdigest(),
+                        "session_input_source_sha256": session_sources["input_source_sha256"],
+                    }
+                )
             if format_observation is not None:
                 expected_capture_source.update(
                     {
@@ -576,8 +659,7 @@ def construct_measurement_evidence(
                 else _mjson.canonical_json(actual_capture_source) == _mjson.canonical_json(expected_capture_source)
             )
             if not capture_source_receipt.is_file() or not source_matches:
-                raise ValueError(
-                    "cannot freeze: capture measurement-source receipt is absent or differs")
+                raise ValueError("cannot freeze: capture measurement-source receipt is absent or differs")
             cell_dir = destination / backend_name / model_name / precision
             cell_dir.mkdir(parents=True)
             reference_path = cell_dir / "eager-fp32.bin"
@@ -587,24 +669,35 @@ def construct_measurement_evidence(
                 request_path = cell_dir / "private-session-request.bin"
                 request_path.write_bytes(request)
                 input_paths = [request_path]
-                input_refs = {"session_request": {
-                    "path": str(request_path), "sha256": _sha(request_path)}}
+                input_refs = {"session_request": {"path": str(request_path), "sha256": _sha(request_path)}}
                 reference_path.write_bytes(response)
                 from .paper_session_abi import decode_request
+
                 decoded = decode_request(request, expected_descriptor=session_resources.descriptor)
-                manifest_path.write_text(json.dumps({
-                    "schema_version": 2, "kind": "paper_session_request_v2",
-                    "protocol": _MERLIN_SESSION_PROTOCOL,
-                    "session_kind": model["session"]["kind"],
-                    "observations": model["session"]["observations"],
-                    "descriptor_sha256": session_resources.descriptor.sha256,
-                    "inputs": {"session_request": _sha(request_path)},
-                    "records": [{
-                        "program": frame.endpoint.program, "input": frame.endpoint.input,
-                        "step": frame.step,
-                        "payload_sha256": hashlib.sha256(frame.payload).hexdigest(),
-                    } for frame in decoded.frames],
-                }, sort_keys=True), encoding="utf-8")
+                manifest_path.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": 2,
+                            "kind": "paper_session_request_v2",
+                            "protocol": _MERLIN_SESSION_PROTOCOL,
+                            "session_kind": model["session"]["kind"],
+                            "observations": model["session"]["observations"],
+                            "descriptor_sha256": session_resources.descriptor.sha256,
+                            "inputs": {"session_request": _sha(request_path)},
+                            "records": [
+                                {
+                                    "program": frame.endpoint.program,
+                                    "input": frame.endpoint.input,
+                                    "step": frame.step,
+                                    "payload_sha256": hashlib.sha256(frame.payload).hexdigest(),
+                                }
+                                for frame in decoded.frames
+                            ],
+                        },
+                        sort_keys=True,
+                    ),
+                    encoding="utf-8",
+                )
                 sources = session_sources
                 session_fields = {
                     "session_protocol": _MERLIN_SESSION_PROTOCOL,
@@ -613,25 +706,33 @@ def construct_measurement_evidence(
             else:
                 reference_path.write_bytes(_frames(reference_frames))
                 split = max(1, len(input_frames) // 2)
-                shards = [values for values in (
-                    input_frames[:split], input_frames[split:]) if values]
+                shards = [values for values in (input_frames[:split], input_frames[split:]) if values]
                 input_paths = []
                 for index, values in enumerate(shards):
                     path = cell_dir / f"private-inputs-{index:02d}.bin"
                     path.write_bytes(_frames(values))
                     input_paths.append(path)
-                input_refs = {f"session_input_{index:02d}": {
-                    "path": str(path), "sha256": _sha(path)}
-                    for index, path in enumerate(input_paths)}
-                manifest_path.write_text(json.dumps({
-                    "schema_version": 1, "kind": "paper_session_inputs_v1",
-                    "session_kind": model["session"]["kind"],
-                    "observations": model["session"]["observations"],
-                    "inputs": {name: ref["sha256"] for name, ref in input_refs.items()},
-                    "records": [{"index": index,
-                                 "payload_sha256": hashlib.sha256(value).hexdigest()}
-                                for index, value in enumerate(input_frames)],
-                }, sort_keys=True), encoding="utf-8")
+                input_refs = {
+                    f"session_input_{index:02d}": {"path": str(path), "sha256": _sha(path)}
+                    for index, path in enumerate(input_paths)
+                }
+                manifest_path.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "kind": "paper_session_inputs_v1",
+                            "session_kind": model["session"]["kind"],
+                            "observations": model["session"]["observations"],
+                            "inputs": {name: ref["sha256"] for name, ref in input_refs.items()},
+                            "records": [
+                                {"index": index, "payload_sha256": hashlib.sha256(value).hexdigest()}
+                                for index, value in enumerate(input_frames)
+                            ],
+                        },
+                        sort_keys=True,
+                    ),
+                    encoding="utf-8",
+                )
             receipt_path = cell_dir / "measurement-io-receipt.json"
             receipt_path.write_text(
                 json.dumps(
@@ -663,16 +764,21 @@ def construct_measurement_evidence(
             by_precision[precision] = {
                 "artifact": resources["runtime_artifact"],
                 "inputs": input_refs,
-                "session_manifest": {"path": str(manifest_path),
-                                     "sha256": _sha(manifest_path)},
-                "reference_output": {"path": str(reference_path),
-                                     "sha256": _sha(reference_path)},
-                "generation_receipt": {"path": str(receipt_path),
-                                       "sha256": _sha(receipt_path)},
+                "session_manifest": {"path": str(manifest_path), "sha256": _sha(manifest_path)},
+                "reference_output": {"path": str(reference_path), "sha256": _sha(reference_path)},
+                "generation_receipt": {"path": str(receipt_path), "sha256": _sha(receipt_path)},
             }
-            retained.extend([capture_source_receipt, *templates,
-                             *[Path(value["path"]) for value in resources.values()],
-                             *input_paths, reference_path, manifest_path, receipt_path])
+            retained.extend(
+                [
+                    capture_source_receipt,
+                    *templates,
+                    *[Path(value["path"]) for value in resources.values()],
+                    *input_paths,
+                    reference_path,
+                    manifest_path,
+                    receipt_path,
+                ]
+            )
             if format_selection is not None:
                 if require_capture_contraction_formats(capture, format_selection) != format_observation:
                     raise ValueError("Contraction source bytes changed.")
@@ -693,6 +799,7 @@ def construct_measurement_evidence(
 
 
 __all__ = [
-    "construct_measurement_evidence", "validate_packages_before_private_io",
+    "construct_measurement_evidence",
+    "validate_packages_before_private_io",
     "write_capture_measurement_source_receipt",
 ]

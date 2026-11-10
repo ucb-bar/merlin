@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/design_pressure/emit
+# src/merlin/analysis/dse/pressure/emit
 
 ## Purpose
 

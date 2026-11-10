@@ -1,4 +1,4 @@
-"""Shared setuptools build routing for optional distributions (linked as their setup.py).
+"""Setuptools build routing for independent tools (linked as their setup.py).
 
 PEP 517 invokes the backend in the project directory. Resolve that directory, not this file's
 symlink target. Checkout builds stay beneath out/build/python/<distribution>; an extracted sdist
@@ -37,7 +37,7 @@ if (
 ):
     raise ValueError("invalid extension distribution name")
 _WORKSPACE = _PROJECT.parent.parent
-if _PROJECT.parent.name != "packages" or not (_WORKSPACE / "build_tools" / "extension_setup.py").is_file():
+if _PROJECT.parent.name != "tools" or not (_WORKSPACE / "build_tools" / "extension_setup.py").is_file():
     _WORKSPACE = _PROJECT
 _OUTPUT = _WORKSPACE / "out" / "build" / "python" / _NAME
 

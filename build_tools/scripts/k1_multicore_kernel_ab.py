@@ -265,7 +265,7 @@ def _et_model_name(bundle_name: str) -> str:
     a placeholder, because a wrong name here is worse than an unpasteable command.
     """
     try:
-        from merlin.baselines import executorch as _et
+        from merlin.evaluation.frameworks import executorch as _et
 
         known = sorted(getattr(_et, "ALL_MODELS", ()), key=len, reverse=True)
     except Exception:  # noqa: BLE001

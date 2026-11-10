@@ -48,7 +48,7 @@ def render(reviewed_text: str, plugin: dict | None, name: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("example", help="the examples/<example> directory name")
+    parser.add_argument("example", help="path below examples, such as compiler-generation/NAME or targets/NAME")
     parser.add_argument("--check", action="store_true", help="report staleness instead of rewriting")
     args = parser.parse_args(argv)
     reviewed_dir = ROOT / "examples" / args.example / "target" / "contracts"

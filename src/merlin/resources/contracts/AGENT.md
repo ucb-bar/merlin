@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/resources/contracts
+# src/merlin/resources/contracts
 
 ## Purpose
 The **experiment ABI**: the repo-independent, versioned contract an out-of-tree target-backend
@@ -20,11 +20,11 @@ package is built against (see `README.md`). The *accessor code* lives in
 - `schemas/` — fail-closed JSON-Schema validators (distinct from the loose YAML data-model in
   `src/merlin/resources/schemas/`; only `command_buffer` overlaps, kept in sync by a test).
 - `examples/` — compatibility links for Gemmini's g0–g2 reference inputs and
-  expected command buffer; the source inputs belong to `examples/gemmini/phase0/reference/`
+  expected command buffer; the source inputs belong to `examples/compiler-generation/gemmini/test-generation/reference/`
   and the expected output is a Gemmini test fixture. These are not core release data.
 - `capsules/` — retained historical public corpus snapshots across multiple targets. See
   `capsules/MANIFEST.yaml` for regenerable and hand-authored members; hidden capsules and
-  goldens are untracked answer surfaces. New Phase 0 capsules are generated run artifacts,
+  goldens are untracked answer surfaces. New test generation capsules are generated run artifacts,
   selected through a reviewed release rather than authored here.
 
 ## What does NOT belong here

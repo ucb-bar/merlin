@@ -294,7 +294,7 @@ def run_oracle_ladder(
         # Capture original L2 custody after numerical comparison and before
         # a later engine can reuse mutable build paths. No observer means
         # no work; this grants only protected model scheduling evidence.
-        from merlin.experiments.phase1.feedback.rolling_model_gate import capture_tier
+        from merlin.development.backend.feedback.rolling_model_gate import capture_tier
 
         capture_tier(
             name, tier, evidence.tiers[tier], generated=paths.generated, package_dir=package_dir, shas=_pin_shas()

@@ -9,7 +9,7 @@ from pathlib import Path
 from types import MethodType
 
 from merlin.common.cpu_pool import shared_compute_pool
-from merlin.experiments.phase0 import connected_integer_qualification as SOURCE
+from merlin.development.testgen import connected_integer_qualification as SOURCE
 from merlin.targetgen import native_model_execution as NATIVE
 from merlin.targetgen.checked_source_model_diagnostic import (
     FAST_RESULT_SCHEMA,

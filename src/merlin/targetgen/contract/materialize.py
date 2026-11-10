@@ -31,6 +31,7 @@ from pathlib import Path
 
 import yaml
 
+from .description import write_description
 from .schemas import contract_dir
 
 # The complete capsule bundle (see generate_corpus.py / AGENT.md).  The PyTorch/linalg sources are
@@ -402,6 +403,7 @@ def materialize_public_capsules(
                 (d / f).write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
             else:
                 shutil.copyfile(sp, d / f)
+        write_description({}, source_capsule, d)
         dependency_root = src / "capsule.loader_deps"
         if dependency_root.is_dir() and not dependency_root.is_symlink():
             shutil.copytree(dependency_root, d / dependency_root.name, dirs_exist_ok=True)

@@ -5,9 +5,3 @@ invocation, runtime/verification primitives, and the research workflows. Optiona
 extras enable DSE, mining, analysis and evaluation in the canonical nested namespace.
 Experiment definitions live in the root catalog; generated state belongs under out/.
 """
-
-# Retain the historical package-path behavior without importing optional engines.
-# All active Merlin implementations now have one distribution owner.
-from pkgutil import extend_path
-
-__path__ = extend_path(__path__, __name__)

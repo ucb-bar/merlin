@@ -19,11 +19,9 @@ Modes, mirroring the sibling gates:
   --ratchet PATH       pre-existing debt that may only shrink; unlisted new violations fail
   --fail-on-violation  exit non-zero when a non-ratcheted violation is present (default: report only)
 
-TARGET-AGNOSTIC: targets are DISCOVERED, never listed. The discovery source is the set of conformance
-specs under ``experiments/reference-data/phase0/conformance/``, which is the same source
-``check_conformance_coverage.py`` uses, and a path is attributed to a target only when one of those
-names appears as a path COMPONENT. A buffer under no known target is reported under ``?`` rather than
-dropped, because a silently-unattributed violation is the failure mode this whole gate exists to catch.
+TARGET-AGNOSTIC: target identities come from authored descriptors. A path is attributed to a target
+only when its name appears as a path COMPONENT. A buffer under no known target is reported under
+``?`` rather than dropped, because a silently-unattributed violation must remain visible.
 """
 
 from __future__ import annotations
@@ -45,25 +43,22 @@ from merlin.runtime.route_partition import (  # noqa: E402
     VIOLATION_KINDS,
     route_of,
 )
-from merlin.targetgen.corpora import conformance_reference_dir  # noqa: E402
+from merlin.targetgen.corpora import descriptor_paths  # noqa: E402
 
 BUFFER_NAME = "command_buffer.json"
 
 #: Where the tracked ratchet lives, beside its siblings.
 DEFAULT_RATCHET = repo_root() / "build_tools" / "scripts" / "route_partition_ratchet.txt"
 
-#: Where target names come from. One file per target, stem == the target name.
-CONFORMANCE_DIR = conformance_reference_dir()
-
 #: Reported for a buffer whose path names no known target. Never dropped.
 UNATTRIBUTED = "?"
 
 
 def known_targets() -> list[str]:
-    """Every target with a conformance spec. Discovered, so adding a target needs no edit here."""
-    if not CONFORMANCE_DIR.is_dir():
-        return []
-    return sorted(p.stem for p in CONFORMANCE_DIR.glob("*.yaml"))
+    """Declared descriptor identities, independently of generated test requirements."""
+    from merlin.targetgen.target_experiment import _declared_target
+
+    return sorted({name for path in descriptor_paths() if (name := _declared_target(path))})
 
 
 def target_of(path: Path, targets: list[str]) -> str:

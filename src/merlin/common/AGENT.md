@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/common
+# src/merlin/common
 
 ## Purpose
 

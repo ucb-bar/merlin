@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/experiments/corpus
+# src/merlin/experiments/corpus
 
 `preparation.py` verifies derivation receipts, assembles complete source pools and
 stages declared resources. `release.py` owns explicit prepare/inspect/reviewed seal
@@ -28,7 +28,7 @@ existing snapshot verifier before loading; this reader creates no seal. Its byte
 provenance identifies declared assumptions, not hardware-verified semantics.
 
 `operand_relocation` stages an already selected observer with its exact original
-facts and sidecar bytes. A canonical Phase 0 export must match the complete typed
+facts and sidecar bytes. A canonical test generation export must match the complete typed
 facts document before original intake bytes are retained. Relocation changes
 paths only; it never replaces an observer, edits its sources, or reissues hardware
 observations. Reviewed handoff rechecks identical documents and complete sources.

@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/verification/lean/Merlin
+# src/merlin/verification/lean/Merlin
 
 `Foundation.lean` supplies a typed Lean-MLIR wrapping-integer dialect and generic
 ordered-segment, tail-index and lifetime lemmas. It contains no target facts,

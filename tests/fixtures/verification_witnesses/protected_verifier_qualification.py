@@ -2,8 +2,8 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.experiments.phase2 import protected_final_evaluation as F
-from merlin.experiments.phase2.contracts import StageGateError, sha256_file
+from merlin.development.backend.optimization import protected_final_evaluation as F
+from merlin.development.backend.optimization.contracts import StageGateError, sha256_file
 from verification_witnesses.numerical_readback import native_case as _native_case
 from verification_witnesses.protected_final_evaluation import _request
 

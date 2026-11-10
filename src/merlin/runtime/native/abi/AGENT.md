@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/runtime/native/abi
+# src/merlin/runtime/native/abi
 
 ## Purpose
 

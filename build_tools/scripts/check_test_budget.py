@@ -20,22 +20,22 @@ ROOT = Path(__file__).resolve().parents[2]
 # Immutable companion inputs recorded by each example's SOURCE.yaml. These are
 # retained reproduction bytes, not maintained Merlin regression collectors.
 ARCHIVED = {
-    "examples/atlas/support/tests/test_program_emitter_migration.py": (  # target-ok: frozen input identity
+    "examples/compiler-generation/atlas/support/tests/test_program_emitter_migration.py": (  # target-ok: frozen input identity
         "dd01b6d6bfc48bc7d629c94da5e34807734043c985ed99a9785b5302dbe5eae3"
     ),
-    "examples/atlas/support/tests/test_support_contract.py": (  # target-ok: frozen input identity
+    "examples/compiler-generation/atlas/support/tests/test_support_contract.py": (  # target-ok: frozen input identity
         "ae074ea9a8236ff46fc41070d9ec7417582cbc8839b7bd78ea20b003161cccfb"
     ),
-    "examples/muon/support/tests/test_codegen_smoke.py": (  # target-ok: frozen input identity
+    "examples/targets/muon/support/tests/test_codegen_smoke.py": (  # target-ok: frozen input identity
         "890cabf6befa65d27778caa6f1e01a43badaed725d93d1cfc86eb84c1cfaf9cd"
     ),
-    "examples/rvv/support/tests/test_support_contract.py": (  # target-ok: frozen input identity
+    "examples/targets/rvv/support/tests/test_support_contract.py": (  # target-ok: frozen input identity
         "769601d79d98aa18ea5c07ea553104c6c522946b7f5ef5f69d671e5a60a9227f"
     ),
-    "examples/saturn/support/tests/test_matrix_lowering.py": (  # target-ok: frozen input identity
+    "examples/targets/saturn/support/tests/test_matrix_lowering.py": (  # target-ok: frozen input identity
         "0859ef19143a19afcd89ac20a310d2dd548a152c405dfeb21db704d31abb95c7"
     ),
-    "examples/saturn/support/tests/test_migration.py": (  # target-ok: frozen input identity
+    "examples/targets/saturn/support/tests/test_migration.py": (  # target-ok: frozen input identity
         "a9f11081c34572ed9d35497ead6f4a59736fe0a3fc7bc7b348b3b52f9b8078d2"
     ),
 }

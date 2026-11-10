@@ -5,14 +5,16 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+
 from ..spec import SpecError, read_yaml
 from .preparation_io import ordinary_tree
 
 
 def _verify_completed_frozen_sources(plan: dict, run_dir: Path) -> None:
     """Admit only recorded run-owned source bytes, not a live producer/runtime."""
+    from merlin.development.testgen import freeze
+
     from ..adapters import PHASE0_MODULE
-    from ..phase0 import freeze
     from ..runner import _command_value, _phase0_input_paths, fingerprint
 
     command = plan["phases"]["0"]
@@ -61,10 +63,13 @@ def _verify_completed_frozen_sources(plan: dict, run_dir: Path) -> None:
 
 def _verify_completed_generation(plan: dict, generated: Path) -> None:
     """Reopen committed generation and capture issuer evidence without recapturing."""
-    from ..phase0.capture_execution_attestation import AttestationNotVerified, require_verified_execution
-    from ..phase0.evidence import load_exported_evidence
-    from ..phase0.evidence_status import capture_attestation_diagnostics
-    from ..phase0.sealed_generation import verified_capture_failure
+    from merlin.development.testgen.capture_execution_attestation import (
+        AttestationNotVerified,
+        require_verified_execution,
+    )
+    from merlin.development.testgen.evidence import load_exported_evidence
+    from merlin.development.testgen.evidence_status import capture_attestation_diagnostics
+    from merlin.development.testgen.sealed_generation import verified_capture_failure
 
     lineage = generation_lineage(plan, generated)
     bundle = plan.get("phase0_evidence_bundle")
@@ -112,7 +117,7 @@ def _require_enforceable_instruction_policy(plan: dict, generated: Path) -> None
     least one of the target's instructions. A corpus once sealed ``status: resolved`` beside
     ``vacuous_roles: [loop_descriptor]`` -- a no-FSM rule that matched nothing -- and every later phase
     read that as enforced."""
-    from ..phase0.instruction_roles import enforcement_problems
+    from merlin.development.testgen.instruction_roles import enforcement_problems
 
     policy = read_yaml(generated / "MANIFEST.yaml").get("instruction_policy")
     declared = ((plan["phases"]["0"].get("instruction_policy") or {}).get("prohibited_instruction_roles")) or []
@@ -166,7 +171,7 @@ def generation_lineage(plan: dict, generated: Path) -> dict | None:
         or (provenance.get("phase0_evidence") or {}).get("manifest") != str(manifest_path)
     ):
         raise SpecError("Phase-0 generation receipt does not identify the selected corpus and evidence")
-    from ..phase0.evidence import load_exported_evidence
+    from merlin.development.testgen.evidence import load_exported_evidence
 
     evidence = load_exported_evidence(bundle)
     if evidence.target != plan["target"] or receipt.get("evidence_status") != evidence.status:
@@ -182,7 +187,7 @@ def generation_lineage(plan: dict, generated: Path) -> dict | None:
     coverage = receipt.get("coverage_inputs")
     if coverage != provenance.get("coverage_inputs"):
         raise SpecError("generated corpus coverage inputs differ from generation receipt")
-    from ..phase0.coverage_commitment import read_inputs
+    from merlin.development.testgen.coverage_commitment import read_inputs
 
     inputs = read_inputs(generated, provenance)
     if inputs is None or inputs.get("conformance") != read_yaml(Path(requirement)):

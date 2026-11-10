@@ -1,4 +1,4 @@
-# Python source
+# src
 
 `merlin/`, `merlin.experiments/` and `merlin_dse/` are owned by one Merlin distribution.
 Compiler primitives remain independent of optional research workflows and heavy dependencies.

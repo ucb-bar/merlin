@@ -12,7 +12,7 @@ import os
 import subprocess
 from pathlib import Path
 
-SOURCE_SCAN_ROOTS = ("src", "merlin/python/merlin", "packages")
+SOURCE_SCAN_ROOTS = ("src", "tools/timing/src", "merlin/python/merlin", "packages")
 EXCLUDED_PARTS = frozenset({"_data", "__pycache__", ".venv", "venv", "_qa_ws", "build", "dist"})
 
 
@@ -80,6 +80,42 @@ def module_alias(path: Path, root: Path) -> tuple[str, Path] | None:
 
 def policy_path(path: str) -> str:
     """Stable debt identity for the same merlin module, including shared-namespace distributions."""
+    # Physical organization does not clear a source's existing review debt.
+    for canonical, former in (
+        ("src/merlin/evaluation/frameworks", "src/merlin/baselines"),
+        ("src/merlin/development/backend/optimization", "src/merlin/experiments/phase2"),
+        ("src/merlin/development/backend", "src/merlin/experiments/phase1"),
+        ("src/merlin/development/testgen", "src/merlin/experiments/phase0"),
+        ("tools/timing", "packages/merlin-timing"),
+    ):
+        if path == canonical or path.startswith(canonical + "/"):
+            return policy_path(former + path[len(canonical) :])
+    if path == "src/merlin/capture/pretranspose.py":
+        return policy_path("src/merlin/baselines/pretranspose_cli.py")
+    paper = "src/merlin/compare/paper_measurement_"
+    if path.startswith(paper) and path[len(paper) :] in {
+        "protocol.py",
+        "study.py",
+        "contract.py",
+        "build.py",
+        "process.py",
+        "execution.py",
+        "verification.py",
+    }:
+        return policy_path(paper + "controller.py")
+    parts = path.split("/")
+    if len(parts) >= 3 and parts[0] == "examples" and parts[1] in {"compilation", "compiler-generation", "targets"}:
+        leaf = "compiler" if parts[2] == "compiler-api" else parts[2]
+        tail = parts[3:]
+        if tail[:2] == ["backend-generation", "optimization"]:
+            tail = ["phase2", *tail[2:]]
+        elif tail[:1] == ["backend-generation"]:
+            tail = ["phase1", *tail[1:]]
+        elif tail[:1] == ["test-generation"]:
+            tail = ["phase0", *tail[1:]]
+        return policy_path("/".join(("examples", leaf, *tail)))
+    if path.startswith("experiments/inputs/"):
+        return "experiments/reference-data/" + path[len("experiments/inputs/") :]
     # Relocated algorithms retain their existing debt identities; no new allowance.
     relocated = {
         "src/merlin/compiler/quantization/contraction/contract.py": "merlin/python/merlin/semantic_compiler/precision_contract.py",
@@ -241,6 +277,7 @@ def core_package(root: Path) -> Path:
 def source_packages(root: Path) -> tuple[Path, ...]:
     """Package directories, preferring canonical src over its legacy compatibility symlink."""
     candidates = [*sorted((root / "src").glob("*")), root / "merlin/python/merlin"]
+    candidates.extend(sorted((root / "tools/timing/src").glob("*")))
     candidates.extend(sorted((root / "packages").glob("*/src/*")))
     seen: set[Path] = set()
     out: list[Path] = []

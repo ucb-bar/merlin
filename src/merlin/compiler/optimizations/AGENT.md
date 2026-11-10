@@ -1,4 +1,4 @@
-# AGENT.md - src/merlin/compiler/optimizations
+# src/merlin/compiler/optimizations
 
 These are existing selectable optimization strategies. The registry owns one
 FeatureRegistry and executes its eager declarations in their original order.

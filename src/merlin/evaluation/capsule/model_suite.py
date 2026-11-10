@@ -170,8 +170,8 @@ def _candidate_boundary_readiness(capsules, pkg, *, oracle_adapters):
     """
     if set(oracle_adapters or {}) != {"L2"}:
         return None
-    from merlin.experiments.phase1 import joint_control
-    from merlin.experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
+    from merlin.development.backend import joint_control
+    from merlin.development.backend.feedback.compiler_profile_runtime import active_original_execution
     from merlin.targetgen.capsule_scheduling import BoundaryReadiness
     from merlin.targetgen.expected_refusal import expects_refusal
     from merlin.targetgen.owned_host_leaf_execution import selected_host_leaf

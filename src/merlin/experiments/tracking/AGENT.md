@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/experiments/tracking
+# src/merlin/experiments/tracking
 
 ## Purpose
 
@@ -14,12 +14,12 @@ Experiment tracking views: a static HTML dashboard and a live terminal view, fro
 - `explorer.py` — Explore a target's runs: an index of every phase's runs, the lineage between them, and comparisons.
 - `html.py` — Render a tracking summary as ONE self-contained HTML page: inline CSS, inline SVG, a few lines of JS.
 - `live.py` — ``dashboard --live``: regenerate the page every N seconds and serve it on 127.0.0.1, stdlib only.
-- `phase0.py` — Read a Phase 0 derivation or generation run into the corpus-and-coverage view's summary.
-- `phase0_html.py` — Render the Phase 0 corpus-and-coverage summary (:mod:`.phase0`) as one self-contained page.
-- `phase1_detail.py` — Phase 1 jobs, self-checks and grades on one timeline, with family pass rates and recorded cost and time.
-- `phase1_views.py` — The richer Phase 1 sections of a run page: timeline, compiler evolution, family pass rates, cost/time.
-- `phase2_paired.py` — Read a checkpointed paired Phase 2 experiment: trials x members x {tuning, held_out, held_out_form}.
-- `phase2_views.py` — Render a checkpointed paired Phase 2 experiment (:mod:`.phase2_paired`) as page sections.
+- `phase0.py` — Read a test generation derivation or generation run into the corpus-and-coverage view's summary.
+- `phase0_html.py` — Render the test generation corpus-and-coverage summary (:mod:`.phase0`) as one self-contained page.
+- `phase1_detail.py` — backend generation jobs, self-checks and grades on one timeline, with family pass rates and recorded cost and time.
+- `phase1_views.py` — The richer backend generation sections of a run page: timeline, compiler evolution, family pass rates, cost/time.
+- `phase2_paired.py` — Read a checkpointed paired backend optimization experiment: trials x members x {tuning, held_out, held_out_form}.
+- `phase2_views.py` — Render a checkpointed paired backend optimization experiment (:mod:`.phase2_paired`) as page sections.
 - `records.py` — Read an experiment's own records into one summary: what the dashboard and ``watch`` show.
 - `resources.py` — Host load samples and a monitor's notes: two operator-side records a run view can sit beside.
 - `tail.py` — Read growing records cheaply and without touching them: offset tailing and stat signatures.
@@ -51,7 +51,7 @@ Experiment tracking views: a static HTML dashboard and a live terminal view, fro
 - A live view adds nothing to a run: it opens run files read-only (never locks, renames, truncates or
   writes them), tails JSONL from the last byte offset up to the last newline, re-renders a section only
   when its inputs' stat signature changes, and refuses an output path inside any directory it reads.
-- Times that are file modification times (sealed Phase 2 records, job marker files) are labelled as such;
+- Times that are file modification times (sealed backend optimization records, job marker files) are labelled as such;
   a reconstructed chart (measurement slots) says it is a reconstruction.
 
 - The animated console also samples host CPU counters and thread positions read-only. These are

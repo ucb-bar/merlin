@@ -106,14 +106,14 @@ def _is_generated_product(target: str) -> bool:
 
 def _targets_with_profiles() -> list[str]:
     """Runtime targets with an explicitly declared derivation, never sidecar stems."""
-    from merlin.experiments.phase0.declarations import all_declarations
+    from merlin.development.testgen.declarations import all_declarations
 
     return sorted({declaration.target for declaration in all_declarations()})
 
 
 def audit(target: str) -> list[dict]:
     """Findings for one target. Empty list == this target is measurable."""
-    from merlin.experiments.phase0.declarations import for_target
+    from merlin.development.testgen.declarations import for_target
 
     declaration = for_target(target)
     target = declaration.target
@@ -323,7 +323,7 @@ def main() -> int:
     if a.target:
         # A one-target audit says nothing about other targets' debt. Without
         # this scope the gate reports their still-open findings as "resolved".
-        from merlin.experiments.phase0.declarations import for_target
+        from merlin.development.testgen.declarations import for_target
 
         selected = for_target(a.target).target
         known = {key for key in known if key.startswith(f"{selected}:")}

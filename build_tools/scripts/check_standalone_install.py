@@ -104,7 +104,7 @@ retired = sorted(name for name in payload
                  if name.startswith(("merlin_dse/", "merlin_experiments/"))
                  or name in {"merlin_dse.py", "merlin_experiments.py"})
 assert not retired, "retired namespace payload remains installed: " + repr(retired)
-for module in ("merlin.agentreport", "merlin.experiments.phase1.controller", "merlin.targetgen.aet_bridge",
+for module in ("merlin.agentreport", "merlin.development.backend.controller", "merlin.targetgen.aet_bridge",
                "merlin.targetgen.experiment_tokens", "merlin.targetgen.heavy_oracles",
                "merlin.mining.beam", "merlin.verify.plots", "merlin.perf.recovery",
                "merlin.perf.source_program_pair_provider", "merlin.analysis.dse.search", "merlin.experiments",

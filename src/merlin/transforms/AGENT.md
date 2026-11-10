@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/transforms
+# src/merlin/transforms
 
 This package owns target-independent, structural xDSL transformations and analyses.
 `pipeline_state.py` owns shared state/order/invalidation types. `pipeline.py`

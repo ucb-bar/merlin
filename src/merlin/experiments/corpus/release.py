@@ -58,8 +58,8 @@ class ExactOffloadReleaseBinding:
 
     def verify(self, selection) -> None:
         from merlin.common.digest import sha256_bytes
+        from merlin.development.testgen.evidence import load_exported_evidence
 
-        from ..phase0.evidence import load_exported_evidence
         from ..runner import fingerprint
 
         review = verify(self.seal_path, self.descriptor)
@@ -256,7 +256,6 @@ def _content(root: Path, prepared: dict) -> dict:
     return {"preparation_sha256": _digest(prepared), "payload_sha256": observed}
 
 
-
 def _verify_public_programs(root: Path, prepared: dict) -> None:
     """Reopen private program custody and its answer-free payload before review."""
     from merlin.targetgen.target_experiment import load_target_experiment
@@ -273,8 +272,7 @@ def _verify_public_programs(root: Path, prepared: dict) -> None:
     selected = programs.selected(te)
     if selected is None:
         raise SpecError("prepared public program selection is absent")
-    programs.public_view(selected[0], root / "payload/experiment/public-program-sources",
-                         target=te.target, verify=True)
+    programs.public_view(selected[0], root / "payload/experiment/public-program-sources", target=te.target, verify=True)
 
 
 def _stage_instruction_model(plan: dict, private: Path) -> dict | None:
@@ -286,7 +284,7 @@ def _stage_instruction_model(plan: dict, private: Path) -> dict | None:
         return None
     if not isinstance(location, str) or not location:
         raise SpecError("selected Phase 0 evidence bundle path is invalid")
-    from ..phase0.evidence import load_exported_evidence
+    from merlin.development.testgen.evidence import load_exported_evidence
 
     bundle = Path(location).expanduser().absolute()
     selected = load_exported_evidence(bundle)
@@ -317,7 +315,7 @@ def _selected_rtl_facts(plan: dict, generated: Path) -> Path | None:
         # generated corpus. Never use this path when evidence was selected.
         legacy = generated / "hardware/effective-views/loaded-facts.json"
         return legacy if legacy.is_file() and not legacy.is_symlink() else None
-    from ..phase0.evidence import load_exported_evidence
+    from merlin.development.testgen.evidence import load_exported_evidence
 
     bundle = Path(location).expanduser().absolute()
     evidence = load_exported_evidence(bundle)
@@ -350,7 +348,7 @@ def _selected_capability_contract(plan: dict, generated: Path) -> tuple[Path, st
         ordinary_tree(path)
         raw = path.read_bytes()
     else:
-        from ..phase0.evidence import load_exported_evidence
+        from merlin.development.testgen.evidence import load_exported_evidence
 
         bundle = Path(location).expanduser().absolute()
         evidence = load_exported_evidence(bundle)
@@ -650,12 +648,25 @@ def prepare(
                 **({"operator_public_members": tuple(supplement["members"])} if supplement is not None else {}),
                 **({"public_scalability": scalability} if scalability is not None else {}),
                 **({"public_program_suite": programs} if programs is not None else {}),
-                **({"host_capability_selection": host_capability_selection}
-                   if host_capability_selection is not None else {}),
-                **({"public_reference_manifest": public_reference_manifest}
-                   if public_reference_manifest is not None else {}),
-                **(dict(author_profile=author_profile, author_profile_sources=author_profile_sources,
-                        author_profile_common_inputs=author_profile_common_inputs) if author_profile else {}),
+                **(
+                    {"host_capability_selection": host_capability_selection}
+                    if host_capability_selection is not None
+                    else {}
+                ),
+                **(
+                    {"public_reference_manifest": public_reference_manifest}
+                    if public_reference_manifest is not None
+                    else {}
+                ),
+                **(
+                    dict(
+                        author_profile=author_profile,
+                        author_profile_sources=author_profile_sources,
+                        author_profile_common_inputs=author_profile_common_inputs,
+                    )
+                    if author_profile
+                    else {}
+                ),
                 **({"cca_bank": cca_bank} if cca_bank is not None else {}),
             )
             if public_reference_manifest is not None:
@@ -740,7 +751,7 @@ def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str
             verify_supplement(supplement, root / "payload/corpus")
         phase = plan["phases"]["0"]
         if phase.get("phase0_evidence"):
-            from ..phase0.evidence import load_exported_evidence
+            from merlin.development.testgen.evidence import load_exported_evidence
 
             observed = load_exported_evidence(plan["phase0_evidence_bundle"])
             if observed.status != "verified":
@@ -835,15 +846,15 @@ def verify(seal_path: Path, descriptor: Path) -> dict:
 
 def _verify_workload_coverage(root: Path, prepared: dict) -> dict:
     """Require the deterministic handoff, without pre-certifying Phase 1."""
-    from merlin.targetgen.target_experiment import load_target_experiment
-
-    from ..phase0.coverage_commitment import (
+    from merlin.development.testgen.coverage_commitment import (
         build_phase0_readiness,
         phase0_readiness_identity,
         read_inputs,
         require_phase0_ready,
         requires_workload_coverage,
     )
+    from merlin.targetgen.target_experiment import load_target_experiment
+
     from ..runner import _read_json
 
     descriptor = root / "payload" / "experiment" / "target_experiment.yaml"

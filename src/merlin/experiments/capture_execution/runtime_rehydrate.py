@@ -186,7 +186,7 @@ def rehydrate_verified_runtime(
     Console scripts retain their exact old bytes; no claim that their shebangs
     are runnable is made. The selected capture invokes the new Python directly.
     """
-    from merlin.experiments.phase0 import capture_selection
+    from merlin.development.testgen import capture_selection
 
     selected = capture_selection.load(Path(selection_path), expected_sha256=selection_sha256)
     plan = selected["plan"]

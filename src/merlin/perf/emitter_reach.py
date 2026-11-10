@@ -33,9 +33,8 @@ from dataclasses import dataclass
 _NEEDS_ISA = ("merlin.perf.workload_gen",)
 
 #: Emitter entry-point prefixes that work off the frozen INTERFACE GRAMMAR -- either producing it
-#: (`corpus_spec.build` emits the interface) or consuming it (`command_stream_gen` permutes the ordered
-#: command list a capsule already parses to). Neither encodes a machine instruction, so both reach
-#: every target that has a corpus binding.
+#: (`corpus_spec.build` emits the interface). It needs no machine-instruction encoding,
+#: so it reaches every target that has a corpus binding.
 #:
 #: The classification is by what the emitter CONSUMES, which is the property that decides reach; a
 #: per-entry list would drift as families are added, and matching on the module keeps a new family
@@ -47,12 +46,12 @@ _NEEDS_ISA = ("merlin.perf.workload_gen",)
 #: barrier pair, both `new:` placeholders that name no module at all, and a deliberately nonsensical
 #: string -- each with a REASON asserting a property nobody had checked. An emitter kind nobody has
 #: classified is now `established=False`, not a yes.
-_GRAMMAR_EMITTERS = ("merlin.targetgen.corpus_spec.build", "merlin.perf.command_stream_gen")
+_GRAMMAR_EMITTERS = ("merlin.targetgen.corpus_spec.build",)
 
 #: Emitter entry points that drive the TARGET'S OWN driver emitter through a knob on its signature
 #: (see `merlin.perf.barrier_arms.pair_from_emitter`, whose `knob=` names a parameter belonging to the
 #: emitter, not to that module). Whether a given target's emitter accepts the knob is a fact about
-#: that target's backend, which does not live on the import path -- `experiments/reference-data/target-inputs` is not a package
+#: that target's backend, which does not live on the import path -- `experiments/inputs/target-inputs` is not a package
 #: -- so this module cannot resolve it and does not pretend to.
 _DRIVES_TARGET_EMITTER = ("merlin.perf.barrier_arms.pair_from_emitter",)
 

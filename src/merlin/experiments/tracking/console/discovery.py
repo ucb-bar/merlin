@@ -92,7 +92,7 @@ def owner_alive(owner: dict, proc_root: Path = Path("/proc")) -> bool:
     return [x.decode(errors="replace") for x in raw.split(b"\0") if x] == expected
 
 
-RUNNER_MODULE = "merlin.experiments.phase1"
+RUNNER_MODULE = "merlin.development.backend"
 
 
 def runner_processes(proc_root: Path = Path("/proc"), limit: int = 8192) -> dict[str, int]:

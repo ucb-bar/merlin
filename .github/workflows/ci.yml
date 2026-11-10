@@ -175,32 +175,8 @@ jobs:
       # explicitly UNMEASURED; load failures and assessed constant answers fail.
       - name: numeric falsifiability (partial public audit; missing oracles unmeasured)
         run: uv run --no-sync python build_tools/scripts/check_numeric_falsifiability.py --allow-unmeasured
-      # Conformance coverage against the TRACKED spec. The workflow README lists this script as
-      # out-of-band at ">4 min", which is true of `--write`/re-derivation: it reads every capture and
-      # rebuilds the requirement. Comparing the corpus against the spec already in the tree skips all of
-      # that — measured 4.8s for gemmini — and it is the mode a PR wants, because what a diff can break
-      # is the CORPUS, not the requirement. Re-derivation stays out-of-band.
-      #
-      # Gates on all eleven axes: until 2026-09-22 six of them were measured, printed with the same
-      # un-ratcheted marker as the rest, and never accumulated into the verdict.
-      #
-      # --allow-unresolved: the memory-mapping axis sizes the operand store from RTL facts, which a
-      # hosted runner cannot extract. That axis is printed UNQUALIFIED here instead of being reported
-      # as three uncovered regimes; every axis it CAN measure still fails on a new gap.
-      - name: conformance coverage (tracked spec)
-        run: |
-          uv run --no-sync python build_tools/scripts/check_conformance_coverage.py \
-            --target gemmini \
-            --spec experiments/corpora/conformance/gemmini.yaml \
-            --ratchet build_tools/scripts/conformance_ratchet.txt \
-            --fail-on-uncovered --allow-unresolved
-      # THE CIRCULARITY GUARD. A requirement cell derived from a model the experiment then claims to
-      # generalize TO is not evidence of anything, and this is the check that says so. It was listed
-      # out-of-band at "> 4 min on a populated out/" — measured here at 2m30s, and a CI runner clones
-      # fresh with no `out/` at all, so the stated reason is if anything backwards. It fits the job's
-      # source-job budget.
-      - name: claim-set disjointness
-        run: uv run --no-sync python build_tools/scripts/check_claim_set_disjointness.py --fail-on-circular
+      # Generated corpus qualification requires an explicitly prepared operator environment;
+      # see workflows/README.md. Source CI does not substitute a missing corpus or spec.
       # Advisory: CI has no RTL fact bundles, so under-declaration is undeterminable here; only an
       # over-declared capability is decidable, and today's four are not yet ratcheted.
       - name: capability-drift report (advisory; no RTL facts in CI)

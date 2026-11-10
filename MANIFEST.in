@@ -1,8 +1,8 @@
 include build_tools/package_resources.json
 include LICENSE
 include NOTICE
-# Independent timing and retained research tests are not a second Merlin code owner.
-prune packages
+# Independent tools are released separately from the Merlin compiler.
+prune tools
 global-exclude *.pyc *.pyo
 include src/merlin/semantic_compiler/egg_bridge/Cargo.toml
 include src/merlin/semantic_compiler/egg_bridge/Cargo.lock

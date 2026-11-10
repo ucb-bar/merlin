@@ -78,7 +78,7 @@ def software_spec_provider(target: str) -> str | None:
     """
     import yaml
 
-    from merlin.experiments.phase0.declarations import for_target
+    from merlin.development.testgen.declarations import for_target
 
     try:
         recipe = for_target(target).recipe

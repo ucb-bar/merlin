@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/semantic_compiler
+# src/merlin/semantic_compiler
 
 This package owns target-independent typed semantic graphs, generated instruction
 rules, native search, extraction, allocation, and independent checking. Keep

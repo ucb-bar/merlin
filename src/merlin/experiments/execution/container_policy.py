@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from merlin.experiments.phase2.contracts import StageGateError
+from merlin.development.backend.optimization.contracts import StageGateError
 
 
 def _tree(path):

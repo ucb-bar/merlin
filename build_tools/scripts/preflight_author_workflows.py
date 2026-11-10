@@ -24,7 +24,7 @@ for _p in (_REPO / "packages" / "merlin-experiments" / "src", _REPO / "src"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from merlin.experiments.phase1.author_acceptance import main  # noqa: E402
+from merlin.development.backend.author_acceptance import main  # noqa: E402
 
 if __name__ == "__main__":
     raise SystemExit(main())

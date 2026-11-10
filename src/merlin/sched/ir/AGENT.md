@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/sched/ir
+# src/merlin/sched/ir
 
 ## Purpose
 

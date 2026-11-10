@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/runtime/native/baremetal/spike
+# src/merlin/runtime/native/baremetal/spike
 
 ## Purpose
 

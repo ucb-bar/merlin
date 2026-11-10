@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/experiments/tracking/console
+# src/merlin/experiments/tracking/console
 
 ## Purpose
 
@@ -26,7 +26,7 @@ The experiment command console: discover, track, inspect and diagnose any experi
 ## Invariants
 
 - Two processes, one owner of records: the Python data process (`serve.py`) reads every record; the
-  Bubble Tea frontend (`packages/merlin-experiments/console`) only renders its JSON lines. Never add a
+  Bubble Tea frontend (`tools/console`) only renders its JSON lines. Never add a
   record reader to the Go side.
 - The section contract lives in `sources/__init__.py`; `console/internal/proto/proto.go` mirrors it.
   Change both together and extend `tests/test_console_*.py` and `internal/ui/ui_test.go`.

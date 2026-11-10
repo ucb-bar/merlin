@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/resources/prompts
+# src/merlin/resources/prompts
 
 ## Purpose
 Versioned **agent-instruction templates** (prose preambles) fed to the kernel-mining / RVV-tuning
@@ -9,7 +9,7 @@ agentic loops. Curated inputs (cannot be generated).
 
 ## Used by (the LIBRARY, not experiments)
 - `merlin.kernels.agent_mine` → `rvv_mining_v{V}.md`
-- `merlin.rvvgen.tuning_agent` → `rvv_tuning_v{V}.md`
+- `merlin.mining.tuning_agent` → `rvv_tuning_v{V}.md`
 Both resolve the dir via `merlin.common.paths.merlin_dir()/"prompts"` (robust — not `parents[N]`).
 
 ## Invariants

@@ -178,7 +178,7 @@ def _grade_model_capsule_unlocked(
             numeric_policy_identity=numeric_policy_identity,
         )
 
-    from merlin.experiments.phase1.feedback import compiler_profile_child as _child_profile
+    from merlin.development.backend.feedback import compiler_profile_child as _child_profile
 
     with _tf.TemporaryDirectory(prefix="model_grade_", dir=_child_profile.model_child_temporary_root()) as _td:
         spec_p, out_p = Path(_td) / "spec.json", Path(_td) / "result.json"

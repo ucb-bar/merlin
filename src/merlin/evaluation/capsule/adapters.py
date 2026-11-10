@@ -65,7 +65,7 @@ def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, r
     run._merlin_with_readback_policy = lambda policy: simulator_adapter(
         sim, target, selection=selection, readback_policy=policy
     )
-    from merlin.experiments.phase1.feedback.operator_child import register_adapter
+    from merlin.development.backend.feedback.operator_child import register_adapter
 
     register_adapter(run, engine=sim, target=target, selection=selection, readback_policy=readback_policy)
     return run

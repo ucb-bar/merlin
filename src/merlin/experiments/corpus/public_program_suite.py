@@ -28,8 +28,7 @@ def _pin(value):
         raise ValueError("public program selection needs an exact operator file pin")
     path = Path(value["path"])
     ordinary_tree(path)
-    if (not path.is_absolute() or path != path.resolve() or not path.is_file()
-            or sha256_file(path) != value["sha256"]):
+    if not path.is_absolute() or path != path.resolve() or not path.is_file() or sha256_file(path) != value["sha256"]:
         raise ValueError("public program operator input changed or is indirect")
     return path
 
@@ -41,9 +40,8 @@ def admit_placement(capsule, directory, *, target, evidence, source_context=None
     of this capture. ``screen_written`` checks that original capture binding;
     this helper neither chooses a lane nor substitutes device support claims.
     """
+    from merlin.development.testgen.program_admission import accelerator_placement_refusal, screen_written
     from merlin.targetgen.frozen_placement import read as read_placement
-
-    from ..phase0.program_admission import accelerator_placement_refusal, screen_written
 
     if not is_public_program(capsule) or capsule.get("kind") != "model":
         raise ValueError("public program placement requires an original complete model source")
@@ -62,11 +60,11 @@ def admit_placement(capsule, directory, *, target, evidence, source_context=None
 
 def read(path, *, target):
     """Reopen the full selected tree, declarations and original source/reference bindings."""
+    from merlin.development.backend.capability_inventory import _digest
+    from merlin.development.testgen import operator_exclusion as exclusion
+    from merlin.development.testgen.public_programs import verify_written
     from merlin.targetgen.frozen_placement import read as read_placement
 
-    from ..phase0 import operator_exclusion as exclusion
-    from ..phase0.public_programs import verify_written
-    from ..phase1.capability_inventory import _digest
     from ..runner import fingerprint
     from .preparation import ordinary_tree
 
@@ -76,10 +74,15 @@ def read(path, *, target):
         raise ValueError("public program roster must be a bounded ordinary operator file")
     raw = path.read_bytes()
     document = loads(raw, max_bytes=1 << 20)
-    if (type(document) is not dict
-            or set(document) != {"schema", "target", "policy", "corpus", "members", "operator_exclusion"}
-            or document["schema"] != SCHEMA or document["target"] != target or document["policy"] != POLICY
-            or type(document["members"]) is not list or not 1 <= len(document["members"]) <= 9):
+    if (
+        type(document) is not dict
+        or set(document) != {"schema", "target", "policy", "corpus", "members", "operator_exclusion"}
+        or document["schema"] != SCHEMA
+        or document["target"] != target
+        or document["policy"] != POLICY
+        or type(document["members"]) is not list
+        or not 1 <= len(document["members"]) <= 9
+    ):
         raise ValueError("public programs require a finite explicit Spike-only selected roster")
     corpus = document["corpus"]
     if type(corpus) is not dict or set(corpus) != {"path", "sha256"}:
@@ -97,17 +100,25 @@ def read(path, *, target):
         if type(row) is not dict or set(row) != {"member", "capsule_sha256"}:
             raise ValueError("public program member requires its original declaration pin")
         relative = Path(row["member"])
-        if (relative.is_absolute() or len(relative.parts) != 2 or relative.as_posix() != row["member"]
-                or any(part in {".", "..", "hidden"} for part in relative.parts)):
+        if (
+            relative.is_absolute()
+            or len(relative.parts) != 2
+            or relative.as_posix() != row["member"]
+            or any(part in {".", "..", "hidden"} for part in relative.parts)
+        ):
             raise ValueError("public program member path is not a selected public source")
         directory = root / relative
         cap = yaml.safe_load((directory / "capsule.yaml").read_bytes())
-        if (not isinstance(cap, dict) or not is_public_program(cap)
-                or cap.get("source_role") != "materialized_performance_capture"
-                or cap.get("required_oracle_tiers") != POLICY["tiers"]
-                or cap.get("oracle_tier_ceiling") is not None
-                or cap.get("name") != directory.name or cap["name"] in names
-                or _digest(cap) != row["capsule_sha256"]):
+        if (
+            not isinstance(cap, dict)
+            or not is_public_program(cap)
+            or cap.get("source_role") != "materialized_performance_capture"
+            or cap.get("required_oracle_tiers") != POLICY["tiers"]
+            or cap.get("oracle_tier_ceiling") is not None
+            or cap.get("name") != directory.name
+            or cap["name"] in names
+            or _digest(cap) != row["capsule_sha256"]
+        ):
             raise ValueError("public program source kind, original tiers or declaration changed")
         # A selected path does not confer public identity or bypass private-source protection.
         verify_written(cap, directory)
@@ -147,12 +158,13 @@ def stage(selection, destination, *, target):
     # path. Keep the same bytes and pin outside the public capsule/view trees.
     protection = document["operator_exclusion"]
     private_selector = destination / "private/operator_exclusion.json"
-    copy_input(Path(protection["path"]), private_selector, private=True,
-               expected_sha256=protection["sha256"])
+    copy_input(Path(protection["path"]), private_selector, private=True, expected_sha256=protection["sha256"])
     private_selector.chmod(0o600)
-    document = dict(document, corpus={"path": str(destination / "corpus"),
-                                      "sha256": fingerprint(destination / "corpus")},
-                    operator_exclusion={"path": str(private_selector), "sha256": protection["sha256"]})
+    document = dict(
+        document,
+        corpus={"path": str(destination / "corpus"), "sha256": fingerprint(destination / "corpus")},
+        operator_exclusion={"path": str(private_selector), "sha256": protection["sha256"]},
+    )
     path = destination / "selection.json"
     path.write_text(json.dumps(document, indent=2) + "\n")
     read(path, target=target)
@@ -174,8 +186,10 @@ def public_view(selection, destination, *, target, verify=False):
         fields = {"source": cap["interface_mlir"]}
         # The original public-program verifier already binds these retained
         # local copies. Historical capture paths are provenance, never file grants.
-        for pin, role, member in (("loader_sha256", "loader", "capsule.pytorch.py"),
-                                  ("profile_sha256", "profile", "profile.json")):
+        for pin, role, member in (
+            ("loader_sha256", "loader", "capsule.pytorch.py"),
+            ("profile_sha256", "profile", "profile.json"),
+        ):
             if cap["materialized_capture"].get(pin):
                 if sha256_file(directory / member) != cap["materialized_capture"][pin]:
                     raise ValueError("public program local source copy changed")

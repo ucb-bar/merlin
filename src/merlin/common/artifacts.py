@@ -248,21 +248,22 @@ def phase_run_id(method: str, *, timestamp: str | None = None, sha: str | None =
 
 
 def start_phase_run(*, target: str, phase: int | str, method: str, **kwargs) -> RunHandle:
-    """Begin a phase run under ``out/runs/<target>/phase<N>/<TS>_<method>_<sha7>/``.
+    """Start new work in a named suite, accepting the legacy numeric engine argument.
 
-    The phase is the suite of :func:`start_run`, so aet discovery (``aet runs --suite
-    <target>/phase<N>``) and the storage tools see phase runs like every other run. ``method`` names
-    what ran: the experiment id or recipe (phase 0), the arm (phase 1), the mode (phase 2). A
-    phase run owns its engine output and, for phases 1 and 2, the harness-owned ``oot/`` repository
-    (:mod:`merlin.common.oot_repo`).
+    New test and backend runs use their workflow names. Historical run discovery
+    remains separate; it never changes a stored path or resumes in a new location.
     """
-    from .paths import phase_suite
+    from .paths import GENERATION_SUITES
 
     if not target:
         raise ValueError("a phase run needs a target")
     if "run_id" in kwargs or "suite" in kwargs:
         raise ValueError("a phase run's suite and run id are derived, not chosen")
-    return start_run(suite=phase_suite(phase), method=method, target=target, run_id=phase_run_id(method), **kwargs)
+    if str(phase) not in GENERATION_SUITES:
+        raise ValueError(f"unknown generation engine: {phase!r}")
+    return start_run(
+        suite=GENERATION_SUITES[str(phase)], method=method, target=target, run_id=phase_run_id(method), **kwargs
+    )
 
 
 def finish_run(h: RunHandle, status: str, summary: dict | None = None) -> None:

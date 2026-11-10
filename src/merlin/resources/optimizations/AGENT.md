@@ -1,8 +1,8 @@
-# Optimization catalogs
+# src/merlin/resources/optimizations
 
 These JSON inputs supply authoring advice: reusable compiler mechanisms,
 operation-specific principles, their schema, and optional capability extensions.
-Readers live in `merlin.experiments.phase1`; the pass-library skill generator
+Readers live in `merlin.development.backend`; the pass-library skill generator
 uses the same authoring catalog.
 
 Keep the reviewed content target-neutral. Advice does not select a schedule or

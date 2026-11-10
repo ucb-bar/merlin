@@ -70,7 +70,7 @@ Those are explicit remaining gates before replacement/activation; no timing
 coefficient or production model selection changes here.
 
 Curated results and compressed exact traces are in
-`experiments/reference-data/fased-boundary-20261023/`. Full local build outputs
+`experiments/archive/hardware-models/fased-boundary-20261023/`. Full local build outputs
 and unsanitized receipt are under `out/artifacts/memory-reference-native-20261023/`.
 The source/tool hashes in curated provenance permit review without publishing
 machine-specific paths or native executables.

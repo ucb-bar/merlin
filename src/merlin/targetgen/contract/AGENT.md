@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/targetgen/contract
+# src/merlin/targetgen/contract
 
 ## Purpose
 
@@ -106,7 +106,7 @@ descendant cleanup, runtime qualification, effects, hardware or timing. The
 native timeout bounds the selected subprocess; it is not an OS deadline or a
 process-tree cleanup guarantee, and captured output has no aggregate byte limit.
 
-`artifact_retesting` supplies a separate normal Phase 1 corpus observation hook.
+`artifact_retesting` supplies a separate normal backend generation corpus observation hook.
 The admitted public queue observes fresh complete ELF, kernel object, harness,
 numeric inputs, readback recipe, known build tools, selected process source and
 engine plus effective environment. It reopens its actual prior Python dispatch

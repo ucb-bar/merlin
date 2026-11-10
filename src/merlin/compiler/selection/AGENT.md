@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/compiler/selection
+# src/merlin/compiler/selection
 
 Own actual request/binding selection below execution and independent certification.
 mesh.py retains existing package, numerical binding and tile-builder selection.

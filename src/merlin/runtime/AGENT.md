@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/runtime
+# src/merlin/runtime
 
 ## Purpose
 

@@ -3,7 +3,7 @@
 
 Checks:
   1. Required directories exist.
-  2. Every tracked directory contains an AGENT.md (tmp/ is exempt; it uses AGENTS.md).
+  2. Maintained area and study boundaries carry scoped instructions.
   3. Required schema files exist and are non-empty.
   4. Required docs exist.
   5. Required semantic-memory benchmark YAML files exist.
@@ -27,20 +27,14 @@ import _source_layout  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _discovered_targets():
-    """Curated reference target names — the dirs under ``experiments/reference-data/target-inputs/`` carrying a
-    ``contracts/target_contract.yaml``. This covers only the retained native shape;
-    example-owned inputs have no required in-tree generated directory. Discovery
-    stays import-free and runs with no deps installed (as in the docs CI job). Targets are
-    DISCOVERED, never named here, so registering a new target extends the gate with zero edits.
-    """
-    tdir = os.path.join(ROOT, "experiments", "reference-data", "target-inputs")
-    if not os.path.isdir(tdir):
-        return []
+def _reference_contract_dirs():
+    """Existing authored example contracts; generated target packages stay outside source."""
+    examples = Path(ROOT) / "examples"
     return sorted(
-        name
-        for name in os.listdir(tdir)
-        if os.path.isfile(os.path.join(tdir, name, "contracts", "target_contract.yaml"))
+        path.parent.relative_to(ROOT).as_posix()
+        for category in ("compiler-generation", "targets")
+        for path in (examples / category).glob("*/target/contracts/target_contract.yaml")
+        if path.is_file()
     )
 
 
@@ -61,16 +55,13 @@ REQUIRED_DIRS = [
     "src/merlin/runtime/native/baremetal",
     "src/merlin/resources/schemas",
     "src/merlin/resources/benchmarks/semantic_memory",
-    "experiments/studies/kernel_policy",
+    "src/merlin/development",
+    "experiments/definitions",
     "tests/data",
 ]
 
-# Canonical per-target source shape: contracts/ is required for every discovered
-# in-tree target. Generated target packages belong under the configured out/
-# artifact root, not beside source contracts; docs/ and examples/ exist only
-# when they have content. The set remains derived from registration.
-for _t in _discovered_targets():
-    REQUIRED_DIRS.append(f"experiments/reference-data/target-inputs/{_t}/contracts")
+# Authored example contracts share the same source-owned directory checks.
+REQUIRED_DIRS.extend(_reference_contract_dirs())
 
 REQUIRED_SCHEMAS = [
     "target_contract",
@@ -189,7 +180,8 @@ def check_agent_md(errors):
             errors.append(f"missing AGENT.md: {relative or '(root)'}")
 
     require("")
-    for area in ("tests", "experiments/studies"):
+    require("experiments")
+    for area in ("tests",):
         root = Path(ROOT) / area
         require(area)
         for child in sorted(root.iterdir()):
@@ -197,47 +189,8 @@ def check_agent_md(errors):
                 require(child.relative_to(ROOT).as_posix())
 
 
-EXPERIMENT_STATUSES = ("active", "blocked", "frozen", "reference")
-
-
-def check_experiment_status(errors):
-    """Every experiment says where it stands, so "dormant" is a stated fact rather than a guess.
-
-    Measured 2026-09-14: an audit classed experiments as abandoned from commit age alone; two were cited
-    by live guides and one was under development on another branch. A ``Status:`` line in the first 15
-    lines of the experiment's AGENT.md says which: ``active``, ``frozen`` (finished; results in its
-    FINDINGS.md, which must exist), ``blocked`` (work or replay awaits a declared external input), or
-    ``reference`` (a scaffold others copy, with no runs of its own).
-    Retiring an experiment means deleting it -- git history is the archive -- so no status names that.
-    """
-    exp = os.path.join(ROOT, "experiments", "studies")
-    if not os.path.isdir(exp):
-        return
-    for sub in sorted(os.listdir(exp)):
-        sp = os.path.join(exp, sub)
-        md = os.path.join(sp, "AGENT.md")
-        if not os.path.isdir(sp) or sub in SKIP_DIRS or not os.path.isfile(md):
-            continue  # a missing AGENT.md is check_agent_md's finding, not this one
-        with open(md, encoding="utf-8") as fh:
-            head = [next(fh, "") for _ in range(15)]
-        declared = [ln[len("Status:") :].strip() for ln in head if ln.startswith("Status:")]
-        if not declared or not declared[0]:
-            errors.append(f"experiment declares no `Status:` in its AGENT.md: experiments/studies/{sub}")
-            continue
-        word = declared[0].split()[0]
-        if word not in EXPERIMENT_STATUSES:
-            errors.append(
-                f"experiment status {word!r} is not one of {list(EXPERIMENT_STATUSES)}: experiments/studies/{sub}"
-            )
-        elif word == "frozen" and not os.path.isfile(os.path.join(sp, "FINDINGS.md")):
-            errors.append(f"frozen experiment has no FINDINGS.md: experiments/studies/{sub}")
-
-
 TARGET_MARKER_RATCHET = os.path.join(ROOT, "build_tools", "scripts", "test_target_marker_ratchet.txt")
 MODULE_SIZE_RATCHET = os.path.join(ROOT, "build_tools", "scripts", "module_size_ratchet.txt")
-#: Lines a library module may reach before it has to be split. Measured 2026-09-16 on formatted code:
-#: 26 modules were past it, led by targetgen/capsule_runner.py at 5,145 -- a size at which nobody holds
-#: the whole module in their head, which is how a second copy of a helper gets written beside the first.
 MODULE_SIZE_LIMIT = 1500
 TARGET_HEAVY_LITERALS = 5
 
@@ -369,13 +322,17 @@ def _example_test_buckets():
         return set()
     return {
         path.name
-        for path in examples.iterdir()
+        for path in examples.glob("*/*")
         if (path / "target/descriptor.yaml").is_file() or (path / "target/contracts/target_contract.yaml").is_file()
     }
 
 
 _GENERIC_TEST_BUCKETS = {"kernels", "rvv", "dse", "targetgen", "ir", "runtime", "infra"}
-TEST_BUCKETS = _GENERIC_TEST_BUCKETS | set(_discovered_targets()) | _example_test_buckets()
+TEST_BUCKETS = (
+    _GENERIC_TEST_BUCKETS
+    | {Path(relative).parts[-3] for relative in _reference_contract_dirs()}
+    | _example_test_buckets()
+)
 
 
 def check_test_layout(errors):
@@ -429,7 +386,7 @@ def check_cli_docs(errors):
 
 
 def check_package_docs(errors):
-    """docs/module_index.md fresh + every package has a non-stale AGENT.md (living package docs)."""
+    """Module index is current; existing scoped instructions contain no stale claims."""
     import subprocess
 
     gen = os.path.join(ROOT, "build_tools", "scripts", "gen_package_docs.py")
@@ -495,23 +452,15 @@ def check_docs_freshness(errors):
 
 
 def check_schema_docs(errors):
-    """docs/reference/schemas.md is in sync with src/merlin/resources/schemas/ (see gen_schema_docs.py)."""
+    """out/artifacts/documentation/schemas.md is in sync with src/merlin/resources/schemas/ (see gen_schema_docs.py)."""
     import subprocess
 
     gen = os.path.join(ROOT, "build_tools", "scripts", "gen_schema_docs.py")
     r = subprocess.run([sys.executable, gen, "--check"], capture_output=True, text=True)
     if r.returncode != 0:
-        errors.append("docs/reference/schemas.md stale — run python build_tools/scripts/gen_schema_docs.py")
-
-
-def check_docs_index(errors):
-    """docs/README.md hub is in sync with doc front-matter (see gen_docs_index.py)."""
-    import subprocess
-
-    gen = os.path.join(ROOT, "build_tools", "scripts", "gen_docs_index.py")
-    r = subprocess.run([sys.executable, gen, "--check"], capture_output=True, text=True)
-    if r.returncode != 0:
-        errors.append("docs/README.md hub stale — run python build_tools/scripts/gen_docs_index.py")
+        errors.append(
+            "out/artifacts/documentation/schemas.md stale — run python build_tools/scripts/gen_schema_docs.py"
+        )
 
 
 # The library (merlin/python/merlin) reads INPUTS from benchmarks/ and contract/, never from
@@ -734,7 +683,6 @@ def main():
     checks = [
         ("required directories", check_required_dirs),
         ("AGENT.md coverage", check_agent_md),
-        ("experiment status", check_experiment_status),
         ("schema usage", check_schema_usage),
         ("library boundary", check_library_boundary),
         ("core dependency direction", check_core_dependencies),
@@ -745,7 +693,6 @@ def main():
         ("cli docs", check_cli_docs),
         ("package docs", check_package_docs),
         ("schema docs", check_schema_docs),
-        ("docs index", check_docs_index),
         ("docs freshness", check_docs_freshness),
         ("doc paths", check_doc_paths),
         ("test layout", check_test_layout),

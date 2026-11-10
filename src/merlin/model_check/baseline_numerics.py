@@ -235,10 +235,19 @@ def compare(manifest_path: Path) -> dict:
         models = MD.load(policy_path, source_bytes=policy_bytes)
     model = models.model(manifest["model"])
     definition = protocol["models"][model.name]
-    input_manifest_path = (protocol_path.parent / protocol["authority"]["evaluation_input_manifest"]).absolute()
+    input_selection = protocol["authority"]["evaluation_input_manifest"]
     selected_inputs, input_manifest_bytes = reader.read(manifest["evaluation_inputs"])
-    if selected_inputs.resolve() != input_manifest_path.resolve():
-        raise ValueError("evaluation inputs are not the protocol-linked manifest")
+    if isinstance(input_selection, str):
+        input_manifest_path = (protocol_path.parent / input_selection).absolute()
+        if selected_inputs.resolve() != input_manifest_path.resolve():
+            raise ValueError("evaluation inputs are not the protocol-linked manifest")
+    elif (
+        not isinstance(input_selection, dict)
+        or set(input_selection) != {"sha256"}
+        or not is_sha256(input_selection["sha256"])
+        or hashlib.sha256(input_manifest_bytes).hexdigest() != input_selection["sha256"]
+    ):
+        raise ValueError("evaluation input manifest differs from the protocol's approved content identity")
     derived = yaml.safe_load(input_manifest_bytes)["models"][model.name]["derived"]
     member = definition["external_evaluation_input"]["derived_member"].split("/", 2)[2]
     if model.chain != definition["chain"] or [(p.name, p.steps) for p in model.programs] != [

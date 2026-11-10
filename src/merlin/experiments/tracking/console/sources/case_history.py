@@ -44,7 +44,7 @@ MAX_VERDICTS = 8192
 LEDGER = Path("qa") / "perf_history.jsonl"
 LEDGER_SCHEMA = "merlin.phase1.perf_history.v1"
 KINDS = ("measured", "modeled")
-_SKILL_SCRIPT = ("phase1", "author_skills", "roofline-and-utilization", "scripts", "perf_summary.py")
+_SKILL_SCRIPT = ("author_skills", "roofline-and-utilization", "scripts", "perf_summary.py")
 _SHARED: Any = None
 
 
@@ -52,9 +52,9 @@ def definitions():
     """The author skill's ``perf_summary.py`` module, loaded once by path (no bytecode is written)."""
     global _SHARED
     if _SHARED is None:
-        import merlin.experiments
+        from merlin.common.paths import module_source_path
 
-        _SHARED = load_script(Path(merlin.experiments.__file__).parent.joinpath(*_SKILL_SCRIPT))
+        _SHARED = load_script(module_source_path("merlin.development.backend").parent.joinpath(*_SKILL_SCRIPT))
     return _SHARED
 
 

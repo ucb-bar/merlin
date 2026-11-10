@@ -2,7 +2,7 @@
 
 The frontend binary is looked up as ``$MERLIN_CONSOLE_BIN``, then ``<out/build>/console/merlin-console``
 (:func:`merlin.common.paths.build_dir`), then ``merlin-console`` on ``PATH``. :func:`build` compiles it
-from ``packages/merlin-experiments/console`` with the Go toolchain named by ``$MERLIN_CONSOLE_GO`` or
+from ``tools/console`` with the Go toolchain named by ``$MERLIN_CONSOLE_GO`` or
 found on ``PATH``. The frontend receives this interpreter as ``--python`` so its data process imports the
 same installation.
 """
@@ -27,7 +27,7 @@ def build_root() -> Path:
 def source_dir() -> Path:
     from merlin.common.paths import repo_root
 
-    return repo_root() / "packages" / "merlin-experiments" / "console"
+    return repo_root() / "tools" / "console"
 
 
 def binary() -> Path | None:

@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/kernels/features
+# src/merlin/kernels/features
 
 ## Purpose
 

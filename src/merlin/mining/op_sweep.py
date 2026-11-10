@@ -18,9 +18,9 @@ beam SELECTS the lever; this driver just orchestrates the matrix.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 
 @dataclass
@@ -176,10 +176,11 @@ def default_gemm_cells(shapes_f32=(128, 256), shapes_int8=(64, 128)) -> list[OpC
     XNNPACK's measured K1 wall as the scoreboard. This is the launchable matrix for the datatypes we
     already have levers for; bf16/fp16 + more ops extend it (a cell + a lever, not hand-code)."""
     from ..common.paths import repo_root
+    from .wholemodel_proposer import cca_asm_dir
     from .workloads import gen_matmul_f32
 
     root = repo_root()
-    expert = root / "experiments/reference-data/cca-asm/xnnpack_f32_gemm_rvv.objdump"
+    expert = cca_asm_dir() / "xnnpack_f32_gemm_rvv.objdump"
     wl_root = root / "out/artifacts/cache/op_sweep_workloads"
     seed_f32 = root / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf"
     # int8 seeds from the SHARED micro-kernel path, not a hand-copied fork of the f32 feature list.

@@ -24,7 +24,7 @@ _KERNEL_BACKENDS = ("xnnpack", "openblas")
 _EXTERNAL_FRAMEWORKS = ("tvm", "executorch", "buddy", "exo", "ggml")
 _BASELINE = "baseline"
 
-# Platform execution SUBSTRATES that are not dialect targets under experiments/reference-data/target-inputs/ (a board or a
+# Platform execution SUBSTRATES that are not dialect targets under experiments/inputs/target-inputs/ (a board or a
 # simulator seam, not a registered dialect) — kept first-class so existing callers keep working. The
 # dialect targets are DISCOVERED from the target registry and unioned in at parse time, so a newly
 # registered dialect becomes comparable with no edit here. Only the substrate the ingest layer can

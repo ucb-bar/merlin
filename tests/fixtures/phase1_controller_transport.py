@@ -127,7 +127,7 @@ brokers = []
 for value in Path(f"/proc/{ancestor}/task/{ancestor}/children").read_text().split():
     pid = int(value)
     command = Path(f"/proc/{pid}/cmdline").read_bytes()
-    if b"merlin.experiments.phase1.brokers." in command:
+    if b"merlin.development.backend.brokers." in command:
         brokers.append(process_identity(pid))
 assert len(brokers) >= 2, "real selfcheck and simjob brokers were not started"
 with calls.open("a") as stream:

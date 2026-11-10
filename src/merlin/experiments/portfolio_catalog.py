@@ -11,13 +11,14 @@ from merlin.common.paths import module_source_path
 
 from .spec import SpecError
 
-MODULE = "merlin.experiments.phase2.portfolio_cli"
+MODULE = "merlin.development.backend.optimization.portfolio_cli"
 PREFIX = "phase2:portfolio:"
 
 
 def _command(values: dict, *, target: str, run_dir: str, storage_root: str, template: bool) -> dict:
+    from merlin.development.backend.optimization.portfolio_cli import load_deployment
+
     from .adapters import ADAPTERS
-    from .phase2.portfolio_cli import load_deployment
 
     adapter = ADAPTERS["model_portfolio"]
     adapter.validate(values)
@@ -93,7 +94,7 @@ def resolve(spec, values: dict, inputs: dict, run_dir: Path) -> dict:
 
 
 def source_inputs(command: dict) -> dict[str, str]:
-    from .phase2.portfolio_cli import deployment_source_inputs
+    from merlin.development.backend.optimization.portfolio_cli import deployment_source_inputs
 
     if command["portfolio_launch"]["template"]:
         return {}

@@ -68,7 +68,7 @@ def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy, befor
     if before_execution is not None:
         kwargs["before_execution"] = before_execution
     if policy is not None and policy.transport in MEMORY_TRANSPORTS:
-        from merlin.experiments.phase1.feedback.native_memory_readback import (
+        from merlin.development.backend.feedback.native_memory_readback import (
             NativeLogicalMemoryReadback,
             NativeMemoryReadback,
             select_memory_engine,
@@ -89,7 +89,7 @@ def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy, befor
         kwargs["oracle_revalidate"] = revalidate_memory_engine
     from contextlib import ExitStack
 
-    from merlin.experiments.phase1.feedback import setup_timing
+    from merlin.development.backend.feedback import setup_timing
 
     from . import executed_program
 
@@ -151,7 +151,7 @@ def run_with_readback(
         )
     if before_execution is not None:
         raise ValueError("prepared verdict reuse is unavailable for the separate digest corroboration path")
-    from merlin.experiments.phase2 import gsim_digest_readback as DIGEST
+    from merlin.development.backend.optimization import gsim_digest_readback as DIGEST
 
     def oracle(cb_, llvm_, *, simulator, target, workdir, timeout, readback_policy=None):
         return _run(

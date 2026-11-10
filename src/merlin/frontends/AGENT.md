@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/frontends
+# src/merlin/frontends
 
 ## Purpose
 

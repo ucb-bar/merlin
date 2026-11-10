@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 import sim_toolchain
@@ -11,6 +13,16 @@ from merlin.targetgen.sandbox.preflight import probe_sandbox
 
 _SANDBOX = probe_sandbox()
 _NO_SANDBOX = None if _SANDBOX.usable else _SANDBOX.describe()
+
+
+def remove_bundle_snapshot(ws: Path) -> None:
+    """Tear down this test's immutable scratch snapshot without chmodding shared blobs."""
+    root = BW.bundle_snapshot_root(ws)
+    if root.is_symlink():
+        raise RuntimeError(f"refusing to remove symlinked bundle snapshot: {root}")
+    if root.exists():
+        BW._make_snapshot_writable(root)
+        shutil.rmtree(root)
 
 
 @pytest.fixture(autouse=True)
@@ -32,6 +44,7 @@ __all__ = [
     "answer_surfaces",
     "audit_tokens",
     "probe_sandbox",
+    "remove_bundle_snapshot",
     "pytest",
     "sim_toolchain",
     "subprocess",

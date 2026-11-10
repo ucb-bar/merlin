@@ -58,9 +58,7 @@ _REPLAY_ROOT = (
 )
 # Historical replay deliberately tests a frozen composite source tree against these tests/data.
 # Never prepend the live checkout over that tree: doing so silently erases the historical defect.
-_SOURCE_ROOTS = (
-    [_REPLAY_ROOT] if _REPLAY_ROOT else [_PACKAGE_ROOT, *sorted((_CHECKOUT_ROOT / "packages").glob("*/src"))]
-)
+_SOURCE_ROOTS = [_REPLAY_ROOT] if _REPLAY_ROOT else [_PACKAGE_ROOT, _CHECKOUT_ROOT / "tools/timing/src"]
 for _source_root in reversed(_SOURCE_ROOTS):
     if _source_root.is_dir():
         if str(_source_root) in sys.path:

@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/compiler
+# src/merlin/compiler
 
 Public request, artifact, backend and pass contracts live here. Keep them
 independent of optional experiments, framework imports and target-specific

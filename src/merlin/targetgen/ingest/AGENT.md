@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/targetgen/ingest
+# src/merlin/targetgen/ingest
 
 ## Purpose
 

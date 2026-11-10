@@ -1,4 +1,4 @@
-# AGENT.md ? src/merlin/resources
+# src/merlin/resources
 
 This package owns reviewed shared contracts, schemas, prompt templates and the
 selected public benchmark definitions shipped with Merlin. Resolve them through

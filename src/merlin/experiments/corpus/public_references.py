@@ -10,8 +10,15 @@ import hashlib
 import json
 from pathlib import Path
 
-from ..phase1.feedback import reference_baselines as baselines
-from ..phase1.reference_inputs import ReferenceFile, ReferenceOrigin, _ordinary, _relative, stage_references
+from merlin.development.backend.feedback import reference_baselines as baselines
+from merlin.development.backend.reference_inputs import (
+    ReferenceFile,
+    ReferenceOrigin,
+    _ordinary,
+    _relative,
+    stage_references,
+)
+
 from ..spec import SpecError
 
 SCHEMA = "operator.allowed_reference_sources.v2"

@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
 
-    from merlin.experiments.phase0.evidence import load_exported_evidence
+    from merlin.development.testgen.evidence import load_exported_evidence
 
     phase0 = args.run.resolve() / "phase0"
     evidence = load_exported_evidence(phase0)

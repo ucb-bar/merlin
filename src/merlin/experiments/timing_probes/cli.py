@@ -43,7 +43,9 @@ def _space_path(target: str, explicit: str | None) -> Path:
         return Path(explicit)
     from merlin.common.paths import repo_root
 
-    return repo_root() / "examples" / target / "verification" / "timing_probes" / "timing_space.yaml"
+    return (
+        repo_root() / "examples/compiler-generation" / target / "verification" / "timing_probes" / "timing_space.yaml"
+    )
 
 
 def _budget(values: list[str]) -> dict[str, int]:

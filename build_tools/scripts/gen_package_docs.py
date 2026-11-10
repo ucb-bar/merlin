@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Living package docs: derive docs/reference/module_index.md from the merlin package's __init__ docstrings,
-and lint package AGENT.md for staleness. Single source of truth = the code (mirrors gen_cli_docs.py).
+"""Living package docs: derive out/artifacts/documentation/module_index.md from the merlin package's __init__ docstrings,
+and lint existing scoped package instructions for staleness. Single source of truth = the code (mirrors gen_cli_docs.py).
 
 Usage:
-  gen_package_docs.py            # (re)generate docs/reference/module_index.md
-  gen_package_docs.py --check    # exit 1 if the index or required package instructions are stale
+  gen_package_docs.py            # (re)generate out/artifacts/documentation/module_index.md
+  gen_package_docs.py --check    # exit 1 if the index or scoped package instructions are stale
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import _source_layout  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 PKG = _source_layout.core_package(ROOT)
-INDEX = ROOT / "docs" / "reference" / "module_index.md"
+INDEX = ROOT / "out/artifacts/documentation/module_index.md"
 
 # Phrases that were copy-pasted boilerplate and misrepresent live code — must never reappear.
 STALE_PHRASES = (
@@ -29,16 +29,6 @@ STALE_PHRASES = (
     "todo stubs only at this stage",
     "placeholder modules with explicit todos",
 )
-
-
-def _inherits_instructions(rel: Path) -> bool:
-    """The new compiler tree inherits repository rules instead of generated boilerplate.
-
-    Existing scoped instructions remain checked wherever they exist. Legacy
-    packages retain their current requirements until their ownership is migrated.
-    Package navigation comes from the generated index, not instruction files.
-    """
-    return rel == Path("src/merlin/compiler") or Path("src/merlin/compiler") in rel.parents
 
 
 def _first_docline(init: Path) -> str:
@@ -97,34 +87,11 @@ def gen_index() -> str:
     return "\n".join(out) + "\n"
 
 
-def _gen_agent_md(rel: Path) -> str:
-    """Minimal AGENT.md for a package: Purpose (from __init__ docstring) + module list."""
-    d = ROOT / rel
-    label = str(rel).replace(os.sep, "/")
-    purpose = _first_docline(d / "__init__.py")
-    mods = [f"- `{f.name}` — {_first_docline(f)}" for f in sorted(d.glob("*.py")) if f.name != "__init__.py"]
-    subpkgs = sorted(s.name for s in d.iterdir() if s.is_dir() and (s / "__init__.py").is_file())
-    body = [f"# AGENT.md — {label}", "", "## Purpose", "", purpose, ""]
-    if mods:
-        body += ["## Modules", "", *mods, ""]
-    if subpkgs:
-        body += ["## Subpackages", "", *[f"- `{s}/`" for s in subpkgs], ""]
-    body += [
-        "<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.",
-        "     Add hand-written notes (invariants, gotchas) below. -->",
-        "",
-    ]
-    return "\n".join(body)
-
-
 def _check_agent_md(errors: list[str]) -> None:
     for rel, init in _packages():
         agent = init.parent / "AGENT.md"
         label = _source_layout.module_name(init, ROOT)
-        if not agent.is_file():
-            if not _inherits_instructions(rel):
-                errors.append(f"package {label}: missing AGENT.md")
-        else:
+        if agent.is_file():
             # Existing scoped trust and ownership instructions remain authoritative.
             want = rel.as_posix()
             head = agent.read_text(encoding="utf-8").splitlines()[0]
@@ -151,8 +118,10 @@ def main(argv: list[str]) -> int:
     if "--check" in argv:
         errors: list[str] = []
         cur = INDEX.read_text(encoding="utf-8") if INDEX.is_file() else ""
-        if cur != idx:
-            errors.append("docs/reference/module_index.md is stale — run build_tools/scripts/gen_package_docs.py")
+        if INDEX.exists() and cur != idx:
+            errors.append(
+                "out/artifacts/documentation/module_index.md is stale — run build_tools/scripts/gen_package_docs.py"
+            )
         _check_agent_md(errors)
         if errors:
             sys.stderr.write("package-docs check FAILED:\n")
@@ -161,14 +130,9 @@ def main(argv: list[str]) -> int:
             return 1
         print("package docs: OK")
         return 0
+    INDEX.parent.mkdir(parents=True, exist_ok=True)
     INDEX.write_text(idx, encoding="utf-8")
-    created = 0
-    for rel, init in _packages():
-        agent = init.parent / "AGENT.md"
-        if not agent.is_file() and not _inherits_instructions(rel):
-            agent.write_text(_gen_agent_md(rel), encoding="utf-8")
-            created += 1
-    print(f"wrote {INDEX.relative_to(ROOT)} ({len(_packages())} packages); generated {created} missing AGENT.md")
+    print(f"wrote {INDEX.relative_to(ROOT)} ({len(_packages())} packages)")
     return 0
 
 

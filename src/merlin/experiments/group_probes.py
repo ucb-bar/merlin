@@ -181,9 +181,8 @@ def counter_values(facts: Mapping[str, Any], console: str | None, *, engine: str
 
 def instruction_census(record: Mapping[str, Any], *, target: str) -> dict[str, Any]:
     """The one-group ELF's custom instructions by derived role: the group's kernel and the program's code."""
+    from merlin.development.backend.optimization.whole_model_measured.group_capsules import GroupCapsuleError, isa_scan
     from merlin.perf import isa_prohibition as ISA
-
-    from .phase2.whole_model_measured.group_capsules import GroupCapsuleError, isa_scan
 
     try:
         report = isa_scan(record, target=target, roles=())

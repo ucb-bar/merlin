@@ -135,8 +135,8 @@ def _run_suite(
     package_dir = str(Path(package_dir).resolve())
     if contract is not None and Path(contract).exists():
         contract = str(Path(contract).resolve())
-    from merlin.experiments.phase1.feedback import operator_child as _operator_child
-    from merlin.experiments.phase1.feedback import snapshot_execution
+    from merlin.development.backend.feedback import operator_child as _operator_child
+    from merlin.development.backend.feedback import snapshot_execution
 
     process_operators = (
         not snapshot_execution.selected()
@@ -222,11 +222,11 @@ def _run_suite(
             )
 
     def _one(cap: dict, workers: int = 1) -> dict:
-        from merlin.experiments.phase1.feedback import setup_timing
+        from merlin.development.backend.feedback import setup_timing
 
         # Diagnostic identity only. This worker may execute multiple tiers;
         # selecting/requesting L2 does not make every setup stage an L2 event.
-        from merlin.experiments.phase1.feedback.compiler_profile_runtime import active_original_execution
+        from merlin.development.backend.feedback.compiler_profile_runtime import active_original_execution
 
         original = active_original_execution()
         source = None if original is None else original.source_sha256
@@ -252,7 +252,7 @@ def _run_suite(
         # FINISHED (it cites that sibling's published result), with one short calibration head on the
         # cheapest members while tiers are unpriced. No wave barrier, so one slow member never holds
         # the rest (merlin.targetgen.capsule_scheduling).
-        from merlin.experiments.phase1.feedback import snapshot_execution
+        from merlin.development.backend.feedback import snapshot_execution
         from merlin.targetgen.capsule_scheduling import run_pipelined
 
         return run_pipelined(
@@ -306,7 +306,7 @@ def _run_suite(
             flush=True,
             file=sys.stderr,
         )
-    from merlin.experiments.phase1.feedback import snapshot_execution
+    from merlin.development.backend.feedback import snapshot_execution
 
     if snapshot_execution.selected():
         # This experimental treatment lets the author choose when a model is

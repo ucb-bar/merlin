@@ -139,7 +139,7 @@ def target_from_contract(contract: str | os.PathLike | None = None) -> str:
 
 
 def default_models_path(target: str) -> Path:
-    return repo_root() / "examples" / target / "numerics" / "models.yaml"
+    return repo_root() / "examples/compiler-generation" / target / "numerics" / "models.yaml"
 
 
 ADMISSION_BOUNDS = ("max", "min", "max_ratio_to_baseline")

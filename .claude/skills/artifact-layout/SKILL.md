@@ -93,7 +93,7 @@ via the m2m exporter).
 
 ## Before deleting anything: ask what cites it
 
-PURGEABLE says a tree *can* be regenerated, not that nothing still cites it. Sealed Phase 0
+PURGEABLE says a tree *can* be regenerated, not that nothing still cites it. Sealed test generation
 evidence was deleted twice by cleanups that judged by name or age. Each time, a record that
 outlived the cleanup pinned the deleted path by digest. Reclaim with `merlin-storage prune` /
 `retain`, which refuse cited paths. Before any manual or scripted `rm`, run

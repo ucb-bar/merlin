@@ -101,15 +101,23 @@ def phase_runs_root(target: str, phase: int | str) -> Path:
     return runs_root(target, phase_suite(phase))
 
 
+GENERATION_SUITES = {"0": "test-generation", "1": "backend-generation", "2": "backend-generation/optimization"}
+
+
+def generation_run_roots(target: str, engine: int | str) -> tuple[Path, Path]:
+    """Named run root, followed by the historical root retained for record discovery."""
+    return runs_root(target, GENERATION_SUITES[str(engine)]), phase_runs_root(target, engine)
+
+
 # Logical grant identities in archived protocols remain stable. Only a selected
 # current-layout source owner translates them to the new physical locations.
 _GRANT_PREFIXES = (
     (
         "merlin/experiments/reference-data/joint-public-plan-library",
-        "experiments/reference-data/joint-public-plan-library",
+        "experiments/inputs/joint-public-plan-library",
     ),
-    ("merlin/tests/data/cca_asm", "experiments/reference-data/cca-asm"),
-    ("merlin/tests/data/opu_shapes", "experiments/reference-data/opu-shapes"),  # target-ok: archived path identity
+    ("merlin/tests/data/cca_asm", "experiments/inputs/cca-asm"),
+    ("merlin/tests/data/opu_shapes", "experiments/inputs/opu-shapes"),  # target-ok: archived path identity
     ("merlin/contract/capsules", "experiments/corpora"),
     ("contract/capsules", "experiments/corpora"),
     ("merlin/contract", "src/merlin/resources/contracts"),
@@ -120,11 +128,11 @@ _GRANT_PREFIXES = (
     ("prompts", "src/merlin/resources/prompts"),
     ("merlin/runtime", "src/merlin/runtime/native"),
     ("runtime", "src/merlin/runtime/native"),
-    ("merlin/targets", "experiments/reference-data/target-inputs"),
-    ("targets", "experiments/reference-data/target-inputs"),
+    ("merlin/targets", "experiments/inputs/target-inputs"),
+    ("targets", "experiments/inputs/target-inputs"),
     ("merlin/tests", "tests"),
-    ("merlin/benchmarks", "experiments/benchmarks"),
-    ("benchmarks", "experiments/benchmarks"),
+    ("merlin/benchmarks", "examples/workloads/benchmarks"),
+    ("benchmarks", "examples/workloads/benchmarks"),
     ("merlin/experiments", "experiments/studies"),
     *(
         ("experiments/" + name, "experiments/studies/" + name)
@@ -267,7 +275,7 @@ def study_inputs_dir() -> Path:
     owner = os.environ.get("MERLIN_REPO_ROOT") or checkout_root()
     if owner is None:
         raise FileNotFoundError("benchmark study inputs require MERLIN_BENCH_DIR or MERLIN_REPO_ROOT")
-    return Path(owner) / "experiments/benchmarks"
+    return Path(owner) / "examples/workloads/benchmarks"
 
 
 def capsules_dir() -> Path:
@@ -282,7 +290,7 @@ def targets_dir() -> Path:
     if override:
         return Path(override)
     owner = os.environ.get("MERLIN_REPO_ROOT") or checkout_root()
-    return Path(owner) / "experiments/reference-data/target-inputs" if owner else _package_dir() / "resources/targets"
+    return Path(owner) / "experiments/inputs/target-inputs" if owner else _package_dir() / "resources/targets"
 
 
 def runtime_dir() -> Path:

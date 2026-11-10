@@ -1,13 +1,10 @@
 schema_version: 1
 experiments:
   baseline-functional-template: definitions/baseline-functional-template.yaml
-  gemmini-functional: ../examples/gemmini/experiment.yaml
-  gemmini-universal-functional: ../examples/gemmini_universal/experiment.yaml
-  atlas-functional: ../examples/atlas/experiment.yaml
-  radiance-functional: ../examples/radiance/experiment.yaml
-  mx-gemmini-functional: ../examples/mx_gemmini/experiment.yaml
-  saturn-opu-functional: ../examples/saturn_opu/experiment.yaml
-  saturn-opu-rvv-functional: ../examples/saturn_opu_rvv/experiment.yaml
-  measured-claims-template: definitions/measured-claims-template.yaml
-  model-portfolio-template: definitions/model-portfolio-template.yaml
-  whole-model-measured-template: definitions/whole-model-measured-template.yaml
+  gemmini-functional: ../examples/compiler-generation/gemmini/experiment.yaml
+  gemmini-universal-functional: ../examples/compiler-generation/gemmini_universal/experiment.yaml
+  atlas-functional: ../examples/compiler-generation/atlas/experiment.yaml
+  radiance-functional: ../examples/compiler-generation/radiance/experiment.yaml
+  mx-gemmini-functional: ../examples/compiler-generation/mx_gemmini/experiment.yaml
+  saturn-opu-functional: ../examples/compiler-generation/saturn_opu/experiment.yaml
+  saturn-opu-rvv-functional: ../examples/compiler-generation/saturn_opu_rvv/experiment.yaml

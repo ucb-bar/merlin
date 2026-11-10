@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/mining
+# src/merlin/mining
 
 ## Purpose
 

@@ -61,23 +61,6 @@ def capsule_corpus_roots(*, owner_root: Path | None = None) -> list[Path]:
     return [r for r in roots if r.is_dir()]
 
 
-def conformance_reference_dir() -> Path:
-    """Retained derived Phase 0 requirements; never a live corpus destination.
-
-    New derivations are run artifacts. This checkout path only locates the
-    byte-preserved public reference requirements used by repository audits.
-    Installed/OOT consumers may pass a spec file explicitly instead.
-    """
-    from merlin.common.paths import repo_root
-
-    return repo_root() / "experiments" / "reference-data" / "phase0" / "conformance"
-
-
-def conformance_reference(target: str) -> Path:
-    """Reference requirement for ``target`` without assuming a target identity."""
-    return conformance_reference_dir() / f"{target}.yaml"
-
-
 def kernel_corpora() -> dict[str, dict]:
     """Every expert kernel corpus the registry declares, ``{framework: spec}``, in declaration order."""
     return {str(k): dict(v or {}) for k, v in (_registry().get("kernel_corpora") or {}).items()}
@@ -176,8 +159,9 @@ def descriptor_paths(target: str = "*") -> list[Path]:
     """Retained experiment descriptors, in the same deterministic owner order."""
     root = repo_root()
     patterns = (
+        "examples/*/{target}/target/descriptor.yaml",
         "experiments/studies/*/targets/{target}/target_experiment.yaml",
-        "experiments/reference-data/target-inputs/{target}/target_experiment.yaml",
+        "experiments/inputs/target-inputs/{target}/target_experiment.yaml",
     )
     return [path for pattern in patterns for path in sorted(root.glob(pattern.format(target=target))) if path.is_file()]
 
@@ -204,7 +188,11 @@ def standard_descriptor_path(target: str) -> Path:
     back to this. Both spellings live here so the ``experiments/`` layout has exactly one owner.
     """
     from merlin.common.paths import repo_root
+    from merlin.targetgen.target_experiment import _declared_target
 
+    for candidate in descriptor_paths():
+        if _declared_target(candidate) == target:
+            return candidate
     return repo_root() / "experiments" / "studies" / "capsule_bench" / "targets" / target / "target_experiment.yaml"
 
 

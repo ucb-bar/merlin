@@ -1,4 +1,4 @@
-# AGENT.md - src/merlin/compiler/lower/native
+# src/merlin/compiler/lower/native
 
 This package owns native lowering orchestration, including scalar/OpenMP and
 generic upstream fixed-width vector pass composition, generated child runners,

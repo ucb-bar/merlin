@@ -279,12 +279,12 @@ def _audit_framework_package(cell: MatrixCell, package_value: str, package_diges
     if not _is_sha256(package_digest):
         return [f"session package sha256 is unresolved for {cell.model.name}/{cell.precision}"]
     try:
-        from merlin.baselines.executorch_session import (
+        from merlin.common.yaml import load_yaml
+        from merlin.evaluation.frameworks.executorch_session import load_session_package
+        from merlin.evaluation.frameworks.executorch_session_contract import (
             capture_session_identity,
-            load_session_package,
             session_identity_sha256,
         )
-        from merlin.common.yaml import load_yaml
 
         frozen = load_session_package(package_path, expected_sha256=package_digest)
         artifact_digest = cell.model.artifacts[cell.precision]["sha256"]
@@ -422,7 +422,7 @@ def environment_preflight(spec: PaperStudySpec) -> Preflight:
                         f"{cell.backend.name}: command must start with the pinned {{python_executable}} placeholder"
                     )
                 if (
-                    "merlin.baselines.executorch_session" not in command
+                    "merlin.evaluation.frameworks.executorch_session" not in command
                     or "run" not in command
                     or "build" in command
                     or "--session-contract" in command

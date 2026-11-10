@@ -114,7 +114,7 @@ merlin-surface = "merlin.kernels.cli_surface:main"
 # Offline, bit-exact bundle rewrite: store weights in the layout their consumer wants, so the
 # model stops re-laying-out weights on every inference. The analysis + rewrite already existed
 # and were tested; nothing could RUN them, so the *_pretransposed bundles on disk had been
-# hand-driven from a REPL. See src/merlin/baselines/pretranspose_cli.py for the
+# hand-driven from a REPL. See src/merlin/capture/pretranspose.py for the
 # decided precedence against the conflicting `fuse_transpose_b` schedule lever.
 merlin-compile = "merlin.compile_cli:main"
 merlin-liveness = "merlin.liveness.cli:main"
@@ -125,12 +125,12 @@ merlin-firesim-receipt = "merlin.perf.firesim_receipt:main"
 merlin-deployment-check = "merlin.perf.deployment_admissibility:main"
 merlin-compile-kernel = "merlin.triton.cli:main"
 
-merlin-phase2-public-diagnostic = "merlin.experiments.phase2.public_diagnostic_launch:main"
+merlin-backend-public-diagnostic = "merlin.development.backend.optimization.public_diagnostic_launch:main"
 merlin-experiment = "merlin.experiments.cli:main"
 merlin-evaluation-cohort = "merlin.targetgen.evaluation_cohort:main"
-merlin-phase2-timing-study = "merlin.experiments.phase2.timing_study:main"
-merlin-phase2-normal-timing-study = "merlin.experiments.phase2.ordinary_timing_study:main"
-merlin-phase2-timing-readiness = "merlin.experiments.phase2.timing_domain_readiness:main"
+merlin-backend-timing-study = "merlin.development.backend.optimization.timing_study:main"
+merlin-backend-normal-timing-study = "merlin.development.backend.optimization.ordinary_timing_study:main"
+merlin-backend-timing-readiness = "merlin.development.backend.optimization.timing_domain_readiness:main"
 merlin-dse = "merlin.analysis.dse.search.cli:main"
 merlin-design-pressure = "merlin.analysis.dse.pressure.cli:main"
 merlin-dse-guidance = "merlin.analysis.dse.guidance.cli:main"
@@ -147,7 +147,7 @@ merlin-rvv-beam = "merlin.mining.beam_cli:main"
 merlin-rvv-opt = "merlin.mining.op_sweep:main"
 merlin-cca-route = "merlin.mining.route_report:main"
 merlin-compare = "merlin.compare.cli:main"
-merlin-bundle-pretranspose = "merlin.baselines.pretranspose_cli:main"
+merlin-bundle-pretranspose = "merlin.capture.pretranspose:main"
 merlin-recovery = "merlin.perf.recovery:main"
 
 [project.entry-points."merlin.backends"]
@@ -241,9 +241,10 @@ merlin = [
     "runtime/backends/xnnpack_host/xnn_gemm_shim.c",
 ]
 
-"merlin.experiments" = ["resources/*.json", "phase1/fresh10_profile_data.json", "phase1/author_skills/*/SKILL.md", "phase1/author_skills/*/scripts/*.py", "phase1/author_skills/*/reference/*.md"]
+"merlin.experiments" = ["resources/*.json"]
+"merlin.development.backend" = ["fresh10_profile_data.json", "author_skills/*/SKILL.md", "author_skills/*/scripts/*.py", "author_skills/*/reference/*.md"]
 "merlin.experiments.execution" = ["container_guardian.c"]
-"merlin.baselines" = ["executorch_spacemit_toolchain.cmake", "exo_kernels/autosched_bench.c", "exo_kernels/fgemm_nk.c", "exo_kernels/igemm_bench.c", "exo_kernels/igemm_nk.c", "exo_kernels/igemm_nk_bench.c", "exo_kernels/llama_glue.c", "exo_kernels/llama_glue_autosched.c", "exo_kernels/llama_glue_int8.c", "tvm_board/board_kernel_timer.cc", "tvm_board/board_runner.cc", "tvm_board/build_board_runner.sh"]
+"merlin.evaluation.frameworks" = ["executorch_spacemit_toolchain.cmake", "exo_kernels/autosched_bench.c", "exo_kernels/fgemm_nk.c", "exo_kernels/igemm_bench.c", "exo_kernels/igemm_nk.c", "exo_kernels/igemm_nk_bench.c", "exo_kernels/llama_glue.c", "exo_kernels/llama_glue_autosched.c", "exo_kernels/llama_glue_int8.c", "tvm_board/board_kernel_timer.cc", "tvm_board/board_runner.cc", "tvm_board/build_board_runner.sh"]
 "merlin.compare" = ["paper_k1_board_probe.c", "paper_model_abi_runner.c"]
 
 [tool.pytest.ini_options]
@@ -293,9 +294,9 @@ extend-exclude = [
     "experiments/corpora/**/capsule.pytorch.py",
     "experiments/corpora/**/capsule.loader_deps/**",
     # Vendored target support: byte-identical copies of companion commits, recorded (with their git
-    # tree ids) in examples/<target>/SOURCE.yaml. Restyling one would make it a different tree from
+    # tree ids) in examples/<category>/<target>/SOURCE.yaml. Restyling one would make it a different tree from
     # the source it claims to be; its style belongs to the companion it was copied from.
-    "examples/*/support/**",
+    "examples/*/*/support/**",
 ]
 
 [tool.ruff.lint]

@@ -26,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 
-from merlin.baselines import bundle as _bundle
+from merlin.capture import bundle as _bundle
 from merlin.common.paths import artifacts_dir, repo_root
 from merlin.mining import k1
 from merlin.mining.registry import load_rvv_package

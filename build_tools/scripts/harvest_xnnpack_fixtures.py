@@ -5,7 +5,7 @@ The per-op teacher (``merlin.mining.wholemodel_proposer``) pairs a per-FAMILY ex
 per-family section CCA. The expert CCA is lifted from a REAL RVV disassembly of the family's XNNPACK
 ukernel. GEMM fixtures pre-exist (``run_expert_gemm``); this script harvests the rest of the census
 byte-traffic families that HAVE an XNNPACK primitive — transpose, reduce (rsum/rmax), the transcendental
-activations (vgelu/vsigmoid), clamp, and elementwise binary — into the SAME ``experiments/reference-data/cca-asm/``
+activations (vgelu/vsigmoid), clamp, and elementwise binary — into the SAME ``experiments/inputs/cca-asm/``
 directory, named ``xnnpack_<family>_rvv.objdump``.
 
 Method (all HOST cross-compile, no board): compile the family's ``*rvv*.c`` ukernel to a ``.o`` with the
@@ -157,7 +157,7 @@ def _machine_independent(text: str, fixture: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Harvest per-family XNNPACK RVV objdump fixtures.")
-    ap.add_argument("--out-dir", default=None, help="fixture dir (default: experiments/reference-data/cca-asm)")
+    ap.add_argument("--out-dir", default=None, help="fixture dir (default: out/artifacts/source-data/cca-asm)")
     ap.add_argument("--only", default=None, help="comma-separated fixture basenames to harvest")
     args = ap.parse_args(argv)
 

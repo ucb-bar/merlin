@@ -46,7 +46,7 @@ from pathlib import Path
 
 from merlin.common.access import audit_token_in
 from merlin.common.paths import repo_root
-from merlin.experiments.phase1.providers import codex_agent as _codex
+from merlin.development.backend.providers import codex_agent as _codex
 from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces, audit_hit_is_violation, audit_tokens
 from merlin.targetgen.target_experiment import TargetExperiment
 

@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/resources/schemas
+# src/merlin/resources/schemas
 
 ## Purpose
 The **cross-workstream coordination data-model** — every artifact exchanged between the workstreams

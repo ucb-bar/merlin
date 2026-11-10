@@ -53,7 +53,7 @@ require: oracle_output == reference_outputs(cb) == simulate(cb)   (integer, bit-
 | `schemas/*.schema.json` | JSON Schemas (fail-closed validators) |
 
 The Gemmini g0–g2 interface samples are owned by
-`examples/gemmini/phase0/reference/`; their expected command buffer is a
+`examples/compiler-generation/gemmini/test-generation/reference/`; their expected command buffer is a
 Gemmini test fixture. Checkout links under `contract/examples/` preserve old
 paths, but neither the samples nor the expected output ship in the core wheel.
 

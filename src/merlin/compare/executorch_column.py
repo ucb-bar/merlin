@@ -21,10 +21,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from merlin.baselines import aggregate as _agg
-from merlin.baselines import accuracy_policy, k1_workload_policy
 from merlin.capture import bundle as _bundle
 from merlin.common.paths import repo_root
+from merlin.evaluation.frameworks import accuracy_policy, k1_workload_policy
+from merlin.evaluation.frameworks import aggregate as _agg
 
 # The cross-framework BaselineResult tree (same location compare.empirical._ingest_external reads).
 _BASELINE_TREE = "out/artifacts/measurements/k1_spacemit"

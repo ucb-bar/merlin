@@ -12,12 +12,13 @@ import numpy as np
 import pytest
 import yaml
 
-from merlin.experiments.phase2 import numerical_readback as N
+from merlin.development.backend.optimization import numerical_readback as N
 from merlin.perf.phase2_portfolio import QualityBudget, QualityLimit
 from merlin.targetgen.contract import readback_policy as RB
 from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe
 from merlin.targetgen.contract.build_service import BuildOnlyService
 from merlin.targetgen.sandbox import bwrap as BW
+from verification_witnesses.sandbox_isolation import remove_bundle_snapshot
 
 
 def _json(path, value):
@@ -165,7 +166,7 @@ def native_case(tmp_path, monkeypatch):
             ws=ws,
         )
     finally:
-        BW.remove_bundle_snapshot(ws)
+        remove_bundle_snapshot(ws)
 
 
 def _rebind(case, arm_index=1):

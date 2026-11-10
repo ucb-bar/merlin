@@ -576,7 +576,7 @@ def assemble(
     )
     # Only this derivation may supply new completeness inputs. A historical
     # baseline sidecar cannot fill an absent source trace in the selected run.
-    from ..phase0.coverage_commitment import INPUT_PATH, read_inputs
+    from merlin.development.testgen.coverage_commitment import INPUT_PATH, read_inputs
 
     coverage_inputs = read_inputs(generated, provenance)
     if coverage_inputs is not None and scope_record is None:
@@ -587,7 +587,8 @@ def assemble(
     # Functional grading still discovers only non-underscore categories.
     merged = copy.deepcopy(provenance)
     if scope_record is not None:
-        from ..phase0.coverage_commitment import write_inputs
+        from merlin.development.testgen.coverage_commitment import write_inputs
+
         from .phase_selection import generate_phase_selections
 
         if coverage_inputs is None:
@@ -733,9 +734,8 @@ def derive_release_admission(staged) -> dict:
 
 def _bundle_selection(optional_levels, selected_levels, selected_variants):
     """Select declarations only; corpus and qualification policy stay unchanged."""
+    from merlin.development.backend.levels import LEVELS
     from merlin.targetgen.generate_bundles import _ARMS
-
-    from ..phase1.levels import LEVELS
 
     historical = tuple(_ARMS) + tuple({"EL5": "merlin_isa", "EL6": "merlin_lean"}[level] for level in optional_levels)
     arms = historical
@@ -975,7 +975,7 @@ def scaffold(
     # resource independently relocatable without copying grader dependencies.
     from merlin.common.paths import module_source_path
 
-    shim = module_source_path("merlin.experiments.phase1.tools.selfcheck")
+    shim = module_source_path("merlin.development.backend.tools.selfcheck")
     inputs["scripts/agent_selfcheck.py"] = {
         "path": str(shim),
         "sha256": copy_input(shim, experiment / "scripts/agent_selfcheck.py"),
@@ -1003,8 +1003,8 @@ def scaffold(
     if cca_bank is not None:
         # One coverage bank arm's pinned precomputed bank, beside its unchanged raw references.
         from merlin.common.paths import repo_root
+        from merlin.development.backend.author_profiles import resolve as resolve_author_profile
 
-        from ..phase1.author_profiles import resolve as resolve_author_profile
         from . import public_references
 
         selected = resolve_author_profile(author_profile) if author_profile else None
@@ -1242,7 +1242,7 @@ def scaffold(
         )
     inputs["bundle_generation"] = {"diagnostics": diagnostics.getvalue()}
     if author_profile:
-        from merlin.experiments.phase1.author_profiles import stage_release_bundles
+        from merlin.development.backend.author_profiles import stage_release_bundles
 
         inputs["author_profile"] = stage_release_bundles(
             experiment,
@@ -1354,6 +1354,7 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
     from .public_program_suite import selected as selected_programs
 
     programs = selected_programs(te)  # Complete programs add obligations, never core RTL credit.
+    from merlin.development.testgen.certification_floor import require_direct_tier, selected_floor
     from merlin.targetgen.contract.materialize import (
         _TIER_ORDER,
         materialize_public_cohort,
@@ -1362,7 +1363,6 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
         validate_materialized_cohort,
     )
 
-    from ..phase0.certification_floor import require_direct_tier, selected_floor
     from .publication import require_accelerator_placement
 
     # Re-checked here, not only at assembly: sealing re-runs this admission over the reviewed payload.
@@ -1384,7 +1384,7 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
     materialized = resolve_published_cohort(materialize_public_cohort(te, tier_ceiling=_TIER_ORDER[-1]))
     pin_cohort_builds(materialized)
     public = validate_materialized_cohort(materialized, te)
-    from ..phase0.coverage_commitment import (
+    from merlin.development.testgen.coverage_commitment import (
         admitted_source_roots,
         build_phase0_readiness,
         observe_cohort,

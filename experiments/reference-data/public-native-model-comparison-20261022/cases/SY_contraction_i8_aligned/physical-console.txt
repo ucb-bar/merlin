@@ -1,3 +1,0 @@
-[UART] UART0 is here (stdin/stdout).
-METRIC cycles 564
-DONE

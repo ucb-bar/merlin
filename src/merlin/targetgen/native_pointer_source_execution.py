@@ -252,7 +252,7 @@ def execute_candidate_pointer_source(
                 scope="same standalone candidate ELF; all independent original outputs",
             )
         }
-        from merlin.experiments.phase2.gsim_workload import OUTPUT_ENCODING, encode_declared_outputs
+        from merlin.development.backend.optimization.gsim_workload import OUTPUT_ENCODING, encode_declared_outputs
 
         digest, tensors = encode_declared_outputs(actual, cb)
         record["output_observation"] = dict(sha256=digest, encoding=OUTPUT_ENCODING, tensors=tensors)

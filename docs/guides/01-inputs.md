@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-11-09
 related: [02-targets, ../reference/repo_structure]
-code_refs: [src/merlin/api.py, src/merlin/compiler/request.py, src/merlin/compiler/frontend/torch/program.py, src/merlin/compiler/frontend/torch/export.py, examples/quickstart]
+code_refs: [src/merlin/api.py, src/merlin/compiler/request.py, src/merlin/compiler/frontend/torch/program.py, src/merlin/compiler/frontend/torch/export.py, examples/compilation/quickstart]
 ---
 
 # 1. Choose an input and compile a small program
@@ -23,7 +23,7 @@ Use Python 3.12 or newer and uv. From the repository root:
 ```sh
 uv venv --python 3.12
 uv pip install -e '.[compiler]'
-uv run --no-sync merlin compile examples/quickstart/flatten.mlir \
+uv run --no-sync merlin compile examples/compilation/quickstart/flatten.mlir \
   --backend merlin.layout --output out/build/quickstart/compiled
 uv run --no-sync merlin inspect out/build/quickstart/compiled
 ```
@@ -39,7 +39,7 @@ from pathlib import Path
 from merlin.api import compile, inspect
 
 result = compile(
-    Path("examples/quickstart/flatten.mlir"),
+    Path("examples/compilation/quickstart/flatten.mlir"),
     backend="merlin.layout",
     output="out/build/quickstart/python",
 )
@@ -77,7 +77,7 @@ Each provider validates its own supported options before compiling. An option
 accepted by one provider is not automatically meaningful to every other provider.
 
 The public CLI and Python API share the same service. Use `merlin --help`,
-`merlin compile --help`, and [the generated CLI list](../reference/cli.md) to find
+`merlin compile --help`, and [the command declarations](../../pyproject.toml) to find
 the options in this checkout. Older saved-model workflows also retain their
 specialized entry points; they are not aliases for every public compile mode.
 

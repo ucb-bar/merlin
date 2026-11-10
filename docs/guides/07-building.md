@@ -42,7 +42,7 @@ An explicitly selected image is optional; a valid compilation can stop at region
 artifacts when no complete image was requested.
 
 For a small host example, follow
-[`examples/quickstart/run.py`](../../examples/quickstart/run.py). It checks the
+[`examples/compilation/quickstart/run.py`](../../examples/compilation/quickstart/run.py). It checks the
 emitted C interface, invokes a host C compiler and runs the resulting Linux ELF.
 That step needs Linux x86-64 and a compatible compiler; reading the generated
 source and notebook outputs does not.

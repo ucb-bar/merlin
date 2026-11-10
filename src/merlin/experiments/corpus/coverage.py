@@ -112,7 +112,7 @@ def selected_cohort_coverage(
                     "reason": "selected requirement lacks exact SW/emitter-derived Phase 2 scope",
                 }
                 continue
-            from merlin.experiments.phase0.performance_scope import validate_performance_scope
+            from merlin.development.testgen.performance_scope import validate_performance_scope
 
             performance = validate_performance_scope(spec_doc["scope"])
             if performance.get("status") == "unresolved":
@@ -286,7 +286,7 @@ def inspect_run(run_dir: Path, spec_path: Path) -> dict:
     if edge is not None and (type(edge) is not int or edge < 1):
         raise SpecError("conformance spec tile_edge must be a positive integer or absent")
     category_roots, n_public = _public_category_roots(corpus)
-    from merlin.experiments.phase0.coverage_commitment import read_inputs
+    from merlin.development.testgen.coverage_commitment import read_inputs
 
     inputs = read_inputs(corpus)
     if inputs is not None and inputs.get("target") != target:

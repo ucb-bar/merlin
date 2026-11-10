@@ -46,7 +46,7 @@ PROFILE_ACTIONS = (
 
 
 def _owner() -> Any:
-    from ..phase2 import checkpoint_admission as AD
+    from merlin.development.backend.optimization import checkpoint_admission as AD
 
     return AD
 

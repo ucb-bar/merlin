@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/capture
+# src/merlin/capture
 
 Owns shared capture bundle access, deterministic rewrites, and workload identities.
 No dependency on experiment orchestration, baseline frameworks, or DSE analysis.

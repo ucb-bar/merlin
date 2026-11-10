@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/targetgen/synthesize
+# src/merlin/targetgen/synthesize
 
 ## Purpose
 
@@ -28,8 +28,8 @@ runtime_adapter_plan, zephyr_plan, llvm_extension_plan.
 ## Testing expectations
 
 - `test_targetgen_toy.py` asserts toy_npu plans validate and stay consistent with the
-  authored `examples/toy_npu/target/contracts/`.
+  authored `examples/targets/toy_npu/target/contracts/`.
 
 ## Notes for future agents
 
-- Keep the toy_npu contract consistent with `examples/toy_npu/target/contracts/target_contract.yaml`.
+- Keep the toy_npu contract consistent with `examples/targets/toy_npu/target/contracts/target_contract.yaml`.

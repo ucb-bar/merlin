@@ -16,6 +16,7 @@ from pathlib import Path, PurePosixPath
 
 OMIT = {"__pycache__", "_qa_ws"}
 SCHEMA = "merlin.performance-source-snapshot.v4"
+RESOURCE_DECLARATION = "build_tools/package_resources.json"
 ROOT_FILES = (".env", ".env.example", "pyproject.toml", "setup.cfg", "CMakeLists.txt")
 PROVIDER_ROOT = "_selected_provider"
 INPUT_ROOT = "_declared_inputs"
@@ -40,17 +41,31 @@ def provider_environment(root: Path, receipt: dict) -> dict[str, str]:
     _require_current(receipt)
     provider = receipt.get("selected_provider")
 
+    declaration = RESOURCE_DECLARATION
+    manifest = root / declaration
+    try:
+        digest = receipt["files"][declaration]
+        if manifest.is_symlink() or sha_file(manifest) != digest:
+            raise SnapshotError("snapshot resource declaration differs from its sealed source")
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+        version = document["version"]
+        if type(version) is not int or version not in {1, 2}:
+            raise SnapshotError("unsupported snapshot resource layout")
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        raise SnapshotError("snapshot lacks a supported sealed resource declaration") from exc
+
     def resource(name: str) -> Path:
-        # Checkout resources and wheel resources have different owners. Both
-        # must resolve inside this verified snapshot, never a live installation.
-        legacy, bundled = root / "merlin" / name, root / "merlin/_data" / name
-        return legacy if legacy.is_dir() or not bundled.is_dir() else bundled
+        # The selected source declaration owns the layout; missing resources
+        # cannot select a live installation or another historical location.
+        if version == 1:
+            return root / "merlin" / name
+        return root / "src/merlin/resources" / {"contract": "contracts", "schemas": "schemas"}[name]
 
     return {
         "MERLIN_TARGET_PATH": str(root / provider["root"]) if provider and provider["kind"] == "external" else "",
         "MERLIN_TARGET_CONTRACT": "",
         "MERLIN_RTL_FACTS": "",
-        "MERLIN_TARGETS_DIR": str(root / "experiments/reference-data/target-inputs"),
+        "MERLIN_TARGETS_DIR": str(root / "experiments/inputs/target-inputs"),
         "MERLIN_CONTRACT_DIR": str(resource("contract")),
         "MERLIN_SCHEMAS_DIR": str(resource("schemas")),
     }
@@ -364,11 +379,15 @@ def create(
             copied_inputs[relative.as_posix()] = path
         input_records[name] = {"source": str(path), "snapshot": relative.as_posix()}
     for relative in root_files:
-        if len(PurePosixPath(_relative(relative)).parts) != 1:
+        if len(PurePosixPath(_relative(relative)).parts) != 1 and relative != RESOURCE_DECLARATION:
             raise SnapshotError("snapshot root files must be basenames")
         src = source / relative
+        if relative == RESOURCE_DECLARATION and not src.is_file():
+            raise SnapshotError("snapshot resource declaration is missing")
         if src.is_file():
-            shutil.copy2(src, destination / relative)
+            target = destination / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, target)
     for path in sorted(destination.rglob("*")):
         if path.is_file():
             relative = path.relative_to(destination).as_posix()
@@ -492,6 +511,9 @@ def _validate_layout(receipt: dict) -> None:
     root_ancestors = frozenset(parent for root in root_paths for parent in root.parents)
     alias_paths = frozenset(PurePosixPath(relative) for relative in aliases)
     alias_ancestors = frozenset(parent for alias in alias_paths for parent in alias.parents)
+    resource_ancestors = (
+        frozenset(PurePosixPath(RESOURCE_DECLARATION).parents) if RESOURCE_DECLARATION in files else frozenset()
+    )
 
     def within_roots(path):
         return path in root_paths or any(parent in root_paths for parent in path.parents)
@@ -502,13 +524,17 @@ def _validate_layout(receipt: dict) -> None:
             raise SnapshotError(f"invalid snapshot source root: {relative}")
         if candidate in root_ancestors or any(parent in root_paths for parent in candidate.parents):
             raise SnapshotError("overlapping snapshot source roots")
-    if any(relative not in ROOT_FILES and not within_roots(PurePosixPath(relative)) for relative in files):
+    if any(
+        relative not in (*ROOT_FILES, RESOURCE_DECLARATION) and not within_roots(PurePosixPath(relative))
+        for relative in files
+    ):
         raise SnapshotError("snapshot files outside declared source roots")
     if any(
         not within_roots(path)
         and path not in root_ancestors
         and path not in alias_paths
         and path not in alias_ancestors
+        and path not in resource_ancestors
         for path in map(PurePosixPath, directories)
     ):
         raise SnapshotError("snapshot directories outside declared source roots")

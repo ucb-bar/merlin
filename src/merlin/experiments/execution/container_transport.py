@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 from merlin.common import invocation_record
-from merlin.experiments.phase2.contracts import StageGateError
+from merlin.development.backend.optimization.contracts import StageGateError
 
 from .container_image import image_root_masks, verify_image_export
 from .container_policy import ContainerMount as ContainerMount
@@ -132,7 +132,7 @@ class PreparedContainerTransport:
         is a refusal even when the delegated service reports a stopped container.
         No candidate rollback, native-service lease release or OS hard deadline.
         """
-        from merlin.experiments.phase2.external_resources import active_resource_boundary
+        from merlin.development.backend.optimization.external_resources import active_resource_boundary
 
         if active_resource_boundary() is not None:
             raise StageGateError("hard resource boundary cannot admit an unbound external container executor")

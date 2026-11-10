@@ -13,9 +13,9 @@ from pathlib import Path
 import yaml
 
 from merlin.common.digest import sha256_file
+from merlin.development.testgen.program_admission import accelerator_placement_refusal, screen_written
 from merlin.targetgen.capsule_common import load_capsule
 
-from ..phase0.program_admission import accelerator_placement_refusal, screen_written
 from ..runner import fingerprint
 from . import public_scalability as S
 from .preparation import copy_input, ordinary_tree
@@ -87,27 +87,58 @@ def prepare(sources: list[Path], destination: Path, *, target: str, evidence, ev
         load_capsule(selected)
         ir = cap.get("interface_mlir") or cap.get("linalg_mlir")
         source_group = sha256_file(selected / ir)
-        members.append({"member": member, "sha256": fingerprint(selected),
-                        "source_group": source_group, "split": "public"})
-        lineage.append({"name": name, "source": str(source), "source_sha256": source_digest,
-                        "source_group": source_group, "original_required_tiers": original.get("required_oracle_tiers"),
-                        "original_max_oracle_tier": original.get("max_oracle_tier"),
-                        "original_scheduler_predecessor": original.get("extends"),
-                        "selected_required_tiers": S.POLICY["tiers"],
-                        "numeric_policy_unchanged": cap.get("numeric_policy") == original.get("numeric_policy"),
-                        "source_bytes_unchanged": sha256_file(source / ir) == source_group,
-                        "original_performance_policy_retained_privately": original.get("performance"),
-                        "placement": screen})
+        members.append(
+            {"member": member, "sha256": fingerprint(selected), "source_group": source_group, "split": "public"}
+        )
+        lineage.append(
+            {
+                "name": name,
+                "source": str(source),
+                "source_sha256": source_digest,
+                "source_group": source_group,
+                "original_required_tiers": original.get("required_oracle_tiers"),
+                "original_max_oracle_tier": original.get("max_oracle_tier"),
+                "original_scheduler_predecessor": original.get("extends"),
+                "selected_required_tiers": S.POLICY["tiers"],
+                "numeric_policy_unchanged": cap.get("numeric_policy") == original.get("numeric_policy"),
+                "source_bytes_unchanged": sha256_file(source / ir) == source_group,
+                "original_performance_policy_retained_privately": original.get("performance"),
+                "placement": screen,
+            }
+        )
     provenance = destination / "provenance.json"
-    provenance.write_text(json.dumps({"schema": "merlin.corpus.scalability_intake.v1", "target": target,
-        "role_transition": "new_epoch_public_development", "historical_holdout_claim": False,
-        "scope": "functional source contracts; neither executable success nor physical timing qualification",
-        "evidence_manifest": {"path": str(evidence_root / "evidence-manifest.json"),
-                              "sha256": sha256_file(evidence_root / "evidence-manifest.json")},
-        "members": lineage}, indent=2) + "\n")
+    provenance.write_text(
+        json.dumps(
+            {
+                "schema": "merlin.corpus.scalability_intake.v1",
+                "target": target,
+                "role_transition": "new_epoch_public_development",
+                "historical_holdout_claim": False,
+                "scope": "functional source contracts; neither executable success nor physical timing qualification",
+                "evidence_manifest": {
+                    "path": str(evidence_root / "evidence-manifest.json"),
+                    "sha256": sha256_file(evidence_root / "evidence-manifest.json"),
+                },
+                "members": lineage,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
     selection = destination / "suite.json"
-    selection.write_text(json.dumps({"schema": S.SCHEMA, "target": target, "origin": "operator_requested",
-        "policy": S.POLICY, "members": members,
-        "provenance": {"path": str(provenance), "sha256": sha256_file(provenance)}}, indent=2) + "\n")
+    selection.write_text(
+        json.dumps(
+            {
+                "schema": S.SCHEMA,
+                "target": target,
+                "origin": "operator_requested",
+                "policy": S.POLICY,
+                "members": members,
+                "provenance": {"path": str(provenance), "sha256": sha256_file(provenance)},
+            },
+            indent=2,
+        )
+        + "\n"
+    )
     S.read(selection, target=target)
     return selection

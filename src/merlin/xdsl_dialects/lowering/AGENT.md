@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/xdsl_dialects/lowering
+# src/merlin/xdsl_dialects/lowering
 
 ## Purpose
 

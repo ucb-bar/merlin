@@ -57,7 +57,6 @@ for _p in (_REPO / "merlin" / "python",):
 
 from merlin.common.paths import artifacts_dir  # noqa: E402
 from merlin.targetgen import claim_models as CM  # noqa: E402
-from merlin.targetgen.corpora import conformance_reference_dir  # noqa: E402
 
 
 def _bundles() -> dict[str, Path]:
@@ -70,30 +69,6 @@ def _bundles() -> dict[str, Path]:
     if not root.is_dir():
         return {}
     return {d.name: d / "model.mlir" for d in sorted(root.iterdir()) if (d / "model.mlir").is_file()}
-
-
-def _spec_targets() -> list[str]:
-    """The targets tracked conformance specs are FOR, read from each spec's own ``target``.
-
-    Not the filename. A spec's stem is a label and its `target:` is the key everything else resolves
-    by -- measured: `conformance/saturn_opu.yaml` declares `target: saturn_opu_mxv256d128`, and
-    auditing the stem asked about a target with no generated contract while the spec belonged to one
-    that resolves. Falls back to the stem when a spec declares nothing, so an unreadable file still
-    gets audited rather than silently skipped.
-    """
-    import yaml
-
-    d = conformance_reference_dir()
-    if not d.is_dir():
-        return []
-    out = []
-    for path in sorted(d.glob("*.yaml")):
-        try:
-            doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        except yaml.YAMLError:
-            doc = {}
-        out.append(str(doc.get("target") or path.stem))
-    return sorted(set(out))
 
 
 def audit(target: str, bundles: dict[str, Path] | None = None) -> dict:
@@ -246,9 +221,9 @@ def main(argv=None) -> int:
         # the held-out set. The sibling gates spell this case 2 unconditionally.
         return 2
 
-    targets = a.target or _spec_targets()
+    targets = a.target or []
     if not targets:
-        print("[claim-set] no target ships a conformance spec; nothing to audit", file=sys.stderr)
+        print("[claim-set] select a target explicitly with --target NAME", file=sys.stderr)
         return 2  # nothing audited is not nothing wrong; see the note above
 
     bundles = _bundles()

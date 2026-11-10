@@ -71,14 +71,14 @@ _REGISTRY_OWNED_GRANT_TAILS = ("contracts/rtl_facts", "contracts")
 
 
 def _resolve_target_package_grant(rel: str) -> Path | None:
-    """A ``experiments/reference-data/target-inputs/<t>/contracts/...`` grant resolved through the target registry, or ``None``.
+    """A ``experiments/inputs/target-inputs/<t>/contracts/...`` grant resolved through the target registry, or ``None``.
 
-    A TARGET'S PACKAGE DOES NOT ALWAYS LIVE UNDER ``experiments/reference-data/target-inputs/``. One target's contracts and RTL
+    A TARGET'S PACKAGE DOES NOT ALWAYS LIVE UNDER ``experiments/inputs/target-inputs/``. One target's contracts and RTL
     facts are curated in-tree; another's are GENERATED, and the registry is what knows which -- it
     resolves each target to its own ``contract_path``/``facts_path``, which for a generated package sit
     under the build root. A manifest that spells the in-tree location for such a target names a
     directory that does not exist, and the grant then fails closed: measured, five atlas bundles
-    granted ``experiments/reference-data/target-inputs/atlas/contracts/rtl_facts/`` and the sandbox could not be assembled at
+    granted ``experiments/inputs/target-inputs/atlas/contracts/rtl_facts/`` and the sandbox could not be assembled at
     all, so the arm that is SUPPOSED to read RTL facts could not have read them.
 
     Resolving through the registry keeps the manifest saying WHAT it wants (this target's RTL facts)
@@ -682,16 +682,6 @@ def _make_snapshot_writable(root: Path) -> None:
             continue  # unlink needs the DIRECTORY writable, not the file
         path.chmod(0o700 if path.is_dir() else 0o600)
     root.chmod(0o700)
-
-
-def remove_bundle_snapshot(ws: Path) -> None:
-    """Remove a generated snapshot after restoring owner write permission."""
-    root = bundle_snapshot_root(ws)
-    if root.is_symlink():
-        raise RuntimeError(f"refusing to remove symlinked bundle snapshot: {root}")
-    if root.exists():
-        _make_snapshot_writable(root)
-        shutil.rmtree(root)
 
 
 def materialize_bundle_inputs(
@@ -1363,7 +1353,7 @@ def full_argv(
     """The complete isolation argv for one target+arm: deny-by-default base + claude runtime (never the
     operator's Claude state; no caller runs the CLI) + toolchain binds + derived answer masks. ``bundle``
     may be ``{}``/None for a descriptor-only target — the masks are then driven purely by the descriptor."""
-    from merlin.experiments.phase1 import author_toolchain
+    from merlin.development.backend import author_toolchain
     from merlin.targetgen.sandbox import claude_home as CH  # local: avoid a heavy import at module load
 
     bundle = bundle or {}
@@ -1413,7 +1403,7 @@ def wrap(
     this returns stays short however large the corpus grows. Below the threshold the inline form is
     kept, so nothing changes for a small corpus and the two forms can be compared.
     """
-    from merlin.experiments.phase1 import author_toolchain
+    from merlin.development.backend import author_toolchain
 
     argv = full_argv(te, ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs)
     if argv_guard is not None:

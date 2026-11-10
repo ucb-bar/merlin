@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/runtime/backends/xnnpack_host
+# src/merlin/runtime/backends/xnnpack_host
 
 ## Purpose
 

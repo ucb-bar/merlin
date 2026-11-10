@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/compiler/transforms
+# src/merlin/compiler/transforms
 
 Own reusable transformations, their applicability analysis and materialization.
 Preserve numerical ordering, effects, source lineage and explicit permissions.
