@@ -22,6 +22,8 @@ OPS = [
     "group_dispatch",
     "vector_strategy",
     "select_interface",
+    "overlap",
+    "time_annotation",
 ]
 TYPES = ["handle", "plan", "policy"]
 
@@ -36,7 +38,7 @@ KNOWN_INTERFACES = {
 }
 
 if HAS_XDSL:
-    from xdsl.dialects.builtin import StringAttr
+    from xdsl.dialects.builtin import IntegerAttr, StringAttr, i64
     from xdsl.ir import Dialect, EnumAttribute, ParametrizedAttribute, SpacedOpaqueSyntaxAttribute, TypeAttribute
     from xdsl.irdl import (
         IRDLOperation,
@@ -169,6 +171,39 @@ if HAS_XDSL:
                 raise VerifyException("schedule.bind target reference must be non-empty")
 
     @irdl_op_definition
+    class TimeAnnotationOp(IRDLOperation):
+        """A selected issue/completion point in an explicitly named clock.
+
+        This is a decision to check against target timing effects, never a
+        declaration of hardware latency or permission to remove a wait.
+        """
+
+        name = "schedule.time_annotation"
+        target = operand_def(HandleType)
+        event = prop_def(StringAttr)
+        cycle = prop_def(IntegerAttr)
+        clock = prop_def(StringAttr)
+
+        def verify_(self) -> None:
+            if self.event.data not in ("issue", "complete"):
+                raise VerifyException("time_annotation event must be issue or complete")
+            if self.cycle.type != i64 or self.cycle.value.data < 0 or not self.clock.data:
+                raise VerifyException("time_annotation needs a nonnegative i64 cycle and explicit clock")
+
+    @irdl_op_definition
+    class OverlapOp(IRDLOperation):
+        """Require or forbid overlap between two bound operation lifetimes."""
+
+        name = "schedule.overlap"
+        first = operand_def(HandleType)
+        second = operand_def(HandleType)
+        mode = prop_def(StringAttr)
+
+        def verify_(self) -> None:
+            if self.first is self.second or self.mode.data not in ("require", "forbid"):
+                raise VerifyException("overlap needs distinct handles and require/forbid mode")
+
+    @irdl_op_definition
     class ApplyPolicyOp(IRDLOperation):
         """schedule.apply_policy — applies a named policy to bound handles."""
 
@@ -275,6 +310,8 @@ if HAS_XDSL:
     _OP_CLASSES = [
         PlanOp,
         BindOp,
+        TimeAnnotationOp,
+        OverlapOp,
         ApplyPolicyOp,
         PreserveLayoutOp,
         HoistPackOp,
