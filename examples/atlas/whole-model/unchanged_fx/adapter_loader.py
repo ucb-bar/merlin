@@ -25,6 +25,9 @@ Select ATLAS_CAPTURE_BOUNDARY=model-prefill-cache for ids, absolute positions,
 and a BF16 mask, returning logits followed by K/V for every source layer.
 model-decode-cache adds ordered past K/V tensors after those three inputs.
 Both selections authenticate their independent input archive and source receipt.
+An explicit source receipt ``decoder_layers: [0]`` selects embedding, decoder
+zero, final norm, and head, returning logits and one K/V pair. This is a declared
+one-decoder source graph, distinct from the hidden-only layer0 boundary.
 """
 from __future__ import annotations
 
@@ -165,9 +168,13 @@ def head_boundary(model, inputs, source, *, tensor_record):
 
 def model_cache_boundary(model, inputs, source, *, tensor_record, prefill_cache,
                          authenticated_parameters=None):
-    """Select the existing tensor-cache source with its complete original state."""
+    """Select source logits/KV, optionally declaring only decoder layer zero."""
     cache_source = _load_sibling("cache_source")
-    layer_count = model.config.num_hidden_layers
+    decoder_layers = source.get("decoder_layers")
+    if "decoder_layers" in source and (type(decoder_layers) is not list or len(decoder_layers) != 1
+            or type(decoder_layers[0]) is not int or decoder_layers[0] != 0):
+        raise ValueError("decoder_layers currently requires exactly [0]")
+    layer_count = 1 if decoder_layers is not None else model.config.num_hidden_layers
     count = 3 if prefill_cache else 3 + 2 * layer_count
     keys = [f"input_{index}" for index in range(count)]
     if source.get("kind") != "model" or source.get("input_keys") != keys:
@@ -200,9 +207,12 @@ def model_cache_boundary(model, inputs, source, *, tensor_record, prefill_cache,
                            for index, (entry, (role, layer)) in enumerate(zip(entries, expected)))):
                 raise ValueError("model cache roles differ from the ordered source ABI")
     selector = cache_source.TensorPrefillLogits if prefill_cache else cache_source.TensorCacheLogits
-    boundary = selector(model.eval()).eval()
+    boundary = selector(model.eval(), decoder_layers=decoder_layers).eval()
     state = list(boundary.named_parameters()) + list(boundary.named_buffers())
     actual_state = {name: tensor_record(value) for name, value in state if value.device.type != "meta"}
+    if decoder_layers is not None and authenticated_parameters is not None:
+        authenticated_parameters = {name: record for name, record in authenticated_parameters.items()
+            if not name.startswith("model.model.layers.") or name.startswith("model.model.layers.0.")}
     expected_state = source.get("parameters", authenticated_parameters)
     if expected_state is None or actual_state != expected_state:
         missing = sorted(set(expected_state or {}) - set(actual_state))

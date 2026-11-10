@@ -12,6 +12,8 @@ capture, extraction, independent reference, compilation, and cache seam proof.
 """
 from __future__ import annotations
 
+from copy import copy
+
 import torch
 from torch import nn
 
@@ -114,14 +116,32 @@ class TensorCacheLogits(nn.Module):
     Keeping the model under the same ``model`` attribute as CausalLogits retains
     source module names for native-FP8 site discovery. No persistent Python cache
     survives a call, and no source module is replaced or modified.
+    ``decoder_layers=[0]`` explicitly selects a one-decoder logits graph using
+    the existing embedding, decoder zero, final normalization, and LM head.
     """
 
-    def __init__(self, model):
+    def __init__(self, model, *, decoder_layers=None):
         super().__init__()
         if model.config.model_type != "llama":
             raise ValueError("tensor cache source currently admits only the pinned Llama architecture")
         if model.training:
             raise ValueError("source model must already be in evaluation mode")
+        if decoder_layers is not None:
+            if (type(decoder_layers) is not list or len(decoder_layers) != 1
+                    or type(decoder_layers[0]) is not int or decoder_layers[0] != 0):
+                raise ValueError("decoder_layers currently requires exactly [0]")
+            # Register only the declared source modules, retaining their names
+            # and objects. The original full model/config remain untouched.
+            selected = nn.Module()
+            selected.config = copy(model.config)
+            selected.config.num_hidden_layers = 1
+            selected.model = nn.Module()
+            selected.model.embed_tokens = model.model.embed_tokens
+            selected.model.rotary_emb = model.model.rotary_emb
+            selected.model.layers = nn.ModuleList([model.model.layers[0]])
+            selected.model.norm = model.model.norm
+            selected.lm_head = model.lm_head
+            model = selected.eval()
         if any(getattr(layer.self_attn, "_atlas_ref_attn", {}).get("variant") != "text"
                for layer in model.model.layers):
             raise ValueError("source attention must already carry the original reference policy")
