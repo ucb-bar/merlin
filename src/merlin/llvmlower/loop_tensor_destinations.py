@@ -22,7 +22,9 @@ def _ltd_walk(op):
 
 
 def _ltd_numeric(type_):
-    return isinstance(type_, (ir.IntegerType, ir.IndexType)) or str(type_) in ('f16', 'bf16', 'f32', 'f64')
+    return isinstance(type_, (ir.IntegerType, ir.IndexType)) or str(type_) in (
+        'f16', 'bf16', 'f32', 'f64',
+        'f8E4M3FN', 'f8E4M3FNUZ', 'f8E5M2', 'f8E5M2FNUZ')
 
 
 def _ltd_fresh_seed(value):

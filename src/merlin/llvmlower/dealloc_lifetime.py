@@ -259,7 +259,8 @@ def _obl_ops(operation):
 
 
 def _obl_numeric_type(typ):
-    if str(typ) in ('index', 'f16', 'bf16', 'f32', 'f64'):
+    if str(typ) in ('index', 'f16', 'bf16', 'f32', 'f64',
+                    'f8E4M3FN', 'f8E4M3FNUZ', 'f8E5M2', 'f8E5M2FNUZ'):
         return True
     try:
         ir.IntegerType(typ)

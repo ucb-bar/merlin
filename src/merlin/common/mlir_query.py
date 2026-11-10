@@ -276,6 +276,7 @@ def forward_signature(
 
 #: dtype string -> bytes per element, for the dtypes model2MLIR captures emit.
 _DTYPE_BYTES = {"f64": 8, "f32": 4, "f16": 2, "bf16": 2, "i64": 8, "i32": 4, "i16": 2, "i8": 1, "i1": 1}
+_DTYPE_BYTES.update(dict.fromkeys(("f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ"), 1))
 
 
 def value_bytes(t) -> int:

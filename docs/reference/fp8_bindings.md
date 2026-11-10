@@ -9,6 +9,10 @@ code_refs:
   - src/merlin/xdsl_dialects/fp8.py
   - src/merlin/common/dense_float_ir.py
   - src/merlin/frontends/linalg_mlir.py
+  - src/merlin/llvmlower/loop_tensor_destinations.py
+  - src/merlin/llvmlower/dealloc_lifetime.py
+  - src/merlin/llvmlower/c_runtime.py
+  - src/merlin/common/mlir_query.py
 ---
 
 # FP8 reader and constant bindings
@@ -41,8 +45,28 @@ also checks both import orders and native MLIR parse/print byte preservation.
 Validation uses xDSL 0.68 and the existing native SDK's xDSL 0.65, with
 ml_dtypes 0.6.0. No LLVM or Triton rebuild is needed.
 
-These checks establish reader and constant support. FP8 host buffer ABIs,
-numeric cast rounding/overflow, arithmetic/scaled contractions and staged
-target execution require separate executable implementations and evidence.
+The ordinary tensor/memref host ABI additionally transports original FP8 words
+as one-byte storage. triton2MLIR archive carriers are explicitly `uint8`, with
+their logical float format retained in MLIR and signature metadata. Native
+LLVM conversion already handles FP8 loads, stores, bitcasts and value/control
+transport. No custom pass or integer public ABI is introduced.
+
+Loop destination and allocation-generation checks recognize the four FP8
+formats as non-handle value types. Native alias/lifetime verification still
+decides legality: invalid ownership/double release and unknown calls refuse.
+Footprint accounting and generated C input arrays use one byte per element;
+non-`uint8` FP8 input carriers refuse before numeric reinterpretation. C byte
+storage checks preserve all 256 words and do not establish numeric C-output
+interpretation or target execution.
+
+The actual triton2MLIR integration qualifies all four formats in tensor,
+buffer and guarded-memory profiles, including scalar events, masked tails,
+runtime loops, empty dimensions and reused native Merlin libraries. Its saved
+demo binds exact word references and keeps evaluator bytes/digests out of
+compiler staging. Native arithmetic remains a distinct requirement: direct
+FP8 extension probes retain unresolved casts in the current converter.
+
+Numeric cast rounding/overflow, arithmetic/scaled contractions and staged
+target execution still require executable implementations and evidence.
 In particular, a parsed `arith.truncf` does not prove it matches Triton's
 backend-dependent saturating FP8 conversions.

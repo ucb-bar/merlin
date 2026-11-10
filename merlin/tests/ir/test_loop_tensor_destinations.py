@@ -143,6 +143,16 @@ def test_complete_destinations_or_value_copies_preserve_original_producers(tmp_p
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("dtype", ["f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ"])
+@pytest.mark.parametrize("opaque", [False, True])
+def test_fp8_destination_proofs_remain_closed_over_numeric_values(tmp_path, dtype, opaque):
+    stdout, text = rewrite(tmp_path, source(opaque=opaque).replace("f32", dtype))
+    assert f"OK loop_tensor_destinations {int(not opaque)}" in stdout
+    assert "scf.for" in text
+    assert dtype in text
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
 @pytest.mark.parametrize("options", [{"later_use": True}, {"reverse": True}])
 def test_old_state_reads_and_permutations_finish_before_destination_updates(tmp_path, options):
     stdout, output = rewrite(tmp_path, source(**options))

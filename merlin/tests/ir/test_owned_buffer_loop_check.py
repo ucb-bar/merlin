@@ -64,6 +64,20 @@ def test_owned_initial_buffer_is_not_freed_again_after_loop():
     assert any("repeating control flow" in v for v in bad)
 
 
+@pytest.mark.parametrize("element", ["f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ"])
+@pytest.mark.parametrize("initially_owned", [False, True])
+def test_fp8_values_keep_the_same_generation_and_release_rules(element, initially_owned):
+    source = loop_source(element=element, initially_owned=initially_owned).replace(
+        "constant 0:"+element, "constant 0.0:"+element)
+    violations = dealloc_placement_violations(source)
+    assert not any("escaping handle" in value for value in violations)
+    if initially_owned:
+        assert any("ownership" in value for value in violations)
+        assert any("repeating control flow" in value for value in violations)
+    else:
+        assert violations == []
+
+
 MUTATIONS = [
     ("dynamic_trip", "to %c3 step", "to %bound step"),
     ("dynamic_step", "step %c1", "step %bound"),

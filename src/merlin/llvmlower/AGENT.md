@@ -20,6 +20,10 @@ external or accelerator effects gain no support from this host feature.
 blob transport, retaining byte offsets, alignment and public descriptors.
 Constant stubs refuse. Original source binding belongs to compiler intake;
 evaluator extra/golden archives never replace compiler constant storage.
+Its four FP8 formats use explicit raw `uint8` archive carriers and generated
+one-byte C storage. Loop destination/lifetime proofs recognize these as value
+types; unknown effects and invalid allocation generations still refuse. This
+storage support grants no FP8 arithmetic, numeric cast or target policy.
 
 `reuse_loop_tensor_destinations` may expose complete after-region `scf.while`
 destinations only when `scf.condition` forwards every before-argument unchanged

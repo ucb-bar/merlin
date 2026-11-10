@@ -35,6 +35,8 @@ if TYPE_CHECKING:
     from .entry_weight_projection import EntryWeightProjection
 
 DT_BYTES = {"f32": 4, "f64": 8, "bf16": 2, "f16": 2, "i64": 8, "i32": 4, "i16": 2, "i8": 1, "i1": 1}
+FP8_DTYPES = ("f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ")
+DT_BYTES.update(dict.fromkeys(FP8_DTYPES, 1))
 NP_OF = {
     "f32": np.float32,
     "f64": np.float64,
@@ -55,6 +57,8 @@ C_OF = {
     "bf16": "unsigned short",
     "f16": "unsigned short",
 }
+NP_OF.update(dict.fromkeys(FP8_DTYPES, np.uint8))
+C_OF.update(dict.fromkeys(FP8_DTYPES, "unsigned char"))
 
 # Existing portable build-time append policy. This describes generated blob
 # placement; it supplies no target DMA, tensor alignment or no-alias fact.
@@ -157,6 +161,10 @@ def _bf16_bits(f32: np.ndarray) -> np.ndarray:
 
 
 def _embed_array(arr: np.ndarray, dt: str) -> str:
+    if dt in FP8_DTYPES:
+        if arr.dtype != np.uint8:
+            raise ValueError("FP8 embedded storage requires raw uint8 words")
+        return ",".join(str(int(v)) for v in arr.ravel())
     # 16-bit floats have NO decimal C literal for an ``unsigned short`` storage array: writing
     # `unsigned short x = 0.125` truncates to 0. Emit the RAW 16-bit patterns instead — f16 via
     # numpy's native half, bf16 via RNE from f32 — so the embedded operands are bit-exact.
@@ -206,6 +214,8 @@ def _storage_nbytes(arr: np.ndarray, dt: str) -> int:
 
 def _storage_bytes(arr: np.ndarray, dt: str) -> bytes:
     """Expected embedded storage words, without interpreting them as answers."""
+    if dt in FP8_DTYPES and arr.dtype != np.uint8:
+        raise ValueError("FP8 embedded storage requires raw uint8 words")
     if dt == "bf16":
         value = _bf16_bits(np.ascontiguousarray(arr))
     elif dt == "f16":
