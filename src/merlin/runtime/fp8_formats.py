@@ -160,7 +160,7 @@ def _decode(codes: np.ndarray, fmt: str) -> np.ndarray:
     man = (u & (mmax - 1)).astype(np.float32)
     with np.errstate(over="ignore"):  # top-exponent codes overflow to inf (filtered below)
         sub = (man / mmax) * np.float32(2.0 ** (1 - bias))  # exp==0: subnormal
-        nrm = (1.0 + man / mmax) * np.exp2(exp.astype(np.float32) - bias)
+        nrm = np.ldexp(1.0 + man / mmax, exp.astype(np.int32) - bias)
     val = (sign * np.where(exp == 0, sub, nrm)).astype(np.float32)
     top = exp == emax
     if scheme == "ieee":  # exp all-1 -> inf (man 0) / NaN (man != 0)

@@ -29,6 +29,21 @@ def test_e4m3_matches_the_existing_whole_model_decoder():
     assert np.array_equal(a, b)  # no numeric drift for the e4m3 path
 
 
+@pytest.mark.parametrize("fmt",["bf16","fp16"])
+def test_every_sixteen_bit_code_decodes_to_its_exact_f32_value(fmt):
+    from merlin.runtime.fp8_formats import _decode
+    codes = np.arange(65536,dtype=np.uint32)
+    if fmt == "bf16":
+        expected = (codes << 16).view(np.float32)
+    else:
+        with np.errstate(invalid="ignore"):
+            expected = codes.astype(np.uint16).view(np.float16).astype(np.float32)
+    actual = _decode(codes,fmt)
+    np.testing.assert_array_equal(np.isnan(actual),np.isnan(expected))
+    valid = ~np.isnan(expected)
+    np.testing.assert_array_equal(actual[valid].view(np.uint32),expected[valid].view(np.uint32))
+
+
 def test_e5m2_decodes_its_own_layout_including_inf_nan():
     dec = lambda u, f: float(fp8_to_f32(np.array([u], np.uint8), f)[0])
     assert dec(0x3C, "fp8_e5m2") == 1.0  # e5m2 1.0 (exp 15, man 0)
