@@ -80,6 +80,26 @@ def add_native_codegen_commands(sub, handlers):
         "--application", action="store_true", help="compile every supported region of a staged capture"
     )
     native_compile.add_argument(
+        "--materialization-cache", action="store_true",
+        help="opt in to invocation-local exact application tool output reuse; verification stays fresh",
+    )
+    native_compile.add_argument(
+        "--region-materialization-cache", action="store_true",
+        help="opt in to checked canonical application region reuse; off by default",
+    )
+    native_compile.add_argument(
+        "--no-materialization-cache", action="store_true",
+        help="disable both application reuse options, including explicit opt-ins",
+    )
+    native_compile.add_argument(
+        "--deterministic-receipts", action="store_true",
+        help="opt in to target deterministic application receipts; off by default",
+    )
+    native_compile.add_argument(
+        "--application-region-loop", action="store_true",
+        help="opt in to a counted dispatch loop when the complete application plan proves a repeated body",
+    )
+    native_compile.add_argument(
         "--application-state", help="source-bound JSON mapping state inputs, updates and initialization"
     )
     native_compile.add_argument("--already-quantized", action="store_true", help="preserve authored codes and exponent data through the selected application provider")
@@ -207,6 +227,10 @@ def add_native_codegen_commands(sub, handlers):
     native_verify = sub.add_parser("native-verify", help="recheck native source, snapshot and published artifact bytes")
     native_verify.add_argument("--engine", choices=("merlin_native",), required=True)
     native_verify.add_argument("--snapshot", required=True)
+    native_verify.add_argument(
+        "--no-materialization-cache", action="store_true",
+        help="compatibility option; application verification always executes every tool fresh",
+    )
     native_verify.add_argument(
         "--application", action="store_true", help="replay complete staged application compilation"
     )

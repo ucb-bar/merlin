@@ -111,6 +111,7 @@ def compile_application_report(args, *, binding, snapshot, limits, write_status)
         raise ValueError("application compilation requires a fresh output directory")
     if args.status_file and Path(args.status_file).resolve().is_relative_to(output.resolve()):
         raise ValueError("application status must be outside the compilation")
+    materialization_stats = {}
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="native-application-", dir=output.parent) as temporary:
         destination = Path(temporary) / "application"
@@ -127,6 +128,13 @@ def compile_application_report(args, *, binding, snapshot, limits, write_status)
                 state=state,
                 source_folding=folding,
                 parameters=parameters,
+                reuse_materializations=(getattr(args, "materialization_cache", False)
+                    and not getattr(args, "no_materialization_cache", False)),
+                reuse_region_materializations=(getattr(args, "region_materialization_cache", False)
+                    and not getattr(args, "no_materialization_cache", False)),
+                emit_region_loop=getattr(args, "application_region_loop", False),
+                deterministic_receipts=getattr(args, "deterministic_receipts", False),
+                materialization_stats=materialization_stats,
             )
             _, current, _, current_state, current_folding, current_parameters = _source(
                 args, binding, snapshot.profile.target_identity
@@ -173,6 +181,7 @@ def compile_application_report(args, *, binding, snapshot, limits, write_status)
         "execution": "not_run",
         **preparation_counts(folding),
         "qualification": "diagnostic_precision_change",
+        "materialization_cache": materialization_stats,
     }
     if args.status_file:
         write_status(Path(args.status_file), report)
@@ -196,18 +205,22 @@ def verify_application_command(args, write_status):
         if snapshot.profile.digest() != binding.profile().digest():
             raise ValueError("application snapshot differs from selected support profile")
         _, source, adapter, state, folding, parameters = _source(args, binding, snapshot.profile.target_identity)
+        materialization_stats = {}
         report = verify_semantic_application(
             source,
             adapter=adapter,
             snapshot=snapshot,
             target_source=Path(args.target_source),
             artifact=artifact,
+            reuse_materializations=False,
+            materialization_stats=materialization_stats,
             state=state,
             source_folding=folding,
             parameters=parameters,
         )
         report.update(
-            status="verified_artifacts", engine=args.engine, scope="application_source_and_emitted_C_identity"
+            status="verified_artifacts", engine=args.engine, scope="application_source_and_emitted_C_identity",
+            materialization_cache=materialization_stats,
         )
     except (OSError, ValueError, RuntimeError, KeyError, TypeError, ImportError, UnicodeError) as error:
         report = {"status": getattr(error, "status", "compile_error"), "engine": args.engine, "reason": str(error)}
