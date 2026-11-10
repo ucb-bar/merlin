@@ -115,6 +115,7 @@
     "merlin/runtime/c/prepared_polynomial_batch.h",
     "merlin/runtime/c/prepared_softmax_interval.h",
     "merlin/runtime/c/prepared_softmax_spans.h",
+    "merlin/runtime/c/program_residency.h",
     "merlin/runtime/c/representation_error_norms.h",
     "merlin/runtime/c/separable_fma_radius.h",
     "merlin/runtime/c/source_attention_frontier_api.h",
