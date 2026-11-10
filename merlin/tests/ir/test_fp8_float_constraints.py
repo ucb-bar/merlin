@@ -46,13 +46,13 @@ def _cast(op: str, frm: str, to: str) -> str:
     return f"builtin.module {{ func.func @f(%x: {frm}) {{ %t = arith.{op} %x : {frm} to {to}\n func.return }} }}"
 
 
-@pytest.mark.parametrize("fp8", ["f8E4M3FN", "f8E5M2"])
+@pytest.mark.parametrize("fp8", ["f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ"])
 def test_quantizing_to_fp8_verifies(fp8):
     """THE REGRESSION: dropping the constraint patch fails here with 'Unexpected attribute'."""
     _roundtrip(_cast("truncf", "f32", fp8))
 
 
-@pytest.mark.parametrize("fp8", ["f8E4M3FN", "f8E5M2"])
+@pytest.mark.parametrize("fp8", ["f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ"])
 def test_dequantizing_from_fp8_verifies(fp8):
     _roundtrip(_cast("extf", fp8, "f32"))
 
@@ -63,7 +63,7 @@ def test_builtin_float_casts_are_unaffected():
     _roundtrip(_cast("extf", "f16", "f32"))
 
 
-@pytest.mark.parametrize("fp8", ["f8E4M3FN", "f8E5M2"])
+@pytest.mark.parametrize("fp8", ["f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ"])
 def test_the_math_dialect_accepts_fp8_too(fp8):
     """`math` has its own `floatingPointLike`. Patching only `arith` leaves math ops refusing fp8."""
     _roundtrip(f"builtin.module {{ func.func @f(%x: {fp8}) {{ %t = math.absf %x : {fp8}\n func.return }} }}")
@@ -131,3 +131,61 @@ def test_an_fp8_requantize_kernel_loads():
     from merlin.frontends.linalg_mlir import parse_mlir_text
 
     parse_mlir_text(src)
+
+
+@pytest.mark.parametrize("fp8", ["f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ"])
+def test_all_fp8_words_survive_dense_and_scalar_constants(fp8):
+    pytest.importorskip("ml_dtypes")
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects._common import text
+    from merlin.xdsl_dialects.fp8 import _FP8_BY_NAME
+
+    raw = bytes(range(256))
+    type_ = _FP8_BY_NAME[fp8]
+    assert type_.pack(type_.unpack(raw, 256)) == raw
+    for literal in ('dense<"0x' + raw.hex() + '">', "dense<[" + ",".join(f"0x{word:02X}" for word in raw) + "]>"):
+        source = (
+            f"module {{func.func @f()->tensor<256x{fp8}> {{"
+            f"%v=arith.constant {literal}:tensor<256x{fp8}> return %v:tensor<256x{fp8}>}}}}"
+        )
+        module = parse_mlir_text(source)
+        module.verify()
+        again = parse_mlir_text(text(module))
+        again.verify()
+        assert next(op for op in again.walk() if op.name == "arith.constant").value.data.data == raw
+    source = (
+        "module {func.func @f() {"
+        + "\n".join(f"%v{word}=arith.constant 0x{word:02X}:{fp8}" for word in raw)
+        + "\nreturn}}"
+    )
+    module = parse_mlir_text(source)
+    module.verify()
+    again = parse_mlir_text(text(module))
+    again.verify()
+    assert b"".join(type_.pack([op.value.value.data]) for op in again.walk() if op.name == "arith.constant") == raw
+
+
+@pytest.mark.parametrize(
+    "fp8,max_word,max_value,nan_word,negative_zero",
+    [
+        ("f8E4M3FN", 0x7E, 448.0, 0x7F, True),
+        ("f8E4M3FNUZ", 0x7F, 240.0, 0x80, False),
+        ("f8E5M2", 0x7B, 57344.0, 0x7D, True),
+        ("f8E5M2FNUZ", 0x7F, 57344.0, 0x80, False),
+    ],
+)
+def test_format_interpretations_stay_distinct(fp8, max_word, max_value, nan_word, negative_zero):
+    pytest.importorskip("ml_dtypes")
+    import math
+    from merlin.xdsl_dialects.fp8 import _FP8_BY_NAME
+
+    type_ = _FP8_BY_NAME[fp8]
+    values = type_.unpack(bytes(range(256)), 256)
+    assert values[max_word] == max_value
+    assert math.isnan(values[nan_word])
+    if negative_zero:
+        assert values[0x80] == 0 and math.copysign(1.0, values[0x80]) == -1.0
+    else:
+        assert math.isnan(values[0x80])
+    assert type_.unpack(bytes(range(4)), 0) == ()
+    assert type_.unpack(bytes(range(4)), 2) == values[:2]

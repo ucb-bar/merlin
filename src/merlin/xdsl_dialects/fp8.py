@@ -1,164 +1,212 @@
-"""Make the granted xDSL kit parse the 8-bit float element types the corpus uses.
+"""Standard FP8 types and exact constant codecs for the pinned xDSL reader.
 
-The frozen ``merlin_iface`` interface grammar is target-agnostic, so a capsule may declare
-any element type the workload needs. Low-precision (fp8) capsules spell their tensors with
-MLIR's builtin 8-bit float names — ``f8E4M3FN`` and ``f8E5M2`` — e.g.
-``tensor<32x16xf8E4M3FN>``. The pinned xDSL (0.68) predates builtin fp8 types: its type
-parser only knows ``f16/f32/f64/f80/f128`` and ``bf16``, so every fp8 capsule interface
-fails to parse out of the box (``Expected shape type``). This module fills that gap so an
-agent parsing a capsule never has to reverse-engineer the parser to register the type
-itself.
+All four TT_Float formats at Triton f797708c are builtin-style MLIR float
+types. The optional ml_dtypes codec normalizes decimal constants and keeps
+raw words intact, including NaNs and signed zeros. A shared parser registry
+lets this standalone consumer cooperate with triton2MLIR in either import
+order without imposing a dependency between the two packages.
 
-It is a small, self-contained addition — two builtin-style float element types plus one
-idempotent parser hook — not a fork of xDSL. The types mirror the spelling and print form of
-xDSL's own builtin floats (bare ``f8E4M3FN`` / ``f8E5M2``, no ``!`` prefix) so parsed
-modules round-trip textually. Byte packing is intentionally left unimplemented: the contract
-surface only names these types (shapes/dtypes), it never materializes fp8 buffers here.
+This binding grants no numeric conversion, arithmetic, overflow, storage ABI
+or target implementation policy. Native lowering remains a separate gate.
 """
-
-from __future__ import annotations
 
 from ._common import HAS_XDSL
 
-# The 8-bit float element-type spellings this kit teaches the parser, keyed by their exact
-# MLIR bare-identifier text. These are dtype names (not target names) and match LLVM/MLIR's
-# builtin fp8 formats: E4M3 with finite-only semantics, and E5M2.
-FP8_TYPE_NAMES = ("f8E4M3FN", "f8E5M2")
+FP8_TYPE_NAMES = ("f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ")
 
 if HAS_XDSL:
-    from xdsl.dialects.builtin import _FloatType  # noqa: PLC2701 - builtin float base
+    from dataclasses import fields, is_dataclass
+    from importlib import import_module
+    import sys
+
+    from xdsl.dialects import builtin
     from xdsl.ir import ParametrizedAttribute
     from xdsl.irdl import irdl_attr_definition
 
-    class _Fp8Type(ParametrizedAttribute, _FloatType):
-        """Common base for the 8-bit builtin-style float element types.
+    NUMPY_NAMES = dict(
+        zip(FP8_TYPE_NAMES, ("float8_e4m3fn", "float8_e4m3fnuz", "float8_e5m2", "float8_e5m2fnuz"), strict=True)
+    )
 
-        Inherits ``_FloatType`` so the printer emits the bare spelling (``print_builtin``)
-        and the type is recognized as a builtin attribute — the same treatment ``bf16`` and
-        ``f16`` get. Values are 8 bits wide; the packing hooks raise because the contract
-        surface never encodes fp8 buffers through this path (fail closed, don't fake bytes).
-        """
+    class _WordFloat(float):
+        def __new__(cls, value, word, format_):
+            result = super().__new__(cls, value)
+            result.word, result.format = word, format_
+            return result
 
+    class _Fp8Type(ParametrizedAttribute, builtin._FloatType):
         @property
-        def bitwidth(self) -> int:
+        def bitwidth(self):
             return 8
 
         @property
-        def compile_time_size(self) -> int:
+        def compile_time_size(self):
             return 1
 
-        def iter_unpack(self, buffer, /):  # pragma: no cover - not used by the contract path
-            raise NotImplementedError("fp8 byte packing is not modeled by the interface kit")
+        def _dtype(self):
+            try:
+                import ml_dtypes
+            except ImportError as error:
+                raise ValueError("FP8 constant packing requires the optional ml-dtypes dependency") from error
+            return getattr(ml_dtypes, NUMPY_NAMES[self.name])
 
-        def unpack(self, buffer, num, /):  # pragma: no cover - not used by the contract path
-            raise NotImplementedError("fp8 byte packing is not modeled by the interface kit")
+        def iter_unpack(self, buffer, /):
+            import numpy as np
 
-        def pack_into(self, buffer, offset, value):  # pragma: no cover - not used here
-            raise NotImplementedError("fp8 byte packing is not modeled by the interface kit")
+            raw = bytes(buffer)
+            for word, value in zip(raw, np.frombuffer(raw, dtype=self._dtype()), strict=True):
+                yield _WordFloat(float(value), word, self.name)
 
-        def pack(self, values):  # pragma: no cover - not used by the contract path
-            raise NotImplementedError("fp8 byte packing is not modeled by the interface kit")
+        def unpack(self, buffer, num, /):
+            return tuple(value for _, value in zip(range(num), self.iter_unpack(buffer)))
+
+        def pack(self, values):
+            import numpy as np
+
+            dtype = self._dtype()
+            with np.errstate(over="ignore", invalid="ignore"):
+                return b"".join(
+                    bytes([value.word])
+                    if isinstance(value, _WordFloat) and value.format == self.name
+                    else np.asarray(value, dtype=dtype).tobytes()
+                    for value in values
+                )
+
+        def pack_into(self, buffer, offset, value):
+            memoryview(buffer)[offset : offset + 1] = self.pack([value])
 
     @irdl_attr_definition
     class Float8E4M3FNType(_Fp8Type):
-        """!f8E4M3FN — 8-bit float, 4 exponent / 3 mantissa bits, finite-only (no inf)."""
-
         name = "f8E4M3FN"
 
     @irdl_attr_definition
-    class Float8E5M2Type(_Fp8Type):
-        """!f8E5M2 — 8-bit float, 5 exponent / 2 mantissa bits."""
+    class Float8E4M3FNUZType(_Fp8Type):
+        name = "f8E4M3FNUZ"
 
+    @irdl_attr_definition
+    class Float8E5M2Type(_Fp8Type):
         name = "f8E5M2"
 
-    # Instances keyed by their MLIR bare spelling, for the parser hook.
+    @irdl_attr_definition
+    class Float8E5M2FNUZType(_Fp8Type):
+        name = "f8E5M2FNUZ"
+
     _FP8_BY_NAME = {
-        "f8E4M3FN": Float8E4M3FNType(),
-        "f8E5M2": Float8E5M2Type(),
+        type_.name: type_() for type_ in (Float8E4M3FNType, Float8E4M3FNUZType, Float8E5M2Type, Float8E5M2FNUZType)
     }
 
-    # Sentinel marking the AttrParser class we have already patched, so repeated calls (and
-    # repeated imports) stay idempotent and never wrap the hook twice.
-    _PATCH_FLAG = "_merlin_fp8_parse_hook"
-
-    def register_fp8_types() -> None:
-        """Teach xDSL's builtin type parser the fp8 bare idents. Idempotent.
-
-        xDSL resolves bare-ident number types in
-        ``AttrParser._parse_optional_integer_or_float_type``; 0.68's table stops at
-        ``f128``/``bf16``. We wrap that method so an ``f8E4M3FN`` / ``f8E5M2`` identifier
-        resolves to the matching element type before falling back to the original logic.
-        Everything else is delegated unchanged, so no other type parsing is affected.
-        """
+    def register_fp8_types():
         from xdsl.parser.attribute_parser import AttrParser
         from xdsl.utils.mlir_lexer import MLIRTokenKind
 
-        if getattr(AttrParser, _PATCH_FLAG, False):
-            return
+        # Cooperating readers use one canonical class per builtin spelling.
+        registry = getattr(AttrParser, "_portable_fp8_types", None)
+        if registry is None:
+            registry = {}
+            setattr(AttrParser, "_portable_fp8_types", registry)
+        for name, type_ in tuple(_FP8_BY_NAME.items()):
+            canonical = registry.setdefault(name, type_)
+            _FP8_BY_NAME[name] = canonical
+            globals()[type(type_).__name__] = type(canonical)
+        if not getattr(AttrParser, "_portable_fp8_parse_hook", False):
+            previous = AttrParser._parse_optional_integer_or_float_type
 
-        _original = AttrParser._parse_optional_integer_or_float_type
-
-        def _hooked(self):
-            token = self._current_token
-            if token.kind == MLIRTokenKind.BARE_IDENT:
-                fp8 = _FP8_BY_NAME.get(token.text)
-                if fp8 is not None:
+            def parse(self):
+                token = self._current_token
+                if token.kind == MLIRTokenKind.BARE_IDENT and token.text in registry:
                     self._consume_token()
-                    return fp8
-            return _original(self)
+                    return registry[token.text]
+                return previous(self)
 
-        AttrParser._parse_optional_integer_or_float_type = _hooked
-        setattr(AttrParser, _PATCH_FLAG, True)
+            AttrParser._parse_optional_integer_or_float_type = parse
+            setattr(AttrParser, "_portable_fp8_parse_hook", True)
+        if not getattr(builtin.FloatAttr, "_portable_fp8_init_hook", False):
+            previous_init = builtin.FloatAttr.__init__
 
-    _CONSTR_FLAG = "_merlin_fp8_float_constraint"
+            def init(self, data, type):
+                if isinstance(type, _Fp8Type) or any(type == item for item in registry.values()):
+                    value = data.data if isinstance(data, builtin.FloatData) else data
+                    data = next(type.iter_unpack(type.pack([value])))
+                previous_init(self, data, type)
 
-    def register_fp8_float_constraints() -> None:
-        """Let the fp8 element types satisfy ``arith``/``math``'s "is a float" constraints. Idempotent.
+            builtin.FloatAttr.__init__ = init
+            builtin.FloatAttr._portable_fp8_init_hook = True
 
-        Registering the type with the PARSER is only half the job. ``arith.truncf`` / ``arith.extf``
-        -- the ordinary quantize/dequantize casts -- constrain their operand and result to
-        ``floatingPointLike``, which is ``ContainerOf(AnyFloatConstr)``: an ``AnyOf`` over the six
-        BUILTIN float classes. An fp8 type parses fine and then fails VERIFICATION with
-        ``Unexpected attribute f8E4M3FN``, which reads like a parse error but is not one.
+    def register_fp8_float_constraints():
+        from xdsl.irdl.constraints import AnyOf, BaseAttr
 
-        MEASURED: this made ``arith.truncf %x : f32 to f8E4M3FN`` unreadable, so an ordinary fp8
-        requantize kernel could not be loaded at all -- on a target whose whole datapath is fp8.
+        # These pinned reader/builders captured AnyFloat by value. Extend the
+        # actual float universe and constraints, preserving every existing class.
+        for name in (
+            "xdsl.dialects.builtin",
+            "xdsl.parser.attribute_parser",
+            "xdsl.printer",
+            "xdsl.dialects.arith",
+            "xdsl.dialects.math",
+            "xdsl.dialects.linalg.ops",
+        ):
+            module = import_module(name)
+            if hasattr(module, "AnyFloat"):
+                types = module.AnyFloat
+                for type_ in _FP8_BY_NAME.values():
+                    types = types | type(type_)
+                module.AnyFloat = types
+        if (module := sys.modules.get("merlin.common.dense_float_ir")) is not None:
+            for type_ in _FP8_BY_NAME.values():
+                module.AnyFloat = module.AnyFloat | type(type_)
+        original_floats = {
+            builtin.BFloat16Type,
+            builtin.Float16Type,
+            builtin.Float32Type,
+            builtin.Float64Type,
+            builtin.Float80Type,
+            builtin.Float128Type,
+        }
+        seen = set()
 
-        ``AnyFloatConstr`` is captured BY VALUE into ``arith.floatingPointLike`` at import, so
-        rebinding the name would not reach it. The ``AnyOf`` dispatches through a per-class dict, so
-        the fp8 classes are added to that dict IN PLACE on the object the constraint already holds.
-        Nothing else about float verification changes: the six builtin types keep their own entries.
+        def extend(value):
+            if id(value) in seen:
+                return
+            seen.add(id(value))
+            if isinstance(value, AnyOf) and original_floats <= value._based_constrs.keys():
+                # IRDL has flattened copies of AnyFloatConstr in dense constants,
+                # bitcasts and other definitions. Keep the public union and its
+                # cached dispatch table consistent, including future constraints
+                # composed from this object. Restricted float subsets stay intact.
+                additions = tuple(
+                    BaseAttr(type(type_)) for type_ in _FP8_BY_NAME.values() if type(type_) not in value._based_constrs
+                )
+                object.__setattr__(value, "attr_constrs", (*value.attr_constrs, *additions))
+                for constraint in additions:
+                    value._based_constrs[constraint.attr] = constraint
+            if is_dataclass(value) and not isinstance(value, type):
+                for field in fields(value):
+                    extend(getattr(value, field.name))
+            elif isinstance(value, dict):
+                for child in value.values():
+                    extend(child)
+            elif isinstance(value, (list, tuple)):
+                for child in value:
+                    extend(child)
 
-        On xDSL 0.68 ``arith.floatingPointLike`` and ``math.floatingPointLike`` are two
-        ``ContainerOf`` wrappers around THE SAME ``AnyFloatConstr`` instance, so patching either one
-        already fixes both -- verified by identity, not assumed. Both are walked anyway, and the
-        insert is ``setdefault``, so this keeps working if a later xDSL gives them separate objects.
-        """
-        from xdsl.irdl.constraints import BaseAttr
+        extend(builtin.AnyFloatConstr)
+        for module_name, dialect_name in (
+            ("builtin", "Builtin"),
+            ("arith", "Arith"),
+            ("math", "Math"),
+            ("linalg", "Linalg"),
+        ):
+            dialect = getattr(import_module("xdsl.dialects." + module_name), dialect_name)
+            for definition in (*dialect.attributes, *dialect.operations):
+                if hasattr(definition, "get_irdl_definition"):
+                    extend(definition.get_irdl_definition())
 
-        for module_name in ("arith", "math"):
-            try:
-                module = __import__(f"xdsl.dialects.{module_name}", fromlist=["floatingPointLike"])
-                container = getattr(module, "floatingPointLike")
-                any_of = getattr(container, "elem_constr")
-                based = getattr(any_of, "_based_constrs")  # noqa: SLF001 - documented above
-            except (ImportError, AttributeError):
-                # Fail closed and quietly: an xDSL whose internals moved keeps its own behaviour
-                # rather than getting a half-applied constraint patch.
-                continue
-            for fp8_type in _FP8_BY_NAME.values():
-                based.setdefault(type(fp8_type), BaseAttr(type(fp8_type)))
-
-    # Install the hook as a side effect of importing the kit, so any parse path that touches
-    # merlin's xDSL dialects (interface load, make_context, roundtrip) can read fp8 capsules.
     register_fp8_types()
     register_fp8_float_constraints()
-
-else:  # pragma: no cover - exercised only when xDSL is absent
+else:  # pragma: no cover - optional xDSL is absent
     _FP8_BY_NAME = {}
 
-    def register_fp8_types() -> None:
+    def register_fp8_types():
         return
 
-    def register_fp8_float_constraints() -> None:
+    def register_fp8_float_constraints():
         return

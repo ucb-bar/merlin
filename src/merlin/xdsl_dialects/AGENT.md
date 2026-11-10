@@ -17,6 +17,10 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
   punctuation fields of `vector.print`. Retain its observable stdout effect;
   this binding grants no purity, buffer aliasing, physical replication or
   native runtime implementation.
+- `fp8.py` binds the four TTIR builtin FP8 types and exact scalar/dense
+  constants, with an optional `ml-dtypes` codec. The shared parser registry
+  retains type identity with cooperating readers. Numeric operations, buffer
+  ABIs and native/target legalization require their own executable contracts.
 - `standard_bufferization.py` checks standard tensor materialization by compatible
   shape/element types independently of memref layout, retaining upstream result
   and access-attribute rules. The binding grants no aliasing or placement proof.
