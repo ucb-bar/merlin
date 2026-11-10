@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from merlin.baselines import executorch as _executorch
-from merlin.common.paths import module_source_path, repo_root
+from merlin.common.paths import module_source_path
 
 et_source_dir = _executorch.et_source_dir
 
@@ -18,9 +18,9 @@ _PRODUCER_MODULES = (
 
 
 def selected_source_paths(declared: list[Path]) -> list[Path]:
-    """Retain declared core closure; add only the actual selected producer namespaces."""
+    """Require the loaded Merlin namespace; retain all declared and external sources."""
     paths = [path.resolve() for path in declared]
-    required_core = (repo_root() / "merlin" / "python" / "merlin").resolve()
+    required_core = module_source_path("merlin").resolve(strict=True).parent
     if required_core not in paths:
         raise ValueError(
             "ExecuTorch framework_source_sha256 must cover the complete executed/imported "
@@ -28,8 +28,8 @@ def selected_source_paths(declared: list[Path]) -> list[Path]:
         )
     for module in _PRODUCER_MODULES:
         source = module_source_path(module).resolve(strict=True)
-        namespace = source.parents[1]
-        if not source.is_file() or namespace.name != "merlin" or not namespace.is_dir():
+        namespace = module_source_path(module.partition(".")[0]).resolve(strict=True).parent
+        if not source.is_file() or not namespace.is_dir() or not source.is_relative_to(namespace):
             raise ValueError(f"ExecuTorch producer source has no merlin namespace root: {module}")
         if namespace not in paths:
             paths.append(namespace)
