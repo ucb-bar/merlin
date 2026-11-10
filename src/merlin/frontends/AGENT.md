@@ -26,6 +26,9 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   The explicit shared-functional-buffer payload retains the public functional ABI,
   checks byte-bound memory witness/continuation relations and copies their compiler evidence.
   Both standalone and derived staging exclude evaluator values from that view.
+  Optional model2MLIR `tensor_words.npz` contains exact BF16 evaluator words.
+  Exclude it and its digests with the ordinary inputs/goldens; byte-bound source
+  correspondence supplies no permission to read those words during compilation.
   The explicit shared-guarded-buffer profile copies a byte-bound runtime
   admission report instead of a pure tensor witness. Standalone staging retains
   its declared guard-storage cost in the compile signature. It checks declared

@@ -190,7 +190,7 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
                 "source": {"capture_receipt_sha256": _sha(receipt_raw), "model_mlir_sha256": _sha(raw),
                            "capture_schema": receipt["schema"], "correspondence": "source-correspondence.json"},
                 "members": {name: _sha(data) for name, data in members.items()},
-                "excluded_evaluator_members": ["inputs.npz", "inputs.json", "golden.npy", "goldens.npz", "golden.json", "extra.npz", "execution.json"]}
+                "excluded_evaluator_members": ["inputs.npz", "inputs.json", "golden.npy", "goldens.npz", "tensor_words.npz", "golden.json", "extra.npz", "execution.json"]}
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))
     try:

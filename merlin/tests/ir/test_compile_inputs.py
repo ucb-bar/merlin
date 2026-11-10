@@ -41,6 +41,7 @@ def _write_capture(path: Path) -> None:
         ).encode(),
         "inputs.npz": b"PRIVATE RUNTIME INPUTS",
         "golden.npy": b"PRIVATE REFERENCE OUTPUTS",
+        "tensor_words.npz": b"PRIVATE BF16 WORDS",
     }
     meta = json.loads(members["meta.json"])
     meta["frontend_trace"] = {"sha256": hashlib.sha256(members["frontend-trace.json"]).hexdigest()}
@@ -114,7 +115,7 @@ def test_does_not_read_runtime_or_golden_members(tmp_path, monkeypatch):
     original = Path.read_bytes
 
     def guarded(path):
-        if path.name in {"inputs.npz", "golden.npy"}:
+        if path.name in {"inputs.npz", "golden.npy", "tensor_words.npz"}:
             raise AssertionError("evaluator data accessed by compiler staging")
         return original(path)
 
