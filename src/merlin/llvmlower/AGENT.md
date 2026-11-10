@@ -1,5 +1,13 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`lower_length_aware_diagnostics` expands scalar standard assertions at the late
+LLVM/CF seam after ownership checks. Keep complete UTF-8 literal byte counts,
+conditions, linefeeds, aborts, source locations and internal helper bodies.
+Only private literal globals cross the byte helper; this grants no source
+buffer borrowing or opaque effect implementation. Runtime symbol collisions
+with incompatible declarations/bodies refuse before edits. General print,
+external or accelerator effects gain no support from this host feature.
+
 `c_runtime` binds manifest `constant` arguments through the normal exact weight
 blob transport, retaining byte offsets, alignment and public descriptors.
 Constant stubs refuse. Original source binding belongs to compiler intake;

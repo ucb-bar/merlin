@@ -7,6 +7,8 @@ Shared utilities: schemas, IO, source/resource paths, storage and access identit
 through Python floats. Its printer retains exact dense bytes, including NaN
 payloads and signed zeros. Grammar and shape checks remain xDSL-owned; this
 serialization boundary grants no numerical equivalence or arithmetic rewrite.
+Escaped attribute bytes may become `StringAttr` only after lossless UTF-8
+decoding; retain embedded NUL, non-UTF-8 byte attributes and raw dense storage.
 `owned_children` is the original shared Linux pidfd/subreaper cleanup primitive.
 Only a dedicated child becomes a subreaper; real waitpid/ECHILD closes its tree.
 The experiments import remains a reexport and explicit source rosters must pin

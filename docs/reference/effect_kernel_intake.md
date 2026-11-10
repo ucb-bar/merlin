@@ -37,6 +37,11 @@ readonly input attributes, memory/effect evidence and unresolved-op refusals
 keep their normal checks. This is byte/ABI custody, not source equivalence,
 effect implementation, numeric or target admission.
 
+Literal assertion messages containing embedded NUL may select the explicit
+[length-aware native diagnostic feature](literal_diagnostics.md) after staging.
+The compiler derives that selection from actual standard operations. Evaluator
+streams still do not enter the compiler projection.
+
 Real triton2MLIR execution tests compile void scalar/tensor source assertions
 and zero-argument entries through the ordinary Merlin whole-body host pipeline.
 Separate evaluator observations distinguish normal return from source assertion

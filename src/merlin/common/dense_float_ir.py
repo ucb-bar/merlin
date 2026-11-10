@@ -6,7 +6,7 @@ All grammar, shape checks and non-floating literals remain xDSL-owned. These
 adapters confer no numerical equivalence or permission to change arithmetic.
 """
 
-from xdsl.dialects.builtin import AnyFloat, BytesAttr, DenseIntOrFPElementsAttr
+from xdsl.dialects.builtin import AnyFloat, BytesAttr, DenseIntOrFPElementsAttr, StringAttr
 from xdsl.parser import Parser
 from xdsl.printer import Printer
 from xdsl.utils.mlir_lexer import MLIRLexer, MLIRTokenKind
@@ -48,6 +48,18 @@ class DenseFloatParser(Parser):
     those slots. This also avoids overflow and signaling-NaN quieting in conversion.
     Nested attribute parsing has its own saved leaf list, never global parser state.
     """
+
+    def _parse_optional_builtin_attr(self):
+        attribute = super()._parse_optional_builtin_attr()
+        # Native MLIR prints non-ASCII strings as escaped UTF-8 bytes. Decode
+        # only a lossless UTF-8 attribute token, leaving raw dense data and
+        # non-UTF-8 byte attributes under their existing byte representation.
+        if isinstance(attribute, BytesAttr):
+            try:
+                return StringAttr(attribute.data.decode("utf-8"))
+            except UnicodeDecodeError:
+                pass
+        return attribute
 
     class _DenseElement(Parser._TensorLiteralElement):
         def to_type(self, parser, type):

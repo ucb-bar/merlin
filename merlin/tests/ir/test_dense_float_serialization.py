@@ -7,6 +7,27 @@ from xdsl.utils.exceptions import ParseError
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.transforms.certificates import ir_text, parse_ir
 
+
+@pytest.mark.parametrize("reader", [parse_mlir_text, parse_ir])
+def test_native_escaped_utf8_attributes_keep_nul_and_binary_dense_bytes(reader):
+    source = r'''module attributes {diagnostic = "first\00\CE\BB\00last", binary = "\FF"} {
+      func.func @entry(%condition:i1) {
+        "cf.assert"(%condition) <{msg="first\00\CE\BB\00last"}> : (i1)->()
+        func.return
+      }
+      %v=arith.constant dense<"0xCEBB00FF"> : tensor<4xi8>
+    }'''
+    module = reader(source)
+    module.verify()
+    assert module.attributes["diagnostic"] == builtin.StringAttr("first\x00λ\x00last")
+    assert module.attributes["binary"] == builtin.BytesAttr(b"\xff")
+    assert module.body.block.last_op.value.data.data == b"\xce\xbb\x00\xff"
+    for _ in range(2):
+        module = reader(ir_text(module))
+        module.verify()
+        assert module.attributes["diagnostic"] == builtin.StringAttr("first\x00λ\x00last")
+        assert module.body.block.last_op.value.data.data == b"\xce\xbb\x00\xff"
+
 FORMATS = [
     (builtin.f16, [0, 0x8000, 0x7C00, 0xFC00, 0x7E21, 0x7C01, 1, 0x7BFF]),
     (builtin.bf16, [0, 0x8000, 0x7F80, 0xFF80, 0x7FC1, 0x7F81, 1, 0x7F7F]),
