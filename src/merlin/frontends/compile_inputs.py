@@ -77,7 +77,7 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path) -> di
     if receipt.get("schema") != "m2m.capture-receipt.v1":
         raise ValueError("unsupported capture receipt")
     materialized_abi = receipt.get("materialized_abi") or {}
-    if materialized_abi.get("complete") is not True or receipt.get("lifted_constants"):
+    if materialized_abi.get("complete") is not True:
         raise ValueError("capture has incomplete ABI or unbound lifted constants")
     raw = _checked_member(source, receipt, _SOURCE)
     copied = {name: _checked_member(source, receipt, name) for name in _COPIED}
@@ -90,6 +90,11 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path) -> di
     if trace.get("status") != "complete" or trace.get("mlir", {}).get("sha256") != _sha(raw):
         raise ValueError("frontend trace does not bind complete captured IR")
     module = parse_mlir_text(raw.decode("utf-8"))
+    from .compiler_constants import checked_compiler_constants
+    constants = checked_compiler_constants(receipt, copied["weights.safetensors.manifest.json"], copied["weights.safetensors"],
+                                           module, trace, entry_name=metadata.get("func_name", "forward"))
+    if constants is not None:
+        copied["compiler-constants.json"] = (json.dumps(constants, sort_keys=True, indent=2) + "\n").encode()
     old_reference = module.attributes.get("prov.weights_file")
     if not isinstance(old_reference, StringAttr) or old_reference.data != metadata.get("weights"):
         raise ValueError("parsed IR weights reference differs from capture metadata")

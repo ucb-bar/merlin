@@ -12,6 +12,13 @@ the per-backend adapters under `backends/`.
 
 ## What belongs here
 
+- `captured_constants` verifies pinned source state bytes without interpretation
+  or packing. `CaptureConstantTable` reuses immutable compiler-owned blobs;
+  the streaming reader stays bounded independently. Both validate complete
+  safetensors layouts and selected type/shape/budget. Lifted constants require
+  original source selectors and payload hashes; byte custody grants no source
+  equivalence, numeric, ownership or prepacking authority.
+
 - `device_borrowed_calls` carries the live selected sibling/head component
   writers into ordinary model lowering after the actual device build and input
   view preparation. Pin the original effects object, every result position,

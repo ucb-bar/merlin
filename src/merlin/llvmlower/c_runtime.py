@@ -127,7 +127,7 @@ def manifest_requires_weight_blob(manifest: dict) -> bool:
     for meta in manifest.values():
         if not isinstance(meta, dict):
             continue
-        if meta.get("kind") == "param" and not meta.get("stub"):
+        if meta.get("kind") in ("param", "constant") and not meta.get("stub"):
             return True
         if meta.get("kind") == "buffer" and meta.get("weight"):
             return True
@@ -382,7 +382,9 @@ def generate(
     for i, (shape, dt) in enumerate(sig):
         meta = man[str(i)]
         elem = DT_BYTES[dt]
-        if meta["kind"] == "param":
+        if meta["kind"] in ("param", "constant"):
+            if meta["kind"] == "constant" and meta.get("stub"):
+                raise ValueError("source constants cannot use parameter stubs")
             if meta.get("stub"):
                 # A quantized-subclass weight is STUBBED: the manifest names a placeholder the
                 # packer never filled (the fused f32 weight is dead -- the contraction consumes the

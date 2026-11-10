@@ -66,8 +66,7 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
     parent = json.loads(parent_raw)
     if (receipt.get("parent_receipt") != {"bytes": len(parent_raw), "sha256": _sha(parent_raw)}
             or parent.get("schema") != "m2m.capture-receipt.v1"
-            or (parent.get("materialized_abi") or {}).get("complete") is not True
-            or parent.get("lifted_constants")):
+            or (parent.get("materialized_abi") or {}).get("complete") is not True):
         raise ValueError("derived capture lacks a bound complete parent ABI")
     copied = {}
     parent_members = receipt.get("parent_artifact_bindings")
@@ -90,6 +89,13 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
             or parent_trace.get("status") != "complete"
             or (parent_trace.get("mlir") or {}).get("sha256") != _sha(parent_model)):
         raise ValueError("derived correspondence does not bind the original parent graph")
+    parent_module = parse_mlir_text(parent_model.decode())
+    parent_module.verify()
+    from .compiler_constants import checked_compiler_constants
+    constants = checked_compiler_constants(parent, weights["weights.safetensors.manifest.json"], weights["weights.safetensors"],
+                                           parent_module, parent_trace)
+    if constants is not None:
+        copied["compiler-constants.json"] = _json(constants)
     copied["source/parent/compiler-artifacts.json"] = _json({
         "schema": "merlin.capture-compiler-projection.v1", "original_receipt_sha256": _sha(parent_raw),
         "artifacts": {name: parent["artifacts"][name] for name in
@@ -148,6 +154,9 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
         if op.name == "builtin.unregistered" or "prov.kernel" in op.attributes or op.name == "func.call":
             raise ValueError("derived compile profile retains an unresolved operation or dependency")
     entry = functions[0]
+    parent_entries = [op for op in parent_module.ops if isinstance(op, FuncOp) and op.sym_name.data == "forward"]
+    if len(parent_entries) != 1 or entry.function_type != parent_entries[0].function_type:
+        raise ValueError("derived model changes the original public function ABI")
 
     def abi(types):
         values = []

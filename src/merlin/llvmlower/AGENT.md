@@ -1,5 +1,10 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`c_runtime` binds manifest `constant` arguments through the normal exact weight
+blob transport, retaining byte offsets, alignment and public descriptors.
+Constant stubs refuse. Original source binding belongs to compiler intake;
+evaluator extra/golden archives never replace compiler constant storage.
+
 `reuse_loop_tensor_destinations` may expose complete after-region `scf.while`
 destinations only when `scf.condition` forwards every before-argument unchanged
 in position and type. Computed/permuted condition state grants no seed facts.

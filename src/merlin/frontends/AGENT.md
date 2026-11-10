@@ -13,6 +13,12 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   shape/element rules and writable/restrict/result checks as native MLIR.
 - `facts.py` — lifting the inventory to contract-level reuse facts, driving the core pipeline with real model shapes, residency-variant DSE measurement.
 - `compile_inputs.py` stages compiler-only Torch captures and explicitly derived tensor models.
+  `compiler_constants.py` requires complete source-bound lifted constant bindings
+  against original prepared placeholders, actual argument types and exact
+  safetensors bytes. Retain the public parent ABI for derived models. Legacy
+  unbound constants refuse; evaluator archives/digests never supply compiler
+  values. The compiler-only projection grants byte custody, not numeric,
+  effect, packing, ownership or target permission.
   `derived_compile_inputs.py` keeps parent FX and normalized TTIR correspondence separate,
   checks receipt-bound compiler members, and excludes evaluator values and digests from its staged view.
   Staging grants byte custody only, never source equivalence or numeric admission.

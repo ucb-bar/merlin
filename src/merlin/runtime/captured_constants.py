@@ -9,10 +9,11 @@ accepted here. No dtype conversion or interpretation of tensor bytes occurs.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import struct
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import prod
 from pathlib import Path
 
@@ -71,6 +72,62 @@ def _shape(value) -> tuple[int, ...]:
     return tuple(value)
 
 
+def _layout(stream):
+    """One bounded safetensors header and its complete contiguous partition."""
+    length_bytes = stream.read(8)
+    if len(length_bytes) != 8:
+        raise ValueError("truncated safetensors length prefix")
+    header_length = struct.unpack("<Q", length_bytes)[0]
+    if not 2 <= header_length <= _MAX_HEADER_BYTES:
+        raise ValueError("safetensors header exceeds bounded JSON size")
+    header_bytes = stream.read(header_length)
+    if len(header_bytes) != header_length:
+        raise ValueError("truncated safetensors header")
+    header = _json_object(header_bytes)
+    file_length, payload_base = stream.seek(0, 2), 8 + header_length
+    ranges = []
+    for name, tensor in header.items():
+        if name == "__metadata__":
+            if not isinstance(tensor, dict) or any(not isinstance(v, str) for v in tensor.values()):
+                raise ValueError("invalid safetensors metadata")
+            continue
+        if not isinstance(tensor, dict) or set(tensor) != {"dtype", "shape", "data_offsets"}:
+            raise ValueError("malformed safetensors tensor header")
+        dtype = tensor["dtype"]
+        if not isinstance(dtype, str) or dtype not in _TYPES:
+            raise ValueError("unsupported safetensors storage dtype")
+        shape, offsets = _shape(tensor["shape"]), tensor["data_offsets"]
+        if not isinstance(offsets, list) or len(offsets) != 2 or any(type(n) is not int for n in offsets):
+            raise ValueError("malformed safetensors data offsets")
+        begin, end = offsets
+        if not 0 <= begin <= end <= file_length - payload_base:
+            raise ValueError("safetensors data offsets outside file bounds")
+        if end - begin != prod(shape) * _TYPES[dtype][2]:
+            raise ValueError("safetensors shape/dtype byte length mismatch")
+        ranges.append((begin, end))
+    cursor = 0
+    for begin, end in sorted(ranges):
+        if begin != cursor:
+            raise ValueError("safetensors payload overlaps or contains an unindexed hole")
+        cursor = end
+    if cursor != file_length - payload_base:
+        raise ValueError("safetensors payload contains unindexed trailing bytes")
+    return length_bytes, header_bytes, header, file_length, payload_base
+
+
+def _entry(manifest, index):
+    entry = manifest.get(str(index))
+    if (not isinstance(entry, dict) or entry.get("kind") not in ("param", "buffer", "constant")
+            or "error" in entry or entry.get("stub", False) is not False
+            or not isinstance(entry.get("weight"), str) or not entry["weight"]):
+        raise ValueError("argument is missing a concrete captured parameter/buffer/constant")
+    if entry["kind"] == "constant":
+        if any(not isinstance(entry.get(key), str) or not entry[key] for key in ("name", "source_target", "sha256")):
+            raise ValueError("captured constant lacks its exported source binding")
+        _digest_pin(entry["sha256"])
+    return entry
+
+
 @dataclass(frozen=True)
 class CapturedConstant:
     """An immutable byte snapshot. Its construction alone grants no authority."""
@@ -112,6 +169,72 @@ class CapturedConstant:
         }
 
 
+@dataclass(frozen=True)
+class CaptureConstantTable:
+    """Reuse already pinned immutable compiler bytes for several source constants.
+
+    The streaming single-tensor reader remains bounded independently. Compiler
+    staging already owns the full weight bytes: this table validates that blob
+    once instead of rehashing a large model for every small lifted constant.
+    """
+
+    manifest_bytes: bytes = field(repr=False)
+    safetensors_bytes: bytes = field(repr=False)
+    manifest_sha256: str
+    safetensors_sha256: str
+    manifest_path: str = "weights.safetensors.manifest.json"
+    safetensors_path: str = "weights.safetensors"
+    _manifest: dict = field(init=False, repr=False)
+    _layout: tuple = field(init=False, repr=False)
+
+    def __post_init__(self):
+        _digest_pin(self.manifest_sha256)
+        _digest_pin(self.safetensors_sha256)
+        if not isinstance(self.manifest_bytes, bytes) or not isinstance(self.safetensors_bytes, bytes):
+            raise ValueError("compiler constant table requires immutable bytes")
+        if len(self.manifest_bytes) > _MAX_MANIFEST_BYTES:
+            raise ValueError("capture manifest exceeds bounded JSON size")
+        if (hashlib.sha256(self.manifest_bytes).hexdigest() != self.manifest_sha256
+                or hashlib.sha256(self.safetensors_bytes).hexdigest() != self.safetensors_sha256):
+            raise ValueError("capture table SHA-256 mismatch")
+        manifest = _json_object(self.manifest_bytes)
+        if any(not key.isascii() or not key.isdecimal() or str(int(key)) != key for key in manifest):
+            raise ValueError("capture manifest requires unique canonical argument indices")
+        with io.BytesIO(self.safetensors_bytes) as stream:
+            layout = _layout(stream)
+        object.__setattr__(self, "_manifest", manifest)
+        object.__setattr__(self, "_layout", layout)
+
+    def read(self, *, entry_argument_index, source_shape, source_dtype, max_payload_bytes):
+        if type(entry_argument_index) is not int or entry_argument_index < 0:
+            raise ValueError("entry argument index must be a nonnegative integer")
+        if type(max_payload_bytes) is not int or max_payload_bytes <= 0:
+            raise ValueError("selected payload requires an explicit positive byte budget")
+        entry = _entry(self._manifest, entry_argument_index)
+        wanted_shape = _shape(source_shape)
+        _, header_bytes, header, _, payload_base = self._layout
+        key = entry["weight"]
+        tensor = header.get(key)
+        if key == "__metadata__" or not isinstance(tensor, dict):
+            raise ValueError("manifest weight key is absent from safetensors")
+        dtype = tensor["dtype"]
+        normalized, manifest_dtype, _ = _TYPES[dtype]
+        if (_shape(entry.get("shape")) != wanted_shape or _shape(tensor["shape"]) != wanted_shape
+                or source_dtype != normalized or entry.get("dtype") != manifest_dtype):
+            raise ValueError("capture storage type/shape differs from source or manifest")
+        begin, end = tensor["data_offsets"]
+        if end - begin > max_payload_bytes:
+            raise ValueError("selected capture payload exceeds explicit byte budget")
+        start = payload_base + begin
+        payload = self.safetensors_bytes[start:payload_base + end]
+        digest = hashlib.sha256(payload).hexdigest()
+        if entry["kind"] == "constant" and digest != entry["sha256"]:
+            raise ValueError("captured constant payload differs from its source digest")
+        return CapturedConstant(entry_argument_index, self.manifest_path, self.manifest_sha256,
+            self.safetensors_path, self.safetensors_sha256, key, entry["kind"], wanted_shape, source_dtype,
+            dtype, hashlib.sha256(header_bytes).hexdigest(), start, digest, payload)
+
+
 def verify_capture_constant(
     *,
     manifest_path: str | Path,
@@ -147,60 +270,12 @@ def verify_capture_constant(
     manifest = _json_object(manifest_bytes)
     if any(not key.isascii() or not key.isdecimal() or str(int(key)) != key for key in manifest):
         raise ValueError("capture manifest requires unique canonical argument indices")
-    entry = manifest.get(str(entry_argument_index))
-    if (
-        not isinstance(entry, dict)
-        or entry.get("kind") not in ("param", "buffer")
-        or "error" in entry
-        or entry.get("stub", False) is not False
-        or not isinstance(entry.get("weight"), str)
-        or not entry["weight"]
-    ):
-        raise ValueError("argument is missing a concrete captured parameter/buffer")
+    entry = _entry(manifest, entry_argument_index)
     if _shape(entry.get("shape")) != wanted_shape:
         raise ValueError("manifest shape differs from source argument")
     key = entry["weight"]
     with safetensors_path.open("rb") as stream:
-        length_bytes = stream.read(8)
-        if len(length_bytes) != 8:
-            raise ValueError("truncated safetensors length prefix")
-        header_length = struct.unpack("<Q", length_bytes)[0]
-        if not 2 <= header_length <= _MAX_HEADER_BYTES:
-            raise ValueError("safetensors header exceeds bounded JSON size")
-        header_bytes = stream.read(header_length)
-        if len(header_bytes) != header_length:
-            raise ValueError("truncated safetensors header")
-        header = _json_object(header_bytes)
-        file_length = stream.seek(0, 2)
-        payload_base = 8 + header_length
-        ranges = []
-        for name, tensor in header.items():
-            if name == "__metadata__":
-                if not isinstance(tensor, dict) or any(not isinstance(v, str) for v in tensor.values()):
-                    raise ValueError("invalid safetensors metadata")
-                continue
-            if not isinstance(tensor, dict) or set(tensor) != {"dtype", "shape", "data_offsets"}:
-                raise ValueError("malformed safetensors tensor header")
-            dtype = tensor["dtype"]
-            if not isinstance(dtype, str) or dtype not in _TYPES:
-                raise ValueError("unsupported safetensors storage dtype")
-            shape = _shape(tensor["shape"])
-            offsets = tensor["data_offsets"]
-            if not isinstance(offsets, list) or len(offsets) != 2 or any(type(n) is not int for n in offsets):
-                raise ValueError("malformed safetensors data offsets")
-            begin, end = offsets
-            if not 0 <= begin <= end <= file_length - payload_base:
-                raise ValueError("safetensors data offsets outside file bounds")
-            if end - begin != prod(shape) * _TYPES[dtype][2]:
-                raise ValueError("safetensors shape/dtype byte length mismatch")
-            ranges.append((begin, end))
-        cursor = 0
-        for begin, end in sorted(ranges):
-            if begin != cursor:
-                raise ValueError("safetensors payload overlaps or contains an unindexed hole")
-            cursor = end
-        if cursor != file_length - payload_base:
-            raise ValueError("safetensors payload contains unindexed trailing bytes")
+        length_bytes, header_bytes, header, file_length, payload_base = _layout(stream)
         tensor = header.get(key)
         if key == "__metadata__" or not isinstance(tensor, dict):
             raise ValueError("manifest weight key is absent from safetensors")
@@ -236,6 +311,8 @@ def verify_capture_constant(
         if position != file_length or digest.hexdigest() != safetensors_sha256 or len(payload) != end - begin:
             raise ValueError("safetensors SHA-256 or file length mismatch")
     logical_payload = bytes(payload)
+    if entry["kind"] == "constant" and hashlib.sha256(logical_payload).hexdigest() != entry["sha256"]:
+        raise ValueError("captured constant payload differs from its source digest")
     return CapturedConstant(
         entry_argument_index,
         str(manifest_path.resolve()),
