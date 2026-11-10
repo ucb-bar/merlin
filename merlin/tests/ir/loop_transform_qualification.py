@@ -84,7 +84,6 @@ def main():
         repo_root() / "merlin/tests/ir/loop_transform_qualification_cases.py",
         repo_root() / "merlin/tests/ir/loop_transform_qualification_worker.py",
         repo_root() / "merlin/tests/ir/loop_transform_qualification_classifier.py",
-        repo_root() / "merlin/tests/ir/test_loop_transform_qualification_classifier.py",
     ]
     qcut = args.q_source_cut or (
         repo_root()

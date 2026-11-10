@@ -106,7 +106,6 @@ def main():
         repo_root() / "build_tools/scripts/verify_qinner.py",
         *list((repo_root() / "merlin/lean/MerlinVerify").rglob("Qinner*.lean")),
         repo_root() / "merlin/tests/ir/lean_qinner_cases.py",
-        repo_root() / "merlin/tests/ir/test_lean_qinner.py",
     ]
     for path in sorted(
         [*owned, *(path for path in base.rglob("*") if path.is_file() and path.name != "manifest.json")]

@@ -5,14 +5,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import subprocess
 import sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from merlin.common.paths import artifacts_dir, repo_root
+from merlin.common.paths import artifacts_dir
 from merlin.verify.lean.check import _file_ref
 from merlin.verify.lean.scalar_square_composition import check, replay_program
 
@@ -95,31 +93,9 @@ def main():
                 "pending_policy_review": _file_ref(template_path),
             }
         )
-    env = dict(os.environ, MERLIN_M2M_PYTHON=str(args.compiler_python), MERLIN_LEAN_REQUIRED="1")
-    for name, mark, files in (
-        ("fast", "not slow", ["test_lean_scalar_square_composition.py"]),
-        ("slow", "slow", ["test_lean_scalar_square_composition.py", "test_lean_scalar_square_boundary.py"]),
-    ):
-        print(f"Qualification: {name}", flush=True)
-        with (output / f"{name}.log").open("w") as log:
-            subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "pytest",
-                    "-q",
-                    "-m",
-                    mark,
-                    *["merlin/tests/ir/" + file for file in files],
-                    "--junitxml=" + str(output / f"{name}.xml"),
-                ],
-                cwd=repo_root(),
-                env=env,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                check=True,
-                timeout=1800,
-            )
+    summary["qualification_tests"] = (
+        "not run: the scalar-square pytest modules were removed in e6568ac96 (last present at 04ed0ae25)"
+    )
     changed = [ref["path"] for ref in preserved if _file_ref(Path(ref["path"])) != ref]
     if changed:
         raise ValueError(f"prior native evidence changed: {changed}")

@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import subprocess
 import sys
 import uuid
 from datetime import UTC, datetime
@@ -93,35 +91,9 @@ def main() -> int:
                 "forced_libm_status": native["forced_libm_status"],
             }
         )
-    env = dict(os.environ, MERLIN_M2M_PYTHON=str(args.compiler_python), MERLIN_LEAN_REQUIRED="1")
-    for mark, files in (
-        (
-            "not slow",
-            ["test_lean_scalar_square_boundary.py", "test_lean_scalar_square_native.py", "test_lean_scalar_square.py"],
-        ),
-        ("slow", ["test_lean_scalar_square_boundary.py"]),
-    ):
-        label = "fast" if mark == "not slow" else "slow"
-        print(f"Qualification tests: {label}", flush=True)
-        with (validation / f"{label}.log").open("w") as log:
-            subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "pytest",
-                    "-m",
-                    mark,
-                    *["merlin/tests/ir/" + file for file in files],
-                    "-q",
-                    "--junitxml=" + str(validation / f"{label}.xml"),
-                ],
-                cwd=repo_root(),
-                env=env,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                check=True,
-                timeout=1800,
-            )
+    summary["qualification_tests"] = (
+        "not run: the scalar-square pytest modules were removed in e6568ac96 (last present at 04ed0ae25)"
+    )
     summary.update(
         completed=datetime.now(UTC).isoformat(),
         status="provisional_numerical_law_not_discharged",

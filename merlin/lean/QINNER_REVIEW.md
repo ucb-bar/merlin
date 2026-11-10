@@ -192,8 +192,6 @@ Run `.venv/bin/python -m pytest merlin/tests/ir/test_qinner_binding.py`. The Lea
 decoder test modules (`test_lean_qinner.py`, `test_lean_qinner_decoder.py`) were removed in
 e6568ac96 (last present at 04ed0ae25). Their slow tests replayed program-binding and decoder
 receipts from `MERLIN_QINNER_RECEIPT_ROOT`; no retained test performs that replay.
-`verify_qinner.py` and `verify_qinner_decoder.py` still hash those removed modules into their
-evidence manifests, so both scripts fail at that final step until they are updated.
 
 The standalone driver supports propagation, lifting, concrete runtime `binding`, payload `decode`
 and MLIR `print` modes. Shared Main/CLI integration remains separate. Independent human review

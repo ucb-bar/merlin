@@ -138,8 +138,6 @@ def main():
                 "build_tools/scripts/verify_qinner_decoder.py",
                 "merlin/tests/ir/lean_qinner_cases.py",
                 "merlin/tests/ir/lean_qinner_decoder_cases.py",
-                "merlin/tests/ir/test_lean_qinner.py",
-                "merlin/tests/ir/test_lean_qinner_decoder.py",
             )
         ],
     ]
