@@ -1396,6 +1396,8 @@ def _select_runner(
     source = _bind_bfloat_elementwise(source, selected=_BFLOAT_ELEMENTWISE in feats)
     from .fp8_widening import FEATURE as _FP8_WIDENING, bind_runner as _bind_fp8_widening
     source = _bind_fp8_widening(source, selected=_FP8_WIDENING in feats)
+    from .fp8_narrowing import FEATURE as _FP8_NARROWING, bind_runner as _bind_fp8_narrowing
+    source = _bind_fp8_narrowing(source, selected=_FP8_NARROWING in feats)
     from .bfloat_transport import FEATURE as _BFLOAT_TRANSPORT, bind_runner as _bind_bfloat_transport
     source = _bind_bfloat_transport(source, selected=_BFLOAT_TRANSPORT in feats)
     from .atomic_compare_exchange import FEATURE as _INTEGER_COMPARE_EXCHANGE, bind_runner as _bind_integer_compare_exchange

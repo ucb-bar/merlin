@@ -1,5 +1,14 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`lower_fp8_narrowing` implements standard scalar RTNE `arith.truncf` to the
+four FP8 formats, before widening and BF16 emulation. Source saturation and
+infinity policies must remain executable clamps/selections. Validate every
+candidate before edits; preserve source annotations and all runner callbacks.
+Round the original f32/f64 significand with integer operations and exact target
+subnormal/tie/nonfinite handling. f16/BF16 first extend exactly to f32. This
+feature grants no FP8 arithmetic, changed storage, alias/lifetime permission,
+target mapping or policy selection from provenance.
+
 `lower_fp8_widening` expands scalar standard FP8 extensions at one explicit
 initial native source seam. Keep portable casts, typed storage, source locations
 and annotations; decode every finite/nonfinite format case. Complete validation
