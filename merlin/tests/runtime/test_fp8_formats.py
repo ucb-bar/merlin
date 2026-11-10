@@ -91,6 +91,54 @@ def test_fp4_and_fp6_normals_present():
     assert 0.25 in r6 and 1.0 in r6  # e3m2 (1)*2^-2 subnormal-adjacent + 1.0
 
 
+def test_fp6_e2m3_all_codes_and_independent_rounding_boundaries():
+    from merlin.runtime.fp8_formats import _decode, encode_bytes, float_to_codes, storage_bits
+
+    assert canonical_float("f6E2M3FN") == canonical_float("e2m3") == "fp6_e2m3"
+    assert storage_bits("fp6_e2m3") == 6
+    # Independent literal exponent bands, including both zeros. E2M3 trades
+    # E3M2's range (28) for precision and tops out at 7.5.
+    positive = ([i / 8 for i in range(8)] + [1 + i / 8 for i in range(8)] +
+                [2 + i / 4 for i in range(8)] + [4 + i / 2 for i in range(8)])
+    codes = np.arange(64, dtype=np.uint8)
+    values = _decode(codes, "fp6_e2m3")
+    np.testing.assert_array_equal(values, positive + [-v for v in positive])
+    assert not np.signbit(values[0]) and np.signbit(values[32])
+    np.testing.assert_array_equal(float_to_codes(values, "fp6_e2m3"), codes)
+    np.testing.assert_array_equal(float_to_codes([1.0625, 1.1875, 100, -100], "fp6_e2m3"), [8, 10, 31, 63])
+    with pytest.raises(ValueError):
+        encode_bytes([1.0], "fp6_e2m3")  # Payload packing/LUT projection is a separate target contract.
+
+
+@pytest.mark.parametrize("fmt,positive,ties,codes_at_ties", [
+    ("fp4_e2m1", [0, 0.5, 1, 1.5, 2, 3, 4, 6], [1.25, 1.75], [2, 4]),
+    ("fp6_e3m2", [0, 0.0625, 0.125, 0.1875] +
+     [value * scale for scale in (0.25, 0.5, 1, 2, 4, 8, 16) for value in (1, 1.25, 1.5, 1.75)],
+     [1.125, 1.375], [12, 14]),
+])
+def test_mx_fp4_fp6_exact_codes_signed_zero_ties_and_saturation(fmt, positive, ties, codes_at_ties):
+    from merlin.runtime.fp8_formats import _decode, encode_bytes, float_to_codes
+
+    codes = np.arange(2 * len(positive), dtype=np.uint8)
+    expected = np.array(positive + [-float(v) for v in positive], dtype=np.float32)
+    values = _decode(codes, fmt)
+    np.testing.assert_array_equal(values.view(np.uint32), expected.view(np.uint32))
+    np.testing.assert_array_equal(float_to_codes(values, fmt), codes)
+    np.testing.assert_array_equal(float_to_codes(ties, fmt), codes_at_ties)
+    np.testing.assert_array_equal(float_to_codes([100, -100], fmt), [len(positive)-1, len(codes)-1])
+    with pytest.raises(ValueError):
+        encode_bytes([1.0], fmt)
+
+
+def test_bf16_decode_matches_raw_ieee_bits_for_every_finite_code():
+    from merlin.runtime.fp8_formats import _decode
+
+    codes = np.arange(65536, dtype=np.uint32)
+    finite = codes[(codes & 0x7f80) != 0x7f80]
+    expected = finite << 16
+    np.testing.assert_array_equal(_decode(finite, "bf16").view(np.uint32), expected)
+
+
 def test_e8m0_block_scale_is_power_of_two_with_nan():
     import math
 

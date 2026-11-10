@@ -1,7 +1,7 @@
 """Format-aware float decode + representable-value enumeration.
 
 Covers the OCP float8 pair (**e4m3fn**, **e5m2**) AND the microscaling / SIMT float formats a target may
-declare from its own datapath facts: **fp6** (e3m2), **fp4** (e2m1), **fp16**, **bf16**, **f32**, plus the
+declare from its own datapath facts: **fp6** (e3m2/e2m3), **fp4** (e2m1), **fp16**, **bf16**, **f32**, plus the
 **E8M0** block scale (8-bit exponent-only). ``fp8`` is not one format — e4m3 and e5m2 decode the SAME raw
 byte to DIFFERENT floats — and the same is true across the wider family, so the format must be CARRIED, not
 assumed. This module is the single source of truth for the code<->float mapping (``runtime.dispatch_runtime``
@@ -27,6 +27,7 @@ _FORMATS = {
     "fp8_e4m3": (4, 3, 7, "e4m3fn"),  # OCP float8_e4m3fn: finite-only, NaN = all-exp-1 & all-mant-1, max 448
     "fp8_e5m2": (5, 2, 15, "ieee"),  # OCP float8_e5m2: IEEE-like, inf = all-exp-1 & mant-0, max 57344
     "fp6_e3m2": (3, 2, 3, "mx_finite"),  # MX FP6 (FP6E3M2NearestFinder.scala): 1 sign | 3 exp bias-3 | 2 mant
+    "fp6_e2m3": (2, 3, 1, "mx_finite"),  # OCP FP6: 1 sign | 2 exp bias-1 | 3 mant; all codes finite
     "fp4_e2m1": (2, 1, 1, "mx_finite"),  # MX FP4: 1 sign | 2 exp bias-1 | 1 mant
     "fp16": (5, 10, 15, "ieee"),  # IEEE binary16
     "bf16": (8, 7, 127, "ieee"),  # bfloat16
@@ -48,6 +49,8 @@ _ALIASES = {
     "f6E3M2FN": "fp6_e3m2",
     "e3m2": "fp6_e3m2",
     "mxfp6": "fp6_e3m2",
+    "f6E2M3FN": "fp6_e2m3",
+    "e2m3": "fp6_e2m3",
     "f4E2M1FN": "fp4_e2m1",
     "e2m1": "fp4_e2m1",
     "mxfp4": "fp4_e2m1",
@@ -148,8 +151,11 @@ def _decode(codes: np.ndarray, fmt: str) -> np.ndarray:
     exp = (u >> mb) & emax
     man = (u & (mmax - 1)).astype(np.float32)
     with np.errstate(over="ignore"):  # top-exponent codes overflow to inf (filtered below)
-        sub = (man / mmax) * np.float32(2.0 ** (1 - bias))  # exp==0: subnormal
-        nrm = (1.0 + man / mmax) * np.exp2(exp.astype(np.float32) - bias)
+        # Scaling a binary significand by an integral power of two is exact.
+        # exp2's approximate float32 implementation can move even BF16's
+        # largest finite code by an FP32 ULP on some NumPy/SIMD builds.
+        sub = np.ldexp(man / mmax, 1 - bias)
+        nrm = np.ldexp(1.0 + man / mmax, exp.astype(np.int32) - bias)
     val = (sign * np.where(exp == 0, sub, nrm)).astype(np.float32)
     top = exp == emax
     if scheme == "ieee":  # exp all-1 -> inf (man 0) / NaN (man != 0)
