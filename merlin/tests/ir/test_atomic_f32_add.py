@@ -72,8 +72,8 @@ def run(tmp_path, program, body):
 
 @pytest.mark.parametrize("canonical", [False, True])
 @pytest.mark.parametrize("identity", [False, True])
-@pytest.mark.parametrize("ieee", [False, True])
-def test_f32_region_keeps_atomic_load_retry_and_returned_old_word(tmp_path, canonical, identity, ieee):
+@pytest.mark.parametrize("width,ieee", [(32, False), (32, True), (64, True)])
+def test_float_region_keeps_atomic_load_retry_and_returned_old_word(tmp_path, canonical, identity, ieee, width):
     before = "passmanager.PassManager.parse('builtin.module(canonicalize,cse)').run(module.operation)\n" if canonical else ""
     program = source()
     if ieee:
@@ -84,6 +84,10 @@ def test_f32_region_keeps_atomic_load_retry_and_returned_old_word(tmp_path, cano
     if identity:
         operand = '%current' if ieee else '%floating'
         program = program.replace(f'%sum=arith.addf {operand},%value:f32', '').replace('%sumword=arith.bitcast %sum:f32 to i32', f'%sumword=arith.bitcast {operand}:f32 to i32')
+    if width == 64:
+        program = program.replace('f32', 'f64').replace('i32', 'i64')
+        for old, new in (('2139095040', '9218868437227405312'), ('8388607', '4503599627370495'), ('4194304', '2251799813685248')):
+            program = program.replace(old, new)
     run(tmp_path, program, before + """assert _cas_rewrite(ctx,module,word_views=True)==1
 passmanager.PassManager.parse('builtin.module(canonicalize,cse)').run(module.operation)
 assert len(_cas_checked_calls(module))==1
@@ -115,17 +119,18 @@ else:
 
 
 @pytest.mark.parametrize("change", [None, "order", "load", "bytes", "linkage", "arithmetic", "capture", "return"])
-@pytest.mark.parametrize("ieee", [False, True])
-def test_f32_borrowing_grant_checks_the_actual_complete_current_helper(tmp_path, change, ieee):
+@pytest.mark.parametrize("width,ieee", [(32, False), (32, True), (64, True)])
+def test_float_borrowing_grant_checks_the_actual_complete_current_helper(tmp_path, change, ieee, width):
     replacements = {"order": ("acq_rel acquire", "seq_cst acquire"),
-        "load": (" atomic acquire", ""), "bytes": ("arith.constant 4 : index", "arith.constant 8 : index"),
+        "load": (" atomic acquire", ""), "bytes": (f"arith.constant {width // 8} : index", f"arith.constant {width // 4} : index"),
         "linkage": ("#llvm.linkage<internal>", "#llvm.linkage<external>"),
         "arithmetic": ("%sum = arith.addf", "%sum = arith.subf"),
         "return": ("%result = arith.bitcast %old", "%result = arith.bitcast %start")}
     mutate = f"text=text.replace({replacements[change][0]!r},{replacements[change][1]!r})\n" if change in replacements else ""
     if change == "capture":
-        mutate = "text=text.replace('module {','module {func.func private @capture(memref<?xf32>)').replace('%bytes =','func.call @capture(%buffer):(memref<?xf32>)->()\\n%bytes =')\n"
-    run(tmp_path, source(), f"text=_f32_add_source('arbitrary_name',ieee={ieee})\n" + mutate + """module=ir.Module.parse(text.rsplit('}',1)[0]+'func.func @forward(%p:memref<?xf32>,%i:index,%v:f32)->f32 {%r=func.call @arbitrary_name(%p,%i,%v):(memref<?xf32>,index,f32)->f32 return %r:f32}}')
+        mutate = f"text=text.replace('module {{','module {{func.func private @capture(memref<?xf{width}>)').replace('%bytes =','func.call @capture(%buffer):(memref<?xf{width}>)->()\\n%bytes =')\n"
+    caller = 'func.func @forward(%p:memref<?xfWIDTH>,%i:index,%v:fWIDTH)->fWIDTH {%r=func.call @arbitrary_name(%p,%i,%v):(memref<?xfWIDTH>,index,fWIDTH)->fWIDTH return %r:fWIDTH}}'.replace('WIDTH', str(width))
+    run(tmp_path, source(), f"text=_float_add_source('arbitrary_name',ieee={ieee},width={width})\n" + mutate + f"module=ir.Module.parse(text.rsplit('}}',1)[0]+{caller!r})\n" + """
 module.operation.verify()
 passmanager.PassManager.parse('builtin.module(canonicalize,cse)').run(module.operation)
 """ + f"assert len(_cas_checked_calls(module))=={0 if change else 1}\n")

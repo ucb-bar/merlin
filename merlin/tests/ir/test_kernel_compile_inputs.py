@@ -596,8 +596,8 @@ def test_atomic_staging_retains_v3_source_contract_and_thirty_bit_cost(tmp_path)
     assert (target / "source/memory-admission.json").read_bytes() == (source / "memory-admission.json").read_bytes()
 
 
-@pytest.mark.parametrize("change", [None, "f32", "integer", "ftz", "rounding", "kind", "legacy"])
-@pytest.mark.parametrize("dtype,policy", [("f64", None), ("f32", "ieee"), ("f32", "ftz")])
+@pytest.mark.parametrize("change", [None, "f32", "integer", "ftz", "rounding", "kind", "legacy", "payload"])
+@pytest.mark.parametrize("dtype,policy", [("f64", None), ("f64", "quiet"), ("f32", "ieee"), ("f32", "ftz")])
 def test_floating_atomic_add_retains_its_operation_specific_numeric_contract(tmp_path, change, dtype, policy):
     from copy import deepcopy
     from merlin.frontends.kernel_atomic_evidence import checked_atomic_effects
@@ -610,14 +610,16 @@ def test_floating_atomic_add_retains_its_operation_specific_numeric_contract(tmp
     access = admission["accesses"][0]
     info = access["atomic"]
     info.update(operation="fadd", standard_kind=0, word_bits=int(dtype[1:]), value_dtype=dtype,
-                numeric_contract="f32-rne-sign-preserving-ftz-add" if policy == "ftz" else f"ieee-{dtype}-rne-add")
+                numeric_contract="f32-rne-sign-preserving-ftz-add" if policy == "ftz" else "ieee-f64-rne-add-quiet-nans" if policy == "quiet" else f"ieee-{dtype}-rne-add")
     buffers[access["buffer"]]["dtype"] = dtype
-    if policy:
+    if policy in ("ieee", "ftz"):
         admission["f32_atomic_add"] = memory["f32_atomic_add"] = policy
     if policy == "ftz":
         admission["atomic_adaptations"][0]["payload"] = "standard-memref-generic-f32-ftz-add-with-original-returned-old-value"
     elif policy == "ieee":
         admission["atomic_adaptations"][0]["payload"] = "standard-memref-generic-f32-quiet-add-with-original-returned-old-value"
+    elif policy == "quiet":
+        admission["atomic_adaptations"][0]["payload"] = "standard-memref-generic-f64-quiet-add-with-original-returned-old-value"
     if change == "f32":
         other = "f32" if dtype == "f64" else "f64"
         info.update(value_dtype=other, word_bits=int(other[1:]))
@@ -631,6 +633,8 @@ def test_floating_atomic_add_retains_its_operation_specific_numeric_contract(tmp
     elif change == "legacy":
         admission.update(schema="t2m.memory-admission.v3", effect_profile="private-invocation-integer-atomics-v1")
         memory["effect_profile"] = admission["effect_profile"]
+    elif change == "payload":
+        admission["atomic_adaptations"][0]["payload"] = "standard-memref-generic-f64-quiet-add-with-original-returned-old-value" if policy is None else "standard-memref-atomic-rmw-with-original-returned-old-value"
     records[0]["atomic"] = deepcopy(info)
     admission["atomic_adaptations"][0].update(info)
     if change == "integer":

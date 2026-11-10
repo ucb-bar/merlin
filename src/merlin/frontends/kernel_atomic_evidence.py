@@ -5,11 +5,13 @@ TYPED_EFFECT_PROFILE = "private-invocation-typed-atomics-v2"
 _KINDS = {"and": 2, "or": 14, "xor": 15, "add": 1, "max": 6, "min": 10, "umax": 7, "umin": 11, "exch": 3,
           "cas": "compare-exchange", "fadd": 0}
 _FLOAT_CONTRACTS = {("exch", "f32"): ("bitwise-exchange",), ("exch", "f64"): ("bitwise-exchange",),
-                    ("fadd", "f64"): ("ieee-f64-rne-add",),
+                    ("fadd", "f64"): ("ieee-f64-rne-add", "ieee-f64-rne-add-quiet-nans"),
                     ("fadd", "f32"): ("ieee-f32-rne-add", "f32-rne-sign-preserving-ftz-add")}
 
 
 def _payload(info):
+    if info.get("numeric_contract") == "ieee-f64-rne-add-quiet-nans":
+        return "standard-memref-generic-f64-quiet-add-with-original-returned-old-value"
     if info.get("numeric_contract") == "ieee-f32-rne-add":
         return "standard-memref-generic-f32-quiet-add-with-original-returned-old-value"
     if info.get("numeric_contract") == "f32-rne-sign-preserving-ftz-add":

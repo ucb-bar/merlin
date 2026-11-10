@@ -1,4 +1,4 @@
-"""Closed standard f32 IEEE/FTZ arithmetic and its exact native CAS loop.
+"""Closed IEEE f32/f64 and FTZ f32 arithmetic with exact native CAS loops.
 
 This support extends the existing atomic-word feature. It recognizes actual
 scalar bit arithmetic, not source names or provenance, and retains the typed
@@ -6,14 +6,18 @@ borrowing boundary through ownership before restoring its complete native body.
 """
 
 SUPPORT = r'''
-def _f32_add_match(op):
+def _float_add_match(op):
     if (op.name != 'memref.generic_atomic_rmw' or len(op.results) != 1
-            or str(op.results[0].type) != 'f32' or len(op.operands) != 2
-            or str(op.operands[0].type) != 'memref<?xf32>' or len(op.regions) != 1
+            or str(op.results[0].type) not in ('f32', 'f64') or len(op.operands) != 2
+            or str(op.operands[0].type) != 'memref<?x' + str(op.results[0].type) + '>' or len(op.regions) != 1
             or len(op.regions[0].blocks) != 1):
         return None
     block = op.regions[0].blocks[0]
-    if len(block.arguments) != 1 or str(block.arguments[0].type) != 'f32':
+    floating_type = str(op.results[0].type)
+    width = int(floating_type[1:])
+    integer_type = 'i' + str(width)
+    exponent_mask, fraction_bits = (0x7f800000, 23) if width == 32 else (0x7ff0000000000000, 52)
+    if len(block.arguments) != 1 or str(block.arguments[0].type) != floating_type:
         return None
     used = set()
     def owner(value, name, count):
@@ -27,9 +31,9 @@ def _f32_add_match(op):
         return item
     def constant(value, number):
         item = owner(value, 'arith.constant', 0)
-        return (item is not None and str(value.type) == 'i32' and 'value' in item.attributes
+        return (item is not None and str(value.type) == integer_type and 'value' in item.attributes
                 and isinstance(item.attributes['value'], ir.IntegerAttr)
-                and ir.IntegerAttr(item.attributes['value']).value & 0xffffffff == number)
+                and ir.IntegerAttr(item.attributes['value']).value & ((1 << width) - 1) == number)
     def masked(value, original, mask):
         item = owner(value, 'arith.andi', 2)
         return item is not None and ((item.operands[0] == original and constant(item.operands[1], mask))
@@ -40,18 +44,18 @@ def _f32_add_match(op):
             return None
         original = selected.operands[2]
         equal = owner(selected.operands[0], 'arith.cmpi', 2)
-        if (str(original.type) != 'i32' or equal is None or ir.IntegerAttr(equal.attributes['predicate']).value != 0
-                or not masked(selected.operands[1], original, 0x80000000)):
+        if (str(original.type) != integer_type or equal is None or ir.IntegerAttr(equal.attributes['predicate']).value != 0
+                or not masked(selected.operands[1], original, 1 << (width - 1))):
             return None
-        if not any(constant(equal.operands[i], 0) and masked(equal.operands[1-i], original, 0x7f800000) for i in (0, 1)):
+        if not any(constant(equal.operands[i], 0) and masked(equal.operands[1-i], original, exponent_mask) for i in (0, 1)):
             return None
         return original
     def floating(value):
         cast = owner(value, 'arith.bitcast', 1)
-        return cast.operands[0] if cast is not None and str(value.type) == 'i32' and str(cast.operands[0].type) == 'f32' else None
+        return cast.operands[0] if cast is not None and str(value.type) == integer_type and str(cast.operands[0].type) == floating_type else None
     def flush(value):
         cast = owner(value, 'arith.bitcast', 1)
-        if cast is None or str(value.type) != 'f32':
+        if cast is None or str(value.type) != floating_type:
             return None
         word = flush_word(cast.operands[0])
         return floating(word) if word is not None else None
@@ -62,7 +66,7 @@ def _f32_add_match(op):
         original = selected.operands[2]
         updated = owner(selected.operands[1], 'arith.ori', 2)
         test = owner(selected.operands[0], 'arith.andi', 2)
-        if updated is None or test is None or not any(updated.operands[i] == original and constant(updated.operands[1-i], 0x00400000) for i in (0, 1)):
+        if updated is None or test is None or not any(updated.operands[i] == original and constant(updated.operands[1-i], 1 << (fraction_bits - 1)) for i in (0, 1)):
             return None
         for i in (0, 1):
             equal = owner(test.operands[i], 'arith.cmpi', 2)
@@ -70,8 +74,8 @@ def _f32_add_match(op):
             if (equal is not None and nonzero is not None
                     and ir.IntegerAttr(equal.attributes['predicate']).value == 0
                     and ir.IntegerAttr(nonzero.attributes['predicate']).value == 1
-                    and any(constant(equal.operands[j], 0x7f800000) and masked(equal.operands[1-j], original, 0x7f800000) for j in (0, 1))
-                    and any(constant(nonzero.operands[j], 0) and masked(nonzero.operands[1-j], original, 0x007fffff) for j in (0, 1))):
+                    and any(constant(equal.operands[j], exponent_mask) and masked(equal.operands[1-j], original, exponent_mask) for j in (0, 1))
+                    and any(constant(nonzero.operands[j], 0) and masked(nonzero.operands[1-j], original, (1 << fraction_bits) - 1) for j in (0, 1))):
                 return original
         return None
     terminal = tuple(block.operations)[-1].operation
@@ -82,6 +86,8 @@ def _f32_add_match(op):
     checkpoint = set(used)
     result_word = flush_word(quieted) if quieted is not None else None
     ftz = result_word is not None
+    if ftz and width != 32:
+        return None
     if not ftz:
         used.clear()
         used.update(checkpoint)
@@ -95,11 +101,11 @@ def _f32_add_match(op):
             if current is not None and current == block.arguments[0]:
                 if used | {terminal} == {item.operation for item in block.operations}:
                     op.verify()
-                    return (*op.operands, None, 32, 'ftz-identity' if ftz else 'ieee-quiet-identity')
+                    return (*op.operands, None, width, 'ftz-identity' if ftz else 'ieee-quiet-identity')
                 break
             if current is not None:
                 inverse = owner(current, 'arith.bitcast', 1)
-                if inverse is not None and str(inverse.operands[0].type) == 'i32':
+                if inverse is not None and str(inverse.operands[0].type) == integer_type:
                     original = inverse.operands[0]
                     continue
             original = flush_word(original)
@@ -117,16 +123,18 @@ def _f32_add_match(op):
             break
         used.clear()
         used.update(checkpoint)
-    if (value is None or str(value.type) != 'f32' or value == block.arguments[0]
+    if (value is None or str(value.type) != floating_type or value == block.arguments[0]
             or isinstance(value, ir.OpResult) and value.owner.operation.block == block
             or used | {terminal} != {item.operation for item in block.operations}):
         return None
     op.verify()
-    return (*op.operands, value, 32, 'fadd-ftz' if ftz else 'fadd-ieee-quiet')
+    return (*op.operands, value, width, 'fadd-ftz' if ftz else 'fadd-ieee-quiet')
 
 
-def _f32_add_source(symbol, identity=False, ieee=False):
+def _float_add_source(symbol, identity=False, ieee=False, width=32):
     import json
+    if width not in (32, 64) or width == 64 and not ieee:
+        raise ValueError('floating atomic helpers require IEEE f32/f64 or FTZ f32')
     source = """module {
       func.func private @SYMBOL(%buffer: memref<?xf32>, %index: index, %value: f32) -> f32 attributes {llvm.linkage = #llvm.linkage<internal>} {
         %bytes = arith.constant 4 : index
@@ -180,13 +188,19 @@ def _f32_add_source(symbol, identity=False, ieee=False):
         source = source.replace('%flushed', '%current').replace('%desired', '%sumword')
     if identity:
         source = source.replace(', %value: f32', '').replace('%sum = arith.addf %floating, %value : f32', '').replace('%sumword = arith.bitcast %sum : f32 to i32', '').replace('%sumword', '%current' if ieee else '%flushed')
+    if width == 64:
+        source = source.replace('f32', 'f64').replace('i32', 'i64')
+        for old, new in (('2139095040', '9218868437227405312'), ('-2147483648', '-9223372036854775808'),
+                         ('8388607', '4503599627370495'), ('4194304', '2251799813685248'),
+                         ('arith.constant 4 : index', 'arith.constant 8 : index'), ('alignment = 4', 'alignment = 8')):
+            source = source.replace(old, new)
     return source.replace('SYMBOL', json.dumps(symbol))
 
 
-def _f32_add_helper_equal(op, symbol, module, identity=False, ieee=False):
+def _float_add_helper_equal(op, symbol, module, identity=False, ieee=False, width=32):
     from torch_mlir import passmanager as _ftz_pm
     with module.context:
-        expected = ir.Module.parse(_f32_add_source(symbol, identity, ieee))
+        expected = ir.Module.parse(_float_add_source(symbol, identity, ieee, width))
         _ftz_pm.PassManager.parse('builtin.module(canonicalize,cse)').run(expected.operation)
     reference = tuple(expected.body.operations)[0].operation
     return op.get_asm(print_generic_op_form=True, use_local_scope=True) == reference.get_asm(print_generic_op_form=True, use_local_scope=True)
