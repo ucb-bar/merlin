@@ -28,6 +28,13 @@ def _native(stage, name, flags, source, output):
         raise ValueError("source-word native stage does not bind its declared pipeline/input/output")
 
 
+def _storage_type(payload):
+    if "word_view" in payload:
+        view = payload["word_view"]
+        return view.get("storage_dtype") if isinstance(view, dict) else None
+    return payload.get("value_dtype", "i" + str(payload.get("word_bits")))
+
+
 def checked_word_stages(stage, source, output, memory, inventory):
     """Check declared stage chains; producer owns typed event reconstruction."""
     if not isinstance(stage, dict):
@@ -72,20 +79,27 @@ def checked_word_stages(stage, source, output, memory, inventory):
                 or binding.get("opcode") == "tt.atomic_cas" and len(binding["input_types"]) != 4
                 or binding.get("fill") not in ("unchanged", "source-mask-select-after-zero-filled-load")):
             raise ValueError("source-word event binding differs from the declared source/type inventory")
-        views = [p.get("word_view") for p in memory.get("atomic_payload", [])
-                 if set(p.get("source_ids", [])) == set(binding["source_ids"])]
+        if "template_input_types" in binding or binding["opcode"] == "tt.atomic_cas" and "word_view" in binding:
+            types, view = binding.get("template_input_types"), binding.get("word_view", {})
+            if (binding["opcode"] != "tt.atomic_cas" or not isinstance(view, dict) or not isinstance(types, list)
+                    or len(types) != len(binding["input_types"])
+                    or types[1:] != binding["input_types"][1:]
+                    or types[0] != "!tt.ptr<" + str(view.get("value_dtype")) + ">"
+                    or binding["input_types"][0] != "!tt.ptr<" + str(view.get("storage_dtype")) + ">"):
+                raise ValueError("source-word CAS template differs from its declared storage/view input types")
+        context = [p for p in memory.get("atomic_payload", [])
+                   if set(p.get("source_ids", [])) == set(binding["source_ids"])]
+        # A selected atomic has the same source context on multiple roots.
+        # Match the actual storage capture, not the isolated template's logical
+        # pointer formal. Producer replay reconstructs that pair independently.
+        storage = [p for p in context if binding["input_types"][0] == "!tt.ptr<" + str(_storage_type(p)) + ">"] if atomic else context
+        if atomic and context and not storage:
+            raise ValueError("source-word event view differs from its typed atomic storage contract")
+        views = [p.get("word_view") for p in storage]
         if "word_view" in binding or any(v is not None for v in views):
             view = binding.get("word_view")
             if (memory.get("effect_profile") != "private-invocation-typed-atomics-v2"
                     or binding["opcode"] not in ("tt.atomic_rmw", "tt.atomic_cas") or not isinstance(view, dict) or not views
                     or any(v != view for v in views)):
                 raise ValueError("source-word event view differs from its typed atomic storage contract")
-        if "template_input_types" in binding or binding["opcode"] == "tt.atomic_cas" and "word_view" in binding:
-            types, view = binding.get("template_input_types"), binding.get("word_view", {})
-            if (binding["opcode"] != "tt.atomic_cas" or not isinstance(types, list)
-                    or len(types) != len(binding["input_types"])
-                    or types[1:] != binding["input_types"][1:]
-                    or types[0] != "!tt.ptr<" + str(view.get("value_dtype")) + ">"
-                    or binding["input_types"][0] != "!tt.ptr<" + str(view.get("storage_dtype")) + ">"):
-                raise ValueError("source-word CAS template differs from its declared storage/view input types")
         symbols.add(name)

@@ -42,6 +42,10 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   arithmetic-only parent input and both actual native reports. Staging checks
   their byte chain, optimizer identity and declared inventory; producer-side
   event reconstruction and numerical equivalence remain separate obligations.
+  Atomic view bindings use the complete source context and actual captured
+  storage dtype. One source event may select integer and floating roots;
+  a CAS template's logical pointer formal does not replace its storage capture.
+  Primitive effect checks and producer reconstruction remain separate gates.
   V3 memory admission additionally retains the explicit private-invocation
   integer atomic contract, or the explicit v4 typed profile with bitwise f32/f64
   exchange and integer RMWs on equal-width floating storage, thirty-bit ownership fragments and source operation/
