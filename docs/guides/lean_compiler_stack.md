@@ -17,6 +17,7 @@ code_refs:
   - src/merlin/llvmlower/lower.py
   - src/merlin/llvmlower/passes_xdsl.py
   - src/merlin/compile/command.py
+  - build_tools/scripts/qualify_pass_cutoff.py
 ---
 
 # Compiler gate overview and status
@@ -165,6 +166,26 @@ The retained implementation entry points include:
 - Historical [sixteen full-size kernels](../../merlin/tests/ir/kernel_benchmark_handoff_campaign.py)
   and the [complete-model campaign](../../merlin/tests/ir/larger_model_campaign.py)
   compare ordinary and gated compilation and finite native outputs.
+
+[`qualify_pass_cutoff.py`](../../build_tools/scripts/qualify_pass_cutoff.py)
+compiles an explicit kernel denominator ordinarily and with every `all` gate.
+`inventory` freezes the cases: by default the text and pruned form of each
+retained model-family window, on the xDSL route (`--routes xdsl textual` adds
+the textual route; `--external-inputs` takes a hash-pinned
+`merlin.pass-cutoff.inputs.v1` manifest). `run` compiles each case in its own
+process and refuses any nonempty `MERLIN_VALIDATE*` or `MERLIN_FORMAL*`
+variable, including the `MERLIN_VALIDATE_WORKERS` setting from the tutorial. A
+case is `lowered_checked` only when both LLVM outputs match, every job changed
+its boundary and was accepted with its request, verdict and before/after files
+bound, and the final coverage excludes no boundary. Exclusions give
+`lowered_with_unverified_boundaries` (see [reading the
+result](lean_bounded_pass_profiles.md#read-the-result)), and
+`lowered_no_changed_selected_boundary` earns no rewrite credit. `audit`
+recomputes each status from the retained bytes under the same tool bindings; it
+runs no fresh proof. The built-in denominator is not the paper's kernel set or
+every operation in a model, and a saved campaign grants no compiler authority.
+[Its tests](../../merlin/tests/infra/test_pass_cutoff.py) cover that
+bookkeeping.
 
 The [integration handoff](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md)
 indexes recorded qualification cuts. Historical counts and receipts belong to

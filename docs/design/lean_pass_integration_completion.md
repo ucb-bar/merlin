@@ -3,7 +3,7 @@ title: Completing Merlin pass proofs and compiler integration
 kind: design
 status: draft
 owner: verification
-last_verified: 2026-10-29
+last_verified: 2026-11-09
 related: [merlin_lean_verification, verified_compiler_roadmap, lean_compiler_stack, lean_bounded_pass_profiles]
 code_refs:
   - src/merlin/verify/pass_validation.py
@@ -563,6 +563,6 @@ engineering work and must be closed before declaring this milestone.
 
 Upstream formal infrastructure such as lean-mlir remains a reuse option when a
 specific typed-SSA/context or dialect-semantics component fills a demonstrated
-gap. The current CSE/DCE route need not be ported merely to change libraries.
+gap. The current tensor DCE route need not be ported merely to change libraries.
 Any reused component still needs a proved connection to Merlin's actual IR,
 observable semantics and compiler consumer.
