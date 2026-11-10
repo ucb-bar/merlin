@@ -356,3 +356,25 @@ one invocation, in prefill64, decode65, decode66 order. The gate requires exact
 outputs at all steps, independently matching greedy choices, and complete
 cache bindings. Run the qualified backend chain before the plain functional
 backend chain with the default execution limits.
+
+### Greedy decoding with all 22 decoder layers
+
+Use the same three phases and greedy policy, omit `decoder_layers` from the
+authenticated model-cache source receipts, and include all 44 cache bindings
+in each decode descriptor. Each decode takes 47 inputs and returns 45 outputs.
+The independent replay authenticates all 356 original source weight tensors.
+Require that scope explicitly when comparing the qualified whole-model chain:
+
+```bash
+python examples/atlas/whole-model/unchanged_fx/greedy_chain_gate.py \
+  --step "$PREFILL_APPLICATION" "$PREFILL_EXECUTION" "$PREFILL_REFERENCE" \
+  --step "$DECODE65_APPLICATION" "$DECODE65_EXECUTION" "$DECODE65_REFERENCE" \
+  --step "$DECODE66_APPLICATION" "$DECODE66_EXECUTION" "$DECODE66_REFERENCE" \
+  --expected-layers 22 --expected-weight-tensors 356 --out "$CHAIN_COMPARISON"
+```
+
+The scope assertions check every phase's output roster and both independent
+weight rosters. Omitting these optional assertions preserves the gate's existing
+behavior for one-layer experiments. The existing negative regressions reject a
+wrong selected token even when both chains claim it, and a skipped cache binding
+even when all output words match.

@@ -18,7 +18,7 @@ def bf16(values):
     return (np.asarray(values, dtype=np.float32).view(np.uint32) >> 16).astype(np.uint16)
 
 
-def publish_chain(tmp_path):
+def publish_chain(tmp_path, cache_count=CACHE_COUNT, weight_count=356):
     steps, previous = [], None
     for index, (past, query) in enumerate(((0, 64), (64, 1), (65, 1))):
         application, execution, reference = (tmp_path / f"{index}-{name}" for name in ("app", "run", "ref"))
@@ -36,12 +36,12 @@ def publish_chain(tmp_path):
         mask = np.where(keep, 0, 0xff7f).astype(np.uint16)[None, None]
         inputs = [ids, positions, mask]
         if previous:
-            inputs += [previous["outputs"][f"output_{i + 1}"] for i in range(CACHE_COUNT)]
+            inputs += [previous["outputs"][f"output_{i + 1}"] for i in range(cache_count)]
         logits = bf16(np.zeros((1, query, 4)))
         logits[0, 0, 0] = bf16(10.0)
         logits[0, -1, index + 1] = bf16(20.0)
         outputs = {"output_0": logits}
-        for cache in range(CACHE_COUNT):
+        for cache in range(cache_count):
             outputs[f"output_{cache + 1}"] = (np.arange(seq * 2, dtype=np.uint16) + cache * 13).reshape(1, 1, seq, 2)
         compiled = dict(status="COMPILED", capture=str(capture),
             capture_mlir_sha256=gate.digest(capture / "model.mlir"), source_request_digest=f"request-{index}", source_model_sha256="model",
@@ -63,7 +63,8 @@ def publish_chain(tmp_path):
             orchestration_sha256=gate.digest(gate.REFERENCE_ROOT / "cache_decode_reference.py"),
             trace_rebuild_sha256=gate.digest(gate.REFERENCE_ROOT / "source_trace.py"),
             adapter_sha256=gate.digest(gate.REFERENCE_ROOT / "whole_reference.py"),
-            source_constants={"weight": "authenticated"}, original_export={"manifest": "authenticated"},
+            source_constants={f"weight_{i}": "authenticated" for i in range(weight_count)},
+            original_export={"manifest": "authenticated", "authenticated_tensor_count": weight_count},
             selected_policies={"policy": "qualified"}, qualification={"engine": "qualified"},
             inputs={f"input_{i}": gate.info(a) for i, a in enumerate(inputs)},
             outputs={key: {**gate.info(a), "logical_dtype": "bf16"} for key, a in outputs.items()},
@@ -77,7 +78,7 @@ def publish_chain(tmp_path):
                 source_request_digest=previous["compiled"]["source_request_digest"], source_model_sha256="model")
             generated["generated_bindings"] = [dict(**identities, input_index=i + 3, output_index=i + 1,
                 dtype="bf16", shape=list(previous["outputs"][f"output_{i + 1}"].shape),
-                sha256=gate.info(previous["outputs"][f"output_{i + 1}"])["sha256"]) for i in range(CACHE_COUNT)]
+                sha256=gate.info(previous["outputs"][f"output_{i + 1}"])["sha256"]) for i in range(cache_count)]
             generated["generated_bindings"].append(dict(**identities, operation="greedy_last_token", input_index=0,
                 output_index=0, dtype="i64", shape=[1, 1], sha256=gate.info(ids)["sha256"],
                 producer_output_sha256=old["outputs"]["output_0"]["sha256"], source_dtype="bf16",
@@ -106,6 +107,38 @@ def test_complete_three_step_chain_compares_every_output(chain):
     assert result["transitions"] == [
         dict(generated_token_ids=[[1]], independent_token_ids=[[1]], cache_bindings=44),
         dict(generated_token_ids=[[2]], independent_token_ids=[[2]], cache_bindings=44)]
+
+
+def test_explicit_whole_model_scope_requires_22_layers_and_356_weights(chain):
+    assert gate.compare_chain(chain, expected_layers=22, expected_weight_tensors=356)["status"] == "PASS"
+
+
+def test_one_layer_chain_retains_default_gate_behavior_but_cannot_claim_whole_model(tmp_path):
+    chain = publish_chain(tmp_path, cache_count=2, weight_count=20)
+    assert gate.compare_chain(chain)["status"] == "PASS"
+    with pytest.raises(ValueError, match="decoder layer count"):
+        gate.compare_chain(chain, expected_layers=22, expected_weight_tensors=356)
+
+
+@pytest.mark.parametrize("step", range(3))
+@pytest.mark.parametrize("field", ("source_constants", "original_export"))
+def test_whole_model_scope_checks_both_weight_rosters_at_every_step(chain, step, field):
+    reference = chain[step][2]
+    receipt = gate.read(reference / "reference.json")
+    if field == "source_constants":
+        receipt[field].pop("weight_355")
+    else:
+        receipt[field]["authenticated_tensor_count"] = 355
+    save(reference / "reference.json", receipt)
+    with pytest.raises(ValueError, match="authenticated weight tensor count"):
+        gate.compare_chain(chain, expected_layers=22, expected_weight_tensors=356)
+
+
+@pytest.mark.parametrize("value", (0, -1, True, "22"))
+@pytest.mark.parametrize("name", ("expected_layers", "expected_weight_tensors"))
+def test_requested_scope_requires_positive_integer_counts(chain, name, value):
+    with pytest.raises(ValueError, match="positive integer"):
+        gate.compare_chain(chain, **{name: value})
 
 
 @pytest.mark.parametrize("step", range(3))

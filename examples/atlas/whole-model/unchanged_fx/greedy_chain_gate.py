@@ -206,14 +206,29 @@ def check_transition(previous, current):
                 cache_bindings=count)
 
 
-def compare_chain(steps):
-    """Each step is (compiled_application, generated_execution, independent_reference)."""
+def compare_chain(steps, *, expected_layers=None, expected_weight_tensors=None):
+    """Each step is (compiled_application, generated_execution, independent_reference).
+
+    Optional scope assertions prevent a reduced graph from satisfying a requested
+    whole-model check. Omit them to retain the existing one-layer gate behavior.
+    """
     require(len(steps) == 3, "greedy chain requires exactly prefill64, decode65, decode66")
+    for value, name in ((expected_layers, "expected layers"),
+                        (expected_weight_tensors, "expected weight tensors")):
+        require(value is None or type(value) is int and value > 0, name + " must be a positive integer")
     loaded = [load_step(*step) for step in steps]
     count = len(loaded[0]["actual"])
     transitions = []
     for index, (step, past, query) in enumerate(zip(loaded, (0, 64, 65), (64, 1, 1))):
         require(len(step["actual"]) == count, "chain output roster differs")
+        if expected_layers is not None:
+            require(count == 1 + 2 * expected_layers, "step decoder layer count differs from requested scope")
+        if expected_weight_tensors is not None:
+            receipt = step["independent"]
+            require(isinstance(receipt.get("source_constants"), dict)
+                    and len(receipt["source_constants"]) == expected_weight_tensors
+                    and receipt.get("original_export", {}).get("authenticated_tensor_count") == expected_weight_tensors,
+                    "step authenticated weight tensor count differs from requested scope")
         check_inputs(step, past, query, count)
         if index:
             transitions.append(check_transition(loaded[index - 1], step))
@@ -236,8 +251,12 @@ def main():
     parser.add_argument("--step", nargs=3, metavar=("APPLICATION", "EXECUTION", "REFERENCE"),
                         action="append", required=True, help="repeat in prefill64/decode65/decode66 order")
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--expected-layers", type=int, help="require this many decoder K/V pairs at every step")
+    parser.add_argument("--expected-weight-tensors", type=int,
+                        help="require this many original authenticated source tensors at every step")
     args = parser.parse_args()
-    result = compare_chain(args.step)
+    result = compare_chain(args.step, expected_layers=args.expected_layers,
+                           expected_weight_tensors=args.expected_weight_tensors)
     if args.out:
         args.out.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result), flush=True)
