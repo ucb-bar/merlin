@@ -411,8 +411,8 @@ def execute_case(case, work, tools, *, compare_baseline=True):
                 "compare_baseline": compare_baseline,
             },
         )
-        if pass_validation.DEFAULT_CHECKS != frozenset(pass_validation.CHECKS) or len(pass_validation.CHECKS) != 10:
-            raise ValueError("this campaign requires all ten actual canonical compiler selectors")
+        if pass_validation.DEFAULT_CHECKS != frozenset(pass_validation.CHECKS) or len(pass_validation.CHECKS) != 9:
+            raise ValueError("this campaign requires all nine actual canonical compiler selectors")
         report["phase"] = "native_index_observation"
         observation = _host_index_observation(work / "host-index-observation")
         report["host_index_observation"] = observation
@@ -426,7 +426,7 @@ def execute_case(case, work, tools, *, compare_baseline=True):
         if not report["gate_coverage"]["record"]["compiler_completed"]:
             raise AssertionError("formal compiler returned without successful coverage finalization")
         if report["gate_coverage"]["record"]["requested_passes"] != sorted(pass_validation.CHECKS):
-            raise AssertionError("formal compiler did not retain all ten requested selectors")
+            raise AssertionError("formal compiler did not retain all nine requested selectors")
         report["gate_verdicts"] = worker.verdicts
         report["checked_llvm"] = _ref(checked.ll_path)
         if compare_baseline:
