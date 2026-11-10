@@ -34,12 +34,14 @@ def _bf_elementwise(module):
         plans = []
         for op in operations:
             values = tuple(op.operands)+tuple(op.results)
+            # Exact constants, casts, selections and structural transport
+            # retain their shapes. Only arithmetic candidates must be scalar.
+            if op.name in transport:
+                continue
             if any(isinstance(value.type,(ir.RankedTensorType,ir.VectorType)) and value.type.element_type == bf16
                    for value in values) and op.name.split('.')[0] in ('arith','math','vector'):
                 raise ValueError('BF16 math legalization requires scalar operations')
             if not any(value.type == bf16 for value in values):
-                continue
-            if op.name in transport:
                 continue
             if op.name not in supported:
                 raise ValueError('unqualified BF16 scalar operation: '+op.name)

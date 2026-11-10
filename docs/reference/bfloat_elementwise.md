@@ -26,6 +26,8 @@ raw bitcasts and transport remain present. Unknown BF16 arithmetic, scalar
 calls, vector/tensor arithmetic, nonneutral flags and explicit unsupported
 rounding modes refuse. Supported transport operations are not classified as
 pure; their nested operations remain inspected independently.
+Shaped constants and exact transport keep their existing forms; the scalar
+restriction applies to arithmetic candidates, not neighboring tensor data.
 
 Arithmetic reuses upstream `arith-emulate-unsupported-floats` with
 `source-types=bf16 target-type=f32`, which extends each operand, computes in

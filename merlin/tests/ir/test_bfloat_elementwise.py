@@ -9,19 +9,21 @@ from merlin.llvmlower.toolchain import available,compiler_python
 
 
 @pytest.mark.skipif(not available(),reason="existing native compiler environment required")
-@pytest.mark.parametrize("change",["positive","sqrt","log","mixed-log","add","vector","call","fastmath"])
+@pytest.mark.parametrize("change",["positive","sqrt","tensor-constant","log","mixed-log","add","vector","tensor","call","fastmath"])
 def test_native_emulation_and_unchanged_refusals(tmp_path,change):
     expressions = {
         "positive":"%r=arith.divf %x,%y:bf16",
         "sqrt":"%r=math.sqrt %x:bf16",
+        "tensor-constant":"%c=arith.constant dense<0.0>:tensor<2xbf16> %r=arith.divf %x,%y:bf16",
         "log":"%r=math.log %x:bf16",
         "mixed-log":"%good=arith.divf %x,%y:bf16 %r=math.log %good:bf16",
         "add":"%r=arith.addf %x,%y:bf16",
         "vector":"%r=arith.divf %x,%y:vector<2xbf16>",
+        "tensor":"%r=arith.divf %x,%y:tensor<2xbf16>",
         "call":"%r=func.call @unknown(%x):(bf16)->bf16",
         "fastmath":"%r=arith.divf %x,%y fastmath<nnan>:bf16",
     }
-    dtype = "vector<2xbf16>" if change == "vector" else "bf16"
+    dtype = "vector<2xbf16>" if change == "vector" else "tensor<2xbf16>" if change == "tensor" else "bf16"
     source = f'''module {{func.func @f(%x:{dtype},%y:{dtype})->{dtype} {{
         {expressions[change]}
         return %r:{dtype}
@@ -32,7 +34,7 @@ def test_native_emulation_and_unchanged_refusals(tmp_path,change):
 with ir.Context():
     module=ir.Module.parse(open(sys.argv[1]).read())
     before=str(module)
-    if sys.argv[2] in ('positive','sqrt'):
+    if sys.argv[2] in ('positive','sqrt','tensor-constant'):
         assert _bf_elementwise(module)==1
         assert _bf_elementwise(module)==0
         assert 'arith.extf' in str(module) and 'arith.truncf' in str(module)
