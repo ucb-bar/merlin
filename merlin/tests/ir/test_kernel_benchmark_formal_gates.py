@@ -19,6 +19,7 @@ import traceback
 from pathlib import Path
 from time import perf_counter
 
+import pytest
 from kernel_benchmark_handoff_inputs import DATA_SHA256, PINNED_COMMIT, case_ids, fixture
 
 from merlin.common.paths import repo_root
@@ -487,3 +488,31 @@ def execute_case(case, work, tools, *, compare_baseline=True):
         report["elapsed_seconds"] = perf_counter() - started
         _write(report_path, report)
     return report
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(
+    os.environ.get("MERLIN_RUN_KERNEL_HANDOFF") != "1" and os.environ.get("MERLIN_KERNEL_HANDOFF_REQUIRED") != "1",
+    reason="full16 kernel compilation/execution requires explicit MERLIN_RUN_KERNEL_HANDOFF=1",
+)
+@pytest.mark.parametrize("case", CASES, ids=CASES)
+def test_kernel_benchmark_handoff_formal_gate_and_native(
+    case, tmp_path, pass_gate_tools, upstream_host_tools, monkeypatch
+):
+    """The per-case entry point kernel_benchmark_handoff_campaign.py launches in an owned process."""
+    if os.environ.get("MERLIN_RUN_KERNEL_HANDOFF") != "1":
+        pytest.fail("required kernel campaign must explicitly set MERLIN_RUN_KERNEL_HANDOFF=1")
+    # Keep the baseline unvalidated and both builds free of environment-selected
+    # transformations; the checked build explicitly requests all nine selectors.
+    from merlin.verify import compiler_transforms
+
+    for name in (
+        pass_validation.ENV_PASSES,
+        compiler_transforms.ENV_UNROLL,
+        compiler_transforms.ENV_TILE,
+        compiler_transforms.ENV_MACC,
+        compiler_transforms.ENV_ALLOCATOR,
+    ):
+        monkeypatch.delenv(name, raising=False)
+    report = execute_case(case, tmp_path / case, pass_gate_tools)
+    assert report["status"] == "PASS"
