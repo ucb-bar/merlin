@@ -95,9 +95,13 @@ _DRIVER_SOURCES = (
     "build_tools/scripts/k1_lever_ablation.py",
     INSTRUMENT,
     "src/merlin/compare/et_campaign.py",
-    "merlin/python/merlin/llvmlower/impr_features.py",
-    "merlin/python/merlin/mining/wholemodel_proposer.py",
+    "src/merlin/compiler/optimizations/registry.py",
+    "src/merlin/mining/wholemodel_proposer.py",
 )
+# Bind the actual strategy implementations as well as the public registration entry.
+from merlin.compiler.optimizations import implementation_paths as _optimization_sources
+
+_DRIVER_SOURCES += tuple(str(path) for path in _optimization_sources())
 
 #: The cell id of the arm carrying every lever. The other cells are named for what they DROP.
 FULL_CELL = "full"

@@ -139,22 +139,24 @@ def _prepare_model_capture_entry(
     if entry.get("materialized_capture"):
         return entry
 
-    from merlin.targetgen import capsule_source as source
+    from merlin.capture import numerics as source_numerics
+    from merlin.capture import pytorch as source_pytorch
+    from merlin.capture import receipts as source_receipts
 
     try:
         selected = _with_selected_model_recipe(entry, evidence_root=evidence_root, target=target, binding=binding)
     except Exception:  # noqa: BLE001 -- the writer records this entry's recipe failure as before
         return entry
-    recipe = selected.get("quant_recipe") or source.derived_recipe(
+    recipe = selected.get("quant_recipe") or source_numerics.derived_recipe(
         getattr(binding, "target", None), str(selected.get("operand_dtype") or binding.operand_dtype)
     )
-    if source._static_pt2e_model(
+    if source_receipts._static_pt2e_model(
         "model",
         scheme=None if recipe is not None else selected.get("quant_scheme"),
         recipe=recipe,
         already_quantized=selected.get("capture_quantization") == "already_materialized",
     ):
-        capture = capture if capture is not None else source.PytorchRefSource()
+        capture = capture if capture is not None else source_pytorch.PytorchRefSource()
         integerizer = capture.m2m_dir / "m2m/capture/pt2e_integerize.py"
         if capture.available() and not integerizer.is_file():
             raise ValueError(

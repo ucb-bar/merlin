@@ -41,3 +41,10 @@ equivalence. It selects no target schedule and performs no simulation.
 
 `preparation_io` owns private JSON writes and ordinary-tree validation.
 `preparation` retains its existing callable names and copying workflow.
+
+`pytorch_sources`, `model_sources` and `spec_sources` construct capsules from
+shared captured artifacts. `model_inputs` resolves declared workload/loader
+inputs; `model_requirements` preserves source accelerator and lane obligations.
+`source_evidence` freezes the selected producer and raw/portable frontend
+receipts. Source capture and arithmetic/demand admission remain under
+`merlin.capture`; importing compiler capture APIs must not import these writers.

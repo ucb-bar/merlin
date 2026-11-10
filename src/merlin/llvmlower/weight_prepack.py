@@ -305,7 +305,7 @@ def prepare_build_bundle(
     Backends call this before reading model.mlir or selecting default inputs. No feature means no
     parsing, copying or receipt. The receipt records the deletion, not a predicted speedup.
     """
-    from .impr_features import normalize
+    from merlin.compiler.optimizations.registry import normalize
 
     ensure_registered()
     src = Path(src).resolve()
@@ -379,7 +379,7 @@ def revalidate_build_preparation(receipt):
 
 
 def _feature():
-    from .impr_features import ImprFeature
+    from merlin.compiler.optimizations.registry import ImprFeature
 
     return ImprFeature(
         name=FEATURE,
@@ -400,7 +400,7 @@ def ensure_registered() -> str:
     is safe, and necessary in EVERY process that normalizes a feature set -- `impr_features.normalize`
     rejects an unregistered name, and `wholemodel_proposer._composes` swallows that rejection as
     "does not compose", which would make the lever silently unproposable rather than reported."""
-    from .impr_features import known, register
+    from merlin.compiler.optimizations.registry import known, register
 
     if FEATURE not in known():
         register(_feature())

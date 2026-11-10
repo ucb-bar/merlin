@@ -52,8 +52,8 @@ def census(capsule: Mapping[str, Any], *, target: str, error: type[Exception] = 
     raw = source.read_bytes()
     import yaml
 
+    from merlin.capture.demands import model_op_demands_checked
     from merlin.targetgen import target_registry
-    from merlin.targetgen.capsule_source import model_op_demands_checked
     from merlin.targetgen.coverage_certificate import for_target
     from merlin.targetgen.routing import route_plan
 

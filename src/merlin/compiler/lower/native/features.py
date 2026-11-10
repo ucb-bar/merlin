@@ -8,7 +8,7 @@ from merlin.compiler.passes.contract import PipelineError
 def select_features(
     features: frozenset[str] | None, *, masked_contraction_effects=None, source_observation_effects=None
 ) -> frozenset[str]:
-    from merlin.llvmlower.impr_features import normalize
+    from merlin.compiler.optimizations.registry import normalize
 
     # `normalize` REJECTS an unregistered name, and the lowering runs in forked/child processes that
     # import this module without importing `llvmlower.lower` (where the runner-gated features are

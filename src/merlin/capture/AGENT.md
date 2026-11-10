@@ -33,3 +33,12 @@ The explicit original-program selection adapter reopens a pre-dispatch graph pin
 roster and joins fresh emitted trace, MLIR and complete session membership. It
 never extracts an original graph from post-capture metadata. These selections
 bind source-format bytes only; original-producer qualification remains separate.
+
+`pytorch` owns source capture and the original worker/transaction callbacks;
+`cachekey` binds the complete request and producer bytes. `receipts` validates
+realized arithmetic. `carriers` observes parsed linalg; `demands` owns complete
+source demand/interface correspondence. Neither imports corpus orchestration.
+`artifacts` preserves exact input/provenance and materialized-source admission;
+`loaders` owns public deterministic templates and `spec` captures authored
+reference programs. Capsule construction and workload declarations live under
+`merlin.experiments.corpus`, with unchanged source and numerical obligations.

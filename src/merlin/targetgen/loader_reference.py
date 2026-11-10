@@ -154,7 +154,8 @@ def captured_reference(capsule_dir: str | Path | None) -> dict | None:
     cached = golden_store.load_golden(directory)
     if cached is not None:
         return cached
-    from merlin.targetgen.capsule_source import M2MUnavailable, PytorchRefSource
+    from merlin.capture.artifacts import M2MUnavailable
+    from merlin.capture.pytorch import PytorchRefSource
 
     source = PytorchRefSource()
     if not source.available():

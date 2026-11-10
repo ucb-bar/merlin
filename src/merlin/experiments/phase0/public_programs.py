@@ -320,7 +320,7 @@ def performance(entry, *, trace, forms, facts_sha256):
 
 def verify_written(capsule, directory):
     """Reopen source, trace, receipt, weights and complete reference bindings."""
-    from merlin.targetgen.capsule_source import _portable_weights_reference
+    from merlin.capture.artifacts import _portable_weights_reference
 
     directory = Path(directory)
     capture = capsule.get("materialized_capture") or {}
@@ -351,8 +351,9 @@ def verify_written(capsule, directory):
     meta = None
     from merlin.targetgen.materialized_reference import reference_members as float_reference_members
 
-    references = (N.reference_members(receipt["artifacts"]) if native_integer
-                  else float_reference_members(receipt["artifacts"]))
+    references = (
+        N.reference_members(receipt["artifacts"]) if native_integer else float_reference_members(receipt["artifacts"])
+    )
     for member in ("meta.json", "inputs.npz", "input_order.json", *references):
         raw = (directory / ("source-capture-" + member)).read_bytes()
         if (

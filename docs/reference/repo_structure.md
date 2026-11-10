@@ -44,6 +44,7 @@ src/merlin/
     planning/            choose compatible regions and implementations
     partition/           materialize selected boundaries
     transforms/          reusable source-IR transformations
+    optimizations/       named strategy implementations and their ordered registry
     passes/              pass contracts, composition and execution adapters
     schedule/            shared tiling, retention, transfers and command ordering
     lower/
@@ -53,12 +54,14 @@ src/merlin/
       c/                 portable control, dispatch and handoff emission
     build/               compile/link products and selected platform images
       zephyr/            configuration from selected SoC/board/tree capabilities
+  capture/               shared source capture, arithmetic observations and artifact records
   runtime/               execute artifacts or prepare/collect external execution
   verification/          independent references, proofs and artifact checks
   target/spec/           reviewed numerical, instruction and effect declarations
   evaluation/capsule/    independent operation/model assessment and oracle execution
   experiments/
     definition.py        experiment definition validation and command selection
+    corpus/              corpus construction, declared workloads and source evidence
     phase0/              coverage derivation and conformance inputs
     phase1/              compiler authoring, brokers and independent grading
     phase2/              retained-compiler optimization and measurement
@@ -116,6 +119,28 @@ Independent assessment does not become compiler-owned by sharing the same wheel.
 Grading fingerprints include the actual evaluation package; native lowering receipts
 include its actual driver owners. Frozen SDK inventories and archived runs retain
 their original identities.
+
+The remaining named monoliths now have explicit owners:
+
+- `analysis/dse/guidance/insight_mining.py` composes the analyses in `insights/`.
+  Artifact intake, evidence, findings, workload signals, capture omissions,
+  primitive frontiers, audits and output emission each live with their algorithms.
+- Shared capture is in `capture/`: `pytorch.py` owns worker/cache transactions,
+  `cachekey.py` owns their source key, `receipts.py` owns arithmetic admission,
+  `demands.py` owns complete operation demands, and `artifacts.py` owns capture
+  records. Corpus writers and declared model workloads live in
+  `experiments/corpus/`; compiler planning does not import that orchestration.
+- `compiler/optimizations/registry.py` owns one ordered named-feature registry.
+  Strategy implementations live in the neighboring mechanism owners. Importing
+  the package or a strategy alone registers nothing. The record and registry
+  mechanics remain in `compiler/selection/features.py`; invocation is still in
+  `compiler/passes/`, IR rewrites in `compiler/transforms/`, and counted command
+  algorithms in `compiler/schedule/`. Target-specific lowering remains OOT.
+
+Capture/source receipts and native lowering receipts name these actual owners.
+The existing architecture-based prompt templates remain in `resources/prompts/`;
+current edit-surface catalogs point to the canonical strategy registry. Archived
+inputs and frozen SDK inventories retain their original source identities.
 
 The readability policy is in [CONTRIBUTING.md](../../CONTRIBUTING.md): one coherent
 concept per owner, decomposition review near 400 handwritten lines, ordinarily

@@ -7,8 +7,8 @@ from collections import Counter
 
 import numpy as np
 
+from merlin.capture.artifacts import _portable_weights_reference
 from merlin.common import mlir_query as query
-from merlin.targetgen.capsule_source import _portable_weights_reference
 
 from . import development_cohort as F
 

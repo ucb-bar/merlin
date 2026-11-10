@@ -243,6 +243,13 @@ existing authoring boundary. Frozen SDK6–26 inventories and archives retain th
 original membership and bytes; public import compatibility does not authorize
 exporting current code under an older release identity.
 
+Existing named pipeline/schedule optimization strategies are implemented in
+`compiler/optimizations/`, with one explicit ordered registry. The underlying
+`ImprFeature` and `FeatureRegistry` records remain in `compiler/selection/features.py`.
+This source reorganization changes no SDK27 public/source inventory and grants
+no candidate access to host-only optimization orchestration. Actual native
+lowering receipts bind the decomposed strategy sources as well as their driver.
+
 Grader source custody is separate from the editable pass library.
 `evaluation/capsule/bundle.py` owns frozen model-asset validation and runtime-bundle
 construction through the existing bundle worker.

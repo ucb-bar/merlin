@@ -624,7 +624,7 @@ def _r_decision_sharding_cost(cs, facts, ax):
 
 
 def _r_primitive_set_frontier(cs, facts, ax):
-    from merlin.analysis.dse.guidance import insight_mining as IM
+    from merlin.analysis.dse.guidance.insights import primitives as IM
 
     fr = IM.primitive_set_frontier(cs)
     singles = fr.get("singles", [])
@@ -680,7 +680,7 @@ _NEC_ABBR = {"necessary": "N", "useful": "U", "possible": "P", "blocked": "B", "
 
 
 def _r_boundary_necessity_matrix(cs, facts, ax):
-    from merlin.analysis.dse.guidance import insight_mining as IM
+    from merlin.analysis.dse.guidance.insights import necessity as IM
 
     nec = IM.abstraction_necessity(cs)
     wls = nec["workloads"]
@@ -750,7 +750,7 @@ def _r_decision_sharding_per_top_op(cs, facts, ax):
 
 
 def _r_primitive_frontier_by_threshold(cs, facts, ax):
-    from merlin.analysis.dse.guidance import insight_mining as IM
+    from merlin.analysis.dse.guidance.insights import primitives as IM
 
     fro = IM.primitive_frontier_robustness(cs)
     if not fro["rows"]:
@@ -770,7 +770,7 @@ def _r_primitive_frontier_by_threshold(cs, facts, ax):
 
 
 def _r_macro_vs_micro_primitive_coverage(cs, facts, ax):
-    from merlin.analysis.dse.guidance import insight_mining as IM
+    from merlin.analysis.dse.guidance.insights import primitives as IM
 
     fro = IM.primitive_frontier_robustness(cs)
     rows = sorted((r for r in fro["rows"] if r["threshold_pct"] == 10), key=lambda r: r["set_size"])
@@ -789,7 +789,7 @@ def _r_macro_vs_micro_primitive_coverage(cs, facts, ax):
 
 
 def _r_required_compute_envelope(cs, facts, ax):
-    from merlin.analysis.dse.guidance import insight_mining as IM
+    from merlin.analysis.dse.guidance.insights import requirements as IM
 
     env = IM.timing_requirement_envelope(cs)
     rows = [r for r in env["rows"] if r["K_basis"] == "configured" and r["deadline_basis"] == "sweep"]
@@ -808,7 +808,7 @@ def _r_required_compute_envelope(cs, facts, ax):
 
 
 def _r_required_memory_movement_envelope(cs, facts, ax):
-    from merlin.analysis.dse.guidance import insight_mining as IM
+    from merlin.analysis.dse.guidance.insights import requirements as IM
 
     env = IM.timing_requirement_envelope(cs)
     rows = [
@@ -834,7 +834,7 @@ def _r_required_memory_movement_envelope(cs, facts, ax):
 
 
 def _r_required_command_rate_envelope(cs, facts, ax):
-    from merlin.analysis.dse.guidance import insight_mining as IM
+    from merlin.analysis.dse.guidance.insights import requirements as IM
 
     env = IM.timing_requirement_envelope(cs)
     rows = [r for r in env["rows"] if r["K_basis"] == "configured" and r["deadline_basis"] == "sweep"]
@@ -888,7 +888,7 @@ def _r_visible_linear_fraction(cs, facts, ax):
 
 
 def _r_workload_influence_loo_delta(cs, facts, ax):
-    from merlin.analysis.dse.guidance import insight_mining as IM
+    from merlin.analysis.dse.guidance.insights import influence as IM
 
     inf = IM.macro_micro_influence(cs)
     rows = inf["rows"]
@@ -1029,7 +1029,7 @@ def _r_capture_fidelity(cs, facts, ax):
     import matplotlib.patches as mpatches
     from matplotlib.colors import ListedColormap
 
-    from merlin.analysis.dse.guidance import insight_mining as IM
+    from merlin.analysis.dse.guidance.insights import capture as IM
 
     cf = IM.capture_fidelity(cs)
     wls, matrix = cf.get("workloads", []), cf.get("matrix", [])
@@ -1322,7 +1322,6 @@ def _r_sharding_comm_tradeoff(cs, facts, ax):
     """The cost side of sharding: extra communication bytes (partial-sum reductions / broadcasts) added
     per shard count, by axis. Read with sharding_scalability: M/N split cheaply (no reduction), K-axis
     needs a partial-sum reduction -> higher comm. HW-independent (structural bytes), not a perf claim."""
-    from collections import defaultdict
 
     sh = _rows(cs / "sharding_table.csv")
     if not sh:
@@ -1396,7 +1395,7 @@ def _r_capture_level_ablation(cs, facts, ax):
     flat (nothing named) -> high_level (attention/softmax/norm named) -> quant_qdq (low-bit metadata)."""
     from collections import defaultdict
 
-    from merlin.analysis.dse.guidance import insight_mining as IM
+    from merlin.analysis.dse.guidance.insights import capture as IM
 
     rows = IM.capture_level_ablation(cs)["rows"]
     if not rows:

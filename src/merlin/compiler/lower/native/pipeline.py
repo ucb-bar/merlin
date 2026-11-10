@@ -84,7 +84,14 @@ def implementation_paths() -> tuple[Path, ...]:
         "merlin.compiler.transforms.host_broadcast",
         "merlin.compiler.transforms.host_integer_math",
     )
-    return (Path(__file__), *(Path(import_module(name).__file__) for name in owners))
+    from merlin.compiler.optimizations import implementation_paths as optimization_sources
+
+    return (
+        Path(__file__),
+        *(Path(import_module(name).__file__) for name in owners),
+        *optimization_sources(),
+        module_source_path("merlin").parent / "llvmlower/impr_features.py",
+    )
 
 
 @host_admitted
@@ -163,7 +170,7 @@ def lower_to_llvm_ir(
         {str(path.relative_to(module_source_path("merlin").parent)): path for path in implementation_paths()}
     )
     from merlin.compiler.lower.native.features import select_features
-    from merlin.llvmlower.impr_features import apply_schedule
+    from merlin.compiler.optimizations.registry import apply_schedule
 
     feats = select_features(
         features,

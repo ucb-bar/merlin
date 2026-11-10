@@ -638,7 +638,7 @@ def main() -> int:
     for i, tok in enumerate(argv):
         if tok == "--ours" and i + 1 < len(argv):
             feats = [f for f in argv[i + 1].split(",") if f]
-            from ...llvmlower import impr_features as _F
+            from merlin.compiler.optimizations import registry as _F
 
             unknown = [f for f in feats if f not in _F._REGISTRY]
             if unknown:

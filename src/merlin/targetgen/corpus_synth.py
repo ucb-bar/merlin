@@ -125,7 +125,7 @@ def available_ops() -> set[str]:
     from merlin.targetgen.corpus_spec import BUILDERS
 
     try:
-        from merlin.targetgen.capsule_source import _OP_BODIES
+        from merlin.capture.loaders import _OP_BODIES
 
         bodies = set(_OP_BODIES)
     except Exception:  # noqa: BLE001 -- no torch bodies is not zero ops
@@ -239,7 +239,7 @@ def source_for_op(op: str) -> str | None:
     if op in BUILDERS:
         return None
     try:
-        from merlin.targetgen.capsule_source import _OP_BODIES
+        from merlin.capture.loaders import _OP_BODIES
     except Exception:  # noqa: BLE001 -- no bodies available
         return None
     return "pytorch" if op in _OP_BODIES else None

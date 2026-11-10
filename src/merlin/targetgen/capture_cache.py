@@ -14,6 +14,26 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
+# The decomposed source producers replace the former capsule_source monolith.
+# This is a source commitment only, not an import or candidate access grant.
+CAPTURE_IMPLEMENTATIONS = (
+    "merlin.capture.artifacts",
+    "merlin.capture.receipts",
+    "merlin.capture.loaders",
+    "merlin.capture.pytorch",
+    "merlin.capture.cachekey",
+    "merlin.capture.numerics",
+    "merlin.capture.carriers",
+    "merlin.capture.demands",
+    "merlin.capture.spec",
+    "merlin.experiments.corpus.source_evidence",
+    "merlin.experiments.corpus.pytorch_sources",
+    "merlin.experiments.corpus.model_inputs",
+    "merlin.experiments.corpus.model_requirements",
+    "merlin.experiments.corpus.model_sources",
+    "merlin.experiments.corpus.spec_sources",
+)
+
 
 def implementation_identity() -> dict:
     """Bind direct Merlin capture/normalization owners without importing their implementations.
@@ -25,6 +45,7 @@ def implementation_identity() -> dict:
     from merlin.common.paths import module_source_path
 
     owners = (
+        *CAPTURE_IMPLEMENTATIONS,
         "merlin.targetgen.capsule_source",
         "merlin.targetgen.capture_cache",
         "merlin.targetgen._m2m_capture_worker",
@@ -82,7 +103,11 @@ def implementation_identity() -> dict:
         # source owners and the physical portable entry independently of which
         # spelling was imported first; find_spec would follow the live alias.
         root = Path(__file__).resolve().parent.parent
-        if owner == "merlin.targetgen._recipe_quantizer":
+        if owner in CAPTURE_IMPLEMENTATIONS:
+            # Resolve the reviewed physical family without importing research
+            # parents merely to observe their source bytes.
+            path = root.joinpath(*owner.split(".")[1:]).with_suffix(".py")
+        elif owner == "merlin.targetgen._recipe_quantizer":
             path = root / "targetgen/_recipe_quantizer.py"
         elif owner == "merlin.compiler.quantization.torchao":
             path = root / "compiler/quantization/torchao/__init__.py"

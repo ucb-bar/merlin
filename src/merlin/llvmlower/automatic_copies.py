@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import os
 
-from .impr_features import normalize
+from merlin.compiler.optimizations.registry import normalize
+
 from .optional_passes import switched
 
 FEATURES = frozenset({"fold_uniform_fill_copy", "specialize_contiguous_copy"})

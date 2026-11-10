@@ -90,7 +90,7 @@ def _host_conditions() -> dict:
     return out
 
 
-_MERLIN_PY = repo_root() / "merlin" / "python"
+_MERLIN_PY = repo_root() / "src"
 
 
 def _sha256_file(path: Path) -> str:
@@ -768,6 +768,10 @@ def main() -> None:
         _MERLIN_PY / "merlin" / "runtime" / "backends" / "zephyr_model.py",
         _MERLIN_PY / "merlin" / "mining" / "k1.py",
     ]
+    from merlin.compiler.lower.native.pipeline import implementation_paths as native_sources
+    from merlin.compiler.optimizations import implementation_paths as optimization_sources
+
+    _src.extend((*optimization_sources(), *native_sources()))
     _src = [q for q in _src if q.is_file()]
     try:
         _src_digest = _prov.source_digest(_src)

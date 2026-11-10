@@ -27,16 +27,18 @@ def edit_cflags(flags: list[str]) -> list[str]:
 
 
 def ensure_registered() -> str:
-    from .impr_features import ImprFeature, known, register
+    from merlin.compiler.optimizations.registry import ImprFeature, known, register
 
     if FEATURE not in known():
-        register(ImprFeature(
-            name=FEATURE,
-            action_class="HEURISTIC",
-            description=(
-                "Select stock O3 for the whole-model object, preserving all numeric/ISA flags; "
-                "explicit and default off, with original output and target checks."
-            ),
-            edit_cflags=edit_cflags,
-        ))
+        register(
+            ImprFeature(
+                name=FEATURE,
+                action_class="HEURISTIC",
+                description=(
+                    "Select stock O3 for the whole-model object, preserving all numeric/ISA flags; "
+                    "explicit and default off, with original output and target checks."
+                ),
+                edit_cflags=edit_cflags,
+            )
+        )
     return FEATURE

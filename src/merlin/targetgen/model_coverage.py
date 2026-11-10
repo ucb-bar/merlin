@@ -202,9 +202,9 @@ def typed_static_integer_demands(source, in_fmt, weight_fmt=None, *, source_kind
     from xdsl.dialects.linalg.attrs import IteratorType, IteratorTypeAttr
     from xdsl.dialects.linalg.ops import GenericOp
 
+    from merlin.capture.demands import ModelDemandIncomplete
     from merlin.common import mlir_query as mq
     from merlin.compiler.ir import contraction_shapes as ks
-    from merlin.targetgen.capsule_source import ModelDemandIncomplete
     from merlin.targetgen.routing import OpDemand
     from merlin.transforms.dense_ir import static_zero_integer_matmul_geometry
     from merlin.xdsl_dialects.lowering import contraction_coverage as cc

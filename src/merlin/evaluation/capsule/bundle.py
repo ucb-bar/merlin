@@ -273,7 +273,7 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int, artifact_root: Path | 
             if manifest_asset is not None:
                 shutil.copyfile(manifest_asset, bundle / "weights.safetensors.manifest.json")
 
-            from merlin.targetgen.capsule_source import _m2m_python
+            from merlin.capture.pytorch import _m2m_python
 
             torch_python = _m2m_python()
             worker = Path(__file__).with_name("bundle_worker.py").resolve(strict=True)

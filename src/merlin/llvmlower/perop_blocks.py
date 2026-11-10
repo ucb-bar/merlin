@@ -612,7 +612,7 @@ def ensure_registered() -> None:
     feature registry: a name registered only in the parent fails to resolve in the child (the exact
     failure ``impr_features._try_lazy_register`` exists for).
     """
-    from .impr_features import ImprFeature, known, register
+    from merlin.compiler.optimizations.registry import ImprFeature, known, register
 
     if CONV_ARM_FEATURE in known():
         return

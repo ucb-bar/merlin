@@ -145,7 +145,7 @@ def inapplicable_features(features, op_counts: dict[str, int]) -> dict[str, dict
     whose schedule matches by interface rather than by name, are omitted -- this reports only what it
     can actually establish, on the same terms as :func:`applicability`.
     """
-    from merlin.llvmlower.impr_features import get, known
+    from merlin.compiler.optimizations.registry import get, known
 
     out: dict[str, dict] = {}
     for name in sorted(set(features or ())):

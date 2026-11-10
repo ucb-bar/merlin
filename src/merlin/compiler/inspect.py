@@ -82,7 +82,7 @@ def native_pipelines(features: frozenset[str] | None = None) -> dict[str, list[s
     from pathlib import PurePath
 
     from merlin.compiler.lower.native import pipeline as P
-    from merlin.llvmlower.impr_features import normalize
+    from merlin.compiler.optimizations.registry import normalize
     from merlin.llvmlower.optional_passes import selected_features
 
     feats = normalize(selected_features(features)) or frozenset()

@@ -98,14 +98,15 @@ def recheck(selected):
 
 def prepare(selected, destination, monkeypatch):
     """Return a LIVE materialized owner only after genuine source/value/ABI checks."""
+    from merlin.capture import pytorch as source_pytorch
     from merlin.common import quant_formats as QF
     from merlin.compiler.frontend.materialized import MaterializedModelInputs
     from merlin.evaluation.capsule import bundle_worker
     from merlin.experiments.capture_execution.m2m_origin import git_origin
+    from merlin.experiments.corpus import model_sources as source_model_sources
     from merlin.experiments.phase0 import capture_execution_attestation as A
     from merlin.experiments.phase0 import capture_selection as selection_owner
     from merlin.experiments.phase0 import sealed_native_program as N
-    from merlin.targetgen import capsule_source as S
     from merlin.targetgen import target_registry as TR
     from merlin.targetgen.contract import schemas as CS
     from merlin.targetgen.corpus_spec import CorpusBinding
@@ -169,11 +170,11 @@ def prepare(selected, destination, monkeypatch):
             N.Source.available,
             N.Source.capture_loader,
             selection_owner.load,
-            S.write_model_capsule,
+            source_model_sources.write_model_capsule,
             TR.observed_contract,
             TR.observed_contract.__wrapped__,
             git_origin,
-            S._m2m_python,
+            source_pytorch._m2m_python,
             capsule_capsule_common.load_capsule,
             capsule_bundle._model_runtime_bundle,
             capsule_bundle._content_identity,
@@ -264,7 +265,9 @@ def prepare(selected, destination, monkeypatch):
         source_reference="operator-selected complete public development fixture",
     )
     with TR.observed_contract(target, quiet, source_path=quiet_path):
-        capsule_dir = S.write_model_capsule(entry, binding, destination / "capsules", source=source_owner)
+        capsule_dir = source_model_sources.write_model_capsule(
+            entry, binding, destination / "capsules", source=source_owner
+        )
     current()
     assert source_owner.attestations == [attestation]
     capsule = capsule_capsule_common.load_capsule(capsule_dir, contract=root / "src/merlin/resources/contracts")

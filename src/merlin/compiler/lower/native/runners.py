@@ -298,7 +298,7 @@ def _accum_microkernel_v3_features() -> frozenset[str]:
     """Names of the accumulator-resident micro-kernel v3 features (the ones whose pipeline splices the
     SCALARIZE_MARKER and need the two-stage A-scalarization runner). Imported lazily so importing
     pipeline never pulls accum_microkernel / impr_features at module load."""
-    from merlin.llvmlower.impr_features import ACCUM_RESIDENT_V3_NAMES
+    from merlin.compiler.optimizations.registry import ACCUM_RESIDENT_V3_NAMES
 
     return frozenset(ACCUM_RESIDENT_V3_NAMES)
 

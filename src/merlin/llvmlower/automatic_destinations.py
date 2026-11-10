@@ -19,6 +19,7 @@ from xdsl.utils.exceptions import ParseError
 def implementation_paths():
     """Existing pass-owner closure, also retained through ordinary final linking."""
     from merlin.common import mlir_query
+    from merlin.compiler.optimizations import implementation_paths as optimization_sources
     from merlin.transforms import certificates, pipeline_state
 
     from . import destination_check, insert_slice_destination, optional_passes, quant_round_check
@@ -40,6 +41,7 @@ def implementation_paths():
         *(Path(__file__).with_name(name) for name in ("lower.py", "impr_features.py", "selfcopy.py", "toolchain.py")),
         Path(__file__).with_name("source_optimization_request.py"),
         Path(__file__).with_name("source_optimization_selection.py"),
+        *optimization_sources(),
     )
 
 

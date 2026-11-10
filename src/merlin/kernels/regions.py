@@ -67,11 +67,11 @@ def _ep(kind, seam, file, how, registry=None, forkable=True):
     return EditPoint(kind, seam, file, how, registry, forkable)
 
 
-_IMPR = "merlin.llvmlower.impr_features.register"
-_PQI = "merlin/python/merlin/llvmlower/passes_quant_int.py"
-_PIPE = "merlin/python/merlin/llvmlower/pipeline.py"
-_IF = "merlin/python/merlin/llvmlower/impr_features.py"
-_FS = "merlin/python/merlin/mining/from_strategy.py"
+_IMPR = "merlin.compiler.optimizations.registry.register"
+_PQI = "src/merlin/llvmlower/passes_quant_int.py"
+_PIPE = "src/merlin/compiler/lower/native/pipeline.py"
+_IF = "src/merlin/compiler/optimizations/registry.py"
+_FS = "src/merlin/mining/from_strategy.py"
 
 REGIONS: dict[str, Region] = {
     r.key: r
@@ -84,15 +84,15 @@ REGIONS: dict[str, Region] = {
             "Bring the flattened exported graph into our linalg IR; op coverage; the graph the CCA "
             "exploration starts from.",
             (
-                "merlin/python/merlin/frontends/linalg_mlir.py",
-                "merlin/python/merlin/frontends/facts.py",
-                "merlin/python/merlin/frontends/registry.py",
+                "src/merlin/frontends/linalg_mlir.py",
+                "src/merlin/frontends/facts.py",
+                "src/merlin/frontends/registry.py",
             ),
             [
                 _ep(
                     "REGISTRY",
                     "frontend:adapter",
-                    "merlin/python/merlin/frontends/registry.py",
+                    "src/merlin/frontends/registry.py",
                     "register a frontend adapter (model2MLIR/gguf/...) for a new graph source",
                 )
             ],
@@ -102,12 +102,12 @@ REGIONS: dict[str, Region] = {
             "frontend",
             "Decomposition & numerics / mixed-precision policy",
             "Per-module format rules + op decomposition/normalization before compute lowering.",
-            ("merlin/python/merlin/frontends/mixed_precision.py", "merlin/python/merlin/frontends/quant_ext.py"),
+            ("src/merlin/frontends/mixed_precision.py", "src/merlin/frontends/quant_ext.py"),
             [
                 _ep(
                     "DATA",
                     "frontend:mixed_precision_policy",
-                    "merlin/python/merlin/frontends/mixed_precision.py",
+                    "src/merlin/frontends/mixed_precision.py",
                     "add a MixedPrecisionPolicy rule (per-module dtype/format)",
                 )
             ],
@@ -118,7 +118,7 @@ REGIONS: dict[str, Region] = {
             "global",
             "Quantization / QDQ <-> real-quant",
             "Real quantized compute (i8xi8->i32 vwmacc) vs fake-quant (dequant back to bf16/fp32).",
-            (_PQI, "merlin/python/merlin/frontends/quant_ext.py"),
+            (_PQI, "src/merlin/frontends/quant_ext.py"),
             [
                 _ep(
                     "KNOB",
@@ -129,7 +129,7 @@ REGIONS: dict[str, Region] = {
                 _ep(
                     "PASS",
                     "quant:apply_quant",
-                    "merlin/python/merlin/llvmlower/quant_passes.py",
+                    "src/merlin/llvmlower/quant_passes.py",
                     "register a QuantPass in quant_passes (toggle/reorder the int8 datapath) — the six "
                     "lower_*_int passes are now a registry, not a hardcoded sequence",
                     registry="merlin.llvmlower.quant_passes",
@@ -170,14 +170,14 @@ REGIONS: dict[str, Region] = {
             "Dispatch generation / clustering",
             "Outline func @forward into per-dispatch kernels + driver; fusion-root grouping.",
             (
-                "merlin/python/merlin/xdsl_dialects/lowering/outline.py",
-                "merlin/python/merlin/runtime/dispatch_runtime.py",
+                "src/merlin/xdsl_dialects/lowering/outline.py",
+                "src/merlin/runtime/dispatch_runtime.py",
             ),
             [
                 _ep(
                     "HEURISTIC",
                     "outline:clustering",
-                    "merlin/python/merlin/xdsl_dialects/lowering/outline.py",
+                    "src/merlin/xdsl_dialects/lowering/outline.py",
                     "GAP: clustering granularity is internal to the pass; expose a clustering-policy param",
                     forkable=False,
                 )
@@ -189,14 +189,14 @@ REGIONS: dict[str, Region] = {
             "Dispatch scheduling (cross-dispatch)",
             "Cross-dispatch order + multicore partition + the runtime program's memory/parallel plan.",
             (
-                "merlin/python/merlin/runtime/program.py",
-                "merlin/python/merlin/xdsl_dialects/lowering/schedule_dispatch.py",
+                "src/merlin/runtime/program.py",
+                "src/merlin/xdsl_dialects/lowering/schedule_dispatch.py",
             ),
             [
                 _ep(
                     "DATA",
                     "program:schedule",
-                    "merlin/python/merlin/xdsl_dialects/lowering/schedule_dispatch.py",
+                    "src/merlin/xdsl_dialects/lowering/schedule_dispatch.py",
                     "GAP: partitioner has no registrable policy hook yet",
                     forkable=False,
                 )
@@ -242,7 +242,7 @@ REGIONS: dict[str, Region] = {
             "kernel-codegen",
             "Instruction selection",
             "Which instruction form is emitted (fused vfmacc vs mul_add; custom ISA via .insn).",
-            (_IF, "merlin/python/merlin/llvmlower/custom_isa.py"),
+            (_IF, "src/merlin/llvmlower/custom_isa.py"),
             [
                 _ep(
                     "PASS",
@@ -254,7 +254,7 @@ REGIONS: dict[str, Region] = {
                 _ep(
                     "CODEGEN",
                     "custom_isa:inline_asm",
-                    "merlin/python/merlin/llvmlower/custom_isa.py",
+                    "src/merlin/llvmlower/custom_isa.py",
                     "declare a custom instruction via merlin.inline_asm -> .insn (no LLVM fork)",
                 ),
             ],
@@ -265,12 +265,12 @@ REGIONS: dict[str, Region] = {
             "kernel-codegen",
             "Instruction scheduling",
             "Instruction ordering / latency hiding — largely the LLVM backend via clang -O.",
-            ("merlin/python/merlin/llvmlower/codegen.py",),
+            ("src/merlin/llvmlower/codegen.py",),
             [
                 _ep(
                     "FLAG",
                     "cflag:sched",
-                    "merlin/python/merlin/llvmlower/codegen.py",
+                    "src/merlin/llvmlower/codegen.py",
                     "GAP: scheduling is LLVM's; only reachable via clang flags — no direct merlin seam",
                     forkable=False,
                 )
@@ -281,7 +281,7 @@ REGIONS: dict[str, Region] = {
             "kernel-codegen",
             "Inner-loop computation",
             "The micro-kernel body (e.g. vectorized transcendental activation polynomial).",
-            ("merlin/python/merlin/llvmlower/accum_microkernel.py", _IF),
+            ("src/merlin/llvmlower/accum_microkernel.py", _IF),
             [
                 _ep(
                     "PASS",
@@ -315,7 +315,7 @@ REGIONS: dict[str, Region] = {
             "kernel-codegen",
             "Accumulation / accumulator residency",
             "Keep the accumulator register-resident across the reduction; reduction form (tree/vredsum).",
-            (_IF, "merlin/python/merlin/llvmlower/accum_microkernel.py"),
+            (_IF, "src/merlin/llvmlower/accum_microkernel.py"),
             [
                 _ep(
                     "PASS",
@@ -337,7 +337,7 @@ REGIONS: dict[str, Region] = {
             "memory",
             "Bufferization & memory planning",
             "Tensor->memref bufferization, out-param buffers, the AOT static arena plan.",
-            (_PIPE, "merlin/python/merlin/xdsl_dialects/lowering/arena_plan.py"),
+            (_PIPE, "src/merlin/xdsl_dialects/lowering/arena_plan.py"),
             [
                 _ep(
                     "PASS",
@@ -398,22 +398,22 @@ REGIONS: dict[str, Region] = {
             "ASM / instruction emission (codegen)",
             "Backend selection registry + per-backend codegen + cflags.",
             (
-                "merlin/python/merlin/runtime/backends/base.py",
-                "merlin/python/merlin/runtime/backends/rvv_codegen.py",
-                "merlin/python/merlin/llvmlower/codegen.py",
+                "src/merlin/runtime/backends/base.py",
+                "src/merlin/runtime/backends/rvv_codegen.py",
+                "src/merlin/llvmlower/codegen.py",
             ),
             [
                 _ep(
                     "REGISTRY",
                     "backend:_REGISTRY",
-                    "merlin/python/merlin/runtime/backends/base.py",
+                    "src/merlin/runtime/backends/base.py",
                     "register a target backend (name -> module -> TargetClass) — one entry",
                     "merlin.runtime.backends.base",
                 ),
                 _ep(
                     "FLAG",
                     "cflag:march",
-                    "merlin/python/merlin/runtime/backends/zephyr_model.py",
+                    "src/merlin/runtime/backends/zephyr_model.py",
                     "add/adjust an RVV cflag / march feature",
                 ),
             ],
@@ -424,12 +424,12 @@ REGIONS: dict[str, Region] = {
             "runtime",
             "Runtime layout & encodings",
             "Extensible program/command-buffer formats (opcodes, capability flags, im2col recipes).",
-            ("merlin/python/merlin/runtime/program.py", "merlin/python/merlin/runtime/commandbuffer.py"),
+            ("src/merlin/runtime/program.py", "src/merlin/runtime/commandbuffer.py"),
             [
                 _ep(
                     "DATA",
                     "program:opcodes",
-                    "merlin/python/merlin/runtime/program.py",
+                    "src/merlin/runtime/program.py",
                     "add a namespaced opcode / capability flag / layout-encoding to the program format",
                 )
             ],
@@ -449,12 +449,12 @@ REGIONS: dict[str, Region] = {
             "runtime",
             "Ahead-of-time (once) optimizations",
             "AOT-once products: the static arena memory plan, prepacked weights.",
-            ("merlin/python/merlin/xdsl_dialects/lowering/arena_plan.py",),
+            ("src/merlin/xdsl_dialects/lowering/arena_plan.py",),
             [
                 _ep(
                     "DATA",
                     "arena:plan",
-                    "merlin/python/merlin/xdsl_dialects/lowering/arena_plan.py",
+                    "src/merlin/xdsl_dialects/lowering/arena_plan.py",
                     "extend the AOT arena/prepack plan emitted once at compile time",
                 )
             ],
@@ -465,12 +465,12 @@ REGIONS: dict[str, Region] = {
             "runtime",
             "HW synchronization",
             "Barrier / hart-partition / event synchronization emitted for multicore execution.",
-            ("merlin/python/merlin/runtime/backends/rvv_codegen.py",),
+            ("src/merlin/runtime/backends/rvv_codegen.py",),
             [
                 _ep(
                     "CODEGEN",
                     "codegen:hw_sync",
-                    "merlin/python/merlin/runtime/backends/rvv_codegen.py",
+                    "src/merlin/runtime/backends/rvv_codegen.py",
                     "GAP: barrier/sync is hand-written per codegen backend; no sync-strategy registry yet",
                     forkable=False,
                 )
@@ -488,14 +488,14 @@ REGIONS: dict[str, Region] = {
             "Optimization heuristics (when to apply what)",
             "The CCA->lever router + escalation ladder; DSE candidate selection.",
             (
-                "merlin/python/merlin/kernels/action_catalog.py",
+                "src/merlin/kernels/action_catalog.py",
                 "src/merlin/analysis/dse/guidance/candidates.py",
             ),
             [
                 _ep(
                     "HEURISTIC",
                     "route:_RVV_ROUTES",
-                    "merlin/python/merlin/kernels/action_catalog.py",
+                    "src/merlin/kernels/action_catalog.py",
                     "add a _Route(axis, when, action_class, target_seam, intended_facet) row",
                 )
             ],
@@ -508,13 +508,13 @@ REGIONS: dict[str, Region] = {
             "agentic target-dialect generation).",
             (
                 "src/merlin/analysis/dse/search/cost_model.py",
-                "merlin/python/merlin/targetgen/capability_manifests.py",
+                "src/merlin/targetgen/capability_manifests.py",
             ),
             [
                 _ep(
                     "DATA",
                     "capability:manifest",
-                    "merlin/python/merlin/targetgen/capability_manifests.py",
+                    "src/merlin/targetgen/capability_manifests.py",
                     "add/extend a target-capability manifest (datatype -> compute-unit)",
                 )
             ],
@@ -527,15 +527,15 @@ REGIONS: dict[str, Region] = {
             "Generate a new target's dialect + contract + interface + lowering scaffolding — where the "
             "eventual agentic target-dialect generation for any accelerator plugs into this same registry.",
             (
-                "merlin/python/merlin/targetgen/cli.py",
-                "merlin/python/merlin/xdsl_dialects/contract.py",
-                "merlin/python/merlin/xdsl_dialects/interface.py",
+                "src/merlin/targetgen/cli.py",
+                "src/merlin/xdsl_dialects/contract.py",
+                "src/merlin/xdsl_dialects/interface.py",
             ),
             [
                 _ep(
                     "DIALECT",
                     "targetgen:emit",
-                    "merlin/python/merlin/targetgen/cli.py",
+                    "src/merlin/targetgen/cli.py",
                     "generate a target dialect/contract/interface via merlin-targetgen build --emit ...",
                 )
             ],

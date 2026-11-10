@@ -230,7 +230,8 @@ def fuse_round_clamp_convert(module, report_out: "dict | None" = None) -> int:
 
 def ensure_registered() -> str:
     """Register the isolated rewrite and explicit vectorized composition. Idempotent."""
-    from . import impr_features as F
+    from merlin.compiler.optimizations import registry as F
+
     from . import shared_feature_registry as _shared
 
     ensure_shared_registered()

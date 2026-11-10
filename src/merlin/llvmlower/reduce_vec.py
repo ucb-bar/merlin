@@ -415,7 +415,7 @@ def splice_reduction_arms(text: str, *, lanes: int, min_rank: int, max_rank: int
 
 def ensure_registered() -> str:
     """Register the feature if it is not already. Idempotent; returns :data:`FEATURE`."""
-    from . import impr_features as F
+    from merlin.compiler.optimizations import registry as F
 
     if FEATURE in F.known():
         return FEATURE

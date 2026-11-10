@@ -13,8 +13,8 @@ from pathlib import Path, PurePosixPath
 
 import numpy as np
 
+from merlin.capture.artifacts import CapsuleArtifacts
 from merlin.experiments.capture_execution import native_integer
-from merlin.targetgen.capsule_source import CapsuleArtifacts
 
 from . import capture_selection
 from .capture_execution_attestation import require_verified_execution

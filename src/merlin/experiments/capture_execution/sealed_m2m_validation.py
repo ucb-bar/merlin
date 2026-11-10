@@ -145,14 +145,14 @@ def _validate_snapshots(
 def _materialized(
     output: Path, source: Path, output_mount: Path, *, worker_member: str = "worker.py"
 ) -> dict[str, Any]:
+    from merlin.targetgen.application_inventory import verify_capture_receipt
+
     from .sealed_m2m import (
         SealedM2MError,
         _file_digest,
         json,
         strict_json,
     )
-
-    from merlin.targetgen.application_inventory import verify_capture_receipt
 
     result = verify_capture_receipt(output / "model.mlir")
     if result.get("status") != "verified_materialized":
@@ -195,17 +195,20 @@ def _materialized(
     reference_sources = (payload.get("tool") or {}).get("reference_sources")
     if reference_sources is not None:
         member = "merlin/targetgen/_dynamic_integer_reference.py"
-        if (not isinstance(reference_sources, dict) or set(reference_sources) != {member}
-                or not (source / "merlin-src" / member).is_file()
-                or _file_digest(source / "merlin-src" / member) != reference_sources[member]):
+        if (
+            not isinstance(reference_sources, dict)
+            or set(reference_sources) != {member}
+            or not (source / "merlin-src" / member).is_file()
+            or _file_digest(source / "merlin-src" / member) != reference_sources[member]
+        ):
             raise SealedM2MError("independent reference source differs from its selected snapshot")
     return {"status": result["status"], "receipt_sha256": result["receipt_sha256"]}
 
 
 def _materialized_v2(output: Path, source: Path, output_mount: Path, plan: dict[str, Any]) -> dict[str, Any]:
     from .sealed_m2m import (
-        SealedM2MError,
         _FLOAT_DTYPES,
+        SealedM2MError,
         _materialized,
         _recipe_selection,
         _worker_options,
@@ -246,8 +249,11 @@ def _materialized_v2(output: Path, source: Path, output_mount: Path, plan: dict[
             raise SealedM2MError("int8 recipe snapshot differs from the selected plan")
         stats = metadata.get("quantization_stats") or {}
         agreement = (metadata.get("integerization_receipt") or {}).get("golden_agreement") or {}
-        reference_kind = ("dynamic_integer" if (metadata.get("integerization_receipt") or {}).get("schema")
-                          == "merlin.dynamic_integer_reference.v1" else "pt2e_integer")
+        reference_kind = (
+            "dynamic_integer"
+            if (metadata.get("integerization_receipt") or {}).get("schema") == "merlin.dynamic_integer_reference.v1"
+            else "pt2e_integer"
+        )
         if (
             metadata.get("scheme") != "int8_static_act_int8_weight"
             or metadata.get("recipe_sha256") != recipe.get("recipe_sha256")
@@ -264,13 +270,13 @@ def _materialized_v2(output: Path, source: Path, output_mount: Path, plan: dict[
 
 def _dynamic_integer_census(meta: dict, stats: dict, stage: Path, emitted: int, exported: int) -> int:
     """Use the same byte-bound recipe/trace census as the application inventory."""
+    from merlin.capture.integerization import dynamic_integerization_count, dynamic_integerization_projection
+    from merlin.targetgen.frontend_trace import loads_frontend_trace
+
     from .sealed_m2m import (
         SealedM2MError,
         _file_digest,
     )
-
-    from merlin.capture.integerization import dynamic_integerization_count, dynamic_integerization_projection
-    from merlin.targetgen.frontend_trace import loads_frontend_trace
 
     if stats.get("dynamic_contractions") is None:
         return 0  # The caller keeps the historical emitted == exported requirement.
@@ -298,9 +304,11 @@ def _dynamic_integer_census(meta: dict, stats: dict, stage: Path, emitted: int, 
 
 def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[str, Any]) -> dict[str, Any]:
     """Verify the complete saved ABI, including every declared session program."""
+    from merlin.capture.integerization import contraction_partition
+
     from .sealed_m2m import (
-        SealedM2MError,
         _FLOAT_DTYPES,
+        SealedM2MError,
         _dynamic_integer_census,
         _file_digest,
         _materialized,
@@ -312,12 +320,10 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
         strict_json,
     )
 
-    from merlin.capture.integerization import contraction_partition
-
     native = native_integer.selected(plan.get("worker_options"))
 
     def native_work(meta, stage):
-        from merlin.targetgen.capsule_source import _require_materialized_contraction
+        from merlin.capture.receipts import _require_materialized_contraction
 
         try:
             native_integer.validate(stage, meta, plan)

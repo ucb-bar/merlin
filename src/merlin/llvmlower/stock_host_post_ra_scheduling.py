@@ -19,9 +19,7 @@ def edit_cflags(flags: list[str]) -> list[str]:
         key, separator, value = option.lstrip("-").partition("=")
         if key != _OPTION:
             continue
-        forwarded = flag.startswith("-mllvm=") or (
-            position > 0 and result[position - 1] == "-mllvm"
-        )
+        forwarded = flag.startswith("-mllvm=") or (position > 0 and result[position - 1] == "-mllvm")
         if not forwarded or separator and value not in {"1", "true"}:
             raise ValueError("post-allocation scheduling refuses a conflicting backend option")
         selected = True
@@ -31,16 +29,18 @@ def edit_cflags(flags: list[str]) -> list[str]:
 
 
 def ensure_registered() -> str:
-    from .impr_features import ImprFeature, known, register
+    from merlin.compiler.optimizations.registry import ImprFeature, known, register
 
     if FEATURE not in known():
-        register(ImprFeature(
-            name=FEATURE,
-            action_class="HEURISTIC",
-            description=(
-                "Select stock post-allocation machine scheduling for the model object; "
-                "preserve all numeric/ISA flags and runtime objects, explicit and default off."
-            ),
-            edit_cflags=edit_cflags,
-        ))
+        register(
+            ImprFeature(
+                name=FEATURE,
+                action_class="HEURISTIC",
+                description=(
+                    "Select stock post-allocation machine scheduling for the model object; "
+                    "preserve all numeric/ISA flags and runtime objects, explicit and default off."
+                ),
+                edit_cflags=edit_cflags,
+            )
+        )
     return FEATURE

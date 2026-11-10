@@ -173,13 +173,15 @@ def denominator_completeness(linalg_mlir: str | None, *, demands: list | None = 
     if demands is not None:
         from collections import Counter
 
-        from merlin.targetgen.capsule_source import ModelDemandIncomplete, model_op_demands_checked
+        from merlin.capture.demands import ModelDemandIncomplete, model_op_demands_checked
 
         try:
             fmt = demands[0].in_fmt if demands else "unknown"
             checked = model_op_demands_checked(linalg_mlir, fmt)
+
             def identity(d):
                 return d.op, d.batch, d.m, d.k, d.n, d.captured_input_formats
+
             inventory_verified = Counter(identity(d) for d in checked if d.family == "contraction") == Counter(
                 identity(d) for d in demands if d.family == "contraction"
             )
@@ -474,8 +476,9 @@ def source_region_execution(regions: list[dict], execution: dict | None) -> dict
         "outlined_dispatches_sha256": content_hash(manifest) if isinstance(manifest, list) else None,
         "dispatch_ledger_sha256": content_hash(ledger),
         "evidence": "source_operation_inventory_to_runtime_outline_to_completed_dispatch_ledger",
-        "scope": ("static operation accounting and lane execution only; "
-                  "no arithmetic or transformation equivalence proof"),
+        "scope": (
+            "static operation accounting and lane execution only; no arithmetic or transformation equivalence proof"
+        ),
     }
 
 
@@ -590,9 +593,7 @@ def build(
                 and all(
                     not candidate.eligible and not candidate.undetermined and candidate.refusal == "input_dtype"
                     for candidate in (
-                        _el.is_eligible(
-                            replace(desc, in_dtype=element, captured_input_formats=None), cap_map
-                        )
+                        _el.is_eligible(replace(desc, in_dtype=element, captured_input_formats=None), cap_map)
                         for element in tensor_elements
                     )
                 )
@@ -712,8 +713,9 @@ def build(
                 if any(r["precision_transform_required"] is None for r in regions)
                 else "not_required"
             ),
-            "scope": ("capture operand format versus effective routing format; "
-                      "no conversion proof is supplied by placement"),
+            "scope": (
+                "capture operand format versus effective routing format; no conversion proof is supplied by placement"
+            ),
         },
         "n_regions": len(regions),
         "n_eligible": n_eligible,

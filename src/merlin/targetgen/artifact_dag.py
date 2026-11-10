@@ -349,7 +349,7 @@ class ReuseMeasurement:
 # merlin's generation pipeline, as declared by the pipeline itself
 # ---------------------------------------------------------------------------------------------
 
-_PY = "merlin/python/merlin"
+_PY = "src/merlin"
 
 #: Each emitted layer: the plan it is generated from, and the generator that writes it. Keyed by the
 #: layer names ``pipeline.EMIT_LAYERS`` uses, so a layer added to the pipeline without a node here is a
@@ -388,6 +388,11 @@ def pipeline_graph() -> ArtifactGraph:
     baseline, so a hardware change cannot reach them. If a future edge creates such a path, the reuse
     claim in the design doc is what breaks, and a test says so.
     """
+    from merlin.common.paths import module_source_path
+    from merlin.compiler.optimizations import implementation_paths as optimization_sources
+
+    package = module_source_path("merlin").parent
+    strategy_sources = tuple(f"{_PY}/{path.relative_to(package).as_posix()}" for path in optimization_sources())
     nodes: list[Node] = [
         Node(
             "source_manifest",
@@ -466,7 +471,7 @@ def pipeline_graph() -> ArtifactGraph:
             "parent_schedule",
             "parent",
             (),
-            (f"{_PY}/llvmlower/impr_features.py",),
+            (f"{_PY}/llvmlower/impr_features.py", *strategy_sources),
             "the certified parent package's schedule, reused literally",
         ),
         Node(

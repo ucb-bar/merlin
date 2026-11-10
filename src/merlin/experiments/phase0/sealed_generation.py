@@ -24,7 +24,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from merlin.targetgen.capsule_source import M2MUnavailable, PytorchRefSource
+from merlin.capture.artifacts import M2MUnavailable
+from merlin.capture.pytorch import PytorchRefSource
 
 CONFIG_ENV = "MERLIN_PHASE0_SEALED_CAPTURE"
 _BUNDLE_ONLY = frozenset({"capture_receipt.json", "model.mlir"})

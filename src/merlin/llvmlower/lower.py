@@ -387,7 +387,7 @@ def lower_model(
             data_layout=data_layout,
         )
         if destination_report["rewrites"]:
-            from .impr_features import normalize
+            from merlin.compiler.optimizations.registry import normalize
 
             features = normalize(set(features or ()) | {"reuse_tensor_destination"})
             audit.stage("host-destination-reused", mlir_text)
@@ -411,8 +411,9 @@ def lower_model(
         if permutation_report["rewrites"]:
             audit.stage("host-permutation-forwarded", mlir_text)
         write_pretty_json(work / "automatic-host-permutations.json", permutation_report)
+        from merlin.compiler.optimizations.registry import FUSE_AFTER_GENERALIZE_NAME
+
         from .host_pointwise_fusion import prepare_host_pointwise_fusion
-        from .impr_features import FUSE_AFTER_GENERALIZE_NAME
 
         mlir_text, pointwise_fusion_report = prepare_host_pointwise_fusion(
             mlir_text,
@@ -430,7 +431,7 @@ def lower_model(
             descriptor_check()
             borrowed_buffer_calls = descriptor_preparation.native_calls()
             if descriptor_preparation.rewrites:
-                from .impr_features import normalize
+                from merlin.compiler.optimizations.registry import normalize
 
                 features = normalize(set(features or ()) | {descriptor_preparation.selected_feature()})
                 descriptor_check()

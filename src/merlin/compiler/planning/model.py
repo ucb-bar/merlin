@@ -53,8 +53,8 @@ def plan_before_build(
             "offload": {"required_scope": "all source-admitted groups"},
         }
 
+    from merlin.capture import demands as source_demands
     from merlin.llvmlower import group_offload as GO
-    from merlin.targetgen import capsule_source as CSRC
     from merlin.targetgen import routing as _routing
 
     record: dict = {"target": target}
@@ -64,9 +64,9 @@ def plan_before_build(
     # contraction.  The tag-only reader can silently lose generic-printed
     # regions, yielding a zero-mesh plan beside successful device dispatch.
     demands = (
-        CSRC.model_op_demands_checked(linalg_mlir, datapath)
+        source_demands.model_op_demands_checked(linalg_mlir, datapath)
         if source_kind == "captured_provenance_v1"
-        else CSRC.model_op_demands_checked(linalg_mlir, datapath, source_kind=source_kind)
+        else source_demands.model_op_demands_checked(linalg_mlir, datapath, source_kind=source_kind)
     )
     if source_kind != "captured_provenance_v1":
         record["source_kind"] = source_kind

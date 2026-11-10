@@ -217,7 +217,7 @@ class DescriptorResultPreparation:
 
     @staticmethod
     def _feature_values():
-        from .impr_features import get
+        from merlin.compiler.optimizations.registry import get
 
         feature = get(D.FEATURE)
         return (

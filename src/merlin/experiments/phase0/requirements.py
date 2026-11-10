@@ -87,7 +87,7 @@ def _materialized_iteration_capsules(
     becomes gradeable only when a verified preselected capture binds its exact
     snapshot bytes; an older receipt alone remains diagnostic.
     """
-    from merlin.targetgen.capsule_source import materialized_model_artifacts
+    from merlin.capture.artifacts import materialized_model_artifacts
 
     from . import public_programs as PP
 

@@ -810,7 +810,7 @@ def ensure_registered() -> str:
     unregistered name and answers False, so an unregistered lever is never proposed and never
     complains.
     """
-    from .impr_features import ImprFeature, known, register
+    from merlin.compiler.optimizations.registry import ImprFeature, known, register
 
     if FEATURE in known():
         return FEATURE

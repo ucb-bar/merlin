@@ -1365,7 +1365,7 @@ def line_touch_model(args: "list[PackedArg]", *, line_bytes: int) -> dict[str, A
 
 
 def _feature():
-    from .impr_features import ImprFeature
+    from merlin.compiler.optimizations.registry import ImprFeature
 
     return ImprFeature(
         name=FEATURE,
@@ -1397,7 +1397,7 @@ def ensure_registered() -> str:
     normalizes a feature set: the lowering runs in a child process that re-imports the registry, and
     ``wholemodel_proposer._composes`` swallows the ``KeyError`` for an unregistered name and answers
     False -- so an unregistered lever is silently unproposable rather than reported."""
-    from .impr_features import known, register
+    from merlin.compiler.optimizations.registry import known, register
 
     if FEATURE not in known():
         register(_feature())

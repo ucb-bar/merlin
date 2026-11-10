@@ -771,7 +771,7 @@ def _validate_lane_declaration(entry: dict, binding) -> None:
     lanes = entry.get("lanes") or {}
     if not lanes:
         return
-    from merlin.targetgen.capsule_source import _checked_lanes
+    from merlin.experiments.corpus.model_requirements import _checked_lanes
 
     _checked_lanes(entry, binding)  # raises on an unreachable `require`
     forbid = [str(x) for x in (lanes.get("forbid") or ())]
@@ -980,11 +980,15 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
     # host torch-eager output, GATED so it runs only after the op suite proves itself. Additive: skipped
     # (loudly) when the m2m venv is absent.
     if entry.get("kind") == "model" or entry.get("op") == "model":
-        from merlin.targetgen import capsule_source as CSRC
+        from merlin.capture import artifacts as source_artifacts
+        from merlin.capture import spec as source_spec
+        from merlin.experiments.corpus import model_sources as source_model_sources
+        from merlin.experiments.corpus import pytorch_sources as source_pytorch_sources
+        from merlin.experiments.corpus import spec_sources as source_spec_sources
 
         if entry.get("materialized_capture"):
-            artifact = CSRC.materialized_model_artifacts(entry["materialized_capture"])
-            written = CSRC.write_model_capsule(entry, eb, out_root, artifact=artifact)
+            artifact = source_artifacts.materialized_model_artifacts(entry["materialized_capture"])
+            written = source_model_sources.write_model_capsule(entry, eb, out_root, artifact=artifact)
             from merlin.targetgen.materialized_integer_capture import selected
 
             if selected(entry["materialized_capture"]):
@@ -1010,7 +1014,9 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
         ):
             return None
         start = len(getattr(src, "attestations", ()) or ())
-        return _with_attestations(CSRC.write_model_capsule(entry, eb, out_root, source=src), src, start=start)
+        return _with_attestations(
+            source_model_sources.write_model_capsule(entry, eb, out_root, source=src), src, start=start
+        )
     # PREFERRED source: a capsule defined in PyTorch (frontend-faithful), lowered to linalg via model2MLIR
     # with a host torch-eager golden. Opt in per entry (``source: pytorch``). Restricted to the float
     # regime: a host-eager float reference is graded with tolerance, matching the merlin_iface float
@@ -1043,7 +1049,11 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
                 f"(got regime {regime!r} for {eb.operand_dtype!r}); author int/MX capsules "
                 f"via the direct-MLIR engine"
             )
-        from merlin.targetgen import capsule_source as CSRC
+        from merlin.capture import artifacts as source_artifacts
+        from merlin.capture import spec as source_spec
+        from merlin.experiments.corpus import model_sources as source_model_sources
+        from merlin.experiments.corpus import pytorch_sources as source_pytorch_sources
+        from merlin.experiments.corpus import spec_sources as source_spec_sources
 
         src = capture if capture is not None else capture_source()
         if not src.available():
@@ -1052,20 +1062,26 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
             _skip_or_require_m2m(entry)
             return None
         start = len(getattr(src, "attestations", ()) or ())
-        return _with_attestations(CSRC.write_pytorch_capsule(entry, eb, out_root, source=src), src, start=start)
+        return _with_attestations(
+            source_pytorch_sources.write_pytorch_capsule(entry, eb, out_root, source=src), src, start=start
+        )
     # Spec source: a capsule whose PROGRAM + bit-exact golden come from the specir verification spec itself
     # (``spec_ref: '<gen>:op.<name>'``). Additive: a gen without a specir program emitter (or no specir) is
     # skipped loudly rather than sinking the target.
     if entry.get("source") == "spec" or entry.get("spec_ref"):
-        from merlin.targetgen import capsule_source as CSRC
+        from merlin.capture import artifacts as source_artifacts
+        from merlin.capture import spec as source_spec
+        from merlin.experiments.corpus import model_sources as source_model_sources
+        from merlin.experiments.corpus import pytorch_sources as source_pytorch_sources
+        from merlin.experiments.corpus import spec_sources as source_spec_sources
 
-        src = CSRC.SpecRefSource()
+        src = source_spec.SpecRefSource()
         if not src.available():
             print(f"  [skip] {entry['name']}: spec source needs specir (set SPECIR_ROOT)")
             return None
         try:
-            return CSRC.write_spec_capsule(entry, eb, out_root, source=src)
-        except CSRC.SpecProgramUnavailable as e:
+            return source_spec_sources.write_spec_capsule(entry, eb, out_root, source=src)
+        except source_spec.SpecProgramUnavailable as e:
             print(f"  [skip] {entry['name']}: {e}")
             return None
     cap, mlir = CS.build(entry, eb)

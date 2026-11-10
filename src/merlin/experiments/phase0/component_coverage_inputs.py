@@ -187,7 +187,7 @@ def expand(plan, *, binding, evidence):
                     source_reference="independent reviewed component coverage:" + plan.source_sha256,
                 )
                 if row["frontend"] == "pytorch":
-                    from merlin.targetgen.capsule_source import supported_ops
+                    from merlin.capture.loaders import supported_ops
 
                     if entry["op"] not in supported_ops():
                         errors.append("normal PyTorch generator has no selected operation builder")

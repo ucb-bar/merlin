@@ -85,7 +85,7 @@ def _upstream_pipeline(features: "frozenset[str] | None" = None) -> str:
     """
     passes = list(_UPSTREAM_PASSES)
     if features:
-        from merlin.llvmlower.impr_features import apply_pipeline, normalize
+        from merlin.compiler.optimizations.registry import apply_pipeline, normalize
 
         passes = apply_pipeline(passes, normalize(features))
     return _splice(passes)
@@ -107,7 +107,7 @@ def _parallel_pipeline(features: "frozenset[str] | None" = None) -> str:
     Gated — never on the default flow (``UPSTREAM_PIPELINE`` is untouched)."""
     passes = scalar_passes(parallel=True)
     if features:
-        from merlin.llvmlower.impr_features import apply_pipeline, normalize
+        from merlin.compiler.optimizations.registry import apply_pipeline, normalize
 
         passes = apply_pipeline(passes, normalize(features))
     return _splice(passes)

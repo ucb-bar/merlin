@@ -16,9 +16,7 @@ merlin/python/merlin/compare/host_experiment.py  # 2811
 merlin/python/merlin/compare/paper_k1_orchestrator.py  # 2112
 merlin/python/merlin/compare/paper_measurement_controller.py  # 1941
 merlin/python/merlin/dse_guidance/case_study.py  # 1662
-merlin/python/merlin/dse_guidance/insight_mining.py  # 5380
 merlin/python/merlin/dse_guidance/presentation_plots.py  # 1520
-merlin/python/merlin/llvmlower/impr_features.py  # 4080
 merlin/python/merlin/llvmlower/passes_quant_int.py  # 1886
 merlin/python/merlin/mining/k1.py  # 2649
 merlin/python/merlin/perf/calibration.py  # 1581
@@ -27,7 +25,6 @@ merlin/python/merlin/perf/host_source_witness.py  # 2016
 merlin/python/merlin/runtime/backends/zephyr_model.py  # 3537
 merlin/python/merlin/targetgen/capability_discovery.py  # 3051
 merlin/python/merlin/targetgen/capsule_grade.py  # 2473
-merlin/python/merlin/targetgen/capsule_source.py  # 4236
 merlin/python/merlin/targetgen/conformance.py  # 2899
 merlin/python/merlin/targetgen/corpus_spec.py  # 2552
 merlin/python/merlin/targetgen/corpus_synth.py  # 2666

@@ -22,21 +22,23 @@ def edit_pipeline(passes):
     if len(bufferize) != 1 or len(outputs) != 1 or bufferize[0] >= outputs[0]:
         raise ValueError("tensor helper inlining requires one ordered bufferization/result conversion pair")
     at = bufferize[0]
-    if result[max(0, at - 3):at] != ["inline", "canonicalize", "cse"]:
+    if result[max(0, at - 3) : at] != ["inline", "canonicalize", "cse"]:
         result[at:at] = ["inline", "canonicalize", "cse"]
     return result
 
 
 def ensure_registered():
-    from .impr_features import ImprFeature, known, register
+    from merlin.compiler.optimizations.registry import ImprFeature, known, register
 
     if FEATURE not in known():
-        register(ImprFeature(
-            name=FEATURE,
-            action_class="PASS",
-            description=(
-                "Inline tensor helpers before upstream bufferization and output forwarding; explicit and default off."
-            ),
-            edit_pipeline=edit_pipeline,
-        ))
+        register(
+            ImprFeature(
+                name=FEATURE,
+                action_class="PASS",
+                description=(
+                    "Inline tensor helpers before upstream bufferization and output forwarding; explicit and default off."
+                ),
+                edit_pipeline=edit_pipeline,
+            )
+        )
     return FEATURE

@@ -87,9 +87,8 @@ def _observe_declared_data_formats(module, demands):
     """Join only previously absent observations to the exact original carriers."""
     from dataclasses import replace
 
+    from merlin.capture.demands import ModelDemandIncomplete
     from merlin.common import mlir_query as mq
-
-    from .capsule_source import ModelDemandIncomplete
 
     carriers = [op for op in mq.walk(module) if mq.attr_str(op, "prov.op") not in {None, "fill"}]
     if len(carriers) != len(demands):
@@ -111,7 +110,7 @@ def model_op_demands_checked(
     Captured mode requires provenance plus independent body/shape agreement.
     Typed mode reads exact initialized integer dots without provenance or admission.
     """
-    from .capsule_source import ModelDemandIncomplete, model_op_demands
+    from merlin.capture.demands import ModelDemandIncomplete, model_op_demands
 
     if type(source_kind) is not str or source_kind != "captured_provenance_v1":
         from .model_coverage import typed_static_integer_demands

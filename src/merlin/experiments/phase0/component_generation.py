@@ -165,6 +165,7 @@ def bind_entries(
     source_paths += [Path(owner.__file__) for owner in (corpus_spec, phase_policy, software_spec)]
     if coverage_plan_sha256 is not None:
         from merlin.common.paths import module_source_path
+        from merlin.targetgen.capture_cache import CAPTURE_IMPLEMENTATIONS
 
         source_paths += [
             module_source_path(name)
@@ -175,6 +176,7 @@ def bind_entries(
                 "merlin.targetgen.capsule_golden",
                 "merlin.targetgen.capsule_inputs",
                 "merlin.targetgen.capsule_source",
+                *CAPTURE_IMPLEMENTATIONS,
                 "merlin.targetgen._m2m_capture_worker",
                 "merlin.targetgen._m2m_capture_values",
                 "merlin.runtime.tensor",

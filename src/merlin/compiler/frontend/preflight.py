@@ -19,8 +19,9 @@ def preflight_model(capture_bundle: str | Path, *, target: str, deployment_dtype
     backend, or claim a target binary. An explicit capture path avoids silently
     resolving another model revision by name.
     """
+    from merlin.capture import demands as source_demands
     from merlin.common import mlir_query as mq
-    from merlin.targetgen import capsule_source, group_capsule_entries, routing
+    from merlin.targetgen import group_capsule_entries, routing
     from merlin.xdsl_dialects.lowering import compute_groups
 
     bundle = Path(capture_bundle)
@@ -43,12 +44,12 @@ def preflight_model(capture_bundle: str | Path, *, target: str, deployment_dtype
     text = model.read_text(encoding="utf-8")
     blockers: list[dict[str, object]] = []
     try:
-        demands = capsule_source.model_op_demands_checked(text, deployment_dtype)
+        demands = source_demands.model_op_demands_checked(text, deployment_dtype)
         inventory_verified = True
-    except capsule_source.ModelDemandIncomplete as exc:
+    except source_demands.ModelDemandIncomplete as exc:
         # Keep the legacy tag inventory for a useful comparison, but make its
         # incompleteness an explicit blocker, never a successful route ledger.
-        demands = capsule_source.model_op_demands(text, deployment_dtype)
+        demands = source_demands.model_op_demands(text, deployment_dtype)
         inventory_verified = False
         blockers.append({"kind": "route_inventory_incomplete", "detail": str(exc)})
     route = routing.route_plan(demands, target)

@@ -805,7 +805,7 @@ def build(
     ):
         raise SpikeModelError("selected index width was not bound by the effective lowering pipeline")
     index_lowering = {**index_observation, "effective_pipeline": lowered_index["effective_pipeline"]}
-    from ...llvmlower import impr_features
+    from merlin.compiler.optimizations import registry as impr_features
 
     if impr_features.FUSE_AFTER_GENERALIZE_NAME in (features or ()):
         fusion_record = work / "host-elementwise-fusion.json"

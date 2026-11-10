@@ -33,6 +33,10 @@ Current implementation entrypoints are:
 
 | Responsibility | Source to open | Current caller |
 | --- | --- | --- |
+| Named selectable optimization strategies | `compiler/optimizations/registry.py` and neighboring mechanism owners | Existing compiler/mining callers use one ordered registry; selection records remain shared and target-specific implementation stays OOT |
+| Shared capture and arithmetic intake | `src/merlin/capture/pytorch.py`, `receipts.py`, `demands.py`, `artifacts.py` | Compiler planning consumes parsed demand APIs; host corpus construction consumes source capture without moving its orchestration into the compiler |
+| Corpus source construction | `src/merlin/experiments/corpus/` | Phase 0 and host grading retain declared model selection, source evidence and golden/capsule construction |
+| DSE evidence-mining lifecycle | `analysis/dse/guidance/insight_mining.py` and `insights/` | Guidance CLI and plot inputs retain evidence tiers, output schemas and artifact ordering |
 | Native lowering lifecycle and transport | `src/merlin/compiler/lower/native/pipeline.py`, `policy.py`, `arguments.py`, `reports.py`, `recipe.py` | Scalar/vector/control callers use shared native invocation; actual target implementations remain OOT |
 | Source-bound contraction precision | `src/merlin/compiler/quantization/contraction/` | Frontend/build preparation and Atlas consume canonical records, intake, conversions and lowering; independent verification remains separate |
 | Independent capsule execution and assessment | `src/merlin/evaluation/capsule/operation.py`, `model.py`, `model_assessment.py`, `ladder.py` | Host-only grading and authoring feedback; source fingerprints include the actual implementation package |

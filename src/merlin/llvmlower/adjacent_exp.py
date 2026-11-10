@@ -64,7 +64,7 @@ def _edit_pipeline(passes: list[str], marker: str = MARKER) -> list[str]:
 
 
 def ensure_registered() -> str:
-    from .impr_features import ImprFeature, known, register
+    from merlin.compiler.optimizations.registry import ImprFeature, known, register
 
     if FEATURE not in known():
         register(

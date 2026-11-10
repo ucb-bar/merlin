@@ -204,7 +204,7 @@ def build_saved(
         receipt["inputs"]["share_exact_tensor_preparations"] = True
         build_options["features"] = frozenset((*build_options.get("features", ()), ensure_registered()))
     if host_elementwise_fusion:
-        from merlin.llvmlower.impr_features import FUSE_AFTER_GENERALIZE_NAME
+        from merlin.compiler.optimizations.registry import FUSE_AFTER_GENERALIZE_NAME
 
         receipt["inputs"]["host_elementwise_fusion"] = True
         build_options["features"] = frozenset((*build_options.get("features", ()), FUSE_AFTER_GENERALIZE_NAME))

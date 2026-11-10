@@ -15,9 +15,10 @@ from pathlib import Path
 
 import numpy as np
 
+from merlin.capture import artifacts as source_artifacts
 from merlin.common import mlir_query as mq
 from merlin.experiments.capture_execution import native_integer
-from merlin.targetgen import capsule_source, golden_store
+from merlin.targetgen import golden_store
 from merlin.targetgen.frontend_use_def import original_use_def_semantics
 
 from . import capture_selection
@@ -114,7 +115,7 @@ def source_proof(cap, directory, *, selection=SELECTION):
     native_integer.validate(root, metadata, plan)
     _verify_frontend_evidence_dir(directory)
     raw = root / "model.mlir"
-    portable, _ = capsule_source._portable_weights_reference(raw.read_text(), metadata["weights"], sidecar=True)
+    portable, _ = source_artifacts._portable_weights_reference(raw.read_text(), metadata["weights"], sidecar=True)
     interface = directory / "capsule.interface.mlir"
     if interface.read_text() != portable:
         raise ValueError("connected source program differs from the exact sealed source portability edit")

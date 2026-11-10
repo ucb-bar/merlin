@@ -269,7 +269,7 @@ def _run_suite(
     # A whole-model (kind == "model") capsule is the GATED capstone: it is scheduled only after the op
     # suite proves itself (its ``gate.after_op_pass_fraction`` of the graded op capsules passed). Grade the
     # op capsules first; if no model capsule is present this is exactly the original single-pass behavior.
-    from merlin.targetgen.capsule_source import model_gate_satisfied
+    from merlin.experiments.corpus.model_sources import model_gate_satisfied
 
     op_caps = [c for c in capsules if c.get("kind") != "model"]
     model_caps = [c for c in capsules if c.get("kind") == "model"]

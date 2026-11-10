@@ -217,8 +217,8 @@ _VEC_RANK_LANES = 8
 #: the feature registry so the tagger and the schedule arms cannot disagree about it: the arms only
 #: exist for the ranks the feature names, and tagging a rank no arm matches leaves the op scalar
 #: while the tagger reports it as tagged.
-from ...llvmlower.impr_features import VEC_NONCONTRACTION_MAX_RANK as _VEC_RANK_MAX_RANK
-from ...llvmlower.impr_features import VEC_NONCONTRACTION_MIN_RANK as _VEC_RANK_MIN_RANK
+from merlin.compiler.optimizations.pointwise import VEC_NONCONTRACTION_MAX_RANK as _VEC_RANK_MAX_RANK
+from merlin.compiler.optimizations.pointwise import VEC_NONCONTRACTION_MIN_RANK as _VEC_RANK_MIN_RANK
 
 #: Caps for per-op register blocking. NR is the widest N tile a block may use (the champion's
 #: cap); KC is carried through to the v3 recipe, which tiles K by 1 and does not use it. MR is
@@ -865,6 +865,9 @@ def prepare_for_lowering(
     and output bytes; semantic, effect and provider proofs remain caller-owned.
     No callback preserves the ordinary preparation path and bytes.
     """
+    from merlin.compiler.optimizations.pointwise import vec_noncontraction_lanes as _vec_lanes
+    from merlin.compiler.optimizations.pointwise import vec_noncontraction_max_rank as _vec_max_rank
+
     from ...llvmlower.device_preparation import (
         freeze_device_offload_selection,
         prepare_device_route,
@@ -872,8 +875,6 @@ def prepare_for_lowering(
         require_supported_device_preparation,
         retain_device_offload_source,
     )
-    from ...llvmlower.impr_features import vec_noncontraction_lanes as _vec_lanes
-    from ...llvmlower.impr_features import vec_noncontraction_max_rank as _vec_max_rank
 
     offload_selection = (
         freeze_device_offload_selection(device) if device_offload_invocation is None else device_offload_invocation
@@ -897,14 +898,14 @@ def prepare_for_lowering(
     # vector schedule. Reading the former from the raw set made that composite tag vector loops
     # while silently retaining every scalar ``roundevenf`` call. Direct feature sets remain
     # byte-identical; only a composite now receives the prerequisite declared by ``implies``.
-    from ...llvmlower.impr_features import normalize as _normalize
+    from merlin.compiler.optimizations.registry import normalize as _normalize
 
     _closed = _normalize(features)
     _lanes = _vec_lanes(_closed)
     _max_rank = _vec_max_rank(_closed)
+    from merlin.compiler.optimizations.registry import NAMED_INT8_CONTRACTION_NAME, QUANTIZE_BEFORE_GATHER_NAME
     from merlin.compiler.quantization.scope import FEATURE as _CAPTURED_QUANT_SCOPE
 
-    from ...llvmlower.impr_features import NAMED_INT8_CONTRACTION_NAME, QUANTIZE_BEFORE_GATHER_NAME
     from ...llvmlower.quant_hoist import FEATURE as _HOIST_WEIGHT_INVARIANT_QUANTIZE
     from ...llvmlower.quant_round import FEATURE as _FUSE_QUANT_ROUND
     from ...llvmlower.reduce_vec import FEATURE as _VEC_AMAX_REDUCTION
@@ -1041,7 +1042,7 @@ def prepare_for_lowering(
     # MATRIX-UNIT ROUTING, before the register blocking below: a contraction that has become a call is no
     # longer on the vector path, so the block table must be derived from the IR that remains. Doing it the
     # other way round would tag ops that no longer exist and leave the routed ones double-claimed.
-    from ...llvmlower.impr_features import OPU_MATMUL_NAME
+    from merlin.compiler.optimizations.registry import OPU_MATMUL_NAME
 
     if OPU_MATMUL_NAME in features:
         if matrix is None:
@@ -1101,7 +1102,7 @@ def prepare_for_lowering(
     # INNERMOST parallel extent it will be pointed at. Resolved ABOVE the `blocking` gate, because it is not a
     # blocking decision and a sentinel that survives to `normalize` raises. Failing to derive a width
     # DROPS the request (the build keeps the compiler's own default) rather than pinning a guess.
-    from ...llvmlower.impr_features import LMUL_GROUP_SENTINEL, lmul_group_feature
+    from merlin.compiler.optimizations.registers import LMUL_GROUP_SENTINEL, lmul_group_feature
 
     if LMUL_GROUP_SENTINEL in features:
         from merlin.compiler.ir.contraction_shapes import contraction_shapes as _cshapes0
@@ -1137,10 +1138,7 @@ def prepare_for_lowering(
             )
         _judge_levers_on(prepared)
         return _finish_preparation(prepared)
-    from ...llvmlower import im2col_identity_view as _iv
-    from ...llvmlower import im2col_pack as _ip
-    from ...llvmlower import perop_blocks as _pb
-    from ...llvmlower.impr_features import (
+    from merlin.compiler.optimizations.perop import (
         PEROP_BLOCK_NAME,
         PEROP_MR_FILL_NAME,
         PEROP_MR_SENTINEL_PREFIX,
@@ -1150,6 +1148,10 @@ def prepare_for_lowering(
         parse_perop_mr_sentinel,
         parse_perop_nr_sentinel,
     )
+
+    from ...llvmlower import im2col_identity_view as _iv
+    from ...llvmlower import im2col_pack as _ip
+    from ...llvmlower import perop_blocks as _pb
 
     _mr_named = sorted({n for f in features if (n := parse_perop_mr_sentinel(f)) is not None})
     _nr_named = sorted({n for f in features if (n := parse_perop_nr_sentinel(f)) is not None})
@@ -2146,7 +2148,7 @@ def build_app(
     # the auto-vectorizer asks for is a backend query, so no tile size reaches it. `features` here is
     # the set `prepare_for_lowering` resolved, so a derived feature is honoured. Empty (the baseline
     # and every IR-only feature set) leaves the flags untouched, so model.o stays byte-identical.
-    from ...llvmlower.impr_features import apply_cflags as _apply_cflags
+    from merlin.compiler.optimizations.registry import apply_cflags as _apply_cflags
 
     model_cflags = _apply_cflags(cflags, frozenset(features or frozenset()))
     _run([clang, "--target=riscv64-unknown-elf", *model_cflags, "-c", res.ll_path, "-o", work / "model.o"])

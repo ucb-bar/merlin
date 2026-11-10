@@ -74,6 +74,7 @@ This repo has twice ranked a lever on flawless static evidence that measured slo
 Default OFF: absent from a feature set, no pair is tagged, the schedule text is byte-identical
 and so is the emitted ``.ll``.
 """
+
 from __future__ import annotations
 
 #: Feature name, as it appears in a package's ``compiler_features``. A REQUEST that
@@ -170,6 +171,7 @@ REFUSAL_PREFIX = "MERLIN_REQUANT_REFUSED "
 # reason) as `perop_blocks.conv_geometry`.
 # -------------------------------------------------------------------------------------------------
 
+
 def merlin_requant_pair(op, ir):
     """``(fill_op, requant_op)`` for a tagged contraction with a fusable epilogue, else a reason.
 
@@ -237,6 +239,7 @@ def merlin_requant_pair(op, ir):
 # The schedule's half.
 # -------------------------------------------------------------------------------------------------
 
+
 def _tile_spec(rank: int, mr: int, nr: int):
     """``(tile, ktile, mm_vec, rq_vec, n_loops)`` for a contraction with ``rank`` parallel dims.
 
@@ -247,8 +250,7 @@ def _tile_spec(rank: int, mr: int, nr: int):
     if rank == 2:
         return f"[{mr}, {nr}]", "[0, 0, 1]", f"[{mr}, {nr}, 1]", f"[{mr}, {nr}]", 2
     if rank == 3:
-        return (f"[1, {mr}, {nr}]", "[0, 0, 0, 1]", f"[1, {mr}, {nr}, 1]",
-                f"[1, {mr}, {nr}]", 3)
+        return (f"[1, {mr}, {nr}]", "[0, 0, 0, 1]", f"[1, {mr}, {nr}, 1]", f"[1, {mr}, {nr}]", 3)
     raise ValueError(f"no fused-epilogue tiling for a contraction with {rank} parallel dims")
 
 
@@ -269,9 +271,7 @@ def fused_arms(pairs, vectorize_epilogue: bool = False) -> str:
         idx, mr, nr, rank = int(entry[0]), int(entry[1]), int(entry[2]), int(entry[3])
         parallel_tiles = [int(x) for x in entry[4:]]
         if parallel_tiles and (len(parallel_tiles) != rank or not any(parallel_tiles)):
-            raise ValueError(
-                f"requant-fusion pair {idx} has invalid rank-{rank} parallel tile "
-                f"{parallel_tiles}")
+            raise ValueError(f"requant-fusion pair {idx} has invalid rank-{rank} parallel tile {parallel_tiles}")
         tile, ktile, mm_vec, rq_vec, n_loops = _tile_spec(rank, mr, nr)
         h = f"q{idx}"
         loop_types = ", ".join(["!transform.any_op"] * (n_loops + 1))
@@ -288,67 +288,73 @@ def fused_arms(pairs, vectorize_epilogue: bool = False) -> str:
         if parallel_tiles:
             sizes = ", ".join(str(x) for x in parallel_tiles)
             parallel = (
-                f'    %{h}p, %{h}pl = transform.structured.tile_using_forall %{h}r '
-                f'tile_sizes [{sizes}] : (!transform.any_op) -> '
-                f'(!transform.any_op, !transform.any_op)\n'
-                f'    %{h}pc, %{h}pk1 = transform.structured.fuse_into_containing_op '
-                f'%{h}c into %{h}pl : (!transform.any_op, !transform.any_op) -> '
-                f'(!transform.any_op, !transform.any_op)\n'
-                f'    %{h}pf, %{h}pk2 = transform.structured.fuse_into_containing_op '
-                f'%{h}f into %{h}pk1 : (!transform.any_op, !transform.any_op) -> '
-                f'(!transform.any_op, !transform.any_op)\n')
+                f"    %{h}p, %{h}pl = transform.structured.tile_using_forall %{h}r "
+                f"tile_sizes [{sizes}] : (!transform.any_op) -> "
+                f"(!transform.any_op, !transform.any_op)\n"
+                f"    %{h}pc, %{h}pk1 = transform.structured.fuse_into_containing_op "
+                f"%{h}c into %{h}pl : (!transform.any_op, !transform.any_op) -> "
+                f"(!transform.any_op, !transform.any_op)\n"
+                f"    %{h}pf, %{h}pk2 = transform.structured.fuse_into_containing_op "
+                f"%{h}f into %{h}pk1 : (!transform.any_op, !transform.any_op) -> "
+                f"(!transform.any_op, !transform.any_op)\n"
+            )
             requant_handle = f"%{h}p"
             contraction_handle = f"%{h}pc"
             fill_handle = f"%{h}pf"
             parallel_cleanup = (
-                f'\n    transform.apply_patterns to %{h}pl {{\n'
-                f'      transform.apply_patterns.tensor.fold_tensor_empty\n'
-                f'    }} : !transform.any_op')
+                f"\n    transform.apply_patterns to %{h}pl {{\n"
+                f"      transform.apply_patterns.tensor.fold_tensor_empty\n"
+                f"    }} : !transform.any_op"
+            )
         out.append(
-            f'    %{h}r = transform.structured.match '
-            f'attributes{{{tag_for(idx, ROLE_REQUANT)}}} in %arg0 '
-            f': (!transform.any_op) -> !transform.any_op\n'
-            f'    %{h}c = transform.structured.match '
-            f'attributes{{{tag_for(idx, ROLE_CONTRACTION)}}} in %arg0 '
-            f': (!transform.any_op) -> !transform.any_op\n'
-            f'    %{h}f = transform.structured.match '
-            f'attributes{{{tag_for(idx, ROLE_FILL)}}} in %arg0 '
-            f': (!transform.any_op) -> !transform.any_op\n'
+            f"    %{h}r = transform.structured.match "
+            f"attributes{{{tag_for(idx, ROLE_REQUANT)}}} in %arg0 "
+            f": (!transform.any_op) -> !transform.any_op\n"
+            f"    %{h}c = transform.structured.match "
+            f"attributes{{{tag_for(idx, ROLE_CONTRACTION)}}} in %arg0 "
+            f": (!transform.any_op) -> !transform.any_op\n"
+            f"    %{h}f = transform.structured.match "
+            f"attributes{{{tag_for(idx, ROLE_FILL)}}} in %arg0 "
+            f": (!transform.any_op) -> !transform.any_op\n"
             + parallel
-            + f'    %{h}t, %{h}l:{n_loops} = transform.structured.tile_using_for {requant_handle} '
-            f'tile_sizes {tile} : (!transform.any_op) -> ({loop_types})\n'
-            f'    %{h}cf, %{h}k1 = transform.structured.fuse_into_containing_op '  # target-ok: `k1` is an MLIR value name in emitted IR, not the board
-            f'{contraction_handle} '
-            f'into %{h}l#{n_loops - 1} : (!transform.any_op, !transform.any_op) -> '
-            f'(!transform.any_op, !transform.any_op)\n'
-            f'    %{h}ff, %{h}k2 = transform.structured.fuse_into_containing_op {fill_handle} '
-            f'into %{h}k1 : (!transform.any_op, !transform.any_op) -> '  # target-ok: `k1` is an MLIR value name in emitted IR, not the board
-            f'(!transform.any_op, !transform.any_op)\n'
-            f'    %{h}ck, %{h}kl = transform.structured.tile_using_for %{h}cf '
-            f'tile_sizes {ktile} : (!transform.any_op) -> '
-            f'(!transform.any_op, !transform.any_op)\n'
-            f'    transform.structured.vectorize %{h}ck vector_sizes {mm_vec} '
-            f': !transform.any_op\n'
+            + f"    %{h}t, %{h}l:{n_loops} = transform.structured.tile_using_for {requant_handle} "
+            f"tile_sizes {tile} : (!transform.any_op) -> ({loop_types})\n"
+            f"    %{h}cf, %{h}k1 = transform.structured.fuse_into_containing_op "  # target-ok: `k1` is an MLIR value name in emitted IR, not the board
+            f"{contraction_handle} "
+            f"into %{h}l#{n_loops - 1} : (!transform.any_op, !transform.any_op) -> "
+            f"(!transform.any_op, !transform.any_op)\n"
+            f"    %{h}ff, %{h}k2 = transform.structured.fuse_into_containing_op {fill_handle} "
+            f"into %{h}k1 : (!transform.any_op, !transform.any_op) -> "  # target-ok: `k1` is an MLIR value name in emitted IR, not the board
+            f"(!transform.any_op, !transform.any_op)\n"
+            f"    %{h}ck, %{h}kl = transform.structured.tile_using_for %{h}cf "
+            f"tile_sizes {ktile} : (!transform.any_op) -> "
+            f"(!transform.any_op, !transform.any_op)\n"
+            f"    transform.structured.vectorize %{h}ck vector_sizes {mm_vec} "
+            f": !transform.any_op\n"
             # The CONTRACTION is vectorized either way -- that is the shape the per-op block arm
             # already gave it, unchanged by this lever. Only the EPILOGUE's shape is a new decision,
             # so only it is behind the knob.
-            + (f'    transform.structured.vectorize %{h}t vector_sizes {rq_vec} '
-               f': !transform.any_op\n' if vectorize_epilogue else '')
+            + (
+                f"    transform.structured.vectorize %{h}t vector_sizes {rq_vec} : !transform.any_op\n"
+                if vectorize_epilogue
+                else ""
+            )
             +
             # SCOPED to this pair's own outer tile loop, never to the function. The pattern rewrites
             # `tensor.extract_slice(tensor.empty)` to a `tensor.empty` of the slice shape, which is
             # what actually deletes the model-sized i32 accumulator: with the fill fused but the
             # empty left whole, bufferization still allocates M*N*4 bytes for it. At func scope it
             # would also rewrite unrelated ops, so it is applied where its effect is the point.
-            f'    transform.apply_patterns to %{h}l#0 {{\n'
-            f'      transform.apply_patterns.tensor.fold_tensor_empty\n'
-            f'    }} : !transform.any_op'
-            + parallel_cleanup)
+            f"    transform.apply_patterns to %{h}l#0 {{\n"
+            f"      transform.apply_patterns.tensor.fold_tensor_empty\n"
+            f"    }} : !transform.any_op" + parallel_cleanup
+        )
     return "\n".join(out) + "\n" if out else ""
 
 
 def _feature(name: str = FEATURE):
-    from .impr_features import ImprFeature
+    from merlin.compiler.optimizations.registry import ImprFeature
+
     return ImprFeature(
         name=name,
         action_class="PASS",
@@ -381,9 +387,12 @@ def _feature(name: str = FEATURE):
             "vector-instruction blow-up (contrast vectorize_non_contraction_generics: 4.9x more "
             "vector instructions and 1.28x slower). Default-off; absent, no pair is tagged and "
             "the schedule text and the .ll are byte-identical."
-            + (" THE _vec POINT additionally pre-vectorizes the epilogue TILE at MR x NR instead of "
-               "leaving its loop form to clang; the table above is what separates the two."
-               if name == VEC_FEATURE else "")
+            + (
+                " THE _vec POINT additionally pre-vectorizes the epilogue TILE at MR x NR instead of "
+                "leaving its loop form to clang; the table above is what separates the two."
+                if name == VEC_FEATURE
+                else ""
+            )
         ),
     )
 
@@ -391,7 +400,8 @@ def _feature(name: str = FEATURE):
 def ensure_registered() -> str:
     """Register both points if they are not already. Idempotent, so importing from several entry
     points is safe. Returns the plain (traversal-removal-only) feature name."""
-    from .impr_features import known, register
+    from merlin.compiler.optimizations.registry import known, register
+
     for nm in (FEATURE, VEC_FEATURE):
         if nm not in known():
             register(_feature(nm))

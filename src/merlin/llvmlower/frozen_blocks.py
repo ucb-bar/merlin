@@ -18,7 +18,7 @@ emits lower for these shapes". Nothing here decides anything; the resolver does.
 
 from __future__ import annotations
 
-from . import impr_features as _impr
+from merlin.compiler.optimizations import registry as _impr
 
 #: frozen feature name -> (caps triple, per-op-class blocks it actually emits).
 #: The values come from the feature's own module constants, so this cannot drift from the

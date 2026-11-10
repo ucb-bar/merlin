@@ -13,8 +13,10 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from merlin.capture import artifacts as source_artifacts
+from merlin.capture import pytorch as source_pytorch
 from merlin.common.cpu_pool import shared_compute_pool
-from merlin.targetgen import capsule_source
+from merlin.experiments.corpus import model_sources as source_model_sources
 from merlin.targetgen.corpus_spec import CorpusBinding
 
 from . import development_capture_intake as I
@@ -64,7 +66,7 @@ def capture(
     if output.exists() or not output.parent.is_dir():
         raise ValueError("capture output must be fresh with an existing parent")
     output.mkdir(mode=0o700)
-    source = capsule_source.PytorchRefSource(timeout=timeout_s)
+    source = source_pytorch.PytorchRefSource(timeout=timeout_s)
     if not source.available():
         raise ValueError("selected original Model2MLIR capture runtime is unavailable")
     report = {
@@ -147,7 +149,7 @@ def capture(
                 compare="exact_int",
             )
             retained = SimpleNamespace(m2m_dir=source.m2m_dir, capture_loader=lambda *a, **kw: captured)
-            directory = capsule_source.write_model_capsule(
+            directory = source_model_sources.write_model_capsule(
                 D.capsule_entry(declaration, loader), binding, output / "capsules", source=retained
             )
             row.update(
@@ -163,7 +165,7 @@ def capture(
                     str(p.relative_to(directory)): F._identity(p) for p in sorted(directory.rglob("*")) if p.is_file()
                 },
             )
-        except (ValueError, RuntimeError, AssertionError, capsule_source.M2MUnavailable) as error:
+        except (ValueError, RuntimeError, AssertionError, source_artifacts.M2MUnavailable) as error:
             row.update(status="capture_refused_or_failed", reason=str(error))
         row["wall_seconds"] = time.monotonic() - start
         (output / "report.json").write_bytes(F._bytes(report))

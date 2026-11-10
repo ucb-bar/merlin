@@ -367,7 +367,7 @@ def host_codegen_evidence(receipt, options):
             "performance_qualified": False,
         }
     if "host_elementwise_fusion" in enabled:
-        from merlin.llvmlower import impr_features
+        from merlin.compiler.optimizations import registry as impr_features
 
         implementation = reopen(preparation["host_elementwise_fusion_implementation"])
         if implementation.read_bytes() != Path(impr_features.__file__).read_bytes():

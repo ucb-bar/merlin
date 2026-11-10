@@ -54,8 +54,8 @@ def _run_streaming_model_gate(
     model_gate_prerequisites=None,
 ):
     """Open capstones on a fixed selected-operator denominator in the same worker pool."""
+    from merlin.experiments.corpus.model_sources import model_gate_satisfied
     from merlin.targetgen.capsule_scheduling import run_pipelined
-    from merlin.targetgen.capsule_source import model_gate_satisfied
 
     caps = op_caps + model_caps
     model_names = {str(cap["name"]) for cap in model_caps}

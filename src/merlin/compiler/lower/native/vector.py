@@ -65,7 +65,8 @@ def _vec_after_specialize() -> bool:
 
 def vec_pre_schedule(features: "frozenset[str]") -> "str | None":
     """Pipeline design rationale: see docs/design/llvm_pipeline_rationale.md."""
-    from merlin.llvmlower.impr_features import apply_schedule, ensure_vec_noncontraction, vec_noncontraction_lanes
+    from merlin.compiler.optimizations.pointwise import ensure_vec_noncontraction, vec_noncontraction_lanes
+    from merlin.compiler.optimizations.registry import apply_schedule
 
     if _vec_after_specialize():
         return None
@@ -244,7 +245,7 @@ def build_rvv_pipeline(
         *finalization_passes(vector=True, openmp=par),
     ]
     if features:  # default-off impr-fork hooks; empty -> byte-identical
-        from merlin.llvmlower.impr_features import apply_pipeline
+        from merlin.compiler.optimizations.registry import apply_pipeline
 
         passes = apply_pipeline(passes, features)
     return _splice(passes)

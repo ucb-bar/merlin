@@ -59,7 +59,8 @@ def _edit_pipeline(passes, marker=MARKER):
 
 
 def ensure_registered():
-    from .impr_features import ImprFeature, known, register
+    from merlin.compiler.optimizations.registry import ImprFeature, known, register
+
     from .scalar_contraction import _OUTPUTS_FEATURES
 
     if FEATURE not in known():

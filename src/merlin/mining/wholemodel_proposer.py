@@ -525,7 +525,7 @@ def family_coverage(family: str) -> tuple[str | None, str | None]:
 # ---------------------------------------------------------------------------------------------------
 def _composes(features: list[str]) -> bool:
     """True iff selection constraints and the schedule-replacement rule allow the set."""
-    from ..llvmlower import impr_features as I
+    from merlin.compiler.optimizations import registry as I
 
     try:
         I.normalize(features)
@@ -544,7 +544,7 @@ def _feature_fork(
     after dropping the parent's conflicting schedule-replacement feature."""
     if feat in parent_feats:
         return None
-    from ..llvmlower import impr_features as I
+    from merlin.compiler.optimizations import registry as I
 
     try:
         group = I.get(feat).alternative_group
@@ -603,7 +603,7 @@ def refinement_forks(parent_feats: list[str]) -> list[ForkProposal]:
     the same feature at 256 KB is 1.34x on that model. The lever was not weak; the magnitude was
     unreachable.
     """
-    from ..llvmlower import impr_features as I
+    from merlin.compiler.optimizations import registry as I
 
     out: list[ForkProposal] = []
     have = set(parent_feats)

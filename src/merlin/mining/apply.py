@@ -213,7 +213,7 @@ def _adapt_frozen_points(feats: list[str], shapes, *, target: str) -> list[str]:
         if not changed:
             out.append(name)
             continue
-        from ..llvmlower.impr_features import ensure_v3_perop_microkernel
+        from merlin.compiler.optimizations.blocks import ensure_v3_perop_microkernel
 
         mm, bmm = chosen["linalg.matmul"], chosen["linalg.batch_matmul"]
         if mm is None and bmm is None:  # nothing vectorizable -> keep the pinned point as-is

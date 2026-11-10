@@ -32,7 +32,7 @@ if str(REPO / "merlin" / "python") not in sys.path:
 
 def _worker_env():
     """The m2m interpreter and checkout, or a reason they are unusable."""
-    from merlin.targetgen.capsule_source import _m2m_dir, _m2m_python  # noqa: PLC2701
+    from merlin.capture.pytorch import _m2m_dir, _m2m_python  # noqa: PLC2701
 
     m2m, python = Path(_m2m_dir()), Path(_m2m_python())
     if not python.exists():

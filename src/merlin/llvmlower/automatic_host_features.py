@@ -28,7 +28,7 @@ def edit_pipeline(passes):
 
 
 def ensure_registered():
-    from .impr_features import ImprFeature, known, register
+    from merlin.compiler.optimizations.registry import ImprFeature, known, register
 
     if FEATURE not in known():
         register(

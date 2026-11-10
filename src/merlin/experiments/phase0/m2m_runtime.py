@@ -45,7 +45,7 @@ def read_runtime_reuse(path: Path) -> dict:
 def _workload_names(root: Path, synth_profile: Path | None) -> tuple[str, ...]:
     if synth_profile is None or not synth_profile.is_file():
         return ()
-    from merlin.targetgen.capsule_source import resolve_model_loader
+    from merlin.experiments.corpus.model_inputs import resolve_model_loader
 
     document = yaml.safe_load(synth_profile.read_bytes()) or {}
     if not isinstance(document, dict) or not isinstance(document.get("capsules", []), list):

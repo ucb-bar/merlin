@@ -138,7 +138,7 @@ def selected_inputs(command: dict, target: str) -> tuple[dict[str, str], dict]:
 
 def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
     """Own receipt-bound public payloads selected by the ordinary synthesis profile."""
-    from merlin.targetgen.capsule_source import materialized_model_artifacts
+    from merlin.capture.artifacts import materialized_model_artifacts
 
     value = command.get("inputs", {}).get("synth_profile")
     if not value or not Path(value).is_file():

@@ -61,7 +61,8 @@ def selected_model_compiler_plan(
     same producer owner. If preparation changes features or flags, their full
     observations differ and the downstream source proof must refuse.
     """
-    from ...llvmlower.impr_features import apply_cflags
+    from merlin.compiler.optimizations.registry import apply_cflags
+
     from .spike_model import (
         _C_DESCRIPTOR_INDEX_BITS,
         CLANG_TARGET,

@@ -51,7 +51,7 @@ _OPSET_SCHEMA = "merlin.pytorch_opset.v1"
 
 
 def _m2m_python() -> Path:
-    from merlin.targetgen.capsule_source import _m2m_python as _p
+    from merlin.capture.pytorch import _m2m_python as _p
 
     return _p()
 

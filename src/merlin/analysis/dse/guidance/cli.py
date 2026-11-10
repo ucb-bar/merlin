@@ -148,8 +148,10 @@ def _insight_mining(args) -> int:
     '_dse_analysis' under results/ (regeneratable, not committed). Per-network + combined 'all'."""
     from datetime import UTC, datetime
 
-    from merlin.analysis.dse.guidance import insight_mining as IM
     from merlin.analysis.dse.guidance import presentation_plots as PP
+    from merlin.analysis.dse.guidance.insight_mining import mine
+    from merlin.analysis.dse.guidance.insights.artifacts import case_workloads
+    from merlin.analysis.dse.guidance.insights.emit import emit_run
     from merlin.common import paths
 
     cs_dir = case_study_dir(args.case_study_dir)
@@ -157,14 +159,14 @@ def _insight_mining(args) -> int:
         raise SystemExit(f"no case-study artifacts under {cs_dir}; select input with --case-study-dir")
     base = Path(args.out) if args.out else (paths.artifacts_dir() / "dse-guidance")
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    nets = IM._workloads(cs_dir)
+    nets = case_workloads(cs_dir)
     scopes = [args.workload] if args.workload else (nets + ["all"])
     all_ok = True
     for scope in scopes:
         run_dir = base / f"{scope}_{ts}_dse_analysis"
-        bundle = IM.mine(cs_dir, scope)
+        bundle = mine(cs_dir, scope)
         rendered = PP.render_plots(bundle["plots"], cs_dir, bundle["facts"], run_dir / "generated_plots")
-        IM.emit_run(bundle, run_dir, rendered)
+        emit_run(bundle, run_dir, rendered)
         npass = sum(1 for ok, _ in bundle["consistency_checks"] if ok)
         open_gaps = len(bundle.get("open_avoidable_gaps", []))
         passed = all(ok for ok, _ in bundle["consistency_checks"]) and open_gaps == 0

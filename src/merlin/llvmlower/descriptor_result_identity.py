@@ -60,6 +60,7 @@ class DescriptorResultIdentity:
 def argument_buffer_types(identity):
     """Exact positional buffers; layouts establish no borrowed-call effects."""
     from math import prod
+
     from xdsl.dialects.builtin import StridedLayoutAttr
 
     types, layouts = identity.argument_types, identity.argument_layouts
@@ -69,11 +70,14 @@ def argument_buffer_types(identity):
         layouts = (NoneAttr(),) * len(types)
     for typ, access, layout in zip(types, identity.argument_access, layouts, strict=True):
         if layout != NoneAttr() and (
-            access != "read" or len(typ.get_shape()) not in (2, 3)
-            or layout != StridedLayoutAttr([prod(typ.get_shape()[i + 1:]) for i in range(len(typ.get_shape()))], None)
+            access != "read"
+            or len(typ.get_shape()) not in (2, 3)
+            or layout != StridedLayoutAttr([prod(typ.get_shape()[i + 1 :]) for i in range(len(typ.get_shape()))], None)
         ):
             raise ValueError("descriptor identity requires original readonly dense-offset layouts")
-    return tuple(MemRefType(t.get_element_type(), t.get_shape(), layout) for t, layout in zip(types, layouts, strict=True))
+    return tuple(
+        MemRefType(t.get_element_type(), t.get_shape(), layout) for t, layout in zip(types, layouts, strict=True)
+    )
 
 
 def _metadata(operation, allowed=()):
@@ -145,8 +149,7 @@ def rewrite_descriptor_result_identities(module, identities, *, max_operations=1
             or len(access) != len(types)
             or type(result) is not int
             or not 0 <= result < len(types)
-            or any(mode not in (("write", "read-write") if i == result else ("read",))
-                   for i, mode in enumerate(access))
+            or any(mode not in (("write", "read-write") if i == result else ("read",)) for i, mode in enumerate(access))
             or any(
                 not isinstance(typ, TensorType)
                 or typ.encoding != NoneAttr()
@@ -178,10 +181,14 @@ def rewrite_descriptor_result_identities(module, identities, *, max_operations=1
             or not _metadata(declaration, ("llvm.emit_c_interface",))
             or attrs is None
             or len(attrs) != len(types)
-            or any(attr.data != {
-                "bufferization.access": StringAttr(expected),
-                **({"bufferization.buffer_layout": buffer.layout} if buffer.layout != NoneAttr() else {}),
-            } for attr, expected, buffer in zip(attrs, access, buffers, strict=True))
+            or any(
+                attr.data
+                != {
+                    "bufferization.access": StringAttr(expected),
+                    **({"bufferization.buffer_layout": buffer.layout} if buffer.layout != NoneAttr() else {}),
+                }
+                for attr, expected, buffer in zip(attrs, access, buffers, strict=True)
+            )
         ):
             raise ValueError("descriptor identity differs from the original declaration")
         if identity.borrowed_effects is None:
@@ -274,7 +281,7 @@ def edit_pipeline(passes):
 
 def ensure_registered():
     """Register the existing default-off pipeline hook; issue no selection."""
-    from .impr_features import ImprFeature, known, register
+    from merlin.compiler.optimizations.registry import ImprFeature, known, register
 
     if FEATURE not in known():
         register(
@@ -294,9 +301,9 @@ def implementation_paths():
     from pathlib import Path
 
     from xdsl.ir import Operation
-    from merlin.frontends.linalg_mlir import layout_to_buffer_type
 
-    from . import impr_features
+    from merlin.compiler.optimizations import registry as impr_features
+    from merlin.frontends.linalg_mlir import layout_to_buffer_type
 
     owners = (
         Operation,

@@ -1070,31 +1070,31 @@ def build_catalog(divergences: list[Divergence]) -> tuple[list[CompilerAction], 
 # in-tree core.
 _SeamSpec = tuple[str, str, bool]  # (file, kind, needs_new_code)
 
-# Shared / RVV seams (our in-tree compiler is the artifact for RVV).
+# Shared compiler mechanisms. Selected OOT providers own target lowering seams.
 SEAM_FILES: dict[str, _SeamSpec] = {
     "impr_features": (
-        "merlin/python/merlin/llvmlower/impr_features.py",
+        "src/merlin/compiler/optimizations/registry.py",
         "registered PASS/HEURISTIC/PATTERN feature hook (default-off)",
         False,
     ),
     "schedule": (
-        "merlin/python/merlin/mining/from_strategy.py (+ the package knobs.yaml / schedule.mlir)",
+        "src/merlin/mining/from_strategy.py (+ the package knobs.yaml / schedule.mlir)",
         "transform-schedule knob (forkable via schedule.mlir today)",
         False,
     ),
     "quant": (
-        "merlin/python/merlin/llvmlower/quant_passes.py",
+        "src/merlin/llvmlower/quant_passes.py",
         "int8 quant-pass registry (register/toggle a QuantPass; reached via dtype_strategy=int8_w8a8"
         " -> pkg.is_int8 -> int8_compute -> apply_quant)",
         False,
     ),
     "cflag": (
-        "merlin/python/merlin/runtime/backends/zephyr_model.py (RVV cflags)",
+        "src/merlin/runtime/backends/zephyr_model.py (RVV cflags)",
         "compiler flag / march feature",
         False,
     ),
     "pass": (
-        "merlin/python/merlin/llvmlower/ (NEW pass module — write it, then register as an impr feature)",
+        "src/merlin/compiler/transforms/ (NEW pass module — write it, then register as an impr feature)",
         "new MLIR pass / lowering",
         True,
     ),

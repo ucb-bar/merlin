@@ -15,8 +15,11 @@ FEATURE = "share_exact_tensor_preparations"
 def _supported(op):
     from xdsl.dialects.builtin import Float32Type, IntegerType, NoneAttr, TensorType
 
-    if any("strictfp" in k or "strictfp" in str(v) for p in op.walk()
-           for k, v in (*p.attributes.items(), *p.properties.items())):
+    if any(
+        "strictfp" in k or "strictfp" in str(v)
+        for p in op.walk()
+        for k, v in (*p.attributes.items(), *p.properties.items())
+    ):
         return False
     for value in (*op.operands, *op.results):
         if isinstance(value.type, TensorType) and (
@@ -25,13 +28,23 @@ def _supported(op):
             return False
     if op.name == "arith.constant":
         return not op.operands and not op.regions and len(op.results) == 1
-    if op.name in {"tensor.extract_slice", "tensor.collapse_shape", "tensor.expand_shape", "tensor.cast",
-                   "tensor.splat"}:
+    if op.name in {
+        "tensor.extract_slice",
+        "tensor.collapse_shape",
+        "tensor.expand_shape",
+        "tensor.cast",
+        "tensor.splat",
+    }:
         return not op.regions and len(op.results) == 1 and isinstance(op.results[0].type, TensorType)
-    if (op.name not in {"linalg.generic", "linalg.transpose"} or len(op.operands) != 2
-            or len(op.results) != 1 or len(op.regions) != 1 or len(op.regions[0].blocks) != 1
-            or any(not isinstance(v.type, TensorType) for v in (*op.operands, *op.results))
-            or op.results[0].type != op.operands[1].type):
+    if (
+        op.name not in {"linalg.generic", "linalg.transpose"}
+        or len(op.operands) != 2
+        or len(op.results) != 1
+        or len(op.regions) != 1
+        or len(op.regions[0].blocks) != 1
+        or any(not isinstance(v.type, TensorType) for v in (*op.operands, *op.results))
+        or op.results[0].type != op.operands[1].type
+    ):
         return False
     allowed = {"indexing_maps", "iterator_types", "operandSegmentSizes", "permutation"}
     if any(k not in allowed and not k.startswith("prov.") for k in (*op.attributes, *op.properties)):
@@ -45,10 +58,15 @@ def _supported(op):
         return copy
     if copy:
         return _parallel_output(op)
-    if not (len(body) == 2 and body[0].name == "arith.sitofp" and body[1].name == "linalg.yield"
-            and tuple(body[0].operands) == (block.args[0],)
-            and tuple(body[1].operands) == (body[0].results[0],) and not body[0].regions
-            and all(k.startswith("prov.") for k in (*body[0].attributes, *body[0].properties))):
+    if not (
+        len(body) == 2
+        and body[0].name == "arith.sitofp"
+        and body[1].name == "linalg.yield"
+        and tuple(body[0].operands) == (block.args[0],)
+        and tuple(body[1].operands) == (body[0].results[0],)
+        and not body[0].regions
+        and all(k.startswith("prov.") for k in (*body[0].attributes, *body[0].properties))
+    ):
         return False
     integer = block.args[0].type
     # These casts are exact under every rounding mode and raise no FP flags.
@@ -65,9 +83,12 @@ def _parallel_output(op):
 
     maps = op.indexing_maps
     rank = len(op.results[0].type.get_shape())
-    return (all(i.data == IteratorType.PARALLEL for i in op.iterator_types)
-            and len(op.iterator_types) == rank and len(maps) == 2
-            and maps.data[-1].data == AffineMap.identity(rank))
+    return (
+        all(i.data == IteratorType.PARALLEL for i in op.iterator_types)
+        and len(op.iterator_types) == rank
+        and len(maps) == 2
+        and maps.data[-1].data == AffineMap.identity(rank)
+    )
 
 
 def _stripped(op):
@@ -128,9 +149,13 @@ def deduplicate_tensor_preparation(module) -> dict:
 
     counts = Counter()
     for function in tuple(module.walk()):
-        if function.name != "func.func" or not function.regions or any(
-            "strictfp" in k or "strictfp" in str(v)
-            for k, v in (*function.attributes.items(), *function.properties.items())
+        if (
+            function.name != "func.func"
+            or not function.regions
+            or any(
+                "strictfp" in k or "strictfp" in str(v)
+                for k, v in (*function.attributes.items(), *function.properties.items())
+            )
         ):
             continue
         for block in function.regions[0].blocks:
@@ -183,15 +208,17 @@ def rewrite_text(source: str) -> tuple[str, dict]:
 
 
 def ensure_registered():
-    from .impr_features import ImprFeature, known, register
+    from merlin.compiler.optimizations.registry import ImprFeature, known, register
 
     if FEATURE not in known():
-        register(ImprFeature(
-            name=FEATURE,
-            action_class="PASS",
-            description=(
-                "Share identical static immutable tensor views and exact i8/i16-to-f32 preparations, "
-                "retaining all merged provenance; explicit and default off."
-            ),
-        ))
+        register(
+            ImprFeature(
+                name=FEATURE,
+                action_class="PASS",
+                description=(
+                    "Share identical static immutable tensor views and exact i8/i16-to-f32 preparations, "
+                    "retaining all merged provenance; explicit and default off."
+                ),
+            )
+        )
     return FEATURE

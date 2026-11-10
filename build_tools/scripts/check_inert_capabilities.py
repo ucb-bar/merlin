@@ -658,7 +658,9 @@ def _named_elsewhere(corpus: _Corpus, producer_file: str) -> tuple[set[str], set
     literals: set[str] = set()
     prefixes: set[str] = set()
     for path, tree in corpus.all_trees().items():
-        is_producer = _rel(path, corpus.root).endswith(producer_file)
+        # Relocating registration code does not turn its own declarations into
+        # external consumers. Preserve the reviewed original producer identity.
+        is_producer = _source_layout.policy_path(_rel(path, corpus.root)).endswith(producer_file)
         for node in ast.walk(tree):
             # Composed prefixes count even inside the producer: the ladder that MINTS
             # `perop_register_block_mr4` lives beside the registration, and the consumer selects it

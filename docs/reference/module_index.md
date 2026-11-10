@@ -13,6 +13,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.analysis.dse` | Design-space analysis. |
 | `merlin.analysis.dse.guidance` | DSE guidance: turn a flat workload capture into grounded DSE-axis guidance. |
 | `merlin.analysis.dse.guidance.agent` | Agent slots for dse_guidance — LLM proposes, a deterministic gate disposes. |
+| `merlin.analysis.dse.guidance.insights` | Artifact-grounded design-space evidence analyses and report generation. |
 | `merlin.analysis.dse.pressure` | Design-pressure analysis: workload region -> cutpoints -> pressure metrics -> emitted reports. |
 | `merlin.analysis.dse.pressure.cutpoints` | Compiler cut points for analysis: the IR levels a workload region is observed at (graph, linalg, dispatch, bufferized, loop, trace), one module per cut point. |
 | `merlin.analysis.dse.pressure.emit` | Emit the schema-validated design-pressure artifacts: the design_pressure report, the candidate_contracts ladder (I0-I3) and interface candidates. |
@@ -43,6 +44,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.compiler.lower.llvm` | Shared LLVM finalization for scalar, vector, and control implementations. |
 | `merlin.compiler.lower.native` | Native upstream pass execution, runners and LLVM translation transport. |
 | `merlin.compiler.lower.scalar` | Reusable scalar computation lowering, independent of target providers. |
+| `merlin.compiler.optimizations` | Selectable shared optimization strategies and their actual source commitment. |
 | `merlin.compiler.partition` | Materialize selected source regions while preserving their exact SSA boundaries. |
 | `merlin.compiler.passes` | Invocation mechanisms for the selected native and xDSL environments. |
 | `merlin.compiler.planning` | Program placement policies and their declared candidate and cost inputs. |
