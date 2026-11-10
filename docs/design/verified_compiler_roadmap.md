@@ -3,7 +3,7 @@ title: Capability roadmap for a verified general compiler
 kind: design
 status: current
 owner: ir
-last_verified: 2026-10-12
+last_verified: 2026-11-10
 related: [verified_compiler_tooling, compiler_verification, lowering_pipeline, phase2_test_justification, component_compiler_convergence]
 code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/llvmlower, src/merlin/targetgen, src/merlin/perf, packages/merlin-experiments/src/merlin_experiments/phase1/brokers/common_transforms.py]
 ---

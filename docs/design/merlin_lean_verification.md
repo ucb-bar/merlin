@@ -3,7 +3,7 @@ title: Lean verification of the Merlin compilation path outside the OOT
 kind: design
 status: draft
 owner: verification
-last_verified: 2026-10-15
+last_verified: 2026-11-10
 related: [compiler_verification, verification, lowering_pipeline, host_device_compilation, gemmini_pass_catalog_plan]
 code_refs:
   - src/merlin/verify/receipts.py
@@ -51,7 +51,10 @@ MLIR/LLVM passes are trusted; the C11 native-prefix/CSE workstream has been
 removed. [Verification scope](verification_scope.md) defines this boundary and
 [the stack guide](../guides/lean_compiler_stack.md) describes the nine current gates.
 Statements below about a complete chain are design goals, not a claim that every
-compilation boundary is currently proved.
+compilation boundary is currently proved. Test, cross-check and qualification descriptions record
+the evidence as of 04ed0ae25; e6568ac96 removed most of those test modules (still readable at
+04ed0ae25). The retained 200-case suite is described in the
+[regression guide](../guides/lean_differential_tests.md).
 
 All nine Merlin-owned compiler gates are implemented and enabled by `--validate-passes all`.
 This includes Q/DQ lowering on both compiler routes and the bf16/f16 MACC
@@ -228,7 +231,7 @@ when the selected package or route enables them.
 | U16 | textual printer-quirk normalization *(textual route only)* | `passes_xdsl.preprocess_text_textual` | serialization | C3 with dual export (D9) |
 | D1 | upstream tensor passes: `canonicalize`, `cse`, `linalg-fuse-elementwise-ops`, `linalg-generalize-named-ops` | `pipeline._UPSTREAM_PASSES` | — | trusted toolchain; outside Merlin proof scope |
 | D2 | bufferization → loops → LLVM dialect → LLVM IR | upstream MLIR | — | trusted (§10); outside Merlin proof scope |
-| D3 | Merlin LLVM-IR transforms *(feature)*: host transform chain, static arena bind | `spike_model._transform_host_ir`, `arena_bind.py` | equivalence / allocation safety | Alive2 or C9b, else assumed |
+| D3 | Merlin LLVM-IR transforms *(feature)*: host transform chain, static arena bind | `host_transform_dispatch._transform_host_ir`, `arena_bind.py` | equivalence / allocation safety | Alive2 or C9b, else assumed |
 | D4 | device ABI bridge: shim + stored-tensor prepack | `device_shim.py`, prepack | layout bijection | C7c |
 | D5 | runtime artifacts: argument table, `weights.bin`, IO/state maps | `c_runtime.generate` | ABI binding | C8 |
 | D6 | link layout: arena, weights, stack, `.bss`, IO | `spike_model._layout`, linker script | memory safety | C9 |
@@ -504,7 +507,7 @@ the qualification suite also runs the checker under kernel reduction (`decide`) 
 - Verdicts use the existing vocabulary in `xdsl_dialects/lowering/passes.py`: `verified`, `refuted`
   (only with an executed counterexample), `abstracted` (rejected or unsupported, with reason), and
   `unmeasured` (not run).
-- A new `METHOD_LEAN` joins `filecheck` and `smt`.
+- A new `METHOD_LEAN` joins `filecheck` and `smt` (design; not built, see the note in §8.3).
 
 ### D13. Repository placement and pins
 
@@ -576,7 +579,7 @@ explains why that is safe and how vacuity is excluded.
   - For integer element types, a proved lemma shows the order is irrelevant.
   - For floats it is the definition. Its fidelity to MLIR is a tested assumption (§9.4).
 - **Named linalg ops** (`matmul`, `batch_matmul`, convolutions, `fill`, `transpose`, …) are *defined*
-  by their OpDSL generic form, transcribed in `Sem/Named.lean`. Every named-op instance in the paper
+  by their OpDSL generic form, transcribed in `Sem/Ops/LinalgNamed.lean`. Every named-op instance in the paper
   corpus is cross-checked: running `mlir-opt --linalg-generalize-named-ops` on it must produce,
   structurally, the generic form Lean assigns.
 - **Tensor movement** (`extract_slice`, `insert_slice`, `collapse_shape`, `expand_shape`, `concat`,
@@ -994,8 +997,9 @@ the actual source operations for 63 finite-input tensor cases (539 element resul
 signed zero, both i32 wraparound directions and the historical large-zero-point counterexample. It
 compared every result bit with independent NumPy arithmetic and 49 selected points with actual
 compiler bodies folded by authoritative MLIR. Those are dated results; neither the retained suite
-nor CI reruns them. `MERLIN_TORCH_PYTHON` still selects the isolated interpreter for the Q/DQ
-`SourceCapture` qualification route. These bounded fidelity checks supplemented the universal
+nor CI reruns them. The `torch` wheel hash in `lean-torch-requirements.txt` remains a bound input of
+the Q/DQ `SourceCapture` route, which `MERLIN_QDQ_CAPTURE_PYTHON`, `MERLIN_QDQ_PRODUCER` and
+`MERLIN_QDQ_TORCH_WHEEL` configure. These bounded fidelity checks supplemented the universal
 parametric proofs; NaN payload and complete IEEE-instance qualification, human specification
 review, and exact capture-producer binding remain outstanding.
 
@@ -1253,7 +1257,8 @@ Every boundary on the WP-0 inventory gets a recorded `(before, after, certificat
 ### 8.2 Certificate recorder
 
 `src/merlin/verify/lean/certify.py` exposes `record(rule, site, params)`. It is a no-op when
-recording is off. Passes call it at their existing rewrite points.
+recording is off. Passes call it at their existing rewrite points. (Design; not built, see the
+note in §8.3.)
 
 - **Byte-neutrality** is a test: build a fixed corpus with recording on and off, and require digests to
   be identical for every IR stage, `model.o` and the ELF.
@@ -1317,6 +1322,11 @@ tests and logged in a findings ledger. They are paper material.
 - **Build and tests:** `lake build` with Mathlib cache, Lean unit tests (`#guard` on golden JSON),
   Python tests, and the byte-neutrality test.
 - **Workflow:** a new `lean.yml` alongside `pr-fast.yml`.
+
+> **As implemented (2026-11-10).** `build_tools/scripts/check_lean_guard.py` builds `MerlinVerify`,
+> `merlin-lean` and `merlin-lean-audit`, checks `SPEC_LOCK` (frozen files and pinned statements) and
+> audits the axioms and declarations of every source module. `.github/workflows/lean-mlir.yml` runs
+> it, then the 200-case suite. There is no `Claims/` directory and no byte-neutrality test.
 
 ## 9. Qualification: evidence that the verifier works
 
@@ -1386,9 +1396,7 @@ MERLIN_LEAN_REQUIRED=1 uv run --no-sync python build_tools/scripts/run_lean_test
 The isolated binding environment uses the same torch-mlir version as
 `build_tools/toolchains/compiler-python.toml`, with a checksum-bound wheel. It needs no model capture
 checkout or PyTorch frontend. `MERLIN_COMPILER_PYTHON` also selects the test interpreter when the
-compatibility variable `MERLIN_M2M_PYTHON` is absent. Standalone xDSL/`mlir-opt` comparisons remain
-available separately through `MERLIN_VERIFY_MLIR_OPT`; they do not substitute for the authoritative
-tests in this workflow.
+compatibility variable `MERLIN_M2M_PYTHON` is absent.
 
 **What would make this verification fake, and the guard against each:**
 

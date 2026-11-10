@@ -3,7 +3,7 @@ title: Compiler verification architecture
 kind: design
 status: current
 owner: verification
-last_verified: 2026-10-12
+last_verified: 2026-11-10
 related: [verification, lowering_pipeline, capture_execution_attestation, verified_compiler_tooling, verified_compiler_roadmap]
 code_refs:
   - src/merlin/verify/receipts.py

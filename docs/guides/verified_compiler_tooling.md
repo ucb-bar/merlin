@@ -3,7 +3,7 @@ title: Shared transformations, ISA generation and Lean verification
 kind: guide
 status: current
 owner: ir
-last_verified: 2026-10-19
+last_verified: 2026-11-10
 related: [verified_compiler_roadmap, compiler_verification, phase0_specification, compiler_authoring_prompts, phase0_phase1_setup]
 code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, src/merlin/llvmlower/graph_optimizations.py, src/merlin/llvmlower/host_graph_policy.py, src/merlin/llvmlower/host_optimization_request.py, src/merlin/llvmlower/layout_conformance.py, src/merlin/llvmlower/layout_propagation.py, src/merlin/llvmlower/automatic_gathers.py, src/merlin/llvmlower/im2col_padding.py, src/merlin/llvmlower/im2col_padding_check.py, src/merlin/llvmlower/lower.py, src/merlin/llvmlower/device_build.py, src/merlin/llvmlower/device_object_optimization.py, src/merlin/llvmlower/host_transform_chain.py, src/merlin/runtime/backends/spike_model.py, src/merlin/compile/baremetal_model.py, packages/merlin-experiments/src/merlin_experiments/phase1/brokers, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py]
 ---
