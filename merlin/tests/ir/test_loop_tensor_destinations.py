@@ -152,7 +152,7 @@ def test_old_state_reads_and_permutations_finish_before_destination_updates(tmp_
         assert output.index("memref.store") < output.index('prov.op = "copy-selected-state"')
 
 
-def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True, write=False, opaque=False, constant=False, while_state=None, outside_read=False, private=False, unknown_owner=False, tensor_read=False, tensor_view=False):
+def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True, write=False, opaque=False, constant=False, while_state=None, outside_read=False, private=False, unknown_owner=False, tensor_read=False, tensor_view=False, read_seed=False, seed_init_read=False):
     marker = "read_only" if readonly else ""
     seed = "%seed" if fresh else "%x"
     declaration = "func.func private @observe()" if opaque else ""
@@ -187,6 +187,19 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
           ins(%zero:f32) outs(%empty:tensor<4xf32>) {^bb0(%v:f32,%init:f32):linalg.yield %v:f32}->tensor<4xf32>"""
     if constant:
         fill = "%seed=arith.constant dense<0.0>:tensor<4xf32>"
+    if read_seed:
+        yielded = "%value"
+        read_init = ""
+        if seed_init_read:
+            read_init, yielded = "%with_init=arith.addf %value,%init:f32", "%with_init"
+        fill = f'''%seed=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
+          ins(%x:tensor<4xf32>) outs(%empty:tensor<4xf32>) {{^bb0(%a:f32,%init:f32):
+            %i=linalg.index 0:index
+            %loaded=memref.load %view[%i]:memref<?xf32>
+            %value=arith.addf %a,%loaded:f32
+            {read_init}
+            linalg.yield {yielded}:f32
+          }}->tensor<4xf32>'''
     imported = f"%base=bufferization.to_buffer %x {marker}:tensor<4xf32> to memref<4xf32>"
     if private:
         imported = f"""%source=bufferization.to_buffer %x {marker}:tensor<4xf32> to memref<4xf32>
@@ -253,6 +266,15 @@ def test_scalar_read_captures_close_their_loop_local_producer_graph(tmp_path, op
     stdout, output = rewrite(tmp_path, read_source(conditional=False, outside_read=True, **options))
     assert f"OK loop_tensor_destinations {changed}" in stdout
     assert "memref.load" in output
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("options,changed", [({}, 1), ({"private": True}, 1), ({"fresh": False}, 0),
+    ({"readonly": False}, 0), ({"unknown_owner": True}, 0), ({"seed_init_read": True}, 0)])
+def test_read_computed_seeds_require_independent_unused_output_storage(tmp_path, options, changed):
+    stdout, output = rewrite(tmp_path, read_source(read_seed=True, **options))
+    assert f"OK loop_tensor_destinations {changed}" in stdout
+    assert "memref.load" in output and "scf.if" in output
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")

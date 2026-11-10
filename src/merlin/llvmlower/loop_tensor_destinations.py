@@ -34,7 +34,8 @@ def _ltd_fresh_seed(value):
     if op.name == 'arith.constant':
         return 'value' in op.attributes and isinstance(op.attributes['value'], ir.DenseElementsAttr)
     if (op.name == 'linalg.generic' and 'library_call' not in op.attributes and len(op.results) == 1 and op.operands
-            and all(_ltd_numeric(v.type) for v in tuple(op.operands)[:-1])
+            and all(_ltd_numeric(v.type) or isinstance(v.type, ir.RankedTensorType)
+                    and _ltd_numeric(v.type.element_type) for v in tuple(op.operands)[:-1])
             and _ltd_fresh_seed(op.operands[-1]) and len(op.regions) == 1 and len(op.regions[0].blocks) == 1):
         segments = tuple(ir.DenseI32ArrayAttr(op.attributes['operandSegmentSizes']))
         scalar = op.regions[0].blocks[0]
@@ -45,7 +46,10 @@ def _ltd_fresh_seed(value):
         maps = tuple(ir.ArrayAttr(op.attributes['indexing_maps']))
         return (ir.AffineMapAttr(maps[-1]).value == identity
                 and all(str(it) == '#linalg.iterator_type<parallel>' for it in ir.ArrayAttr(op.attributes['iterator_types']))
-                and _ltd_scalar_body(op, fresh_seed=False))
+                # The recursively checked unused output seed is independent.
+                # Tensor inputs and qualified readonly/private scalar captures
+                # supply values without granting their storage ownership.
+                and _ltd_scalar_body(op, fresh_seed=True))
     return (op.name == 'linalg.fill' and 'library_call' not in op.attributes and len(op.results) == 1
             and len(op.operands) == 2 and _ltd_numeric(op.operands[0].type) and _ltd_fresh_seed(op.operands[-1]))
 
