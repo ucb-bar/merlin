@@ -71,6 +71,14 @@ if HAS_XDSL:
 
         name = "f8E5M2"
 
+    # Recent xDSL releases own these types and their arithmetic constraints.
+    # Use the same class as upstream; a second class with the same spelling
+    # parses but fails cast verification (and breaks type equality).
+    from xdsl.dialects import builtin as _builtin
+
+    Float8E4M3FNType = getattr(_builtin, "Float8E4M3FNType", Float8E4M3FNType)
+    Float8E5M2Type = getattr(_builtin, "Float8E5M2Type", Float8E5M2Type)
+
     # Instances keyed by their MLIR bare spelling, for the parser hook.
     _FP8_BY_NAME = {
         "f8E4M3FN": Float8E4M3FNType(),
