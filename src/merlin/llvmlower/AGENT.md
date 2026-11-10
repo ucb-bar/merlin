@@ -1,5 +1,13 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`lower_scalar_diagnostics` materializes standard scalar/string `vector.print`
+after ownership checks and includes length-aware assertions. Keep fixed scalar
+formatting, full literal bytes, source positions and complete internal helpers.
+Only constant numeric format globals and typed scalars cross the C printf ABI;
+source prefixes never become format strings. Unsupported types and incompatible
+runtime declarations refuse before edits. The feature grants no source-buffer
+borrowing, physical print replication or accelerator runtime implementation.
+
 `lower_length_aware_diagnostics` expands scalar standard assertions at the late
 LLVM/CF seam after ownership checks. Keep complete UTF-8 literal byte counts,
 conditions, linefeeds, aborts, source locations and internal helper bodies.

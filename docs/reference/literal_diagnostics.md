@@ -51,3 +51,7 @@ conversion or numerical rewrite follows from this serialization adaptation.
 This qualifies literal source assertions at the host boundary. General Triton
 print formatting, external implementations, synchronization and accelerator
 diagnostic handling need their own executable contracts.
+
+[Scalar/string materialization](scalar_diagnostics.md) now supplies a separate
+explicit software profile for standard printing operations. Physical
+replication, source formatting and broader effects remain separate contracts.
