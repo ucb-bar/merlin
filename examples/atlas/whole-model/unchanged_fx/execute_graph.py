@@ -48,7 +48,7 @@ def main():
     parser.add_argument("--program-residency", action="store_true",
                         help="opt-in generic-session persistent-IMEM functional qualification")
     parser.add_argument("--input-overrides", type=Path, help="generated predecessor inputs, keyed input_N")
-    parser.add_argument("--input-bindings", type=Path, help="JSON producer application/execution and typed output-to-input bindings")
+    parser.add_argument("--input-bindings", type=Path, help="JSON producer application/execution, typed bindings and optional greedy logits-to-token input")
     parser.add_argument("--execution-output", type=Path, help="separate mutable execution artifacts from compiled package")
     args = parser.parse_args()
     if args.program_residency and args.backend == "cycle":
@@ -102,8 +102,9 @@ def main():
             raise ValueError("unknown application output bindings schema")
         bindings = {}
         rows = descriptor.get("bindings")
-        if not isinstance(rows, list) or not rows:
-            raise ValueError("application bindings require a nonempty bindings list")
+        greedy = descriptor.get("greedy")
+        if not isinstance(rows, list) or (not rows and greedy is None):
+            raise ValueError("application bindings require a nonempty bindings list or greedy row")
         for row in rows:
             if not isinstance(row, dict):
                 raise ValueError("application binding must be an object")
@@ -114,6 +115,13 @@ def main():
             if incoming >= len(inputs):
                 raise ValueError("input binding index exceeds generated ABI")
             bindings[incoming] = outgoing
+        if "greedy" in descriptor:
+            if (not isinstance(greedy, dict) or set(greedy) != {"input_index", "output_index"}
+                    or any(type(greedy[key]) is not int or greedy[key] < 0 for key in greedy)
+                    or greedy["input_index"] in bindings):
+                raise ValueError("greedy binding needs distinct nonnegative integer input and output indices")
+            if greedy["input_index"] >= len(inputs):
+                raise ValueError("greedy input binding index exceeds generated ABI")
         def selected_path(value):
             path = Path(value)
             return path if path.is_absolute() else args.input_bindings.resolve().parent / path
@@ -121,8 +129,10 @@ def main():
         if any(not isinstance(value, str) or not value for value in producers):
             raise ValueError("application bindings require producer_application and producer_execution paths")
         generated, generated_bindings = load_output_bindings(
-            selected_path(producers[0]), selected_path(producers[1]), record, bindings)
-        if set(generated) != {f"input_{index}" for index in bindings}:
+            selected_path(producers[0]), selected_path(producers[1]), record, bindings,
+            **({"greedy": greedy} if greedy is not None else {}))
+        targets = set(bindings) | ({greedy["input_index"]} if greedy is not None else set())
+        if set(generated) != {f"input_{index}" for index in targets}:
             raise ValueError("generated binding arrays differ from declared input bindings")
         for key, value in generated.items():
             index = int(key[6:])
