@@ -31,4 +31,4 @@ Search-loop unit tests should use a fake evaluator (deterministic scores) so the
 
 ## Notes for future agents
 
-Implement in phases: (1) grid, (2) evolutionary over YAML artifacts, (3) MAP-Elites archive. Keep candidate lineage/logs. See docs/search.md.
+Implement in phases: (1) grid, (2) evolutionary over YAML artifacts, (3) MAP-Elites archive. Keep candidate lineage/logs. See docs/guides/11-optimization.md.

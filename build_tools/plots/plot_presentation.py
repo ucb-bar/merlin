@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Ellipse, FancyArrowPatch, FancyBboxPatch, Patch
 
-# House style — single source of truth (palette, fonts, helpers). See docs/plot_style.md.
+# House style — single source of truth (palette, fonts, helpers). See docs/guides/12-experiments.md.
 from merlin.plotting.merlin_plotstyle import (
     BG,
     BLUE,

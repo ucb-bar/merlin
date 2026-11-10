@@ -2000,7 +2000,7 @@ sweeps:
       stage: after_phase1_before_phase2
       engine: $target_oracle:L3
       acceptance:
-        # the native-timing qualification gates of docs/guides/spike_timing.md
+        # the native-timing qualification gates of docs/guides/08-running.md
         ordering_agreement_min: 0.9
         separation_min_fraction: 0.05
       categories:

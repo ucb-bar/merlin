@@ -3,7 +3,7 @@
 ## Purpose
 
 The **static verification layer**: `lit` + `FileCheck` tests that run one compiler pass on one module
-and assert what it did. Milliseconds, no simulation. See `docs/design/compiler_verification.md`.
+and assert what it did. Milliseconds, no simulation. See `docs/guides/09-verification.md`.
 
 ## Invariants
 

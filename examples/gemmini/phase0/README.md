@@ -27,7 +27,7 @@ The new bottleneck profile belongs only to `performance_applications`; Phase 1's
 Phase 2 corpus identity. No historical release is rewritten, and no measured
 coverage or headline-model extrapolation follows from adding this declaration.
 
-For a fresh AWS experiment, use the [neutral worker preparation guide](../../../docs/guides/phase0_phase1_setup.md)
+For a fresh AWS experiment, use the [neutral worker preparation guide](../../../docs/guides/10-compiler-generation.md)
 and its operator-only deployment and verified-definition templates. This retained
 diagnostic example does not supply a reviewed execution contract or native launch
 evidence. The shared neutral tooling needs explicit contract/facts data and no
@@ -70,7 +70,7 @@ derivation input.
 The small hand-authored g0–g2 interface samples in [reference/](reference/)
 exercise the historical OOT contract; they are not a generated Phase 0 release.
 Generated capsules, weights and goldens are artifacts, never committed examples.
-Read [the shared specification guide](../../../docs/guides/phase0_specification.md)
+Read [the shared specification guide](../../../docs/guides/10-compiler-generation.md)
 for what belongs in a SW spec versus extracted evidence.
 
 ## 2. Produce and audit one coherent RTL source selection
@@ -212,7 +212,7 @@ derivation and the subsequent Phase 0 run. Set `MERLIN_TARGET_CONTRACT` and
 toolchain/engines uses Merlin's shared neutral tooling without executable
 support. The checked-in prototype contract is reference metadata and does not
 already provide this deployment selection. See the
-[worker setup](../../../docs/guides/gsim_worker_setup.md).
+[worker setup](../../../docs/guides/08-running.md).
 The generated requirement binds raw facts, the contract, effective readout
 facets and selected tooling source bytes. Changing those inputs requires fresh
 derivation rather than a resumed corpus run. The selected Gemmini readout supports

@@ -32,7 +32,7 @@ rounding and saturation policy.
 
 Use the existing operation-family vocabulary and explicit constraints. Do not
 invent a free-text formula field: the current schema does not interpret one.
-The shared [software-spec guide](../../../docs/guides/phase0_specification.md)
+The shared [software-spec guide](../../../docs/guides/10-compiler-generation.md)
 describes normalization, admission and unresolved declarations. The six accelerator
 requests retained here are declarations; some need further evidence to resolve.
 Host operation support is declared once in the selected host manifest.
@@ -79,7 +79,7 @@ the software specification or runtime input package.
 2. Select its path as `phases.0.config.software_spec` in the experiment definition.
    Keep platform paths explicit and freeze their source identities.
 3. Follow the [Phase 0 walkthrough](../phase0/README.md). For a fresh AWS run, use
-   the [neutral worker preparation guide](../../../docs/guides/phase0_phase1_setup.md).
+   the [neutral worker preparation guide](../../../docs/guides/10-compiler-generation.md).
 4. Run the reviewed Phase 0 definition into a fresh owner, inspect its mandatory
    coverage and unresolved decisions, then review and seal the release.
 

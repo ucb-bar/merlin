@@ -18,7 +18,7 @@ uv pip install -e '.[dev,verify,semantic-search,targetgen]'
 One Merlin distribution contains compiler and research code. Select additional
 dependency extras such as `experiments` or `analysis` on that same package when
 needed; do not install the retired code distributions from `packages/`. The timing
-observer is an independent package. See [getting started](docs/guides/getting_started.md)
+observer is an independent package. See [getting started](docs/guides/01-inputs.md)
 for workflow-specific extras and external prerequisites.
 
 External dependencies (chipyard, model2MLIR, boards, sibling repos) are **not vendored** — point at

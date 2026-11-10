@@ -19,8 +19,8 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
 ## What does not belong here
 
 - Stable production dialects (those would graduate to a future MLIR/C++ plane — not built; see
-  `docs/design/compiler_plane.md`).
-- Adapters to external xDSL tooling (implement in-package; see `docs/design/integrations.md`).
+  `docs/reference/architecture.md`).
+- Adapters to external xDSL tooling (implement in-package; see `docs/guides/12-experiments.md`).
 - Target dialects (generated into target repos by TargetGen).
 
 ## Interfaces
@@ -30,7 +30,7 @@ Prototypes the five core dialects (contract/schedule/interface/runtime/dse) in P
 ## Invariants
 
 - These are rapid prototypes — expect churn, but keep `module.verify()` green.
-- Stable dialects may later graduate to a future MLIR/C++ plane (see `docs/design/compiler_plane.md`); keep names aligned.
+- Stable dialects may later graduate to a future MLIR/C++ plane (see `docs/reference/architecture.md`); keep names aligned.
 - `dse` is a real (minimal) dialect by explicit decision — it mirrors the `interface_candidate`/`dse_result`/`exploitability_report` schemas and never participates in lowering. `kernel`/`search` stay schemas-first.
 - Local single-op checks live in `verify_`; cross-op checks (use-after-evict, placement legality, command-buffer consistency) live in `lowering/analyses.py`.
 
@@ -40,4 +40,4 @@ Per-dialect build/verify/invalid/round-trip tests plus the end-to-end lowering t
 
 ## Notes for future agents
 
-xDSL is the default way we handle MLIR-style IR until a specific pipeline is chosen. Copy the proven xDSL 0.65 idioms (field-annotation attribute params, `EnumAttribute` + `SpacedOpaqueSyntaxAttribute`, `func.ReturnOp`). See `docs/xdsl.md` and `docs/dialects.md`.
+xDSL is the default way we handle MLIR-style IR until a specific pipeline is chosen. Copy the proven xDSL 0.65 idioms (field-annotation attribute params, `EnumAttribute` + `SpacedOpaqueSyntaxAttribute`, `func.ReturnOp`). See `docs/reference/architecture.md` and `docs/reference/architecture.md`.

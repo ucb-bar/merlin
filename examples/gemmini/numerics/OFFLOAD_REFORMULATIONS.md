@@ -6,7 +6,7 @@ This note is for engineers building a Gemmini implementation of the workloads in
 [QUANTIZATION.md](QUANTIZATION.md). It asks which non-matmul work can move onto Gemmini, and at what
 numerical price. Each technique gets a derivation, an exactness class, a command sketch, a cost and an
 owner. Section 10 proposes declarations. "§4.2" and similar refer to
-[model_check.md](../../../docs/reference/model_check.md). Numbers come from numpy experiments (Appendix A).
+[model_check.md](../../../docs/guides/09-verification.md). Numbers come from numpy experiments (Appendix A).
 
 ## 1. Three classes
 

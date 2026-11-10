@@ -1,5 +1,5 @@
 # Models judged by `python -m merlin.model_check` for this target.
-# Contract: docs/reference/model_check.md. Each program lists its @forward model inputs (in0, in1, ...) in
+# Contract: docs/guides/09-verification.md. Each program lists its @forward model inputs (in0, in1, ...) in
 # order, each taken from:
 #   {from: input, key: K}                         the input's model-ready array K
 #   {from: tokens, slice: prefill|next}            token ids [1, prefill_tokens] / the step's next token [1, 1]

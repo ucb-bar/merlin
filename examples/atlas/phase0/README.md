@@ -24,7 +24,7 @@ reports FP8-to-FP32 projection as a blocker, not native accelerator support.
 [regression-seeds.yaml](regression-seeds.yaml) preserves historical authored tests
 for explicit compatibility studies. It is **not** a default derivation input.
 Generated capsules, weights and goldens are artifacts, never committed examples.
-Read [the shared specification guide](../../../docs/guides/phase0_specification.md)
+Read [the shared specification guide](../../../docs/guides/10-compiler-generation.md)
 for what belongs in a SW spec versus extracted evidence.
 
 ## 2. Produce and audit one coherent RTL source selection
@@ -101,7 +101,7 @@ targets `EE290SimConfig`, create a new selected source bundle and Phase 0 run
 with that exact elaboration and simulator identity. Existing receipts must not
 be relabeled as evidence for the new SoC configuration.
 For that new campaign, use the generic
-[`rtl.elaboration` receipt](../../../docs/guides/phase0_specification.md#bind-the-selected-configuration-to-its-elaborated-source)
+[`rtl.elaboration` receipt](../../../docs/guides/10-compiler-generation.md)
 to bind the exact `EE290SimConfig` invocation to fresh FIRRTL, then supply
 `--elaboration-receipt` when producing `source-selection.json`. The selected
 Chipyard Git link for `generators/atlas-npu` must be checked against the exact

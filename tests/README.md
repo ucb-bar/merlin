@@ -26,5 +26,5 @@ matrices.
 
 Historical framework tests and paper instruments remain recoverable from their
 recorded Git revisions or frozen inputs. See the
-[historical replay guide](../../docs/guides/historical_verification_replay.md).
+[historical replay guide](../../docs/guides/09-verification.md).
 Do not reinterpret a smaller current suite as the original research instrument.

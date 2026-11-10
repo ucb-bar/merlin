@@ -16,7 +16,7 @@ compared.
 
 Sections 1–7 describe code and capture records. Each claim names the file or record a reader can
 check. Section 8 is a dated status report (2026-10-16) and will change. Section 9 lists what is not
-yet settled. The judging contract is [`docs/reference/model_check.md`](../../../docs/reference/model_check.md).
+yet settled. The judging contract is [`docs/guides/09-verification.md`](../../../docs/guides/09-verification.md).
 The evaluation and calibration inputs are described in [`README.md`](README.md).
 
 "r53b" names the historical development captures. They are kept in a private, sealed capture store,
@@ -237,7 +237,7 @@ outer-product rescale of every score element per plane, plus element-wise absmax
 
 ## 6. How numerics are judged
 
-Contract: [`docs/reference/model_check.md`](../../../docs/reference/model_check.md), §3–§4.
+Contract: [`docs/guides/09-verification.md`](../../../docs/guides/09-verification.md), §3–§4.
 
 - **INT8 reference.** The prepared program (§1), evaluated by `merlin.runtime.linalg_numpy.evaluate`,
   which reads each op's semantics from the IR and shares no code with any lowering. Integers wrap at

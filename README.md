@@ -44,7 +44,7 @@ print(result.manifest)
 compiler-stage directory. The Python API also accepts supported PyTorch modules,
 FX graphs and functions with example inputs. Those routes require their selected
 capture/import dependencies and a provider that admits the resulting program.
-See [setup and prerequisites](docs/guides/getting_started.md).
+See [setup and prerequisites](docs/guides/01-inputs.md).
 
 ## Choose a workflow
 
@@ -52,9 +52,9 @@ See [setup and prerequisites](docs/guides/getting_started.md).
 | --- | --- |
 | Compile and run a small input | [First example](examples/quickstart/README.md) |
 | Explore specs, RTL facts, test generation, scheduling, transformations and CCA | [Interactive tutorials](examples/tutorials/README.md) |
-| Compile a model or use a target | [Examples](examples/README.md), [setup](docs/guides/getting_started.md) |
-| Add a compiler transformation | [Contributor entry points](docs/guides/compiler_contributions.md), [shared pass library](docs/reference/shared_compiler_passes.md) |
-| Add or select an OOT backend | [Target integration](docs/guides/adding_a_target.md), [backend resolution](docs/guides/target_resolution.md) |
+| Compile a model or use a target | [Examples](examples/README.md), [setup](docs/guides/01-inputs.md) |
+| Add a compiler transformation | [Contributor entry points](docs/guides/11-optimization.md), [shared pass library](docs/guides/12-experiments.md) |
+| Add or select an OOT backend | [Target integration](docs/guides/02-targets.md), [backend resolution](docs/guides/02-targets.md) |
 | Run agentic experiments | [Experiment catalog](experiments/README.md) |
 | Reproduce reported studies | [Paper artifact](experiments/reference-data/paper-artifact/README.md) |
 

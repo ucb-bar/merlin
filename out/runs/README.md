@@ -12,4 +12,4 @@ Do not rename frozen runs or edit their receipts to reorganize output.
 New run locations come from the run/storage APIs, not hand-built path strings.
 Historical native runs can have different internal layouts; their recorded paths
 remain authoritative. See the [experiment guide](../../experiments/README.md)
-and [storage guide](../../docs/guides/storage.md).
+and [storage guide](../../docs/guides/12-experiments.md).

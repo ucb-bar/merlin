@@ -19,4 +19,4 @@ Curated source inputs belong in `experiments/reference-data/`, not here. Buildab
 trees and environments belong in `out/build/`; experiment execution belongs in
 `out/runs/`. Do not treat every artifact as a disposable cache: manifests, citations
 and retention pins can require keeping it. Use `merlin storage layout` to inspect
-placement and the [storage guide](../../docs/guides/storage.md) before cleanup.
+placement and the [storage guide](../../docs/guides/12-experiments.md) before cleanup.

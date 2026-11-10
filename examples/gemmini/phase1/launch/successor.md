@@ -20,7 +20,7 @@ pass or qualify a compiler.
 Select one clean Merlin revision, compatible installed Python dependencies,
 source-produced target facts, capability contract, board/runtime selections,
 public capture sources and an independent hidden cohort. Use the ordinary
-[Phase 0 setup and release gates](../../../../docs/guides/phase0_phase1_setup.md).
+[Phase 0 setup and release gates](../../../../docs/guides/10-compiler-generation.md).
 The supplied definition must select the new recipe and source inputs explicitly:
 
 ```sh

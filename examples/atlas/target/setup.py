@@ -154,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     # Materialize the OOT target-definition PACKAGE (contract + dialect_plan, derived from the CIRCT
     # facts) into the search path, so `target_registry.resolve("atlas")` finds it with ZERO env — the
     # seamless default. This is the SAME package format a user can clone/pin elsewhere and select via
-    # MERLIN_TARGET_PATH. See docs/guides/target_resolution.md.
+    # MERLIN_TARGET_PATH. See docs/guides/02-targets.md.
     if ok and (a.materialize_target_package or a.target_package_dir):
         try:
             from merlin.targetgen import capability_manifests as _cm

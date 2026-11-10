@@ -47,7 +47,7 @@ The handwritten support provider and copied kernel headers have been removed.
 `merlin.runtime.backends.chipyard_rocc` runtime, and a digest-pinned ISA-headers spec); it holds no code.
 Fresh Phase 1 and Phase 2 use the independently issued hardware, runtime and
 compiler-origin authorities described in the
-[fresh compiler design](../../docs/design/fresh_compiler_origin.md).
+[fresh compiler design](../../docs/guides/12-experiments.md).
 Historical probes and authored contracts below are inspection material; they
 do not supply an admitted compiler, runtime or fresh experiment input.
 

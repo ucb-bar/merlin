@@ -1,6 +1,6 @@
 # Compiler contribution map
 
-Use this map with [the contributor guide](../../docs/guides/compiler_contributions.md)
+Use this map with [the contributor guide](../../docs/guides/11-optimization.md)
 and [the construction workflow](construction_rehearsal.md). It describes change
 locations, not a mandatory pass order or a supplied target implementation.
 The author starts with an empty target backend and the selected public library.

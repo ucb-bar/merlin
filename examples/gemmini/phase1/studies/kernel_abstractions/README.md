@@ -58,7 +58,7 @@ scientific evidence, not portable presets. The archive includes superseded and
 invalidated pilots so their exclusion remains auditable.
 
 For new experiments, install the optional experiment package and select inputs
-through the [artifact evaluation guide](../../../../../docs/guides/artifact_evaluation.md).
+through the [artifact evaluation guide](../../../../../docs/guides/12-experiments.md).
 For a reported result, first select its exact frozen compiler and measurement
 records through the compiler repository's
 [run index](https://github.com/ucb-bar/gemmini-mlir/tree/paper/index).

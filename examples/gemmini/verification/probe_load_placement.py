@@ -4,7 +4,7 @@
 This is a target-local measurement probe, not a compiler test. It builds ONE bare-metal binary carrying the
 same contraction under several scheduling policies, runs it on a selected RTL engine and reads the unit's own
 performance counters. The findings it produced, and the hardware revision they belong to, are recorded in
-`docs/design/open_coded_nest_costs.md`.
+`docs/guides/12-experiments.md`.
 
 An open-coded (sequencer-free) contraction has to configure the load unit before every move-in whose
 DRAM row pitch differs from the last one configured. A backend that uses ONE configuration state must

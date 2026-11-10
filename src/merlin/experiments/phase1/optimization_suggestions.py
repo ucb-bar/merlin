@@ -405,13 +405,13 @@ def prepare(workspace, run_dir, *, repo, inventory, contract_path=None, ordering
     """
     import yaml
 
-    path = Path(repo) / "docs/design/joint_optimization_catalog.json"
+    path = Path(repo) / "src/merlin/resources/optimizations/authoring.json"
     software = Path(workspace) / "public_declarations/software-spec.yaml"
     if not path.is_file() or not software.is_file():
         return ""
     catalog = json.loads(path.read_text())
     _selected_bindings(catalog, inventory, workspace)
-    extension_path = path.with_name("tightly_coupled_optimization_extensions.json")
+    extension_path = path.with_name("extensions.json")
     if extension_path.is_file():
         catalog["extensions"] = [
             {key: entry[key] for key in ("id", "mechanism", "required_validation")}

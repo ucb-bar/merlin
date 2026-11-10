@@ -101,7 +101,7 @@ OOT repositories. Historical support snapshots, where retained, have recorded
 companion provenance; their presence is not default provider selection or
 independent qualification. Fresh compiler evaluation uses its reviewed independent
 runtime and public inputs, without exposing reference compiler implementations
-to the candidate. See [target resolution](../docs/guides/target_resolution.md).
+to the candidate. See [target resolution](../docs/guides/02-targets.md).
 Compiler candidates stay in their own repositories; generated capsules,
 weights and compiler artifacts stay under the configured output root. Do not copy
 private holdouts, goldens or credentials into examples.
@@ -218,7 +218,7 @@ is optional folklore — each one is read by the library at a specific point, an
 either a checkout path or a hard failure.
 
 ```bash
-# 1. the repo and its interpreter (see the root README / docs/guides/getting_started.md)
+# 1. the repo and its interpreter (see the root README / docs/guides/01-inputs.md)
 uv sync --all-extras            # creates .venv with merlin editable; plain `python` is not on PATH
                                 # without uv: pip install -e '.[dev,xdsl]'
 
@@ -230,7 +230,7 @@ export MERLIN_CHIPYARD=/path/to/chipyard
 
 # 3. LLVM/MLIR 23 -- clang-23 compiles every RISC-V object, and mlir-translate lowers the OpenMP IR
 #    every MULTICORE image needs. It is NOT in a fresh clone (third_party/llvm-install is gitignored):
-#    build it per docs/guides/llvm_toolchain.md, then nothing needs exporting. Already have an LLVM 23?
+#    build it per docs/guides/06-lowering.md, then nothing needs exporting. Already have an LLVM 23?
 export MERLIN_CLANG=/path/to/bin/clang-23
 export MERLIN_MLIR_TRANSLATE=/path/to/bin/mlir-translate
 
@@ -274,9 +274,9 @@ regenerable with a documented command.
 |---|---|
 | **The tuned RVV schedule** — the compiler package these binaries are built with | Tracked in this repo at `out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8/` (3 files). Also published standalone: `git clone -b stable/impr_tuned_wholemodel_vf_int8 https://github.com/ucb-bar/rvv-mlir.git`. The frozen before-picture is branch **`baseline-int8_w8a8`** on the same repo — diffing the two is the clearest statement of what the tuning actually changed. |
 | **Zephyr** | `git clone -b dev https://github.com/ucb-bar/zephyr-chipyard-sw.git`, then point `ZEPHYR_BASE` at `zephyr_ws/zephyr`. The commit matters and is checkable from any returned log: the boot banner prints it (`*** Booting Zephyr OS build 852bb170cc56 ***`). |
-| **Model capture bundles** (`out/artifacts/recaptures/<model>_int8_full/`) | Not shipped — they are large and regenerable. Generate with [model2MLIR](https://github.com/ucb-bar/model2MLIR): `python $MODEL2MLIR_DIR/workloads/capture.py <model> --formats int8`. See [`docs/guides/model2mlir.md`](../docs/guides/model2mlir.md); quantization happens in that repo, not this one. That checkout is needed for `build` even when you already have the bundles — the MLIR lowering runner executes inside its venv (`MERLIN_M2M_DIR` / `MERLIN_M2M_VENV`), which is why `preflight` lists it. |
+| **Model capture bundles** (`out/artifacts/recaptures/<model>_int8_full/`) | Not shipped — they are large and regenerable. Generate with [model2MLIR](https://github.com/ucb-bar/model2MLIR): `python $MODEL2MLIR_DIR/workloads/capture.py <model> --formats int8`. See [`docs/guides/03-preparation.md`](../docs/guides/03-preparation.md); quantization happens in that repo, not this one. That checkout is needed for `build` even when you already have the bundles — the MLIR lowering runner executes inside its venv (`MERLIN_M2M_DIR` / `MERLIN_M2M_VENV`), which is why `preflight` lists it. |
 | **spike + riscv64 toolchain** | Any build works; point `MERLIN_SPIKE` at the binary, or `MERLIN_CHIPYARD` at a chipyard checkout whose `.conda-env` provides riscv-tools. |
-| **`clang-23` + `mlir-translate`** (LLVM/MLIR 23) | Built from the pinned `third_party/llvm-project` submodule into `third_party/llvm-install/`, which is **gitignored** — a fresh clone has to build it: [`docs/guides/llvm_toolchain.md`](../docs/guides/llvm_toolchain.md) has the exact cmake line, why each flag is there, and a cheap two-target build if all you want is these examples. LLVM 23 is upstream `main`, so no distro package substitutes; an existing LLVM 23 install works via `MERLIN_CLANG` / `MERLIN_MLIR_TRANSLATE`. |
+| **`clang-23` + `mlir-translate`** (LLVM/MLIR 23) | Built from the pinned `third_party/llvm-project` submodule into `third_party/llvm-install/`, which is **gitignored** — a fresh clone has to build it: [`docs/guides/06-lowering.md`](../docs/guides/06-lowering.md) has the exact cmake line, why each flag is there, and a cheap two-target build if all you want is these examples. LLVM 23 is upstream `main`, so no distro package substitutes; an existing LLVM 23 install works via `MERLIN_CLANG` / `MERLIN_MLIR_TRANSLATE`. |
 | **The gemmelos SDK** | A third-party bring-up repo, not ours to redistribute. It supplies only *facts* — a UART base address, two clock rates, a PLL register map. The `facts` stage prints exactly what is read out of it, so if you cannot get the checkout you can see precisely what would have to be supplied another way. The Kodiak example needs none of this. |
 | **The boards** | Two tapeouts. You will not have one, which is the premise. |
 
@@ -289,9 +289,9 @@ descriptor. `gemmelos/README.md` walks it.
 
 ## See also
 
-- [`docs/guides/getting_started.md`](../docs/guides/getting_started.md) — the repo itself
-- [`docs/guides/llvm_toolchain.md`](../docs/guides/llvm_toolchain.md) — building the LLVM/MLIR 23 these
+- [`docs/guides/01-inputs.md`](../docs/guides/01-inputs.md) — the repo itself
+- [`docs/guides/06-lowering.md`](../docs/guides/06-lowering.md) — building the LLVM/MLIR 23 these
   examples compile through
-- [`docs/guides/adding_a_target.md`](../docs/guides/adding_a_target.md) — a third board
-- [`docs/guides/model2mlir.md`](../docs/guides/model2mlir.md) — where capture bundles come from
-- [`docs/guides/reproducibility.md`](../docs/guides/reproducibility.md) — what each result rests on
+- [`docs/guides/02-targets.md`](../docs/guides/02-targets.md) — a third board
+- [`docs/guides/03-preparation.md`](../docs/guides/03-preparation.md) — where capture bundles come from
+- [`docs/guides/12-experiments.md`](../docs/guides/12-experiments.md) — what each result rests on

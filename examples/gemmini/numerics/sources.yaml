@@ -1,5 +1,5 @@
 # Evaluation and calibration inputs for `python -m merlin.model_check` (contract:
-# docs/reference/model_check.md §8). Every source is pinned by revision and sha256; every selection is a
+# docs/guides/09-verification.md §8). Every source is pinned by revision and sha256; every selection is a
 # deterministic rule over that source, so anyone with the same files gets the same inputs.
 # Visible inputs are committed as inputs/<model>/visible.{npz,json}; sealed inputs are produced by the same
 # rules into the private root and are committed here only as sha256 (MANIFEST.json).

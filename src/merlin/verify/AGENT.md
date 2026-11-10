@@ -19,7 +19,7 @@ Executors without that capability retain the original path.
 
 Compiler-pass verification: the **static** (lit/FileCheck) and **formal** (SMT/Lean) layers that sit beside
 the capsule oracle ladder. The bench grades *outcomes*; this package verifies *passes*. Model, results
-and working log: `docs/design/compiler_verification.md`.
+and working log: `docs/guides/09-verification.md`.
 
 ## Modules
 

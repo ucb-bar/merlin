@@ -11,7 +11,7 @@ xDSL pass registry + pipeline builder. Turns a compilation strategy's `lowering_
 ## What does not belong here
 
 - Strategy/search logic (that is `dse/` and `search/`).
-- Stable C++ passes (would live in a future MLIR/C++ plane — not built; see `docs/design/compiler_plane.md`).
+- Stable C++ passes (would live in a future MLIR/C++ plane — not built; see `docs/reference/architecture.md`).
 
 ## Invariants
 

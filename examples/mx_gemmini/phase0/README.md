@@ -53,7 +53,7 @@ derive`. The derived artifact root retains those policy bytes. The frozen
 selection remains a capture diagnostic; its source closure
 and numerical policy are not reviewed, and it is not an admitted capsule corpus.
 
-[The MX Phase 0 guide](../../../docs/guides/mx_gemmini_phase0.md) records the
+[The MX Phase 0 guide](../../../docs/guides/10-compiler-generation.md) records the
 format rules, supported operation boundary, capture policy, and evidence gates.
 
 Provision the selected OOT support and numerical model, replace the legacy

@@ -127,7 +127,7 @@ their diagnostic ledgers do not establish or replace this catalog handoff.
 
 Select the same reviewed execution contract and RTL facts for derivation,
 preparation and EL4 preflight. A contract declaring `runner.backend: chipyard_rocc`
-uses [shared neutral tooling](../docs/reference/neutral_runtime_tooling.md) without
+uses [shared neutral tooling](../docs/guides/08-running.md) without
 an executable support provider. Other execution providers require independent
 review and explicit selection through `MERLIN_TARGET_PATH`; compiler-bearing
 handwritten support cannot grade a fresh compiler. The metadata-only target
@@ -176,7 +176,7 @@ bundle. When selecting the neutral data runtime, rebind `MERLIN_TARGET_CONTRACT`
 and `MERLIN_RTL_FACTS` to this release's `payload/experiment/contracts/target_contract.yaml`
 and `payload/experiment/rtl_facts/facts.json`. The original Phase 0 contract path
 conflicts with the release descriptor even if its bytes match. Follow the
-[worker preparation guide](../docs/guides/phase0_phase1_setup.md).
+[worker preparation guide](../docs/guides/10-compiler-generation.md).
 Keep the authored definition unchanged and select both release inputs explicitly:
 
 ```sh

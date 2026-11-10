@@ -74,7 +74,7 @@ def _components(package: Path) -> list[tuple[str, bool, str]]:
         (
             f"target package ({_rel(package)})",
             ok,
-            "" if ok else "pass --package <dir>, or see docs/guides/adding_a_target.md",
+            "" if ok else "pass --package <dir>, or see docs/guides/02-targets.md",
         )
     )
 

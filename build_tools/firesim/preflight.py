@@ -11,7 +11,7 @@ the FPGA, never starts the daemon.
     .venv/bin/python build_tools/firesim/preflight.py --json
 
 Exit code is 0 when every check is OK or WARN, 1 when any check FAILs.  See
-docs/guides/firesim.md for what to do about each finding.
+docs/guides/08-running.md for what to do about each finding.
 """
 
 from __future__ import annotations

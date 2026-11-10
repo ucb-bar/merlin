@@ -53,7 +53,7 @@ Name an operation once and write its typed constraints directly underneath it.
 For unchanged lane crossings, `copy: {dtype: int8, layout: row_major_contiguous}`
 states both endpoint types/layouts and bit-preserving semantics once. The generator
 expands these into the full consumer contract in artifacts; no target-specific
-defaults or review claims are added. See the [authoring guide](../../../docs/guides/phase0_specification.md).
+defaults or review claims are added. See the [authoring guide](../../../docs/guides/10-compiler-generation.md).
 
 Merlin's v1 reader also accepts old inline `capability_contract` documents, but
 new minimal specs require a separately selected same-target backend contract.
@@ -512,7 +512,7 @@ issue order. Each wrong element is classified by which operand survived, and a
 fenced harness copy serves as the control. Spike and in-order RTL simulators
 never show the race; the board and a reordering memory model do. The measured
 evidence and its consequences for verification are in the
-[design note](../../../docs/design/accumulator_load_order.md).
+[design note](../../../docs/guides/12-experiments.md).
 
 ### Measure open-coded nest placement levers
 
@@ -532,7 +532,7 @@ python examples/gemmini/verification/probe_load_placement.py \
 
 Compare arms only within one binary: an arm's absolute count moves with the
 other arms in the same binary. The findings are in the
-[design note](../../../docs/design/open_coded_nest_costs.md).
+[design note](../../../docs/guides/12-experiments.md).
 
 ### Calibrate the Spike timing model with derived probes
 

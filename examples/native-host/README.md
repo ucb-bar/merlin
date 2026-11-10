@@ -104,5 +104,5 @@ Before admitting a broader host capability, independently qualify its exact type
 operation signatures and numerical semantics, then select its compatible runtime
 and deployment ABI. Whole-model agreement alone is not that evidence.
 
-See [model lowering](../../docs/guides/model_lowering.md) for stage inspection and
-[the compiler stack](../../docs/guides/extending_the_stack.md) for ownership boundaries.
+See [model lowering](../../docs/guides/06-lowering.md) for stage inspection and
+[the compiler stack](../../docs/guides/12-experiments.md) for ownership boundaries.

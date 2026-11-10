@@ -15,7 +15,7 @@ This folder holds what `python -m merlin.model_check` needs to judge a Gemmini d
 complete models (ResNet50, SmolVLA and TinyLlama): which captured programs make up each model and what is
 judged, the pinned evaluation and calibration inputs, and the files that bind Spike to the RTL and the
 FPGA build. It also holds guides for anyone building an int8 implementation that must match Merlin's.
-Contract and numerics policy: [`docs/reference/model_check.md`](../../../docs/reference/model_check.md).
+Contract and numerics policy: [`docs/guides/09-verification.md`](../../../docs/guides/09-verification.md).
 
 | Path | What it is | How it is used |
 |---|---|---|

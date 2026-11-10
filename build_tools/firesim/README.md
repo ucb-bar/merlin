@@ -2,7 +2,7 @@
 
 Link-time artifacts and a read-only preflight for running merlin on **FireSim** (the Saturn SoC
 on an Alveo U250). The operating guide — building a bitstream, the mandatory job queue, reading
-`uartlog`/`heartbeat.csv`, troubleshooting — is [`docs/guides/firesim.md`](../../docs/guides/firesim.md).
+`uartlog`/`heartbeat.csv`, troubleshooting — is [`docs/guides/08-running.md`](../../docs/guides/08-running.md).
 
 ## Two target paths, and which files apply to which
 

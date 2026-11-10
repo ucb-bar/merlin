@@ -42,7 +42,7 @@ and the raised-clock set ships beside it.
 
 Before either stage runs you need **`clang-23`** and — for any multi-hart image — **`mlir-translate`**,
 from an LLVM/MLIR 23 build that is not in a fresh clone. Build it per
-[`docs/guides/llvm_toolchain.md`](../../docs/guides/llvm_toolchain.md), or point `MERLIN_CLANG` /
+[`docs/guides/06-lowering.md`](../../docs/guides/06-lowering.md), or point `MERLIN_CLANG` /
 `MERLIN_MLIR_TRANSLATE` at an LLVM 23 you already have; `./run.sh preflight` reports both. This is
 independent of `GEMMELOS_SDK` — the SDK supplies chip facts, LLVM supplies the compiler.
 

@@ -125,29 +125,20 @@ REQUIRED_SCHEMAS = [
 ]
 
 REQUIRED_DOCS = [
-    # reference/ — durable, code-derived facts
     "reference/architecture",
     "reference/repo_structure",
-    "reference/contracts",
-    "reference/dialects",
-    "reference/core_dialects",
-    "reference/runtime",
-    "reference/xdsl",
-    "reference/generated_target_repos",
-    # guides/ — task-oriented how-tos
-    "guides/getting_started",
-    "guides/targetgen",
-    "guides/kernel_mining",
-    "guides/design_pressure",
-    "guides/dse",
-    "guides/integrations",
-    "guides/adding_a_target",
-    "guides/compilation_strategies",
-    "guides/search",
-    "guides/zephyr",
-    "guides/llvm_integration",
-    # design/ — rationale
-    "design/parallel_workstreams",
+    "guides/01-inputs",
+    "guides/02-targets",
+    "guides/03-preparation",
+    "guides/04-planning",
+    "guides/05-transformations",
+    "guides/06-lowering",
+    "guides/07-building",
+    "guides/08-running",
+    "guides/09-verification",
+    "guides/10-compiler-generation",
+    "guides/11-optimization",
+    "guides/12-experiments",
 ]
 
 REQUIRED_BENCHMARKS = [

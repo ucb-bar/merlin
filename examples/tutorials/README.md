@@ -36,11 +36,11 @@ a static preview: live controls need a running Python kernel.
 ## Read more
 
 The guides follow the same order:
-[contracts and facts](../../docs/guides/target_contracts.md),
-[test generation](../../docs/guides/test_generation.md),
-[scheduling](../../docs/guides/scheduling.md),
-[transformations](../../docs/guides/transformations.md), and
-[CCA](../../docs/guides/cca.md).
+[contracts and facts](../../docs/guides/02-targets.md),
+[test generation](../../docs/guides/10-compiler-generation.md),
+[scheduling](../../docs/guides/05-transformations.md),
+[transformations](../../docs/guides/05-transformations.md), and
+[CCA](../../docs/guides/11-optimization.md).
 
 All default examples run without a board, simulator, Torch model or native MLIR
 build. They call Merlin's actual parsers, generators, passes and checkers using

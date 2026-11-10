@@ -10,4 +10,4 @@ capsules. Select them explicitly when mining external kernels:
 
 The indexer generates its index and receipts in the selected output directory.
 Neither file claims that a mined kernel is correct or that a compiler lowers it.
-See the [kernel-mining guide](../../../docs/guides/kernel_mining.md).
+See the [kernel-mining guide](../../../docs/guides/09-verification.md).

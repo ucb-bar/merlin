@@ -94,7 +94,7 @@ def step_package(state: dict) -> None:
     if not package_dir.is_dir():
         raise WalkthroughError(
             f"no target package at {package_dir}\n"
-            f"  fix: pass --package <dir>, or see docs/guides/adding_a_target.md to build one"
+            f"  fix: pass --package <dir>, or see docs/guides/02-targets.md to build one"
         )
     pkg = load_target(package_dir)
     state["package"] = pkg
@@ -184,7 +184,7 @@ def step_bridge(state: dict) -> None:
         Erasing the grid is deliberate. It leaves the parallelism decision UNMADE, so a systolic
         array can sequentialize it and a SIMT machine can map it to warps -- from the same input. The
         cost is that the author's own decomposition is currently discarded with it; see
-        docs/design/triton_frontend.md and README.md "What this does not do yet".
+        docs/guides/12-experiments.md and README.md "What this does not do yet".
         """)
     bridged = to_linalg(state["ttir"], state["spec"])
     state["bridged"] = bridged

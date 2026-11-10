@@ -20,7 +20,7 @@ merlin storage experiments
 ```
 
 The [storage contract](../src/merlin/resources/contracts/storage.yaml) owns product categories;
-the [storage guide](../docs/guides/storage.md) explains inspection and cleanup.
+the [storage guide](../docs/guides/12-experiments.md) explains inspection and cleanup.
 Reports and frozen manifests may cite old paths. Do not manually rename those
 directories, infer liveness from age, or delete a run because its name looks stale.
 Organization and retention commands default to dry runs; inspect their plan first.

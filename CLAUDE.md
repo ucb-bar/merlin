@@ -52,7 +52,7 @@ public source intake. Protected reference backends, support adapters, schedules
 and prebuilt compiler answers remain outside its inputs and tools. Removing a
 reference provider must not leave instructions to rediscover it through a legacy
 default. Compiler candidates stay in their OOT repositories. See
-`docs/guides/target_resolution.md`.
+`docs/guides/02-targets.md`.
 
 Generic toolchain/simulator plumbing, logical tensor harnesses and fact-bound
 instruction decoding may live in Merlin. Select their target values as data;
@@ -202,7 +202,7 @@ copied bytes nobody asked for: a per-run deep copy of each run's declared input 
 235 GiB per campaign, for byte-identical inputs — now hard-linked from a content store), and unbounded
 temp retention. Never delete run output on a "modified recently" liveness proxy: a purge's own
 deletions update the mtimes of the units it touched, so the rule reports the units you just edited as
-the live ones. See `docs/guides/storage.md`.
+the live ones. See `docs/guides/12-experiments.md`.
 
 **Enforcement** (do not bypass without cause): a PreToolUse hook
 (`.claude/hooks/guard_artifact_writes.py`) blocks generated writes outside the `out/` root;

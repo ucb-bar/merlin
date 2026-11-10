@@ -137,5 +137,5 @@ lowering, execution and numerical agreement; Phase 2 measures performance on a
 separate cohort. Report accelerator, host and unsupported work independently and
 never count host-only execution as successful accelerator coverage.
 
-See [the Phase 0 specification guide](../../docs/guides/phase0_specification.md)
+See [the Phase 0 specification guide](../../docs/guides/10-compiler-generation.md)
 for the generated evidence layout and admission requirements.

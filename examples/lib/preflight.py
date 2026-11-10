@@ -44,17 +44,17 @@ def _components():
     # environment, so a machine with cmake/ninja/SDK but no clang-23 passes that guard and then fails at
     # the first object. Itemise it here: clang-23 compiles every RISC-V object, mlir-translate lowers the
     # OpenMP IR every MULTI-hart image needs, and the lowering runner itself executes inside model2MLIR's
-    # venv. See docs/guides/llvm_toolchain.md -- third_party/llvm-install is gitignored, so a fresh clone
+    # venv. See docs/guides/06-lowering.md -- third_party/llvm-install is gitignored, so a fresh clone
     # has to build it.
     try:
         from merlin.llvmlower import toolchain as tc
 
-        rows.append(("clang-23", tc.clang().is_file(), "MERLIN_CLANG (see docs/guides/llvm_toolchain.md)", tc.clang()))
+        rows.append(("clang-23", tc.clang().is_file(), "MERLIN_CLANG (see docs/guides/06-lowering.md)", tc.clang()))
         rows.append(
             (
                 "mlir-translate",
                 tc.mlir_translate().is_file(),
-                "MERLIN_MLIR_TRANSLATE (see docs/guides/llvm_toolchain.md)",
+                "MERLIN_MLIR_TRANSLATE (see docs/guides/06-lowering.md)",
                 tc.mlir_translate(),
             )
         )

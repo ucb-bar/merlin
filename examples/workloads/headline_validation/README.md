@@ -130,7 +130,7 @@ width. The bound itself is not full-kernel execution evidence.
 
 `merlin lower` consumes one complete `model.mlir` at a time. Run it with the
 selected compiler interpreter and MLIR toolchain configured as in
-[the lowering guide](../../../docs/guides/model_lowering.md). For TinyLlama and
+[the lowering guide](../../../docs/guides/06-lowering.md). For TinyLlama and
 ResNet50, `CAPTURE` is their bundle. For SmolVLA, repeat once each for
 `stages/prefix_encode`, `stages/flow_denoise`, and `stages/action_decode`:
 

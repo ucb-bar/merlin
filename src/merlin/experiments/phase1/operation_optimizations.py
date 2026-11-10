@@ -1,11 +1,11 @@
 """Per-operation optimization principles, selected for the operation families a run's corpus declares.
 
-The architecture catalogue (``docs/design/joint_optimization_catalog.json``, staged as
+The architecture catalogue (``src/merlin/resources/optimizations/authoring.json``, staged as
 ``OPTIMIZATION_SUGGESTIONS.json``) answers "which library mechanisms does this target support". It
 does not say what usually matters for a kind of operation: that a single-row product is bound by its
 weight bytes, that neighbouring convolution outputs share input rows, that a contraction default
 changes every shape class at once. Authors kept relearning those from cycles. The reviewed data file
-``docs/design/operation_optimization_catalog.json`` states them per operation family, without naming
+``src/merlin/resources/optimizations/operations.json`` states them per operation family, without naming
 an architecture or a target, and links each family to the generic catalogue mechanisms, author skills
 and recipes that implement them.
 
@@ -35,9 +35,9 @@ from pathlib import Path
 
 SCHEMA = "merlin.operation_optimization_catalog.v1"
 SELECTION_SCHEMA = "merlin.operation_optimization_selection.v1"
-CATALOG = Path("docs") / "design" / "operation_optimization_catalog.json"
-SCHEMA_FILE = CATALOG.with_name("operation_optimization_catalog.schema.json")
-MECHANISM_CATALOG = CATALOG.with_name("joint_optimization_catalog.json")
+CATALOG = Path("src/merlin/resources/optimizations/operations.json")
+SCHEMA_FILE = CATALOG.with_name("operations.schema.json")
+MECHANISM_CATALOG = CATALOG.with_name("authoring.json")
 FILENAME = "OPTIMIZATION_BY_OPERATION.json"
 SUGGESTIONS = "OPTIMIZATION_SUGGESTIONS.json"
 HEADING = "## Optimization principles by operation"

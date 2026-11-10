@@ -101,7 +101,7 @@ outlived the cleanup pinned the deleted path by digest. Reclaim with `merlin-sto
 release, run record or derivation still cites the path, so leave it. Never unlock a `chattr +i`
 tree to delete it; that flag is a seal. A damaged sealed derivation is repaired, never re-copied by
 hand: use `merlin-experiment corpus evidence repair`, which restores digest-equal bytes and writes
-a receipt. See `docs/guides/storage.md`.
+a receipt. See `docs/guides/12-experiments.md`.
 
 ## Escape hatch
 

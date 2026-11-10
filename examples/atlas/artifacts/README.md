@@ -2,7 +2,7 @@
 
 This folder is navigation, not an output destination. Start with the
 [Phase 0 walkthrough](../phase0/README.md) and the
-[shared specification guide](../../../docs/guides/phase0_specification.md).
+[shared specification guide](../../../docs/guides/10-compiler-generation.md).
 Generated files are never committed here.
 
 Each fresh experiment run places its derivation bundle beneath `<run>/phase0/`:

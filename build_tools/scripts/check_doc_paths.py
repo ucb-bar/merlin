@@ -11,8 +11,8 @@ Generated output now lives under a single ``out/`` root (``out/runs/``, ``out/ar
 (that would false-positive on the ``out/…`` paths).
 
 Retired tokens (see CLAUDE.md "Generated-output convention" + docs/design/):
-  - ``merlin/compiler/``       -> future C++ plane, not built (docs/design/compiler_plane.md)
-  - ``merlin/integrations/``   -> adapters live in-package (docs/design/integrations.md)
+  - ``merlin/compiler/``       -> future C++ plane, not built (docs/reference/architecture.md)
+  - ``merlin/integrations/``   -> adapters live in-package (docs/guides/12-experiments.md)
   - ``generated_targets/``     -> folded into out/artifacts/targets/
   - ``mined_knowledge/``       -> folded into out/artifacts/kernel-mining/
   - ``output/<sub>/`` write targets -> deprecated; use out/artifacts/ or out/runs/
@@ -74,8 +74,8 @@ def _match_retired(line: str, needle: str, pre: str | None, post: str | None) ->
 
 # (needle, pre-boundary, post-boundary, human message). Kept deliberately small + specific.
 RETIRED = [
-    ("merlin/compiler", "pb", "wb", "retired tree merlin/compiler/ (see docs/design/compiler_plane.md)"),
-    ("merlin/integrations", "pb", "wb", "retired tree merlin/integrations/ (see docs/design/integrations.md)"),
+    ("merlin/compiler", "pb", "wb", "retired tree merlin/compiler/ (see docs/reference/architecture.md)"),
+    ("merlin/integrations", "pb", "wb", "retired tree merlin/integrations/ (see docs/guides/12-experiments.md)"),
     ("generated_targets/", "wb", None, "retired generated_targets/ -> out/artifacts/targets/"),
     ("mined_knowledge/", "wb", None, "retired mined_knowledge/ -> out/artifacts/kernel-mining/"),
     ("output/", "pb", "need_word", "deprecated output/ write target -> out/artifacts/ or out/runs/"),
@@ -99,8 +99,6 @@ ALLOW_WORDS = (
     "former",
     "removed to keep",
     "no standalone",
-    # a line that points at the design note is contextualizing, not misdirecting
-    "docs/design/",
 )
 
 # Trees we don't scan (generated / vendored / design notes that legitimately name retired paths).
@@ -165,18 +163,11 @@ def _load_allow() -> set[str]:
     }
 
 
-def _is_design_note(rel: str) -> bool:
-    # docs/design/* exist to describe the retired trees — never flag them.
-    return rel.startswith("docs/design/")
-
-
 def scan() -> list[str]:
     allow = _load_allow()
     problems: list[str] = []
     for p in _doc_files():
         rel = p.relative_to(ROOT).as_posix()
-        if _is_design_note(rel):
-            continue
         try:
             text = p.read_text(encoding="utf-8")
         except (FileNotFoundError, NotADirectoryError):

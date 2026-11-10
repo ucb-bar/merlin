@@ -172,7 +172,7 @@ traffic, placement, overlap, whole-call attainment or timing authority.
 ## Where the task register lives
 
 `experiments/studies/performance_contract/TASKS.md` — input identities, measurement validation and reporting requirements.
-Rationale for the cost and oracle decisions: `docs/design/performance_budget_unit.md`.
+Rationale for the cost and oracle decisions: `docs/guides/12-experiments.md`.
 
 `debug_companion` admits only byte/address/attribute-identical allocated ELF
 sections and normalized relocations before mapping an existing PC census.

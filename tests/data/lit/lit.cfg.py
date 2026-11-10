@@ -69,7 +69,7 @@ else:
     # included (irdl.type @"!resident"). That name is unspellable, so mlir-opt rejects every module
     # using !merlin_iface.resident / !merlin_iface.acc -- i.e. every real capsule. The fix belongs in
     # the generator; until then this normalization (idempotent, a no-op once fixed) lets the frozen
-    # grammar actually be verified. See docs/design/compiler_verification.md.
+    # grammar actually be verified. See docs/guides/09-verification.md.
     _irdl_src = os.path.join(ROOT, "src", "merlin", "resources", "contracts", "merlin_iface.irdl.mlir")
     _irdl_dst = os.path.join(ROOT, "out", "artifacts", "cache", "verify", "merlin_iface.normalized.irdl.mlir")
     os.makedirs(os.path.dirname(_irdl_dst), exist_ok=True)

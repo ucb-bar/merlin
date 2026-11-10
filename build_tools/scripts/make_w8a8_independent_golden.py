@@ -349,7 +349,7 @@ def generate(
         return False, f"capture interpreter is absent: {python}"
     env = capture_environment(root, model, env_overrides)
     # Whole-model captures need a big scratch filesystem, so the AMBIENT TMPDIR is inherited
-    # rather than one developer's directory being named here (see docs/guides/storage.md).
+    # rather than one developer's directory being named here (see docs/guides/12-experiments.md).
     env.setdefault("TMPDIR", os.environ.get("TMPDIR") or env.get("TMPDIR", "/tmp"))
     cmd = [
         str(python),

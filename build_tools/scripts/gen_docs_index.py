@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""Living docs hub: generate docs/README.md from the front-matter of every doc under docs/.
-
-Single source of truth = each doc's own front-matter block (title/kind/status/owner/
-last_verified/related). Mirrors gen_cli_docs.py / gen_package_docs.py: generate, and `--check`
-fails if the hub is stale. The two auto-generated references (cli.md, module_index.md) are
-recognized without front-matter. A doc under docs/ with neither front-matter nor recognition is
-listed under "Uncategorized" — it either needs front-matter or belongs in artifacts/ (a report).
-
-Usage:
-  gen_docs_index.py            # (re)write docs/README.md
-  gen_docs_index.py --check    # exit 1 if docs/README.md is stale
-"""
+"""Generate the compact documentation index from the numbered guide chapters."""
 
 from __future__ import annotations
 
@@ -18,163 +7,77 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _front_matter  # noqa: E402  (sibling module, stdlib only)
+import _front_matter  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
 OUT = DOCS / "README.md"
 
-# Generated references that carry no hand-authored front-matter.
-GENERATED = {
-    "reference/cli.md": "CLI reference",
-    "cli.md": "CLI reference",
-    "reference/module_index.md": "Package module index",
-    "module_index.md": "Package module index",
-    "reference/schemas.md": "Schema reference",
-    "schemas.md": "Schema reference",
-    "reference/repo_map.md": "Repository map",
-    "repo_map.md": "Repository map",
-}
-SKIP_NAMES = {"README.md", "AGENT.md"}
-KIND_ORDER = ["reference", "guide", "design"]
-KIND_TITLE = {"reference": "Reference", "guide": "Guides", "design": "Design notes"}
-
-PREAMBLE = """# Documentation
-
-**AUTO-GENERATED index** by `build_tools/scripts/gen_docs_index.py` from each doc's front-matter.
-Do not edit by hand — run the generator (it's `--check`ed by `check_structure.py`).
-
-## Start here
-
-- **New to the repo?** Read [Architecture](reference/architecture.md) then
-  [Repository structure](reference/repo_structure.md).
-- **Contributing to the joint compiler?** Start with [code entry points](guides/compiler_contributions.md).
-- **Running the joint experiment?** Use [artifact setup](guides/artifact_evaluation.md) and
-  [terminal monitoring](guides/experiment_dashboard.md); historical phase names remain in the code layout.
-- **Running something?** [Getting started](guides/getting_started.md) →
-  the [CLI reference](reference/cli.md) → the relevant guide below.
-- **Writing generated output?** See `CLAUDE.md` "Generated-output convention" and the
-  `artifact-layout` skill (one root only: `out/`, with three subdirs `out/runs/`, `out/artifacts/`,
-  `out/build/`).
-- **Point-in-time reports** (results, findings, status snapshots) do not live here — they live under `out/artifacts/`.
-
-Each entry shows **status** and **last-verified** date; `⚠` flags a doc whose `last_verified`
-predates the newest change to the code it documents (see `check_docs_freshness.py`).
-"""
-
-
-parse_front_matter = _front_matter.parse
-
-
-def discover() -> tuple[list[dict], dict[str, str]]:
-    """Return (entries, slug->relpath). entry = {rel,title,kind,status,owner,last_verified,related}."""
-    entries: list[dict] = []
-    slug_to_rel: dict[str, str] = {}
-    for p in sorted(DOCS.rglob("*.md")):
-        rel = p.relative_to(DOCS).as_posix()
-        if p.name in SKIP_NAMES:
-            continue
-        slug = p.stem
-        fm = parse_front_matter(p.read_text(encoding="utf-8"))
-        if fm and fm.get("kind"):
-            entries.append(
-                {
-                    "rel": rel,
-                    "slug": slug,
-                    "title": fm.get("title", slug),
-                    "kind": fm.get("kind"),
-                    "status": fm.get("status", "current"),
-                    "owner": fm.get("owner", "?"),
-                    "last_verified": fm.get("last_verified", "?"),
-                    "related": fm.get("related", []) or [],
-                }
-            )
-            slug_to_rel[slug] = rel
-        elif rel in GENERATED:
-            entries.append(
-                {
-                    "rel": rel,
-                    "slug": slug,
-                    "title": GENERATED[rel],
-                    "kind": "reference",
-                    "status": "generated",
-                    "owner": "tooling",
-                    "last_verified": "—",
-                    "related": [],
-                }
-            )
-            slug_to_rel[slug] = rel
-        else:
-            entries.append(
-                {
-                    "rel": rel,
-                    "slug": slug,
-                    "title": slug,
-                    "kind": "uncategorized",
-                    "status": "?",
-                    "owner": "?",
-                    "last_verified": "?",
-                    "related": [],
-                }
-            )
-    return entries, slug_to_rel
-
 
 def render() -> str:
-    entries, slug_to_rel = discover()
-    out = [PREAMBLE]
-
-    def links(related: list[str]) -> str:
-        parts = [f"[{s}]({slug_to_rel[s]})" for s in related if s in slug_to_rel]
-        return f" — see also: {', '.join(parts)}" if parts else ""
-
-    for kind in KIND_ORDER:
-        rows = sorted([e for e in entries if e["kind"] == kind], key=lambda e: e["title"].lower())
-        if not rows:
-            continue
-        out.append(f"## {KIND_TITLE[kind]}\n")
-        for e in rows:
-            meta = f"`{e['status']}`" + (
-                f", verified {e['last_verified']}" if e["last_verified"] not in ("—", "?") else ""
-            )
-            out.append(f"- [{e['title']}]({e['rel']}) — {meta} · owner: {e['owner']}{links(e['related'])}")
-        out.append("")
-
-    # By area (owner) quick index.
-    owners: dict[str, list[dict]] = {}
-    for e in entries:
-        if e["kind"] in KIND_ORDER:
-            owners.setdefault(e["owner"], []).append(e)
-    if owners:
-        out.append("## By area\n")
-        for owner in sorted(owners):
-            titles = ", ".join(
-                f"[{e['title']}]({e['rel']})" for e in sorted(owners[owner], key=lambda e: e["title"].lower())
-            )
-            out.append(f"- **{owner}** — {titles}")
-        out.append("")
-
-    uncat = [e for e in entries if e["kind"] == "uncategorized"]
-    if uncat:
-        out.append("## Uncategorized (needs front-matter or relocation to artifacts/)\n")
-        for e in sorted(uncat, key=lambda e: e["rel"]):
-            out.append(f"- [{e['rel']}]({e['rel']})")
-        out.append("")
-
-    return "\n".join(out).rstrip() + "\n"
+    lines = [
+        "# Merlin guide",
+        "",
+        "Start with chapter 1 and follow the program from input to execution. "
+        "Chapters 10-12 cover compiler generation, optimization and experiments.",
+        "",
+        "For a hands-on introduction, open the "
+        "[five interactive tutorials](../examples/tutorials/README.md). "
+        "They can also be read with saved outputs after running the tutorial checker.",
+        "",
+        "## Follow a compilation",
+        "",
+        "| Step | Chapter |",
+        "| --- | --- |",
+    ]
+    chapters = sorted((DOCS / "guides").glob("[0-9][0-9]-*.md"))
+    if len(chapters) != 12:
+        raise ValueError("the public guide requires twelve numbered chapters")
+    for number, path in enumerate(chapters, 1):
+        if not path.name.startswith(f"{number:02}-"):
+            raise ValueError(f"guide chapter order is incomplete: {path.name}")
+        metadata = _front_matter.parse(path.read_text(encoding="utf-8"))
+        if not metadata or metadata.get("status") != "current":
+            raise ValueError(f"guide chapter needs current metadata: {path.name}")
+        title = metadata["title"]
+        prefix = f"{number}. "
+        if title.startswith(prefix):
+            title = title[len(prefix) :]
+        if number == 10:
+            lines.extend(["", "## Develop a compiler", "", "| Step | Chapter |", "| --- | --- |"])
+        lines.append(f"| {number} | [{title}](guides/{path.name}) |")
+    lines.extend(
+        [
+            "",
+            "## Reference",
+            "",
+            "- [Architecture and component boundaries](reference/architecture.md)",
+            "- [Repository and implementation map](reference/repo_structure.md)",
+            "- [CLI entry points](reference/cli.md)",
+            "- [Python module index](reference/module_index.md)",
+            "- [Data schemas](reference/schemas.md)",
+            "",
+            "The chapters explain the current source tree. Earlier design notes and "
+            "study-specific instructions remain available through Git history; read "
+            "them at the source revision of the result you are reproducing.",
+            "",
+            "This index is generated by `build_tools/scripts/gen_docs_index.py` "
+            "from the chapter metadata. Edit the chapters, then regenerate it.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
 
 
 def main(argv: list[str]) -> int:
-    new = render()
+    content = render()
     if "--check" in argv:
-        cur = OUT.read_text(encoding="utf-8") if OUT.exists() else ""
-        if cur != new:
-            sys.stderr.write("docs/README.md is stale — run: python build_tools/scripts/gen_docs_index.py\n")
+        if not OUT.is_file() or OUT.read_text(encoding="utf-8") != content:
+            print("docs/README.md is stale; run build_tools/scripts/gen_docs_index.py", file=sys.stderr)
             return 1
         print("docs/README.md: up to date")
         return 0
-    OUT.write_text(new, encoding="utf-8")
-    print(f"wrote {OUT.relative_to(ROOT)} ({len(render().splitlines())} lines)")
+    OUT.write_text(content, encoding="utf-8")
+    print(f"wrote {OUT.relative_to(ROOT)} ({len(content.splitlines())} lines)")
     return 0
 
 

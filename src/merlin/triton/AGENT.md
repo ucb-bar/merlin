@@ -21,7 +21,7 @@ Triton as a target-independent KERNEL FRONTEND to Merlin (not a per-target backe
 
 ## Hard rules for this package
 
-Design + the numbered invariants: `docs/design/triton_frontend.md`. Guarded by
+Design + the numbered invariants: `docs/guides/12-experiments.md`. Guarded by
 `tests/infra/test_triton_target_independence.py` (run it before committing here).
 
 - **Target-blind.** No target-name literal, no `merlin.targets.*` / `merlin.rvvgen.*` import. The

@@ -1,5 +1,5 @@
 # Which files bind Spike to the RTL and to the FPGA build for this target: the inputs of
-# `python -m merlin.model_check binding` (contract: docs/reference/model_check.md section 7).
+# `python -m merlin.model_check binding` (contract: docs/guides/09-verification.md section 7).
 #
 # Paths are relative to the RTL source checkout the selected target contract names
 # (rtl_source.ext_root, resolved through MERLIN_EXT_<ROOT>); {repo: P} is relative to this repository.

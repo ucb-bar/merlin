@@ -32,7 +32,7 @@ dev = [
     "safetensors",
 ]
 xdsl = ["xdsl>=0.68"]
-# Compiler-pass verification (docs/design/compiler_verification.md): the static lit/FileCheck
+# Compiler-pass verification (docs/guides/09-verification.md): the static lit/FileCheck
 # layer needs only the in-tree LLVM build, but the formal layer solves with z3. z3 previously
 # arrived only as a TRANSITIVE dep of exo-lang -- an undeclared dependency whose absence turns a
 # verification into a silent skip, which is the one thing this layer must never do.

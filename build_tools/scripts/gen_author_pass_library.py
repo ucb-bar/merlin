@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the author's ``pass-library`` skill from the optimization catalog and the compiler source.
 
-The catalog (``docs/design/joint_optimization_catalog.json``) lists every reusable mechanism with its
+The catalog (``src/merlin/resources/optimizations/authoring.json``) lists every reusable mechanism with its
 facet, required traits, applicability, adapter obligations and evidence. The phase 1 author never read
 it as a menu of callable passes, so this generator turns it into an index skill
 (``author_skills/pass-library/SKILL.md``) and one reference file per facet
@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_no_target_name as _names  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
-CATALOG = "docs/design/joint_optimization_catalog.json"
+CATALOG = "src/merlin/resources/optimizations/authoring.json"
 OUTPUT = "src/merlin/experiments/phase1/author_skills/pass-library"
 TEST_ROOTS = ("tests", "packages")
 WITHHELD = "(withheld: names a specific target; derive it from your workspace facts)"

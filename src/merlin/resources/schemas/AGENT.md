@@ -25,7 +25,7 @@ JSON blobs. Add new schemas to `REQUIRED_SCHEMAS`. Each schema parses with `yaml
 carries an example.
 
 Two legitimate kinds live here, and **every schema must be one of them** — a schema that is neither is
-dead and gets retired (as `runtime_abi` was, to `docs/reference/runtime.md`, for having zero code
+dead and gets retired (as `runtime_abi` was, to `docs/guides/08-running.md`, for having zero code
 reference):
 - **Validators** — instance-carrying artifacts that code builds + runs through
   `merlin.common.schemas.validate_or_raise` at the producer (most schemas: the plan family,

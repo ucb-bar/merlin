@@ -30,7 +30,7 @@ capsule yet leave some groups outside that size envelope. This diagnostic uses
 no held-out model shapes and is neither a correctness test nor a model-scale
 speedup claim; measured candidate/reference ratios are a separate requirement.
 
-The public [SW-spec guide](../../../docs/guides/phase0_specification.md) explains
+The public [SW-spec guide](../../../docs/guides/10-compiler-generation.md) explains
 those boundaries. Source snapshots and owner-side goldens are evidence, not grants
 to compiler candidates. Current diagnostic output is not a verified release.
 

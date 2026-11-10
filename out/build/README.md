@@ -11,6 +11,6 @@ frozen input siblings and an active lease; being beneath `build/` does not make
 it safe to delete while a run exists.
 
 Preserve release/qualification logs needed to reproduce results. Use the
-[storage guide](../../docs/guides/storage.md) and supported dry-run commands
+[storage guide](../../docs/guides/12-experiments.md) and supported dry-run commands
 before reclamation. Most contents are ignored; tracked README/AGENT files describe
 the layout rather than storing build implementation.

@@ -6,7 +6,7 @@ building one model three different ways for one chip, and proving each of them b
 board.
 
 Board facts live in [`merlin/python/merlin/runtime/boards.py`](../../merlin/python/merlin/runtime/boards.py)
-as data (`chipyard_kodiak`), not in code — see [`docs/guides/adding_a_target.md`](../../docs/guides/adding_a_target.md).
+as data (`chipyard_kodiak`), not in code — see [`docs/guides/02-targets.md`](../../docs/guides/02-targets.md).
 
 ```bash
 ./run.sh preflight
@@ -34,7 +34,7 @@ report the width of the machine it runs on, not the width it was compiled for.
 Two tools have to exist before this stage does anything: **`clang-23`**, which compiles every RISC-V
 object, and **`mlir-translate`**, which lowers the OpenMP IR — so it is needed for `h2` and `h3_scalar`
 but not `h1`. Both come from an LLVM/MLIR 23 build that a fresh clone does **not** have;
-[`docs/guides/llvm_toolchain.md`](../../docs/guides/llvm_toolchain.md) is the recipe, including a
+[`docs/guides/06-lowering.md`](../../docs/guides/06-lowering.md) is the recipe, including a
 two-target build if this example is all you want it for. `./run.sh preflight` names them if they are
 missing. The RISC-V linker and `objcopy` come from chipyard's riscv-tools and the Zephyr SDK instead.
 

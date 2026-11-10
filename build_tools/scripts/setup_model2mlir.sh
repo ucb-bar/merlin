@@ -3,7 +3,7 @@
 #
 # m2m converts PyTorch models to standard linalg-on-tensors MLIR (weights
 # externalized to safetensors). Merlin ingests those artifacts via
-# merlin/python/merlin/frontends/. See docs/model2mlir.md.
+# merlin/python/merlin/frontends/. See docs/guides/03-preparation.md.
 #
 # Layout (defaults; override via env):
 #   MODEL2MLIR_DIR      model2MLIR checkout       (default: <repo>/../model2MLIR)
@@ -49,7 +49,7 @@ PY
 for f in smolvla.mlir smolvla.safetensors.manifest.json; do
   test -f "$M2M/workloads/smolvla/$f" \
     && echo "artifact present: $f" \
-    || echo "artifact missing: $f (run the capture; see docs/model2mlir.md)"
+    || echo "artifact missing: $f (run the capture; see docs/guides/03-preparation.md)"
 done
 
 echo "OK. Regenerate smolVLA with:"

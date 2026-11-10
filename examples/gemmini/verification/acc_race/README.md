@@ -5,7 +5,7 @@ Gemmini orders a load behind earlier loads only until they have been *issued*, n
 accumulating, can therefore land in the wrong order: when the accumulating load's data arrives
 first, the overwriting load erases it and the readout is the first operand alone. The measurements,
 the hardware revision they belong to and what they mean for verification are in
-[the design note](../../../../docs/design/accumulator_load_order.md).
+[the design note](../../../../docs/guides/12-experiments.md).
 
 These programs make the race visible and classify every wrong element by which operand survived.
 They are target-local probes, not compiler tests: they need a RISC-V cross compiler and a bare-metal

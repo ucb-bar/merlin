@@ -31,8 +31,8 @@ Build, run and judge complete quantized models for a device submission.
 - `chain_image_profile.py` — Add a reset hook to retained Merlin profiling support with explicit source/object receipts.
 - `chain_image_profile_new.py` — Add ordinary counter wrappers to completed unprofiled program objects.
 - `chain_image_profile_descriptor.py` — Reopen completed descriptor profiling pointer ABIs and their original artifacts.
-- `cli.py` — Command line of ``python -m merlin.model_check`` (contract: ``docs/reference/model_check.md`` §2).
-- `commands.py` — The subcommands behind ``python -m merlin.model_check`` (contract: ``docs/reference/model_check.md``).
+- `cli.py` — Command line of ``python -m merlin.model_check`` (contract: ``docs/guides/09-verification.md`` §2).
+- `commands.py` — The subcommands behind ``python -m merlin.model_check`` (contract: ``docs/guides/09-verification.md``).
 - `compute_execution.py` — Share the selected compute CPUs across model compilation and simulation steps.
 - `diagnostics.py` — Localize a wrong kernel result: the failing call re-runs in a second image that compares on the device.
 - `engines.py` — Run replay images on the RTL-equivalent native simulator (gSIM) of the selected FIRRTL, beside Spike.
@@ -98,7 +98,7 @@ Build, run and judge complete quantized models for a device submission.
   diagnostics, never numerical surrogates. Native placement and consumed-image/hardware gates
   remain independent. References embedded in private guest images must remain protected.
 
-- The contract is `docs/reference/model_check.md`; a change to the CLI, the numerics policy or the report
+- The contract is `docs/guides/09-verification.md`; a change to the CLI, the numerics policy or the report
   bumps its version and changelog.
 - Nothing here names a model or a target: models, programs, chains and judged outputs come from
   `examples/<target>/numerics/models.yaml`, the target from the selected target contract.

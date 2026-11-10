@@ -1,34 +1,14 @@
-# AGENT.md — docs
+# Documentation
 
-## Purpose
+The public handbook has twelve numbered chapters following compilation and
+execution, then compiler generation and experiments. Start at `README.md`.
+Keep one explanation per concept and link to its source owner.
 
-Durable, cross-linked project documentation. Start at the generated hub `docs/README.md`.
-See the `docs-layout` skill for the full convention.
+Update an existing chapter before adding another page. Use simple technical
+language and real commands. Distinguish implemented behavior from design ideas.
+Do not put dated audits, trial reports or runtime data in this tree.
 
-## Structure (kind = subdir)
-
-- `reference/` — durable, code-derived facts (architecture, dialects, runtime; generated
-  `cli.md` / `module_index.md` / `schemas.md`).
-- `guides/` — task-oriented how-tos (`getting_started`, dse, kernel_mining, targetgen, …).
-- `design/` — rationale / design notes / methodology.
-- `README.md` — the **generated** hub (by-kind + by-area + cross-links). Do not hand-edit.
-
-## What belongs here
-
-- Only **durable** reference/guides/design. Each carries YAML front-matter
-  (`title, kind, status, owner, last_verified, related, code_refs`).
-- Use task or capability names for documentation; do not use `aws` in filenames,
-  titles or headings. Name a hosting dependency in the instructions when required.
-
-## What does NOT belong here
-
-- **Point-in-time reports** (results, findings, status, presentations) → `artifacts/` (concern-first),
-  never `docs/`. See the `artifact-layout` skill.
-- Generated outputs, code, unrelated artifacts.
-
-## Invariants
-
-- After adding/editing a doc: run `build_tools/scripts/gen_docs_index.py` then `check_docs.py`.
-- Generated docs (`cli.md`/`module_index.md`/`schemas.md`) are regenerated, never hand-edited.
-- Front-matter must be schema-valid; `last_verified` is a re-verification claim (see `docs-doctor`).
-- Every subdirectory must also contain an AGENT.md.
+Chapters and handwritten references use YAML front matter with title, kind,
+status, owner, last_verified, related and actual code_refs. Regenerate the index
+with `build_tools/scripts/gen_docs_index.py`, then run `check_docs.py`.
+CLI, module and schema references are generated rather than handwritten.

@@ -144,7 +144,7 @@ gemmini    interface.resident_pack -> gemmini.pack    radiance   interface.resid
                                                                  interface.resident_evict-> radiance.release
 ```
 
-Writing such a package is [`docs/guides/adding_a_target.md`](../../docs/guides/adding_a_target.md).
+Writing such a package is [`docs/guides/02-targets.md`](../../docs/guides/02-targets.md).
 
 ## The route is chosen by the payload, not the target
 
@@ -278,13 +278,13 @@ maps to warps, from identical input. But normalizing and *destroying* got collap
 Those are three symptoms of one missing abstraction, not three independent limits. The intended fix — a
 target-independent *schedule proposal* with `derive` / `seed` / `honor` policies, where `honor` fails
 closed naming the derived fact that refused a tile size — is written up in
-[`docs/design/triton_frontend.md`](../../docs/design/triton_frontend.md). Until it lands, treat this
+[`docs/guides/12-experiments.md`](../../docs/guides/12-experiments.md). Until it lands, treat this
 frontend as excellent at *semantics* portability and silent on *schedule* portability.
 
 ## See also
 
-- [`docs/guides/triton_kernels.md`](../../docs/guides/triton_kernels.md) — the author-facing reference
-- [`docs/design/triton_frontend.md`](../../docs/design/triton_frontend.md) — why linalg-on-tensors is
+- [`docs/guides/09-verification.md`](../../docs/guides/09-verification.md) — the author-facing reference
+- [`docs/guides/12-experiments.md`](../../docs/guides/12-experiments.md) — why linalg-on-tensors is
   the convergence point, the invariants, and the designs that were tried and rejected
-- [`docs/guides/adding_a_target.md`](../../docs/guides/adding_a_target.md) — write your own package
+- [`docs/guides/02-targets.md`](../../docs/guides/02-targets.md) — write your own package
 - [`../README.md`](../README.md) — the whole-model examples, for a tapeout you cannot attach to

@@ -386,7 +386,7 @@ exact selected source to original complete feedback; final compile/static and
 numerical qualification remain fresh. Pool admission and per-process limits do
 not prove aggregate OS limits or 20–25-core member fanout. Preserve explicit
 UNKNOWN/refusal until actual enforcing and execution owners exist. See the
-operator guide `docs/guides/phase2_component_search.md`.
+operator guide `docs/guides/11-optimization.md`.
 
 `search_priorities` projects the incumbent's complete measured roster with the
 exact selection weights and every repeat. Rank potential weighted savings, not

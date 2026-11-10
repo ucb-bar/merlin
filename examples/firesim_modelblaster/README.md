@@ -4,7 +4,7 @@ This independently installable package retains the historical staging and queue
 implementation for external operators and research reproduction. Merlin core
 no longer discovers or invokes `merlin.firesim_runners` entry points.
 `run_on_firesim` now requires explicit prepare/collect; `select_runner` refuses
-legacy launch requests. See [the handoff contract](../../docs/guides/firesim.md).
+legacy launch requests. See [the handoff contract](../../docs/guides/08-running.md).
 
 An operator maintaining the historical integration can install this package in
 its own environment and use its adapter directly. Source, workload identity,

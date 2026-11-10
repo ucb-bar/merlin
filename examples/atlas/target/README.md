@@ -50,7 +50,7 @@ Operation constraints sit directly under their names. A bit-preserving crossing
 uses `copy: {dtype: bf16, layout: row_major_contiguous}` rather than repeating
 source/result dtype and layout. Generated artifacts retain the expanded consumer
 contract and exact input bytes. Unknown quantization fields are not filled by
-this shorthand. See the [authoring guide](../../../docs/guides/phase0_specification.md).
+this shorthand. See the [authoring guide](../../../docs/guides/10-compiler-generation.md).
 
 Legacy v1 inline `capability_contract` files still load. New minimal files require
 an explicitly selected same-target backend contract; there is no filesystem lookup
