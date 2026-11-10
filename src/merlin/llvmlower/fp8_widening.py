@@ -28,7 +28,7 @@ def _f8w_walk(op):
                 yield from _f8w_walk(child.operation)
 
 
-def _fp8_widen(module):
+def _fp8_widen(module, *, _generalized=False):
     with module.context:
         module.operation.verify()
         plans = []
@@ -53,9 +53,28 @@ def _fp8_widen(module):
             if ('fastmath' in op.attributes and op.attributes['fastmath'] != ir.Attribute.parse('#arith.fastmath<none>')
                     or 'roundingmode' in op.attributes):
                 raise ValueError('FP8 widening requires neutral flags and exact conversion')
+            if any(name != 'fastmath' and not name.startswith('prov.') for name in op.attributes):
+                raise ValueError('FP8 widening has an unqualified arithmetic property')
             plans.append(op)
         # Complete validation precedes edits. This profile adds no permission
         # for narrowing, arithmetic, effects, source borrowing or target mapping.
+        named = False
+        for op in plans:
+            parent = op.parent
+            while parent is not None:
+                if parent.name.startswith('linalg.') and parent.name != 'linalg.generic':
+                    from torch_mlir.dialects.linalg import isa_contraction_op
+                    named = named or isa_contraction_op(parent)
+                parent = parent.parent
+        if named:
+            # Named linalg bodies must match their canonical arithmetic.
+            # Preserve named contractions in portable source; only this
+            # selected native legalization needs their ordinary generic form.
+            if _generalized:
+                raise ValueError('upstream did not generalize the FP8 cast owner')
+            from torch_mlir.passmanager import PassManager
+            PassManager.parse('builtin.module(func.func(linalg-generalize-named-ops))').run(module.operation)
+            return _fp8_widen(module, _generalized=True)
         i1, i8, i32 = (ir.IntegerType.get_signless(n) for n in (1, 8, 32))
         f32 = ir.F32Type.get()
         for original in plans:
