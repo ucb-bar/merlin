@@ -22,6 +22,7 @@ from xdsl.dialects.func import FuncOp
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.xdsl_dialects._common import text as module_text
 from merlin.frontends.kernel_compile_inputs import _checked_memory_members, _checked_word_intent
+from merlin.frontends.derived_runtime_arguments import checked_runtime_call_shapes
 
 
 def _sha(raw: bytes) -> str:
@@ -108,7 +109,7 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
             or {call.get("implementation_sha256") for call in calls} != set(implementations)
             or len({call.get("id") for call in calls}) != len(calls)):
         raise ValueError("derived kernel call correspondence is incomplete or ambiguous")
-    guard_storage = 0
+    guard_storage, runtime_ordinals = 0, set()
     for digest, directory in implementations.items():
         relative = _relative(directory)
         if len(relative.parts) != 2 or relative.parts[0] != "kernels":
@@ -117,9 +118,21 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
                   for name in ("model.mlir", "source.ttir", "spec.json", "provenance.json")}
         provenance, spec = json.loads(kernel["provenance.json"]), json.loads(kernel["spec.json"])
         kernel.update(_checked_memory_members(lambda name: checked(directory + "/" + name), provenance))
+        runtime_shapes = []
+        if spec.get("runtime_scalars"):
+            if bindings.get("argument_binding_profile") != "t2m.captured-runtime-arguments.v1":
+                raise ValueError("derived runtime kernel arguments require their explicit binding profile")
+            for call in calls:
+                if call["implementation_sha256"] != digest:
+                    continue
+                ordinal = call.get("parent_call_ordinal")
+                if type(ordinal) is not int or ordinal in runtime_ordinals:
+                    raise ValueError("derived runtime kernel call correspondence is ambiguous")
+                runtime_ordinals.add(ordinal)
+                runtime_shapes.append(checked_runtime_call_shapes(parent_module, spec, call))
         if provenance.get("profile") in ("shared-guarded-buffer", "shared-source-word-buffer"):
             outputs = [b for b in spec["buffers"] if b["effect"] != "read"]
-            if any(not b.get("shape") or any(type(n) is not int or n <= 0 for n in b["shape"]) for b in outputs):
+            if not runtime_shapes and any(not b.get("shape") or any(type(n) is not int or n <= 0 for n in b["shape"]) for b in outputs):
                 raise ValueError("guarded derived kernels require static positive scratch dimensions")
             kernel_module = parse_mlir_text(kernel["model.mlir"].decode())
             kernel_module.verify()
@@ -132,11 +145,16 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
             types = list(entries[0].function_type.outputs)
             cost = json.loads(kernel["memory-admission.json"])["guard_storage_bytes_per_output_element"]
             if (not isinstance(contract, IntegerAttr) or contract.value.data != cost or len(types) != len(outputs)
-                    or any(not isinstance(t, TensorType) or list(t.get_shape()) != b["shape"]
+                    or any(not isinstance(t, TensorType) or len(t.get_shape()) != len(b["shape"])
+                           or any((actual >= 0 if isinstance(expected, str) else actual != expected)
+                                  for actual, expected in zip(t.get_shape(), b["shape"], strict=True))
                            or str(t.get_element_type()) != b["dtype"] for t, b in zip(types, outputs))):
                 raise ValueError("guarded derived kernel scratch differs from its typed results")
-            guard_storage += cost * sum(math.prod(b["shape"]) for b in outputs) * sum(
-                call["implementation_sha256"] == digest for call in calls)
+            guard_storage += (cost * sum(math.prod(shape[b["name"]]) for shape in runtime_shapes for b in outputs)
+                if runtime_shapes else cost * sum(math.prod(b["shape"]) for b in outputs) * sum(
+                    call["implementation_sha256"] == digest for call in calls))
+            if not 0 <= guard_storage < 2**63:
+                raise ValueError("guarded derived kernel scratch exceeds its i64 domain")
         if (digest != _sha(kernel["model.mlir"]) or provenance.get("mlir_sha256") != digest
                 or provenance.get("source_sha256") != _sha(kernel["source.ttir"])
                 or provenance.get("spec") != spec or provenance != bindings["kernels"][digest]):

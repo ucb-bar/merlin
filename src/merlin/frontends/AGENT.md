@@ -46,9 +46,13 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   admission report instead of a pure tensor witness. Standalone staging retains
   its declared guard-storage cost in the compile signature. It checks declared
   source/access/effect relations and grants no executable memory proof.
-  Static derived guarded kernels additionally bind per-call scratch costs to
-  their typed results and model declaration; the evaluator budgets that scratch
-  separately from final model outputs.
+  Derived guarded kernels additionally bind per-call scratch costs to their
+  typed results and model declaration. Runtime specialization reopens the
+  original typed parent call by ordinal, checks scalar attributes, source
+  operand/result mappings and representable bounded dimensions, then derives
+  each call's concrete cost independently. Zero extents contribute zero; costs
+  must fit i64. No evaluator archive/digest or producer-only shape claim supplies
+  these facts. The evaluator budgets scratch separately from final outputs.
   V2 memory admission checks the sticky reader/writer protocol and derives
   metadata word count/cost from the maximum logical grid, retaining the explicit
   pre-CSE memory-effects stage. V1 evidence keeps its original scope and cost.
