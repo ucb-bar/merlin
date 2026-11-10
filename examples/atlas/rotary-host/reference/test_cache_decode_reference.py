@@ -99,6 +99,44 @@ class WholeCacheTests(unittest.TestCase):
             np.testing.assert_array_equal(arrays["output_1"], expected)
             np.testing.assert_array_equal(arrays["output_2"], expected)
 
+    def test_greedy_parent_uses_expected_logits_instead_of_captured_ids(self):
+        capture(self.root / "prefill")
+        reference.run(self.root / "prefill", self.root / "parent", self.policy, export_dir=self.export)
+        capture(self.root / "decode", past=2, query=1)
+        result = reference.run(self.root / "decode", self.root / "greedy", self.policy,
+                               export_dir=self.export, parent=self.root / "parent", greedy_parent=True)
+        # Parent logits are [[0, 1], [2, 3]], so vocabulary index 1 wins.
+        selected = np.array([[1]], dtype=np.int64)
+        self.assertEqual(result["inputs"]["input_0"], reference.reference.info(selected))
+        self.assertEqual(result["greedy_selection"]["token_ids"], [[1]])
+        self.assertEqual(result["greedy_selection"]["source"], "independent_parent_expected_logits")
+        self.assertIsNone(result["explicit_tokens_sha256"])
+        with np.load(self.root / "greedy/expected.npz") as arrays:
+            expected = Source().weight[1].view(torch.uint16).numpy().reshape(1, 1, 2)
+            np.testing.assert_array_equal(arrays["output_0"], expected)
+        capture(self.root / "decode2", past=3, query=1)
+        chained = reference.run(self.root / "decode2", self.root / "greedy2", self.policy,
+                                export_dir=self.export, parent=self.root / "greedy", greedy_parent=True)
+        self.assertEqual(chained["greedy_selection"]["token_ids"], [[1]])
+        self.assertEqual(chained["parent_reference_sha256"], reference.digest(self.root / "greedy/reference.json"))
+
+    def test_greedy_last_row_ties_signed_values_and_nan(self):
+        words = np.array([[[0x7f80, 0, 0, 0], [0xbf80, 0x4000, 0x4000, 0x3f80]]], dtype=np.uint16)
+        np.testing.assert_array_equal(reference.greedy_tokens(words), [[1]])
+        np.testing.assert_array_equal(reference.greedy_tokens(np.array([[[0x8000, 0]]], dtype=np.uint16)), [[0]])
+        words[0, 0, 0] = 0x7fc1
+        with self.assertRaisesRegex(ValueError, "NaN"):
+            reference.greedy_tokens(words)
+        with self.assertRaisesRegex(ValueError, "BF16"):
+            reference.greedy_tokens(words.astype(np.float32))
+
+    def test_greedy_requires_parent_and_excludes_explicit_tokens(self):
+        capture(self.root / "decode", past=2, query=1)
+        _, users = reference.program_from_trace(self.root / "decode")
+        for parent, tokens in ((None, None), (self.root / "parent", self.root / "tokens.npy")):
+            with self.assertRaisesRegex(ValueError, "requires --parent-reference and excludes --tokens"):
+                reference.decode_inputs(self.root / "decode", users, parent, tokens, greedy_parent=True)
+
     def test_captured_weight_mutation_refuses_before_interpretation(self):
         capture(self.root / "prefill")
         weights = Source().weight.clone()

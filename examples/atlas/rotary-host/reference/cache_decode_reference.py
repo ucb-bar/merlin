@@ -92,9 +92,34 @@ class Interpreter(reference.Interpreter):
         return super().call(node)
 
 
-def decode_inputs(capture, users, parent=None, tokens=None):
+GREEDY_POLICY = "bf16-last-row-highest-value-lowest-index-v1"
+
+
+def greedy_tokens(logits):
+    """Choose source token IDs from exact independent BF16 logits words."""
+    logits = np.asarray(logits)
+    if logits.dtype != np.uint16 or logits.ndim != 3 or any(n == 0 for n in logits.shape):
+        raise ValueError("greedy parent logits require nonempty BF16 [batch, sequence, vocabulary]")
+    if np.any((logits & 0x7fff) > 0x7f80):
+        raise ValueError("greedy parent logits contain NaN")
+    values = (logits[:, -1, :].astype(np.uint32) << np.uint32(16)).view(np.float32)
+    # NumPy argmax returns the first index, including ties at signed zero.
+    return np.argmax(values, axis=-1).astype(np.int64).reshape(-1, 1)
+
+
+def greedy_provenance(parent, receipt, tokens):
+    return dict(policy=GREEDY_POLICY, source="independent_parent_expected_logits",
+                parent_reference_sha256=digest(Path(parent) / "reference.json"),
+                parent_expected_sha256=receipt["expected_sha256"],
+                parent_logits=receipt["outputs"]["output_0"],
+                tokens=reference.info(tokens), token_ids=tokens.tolist())
+
+
+def decode_inputs(capture, users, parent=None, tokens=None, *, greedy_parent=False):
     """Only the first three source inputs can originate in a capture archive."""
     capture = Path(capture)
+    if greedy_parent and (parent is None or tokens is not None):
+        raise ValueError("greedy parent selection requires --parent-reference and excludes --tokens")
     if len(users) < 3 or (len(users) - 3) % 2:
         raise ValueError("cache source requires IDs, positions, mask, and complete K/V pairs")
     inputs = []
@@ -152,6 +177,18 @@ def decode_inputs(capture, users, parent=None, tokens=None):
     if len(receipt.get("outputs", {})) != len(users) - 2:
         raise ValueError("parent independent cache output roster differs")
     with np.load(parent / "expected.npz", allow_pickle=False) as arrays:
+        if set(arrays.files) != {f"output_{i}" for i in range(len(users) - 2)}:
+            raise ValueError("parent independent output archive roster differs")
+        if greedy_parent:
+            logits = np.ascontiguousarray(arrays["output_0"])
+            metadata = receipt["outputs"]["output_0"]
+            if (metadata.get("logical_dtype") != "bf16"
+                    or reference.info(logits) != {field: metadata[field] for field in ("dtype", "shape", "sha256")}):
+                raise ValueError("parent independent logits differ from their publication")
+            selected = greedy_tokens(logits)
+            if selected.shape != ids.raw.shape:
+                raise ValueError("greedy parent selection requires one decode token per batch")
+            inputs[0] = reference.Tensor(selected, "i64")
         for index, user in enumerate(users[3:], 1):
             key = f"output_{index}"
             value = np.ascontiguousarray(arrays[key])
@@ -162,11 +199,11 @@ def decode_inputs(capture, users, parent=None, tokens=None):
     return inputs, receipt
 
 
-def run(capture, out, policy, *, export_dir, parent=None, engine="numpy", proof=None, tokens=None):
+def run(capture, out, policy, *, export_dir, parent=None, engine="numpy", proof=None, tokens=None, greedy_parent=False):
     capture, out = Path(capture), Path(out)
     program, users = program_from_trace(capture)
     original_export = authenticate_weights(program, capture, export_dir)
-    inputs, parent_receipt = decode_inputs(capture, users, parent, tokens)
+    inputs, parent_receipt = decode_inputs(capture, users, parent, tokens, greedy_parent=greedy_parent)
     constants = {key: reference.info(reference.raw_tensor(value).raw)
                  for key, value in {**program.state_dict, **program.constants}.items()}
     frequency = constants.get("model.model.rotary_emb.inv_freq")
@@ -190,6 +227,8 @@ def run(capture, out, policy, *, export_dir, parent=None, engine="numpy", proof=
         selected_policies=policy, inputs={f"input_{i}": reference.info(value.raw) for i, value in enumerate(inputs)},
         parent_reference_sha256=digest(Path(parent) / "reference.json") if parent else None, qualification=proof)
     record["explicit_tokens_sha256"] = digest(tokens) if tokens is not None else None
+    if greedy_parent:
+        record["greedy_selection"] = greedy_provenance(parent, parent_receipt, inputs[0].raw)
     write(out / "reference.json", record)
     try:
         interpreter = Interpreter(program, policy, engine=engine, threads=1,
@@ -226,6 +265,8 @@ def main():
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--parent-reference", type=Path)
     parser.add_argument("--tokens", type=Path, help="explicit original token IDs with the captured static shape")
+    parser.add_argument("--greedy-parent", action="store_true",
+                        help="select one token from the independent parent expected BF16 logits")
     parser.add_argument("--engine", choices=("numpy", "native"), default="numpy")
     parser.add_argument("--native-qualification", type=Path)
     args = parser.parse_args()
@@ -257,7 +298,7 @@ def main():
             or rotary.get("archive_gate_sha256") != digest(rotary["archive_gate_path"])):
         raise ValueError("independent source rotary arithmetic lacks matching qualification")
     engine = reference.primitives.configure_engine(args.engine, 1, args.native_qualification)
-    result = run(args.capture, args.out, policy, export_dir=args.export_dir, parent=args.parent_reference, tokens=args.tokens, engine=args.engine,
+    result = run(args.capture, args.out, policy, export_dir=args.export_dir, parent=args.parent_reference, tokens=args.tokens, greedy_parent=args.greedy_parent, engine=args.engine,
         proof=dict(engine=engine, model_arithmetic_sources=before,
             validation_sha256=digest(args.validation), mask_validation_sha256=digest(args.mask_validation),
             bf16_linear_validation_sha256=digest(args.bf16_linear_validation),

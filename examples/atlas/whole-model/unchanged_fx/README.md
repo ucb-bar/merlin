@@ -314,3 +314,45 @@ Whole-model generated-cache numerical evidence uses `qualified_native` only;
 layer-0 continuity is checked separately on both backends. The regional
 `cache_reference.py` remains for saved-capsule layer-0 and composition regressions;
 the whole-cache reference interprets complete live source captures.
+
+### Greedy decoding with decoder layer 0
+
+For an explicit one-decoder-layer experiment, a model-cache source receipt may
+set `"decoder_layers": [0]`. This selects the unchanged source embedding,
+rotary, decoder layer 0, final normalization, and logits head. It is a truncated
+model experiment; its logits are not the full 22-layer model's logits. Omitting
+the field preserves the existing whole-model boundary. Existing layer-only
+boundaries retain their original hidden-state interfaces.
+
+Compile separate static prefill64, decode65, and decode66 applications. Each
+model-cache decode has IDs, positions, mask, K, and V as its five inputs, and
+logits, K, and V as outputs. The per-position fixture supplies positions and
+mask. The existing `--input-bindings` descriptor can supply both caches and a
+greedy ID from the preceding generated publication:
+
+```json
+{
+  "schema": "merlin.application_output_bindings.v1",
+  "producer_application": "prefill64/compiled",
+  "producer_execution": "qualified/prefill64",
+  "bindings": [
+    {"input_index": 3, "output_index": 1},
+    {"input_index": 4, "output_index": 2}
+  ],
+  "greedy": {"input_index": 0, "output_index": 0}
+}
+```
+
+Paths resolve relative to the descriptor. Greedy selection widens BF16 words
+exactly, selects the last sequence row, chooses the lowest vocabulary index
+on a tie, and refuses NaNs. The execution receipt records the selected token
+and authenticates its producer. No application ABI or device state changes.
+
+Run `cache_decode_reference.py` first for prefill, then for each decode with
+`--parent-reference PREVIOUS_REFERENCE --greedy-parent`. The reference chooses
+from its own authenticated expected logits and consumes only its own K/V.
+After execution, run `greedy_chain_gate.py --step APP EXEC REF` three times in
+one invocation, in prefill64, decode65, decode66 order. The gate requires exact
+outputs at all steps, independently matching greedy choices, and complete
+cache bindings. Run the qualified backend chain before the plain functional
+backend chain with the default execution limits.
