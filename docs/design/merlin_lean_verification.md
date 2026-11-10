@@ -514,7 +514,7 @@ the qualification suite also runs the checker under kernel reduction (`decide`) 
 | Exporter | `src/merlin/verify/lean/mlir_export.py` (`torch_mlir` bindings, per the D9 amendment; no C++ exporter was built) |
 | Python glue | `src/merlin/verify/lean/` |
 | JSON schemas | `merlin/contract/schemas/` |
-| Python tests | `merlin/tests/ir/test_lean_*.py` |
+| Python regression suite | 200 cases rostered in `merlin/tests/data/lean_suite.json`, run by `build_tools/scripts/run_lean_tests.py` |
 | Generated receipts and exports | `out/artifacts/verification/<target>/lean/...` |
 
 - WP-1 confirms placement against `check_structure.py`.
@@ -989,15 +989,15 @@ model (T3), with nonnegative axes, rank-zero per-tensor parameters, and omitted 
 signed-i8 bounds; it is not yet paper-qualified capture-to-execution verification.
 
 The separate CPU source oracle in `lean-torch-requirements.txt` pins PyTorch 2.10.0+cpu by wheel
-hash and all installed package versions. `test_lean_dequant_torch.py` executes the actual source
-operations for 63 finite-input tensor cases (539 element results), including signed zero, both i32
-wraparound directions and the historical large-zero-point counterexample. It compares every result
-bit with independent NumPy arithmetic and 49 selected points with actual compiler bodies folded
-by authoritative MLIR. Set `MERLIN_TORCH_PYTHON` to that isolated interpreter; required-mode runs
-fail if it is absent. These bounded fidelity checks supplement the universal parametric proofs;
-NaN payload and complete IEEE-instance qualification, human specification review, and exact
-capture-producer binding remain outstanding. CI is configured to provision the separate oracle;
-commits made with `[skip ci]` are validated locally.
+hash and all installed package versions. `test_lean_dequant_torch.py` (removed in e6568ac96; last present at 04ed0ae25) executed
+the actual source operations for 63 finite-input tensor cases (539 element results), including
+signed zero, both i32 wraparound directions and the historical large-zero-point counterexample. It
+compared every result bit with independent NumPy arithmetic and 49 selected points with actual
+compiler bodies folded by authoritative MLIR. Those are dated results; neither the retained suite
+nor CI reruns them. `MERLIN_TORCH_PYTHON` still selects the isolated interpreter for the Q/DQ
+`SourceCapture` qualification route. These bounded fidelity checks supplemented the universal
+parametric proofs; NaN payload and complete IEEE-instance qualification, human specification
+review, and exact capture-producer binding remain outstanding.
 
 ### 5.2 C2 — outlining (inline-and-compare)
 
@@ -1353,17 +1353,18 @@ frozen:
    source (MLIR op docs, TorchAO, `torch._refs`), and the review is recorded in `SPEC_LOCK`.
 6. **Axioms and ban audit**, and receipt replay from a clean checkout on a second machine.
 
-**Executable MLIR integration tests.** `.github/workflows/lean-mlir.yml` builds and audits Lean,
-then requires the pinned compiler Python MLIR bindings for round trips, receipts, chain replay,
-and the receipt-forgery and file-race regressions. `test_lean_mlir_differential.py` compares concrete
-integer results with MLIR's constant folder at widths 1, 2, 8, 32 and 64, including boundary values,
-division, shifts and overflow flags. Immediate UB is classified independently from the generated
-inputs; a Lean `ub` answer alone never exempts a case from comparison. The JUnit results record
-constant, poison, UB and unfolded counts, and require measured coverage for every tested operation.
-Legal folds from poison to concrete values are counted separately from exact-value agreement.
-Named map, reduce, matmul and transpose also compare with MLIR's generalization and independently
-specified expected tensors, including nonzero destination initializers. These are bounded tests,
-not a proof of MLIR fidelity. Full `mlir-runner` census coverage and IEEE-instance testing remain
+**Executable MLIR integration tests.** `.github/workflows/lean-mlir.yml` builds and audits the
+complete Lean library with `check_lean_guard.py`, then runs the 200-case roster in
+`merlin/tests/data/lean_suite.json` through `run_lean_tests.py` with the pinned compiler Python MLIR
+bindings. The roster covers accepted boundaries, deliberate corruption, forged evidence, worker
+failures, product quarantine and fresh replay for all nine gates; see the
+[regression guide](../guides/lean_differential_tests.md). The bounded integer differential
+`test_lean_mlir_differential.py` (removed in e6568ac96; last present at 04ed0ae25) compared concrete integer results with MLIR's
+constant folder at widths 1, 2, 8, 32 and 64, including boundary values, division, shifts and
+overflow flags, classifying immediate UB independently of the generated inputs; it also compared
+named map, reduce, matmul and transpose with MLIR's generalization. Those results are dated, and
+`merlin.verify.lean.differential` remains available for separately authored evaluations. They were
+bounded tests, not a proof of MLIR fidelity. Full `mlir-runner` census coverage and IEEE-instance testing remain
 qualification work; the concrete Lean test driver deliberately supplies no IEEE float oracle.
 
 To reproduce the authoritative tests on Linux x86_64 with Python 3.12 and `uv` installed:
@@ -1371,13 +1372,13 @@ To reproduce the authoritative tests on Linux x86_64 with Python 3.12 and `uv` i
 ```sh
 uv sync --frozen --extra dev --extra verify --extra targetgen
 uv venv --python 3.12 out/build/lean/mlir-venv
-export MERLIN_M2M_PYTHON="$PWD/out/build/lean/mlir-venv/bin/python"
-uv pip install --python "$MERLIN_M2M_PYTHON" --no-deps -r build_tools/toolchains/lean-mlir-requirements.txt
+export MERLIN_COMPILER_PYTHON="$PWD/out/build/lean/mlir-venv/bin/python"
+uv pip install --python "$MERLIN_COMPILER_PYTHON" --no-deps -r build_tools/toolchains/lean-mlir-requirements.txt
 # Install elan, then fetch Mathlib's cache in merlin/lean: lake exe cache get
 export PATH="$HOME/.elan/bin:$PATH"
+export MERLIN_LEAN_SDK_BIN="$(dirname "$(cd merlin/lean && elan which lean)")"
 uv run --no-sync python build_tools/scripts/check_lean_guard.py
-MERLIN_LEAN_REQUIRED=1 uv run --no-sync pytest -q merlin/tests/ir/test_lean*.py \
-  -k 'not standalone and not test_round_trip_identical' \
+MERLIN_LEAN_REQUIRED=1 uv run --no-sync python build_tools/scripts/run_lean_tests.py -q \
   -o junit_family=xunit1 \
   --junitxml=out/artifacts/verification/lean-mlir.xml
 ```
@@ -1395,7 +1396,7 @@ tests in this workflow.
 |---|---|
 | Checker validates bytes other than those compiled | Byte-bound receipts, chain continuity, final-stage identity with the recipe's `mlir-opt` input (D10) |
 | Exporter misreads IR | MLIR's own parser plus round trip (D9) |
-| Lean semantics differ from MLIR | Differential fidelity tests and named-op cross-check (§9.4) |
+| Lean semantics differ from MLIR | Lean-native `#guard` regression modules; dated differential fidelity and named-op evidence; the reusable differential driver (§9.4) |
 | Spec copies the implementation's bug | Information barrier and human spec review (§1.2.6, §9.5) |
 | Proof of the wrong theorem | Pinned, reviewed statements in `Claims/` (§8.6) |
 | `sorry`, axioms, or implementation swap | Ban list, axioms audit, no `implemented_by` (§1.2.1) |

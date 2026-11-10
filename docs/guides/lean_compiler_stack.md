@@ -3,7 +3,7 @@ title: Compiler gate overview and status
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-11-09
+last_verified: 2026-11-10
 related: [lean_bounded_pass_profiles, merlin_lean_verification, compiler_verification, qdq_macc_numerical_contract_review]
 code_refs:
   - src/merlin/verify/pass_validation.py
@@ -163,9 +163,12 @@ The retained implementation entry points include:
 - [Private buffers](../../merlin/tests/ir/test_compiler_buffer_untiled.py),
   [configuration](../../merlin/tests/ir/test_compiler_configuration.py) and
   [host fusion](../../merlin/tests/ir/test_compiler_host_graph_fusion.py).
-- Historical [sixteen full-size kernels](../../merlin/tests/ir/kernel_benchmark_handoff_campaign.py)
+- The [sixteen full-size kernel campaign](../../merlin/tests/ir/kernel_benchmark_handoff_campaign.py)
   and the [complete-model campaign](../../merlin/tests/ir/larger_model_campaign.py)
-  compare ordinary and gated compilation and finite native outputs.
+  compare ordinary and gated compilation and finite native outputs. Both run
+  outside the 200-case roster. The kernel campaign launches one owned pytest
+  process per case; that test is slow-marked and skipped unless
+  `MERLIN_RUN_KERNEL_HANDOFF=1`, which the campaign sets.
 
 [`qualify_pass_cutoff.py`](../../build_tools/scripts/qualify_pass_cutoff.py)
 compiles an explicit kernel denominator ordinarily and with every `all` gate.

@@ -3,7 +3,7 @@ title: Lean regression tests and semantic differential evaluation
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-11-09
+last_verified: 2026-11-10
 related: [lean_compiler_stack, lean_bounded_pass_profiles, compiler_verification]
 code_refs:
   - merlin/tests/data/lean_suite.json
@@ -46,7 +46,13 @@ The former large Python suite and its parameter grids were removed. The current
 suite intentionally samples fewer shapes, numerical formats, source grammars,
 frontend integrations and native execution cases. Passing it establishes these
 retained regressions, not the broader historical test population. Dated evidence
-retains its original source version and denominator.
+retains its original source version and denominator; removed test modules remain
+readable at 04ed0ae25, the parent of the consolidation commit.
+
+The sixteen-kernel and complete-model campaigns run separately, outside the
+roster ([gate overview](lean_compiler_stack.md#coverage-and-qualification-status)).
+The kernel campaign's per-case test is slow-marked and skipped unless
+`MERLIN_RUN_KERNEL_HANDOFF=1`, so it never enters a 200-case run.
 
 ## Full proof build and audit
 
