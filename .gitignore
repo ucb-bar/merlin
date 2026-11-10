@@ -366,3 +366,7 @@ merlin/tests/data/lit/.lit_test_times.txt
 /merlin/experiments/voyager_h2h/LESSONS.md
 /merlin/experiments/voyager_h2h/STATUS.md
 /merlin/experiments/voyager_h2h/PLANE_B.md
+
+# Retained Atlas investigation and restoration provenance.
+!/out/artifacts/handoff/atlas-target-investigation-20261109/README.md
+!/out/artifacts/handoff/atlas-target-restoration-20261110/README.md
