@@ -11,6 +11,11 @@ result before edits. Retarget only complete unused-init generics; captured or
 closed pure computed values may use an explicit identity value copy into the
 carried destination. Preserve reduction/init semantics and all branch order.
 Unknown effects/captures and library calls grant no copy/reuse permission.
+An unused-init full parallel generic may establish a fresh carried seed from
+numeric tensor inputs and qualified readonly/private scalar reads only after
+recursively proving its output seed independent. This grants no ownership of
+the read roots. Init reads, reductions, unknown owners and library calls retain
+the original refusal; native alias/lifetime checks still decide materialization.
 Old-state reads after a producer and nonidentity carried-input maps require a
 complete value copy at the selected edge, after those reads. Bound ancestor
 inspection by the owning loop. Read captures may also use actual private
@@ -27,6 +32,15 @@ and every RMW target is an actual private allocation through standard views.
 Retain the complete event and boundary; never clone/move the atomic or retarget
 its output. External/unknown targets, shared seeds, extra effects and opaque
 calls grant no permission. Native alias/lifetime checks remain mandatory.
+
+`preserve_bfloat_transport` is an explicit native legalization after complete
+LLVM conversion. Only scalar BF16 loads/stores, constants, exact bitcasts,
+selects and CFG word transport become i16. Keep opaque pointers, two-byte GEP
+sizes, descriptor ABI, effects and attributes unchanged. Obtain constant words
+through upstream APFloat bitcast folding, never Python floats. BF16 arithmetic,
+scalar function ABIs, vectors and incomplete conversion refuse before edits.
+Arithmetic casts remain the upstream arith-expand obligation; this feature
+grants no floating-point emulation, fast-math or hardware mapping policy.
 
 `lower_integer_compare_exchange` is an explicit native legalization for closed
 i16/i32/i64 generic atomic comparison/select regions on rank-one identity-layout

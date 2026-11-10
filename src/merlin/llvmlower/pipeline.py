@@ -1388,6 +1388,8 @@ def _select_runner(
     from .adjacent_exp import bind_runner as bind_exact_exp_runner
     source = bind_exact_exp_runner(source, features=feats)
     source = _bind_source_observation_runner(source, selected=_SOURCE_OBSERVATION_FEATURE in feats)
+    from .bfloat_transport import FEATURE as _BFLOAT_TRANSPORT, bind_runner as _bind_bfloat_transport
+    source = _bind_bfloat_transport(source, selected=_BFLOAT_TRANSPORT in feats)
     from .atomic_compare_exchange import FEATURE as _INTEGER_COMPARE_EXCHANGE, bind_runner as _bind_integer_compare_exchange
     from .atomic_word_views import FEATURE as _ATOMIC_WORD_VIEWS
     source = _bind_integer_compare_exchange(source, selected=bool({_INTEGER_COMPARE_EXCHANGE, _ATOMIC_WORD_VIEWS} & feats),
