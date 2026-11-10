@@ -20,7 +20,7 @@ The experiment command console: discover, track, inspect and diagnose any experi
 
 - `sources/`
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Invariants

@@ -43,7 +43,7 @@
 # Three states per file, never two: pinned / off_pin / undeterminable. "Nobody could tell which revision
 # these bytes are" is not a softer "wrong revision" — it means do not publish the claim at all.
 #
-# Consumed by `merlin.common.provenance`; gated by `build_tools/scripts/check_provenance.py`.
+# Consumed by `merlin.common.provenance`; gated by `build_tools/checks/check_provenance.py`.
 version: 1
 
 pins:

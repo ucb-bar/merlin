@@ -53,7 +53,7 @@ opcodes:
       # THE epilogue vocabulary of this ABI. It has exactly ONE definition --
       # merlin.runtime.commandbuffer.EPILOGUE_STAGES -- from which this line, the strict validator's enum
       # in schemas/command_buffer.schema.json, interface_dialect_contract.yaml and the dialect verifiers
-      # are all derived; build_tools/scripts/check_epilogue_vocabulary.py fails if any of them drifts.
+      # are all derived; build_tools/checks/check_epilogue_vocabulary.py fails if any of them drifts.
       # It is deliberately NOT derived per-target: this schema is target-INDEPENDENT (one validator for
       # every target), so no single target's RTL can define it. It is the set of stages the command-buffer
       # ENGINES implement. Whether a given target can EXECUTE a stage is a separate question, answered by

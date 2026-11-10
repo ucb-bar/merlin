@@ -22,7 +22,7 @@ def _gate_script():
     import importlib.util
     import sys
 
-    path = repo_root() / "build_tools" / "scripts" / "check_capability_backing.py"
+    path = repo_root() / "build_tools" / "checks" / "check_capability_backing.py"
     spec = importlib.util.spec_from_file_location("check_capability_backing", path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module

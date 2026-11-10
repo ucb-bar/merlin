@@ -8,7 +8,7 @@ import pytest
 
 from merlin.common.paths import repo_root
 
-_GATE = repo_root() / "build_tools" / "scripts" / "check_grammar_documentation.py"
+_GATE = repo_root() / "build_tools" / "checks" / "check_grammar_documentation.py"
 
 
 def _gate():

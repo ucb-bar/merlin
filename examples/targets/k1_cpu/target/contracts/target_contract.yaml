@@ -23,7 +23,7 @@ runtime:
   toolchain:
     env: MERLIN_K1_TOOLCHAIN
     release_dirs: ["spacemit-toolchain-*"]
-    default_install: build_tools/SpacemiT/riscv-tools-spacemit
+    default_install: out/build/toolchains/spacemit
 capabilities:
   ops: [matmul, bias_add, requant, relu, elementwise, reduction]
   layouts: [packed_rhs]

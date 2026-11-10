@@ -14,7 +14,7 @@ OOT starter kit — hw-agnostic, answer-free framework plumbing for authoring an
 - `transforms.py` — Generic, target-AGNOSTIC compiler transforms the agent calls. NOT target-specific lowerings.
 - `verify.py` — Structural verification for the Python/xDSL path — the C++-MLIR-verifier equivalent.
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 The public plan inventory verifies the actual terminating return against its

@@ -99,7 +99,7 @@ def _parallel_pipeline(features: "frozenset[str] | None" = None) -> str:
     parallel-loops``) which ``convert-scf-to-openmp`` wraps in an ``omp.parallel`` +
     ``omp.wsloop`` (work-shared across threads); reduction dims stay sequential
     ``scf.for`` (correctness preserved). ``mlir-translate`` then emits ``__kmpc_*`` runtime
-    calls, satisfied at link time by the cross-built ``libomp.a`` (build_tools/k1_openmp).
+    calls, satisfied at link time by the cross-built ``libomp.a`` (build_tools/toolchains/openmp).
     Set ``OMP_NUM_THREADS`` on the board to fan out across the 8 cores.
 
     This is the K1 big-model path: the diffusion-transformer / large VLAs that run on the

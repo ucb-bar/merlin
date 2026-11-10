@@ -229,7 +229,7 @@ runtime_pins:
     path: ${REPO}/third_party/llvm-install/lib/cmake/mlir/MLIRConfig.cmake
     sha256: '0000000000000000000000000000000000000000000000000000000000000000'
   operator_infrastructure_witness:
-    path: ${REPO}/build_tools/scripts/probe_model_build.py
+    path: ${REPO}/build_tools/deploy/probe_model_build.py
     sha256: '0000000000000000000000000000000000000000000000000000000000000000'
   operator_all_model_outputs:
     path: ${REPO}/examples/compiler-generation/gemmini/backend-generation/launch/full_model_outputs.py

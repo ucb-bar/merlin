@@ -25,7 +25,7 @@ definitions; `src/merlin/runtime/native/` holds reusable native runtime sources.
 inputs. The nine authored files under `experiments/` provide a catalog, one generic definition,
 a shared test-generation template and local instructions. Generated captures, corpora,
 input bundles and retained study payloads belong under ignored `out/`; current runs select
-their reviewed inputs explicitly. The standalone console and independent timing observer
+their reviewed inputs explicitly. The console, independent timing observer and board measurement commands
 live under `tools/`. See `docs/reference/repo_structure.md`.
 
 ## Compiler and OOT ownership rule
@@ -82,18 +82,18 @@ hard prohibitions, each gate-enforced (pre-commit + CI); do not add allowlist en
 them without a written, reviewed rationale:
 
 1. **No target-name literals in library code.** No `"gemmini"` / `"atlas"` / `"radiance"` (or any
-   target string) in `src/merlin/**`, `tools/*/src/**`, or `build_tools/scripts/**`. The target is a *parameter*
+   target string) in `src/merlin/**`, `tools/*/src/**`, or `build_tools/checks/**`. The target is a *parameter*
    threaded from the descriptor/manifest; functions take `target=`, they do not assume one. A target
    name may appear only at a genuine edge where that target is legitimately the subject (a per-target
    data dir, a target-specific test, a caller that is *about* that one target) — never in a shared code
-   path. Enforced by `build_tools/scripts/check_no_target_name.py` (scan roots
-   the canonical core and extension roots + `build_tools/scripts`).
+   path. Enforced by `build_tools/checks/check_no_target_name.py` (scan roots
+   the canonical core and extension roots + `build_tools/checks`).
 2. **No regex.** Do not `import re` in core library code. Regex line-matching is brittle by
    construction — a too-narrow pattern silently drops valid-but-differently-spelled input (this has bitten
    the RoCC trace decoder repeatedly: numeric-only SSA ids, `"r,r"`-only constraints, one op spelling —
    each silently mis-measured a conformant backend). Parse **structurally** instead: real parsers,
    `str.split`/`partition`, explicit tokenizers, the xDSL/MLIR IR. Enforced by
-   `build_tools/scripts/check_no_regex.py` (ratcheted allowlist; do not grow it).
+   `build_tools/checks/check_no_regex.py` (ratcheted allowlist; do not grow it).
 3. **No assumed opcodes / encodings / ISA constants.** Never hardcode an opcode (`0x7b`), a funct/func3
    value, a mesh dimension, a memory base, an address layout, a register field, or a "the instruction
    always starts with …" assumption. Every such value is *derived* from the target's RTL facts
@@ -124,7 +124,7 @@ worse than no result, because it gets cited.
   while the commit still looks right). It never mutates a checkout — other sessions work in those trees.
 - **Binaries carry their own stamp** and the report compares it, so a stale ELF is detectable
   (`kernels.opu_cert.provenance_stamp`).
-- **Enforced** by `build_tools/scripts/check_provenance.py` (pre-commit `--staged`, session Stop hook
+- **Enforced** by `build_tools/checks/check_provenance.py` (pre-commit `--staged`, session Stop hook
   `--stop-hook`, `--verify-pins` for live checkouts). It scans untracked reports under `out/artifacts/`
   too, since that is where reports live. `provenance_ratchet.txt` lists pre-existing debt and MAY ONLY
   SHRINK — never add to it; regenerate the artifact with provenance instead.
@@ -209,7 +209,7 @@ the live ones. See `docs/guides/12-experiments.md`.
 
 **Enforcement** (do not bypass without cause): a PreToolUse hook
 (`.claude/hooks/guard_artifact_writes.py`) blocks generated writes outside the `out/` root;
-`build_tools/scripts/check_artifact_layout.py` lints tracked-file violations (pre-commit / Stop hook).
+`build_tools/checks/check_artifact_layout.py` lints tracked-file violations (pre-commit / Stop hook).
 Helper API and examples: `.claude/skills/artifact-layout/SKILL.md` and `src/merlin/common/artifacts.py`.
 Escape hatch for a genuine one-off: `export MERLIN_ALLOW_ARTIFACT_WRITE=1` or add a prefix to
 `.claude/hooks/artifact_allowlist.txt`.
@@ -223,7 +223,7 @@ including parameterization. Retired workflow tests remain in Git/frozen inputs;
 their implementations ship in the main Merlin distribution. The independent
 timing observer retains its own project configuration.
 Rules for the cross-subsystem suite (enforced by
-`build_tools/scripts/check_structure.py` "test layout"; see `.claude/skills/test-layout`):
+`build_tools/checks/check_structure.py` "test layout"; see `.claude/skills/test-layout`):
 
 - A test file is `tests/<bucket>/test_<area>.py` — **never at the `tests/` root**, and
   `<bucket>` must be one of the eight above. Place a new test in the subsystem it exercises.
@@ -231,7 +231,7 @@ Rules for the cross-subsystem suite (enforced by
   `tests/fixtures/` and `tests/data/`; generated workflow corpora belong under ignored `out/`.
 - Resolve repo paths via `merlin.common.paths.repo_root()`, `module_source_path()` or `data_path()` as appropriate — **never** `Path(__file__).parents[N]`
   (so tests are location-independent and survive moves).
-- Run `build_tools/scripts/check_test_budget.py --output out/build/python/ci/test-budget.json`
+- Run `build_tools/checks/check_test_budget.py --output out/build/python/ci/test-budget.json`
   before `.venv/bin/python -m pytest tests`. Install the selected
   optional dependency extras; a base Merlin installation need not include research engines.
   Historical replay retains its recorded source/distribution selection and test inputs.
@@ -251,7 +251,7 @@ Generated CLI/module/schema tables belong under ignored `out/artifacts/documenta
 Run their generators when you need those references; do not commit their output.
 Local AGENT.md files describe specific constraints, not duplicate module indexes.
 Point-in-time findings and run reports belong in `out/`; private audit notes in `tmp/`.
-Run `build_tools/scripts/check_docs.py` after changing maintained documentation.
+Run `build_tools/checks/check_docs.py` after changing maintained documentation.
 
 # Experiment-run convention — one continuous session, per-capsule tiering
 
@@ -290,7 +290,7 @@ this path, add a test; a comment cannot detect silence. See `.claude/skills/caps
 
 Commit messages describe the **change to the code/files** and read as if a human developer wrote them.
 A reader of the history should understand *what changed and why* without any knowledge of how the work
-was produced. Enforced by the `commit-msg` hook (`build_tools/git-hooks/`, installed by
+was produced. Enforced by the `commit-msg` hook (`build_tools/hooks/`, installed by
 `install_git_hooks.py`); the same gates run in CI.
 
 - **Format:** `type(scope): summary` — `type` ∈ `feat|fix|docs|chore|refactor|test|perf|build`;

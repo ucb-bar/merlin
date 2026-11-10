@@ -27,7 +27,7 @@ or a pile: *what is this pass here to discharge?* and *does anything actually ru
 modes are real — a pass whose only justification is that the score went up, and a declared pass no
 capsule ever reaches — and a `stage` string expresses neither. So every entry now declares the
 dialect it consumes, the dialect it produces, the ONE obligation it exists to discharge, and the
-capsules that require it; :mod:`build_tools.scripts.check_pass_obligations` gates the first pair and
+capsules that require it; :mod:`build_tools.checks.check_pass_obligations` gates the first pair and
 measures the second against a recorded invocation log (see :func:`install_pass_recorder`).
 
 ``UNKNOWN`` is a value, never a default to hide behind: it means "not determinable from this pass's

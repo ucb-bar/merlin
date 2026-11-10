@@ -63,7 +63,7 @@ Enabling this feature on that build makes the emitted code WORSE, not better:
     vfredmax.vs 54 -> 1, vfabs.v 414 -> 107, fabs.s 107 -> 0, vand.vx 0 -> 114
 
 (The vector/scalar figures above were RE-MEASURED after a parser defect was found in
-`build_tools/scripts/k1_amax_reduction_ab.py`, which this docstring originally quoted: it read the
+`the earlier reduction comparison`, which this docstring originally quoted: it read the
 objdump line's OPERAND field as the mnemonic, so every instruction writing a scalar register from
 vector state -- `vsetvli a0, ...`, `vmv.x.s` -- was counted scalar, and instructions with no operands
 were dropped entirely. The published split was 23,023 / 122,867; it is 26,902 / 118,989. The

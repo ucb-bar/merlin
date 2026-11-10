@@ -8,11 +8,11 @@ import pytest
 
 from merlin.common import paths
 
-CHECKER = paths.repo_root() / "build_tools" / "scripts" / "check_inert_capabilities.py"
+CHECKER = paths.repo_root() / "build_tools" / "checks" / "check_inert_capabilities.py"
 
 
 def _load_checker():
-    """Import the gate as a module (it lives in ``build_tools/scripts``, which is not a package)."""
+    """Import the gate as a module (it lives in ``build_tools/checks``, which is not a package)."""
     spec = importlib.util.spec_from_file_location("check_inert_capabilities", CHECKER)
     assert spec and spec.loader, f"cannot load {CHECKER}"
     mod = importlib.util.module_from_spec(spec)

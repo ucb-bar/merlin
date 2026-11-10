@@ -102,7 +102,7 @@ REFERENCE_KINDS: Mapping[str, Mapping[str, Any]] = {
             "scores cos 1.0 / rel 0.0 by construction, so it is not evidence about the "
             "arithmetic"
         ),
-        "generator": "build_tools/scripts/make_w8a8_golden.py",
+        "generator": "python -m merlin.evaluation.w8a8_execution",
     },
     "w8a8_independent": {
         "file": "golden_w8a8.independent.npy",
@@ -113,7 +113,7 @@ REFERENCE_KINDS: Mapping[str, Mapping[str, Any]] = {
             "the arithmetic itself; fail-closed on the bundle's quantized weights not "
             "matching bit-for-bit, which is what makes the number citable"
         ),
-        "generator": "build_tools/scripts/make_w8a8_independent_golden.py",
+        "generator": "python -m merlin.evaluation.w8a8_eager",
     },
     "pt2e_integer": {
         "file": "golden_integer.npy",

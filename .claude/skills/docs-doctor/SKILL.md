@@ -20,7 +20,7 @@ Every durable doc under `docs/` carries front-matter with `last_verified: YYYY-M
 guess what's stale:
 
 ```bash
-.venv/bin/python build_tools/scripts/check_docs_freshness.py --json
+.venv/bin/python build_tools/checks/check_docs_freshness.py --json
 ```
 
 Returns `{"drift": [...], "uncategorized": [...]}`. Each `drift` entry is a doc whose
@@ -43,7 +43,7 @@ Returns `{"drift": [...], "uncategorized": [...]}`. Each `drift` entry is a doc 
 4. **Never bump `last_verified` without having actually reconciled the doc against the diff.** The
    date is a claim that a human/agent verified the doc against the code as of that day.
 5. After edits, **regenerate the hub and re-check:**
-   `.venv/bin/python build_tools/scripts/check_docs.py`.
+   `.venv/bin/python build_tools/checks/check_docs.py`.
 6. Commit in a small batch (shared tree — see `CLAUDE.md`): `docs(doctor): re-verify <doc> vs <ref>`.
 
 Also handle `uncategorized` (docs with no front-matter): either add front-matter (if durable) or

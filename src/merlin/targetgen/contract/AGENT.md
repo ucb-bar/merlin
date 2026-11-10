@@ -29,7 +29,7 @@ emission; capsule generation does not admit a target scale-change schedule.
 - `schemas.py` — Fail-closed JSON-Schema validation against the ``src/merlin/resources/contracts/schemas/`` bundle.
 - `toolchain.py` — MLIR toolchain resolution for the experiment ABI (env-overridable).
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 `materialize.py` owns public copying, explicit-ceiling cohort publication, admission
@@ -221,7 +221,7 @@ results in reference order (`logical_kernel_abi` in the OOT contract). Tiling, p
 and layout are the compiler's job, and the harness includes no target header; outputs are
 poisoned before every invocation. The host completion and cycle-counter instructions come from
 the target contract's `logical_harness` block. Its correctness is gated by
-`build_tools/scripts/harness_reference_gate.py` (naive reference kernel exact on spike, mutants
+`build_tools/checks/harness_reference_gate.py` (naive reference kernel exact on spike, mutants
 caught, no excluded-header routine visible). The version-1 `kernel_abi` lives in
 `src/merlin/resources/contracts/legacy/kernel_abi_v1.yaml`; only Merlin's device shim and version-1 harness
 certification (`check_kernel_abi_arg_order.py`) read it.

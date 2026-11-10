@@ -60,7 +60,7 @@ Build, run and judge complete quantized models for a device submission.
 - `twins.py` — The differential's host twins, run once per release: every step's outputs cached in the bundle.
 - `variants.py` — Seeded shape-perturbed variants of every unique device kernel, stored and judged as sealed cases.
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Invariants

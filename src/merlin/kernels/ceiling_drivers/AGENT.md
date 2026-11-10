@@ -14,7 +14,7 @@ live in `src/merlin/kernels/ceiling_drivers/` under unchanged imports.
 Runtime consumers must resolve driver resources without requiring analysis or mining. Measurement
 controllers resolve this core package rather than assume resources sit beside their Python files.
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Research workflow responsibilities

@@ -19,7 +19,7 @@ EXO kernel sources for the K1-RVV whole-model baseline arm.
   (`RVV256`, +vfadd/vfmul) and the int8 widening path (`RVV256_I16` inputs, `RVV256_I32` m2
   accumulator, vwmacc).
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Non-Python kernel sources

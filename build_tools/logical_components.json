@@ -125,7 +125,8 @@
         "merlin.mining.sweep",
         "merlin.mining.tuning_agent",
         "merlin.mining.wholemodel_proposer",
-        "merlin.mining.workloads"
+        "merlin.mining.workloads",
+        "merlin.mining.xnnpack_capture"
       ]
     },
     "merlin-analysis": {

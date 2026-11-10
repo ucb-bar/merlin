@@ -9,7 +9,7 @@ Building device images for targets whose ISA is a fixed-format re-encoding of a 
 - `boot.py` — Fork-free build of the boot/BSP object (the crt0-like startup) for a fixed-format target.
 - `link.py` — Fork-free link + relocation patch for a target whose ISA is a fixed-format re-encoding.
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Invariants

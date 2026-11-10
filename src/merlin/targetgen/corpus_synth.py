@@ -4,7 +4,7 @@ The corpus pipeline was already deterministic everywhere except at its input. Ev
 derived from the target's own facts -- tile dim, dtypes, instruction classes, oracle tiers, scale block,
 semantic family, golden regime -- and regeneration is byte-stable. The *requirement* is derived too:
 :func:`merlin.targetgen.conformance.required_cells` intersects what the capability manifest admits with
-what real captured models contain, and :mod:`build_tools.scripts.check_conformance_coverage` measures the
+what real captured models contain, and :mod:`build_tools.checks.check_conformance_coverage` measures the
 corpus against it.
 
 The two never met. Which capsules exist was a hand-written ``capsules:`` list -- roughly 180 entries

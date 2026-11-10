@@ -114,3 +114,6 @@ The documentation rewrite removed the former collection of overlapping guides
 and design notes. Earlier explanations remain available through Git history;
 use their recorded source revision when reproducing an older result. They do
 not describe the current API by default.
+
+Board measurement commands live in `tools/benchmarks/`; the reusable comparison
+implementations remain in `src/merlin/compare/` and `evaluation/frameworks/`.

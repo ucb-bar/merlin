@@ -8,7 +8,7 @@ import pytest
 
 from merlin.common.paths import repo_root
 
-GATE = repo_root() / "build_tools" / "scripts" / "check_no_target_name.py"
+GATE = repo_root() / "build_tools" / "checks" / "check_no_target_name.py"
 
 
 @pytest.fixture(scope="module")

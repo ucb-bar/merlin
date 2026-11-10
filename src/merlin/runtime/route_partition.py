@@ -37,7 +37,7 @@ runs whose validators disagree compares the instruments as well as the submissio
 it retro-fails live and archived submissions at once.
 
 This module is therefore a PURE classifier with no callers in the grading path. The gate
-``build_tools/scripts/check_route_partition.py`` reports against a ratchet. Wiring it into
+``build_tools/checks/check_route_partition.py`` reports against a ratchet. Wiring it into
 ``validate_command_buffer`` is a deliberate, scheduled instrument change — not a side effect of
 landing the check.
 

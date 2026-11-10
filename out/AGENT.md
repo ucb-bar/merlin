@@ -30,4 +30,4 @@ Root names come from `merlin.common.paths` — `out_dir()` / `runs_dir()` / `art
 - Contents are gitignored; only `AGENT.md` / `README.md` / `.gitkeep` skeletons and the explicit
   curated negations in `.gitignore` are tracked. Regenerable output is never committed.
 - A PreToolUse hook (`.claude/hooks/guard_artifact_writes.py`) blocks generated writes outside
-  this root; `build_tools/scripts/check_artifact_layout.py` lints tracked-file violations.
+  this root; `build_tools/checks/check_artifact_layout.py` lints tracked-file violations.

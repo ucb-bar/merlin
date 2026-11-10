@@ -14,7 +14,7 @@ Two rules this file exists to obey:
   thing that was already fine.
 
 For the whole-repo version of this (every experiment capability, not just these two examples), see
-`build_tools/scripts/check_repro_env.py`.
+`build_tools/checks/check_repro_env.py`.
 """
 
 from __future__ import annotations
@@ -166,7 +166,7 @@ def main(argv=None) -> int:
     if missing:
         print(
             "\nSee examples/README.md ('Set up a machine from scratch') for where each of these comes "
-            "from, and build_tools/scripts/check_repro_env.py for the whole-repo version of this "
+            "from, and build_tools/checks/check_repro_env.py for the whole-repo version of this "
             "report."
         )
 

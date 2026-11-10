@@ -149,7 +149,7 @@ def _root_agent_md(target: str) -> str:
             "Targets implement adapters; they never invent runtime models.",
             "Every directory contains an AGENT.md.",
         ],
-        testing=["`python build_tools/scripts/check_generated_target.py <this repo>` must pass."],
+        testing=["`python build_tools/checks/check_generated_target.py <this repo>` must pass."],
         notes=[
             "Regenerate with `python -m merlin.targetgen.cli build --target-name "
             f"{target} ...`. Hand-edits after review are expected."

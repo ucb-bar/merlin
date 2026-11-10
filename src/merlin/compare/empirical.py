@@ -182,8 +182,6 @@ def prime_board_cache(spec, root: Path, *, n: int = 3) -> dict[str, str]:
     write the k1_4way_<model>.json cache that ``_ingest_model`` reads. Board-gated + board_lock via
     the driver's own run_on_k1. Returns {workload: status}. gemm-shape workloads are primed by the
     per-op driver (a declared follow-on; not yet wired here)."""
-    import sys as _sys
-
     from merlin.mining import k1 as _k1
 
     if not _k1.available():
@@ -191,8 +189,7 @@ def prime_board_cache(spec, root: Path, *, n: int = 3) -> dict[str, str]:
             "merlin-compare --run: K1 board unavailable (set MERLIN_K1_HOST / "
             "MERLIN_K1_SSH_KEY / MERLIN_K1_TOOLCHAIN in .env). Remove --run to ingest cache."
         )
-    _sys.path.insert(0, str(root / "build_tools" / "scripts"))
-    import k1_e2e_xnnpack as _e2e  # the refactored driver exposing run_workload()
+    from merlin.evaluation.frameworks import xnnpack_e2e as _e2e
 
     status: dict[str, str] = {}
     models = [wl for wl in spec.workloads if wl.kind == "model"]
@@ -214,7 +211,7 @@ _BASELINE_TREE = "out/artifacts/measurements/k1_spacemit"
 
 
 def _ingest_external(cfg: Config, wl: Workload, target: str, metric: str, root: Path) -> Measurement:
-    from ..baselines import aggregate as _agg
+    from merlin.evaluation.frameworks import aggregate as _agg
 
     tree = root / _BASELINE_TREE
     if not tree.is_dir():

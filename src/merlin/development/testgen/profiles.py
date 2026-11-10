@@ -1119,7 +1119,7 @@ def load_profile(
     _merge_shared_perf(prof, source=public, performance_template=shared)
     _select_performance_withdrawals(prof, source=public)
     # SYNTHESIZED ENTRIES, appended after the hand-authored ones. They come from the target's own
-    # derived conformance requirement (build_tools/scripts/synth_capsule_corpus.py --write) and carry
+    # derived conformance requirement (src/merlin/development/testgen/synthesis.py --write) and carry
     # the cell each was synthesized for in `source_reference`. Appended rather than prepended so
     # `expand_sweeps`' documented declaration-order semantics are untouched; its `seen` set already
     # raises on a duplicate name, and every synthesized name is `SY_`-prefixed, so a collision with a

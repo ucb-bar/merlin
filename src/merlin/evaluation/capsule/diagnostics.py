@@ -174,7 +174,7 @@ def _range_check_bounds(msg: str):
     """(index, size) from a C++ ``_M_range_check`` abort, or (None, None).
 
     libstdc++ spells it ``__n (which is 1024) >= this->size() (which is 1024)``. Parsed STRUCTURALLY --
-    no regex in library code (build_tools/scripts/check_no_regex.py) -- by splitting on the literal
+    no regex in library code (build_tools/checks/check_no_regex.py) -- by splitting on the literal
     ``(which is `` marker, which is what libstdc++ emits. Returns None rather than guessing when the
     shape does not match, so a changed message degrades to the generic crash text instead of inventing
     a bound.

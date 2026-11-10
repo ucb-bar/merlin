@@ -83,7 +83,7 @@ Inspect one selected versioned capture without claiming full roster coverage
 (the command exits 2 if operations remain unresolved):
 
 ```sh
-python build_tools/scripts/check_conformance_coverage.py --target gemmini \
+python build_tools/checks/check_conformance_coverage.py --target gemmini \
   --application-capture lstmnetvit_int8_w8a8_consistent=/absolute/capture/model.mlir \
   --software-spec examples/compiler-generation/gemmini/target/software-spec.yaml \
   --rtl-facts /configured/out/artifacts/audits/gemmini/facts.json \

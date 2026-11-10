@@ -22,4 +22,4 @@ CLI, module and schema tables are generated under ignored
 specific constraints rather than duplicate module indexes. Private audit notes
 belong under `tmp/`; run reports and other derived data belong under `out/`.
 
-Run `python build_tools/scripts/check_docs.py` after changes.
+Run `python build_tools/checks/check_docs.py` after changes.

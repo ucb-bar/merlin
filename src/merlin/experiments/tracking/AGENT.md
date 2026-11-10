@@ -32,7 +32,7 @@ Experiment tracking views: a static HTML dashboard and a live terminal view, fro
 - `text.py` — The terminal view of a tracking summary: plain text, ANSI colour optional, no curses.
 - `views.py` — Assemble the dashboard pages from the readers, with per-section reuse for ``--live``.
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Invariants

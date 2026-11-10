@@ -13,7 +13,7 @@ collectors. Existing `data/` remains available to real compiler, mining and
 reproduction consumers.
 
 ```sh
-python build_tools/scripts/check_test_budget.py --output out/build/python/ci/test-budget.json
+python build_tools/checks/check_test_budget.py --output out/build/python/ci/test-budget.json
 python -m pytest tests -q -ra --junitxml=out/build/python/ci/core.xml
 ```
 

@@ -12,7 +12,7 @@ The contributor environment adds the compact suite's dependencies:
 ```bash
 uv venv --python 3.12
 uv pip install -e '.[dev,verify,semantic-search,targetgen]'
-.venv/bin/python build_tools/scripts/install_git_hooks.py   # enable the pre-commit gate (per clone)
+.venv/bin/python build_tools/hooks/install_git_hooks.py   # enable the pre-commit gate (per clone)
 ```
 
 One Merlin distribution contains compiler and research code. Select additional
@@ -89,10 +89,10 @@ alias: `llvmlower` and `targetgen` still contain active implementations.
 - Keep PRs focused and reasonably small; write a clear description of the change and its rationale.
 - Ensure the gates pass (the pre-commit hook runs these; you can run them directly):
   ```bash
-  .venv/bin/python build_tools/scripts/check_structure.py        # repo/test structure
-  .venv/bin/python build_tools/scripts/check_artifact_layout.py  # out/ layout
-  .venv/bin/python build_tools/scripts/check_docs.py             # docs freshness / front-matter
-  .venv/bin/python build_tools/scripts/check_test_budget.py --output out/build/python/ci/test-budget.json
+  .venv/bin/python build_tools/checks/check_structure.py        # repo/test structure
+  .venv/bin/python build_tools/checks/check_artifact_layout.py  # out/ layout
+  .venv/bin/python build_tools/checks/check_docs.py             # docs freshness / front-matter
+  .venv/bin/python build_tools/checks/check_test_budget.py --output out/build/python/ci/test-budget.json
   .venv/bin/python -m pytest tests -q -ra
   ```
 - Distinguish code regressions from unavailable inputs: selected workflows include private corpora,

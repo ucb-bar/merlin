@@ -415,7 +415,7 @@ def target_env_name(target: str, what: str) -> str:
     One spelling for every per-target override (a target's Verilator binary is
     ``MERLIN_<TARGET>_VERILATOR``, its VCS simv ``MERLIN_<TARGET>_SIMV``), DERIVED from the target name
     so a newly registered target gets its variable with no edit to shared code. It is the same convention
-    ``build_tools/scripts/check_repro_env.py`` and the sandbox toolchain already spell inline.
+    ``build_tools/checks/check_repro_env.py`` and the sandbox toolchain already spell inline.
     """
     if not target or not what:
         raise ValueError(f"target_env_name needs a target and a suffix, got {target!r}, {what!r}")

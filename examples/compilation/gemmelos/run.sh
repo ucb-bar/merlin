@@ -80,7 +80,7 @@ build|package)
     ex_note "cheap subset: deepjscc at 1 and 2 harts. Add --full for the shipped matrix."
   fi
   ex_say "build for $BOARD, gate on spike, audit, write $OUT"
-  ex_run "$PY" build_tools/scripts/make_delivery.py \
+  ex_run "$PY" build_tools/deploy/make_delivery.py \
       --board "$BOARD" --models "$MODELS" --harts 1,2 --debug \
       --sdk-dir "$SDK" --out "$OUT"
   ex_note "a UART console cannot be simulated on spike, so the gate runs an HTIF twin built from the"

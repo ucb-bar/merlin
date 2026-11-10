@@ -6,7 +6,7 @@ from pathlib import Path
 
 from merlin.common.paths import repo_root
 
-GATE_PATH = repo_root() / "build_tools" / "scripts" / "check_target_package_duplication.py"
+GATE_PATH = repo_root() / "build_tools" / "checks" / "check_target_package_duplication.py"
 ORIGINAL = """
 def pick_tiles(rows, cols, depth, budget):
     best = None

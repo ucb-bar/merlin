@@ -26,7 +26,7 @@ _SKILL_OUTPUT = Path("out/build/author-skills/pass-library")
 
 def generated_pass_library() -> dict[str, bytes]:
     """Render in a checkout; retain the exact generated payload in source releases."""
-    generator = _ROOT / "build_tools/scripts/gen_author_pass_library.py"
+    generator = _ROOT / "build_tools/packaging/gen_author_pass_library.py"
     if generator.is_file():
         output = _ROOT / _SKILL_OUTPUT
         environment = dict(os.environ, PYTHONPATH=str(_ROOT / "src"))

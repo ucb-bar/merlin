@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Reusable structural/artifact validation predicates shared by the `build_tools/scripts/`
+Reusable structural/artifact validation predicates shared by the `build_tools/checks/`
 check scripts and the `targetgen inspect` command.
 
 ## What belongs here
@@ -14,7 +14,7 @@ check scripts and the `targetgen inspect` command.
 ## What does not belong here
 
 - Synthesis or generation logic (that is `merlin.targetgen`).
-- CLI argument parsing (the thin scripts under `build_tools/scripts/` own that).
+- CLI argument parsing (the thin scripts under `build_tools/checks/` own that).
 - Anything that mutates the filesystem.
 
 ## Interfaces
@@ -22,7 +22,7 @@ check scripts and the `targetgen inspect` command.
 - Consumes the five plan artifacts via `merlin.validation.load`/`validate` and the shared
   schemas via `merlin.common.schemas`.
 - `check_generated_target(repo)` is the entry point used by
-  `build_tools/scripts/check_generated_target.py`.
+  `build_tools/checks/check_generated_target.py`.
 
 ## Invariants
 

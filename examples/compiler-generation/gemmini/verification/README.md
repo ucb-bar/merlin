@@ -182,7 +182,7 @@ Status mode runs nothing and is not a provenance or executable-validity check.
 test on provisioned resources; its exit status does not certify a generated compiler.
 The generated harness ABI can separately be checked with
 `MERLIN_RTL_FACTS=/generated/gemmini/source-1/facts.json python
-build_tools/scripts/check_kernel_abi_arg_order.py --verbose`.
+build_tools/checks/check_kernel_abi_arg_order.py --verbose`.
 
 ### Observe one selected-core DMA matmul numerically
 

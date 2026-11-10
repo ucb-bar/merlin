@@ -9,14 +9,14 @@ from merlin.common.paths import repo_root
 
 def _gate(root: Path):
     spec = importlib.util.spec_from_file_location(
-        "check_wiring_under_test", repo_root() / "build_tools/scripts/check_wiring.py"
+        "check_wiring_under_test", repo_root() / "build_tools/checks/check_wiring.py"
     )
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     module.ROOT, module.PACKAGE_ROOT = (root, root / "merlin" / "python")
-    module.LEDGER = root / "build_tools" / "scripts" / "unwired_ratchet.txt"
-    module.SYMBOL_LEDGER = root / "build_tools" / "scripts" / "unwired_symbols_ratchet.txt"
+    module.LEDGER = root / "build_tools" / "checks" / "unwired_ratchet.txt"
+    module.SYMBOL_LEDGER = root / "build_tools" / "checks" / "unwired_symbols_ratchet.txt"
     return module
 
 

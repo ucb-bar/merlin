@@ -53,7 +53,7 @@ for that next step.
 ```sh
 uv run --frozen --extra compiler --with 'nbclient>=0.11,<0.12' \
   --with 'ipykernel>=7,<8' --with 'ipywidgets>=8.1,<9' \
-  python build_tools/scripts/check_tutorials.py --output out/build/python/tutorials
+  python build_tools/checks/check_tutorials.py --output out/build/python/tutorials
 ```
 
 This runs each notebook once in that Python interpreter. It saves executed copies

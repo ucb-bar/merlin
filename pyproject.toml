@@ -316,8 +316,8 @@ docstring-code-format = true
 # define the markers -- so the marker lands beside a closing paren and the gate fails. A
 # single-line statement is pinned with `# fmt: skip` instead; these three have no such line to pin.
 exclude = [
-    "build_tools/scripts/check_no_target_name.py",
-    "build_tools/scripts/gen_saturn_opu_rvv_contract.py",
+    "build_tools/checks/check_no_target_name.py",
+    "examples/compiler-generation/saturn_opu_rvv/develop.py",
     "src/merlin/llvmlower/requant_fuse.py",
     # Its markers sit inside fixture STRINGS; pinning them would change what the test feeds the gate.
     "tests/infra/test_overfit_gate_regression.py",

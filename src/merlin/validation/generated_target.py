@@ -3,7 +3,7 @@
 A generated ``merlin-target-<name>/`` repo is considered structurally valid when it carries
 its five plan artifacts, an evidence report, the per-layer directories (xdsl/runtime/zephyr/
 llvm/tests), and AGENT.md coverage. This is the logic behind
-``build_tools/scripts/check_generated_target.py`` and the ``targetgen inspect`` command.
+``build_tools/checks/check_generated_target.py`` and the ``targetgen inspect`` command.
 """
 
 from __future__ import annotations

@@ -14,7 +14,7 @@ and performance together through the native authoring engine.
   and compiler/research access boundaries remain explicit.
 - `src/merlin/resources/` and `src/merlin/runtime/native/`: installed public data
   and target-independent native runtime sources, respectively.
-- `tools/`: the standalone console and independent timing observer; not split Merlin packages.
+- `tools/`: the console, independent timing observer and board measurement commands.
 - `examples/`: small walkthroughs and target-owned public inputs.
 - `experiments/`: nine authored catalog, definition, template and instruction files.
   Engine implementations live under `src/merlin/development/{testgen,backend}/`.
@@ -97,6 +97,6 @@ Preserve real verification, source-identity and ABI boundaries when splitting.
 ## Verification
 
 Run the relevant behavior tests, source-layout/access checks, and
-`python build_tools/scripts/check_structure.py`. Regenerate code-derived docs after changes.
+`python build_tools/checks/check_structure.py`. Regenerate code-derived docs after changes.
 Release checks must inspect actual wheels/sdists and install outside the checkout without optional
 research dependencies. Report unavailable hardware separately from passing tests.

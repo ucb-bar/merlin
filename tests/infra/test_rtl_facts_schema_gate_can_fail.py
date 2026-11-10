@@ -6,7 +6,7 @@ from pathlib import Path
 
 from merlin.common.paths import repo_root
 
-GATE_PATH = repo_root() / "build_tools" / "scripts" / "check_rtl_facts_schema.py"
+GATE_PATH = repo_root() / "build_tools" / "checks" / "check_rtl_facts_schema.py"
 
 
 def _gate():

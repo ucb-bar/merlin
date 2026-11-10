@@ -2,7 +2,7 @@
 
 The headline evidence table for this project is one row per model: our int8 wall against
 ExecuTorch's qd8 warm wall, with every guard in :mod:`merlin.compare.executorch_column` live. The
-per-cell instrument is ``build_tools/scripts/k1_int8_fair_compare.py``; this module is everything
+per-cell instrument is ``tools/benchmarks/k1_int8_fair_compare.py``; this module is everything
 AROUND it that must not be re-invented per session:
 
 * **Preflight** (:func:`plan_cell`) — resolve the bundle through :func:`merlin.baselines.bundle.resolve`

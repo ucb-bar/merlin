@@ -1,99 +1,21 @@
-# build_tools/firesim
+# FireSim build support
 
-Link-time artifacts and a read-only preflight for running merlin on **FireSim** (the Saturn SoC
-on an Alveo U250). The operating guide — building a bitstream, the mandatory job queue, reading
-`uartlog`/`heartbeat.csv`, troubleshooting — is [`docs/guides/08-running.md`](../../docs/guides/08-running.md).
+Merlin builds binaries and can prepare the files used to run them. FireSim
+provisioning, bitstream builds, infrastructure launch and job scheduling remain
+external. See [running programs](../../docs/guides/08-running.md).
 
-## Two target paths, and which files apply to which
+- `preflight.py` reads the selected environment and reports missing prerequisites.
+  It does not submit a job, start a daemon or access the FPGA.
+- `make_chipyard_overlay.py` creates a private build overlay for an explicitly
+  selected Chipyard checkout. It does not modify that shared checkout.
+- `firesim_baremetal.ld` and `htif-nano.specs` are existing bare-metal link inputs.
+  Zephyr uses its own linker script; do not apply these inputs to a Zephyr image.
 
-FireSim runs whatever ELF you stage. Merlin has two ways to produce one, and they have
-**opposite** linker requirements:
-
-| | Zephyr application | Bare-metal |
-|---|---|---|
-| Built by | `zephyr_model.build_app(board="chipyard_riscv64")` | `src/merlin/runtime/native/baremetal/spike/` harness |
-| Linker script | **Zephyr's own `zephyr.lds`** | ours (`-T`) |
-| Large weights | devicetree `zephyr,memory-region` + a `zephyr_linker_sources(SECTIONS)` snippet, emitted by `zephyr_model.py` | absolute-address section in the linker script |
-| libc | picolibc (from the Zephyr SDK) | none — `libc_min.c` |
-| Files here | **none.** Do not pass `firesim_baremetal.ld` or `htif-nano.specs` to a Zephyr build | `firesim_baremetal.ld`, optionally `htif-nano.specs` |
-| Status on FireSim | **validated** — models have run end-to-end on the FPGA | not run on the FPGA yet |
-
-The single most important line in this table is that the Zephyr path takes **no linker script
-from this directory**. Supplying one conflicts with `zephyr.lds`; the IREE-era toolchain file
-this directory derives from carried a whole second profile that existed only to *skip* its own
-linker script for exactly this reason.
-
-## Files
-
-### `make_chipyard_overlay.py` — build a design without writing into a shared checkout
-
-```bash
-python build_tools/firesim/make_chipyard_overlay.py --base <shared chipyard> --overlay <new dir> \
-    [--exclude-generator NAME]... [--private-dir REL]...
+```sh
+python build_tools/firesim/preflight.py --json
+python build_tools/firesim/make_chipyard_overlay.py --help
 ```
 
-Creates a directory with the checkout's shape in which everything a build READS is a symlink back
-to the base and everything it WRITES (sbt targets, the generator jar, Chisel elaboration, Golden
-Gate output, the host driver, `deploy/` results and logs) is private. Use it when the shared
-checkout is not yours to change: other sessions build in it, or its submodules do not all compile
-together. `--exclude-generator` leaves `generators/NAME` empty, and Chipyard's own build rule then
-skips that optional generator, so nothing is patched. `--private-dir` copies one directory a build
-step rewrites in place, such as an accelerator's generated parameter header. Pass the OVERLAY path
-as `TARGET_PROJECT_MAKEFRAG` and as the queue's `--chipyard`.
-
-A bitstream and the host driver that talks to it must come from one elaboration. A driver that make
-considers stale is rebuilt during `infrasetup`, inside the FPGA lock, by whichever account runs the
-queue daemon; if that account cannot write the checkout the job fails before the flash. Build both
-in one overlay, before submitting.
-
-### `preflight.py` — read-only "will a run work here?"
-
-```bash
-.venv/bin/python build_tools/firesim/preflight.py           # human
-.venv/bin/python build_tools/firesim/preflight.py --json    # machine
-```
-
-Checks the chipyard checkout, the explicitly selected installed FireSim runner, the queue
-daemon's liveness (not merely its pid file), the XDMA device nodes, the `default_hw_config` →
-hwdb → bitstream-tar chain, and the effective clock of the most recent run. Touches nothing:
-no job is submitted, the FPGA is not opened, the daemon is not started. Exit 1 on any FAIL.
-
-Each check corresponds to a failure whose error message does not name its own cause — see the
-troubleshooting section of the guide.
-
-### `firesim_baremetal.ld` — bare-metal layout for the FPGA
-
-Code/rodata/data/bss/stack compact at the DRAM base; the weights blob at a fixed absolute high
-address as its own loadable section, reached by literal constant rather than a relocation. That
-split is what keeps a multi-GB model from silently pushing ordinary symbols outside
-`-mcmodel=medany`'s ±2GB PC-relative window.
-
-Parameterized at link time (`-Wl,--defsym=MERLIN_WEIGHTS_BASE=…`, `MERLIN_DRAM_BASE`,
-`MERLIN_STACK_BYTES`). At its defaults it lays out the same image as
-`src/merlin/runtime/native/baremetal/spike/model_link.ld`, so a spike build and a FireSim build are
-directly comparable.
-
-**Not yet exercised on the FPGA.** It is the bare-metal sibling of a spike script that is.
-
-### `htif-nano.specs` — optional newlib link profile
-
-Only for linking against chipyard's newlib sysroot when you want `printf`/`exit` over HTIF
-without writing them. Merlin's own bare-metal harness is freestanding and needs no specs file,
-so nothing in the repo uses this today. Adapted, not exercised.
-
-## Provenance, and what was deliberately not ported
-
-These files derive from `build_tools/firesim/` in the **deprecated IREE-based merlin** at
-a separate IREE-era checkout (a different project — see the two-merlins distinction). That tree
-targets IREE/VMFB bare-metal; we target a Zephyr application plus merlin's own data-driven C
-runtime. What changed, and what was left behind:
-
-| Prior-art file | Here | Why |
-|---|---|---|
-| `htif.ld`, `htif_large_model.ld` | merged into `firesim_baremetal.ld` | `htif_large_model.ld` solved the medany problem by placing the blob *after* heap+stack, with a comment conceding the layout was "approximate". Merlin's spike script already solved it more directly — a fixed **absolute** base the code reaches by literal — so the port keeps our mechanism and takes the prior art's contribution: that the problem exists above ~100 MB and that the blob must not be symbol-addressed. |
-| `htif-nano.spec` | `htif-nano.specs`, minus the linker-script clause | the original ended with `-dT htif.ld%s`, pulling the script from GCC's startfile search path — which only works once `htif.ld` is installed into the sysroot. Our scripts live in the repo, so the caller passes `-T`. |
-| `riscv_firesim.toolchain.cmake` | **not ported** | a CMake toolchain file for an IREE CMake build. Neither merlin path is built that way: the Zephyr path is driven by Zephyr's own CMake/west, the bare-metal path by direct compiler invocations from Python. Porting it would mean inventing a build system we do not use. Its durable facts — `-march=rv64imafdc -mabi=lp64d -mcmodel=medany -mstrict-align`, the sysroot cascade, and the bare-metal-vs-Zephyr profile split — are recorded here and in the guide instead. (Merlin uses `rv64gc`/`rv64gcv` rather than `rv64imafdc`, since the Saturn tiles have V.) |
-| `zephyr_stubs/` (`pthread.h`, `alloca.h`, `memory.h`, `sys/socket.h`) | **not ported** | header stubs that existed to make IREE's runtime compile under `IREE_PLATFORM_GENERIC`. We do not build IREE. |
-| `clear_dl_libs.cmake` | **not ported** | a workaround for IREE's unconditional `${CMAKE_DL_LIBS}`. Same reason. |
-| `setup_toolchain.sh` | **not ported** | downloads IREE's prebuilt clang/QEMU tarballs from a SHARK blob store. Our toolchains are chipyard's riscv-tools and the Zephyr SDK, configured through `.env`. |
-| `spike.cfg` | **not ported** | an OpenOCD `remote_bitbang` JTAG attach config for spike — unrelated to FireSim, and no merlin flow debugs that way. |
+These source files and a successful preflight do not establish that a binary
+ran on hardware. Retain the actual image, selected configuration and execution
+evidence for each run.

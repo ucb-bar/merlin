@@ -320,7 +320,7 @@ residual's `unknowns:` block where it does not (see gap G11).
 `capsule_bench/targets/` (`target_experiment.py:665-666`, glob `*/targets/{t}/{f}`). What
 `capsule_bench/targets/` additionally means is membership of the **live roster**:
 `tests/infra/test_sandbox_isolation.py:44-47` globs that one directory and generates and
-audits a bundle for every descriptor in it, and `build_tools/scripts/_target_roster.py:22` reads it to
+audits a bundle for every descriptor in it, and `build_tools/checks/_target_roster.py:22` reads it to
 extend the no-target-name gate. Measured: placing this descriptor there fails 6 sandbox tests —
 correctly, because voyager_accel has no capsule corpus, backend, oracle adapter or sim toolchain.
 **Moving that one file into `experiments/studies/capsule_bench/targets/voyager_accel/` is the act that

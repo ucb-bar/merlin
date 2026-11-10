@@ -124,7 +124,7 @@ def run_instrumented_beam(
         if canonical_dtype(dtype) is None:
             raise SystemExit(
                 f"--teachers needs a dtype with harvested fixtures; {dtype!r} normalises to nothing. "
-                f"Run build_tools/scripts/harvest_xnnpack_fixtures.py, or drop --teachers to use the "
+                f"Run python -m merlin.mining.xnnpack_capture, or drop --teachers to use the "
                 f"single --expert-objdump expert."
             )
         compare_fn = teacher_compare_fn(dtype=dtype, families=fams, record=teacher_audit)

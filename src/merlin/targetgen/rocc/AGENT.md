@@ -10,7 +10,7 @@ The RoCC coprocessor interface: decoding a trace of it, and emitting one.
 - `decode.py` — Decode a target's RoCC instruction trace from a package's emitted ``lowered.llvm.mlir``.
 - `semantics.py` — Generic RoCC operand semantics, driven entirely by a target's RTL facts and contract.
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Invariants

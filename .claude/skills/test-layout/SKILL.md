@@ -21,7 +21,7 @@ All tests live in **`tests/`** (the only pytest `testpaths`), in **subsystem buc
 | `runtime/` | runtime backends (spike/zephyr/xnnpack/openblas/saturn), engine |
 | `infra/` | repo conventions (artifact layout, smoke / CLI smoke) |
 
-## Rules (enforced by `build_tools/scripts/check_structure.py` "test layout")
+## Rules (enforced by `build_tools/checks/check_structure.py` "test layout")
 
 - Path: `tests/<bucket>/test_<area>.py`. **Never** put a `test_*.py` at the `tests/` root,
   and `<bucket>` must be one of the eight above (add a new bucket only by also adding it to

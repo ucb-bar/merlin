@@ -1,1 +1,1 @@
-../../build_tools/extension_setup.py
+../../build_tools/packaging/extension_setup.py

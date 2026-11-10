@@ -61,7 +61,7 @@ build|package)
     ex_note "cheap subset: deepjscc at 1 and 2 harts. Add --full for the shipped matrix."
   fi
   ex_say "build for $BOARD, gate every image on spike, audit the ELFs, write $OUT"
-  ex_run "$PY" build_tools/scripts/make_delivery.py \
+  ex_run "$PY" build_tools/deploy/make_delivery.py \
       --board "$BOARD" --models "$MODELS" --harts "$HARTS" \
       ${SCALAR:+--scalar-harts "$SCALAR"} --debug --out "$OUT"
   ex_note "every binary ships twice: the plain one for a number, and a _debug twin that emits STAGE"

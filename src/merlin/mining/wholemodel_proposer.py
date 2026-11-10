@@ -14,7 +14,7 @@ So this proposer is a UNION of two engines:
    divergences the beam already lifts (parent-vs-expert) into forks via ``action_catalog.route`` /
    ``fork_from_action.propose_forks_from_cca`` — the divergence->route->fork engine that already
    exists. The richer form (``make_per_op_teacher_proposer``) pairs a per-FAMILY expert CCA (an
-   XNNPACK ukernel fixture, see ``FAMILY_TEACHERS`` and ``build_tools/scripts/harvest_xnnpack_fixtures.py``)
+   XNNPACK ukernel fixture, see ``FAMILY_TEACHERS`` and ``src/merlin/mining/xnnpack_capture.py``)
    against OUR per-family section CCA (``ours_section_cca``: slice the model to that family's regions,
    build, lift the emitted asm). Families with no XNNPACK primitive (``sdpa``/``layer_norm``/gather)
    get an HONEST no-teacher record — never a faked divergence.
@@ -349,7 +349,7 @@ class FamilyTeacher:
 
 # The liftable teachers: a census family that HAS an XNNPACK primitive whose CCA diff against our
 # section is meaningful. GEMM fixtures pre-exist (run_expert_gemm); the rest are harvested by
-# build_tools/scripts/harvest_xnnpack_fixtures.py into the SAME cca_asm/ dir.
+# src/merlin/mining/xnnpack_capture.py into the SAME cca_asm/ dir.
 FAMILY_TEACHERS: dict[str, FamilyTeacher] = {
     # contractions -> the existing GEMM expert fixture (MR=1, NR=vsetvlmax, accumulator-resident).
     "matmul": FamilyTeacher(
@@ -474,32 +474,10 @@ NO_TEACHER_FAMILIES: dict[str, str] = {
 
 
 def _coverage_maps() -> tuple[dict, dict]:
-    """(FAMILY_MAP, _MAP) from the build_tools authoritative maps, lazily + defensively imported.
+    """Return the framework family labels used to enrich proposal reports."""
+    from .families import _MAP, FAMILY_MAP
 
-    Library code importing a build_tools script is fragile (repo_root may not be on sys.path), so we
-    retry with repo_root inserted and fall back to ({}, {}) — the registry is self-sufficient without
-    them; they only ENRICH the reported xnn_family/status.
-    """
-    try:
-        from build_tools.scripts.kernel_coverage_matrix import FAMILY_MAP  # type: ignore
-        from build_tools.scripts.xnnpack_kernel_catalog import _MAP  # type: ignore
-
-        return FAMILY_MAP, _MAP
-    except Exception:
-        try:
-            import sys
-
-            from ..common.paths import repo_root
-
-            root = str(repo_root())
-            if root not in sys.path:
-                sys.path.insert(0, root)
-            from build_tools.scripts.kernel_coverage_matrix import FAMILY_MAP  # type: ignore
-            from build_tools.scripts.xnnpack_kernel_catalog import _MAP  # type: ignore
-
-            return FAMILY_MAP, _MAP
-        except Exception:
-            return {}, {}
+    return FAMILY_MAP, _MAP
 
 
 def family_coverage(family: str) -> tuple[str | None, str | None]:

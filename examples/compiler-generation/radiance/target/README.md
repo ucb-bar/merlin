@@ -26,7 +26,7 @@ The backend and Cyclotron oracle live in the `muon` support provider vendored at
 [`../../muon/support`](../../../targets/muon/support), which is selected when
 `MERLIN_TARGET_PATH` is unset. Its source revision is recorded in
 [`../../muon/SOURCE.yaml`](../../../targets/muon/SOURCE.yaml) and
-[the migration record](../../../../build_tools/upstreams/target_support.json). Provider identity `muon` and experiment identity `radiance`
+[the migration record](../../../../build_tools/dependencies/target_support.json). Provider identity `muon` and experiment identity `radiance`
 remain distinct; do not rename one to make a lookup succeed.
 
 The descriptor's `backend_package_dir` still denotes retained metadata and

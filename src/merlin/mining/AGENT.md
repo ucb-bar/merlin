@@ -17,7 +17,7 @@ The other `merlin.mining.*` implementations live in the optional mining workflow
 their stable import names do not imply core ownership. The `from_strategy.mint_fork`
 compatibility operation still selects the workflow dependencies; schedule rendering does not.
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Research workflow responsibilities

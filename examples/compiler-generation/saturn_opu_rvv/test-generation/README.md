@@ -23,9 +23,9 @@ contract exists. With a selected MLC checkout containing this physical unit's ca
 manifest and HW MLIR, generate it explicitly:
 
 ```sh
-MERLIN_MLC_DIR=/path/to/modeling python build_tools/scripts/gen_saturn_opu_rvv_contract.py \
+MERLIN_MLC_DIR=/path/to/modeling python examples/compiler-generation/saturn_opu_rvv/develop.py \
   --facts-from saturn_opu_mxv256d128
-python build_tools/scripts/check_mesh_assertion_not_weakened.py \
+python build_tools/checks/check_mesh_assertion_not_weakened.py \
   --target saturn_opu_mxv256d128_rvv
 ```
 

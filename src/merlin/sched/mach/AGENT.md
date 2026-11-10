@@ -21,7 +21,7 @@ scripting layer is the `transform` dialect. This is the machine those two are wr
 
 - **A machine is derived, never declared.** A target contributes data — its compute-unit contract, its
   RTL facts, its address space, its declared issue-scheduling rules. It never contributes a `Machine`.
-  Nothing here names a target, and `build_tools/scripts/check_no_target_name.py` covers this package.
+  Nothing here names a target, and `build_tools/checks/check_no_target_name.py` covers this package.
 - **The three-state rule is load-bearing.** An underived quantity is `None` **and** carries an
   `Unknown` saying why — never `0`, never a plausible default. `Machine.__post_init__` refuses a
   `hazard_resolution` of `None` with no matching `Unknown`, because assuming `interlocked` makes every

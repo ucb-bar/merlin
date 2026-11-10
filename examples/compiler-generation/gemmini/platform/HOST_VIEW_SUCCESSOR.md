@@ -19,7 +19,7 @@ The smallest host-view-only preparation, with the selected immutable host packag
 already present under `SOURCE_ROOT`, is:
 
 ```sh
-PYTHONPATH=src:packages/merlin-experiments/src python build_tools/scripts/derive_host_view.py \
+PYTHONPATH=src:packages/merlin-experiments/src python build_tools/deploy/derive_host_view.py \
   --descriptor examples/compiler-generation/gemmini/target/descriptor.yaml \
   --source-root "$SOURCE_ROOT" --output "$NEW_HOST_VIEW_ROOT"
 ```

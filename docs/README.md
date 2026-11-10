@@ -33,7 +33,7 @@ For a hands-on introduction, open the [five interactive tutorials](../examples/t
 
 The chapters explain the current source tree. Earlier design notes and study-specific instructions remain available through Git history; read them at the source revision of the result you are reproducing.
 
-For the full command, module or schema tables, run `build_tools/scripts/gen_cli_docs.py`,
+For the full command, module or schema tables, run `build_tools/docs/gen_cli_docs.py`,
 `gen_package_docs.py` or `gen_schema_docs.py`. They write generated references under
 `out/artifacts/documentation/`; those outputs are not committed.
 

@@ -40,8 +40,8 @@
 #
 # NOT YET MIGRATED. Two sibling ratchets still hold their own entries and are counted here without being
 # restated, because inventing rationales for them would violate the paragraph above:
-#   build_tools/scripts/regex_allowlist.txt      (23 entries)
-#   build_tools/scripts/provenance_ratchet.txt   (28 entries)
+#   build_tools/checks/regex_allowlist.txt      (23 entries)
+#   build_tools/checks/provenance_ratchet.txt   (28 entries)
 # Prose ledger of the same debt, task-numbered: docs/design/target_agnostic_core.md (T1–T13).
 version: 1
 
@@ -53,7 +53,7 @@ entries:
     status: triaged
     owner: targetgen
     items:
-      - build_tools/scripts/check_fact_provenance.py
+      - build_tools/checks/check_fact_provenance.py
     why: >-
       This gate exists to answer "was this hardware fact derived from the RTL, or from something that
       merely models it". Answering that requires NAMING the non-RTL sources -- a cycle model, a

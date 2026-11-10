@@ -70,7 +70,7 @@ export MERLIN_MLC_DIR=/path/to/ModelIR
 The provider's `runner.program_emitter` owns model-specific encoding policy;
 Merlin has no bundled assembler patch or same-name fallback. The vendored bytes are
 the companion revision recorded in [`../SOURCE.yaml`](../SOURCE.yaml) and
-[`target_support.json`](../../../../build_tools/upstreams/target_support.json).
+[`target_support.json`](../../../../build_tools/dependencies/target_support.json).
 
 The selected matrix cell contains E4M3 operands, an exact 13-bit custom product
 carrier, and BF16 add-and-round output. The product carrier is not another tensor

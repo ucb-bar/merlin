@@ -37,7 +37,7 @@
 #   rationale:             why this side wins, in prose, citing the mechanism where known
 #   upstream:              where the real fix has to land; null while nobody has taken it
 #
-# Produced/checked by `build_tools/scripts/check_isa_matches_rtl.py` (which prints ready-to-paste YAML for
+# Produced/checked by `build_tools/checks/check_isa_matches_rtl.py` (which prints ready-to-paste YAML for
 # every undeclared disagreement) and read by `merlin.targetgen.isa_rtl_crosscheck`.
 
 version: 1

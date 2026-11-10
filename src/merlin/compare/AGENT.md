@@ -15,7 +15,7 @@ merlin.compare — unified, spec-driven, versioned comparison driver.
 - `spec.py` — Target-agnostic comparison SPEC — the single source of truth a ``merlin-compare`` run is driven by.
 - `structural.py` — LAYER 2 — STRUCTURAL: per-config CCA (the Common Compute Abstraction of each config's matmul).
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 Optional `contraction_selections` in the ordinary freezing path is a separate

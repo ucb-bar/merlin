@@ -181,7 +181,7 @@ build:
 
 # The ADMISSION PARTITION. A package handed a program must land in exactly ONE route and must SAY
 # which; the routes are disjoint and together they cover every well-formed input. Enforced by
-# `build_tools/scripts/check_route_partition.py` over `merlin.runtime.route_partition`.
+# `build_tools/checks/check_route_partition.py` over `merlin.runtime.route_partition`.
 #
 # This section exists because its absence was load-bearing. Nothing here required a decline, and
 # `validate_command_buffer` only ever read `declined` as an EXCUSE (it lets such a buffer skip the

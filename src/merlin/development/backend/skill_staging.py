@@ -147,7 +147,7 @@ def collect(source: Path = SOURCE) -> dict[str, dict[str, bytes]]:
         if generated is None or not (generated / "pass-library" / SKILL_FILE).is_file():
             raise ValueError(
                 "generated pass-library skill is missing; rebuild Merlin or run "
-                "python build_tools/scripts/gen_author_pass_library.py in its source checkout"
+                "python build_tools/packaging/gen_author_pass_library.py in its source checkout"
             )
         payload = collect(generated)
         if set(payload) != {"pass-library"}:

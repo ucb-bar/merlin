@@ -5,7 +5,7 @@ import sys
 
 from merlin.common.paths import repo_root
 
-SCRIPTS = repo_root() / "build_tools" / "scripts"
+SCRIPTS = repo_root() / "build_tools" / "checks"
 
 
 def _load(name: str):

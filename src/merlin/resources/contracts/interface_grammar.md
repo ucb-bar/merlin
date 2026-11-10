@@ -53,7 +53,7 @@ contract surface describes the *computation*, not where it runs.
 The complete list of ops the grammar accepts, **generated from the reference parser's own tables**
 (`interface_emit._OP_TO_OPCODE` + `_NAMED_OP_OPERAND_KEYS` + its structural ops), which the canonical
 parser fails CLOSED on: an op not in this table is not in the grammar, and a module using one is
-rejected naming the mnemonic. `build_tools/scripts/check_grammar_documentation.py` holds this table,
+rejected naming the mnemonic. `build_tools/checks/check_grammar_documentation.py` holds this table,
 the prose sections below, `interface_dialect_contract.yaml` and the registered dialect
 (`merlin_iface.irdl.mlir`) together by content, and regenerates the table (`--print-index`).
 
@@ -89,7 +89,7 @@ does not yet verify it, so a C++ consumer has to accept it through its own parse
 The **semantics** of each opcode -- its attributes, defaults and arithmetic -- live in
 `command_buffer_abi.yaml` under that opcode, not here: this document specifies the input SURFACE, the
 ABI what the command means. Three opcodes (`RMSNORM`, `ROPE`, `SOFTMAX`) are accepted by the parser and
-have no ABI entry yet; they are recorded as debt in `build_tools/scripts/undocumented_opcodes_ratchet.txt`.
+have no ABI entry yet; they are recorded as debt in `build_tools/checks/undocumented_opcodes_ratchet.txt`.
 
 ## Ops
 

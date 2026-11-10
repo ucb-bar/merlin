@@ -4,8 +4,8 @@
 # runtime bytes by pin and digest. No backend, kernel or CRT byte is selected from here; the only
 # code is the experimenter-side ISA probe under probe_compiler/, masked from candidates with the rest.
 # merlin/tests/infra/test_example_support.py recomputes the tree id and refuses any non-data member.
-# Regenerate contracts/ with build_tools/scripts/sync_support_contract.py gemmini after a reviewed
-# contract edit, then update tree here and in build_tools/upstreams/target_support.json.
+# Regenerate contracts/ with build_tools/packaging/sync_support_contract.py compiler-generation/gemmini after a reviewed
+# contract edit, then update tree here and in build_tools/dependencies/target_support.json.
 # Source-parity correction: 41788c72c recorded d858e65967f358d7e85875ce161fa39ace1314f2,
 # but its retained support tree was 738f6119c54042979d2cb630df1716bcc64de55a.
 # The current tree synchronizes generated copies with unchanged reviewed inputs.

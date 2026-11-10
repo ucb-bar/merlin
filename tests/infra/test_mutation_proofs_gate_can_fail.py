@@ -13,7 +13,7 @@ import pytest
 
 from merlin.common.paths import repo_root
 
-SCRIPTS = repo_root() / "build_tools" / "scripts"
+SCRIPTS = repo_root() / "build_tools" / "checks"
 
 
 def _load(name: str):
@@ -25,23 +25,6 @@ def _load(name: str):
 
 
 MP = _load("check_mutation_proofs")
-GATES = ["build_tools/scripts/check_alpha.py", "build_tools/scripts/check_beta.py"]
-PROOF_PATH = "tests/infra/test_alpha_gate_can_fail.py"
-PROOF_SOURCE = (
-    "def test_alpha_reports_a_bad_row():\n    module = load('check_alpha')\n    assert module.audit([{'bad': True}])\n"
-)
-MUTATION = "Feed audit() one row whose declared status is absent from the verdict table."
-REMOVES = "Both satisfiers: the row is not ratcheted and the status maps to no clean bucket."
-
-
-def _registry(**overrides) -> dict[str, dict]:
-    entry = {"proof": f"{PROOF_PATH}::test_alpha_reports_a_bad_row", "mutation": MUTATION, "removes": REMOVES}
-    entry.update(overrides)
-    return {"build_tools/scripts/check_alpha.py": entry}
-
-
-def _read(source: str = PROOF_SOURCE):
-    return lambda path: source if path == PROOF_PATH else None
 
 
 def _subjects(failures) -> list[str]:
@@ -49,9 +32,21 @@ def _subjects(failures) -> list[str]:
 
 
 def test_a_gate_with_no_recorded_mutation_is_reported():
-    """THE PRIMARY MUTATION: a gate ships, and nobody ever said what makes it fail."""
-    assert MP.audit(GATES, _registry(), ["build_tools/scripts/check_beta.py"], _read()) == []
-    assert _subjects(MP.audit(GATES, _registry(), [], _read())) == ["build_tools/scripts/check_beta.py"]
+    """An actual tutorial needs executable work, and its guard needs a recorded proof."""
+    tutorial = _load("check_tutorials")
+    source = repo_root() / "examples/tutorials/01_contracts.ipynb"
+    document = json.loads(source.read_text(encoding="utf-8"))
+    assert tutorial._code_cells(document, source)
+    document["cells"] = [cell for cell in document["cells"] if cell["cell_type"] != "code"]
+    with pytest.raises(ValueError, match="no executable cells"):
+        tutorial._code_cells(document, source)
+
+    gate = "build_tools/checks/check_tutorials.py"
+    registry = {gate: MP.load_registry()[gate]}
+    read = lambda name: (repo_root() / name).read_text(encoding="utf-8")
+    assert MP.audit([gate], registry, [], read) == []
+    assert MP.audit([gate], {}, [gate], read) == []
+    assert _subjects(MP.audit([gate], {}, [], read)) == [gate]
 
 
 def test_a_skipped_boundary_case_changes_the_real_runner_verdict(tmp_path, pinned_backend, monkeypatch):
@@ -62,7 +57,7 @@ def test_a_skipped_boundary_case_changes_the_real_runner_verdict(tmp_path, pinne
     main_wheel = tmp_path / "merlin-0-py3-none-any.whl"
     with ZipFile(main_wheel, "w") as archive:
         archive.writestr("merlin-0.dist-info/METADATA", "Name: merlin\nVersion: 0\n")
-    manifest = json.loads((repo_root() / "build_tools/upstreams/backend-boundaries.json").read_text())
+    manifest = json.loads((repo_root() / "build_tools/dependencies/backend-boundaries.json").read_text())
     consumers = manifest.get("source_consumers", [])
     for row in consumers:
         for relative in row["files"]:
@@ -239,7 +234,7 @@ def pinned_backend(tmp_path):
     git("add", "--", ".")
     git("commit", "-q", "--no-verify", "-m", "Create bounded wiring fixture")
     revision = git("rev-parse", "HEAD")
-    pins = tmp_path / "build_tools/upstreams/backend-boundaries.json"
+    pins = tmp_path / "build_tools/dependencies/backend-boundaries.json"
     pins.parent.mkdir(parents=True)
     pins.write_text(json.dumps({"backends": [{"id": "fixture", "revision": revision}]}))
     return (source, pins, git)

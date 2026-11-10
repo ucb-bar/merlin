@@ -19,7 +19,7 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
 - `mesh_reference.py` — The host-side reference a mesh tile is checked against.
 - `route_before_build.py` — Source-derived placement and device routing selected before whole-model compilation.
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Invariants

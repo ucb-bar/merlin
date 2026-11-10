@@ -50,10 +50,10 @@ K1_SSH_PORT = env("MERLIN_K1_SSH_PORT", "")
 _SSH_PORT_OPTS = ["-p", K1_SSH_PORT] if K1_SSH_PORT else []  # ssh uses -p
 _SCP_PORT_OPTS = ["-P", K1_SSH_PORT] if K1_SSH_PORT else []  # scp uses -P (capital)
 # SpacemiT cross-toolchain. The repo keeps only setup_toolchain.sh as reference under
-# build_tools/SpacemiT/ (the toolchain itself is huge); locate the real install via env. Its layout --
+# build_tools/toolchains/spacemit/ (the toolchain itself is huge); locate the real install via env. Its layout --
 # the vendor's extracted-release directory naming, and the install used when the variable is unset --
 # is declared by the owning target contract under ``runtime.toolchain`` (keyed by the variable) and
-# read through merlin.baselines.toolchain_locator, so ``toolchain_cc()`` accepts either a bin/ prefix
+# read through merlin.common.toolchain_locator, so ``toolchain_cc()`` accepts either a bin/ prefix
 # or an extracted release under the install without this module naming the vendor.
 _REPO = repo_root()
 K1_TOOLCHAIN_ENV = "MERLIN_K1_TOOLCHAIN"
@@ -150,11 +150,11 @@ K1_CPU_HZ = 1_600_000_000  # X60 scaling_cur_freq (for the rdtime-ticks -> core-
 K1_STACK_BYTES = 2 * 1024 * 1024 * 1024
 
 # Cross-built static OpenMP runtime (riscv64, rv64gcv) — provides the __kmpc_* symbols the
-# multicore (parallel) lowering emits. Built once into build_tools/k1_openmp (see the
+# multicore (parallel) lowering emits. Built under out/build/toolchains/openmp (see the
 # OpenMP path in compiler.lower.native.policy). Linking it fans the model's parallel
 # loops across the board's 8 cores (set OMP_NUM_THREADS at run time). Optional: only the
 # `parallel=True` build path references it.
-K1_OPENMP_DIR = _REPO / "build_tools" / "k1_openmp"
+K1_OPENMP_DIR = _REPO / "out" / "build" / "toolchains" / "openmp"
 K1_OMP_THREADS = int(env("MERLIN_K1_OMP_THREADS", "8"))  # board has 8 cores (2x4)
 # Big mmap'd weight blobs MUST live on real storage, NOT /tmp: the board's /tmp is tmpfs
 # (RAM-backed, only 1.9G) so a multi-GB weights file there both fails to fit and consumes the
@@ -198,7 +198,7 @@ def _toolchain_root() -> Path | None:
 
     Accepts either ``$MERLIN_K1_TOOLCHAIN`` pointing directly at a toolchain prefix
     (``<prefix>/bin/clang``) OR at a parent holding an extracted vendor release, whose directory
-    naming the owning target contract declares (see :mod:`merlin.baselines.toolchain_locator`).
+    naming the owning target contract declares (see :mod:`merlin.common.toolchain_locator`).
     """
     if K1_TOOLCHAIN is None:
         return None

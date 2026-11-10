@@ -1,21 +1,17 @@
-# AGENT.md — build_tools
+# Build and repository tools
 
-## Purpose
+This directory owns repository checks, package construction, documentation
+renderers and deployment tools used by current workflows. Start at
+`README.md`. Compiler and evaluation implementations belong in `src/merlin/`.
 
-Build & developer tooling for merlin: `scripts/` (build/sweep/capture orchestration, K1/board
-measurement & analysis harnesses, repo linters `check_structure.py` / `check_artifact_layout.py` /
-`gen_cli_docs.py`), `cmake/`, `docker/`, toolchain setup.
+Keep generated files, installed toolchains, run data and private review notes
+under ignored `out/` or `tmp/`. Do not add dated campaigns, publication figures,
+captured results, empty scaffolds or another general-purpose scripts folder.
 
-## What belongs here
+Preserve reviewed policy and ledger entries when moving tools. A new path cannot
+clear existing debt or reset its baseline. Shared check helpers have one owner in
+`checks/`; generators import that owner rather than copying it.
 
-- Tracked Python/shell automation, measurement/analysis runners, and repo linters.
-
-## What does not belong here
-
-- Generated build *output* (that is gitignored under `out/build/`).
-- Application/library source (`src/merlin/` or `packages/*/src/`) or schemas (`src/merlin/resources/schemas/`).
-
-## Invariants
-
-- Scripts/helpers here **ARE tracked in git** (committed automation, not generated output).
-- Generated build artifacts go under `out/build/` (gitignored), never here.
+Packaging checks must inspect the actual wheel/source archive and installed
+imports outside the checkout. Execute every selected qualification member and
+retain refusals and skips. Software checks do not establish hardware execution.

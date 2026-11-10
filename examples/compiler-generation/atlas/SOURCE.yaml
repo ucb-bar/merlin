@@ -27,7 +27,7 @@ normalized:
       source_revision is null for generated files); path, source_revision and sha256 are
       unchanged, so each entry still names the same file and the same bytes.
 pinned:
-  manifest: build_tools/upstreams/target_support.json
+  manifest: build_tools/dependencies/target_support.json
   companion_commit: 392eb077c8a48bd3a21b253d9e488ba3d7ad74cf
   relation: same_commit
   provider_tree: 42315503deaf7d52b1196354abd9b24eabaf7dc4

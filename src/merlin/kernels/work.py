@@ -18,7 +18,7 @@ on traffic, so a ranking on one alone is misleading and both are reported.
 
 This lives in the library rather than in the census script that first grew it because two callers now
 need the same weighting — the cross-model family census
-(``build_tools/scripts/model_op_census.py``) and the per-contraction census (:mod:`.census`) — and two
+(``the earlier model-op census``) and the per-contraction census (:mod:`.census`) — and two
 copies of a cost proxy drift into two different rankings of the same model.
 """
 

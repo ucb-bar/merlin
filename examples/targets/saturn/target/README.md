@@ -4,7 +4,7 @@ This directory retains reference contracts and documentation only. Executable
 backend and dialect implementations live in the provider vendored at
 [`../support`](../support), a byte-identical copy of the RVV companion's
 `saturn-support/` directory at the revision recorded in [`../SOURCE.yaml`](../SOURCE.yaml)
-and [`target_support.json`](../../../../build_tools/upstreams/target_support.json).
+and [`target_support.json`](../../../../build_tools/dependencies/target_support.json).
 
 With `MERLIN_TARGET_PATH` unset it is the selected Saturn support, so the Saturn
 dialect and the `saturn_vec` backend load without configuration. To try another

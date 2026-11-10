@@ -32,26 +32,26 @@ jobs:
       - name: build wheel and source archives once
         run: |
           uv run --no-sync python -m build --no-isolation --outdir "$PWD/out/build/python/releases" .
-          uv run --no-sync python build_tools/scripts/check_distribution_layout.py \
+          uv run --no-sync python build_tools/checks/check_distribution_layout.py \
             --source-root . \
             out/build/python/releases/merlin-*.whl
       - name: check the exact main wheel outside the checkout
         run: |
           wheels=(out/build/python/releases/merlin-*.whl)
           test "${#wheels[@]}" -eq 1
-          uv run --no-sync python build_tools/scripts/check_standalone_install.py --wheel "${wheels[0]}" --require-tools
+          uv run --no-sync python build_tools/checks/check_standalone_install.py --wheel "${wheels[0]}" --require-tools
       - name: pinned installed OOT provider boundaries
         run: |
           mkdir -p out/build/python/ci
           wheels=(out/build/python/releases/merlin-*.whl)
           test "${#wheels[@]}" -eq 1
-          uv run --no-sync python build_tools/scripts/check_backend_boundaries.py \
+          uv run --no-sync python build_tools/checks/check_backend_boundaries.py \
             --wheel "${wheels[0]}" \
-            --pins build_tools/upstreams/backend-boundaries.json \
+            --pins build_tools/dependencies/backend-boundaries.json \
             --output out/build/python/ci/backend-boundaries
       - name: wiring gate with exact backend consumers
         run: >-
-          uv run --no-sync python build_tools/scripts/check_wiring.py
+          uv run --no-sync python build_tools/checks/check_wiring.py
           --backend-report out/build/python/ci/backend-boundaries/report.json
       - name: retain distributions and exact test outcomes
         if: ${{ always() }}

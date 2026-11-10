@@ -15,7 +15,8 @@ from merlin.common.paths import repo_root
 
 def load_tool(name):
     selected = os.environ.get("MERLIN_TEST_BUDGET_CHECKER") if name == "check_test_budget" else None
-    path = Path(selected) if selected else repo_root() / "build_tools/scripts" / (name + ".py")
+    group = "packaging" if name == "qualify_installed" else "checks"
+    path = Path(selected) if selected else repo_root() / "build_tools" / group / (name + ".py")
     spec = importlib.util.spec_from_file_location("compact_contract_" + name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module

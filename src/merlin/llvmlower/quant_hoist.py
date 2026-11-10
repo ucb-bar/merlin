@@ -12,7 +12,7 @@ every inference. For the WEIGHT operand it is redundant: a weight does not chang
 inferences, so its amax, its scale and its int8 form are functions of the weight ALONE and are
 recomputed identically every time.
 
-MEASURED on the prepared modules (`build_tools/scripts/model_math_census.py`, elements processed per
+MEASURED on the prepared modules (`the earlier model-math census`, elements processed per
 inference)::
 
     resnet50_v1_5_int8_w8a8   weight-invariant  25,289,472 absf + 25,289,472 roundeven  = 55.9%
@@ -215,7 +215,7 @@ def activation_arg_indices(manifest: dict) -> frozenset[int]:
 
     THIS IS NOT ``range(len(input_order.json))``, AND THE DIFFERENCE INVERTS THE ANSWER. That
     spelling -- "the first n arguments are the inputs, the rest are weights" -- is what
-    `build_tools/scripts/model_math_census.py` assumed, and it is false for both captures measured
+    `the earlier model-math census` assumed, and it is false for both captures measured
     here: resnet50's single activation is argument **320** (arguments 0-160 are params and 161-319
     are buffers), and lstmnetvit's five are **98-102**. Under the positional assumption the census
     labelled `model.conv1.weight` "the activation" and the image "weight-invariant", so its

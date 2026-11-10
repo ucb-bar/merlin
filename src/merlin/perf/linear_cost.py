@@ -9,7 +9,7 @@ names a target, and no caller has to import a per-target class to reach its mode
 WHAT IT MAY SAY. Every artifact this reads declares its own fidelity as serial with no overlap. It
 prices a HISTOGRAM of command kinds, so it is blind to command order and to how much work one command
 carries (the measured refutation of using its sum as a ceiling is recorded in
-:mod:`merlin.perf.compose_estimate`). It may screen a candidate; it never certifies a cycle count, and
+the earlier composed-cycle estimate). It may screen a candidate; it never certifies a cycle count, and
 :meth:`LinearCostModel.predict_with_band` carries the calibration error so a caller cannot quote the
 central value without it.
 

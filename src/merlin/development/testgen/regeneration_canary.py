@@ -7,7 +7,7 @@ sealed corpus admitted ("required composition is not admitted; unresolved SW con
 scale_granularity"). A canary that replays a few sealed cases on every test run moves that discovery
 to the commit that introduces the change.
 
-The input is a fixture written by ``build_tools/scripts/extract_regeneration_canary.py``: one sealed
+The input is a fixture written by ``src/merlin/development/testgen/canary_capture.py``: one sealed
 model capsule's interface program, the sealed corpus's qualifying groups of it (their written
 programs and the admission status sealed with them), the evidence views admission reads and the
 recipe's datapath. Nothing here names a target; the fixture does.

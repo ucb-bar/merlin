@@ -4,7 +4,7 @@
 
 Triton as a target-independent KERNEL FRONTEND to Merlin (not a per-target backend).
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Modules

@@ -21,7 +21,7 @@ code_refs:
   - src/merlin/runtime/dispatch_placement.py
   - src/merlin/runtime/elf_audit.py
   - src/merlin/runtime/service.py
-  - build_tools/scripts/check_test_budget.py
+  - build_tools/checks/check_test_budget.py
   - .github/workflows/ci.yml
 ---
 

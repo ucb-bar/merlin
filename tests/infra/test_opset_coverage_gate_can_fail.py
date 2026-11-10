@@ -8,7 +8,7 @@ from merlin.targetgen import opset_contract
 
 
 def _gate():
-    path = repo_root() / "build_tools/scripts/check_opset_coverage.py"
+    path = repo_root() / "build_tools/checks/check_opset_coverage.py"
     spec = importlib.util.spec_from_file_location("check_opset_coverage", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

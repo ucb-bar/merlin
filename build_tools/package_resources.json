@@ -39,7 +39,6 @@
     "src/merlin/resources/contracts/overfit_register.yaml",
     "src/merlin/resources/contracts/perf_exchange_rates.yaml",
     "src/merlin/resources/contracts/perf_reference_targets.yaml",
-    "src/merlin/resources/contracts/phase2_exchange_rate_windows.yaml",
     "src/merlin/resources/contracts/schedule_ir_coverage.yaml",
     "src/merlin/resources/contracts/schemas/artifact_bundle.schema.json",
     "src/merlin/resources/contracts/schemas/capsule.schema.json",

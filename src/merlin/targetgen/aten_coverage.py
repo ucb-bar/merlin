@@ -26,7 +26,7 @@ coverage figure becomes a slogan:
     we could not name is evidence neither of coverage nor of a gap.
 ``work``
     the same intersection weighted by iteration space x body arithmetic, using the SAME proxy
-    ``build_tools/scripts/model_op_census.py`` uses (:mod:`merlin.kernels.work`), so two copies of a
+    ``the earlier model-op census`` uses (:mod:`merlin.kernels.work`), so two copies of a
     cost model cannot produce two rankings of the same model.
 
 ⚠ THE DENOMINATOR. ``torch._decomp.core_aten_decompositions()`` is NOT the Core ATen opset -- it is the
@@ -251,7 +251,7 @@ def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None
     # WORK, the third number the claim needs. A region count answers "how many ops" and says nothing
     # about how much of the model those ops ARE: a hundred elementwise regions and one attention matmul
     # are 101 regions and nowhere near 101 units of work. Weighted by iteration space x body arithmetic,
-    # using the SAME proxy `build_tools/scripts/model_op_census.py` uses, so two copies of a cost model
+    # using the SAME proxy `the earlier model-op census` uses, so two copies of a cost model
     # cannot produce two rankings of one model.
     routed_work = fallback_work = unclassified_work = 0
     work_complete = True

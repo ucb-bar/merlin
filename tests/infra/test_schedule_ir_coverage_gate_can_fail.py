@@ -4,7 +4,7 @@ import importlib.util
 
 from merlin.common.paths import repo_root
 
-GATE_PATH = repo_root() / "build_tools" / "scripts" / "check_schedule_ir_coverage.py"
+GATE_PATH = repo_root() / "build_tools" / "checks" / "check_schedule_ir_coverage.py"
 
 
 def _gate():

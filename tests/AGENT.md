@@ -27,7 +27,7 @@ Shared test fixtures/data live in `fixtures/` and `data/` here.
 The permanent suite protects distinct behavior and independent acceptance
 obligations. A new helper or option does not automatically need a new test.
 
-- Run `python build_tools/scripts/check_test_budget.py --output out/build/python/ci/test-budget.json`
+- Run `python build_tools/checks/check_test_budget.py --output out/build/python/ci/test-budget.json`
   before execution. The ceiling applies to actual cases, not files or functions.
 - Replace overlapping coverage when adding an obligation at the ceiling. Do not
   bypass the budget with markers, skips, large assertion loops or hidden collectors.

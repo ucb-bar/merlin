@@ -5,7 +5,7 @@ image**: the plain one to run for a number, and a `_debug_` twin of the same mod
 itself while it runs — so one hand-off answers both questions and the recipient never has to come
 back for the other half.
 
-Build one with `build_tools/scripts/make_delivery.py`. Everything that varies per board — the models,
+Build one with `build_tools/deploy/make_delivery.py`. Everything that varies per board — the models,
 hart counts, console and baud, reset clock, vector length, and the linker's DRAM base — is read from
 the board descriptor (`merlin.runtime.boards`), not written per recipient.
 

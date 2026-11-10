@@ -2,7 +2,7 @@
 #
 # The pointer ABI Merlin's own device shim (merlin.llvmlower.device_shim, staged_admission,
 # exact_offload) emits against, and the one a support package implementing the version-1 harness
-# certifies with build_tools/scripts/check_kernel_abi_arg_order.py. It is NOT part of the
+# certifies with build_tools/checks/check_kernel_abi_arg_order.py. It is NOT part of the
 # candidate-facing experiment contract: a runner-owned harness built by Merlin follows
 # `logical_kernel_abi` (version 2) in ../mlir_oot_backend_contract.yaml.
 #
@@ -33,7 +33,7 @@ kernel_abi:
   # runner-owned harness renderer performs, so a buffer that could match two rows is answered by the
   # earlier one. `order` is the machine-checkable form: a list of tokens from `arg_order_tokens`, each
   # expanding to zero or more pointer arguments, concatenated left to right. The prose and the token
-  # list say the same thing; `build_tools/scripts/check_kernel_abi_arg_order.py` renders each target's
+  # list say the same thing; `build_tools/checks/check_kernel_abi_arg_order.py` renders each target's
   # real harness for a probe buffer of every shape and fails if the emitted call disagrees with the
   # tokens, so this document cannot drift from the code again.
   arg_order_by_command_shape:

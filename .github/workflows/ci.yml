@@ -67,139 +67,70 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends libmpfr-dev libgmp-dev
-      # Includes the full docs anti-drift sweep; do not run check_docs.py again below.
+      # Repository checks; generated-input qualification runs separately.
       - name: structure gate
-        run: uv run --no-sync python build_tools/scripts/check_structure.py
+        run: uv run --no-sync python build_tools/checks/check_structure.py
       - name: artifact-layout gate
-        run: uv run --no-sync python build_tools/scripts/check_artifact_layout.py
+        run: uv run --no-sync python build_tools/checks/check_artifact_layout.py
       - name: no-target-name gate (derive-don't-overfit)
-        run: uv run --no-sync python build_tools/scripts/check_no_target_name.py
+        run: uv run --no-sync python build_tools/checks/check_no_target_name.py
       - name: no-regex gate (derive-don't-overfit)
-        run: uv run --no-sync python build_tools/scripts/check_no_regex.py
+        run: uv run --no-sync python build_tools/checks/check_no_regex.py
       - name: no-assumed-constants gate (derive-don't-overfit)
-        run: uv run --no-sync python build_tools/scripts/check_no_assumed_constants.py
+        run: uv run --no-sync python build_tools/checks/check_no_assumed_constants.py
       - name: no-local-paths gate (public repo; no personal directories)
-        run: uv run --no-sync python build_tools/scripts/check_no_local_paths.py
-      # Both ratchets below are written as may-only-shrink ledgers, so CI has to be the thing that
-      # holds them: the register ran pre-commit only (a clone without hooks installed could grow it)
-      # and the coverage gate was wired to no hook and no job at all.
+        run: uv run --no-sync python build_tools/checks/check_no_local_paths.py
       - name: overfit-register gate (declared coupling may only shrink)
-        run: uv run --no-sync python build_tools/scripts/check_overfit_register.py
-      # Source-only, like the mesh-assertion gate below: a hosted runner has no GENERATED capability
-      # contracts, so a target whose contract is one is printed UNQUALIFIED instead of failing; every
-      # other finding still fails, and a run that resolves no target at all cannot pass.
+        run: uv run --no-sync python build_tools/checks/check_overfit_register.py
       - name: semantic-coverage gate (generalization debt may only shrink)
-        run: uv run --no-sync python build_tools/scripts/check_semantic_coverage.py --allow-unresolved
-      # A gate nobody has ever seen fail reads exactly like one that cannot. The structural half runs
-      # pre-commit; this is the half that cannot be faked: it runs each recorded proof and requires the
-      # proof to be observed entering its own gate.
+        run: uv run --no-sync python build_tools/checks/check_semantic_coverage.py --allow-unresolved
       - name: mutation-proof gate (every check has a recorded failing direction)
-        run: uv run --no-sync python build_tools/scripts/check_mutation_proofs.py --prove
-      # On an evidence path, absent must not read as a value: a fabricated `.get` fallback, a
-      # swallowed load error, a discarded subprocess result, a shelled pipeline's last-stage status.
+        run: uv run --no-sync python build_tools/checks/check_mutation_proofs.py --prove
       - name: silent-default gate (a substituted datum may not become a verdict)
-        run: uv run --no-sync python build_tools/scripts/check_silent_defaults.py
-      - name: sign coverage (a sign-sensitive capsule can go negative)
-        run: uv run --no-sync python build_tools/scripts/check_sign_coverage.py
-      # A slope is only a rate if exactly one term moved between the points; the plan's isolation is
-      # recomputed from its own declared tiling rather than read off its prose.
-      - name: exchange-rate windows (each arm isolates the term it claims)
-        run: uv run --no-sync python build_tools/scripts/check_exchange_rate_windows.py
-      - name: oracle blind spots (no capsule certifiable only where its tier cannot see)
-        run: uv run --no-sync python build_tools/scripts/check_oracle_blind_spots.py
-      - name: stage parameters (a parametric readout stage states its parameter)
-        run: uv run --no-sync python build_tools/scripts/check_stage_parameters.py
-      # Declared one axis at a time so "our IR is more general than X" stops being prose nobody
-      # re-reads. Like the semantic-coverage gate above it reports the ratio and does not gate on it:
-      # gating a coverage score makes deleting the hard axis the rational response.
+        run: uv run --no-sync python build_tools/checks/check_silent_defaults.py
       - name: schedule-IR coverage gate (every axis declared; status measured, not asserted)
-        run: uv run --no-sync python build_tools/scripts/check_schedule_ir_coverage.py
-      # The facts schema had no caller for two commits, which is the failure mode two lines above.
+        run: uv run --no-sync python build_tools/checks/check_schedule_ir_coverage.py
       - name: rtl-facts schema gate (every facts artifact matches its declared family)
-        run: uv run --no-sync python build_tools/scripts/check_rtl_facts_schema.py
-      # The cardinal rule gated one direction only (a target's name in generic code). This is the
-      # other: generic logic living inside a target package, which is invisible until the second
-      # target copies it and is cheapest to fix exactly then.
+        run: uv run --no-sync python build_tools/checks/check_rtl_facts_schema.py
       - name: target-package duplication gate (no two targets implement the same function)
-        run: uv run --no-sync python build_tools/scripts/check_target_package_duplication.py
-      # Every *_ratchet.txt / *_allowlist.txt claims to be may-only-shrink; this is the step that holds
-      # them to it (three had grown with nothing able to notice).
+        run: uv run --no-sync python build_tools/checks/check_target_package_duplication.py
       - name: ratchet gate (every ledger may only shrink)
-        run: uv run --no-sync python build_tools/scripts/check_ratchets_shrink.py --base "${{ needs.comparison.outputs.base }}"
-      # Draft designs are explicitly unverified work in progress. Gate maintained current docs here;
-      # the strict all-status command remains available for release audits and reports draft debt.
+        run: uv run --no-sync python build_tools/checks/check_ratchets_shrink.py --base "${{ needs.comparison.outputs.base }}"
       - name: docs freshness ratchet (no NEW drift in current docs)
-        run: uv run --no-sync python build_tools/scripts/check_docs_freshness.py --ratchet --current-only
-      # Seven more gates shipped with a ledger, a docstring and no caller: measured 2026-09-16,
-      # 15 of 34 check_*.py ran in no hook, no Stop-hook and no workflow. A gate nobody runs is
-      # worse than no gate, because it reads as coverage -- check_no_holdout_names was one of them,
-      # and it had been failing on a tracked ratchet that named two held-out capsules outright.
+        run: uv run --no-sync python build_tools/checks/check_docs_freshness.py --ratchet --current-only
       - name: no-holdout-names gate (a holdout's name is an answer key)
-        run: uv run --no-sync python build_tools/scripts/check_no_holdout_names.py
+        run: uv run --no-sync python build_tools/checks/check_no_holdout_names.py
       - name: holdout-disjointness gate (hidden set disjoint from public)
-        run: uv run --no-sync python build_tools/scripts/check_holdout_disjointness.py
+        run: uv run --no-sync python build_tools/checks/check_holdout_disjointness.py
       - name: fact-provenance gate (a hardware fact derives from RTL, not from prose)
-        run: uv run --no-sync python build_tools/scripts/check_fact_provenance.py
-      # Provenance asks which revision a fact came from; this asks what a declared RESTRICTION was read
-      # off. A narrowing claim is the one a wrong answer makes invisible -- it removes demand, so
-      # nothing fails.
+        run: uv run --no-sync python build_tools/checks/check_fact_provenance.py
       - name: capability-backing gate (a claim that narrows a target must cite its source)
-        run: uv run --no-sync python build_tools/scripts/check_capability_backing.py
+        run: uv run --no-sync python build_tools/checks/check_capability_backing.py
       - name: opcode-documentation gate (every accepted op has ABI semantics)
-        run: uv run --no-sync python build_tools/scripts/check_opcode_documentation.py
-      # The sibling one layer up: the ABI gate asks whether an accepted op has SEMANTICS; this asks
-      # whether it is in the grammar spec the agent reads, and whether the dialect contract and the
-      # registered IRDL dialect say the same. Measured 2026-09-24: the parser defined 15 ops and
-      # interface_grammar.md described 7.
+        run: uv run --no-sync python build_tools/checks/check_opcode_documentation.py
       - name: grammar-documentation gate (spec, dialect and parser accept the same ops)
-        run: uv run --no-sync python build_tools/scripts/check_grammar_documentation.py
-      # Fresh CI has no generated OOT contracts. Keep new weakenings fatal for contracts it CAN read,
-      # but print an explicit UNQUALIFIED list for the rest. Release qualification runs the same gate
-      # without this flag after provisioning the generated contracts; it refuses unresolved targets.
+        run: uv run --no-sync python build_tools/checks/check_grammar_documentation.py
       - name: mesh-assertion gate (resolved contracts; missing generated targets unqualified)
-        run: uv run --no-sync python build_tools/scripts/check_mesh_assertion_not_weakened.py --allow-unresolved
-      - name: defect-reach gate (could the corpus exhibit a known external defect)
-        run: uv run --no-sync python build_tools/scripts/check_defect_reach.py
-      # Advisory: ~60s, and it prices a cohort rather than asserting a property of this diff.
-      - name: cert-affordability report (advisory)
-        continue-on-error: true
-        run: uv run --no-sync python build_tools/scripts/check_cert_affordability.py
-      # These three existed with their own ledgers but ran nowhere.
+        run: uv run --no-sync python build_tools/checks/check_mesh_assertion_not_weakened.py --allow-unresolved
       - name: route-partition gate
-        run: uv run --no-sync python build_tools/scripts/check_route_partition.py --fail-on-violation
-      # Not --strict: three targets are undecidable until certified, and the remedy for that is
-      # certification, not a weaker gate.
-      - name: phase-split gate
-        run: uv run --no-sync python build_tools/scripts/check_phase_split.py
-      # Independent answer keys are absent in a fresh clone. Their audit stays
-      # explicitly UNMEASURED; load failures and assessed constant answers fail.
+        run: uv run --no-sync python build_tools/checks/check_route_partition.py --fail-on-violation
       - name: numeric falsifiability (partial public audit; missing oracles unmeasured)
-        run: uv run --no-sync python build_tools/scripts/check_numeric_falsifiability.py --allow-unmeasured
-      # Generated corpus qualification requires an explicitly prepared operator environment;
-      # see workflows/README.md. Source CI does not substitute a missing corpus or spec.
-      # Advisory: CI has no RTL fact bundles, so under-declaration is undeterminable here; only an
-      # over-declared capability is decidable, and today's four are not yet ratcheted.
+        run: uv run --no-sync python build_tools/checks/check_numeric_falsifiability.py --allow-unmeasured
       - name: capability-drift report (advisory; no RTL facts in CI)
         continue-on-error: true
-        run: uv run --no-sync python build_tools/scripts/check_capability_drift.py --fail-on-over-declared
-      # REPORTING ONLY, deliberately. The gate's own verdict for exercise and verification is
-      # UNMEASURED in CI: the invocation and verdict logs are written during a capsule run, which this
-      # job does not perform. Blocking on an UNMEASURED gate would either fail every PR or push someone
-      # to weaken it into reporting success on no evidence — the failure this repo keeps re-encountering.
-      # What it DOES decide here is the catalogue: an undischarged pass, one no capsule requires, or a
-      # refutation. Printing it on every PR is what makes those visible; the run log is the artifact.
+        run: uv run --no-sync python build_tools/checks/check_capability_drift.py --fail-on-over-declared
       - name: pass-obligation report (advisory; no capsule logs in CI)
         continue-on-error: true
-        run: uv run --no-sync python build_tools/scripts/check_pass_obligations.py
+        run: uv run --no-sync python build_tools/checks/check_pass_obligations.py
       - name: execute the five public interactive tutorials
         run: >-
           uv run --no-sync --with 'nbclient>=0.11,<0.12'
           --with 'ipykernel>=7,<8' --with 'ipywidgets>=8.1,<9'
-          python build_tools/scripts/check_tutorials.py
+          python build_tools/checks/check_tutorials.py
           --output out/build/python/ci/tutorials
       - name: complete test collection budget (150 parameterized cases maximum)
         run: >-
-          uv run --no-sync python build_tools/scripts/check_test_budget.py
+          uv run --no-sync python build_tools/checks/check_test_budget.py
           --output out/build/python/ci/test-budget.json
       - name: compact behavioral suite
         run: >-
@@ -229,7 +160,7 @@ jobs:
       # BLOCKING, and incremental: Python this change adds or modifies must be formatted. ~410 files
       # were left alone because other work had them checked out; they converge as they are edited.
       - name: format gate (changed Python must be ruff-formatted)
-        run: python3 build_tools/scripts/check_format.py --base "${{ needs.comparison.outputs.base }}"
+        run: python3 build_tools/checks/check_format.py --base "${{ needs.comparison.outputs.base }}"
       # Advisory until the untouched remainder reaches zero; then fold into the gate above.
       - name: full-tree ruff lint + format report (advisory)
         continue-on-error: true

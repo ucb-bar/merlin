@@ -13,6 +13,11 @@ Source gates run once. Current-document freshness and shrinking debt ledgers
 remain enforced. Advisory steps report their own limitations and do not establish
 missing execution evidence.
 
+CI does not scan the retired `experiments/corpora` or study directories. Those
+checks could run without any inputs after the generated data left Git. Corpus
+coverage and independent numerical assessment belong to a selected generation
+or evaluation run, not a source-checkout status.
+
 The permanent Merlin suite is capped at **150 collected cases**, including
 parameterization. Collection errors, collection-time skips, deselection and an
 empty collection fail the budget check. Execution skips remain visible in JUnit;
@@ -20,7 +25,7 @@ they do not establish that the skipped obligation passed. CI retains collection
 identities, test outcomes and built distributions under each run's artifacts.
 
 Integration selects exact companion revisions from
-[`backend-boundaries.json`](../../build_tools/upstreams/backend-boundaries.json).
+[`backend-boundaries.json`](../../build_tools/dependencies/backend-boundaries.json).
 Their selected installed cases must run without skips against the same main
 wheel, using the declared xDSL environments. Source-consumer pins additionally
 select read-only source files for the wiring graph; those files are not imported
@@ -48,7 +53,7 @@ test -f "$DESCRIPTOR"
 test -f "$CONFORMANCE_SPEC"
 
 MERLIN_TARGET_EXPERIMENT="$DESCRIPTOR" \
-uv run --no-sync python build_tools/scripts/check_conformance_coverage.py \
+uv run --no-sync python build_tools/checks/check_conformance_coverage.py \
   --target "$TARGET" --spec "$CONFORMANCE_SPEC" \
   --fail-on-uncovered --fail-on-unverifiable --json
 ```
@@ -71,7 +76,7 @@ the reviewed claim-model policy:
 test -d "$QUALIFICATION_OUT/artifacts/recaptures"
 
 MERLIN_OUT_ROOT="$QUALIFICATION_OUT" \
-uv run --no-sync python build_tools/scripts/check_claim_set_disjointness.py \
+uv run --no-sync python build_tools/checks/check_claim_set_disjointness.py \
   --target "$TARGET" --fail-on-circular --fail-on-unverifiable --json
 ```
 

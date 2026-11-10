@@ -59,4 +59,4 @@ No per-target recipes or hand-written legality rules. The current Gemmini bindin
   not resolve reports UNMEASURED naming the environment variable, path or audit it needs, never a zero
   denominator. Corpora are declared in `src/merlin/resources/contracts/corpora.yaml` (`sched_corpora`) and located
   through the hardware pin they name, so a result records which revision it came from. Run it with
-  `build_tools/scripts/check_schedule_ir_coverage.py --measure --summary`.
+  `build_tools/checks/check_schedule_ir_coverage.py --measure --summary`.

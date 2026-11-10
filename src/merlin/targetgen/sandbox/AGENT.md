@@ -29,7 +29,7 @@ views even after original aliases or selected providers change.
 - `read_audit.py` — Detection by audit: what a run's agent event log says was read, as CLEAN / CONTAMINATED / UNKNOWN.
 - `executable_dependencies.py` — One exact host-adapter-pinned raw engine leaf, with argv/ELF/receipt revalidation and unchanged answer masks; no implicit backend or data grants.
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Invariants / notes

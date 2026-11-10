@@ -26,7 +26,7 @@ written against.
 WHAT IS AND IS NOT DECLARED HERE. Everything in a :class:`Machine` is DERIVED — from a target's
 compute-unit contract, its RTL facts, its address space and its declared issue-scheduling data. A
 target contributes data; it never contributes a machine. Nothing in this module names a target, and the
-gate that enforces that (``build_tools/scripts/check_no_target_name.py``) covers this package.
+gate that enforces that (``build_tools/checks/check_no_target_name.py``) covers this package.
 
 THE THREE-STATE RULE, WHICH IS LOAD-BEARING. A quantity we have not derived is ``None`` **and** carries
 an :class:`Unknown` saying why. It is never 0 and never a plausible default. This is not style: the

@@ -13,7 +13,7 @@ Generated output in this repo lives under a **single top-level `out/` root**, wi
 (`out/runs/`, `out/artifacts/`, `out/build/`). Never write generated files anywhere else (no top-level
 `runs/`/`artifacts/`/`build/`, no `output/`, `results/`, `selfcheck_out/`, `docs/presentation/`, or
 per-experiment `runs/`/`reports/` — those are retired). A PreToolUse hook
-(`.claude/hooks/guard_artifact_writes.py`) blocks violations; `build_tools/scripts/check_artifact_layout.py`
+(`.claude/hooks/guard_artifact_writes.py`) blocks violations; `build_tools/checks/check_artifact_layout.py`
 lints them. Resolve roots via `merlin.common.paths` — `out_dir()`/`runs_dir()`/`artifacts_dir()`/
 `build_dir()` (honoring `MERLIN_OUT_ROOT`); never hard-code the literal strings.
 

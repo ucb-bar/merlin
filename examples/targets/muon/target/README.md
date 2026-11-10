@@ -3,7 +3,7 @@
 Muon runtime, code generation, introspection and Cyclotron oracle support now
 have one owner: the provider vendored at [`../support`](../support), a byte-identical
 copy of the local `muon-support` companion commit recorded in [`../SOURCE.yaml`](../SOURCE.yaml)
-and [`target_support.json`](../../../../build_tools/upstreams/target_support.json). That
+and [`target_support.json`](../../../../build_tools/dependencies/target_support.json). That
 companion had no remote, so this tracked copy is its only published home.
 
 With `MERLIN_TARGET_PATH` unset it is the selected support; an explicit value replaces

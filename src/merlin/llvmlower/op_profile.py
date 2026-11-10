@@ -28,7 +28,7 @@ Why one marker per top-level op is safe here. The default K1 RVV pipeline
 interleaving side-effecting calls cannot inhibit a fusion that would otherwise have
 happened. The marks therefore cost a call + ``rdtime`` + two stores each, and change no
 codegen decision for the ops themselves. This is an assumption about the pipeline, not a
-proof — which is why the driver (``build_tools/scripts/k1_op_profile.py``) always measures
+proof — which is why the driver (``tools/benchmarks/k1_op_profile.py``) always measures
 the instrumented wall against the un-instrumented wall and refuses to report a breakdown
 whose total wall moved by more than the board noise floor.
 

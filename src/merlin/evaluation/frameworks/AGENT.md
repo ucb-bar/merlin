@@ -24,7 +24,7 @@ External-baseline K1-RVV comparison harness.
 - `profile.py` — Two-level profiling: whole-model E2E + per-region "kernel-style" breakdown.
 - `rvv_audit.py` — RVV-coverage audit — the mechanical honesty behind "push RVV, label scalar fallback".
 
-<!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
+<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
 
 ## Invariants (read before adding a framework)
