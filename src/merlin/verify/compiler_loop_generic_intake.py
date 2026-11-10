@@ -78,17 +78,25 @@ def prepare_query(before, after, *, kind="ordered_loop_unrolling", factor=2, til
         names += [f"F{i}.{name}" for name in local]
     names += ["complete", "complete2", "completeData"]
     if kind == "ordered_loop_segmentation":
-        import re
-
         namespaces = []
         roots = []
         for line in query.splitlines():
-            if match := re.fullmatch(r"namespace ([A-Za-z0-9_.]+)", line):
-                namespaces.append(match[1])
-            elif line.startswith("end "):
-                namespaces.pop()
-            elif match := re.match(r"theorem ([A-Za-z0-9_]+)", line):
-                roots.append(".".join([*namespaces, match[1]]))
+            words = line.split()
+            if not words:
+                continue
+            if words[0] == "namespace":
+                if len(words) != 2 or not all(part.isidentifier() for part in words[1].split(".")):
+                    raise GateUnavailable("malformed generated generic TILE namespace")
+                namespaces.append(words[1])
+            elif words[0] == "end":
+                if len(words) != 2 or not namespaces or namespaces.pop() != words[1]:
+                    raise GateUnavailable("unbalanced generated generic TILE namespace")
+            elif words[0] == "theorem":
+                if len(words) < 2 or not words[1].removesuffix(":").isidentifier():
+                    raise GateUnavailable("malformed generated generic TILE theorem")
+                roots.append(".".join([*namespaces, words[1].removesuffix(":")]))
+        if namespaces:
+            raise GateUnavailable("unclosed generated generic TILE namespace")
         names = [root.removeprefix(prefix) for root in roots]
     sources = [
         ROOT / name

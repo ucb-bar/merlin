@@ -3,9 +3,10 @@ title: Compiler gate tutorial and supported profiles
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-29
+last_verified: 2026-11-09
 related: [lean_compiler_stack, getting_started, llvm_toolchain, merlin_lean_verification, compiler_verification]
 code_refs:
+  - build_tools/scripts/qualify_pass_cutoff.py
   - src/merlin/verify/pass_validation.py
   - src/merlin/verify/compiler_transforms.py
   - src/merlin/verify/compiler_qdq.py
@@ -281,6 +282,15 @@ Each job retains `request.json`, `verdict.json`, `worker.log` and proof
 artifacts. Failure quarantines speculative `.ll`, `.o` and `.so` products.
 A successful outer process alone is not evidence that every boundary changed
 or earned proof credit.
+
+The cutoff qualification tool retains a byte-bound reference to this final
+coverage file. A successful lowering with any excluded boundaries is reported as
+`lowered_with_unverified_boundaries`, including when other boundaries passed
+their checks. Per-case records preserve exclusion profiles, reasons and hashes;
+campaign totals distinguish `unverified_boundaries` from
+`changed_unverified_boundaries`. `all_lowered` records successful lowering and
+LLVM parity, not complete proof coverage. Audit reopens the coverage file and
+recomputes these results; missing or changed coverage cannot establish identity.
 
 ## Supported profiles
 

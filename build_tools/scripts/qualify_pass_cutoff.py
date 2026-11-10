@@ -20,7 +20,8 @@ from merlin.common.paths import artifacts_dir, out_dir, repo_root
 
 ROOT = repo_root()
 SCRIPT = ROOT / "build_tools/scripts/qualify_pass_cutoff.py"
-SUCCESS = {"lowered_checked", "lowered_no_changed_selected_boundary"}
+SUCCESS = {"lowered_checked", "lowered_no_changed_selected_boundary", "lowered_with_unverified_boundaries"}
+COVERAGE_FIELDS = ("verified_boundaries", "unverified_boundaries", "changed_unverified_boundaries", "exclusions")
 
 
 def digest(path):
@@ -207,6 +208,10 @@ def summarize_case(baseline, checked, jobs):
         "completed_jobs": len(jobs),
         "accepted_jobs": sum(job["verdict"] == "accepted" for job in jobs),
         "changed_jobs": sum(bool(job.get("changed")) for job in jobs),
+        "verified_boundaries": 0,
+        "unverified_boundaries": 0,
+        "changed_unverified_boundaries": 0,
+        "exclusions": [],
     }
     if baseline["status"] != "lowered":
         result["status"] = "baseline_lowering_failed"
@@ -225,15 +230,55 @@ def summarize_case(baseline, checked, jobs):
                     check_ref(ref)
                 if not job["changed"] or job["bindings"][2]["sha256"] == job["bindings"][3]["sha256"]:
                     raise ValueError("unchanged job cannot receive positive rewrite credit")
-        except (OSError, ValueError, KeyError) as error:
+            coverage = read_coverage(checked["coverage"], jobs)
+        except (OSError, ValueError, KeyError, TypeError) as error:
             result.update(status="unavailable", error=str(error))
             return result
         if baseline["output"]["sha256"] != checked["output"]["sha256"]:
             result["status"] = "llvm_mismatch"
         else:
-            result["status"] = "lowered_checked" if jobs else "lowered_no_changed_selected_boundary"
+            result.update(coverage)
+            result["status"] = (
+                "lowered_with_unverified_boundaries"
+                if coverage["unverified_boundaries"]
+                else "lowered_checked"
+                if jobs
+                else "lowered_no_changed_selected_boundary"
+            )
             result["positive_checked_boundaries"] = len(jobs)
     return result
+
+
+def read_coverage(ref, jobs):
+    """Reopen the compiler's final coverage; zero jobs alone cannot establish identity."""
+    check_ref(ref)
+    raw = Path(ref["path"]).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != ref["sha256"] or len(raw) != ref["bytes"]:
+        raise ValueError("coverage bytes changed during independent read")
+    document = json.loads(raw)
+    if (
+        type(document) is not dict
+        or document.get("schema") != "merlin.compiler-coverage.v1"
+        or document.get("finalized") is not True
+        or document.get("compiler_completed") is not True
+        or type(document.get("boundaries")) is not list
+    ):
+        raise ValueError("complete finalized compiler coverage required")
+    rows = document["boundaries"]
+    if any(type(row) is not dict or row.get("status") not in {"verified", "unchanged", "unverified"} for row in rows):
+        raise ValueError("incomplete compiler boundary coverage")
+    for status in ("verified", "unchanged", "unverified"):
+        if document.get(status + "_boundaries") != sum(row["status"] == status for row in rows):
+            raise ValueError("compiler coverage counts differ from boundary records")
+    if document["verified_boundaries"] != len(jobs):
+        raise ValueError("compiler coverage differs from completed accepted jobs")
+    exclusions = [row for row in rows if row["status"] == "unverified"]
+    return {
+        "verified_boundaries": document["verified_boundaries"],
+        "unverified_boundaries": len(exclusions),
+        "changed_unverified_boundaries": sum(row["source_sha256"] != row["final_sha256"] for row in exclusions),
+        "exclusions": exclusions,
+    }
 
 
 def compile_case(case, destination, tools, selectors, *, job_timeout):
@@ -252,6 +297,8 @@ def compile_case(case, destination, tools, selectors, *, job_timeout):
                 if not result.ll_path.is_file() or not result.ll_path.stat().st_size:
                     raise OSError("compiler returned no nonempty LLVM artifact")
                 arms[name] = {"status": "lowered", "output": file_ref(result.ll_path), "stats": result.stats}
+                if selected is not None:
+                    arms[name]["coverage"] = file_ref(worker.directory / "coverage.json")
             except (Exception, KeyboardInterrupt) as error:
                 if isinstance(error, KeyboardInterrupt):
                     raise
@@ -316,6 +363,8 @@ def summary(manifest, records):
         "completed_jobs": sum(r.get("completed_jobs", 0) for r in records),
         "accepted_jobs": sum(r.get("accepted_jobs", 0) for r in records),
         "changed_jobs": sum(r.get("changed_jobs", 0) for r in records),
+        "unverified_boundaries": sum(r.get("unverified_boundaries", 0) for r in records),
+        "changed_unverified_boundaries": sum(r.get("changed_unverified_boundaries", 0) for r in records),
         "jobs_by_check": dict(Counter(job["check"] for r in records for job in r.get("jobs", []))),
         "jobs_by_label": dict(Counter(job["label"] for r in records for job in r.get("jobs", []))),
         "native_execution": False,
@@ -476,7 +525,14 @@ def audit(path):
             recomputed = summarize_case(record["baseline"], record["checked"], record["jobs"])
             if any(
                 recomputed[key] != record[key]
-                for key in ("status", "positive_checked_boundaries", "completed_jobs", "accepted_jobs", "changed_jobs")
+                for key in (
+                    "status",
+                    "positive_checked_boundaries",
+                    "completed_jobs",
+                    "accepted_jobs",
+                    "changed_jobs",
+                    *COVERAGE_FIELDS,
+                )
             ):
                 raise ValueError("retained result differs from actual artifact bindings")
         elif record["status"] != "unavailable":

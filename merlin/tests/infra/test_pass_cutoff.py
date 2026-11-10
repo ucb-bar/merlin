@@ -1,5 +1,6 @@
 """Campaign bookkeeping must not turn parity, skips or saved labels into proof credit."""
 
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,11 +16,42 @@ def bound_file(directory, name, text):
     return campaign.file_ref(path)
 
 
-def arms(tmp_path, *, after="llvm"):
+def arms(tmp_path, *, after="llvm", verified=False):
     return (
         {"status": "lowered", "output": bound_file(tmp_path, "baseline.ll", "llvm")},
-        {"status": "lowered", "output": bound_file(tmp_path, "checked.ll", after)},
+        {
+            "status": "lowered",
+            "output": bound_file(tmp_path, "checked.ll", after),
+            "coverage": coverage(tmp_path, [{"status": "verified"}] if verified else []),
+        },
     )
+
+
+def coverage(tmp_path, rows=(), *, name="coverage.json"):
+    document = {
+        "schema": "merlin.compiler-coverage.v1",
+        "finalized": True,
+        "compiler_completed": True,
+        "boundaries": list(rows),
+        **{
+            status + "_boundaries": sum(row["status"] == status for row in rows)
+            for status in ("verified", "unverified", "unchanged")
+        },
+    }
+    return bound_file(tmp_path, name, json.dumps(document))
+
+
+def excluded():
+    return {
+        "pass": "lower_quant_ext",
+        "profile": "test-source-profile",
+        "status": "unverified",
+        "code": "source-model",
+        "reason": "per-channel i64 zero point is outside the model",
+        "source_sha256": hashlib.sha256(b"before").hexdigest(),
+        "final_sha256": hashlib.sha256(b"after").hexdigest(),
+        "proof_credit": False,
+    }
 
 
 def accepted_job(tmp_path, *, after="after"):
@@ -83,10 +115,20 @@ def test_equal_compiler_failures_are_not_success():
     assert totals["complete"] and not totals["all_lowered"]
 
 
-@pytest.mark.parametrize("status", (["gate_unsupported", "gate_not_established", "unavailable"])[:1])
-def test_runtime_refusal_or_missing_tool_stays_explicit(tmp_path, status):
-    before, _ = arms(tmp_path)
-    assert campaign.summarize_case(before, {"status": status}, [])["status"] == status
+def test_changed_excluded_boundary_is_not_reported_as_identity(tmp_path):
+    before, checked = arms(tmp_path)
+    checked["coverage"] = coverage(tmp_path, [excluded()])
+    result = campaign.summarize_case(before, checked, [])
+    result["id"] = "declared"
+    assert result["status"] == "lowered_with_unverified_boundaries"
+    assert result["unverified_boundaries"] == result["changed_unverified_boundaries"] == 1
+    assert result["exclusions"] == [excluded()]
+    assert result["positive_checked_boundaries"] == 0
+    totals = campaign.summary({"cases": [{"id": "declared"}]}, [result])
+    assert totals["all_lowered"] and totals["changed_unverified_boundaries"] == 1
+    # Saved coverage is required and byte-bound even when LLVM output still agrees.
+    Path(checked["coverage"]["path"]).write_text("{}")
+    assert campaign.summarize_case(before, checked, [])["status"] == "unavailable"
 
 
 def test_identity_has_zero_positive_proof_credit(tmp_path):
@@ -97,7 +139,7 @@ def test_identity_has_zero_positive_proof_credit(tmp_path):
 
 
 def test_changed_accepted_boundary_has_separate_job_counts(tmp_path):
-    result = campaign.summarize_case(*arms(tmp_path), [accepted_job(tmp_path)])
+    result = campaign.summarize_case(*arms(tmp_path, verified=True), [accepted_job(tmp_path)])
     assert result["status"] == "lowered_checked"
     assert (
         result["positive_checked_boundaries"]
@@ -106,11 +148,16 @@ def test_changed_accepted_boundary_has_separate_job_counts(tmp_path):
         == result["changed_jobs"]
         == 1
     )
+    # Accepted and excluded boundaries in the same invocation retain separate credit.
+    checked = dict(result["checked"], coverage=coverage(tmp_path, [{"status": "verified"}, excluded()]))
+    mixed = campaign.summarize_case(result["baseline"], checked, result["jobs"])
+    assert mixed["status"] == "lowered_with_unverified_boundaries"
+    assert mixed["positive_checked_boundaries"] == mixed["unverified_boundaries"] == 1
 
 
 @pytest.mark.parametrize("artifact", (["checked.ll", "verdict.json", "before.mlir"])[:1])
 def test_missing_artifact_cannot_be_accepted(tmp_path, artifact):
-    before, after = arms(tmp_path)
+    before, after = arms(tmp_path, verified=True)
     job = accepted_job(tmp_path)
     (tmp_path / artifact).unlink()
     assert campaign.summarize_case(before, after, [job])["status"] == "unavailable"
@@ -122,7 +169,7 @@ def test_saved_accepted_label_without_artifacts_is_not_evidence(tmp_path):
 
 
 def test_modified_nested_receipt_invalidates_retained_evidence(tmp_path):
-    before, after = arms(tmp_path)
+    before, after = arms(tmp_path, verified=True)
     job = accepted_job(tmp_path)
     job["bindings"].append(bound_file(tmp_path, "receipt.json", '{"checked": true}'))
     (tmp_path / "receipt.json").write_text('{"checked": false}')
@@ -130,7 +177,10 @@ def test_modified_nested_receipt_invalidates_retained_evidence(tmp_path):
 
 
 def test_unchanged_job_cannot_claim_positive_credit(tmp_path):
-    assert campaign.summarize_case(*arms(tmp_path), [accepted_job(tmp_path, after="before")])["status"] == "unavailable"
+    assert (
+        campaign.summarize_case(*arms(tmp_path, verified=True), [accepted_job(tmp_path, after="before")])["status"]
+        == "unavailable"
+    )
 
 
 def test_different_actual_compiler_output_is_not_success(tmp_path):
@@ -168,6 +218,10 @@ def test_audit_checks_integrity_and_grants_no_fresh_proof(tmp_path, inventory):
 def test_audit_detects_output_tampering(tmp_path, inventory):
     path, _ = retained_report(tmp_path, inventory)
     (tmp_path / "checked.ll").write_text("poisoned after the run")
+    with pytest.raises(ValueError, match="actual artifact bindings"):
+        campaign.audit(path)
+    (tmp_path / "checked.ll").write_text("llvm")
+    (tmp_path / "coverage.json").write_text("{}")
     with pytest.raises(ValueError, match="actual artifact bindings"):
         campaign.audit(path)
 
@@ -240,6 +294,7 @@ def test_compile_reads_actual_gate_job_ids_and_retains_boundaries(tmp_path, monk
             validation.gate.verdicts.append(
                 {"job": folder.name, "check": "tensor_refinement", "label": "cse", "verdict": "accepted"}
             )
+            coverage(validation.gate.directory, [{"status": "verified"}])
         return SimpleNamespace(ll_path=output, stats={})
 
     monkeypatch.setattr(campaign, "_lower", lower)
