@@ -1,5 +1,14 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`fusion_guard` preserves effectful tensor producer evaluation before upstream
+elementwise fusion. Tensor operands alone do not prove scalar-region purity:
+captured mutable reads must finish before a following overlapping store. Inspect
+all nested bodies; calls, effects and unknown operations retain their boundary.
+Only qualified pure arithmetic/math/index operations and recursively checked
+structured control may move. The optional broadcast cost switch does not disable
+this correctness gate. Preserve ordinary pure fusion and every runner callback;
+temporary pins must be removed before bufferization and final emission.
+
 `lower_fp8_narrowing` implements standard scalar RTNE `arith.truncf` to the
 four FP8 formats, before widening and BF16 emulation. Source saturation and
 infinity policies must remain executable clamps/selections. Validate every

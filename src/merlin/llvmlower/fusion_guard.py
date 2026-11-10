@@ -10,7 +10,7 @@ retired instructions per element and each layer norm ~350.
 The rule this module adds to the fusion is a control function: **refuse to fuse a producer whose
 fused body would run more times than the producer has elements** (the consumer's iteration space is
 larger than the operand it reads), unless the body computes nothing (it only yields block arguments
-and constants, so fusing it is pure index remapping). Everything else fuses exactly as upstream does.
+and constants, so fusing it is pure index remapping). Pure producers otherwise follow upstream.
 
 HOW, given that the pass takes no control option and the Python bindings cannot hand it one: the
 pass's own control function is ``producer->hasOneUse()``. Immediately before each run of the pass the
@@ -21,7 +21,10 @@ the default control function reads only the producer's uses.
 
 It is applied by wrapping the PassManager in the runner (:data:`RUNNER_PRELUDE`), so every runner
 variant and every stage that runs the pass is covered, including feature-spliced fusion stages, without
-the pass list changing spelling. ``MERLIN_FUSION_GUARD=0`` disables it, for A/B measurement.
+the pass list changing spelling. ``MERLIN_FUSION_GUARD=0`` disables the broadcast cost policy for
+A/B measurement. Effectful or unknown producer bodies always retain their evaluation boundary:
+tensor operands alone do not make captured memref reads pure, and moving a load into a following
+overlapping store can change a whole-tile snapshot into a sequence of dependent scalar updates.
 """
 
 from __future__ import annotations
@@ -123,9 +126,39 @@ def _fg_all_parallel(op):
     return all('parallel' in str(it) for it in iters)
 
 
+def _fg_effect_free(producer):
+    """Conservative scalar purity; tensor operands do not prove region purity.
+
+    The native binding exposes no effect-query method. Standard scalar arithmetic
+    and math are pure; qualified structured control must be checked recursively.
+    Reads, writes, atomics, diagnostics, calls and unknown bodies keep their cut.
+    """
+    for op in _fg_walk(producer):
+        if (not op.regions and op.context.is_registered_operation(op.name)
+                and op.name.startswith(('arith.', 'math.', 'index.'))):
+            continue
+        if op.name in ('linalg.yield', 'linalg.index', 'tensor.extract', 'tensor.dim',
+                       'scf.if', 'scf.for', 'scf.while', 'scf.index_switch',
+                       'scf.execute_region', 'scf.yield', 'scf.condition'):
+            continue
+        return False
+    return True
+
+
 def _fg_refused(module):
-    """The producers the control function refuses: ``[(producer value, consumer op)]``."""
+    """Refused values and consumers; None anchors an effect cut after its producer."""
     out = []
+    protected = set()
+    for producer in _fg_walk(module.operation):
+        if producer.name != 'linalg.generic' or _fg_effect_free(producer):
+            continue
+        # Protect every live result, including a result currently used as both
+        # input and unused destination of one consumer. The greedy pass can
+        # remove that destination use and expose fusion in the same run.
+        for value in producer.results:
+            if list(value.uses):
+                protected.add(value)
+                out.append((value, None))
     for consumer in _fg_walk(module.operation):
         if consumer.name != 'linalg.generic':
             continue
@@ -146,11 +179,15 @@ def _fg_refused(module):
                 source = source.owner.operands[0]
             if not isinstance(source, _fg_ir.OpResult):
                 continue
+            if source in protected:
+                continue
             producer = source.owner.operation
             if (producer.name != 'linalg.generic' or len(producer.results) != 1
                     or len(list(source.uses)) != 1 or not _fg_all_parallel(producer)
                     or not _fg_computes(producer)):
                 continue  # not a fusion candidate, or fusing it is free
+            if not _FG_ENABLED:
+                continue
             if iterations is None:
                 iterations = _fg_iterations(consumer, maps)
             elements = _fg_elements(value)
@@ -168,7 +205,8 @@ def _fg_pin(ctx, module):
     with ctx, _fg_ir.Location.unknown():
         for value, consumer in refused:
             _fg_ir.Operation.create(_FG_PIN, results=[], operands=[value],
-                                    ip=_fg_ir.InsertionPoint(consumer))
+                                    ip=(_fg_ir.InsertionPoint(consumer) if consumer is not None
+                                        else _fg_ir.InsertionPoint.after(value.owner)))
     return len(refused)
 
 
@@ -205,7 +243,7 @@ class _FGPassManager:
 
     def run(self, operation):
         text = self._text
-        if not _FG_ENABLED or 'linalg-fuse-elementwise-ops' not in text:
+        if 'linalg-fuse-elementwise-ops' not in text:
             return self._native(text).run(operation)
         head = 'builtin.module('
         if not (text.startswith(head) and text.endswith(')')):

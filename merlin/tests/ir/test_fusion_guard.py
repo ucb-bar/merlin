@@ -157,3 +157,53 @@ def test_the_guard_reads_its_switch_per_build(monkeypatch):
     assert "_FG_ENABLED = False" in FG.runner_prelude()
     monkeypatch.delenv("MERLIN_FUSION_GUARD")
     assert "_FG_ENABLED = True" in FG.runner_prelude()
+
+
+@m2m
+@pytest.mark.parametrize("enabled",["0","1"])
+@pytest.mark.parametrize("nested",[False,True])
+def test_captured_mutable_reads_keep_their_snapshot_before_overlapping_store(monkeypatch,enabled,nested):
+    monkeypatch.setenv("MERLIN_FUSION_GUARD",enabled)
+    observe = "%value = memref.load %state[%i] : memref<16xi64>"
+    if nested:
+        observe = """%value = scf.if %allow -> (i64) {
+          %read = memref.load %state[%i] : memref<16xi64>
+          scf.yield %read : i64
+        } else {
+          scf.yield %zero : i64
+        }"""
+    source = """#id = affine_map<(d0)->(d0)>
+    func.func @snapshot(%state: memref<16xi64>, %allow: i1) {
+      %four = arith.constant 4 : index
+      %zero = arith.constant 0 : i64
+      %one = arith.constant 1 : i64
+      %empty = tensor.empty() : tensor<8xi64>
+      %values = linalg.generic {indexing_maps=[#id], iterator_types=["parallel"]}
+          outs(%empty: tensor<8xi64>) {
+      ^bb0(%unused: i64):
+        %i = linalg.index 0 : index
+        OBSERVE
+        linalg.yield %value : i64
+      } -> tensor<8xi64>
+      // The pass removes this unused destination use before fusing. The
+      // snapshot must be protected even while it initially has two uses.
+      %updated = linalg.generic {indexing_maps=[#id,#id], iterator_types=["parallel"]}
+          ins(%values: tensor<8xi64>) outs(%values: tensor<8xi64>) {
+      ^bb0(%value: i64, %unused: i64):
+        %next = arith.addi %value, %one : i64
+        linalg.yield %next : i64
+      } -> tensor<8xi64>
+      linalg.generic {indexing_maps=[#id], iterator_types=["parallel"]}
+          ins(%updated: tensor<8xi64>) {
+      ^bb0(%value: i64):
+        %i = linalg.index 0 : index
+        %destination = arith.addi %i, %four : index
+        memref.store %value, %state[%destination] : memref<16xi64>
+        linalg.yield
+      }
+      return
+    }""".replace("OBSERVE",observe)
+    result = P.apply_passes(source,FUSE)
+    assert "merlin.fusion_pin" not in result
+    assert result.count("linalg.generic") == 2
+    assert result.index("memref.load") < result.rindex("linalg.generic") < result.index("memref.store")
