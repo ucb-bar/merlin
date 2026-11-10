@@ -1,5 +1,13 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`lower_fp8_widening` expands scalar standard FP8 extensions at one explicit
+initial native source seam. Keep portable casts, typed storage, source locations
+and annotations; decode every finite/nonfinite format case. Complete validation
+precedes edits. Unknown arithmetic, narrowing/calls, nonneutral flags and shaped
+casts refuse. Forward every runner/ownership callback; BF16 emulation and late
+word transport retain their separate seams. This feature grants no changed
+buffer ABI, alias/lifetime premise, FP8 saturation or target mapping policy.
+
 `lower_scalar_diagnostics` materializes standard scalar/string `vector.print`
 after ownership checks and includes length-aware assertions. Keep fixed scalar
 formatting, full literal bytes, source positions and complete internal helpers.

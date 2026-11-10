@@ -13,6 +13,8 @@ code_refs:
   - src/merlin/llvmlower/dealloc_lifetime.py
   - src/merlin/llvmlower/c_runtime.py
   - src/merlin/common/mlir_query.py
+  - src/merlin/llvmlower/fp8_widening.py
+  - src/merlin/llvmlower/pipeline.py
 ---
 
 # FP8 reader and constant bindings
@@ -63,10 +65,51 @@ The actual triton2MLIR integration qualifies all four formats in tensor,
 buffer and guarded-memory profiles, including scalar events, masked tails,
 runtime loops, empty dimensions and reused native Merlin libraries. Its saved
 demo binds exact word references and keeps evaluator bytes/digests out of
-compiler staging. Native arithmetic remains a distinct requirement: direct
-FP8 extension probes retain unresolved casts in the current converter.
+compiler staging. The default converter still leaves direct FP8 extension
+probes unresolved; the explicit widening feature below supplies those casts.
 
 Numeric cast rounding/overflow, arithmetic/scaled contractions and staged
 target execution still require executable implementations and evidence.
 In particular, a parsed `arith.truncf` does not prove it matches Triton's
 backend-dependent saturating FP8 conversions.
+
+## Native FP8 widening
+
+The default-off `lower_fp8_widening` feature implements scalar `arith.extf`
+from all four FP8 formats to f16, BF16, f32 and f64. Portable input retains
+the standard cast and typed storage. At the selected initial native source
+seam, the feature validates all candidates before editing, then decodes the
+standard sign/exponent/fraction fields using ordinary integer operations and
+exact f32 arithmetic. Source locations and nonsemantic annotations survive.
+
+Every finite value in these FP8 formats is exactly representable in all four
+destination types. Subnormal decoding uses an exact fraction and power-of-two
+scale; its f32 result is normal, including the smallest E5M2FNUZ value 2^-17.
+E5M2 infinities, signed zeros, finite-only top binades and unsigned-zero NaN
+sentinels are distinct cases. Computed NaN class is preserved without imposing
+a payload/sign choice. Uncomputed source words remain unchanged.
+
+The current LLVM source's `arith-expand` implements other narrow types but
+does not expand these four FP8 extensions. The implementation follows the
+format-field approach in pinned Triton's `test_conversions.py::upcast_emulated`,
+adding the special values excluded from that test's finite input population.
+Format definitions and extrema are independently checked against LLVM
+`a47bddccec30255619bb8c37fa59700e661d4e66`, `BuiltinTypes.td`,
+`APFloat.cpp` and `APFloatTest.cpp`. It introduces no lookup table, opaque
+runtime function, changed tensor/memref ABI or physical target mapping.
+
+Scalar narrowing/arithmetic/calls, nonneutral cast flags and tensor/vector
+cast candidates refuse before edits. Those forms retain separate obligations;
+the feature is not an FP8 arithmetic policy. Its source wrapper consumes one
+marker and forwards every ownership/runner callback. BF16 arithmetic emulation
+may follow it at its own source marker; BF16 word transport remains late.
+The ordinary native conversion, allocation, alias and lifetime gates still run.
+
+Twenty-five native feature/seam/refusal cases and the existing BF16 regressions
+pass (48 combined cases). triton2MLIR additionally qualifies all 48
+format/destination/memory-profile combinations over every source encoding,
+with independent rational references, an adjacent exact-word result and reused
+Merlin libraries over empty/ragged domains and runtime source loops. Sixteen
+oracle cross-checks use the independent standard codec. This is host numeric
+evidence; FP8 narrowing/saturation, equal-width casts, scaled contractions,
+broader models and applicable target materialization remain open.
