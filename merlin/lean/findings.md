@@ -158,7 +158,7 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
   policy/checker must check actual body wiring, types, order, maps and initialization before
   accepting a selected site. Rounding or quantization error cannot justify replacing a square
   with a product using another input.
-- **Evidence:** `test_lean_w8a8_module.py`,
+- **Evidence:** `test_lean_w8a8_module.py` (removed in e6568ac96; last present at 04ed0ae25),
   `test_unsupported_source_cannot_choose_its_target_as_reference[wrong_source_body]`, checks the
   real rewrite and authoritatively exports both programs, then requires reference expansion and
   whole-function matching to refuse this source.
@@ -176,7 +176,7 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
   PyTorch and the additive Lean source-contract candidate yield `-16777216`; actual Merlin
   output before the correction, executed through native MLIR, yielded `-16777215`. Both results are finite. No overflow,
   NaN, invalid input, or unregistered operation in the executed output is needed.
-- **Evidence:** `test_lean_w8a8_dequant_width.py`,
+- **Evidence:** `test_lean_w8a8_dequant_width.py` (removed in e6568ac96; last present at 04ed0ae25),
   originally `test_actual_i64_channel_lowering_still_has_integer_promotion_discrepancy`, now
   `test_actual_i64_channel_lowering_matches_integer_promotion`. The candidate is
   separately compared against pinned PyTorch and standard-MLIR arithmetic for both widths,
@@ -206,7 +206,7 @@ only, so this compiler correction adds no per-channel i64 proof claim.
 - **Meaning:** symmetric zero-point-zero and output-channel grouping are eligibility conditions
   of the draft reuse policy. An operation name or compatible scale length establishes neither.
   These are unsupported inputs to the current reference, not accepted approximate results.
-- **Evidence:** `test_lean_w8a8_operand_paths.py`,
+- **Evidence:** `test_lean_w8a8_operand_paths.py` (removed in e6568ac96; last present at 04ed0ae25),
   `test_per_channel_source_contract_is_recomputed`, requires source-derived expansion to refuse
   both witnesses. Four positive cases check the correct axis through independent left/right
   transposes; native companions check calibrated output-channel scales and ordered requantization.
