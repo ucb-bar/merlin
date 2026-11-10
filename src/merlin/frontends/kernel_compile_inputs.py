@@ -279,7 +279,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
                            "model_mlir_sha256": digest(raw), "correspondence": "source-correspondence.json"},
                 "members": {name: digest(data) for name, data in members.items()},
                 "excluded_evaluator_members": ["inputs.npz", "golden.npy", "extra.npz", "execution.json",
-                    *(["reference.json", "native/"] if observable else [])]}
+                    *(["reference.json", "reference.npz", "native/"] if observable else [])]}
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))
     try:

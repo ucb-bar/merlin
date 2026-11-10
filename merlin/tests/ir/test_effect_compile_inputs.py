@@ -37,12 +37,20 @@ def fixture(root,change=None):
         model = b"module {func.func @check(%flag:i32) {return}}"
         manifest = {"0":{"kind":"input","name":"flag"}}
         count["inputs"] = 1
+    elif change == "tensor-results":
+        spec["schema"] = "t2m.shared-tensor-abi.v1"
+        spec.pop("effect_only")
+        spec.pop("runtime_scalars")
+        spec["buffers"] = [{"name":"x","shape":[2],"dtype":"i64","effect":"readwrite"}]
+        model = b"module {func.func @check(%x:tensor<2xi64>)->tensor<2xi64> {return %x:tensor<2xi64>}}"
+        manifest = {"0":{"kind":"input","name":"x"}}
+        count.update(inputs=1,outputs=1)
     trace = {"schema":"t2m.shared-tensor-provenance.v1","spec":spec,"source_operations":[],"emitted_operations":[],
         "source_sha256":record(ttir)["sha256"],"mlir_sha256":record(model)["sha256"]}
     encoded = lambda value:json.dumps(value).encode()
     files = {"model.mlir":model,"source.ttir":ttir,"spec.json":encoded(spec),"provenance.json":encoded(trace),
         "weights.safetensors":struct.pack("<Q",8)+b"{}      ","weights.safetensors.manifest.json":encoded(manifest),
-        **{name:b"EVALUATOR "+name.encode() for name in ("inputs.npz","reference.json","execution.json","native/outcome.json","native/stdout.bin")}}
+        **{name:b"EVALUATOR "+name.encode() for name in ("inputs.npz","reference.json","reference.npz","execution.json","native/outcome.json","native/stdout.bin")}}
     for name,raw in files.items():
         path = root / name
         path.parent.mkdir(exist_ok=True)
@@ -53,22 +61,24 @@ def fixture(root,change=None):
     return receipt
 
 
-@pytest.mark.parametrize("change", [None,"scalar"])
-def test_void_and_scalar_only_entries_exclude_all_evaluator_outcomes(tmp_path,monkeypatch,change):
+@pytest.mark.parametrize("change", [None,"scalar","tensor-results"])
+def test_effect_entries_exclude_all_evaluator_outcomes_and_tensor_references(tmp_path,monkeypatch,change):
     source,target = tmp_path / "capture",tmp_path / "compiler"
     receipt = fixture(source,change)
     original = Path.read_bytes
     def read(path):
-        if path.name in ("inputs.npz","reference.json","execution.json","outcome.json","stdout.bin"):
+        if path.name in ("inputs.npz","reference.json","reference.npz","execution.json","outcome.json","stdout.bin"):
             raise AssertionError("compiler read effect evaluator data")
         return original(path)
     monkeypatch.setattr(Path,"read_bytes",read)
     staged = stage_compile_inputs(source,target)
     signature = json.loads((target / "signature.json").read_text())
-    assert staged["source_profile"] == "standalone-effect-kernel" and signature["outputs"] == []
-    assert len(signature["inputs"]) == (1 if change == "scalar" else 0)
+    assert staged["source_profile"] == "standalone-effect-kernel"
+    assert signature["outputs"] == ([{"shape":[2],"dtype":"i64"}] if change == "tensor-results" else [])
+    assert len(signature["inputs"]) == (1 if change in ("scalar","tensor-results") else 0)
+    assert "reference.npz" in staged["excluded_evaluator_members"]
     contents = b"".join((target / name).read_bytes() for name in staged["members"])
-    for name in ("inputs.npz","reference.json","execution.json","native/outcome.json","native/stdout.bin"):
+    for name in ("inputs.npz","reference.json","reference.npz","execution.json","native/outcome.json","native/stdout.bin"):
         assert receipt["artifacts"][name]["sha256"].encode() not in contents
     assert b"EVALUATOR" not in contents
 

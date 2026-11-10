@@ -28,6 +28,13 @@ retain their existing result requirements and cannot silently adopt ABI v6.
 Observable-effect receipts may also retain an ordinary tensor-result signature
 for an initially failing reference case. Compiler intake preserves those actual
 declared results; it does not replace them with void or fabricate values.
+Returning kernels may likewise carry both tensors and observable diagnostics.
+Their independently supplied `reference.npz` tuple is evaluator data, alongside
+the outcome policy in `reference.json`. Staging excludes both files and their
+individual digests. It preserves every real result slot and never reads the
+archive to derive compiler constants or specialize control flow. Separate
+evaluation must compare the complete tuple and streams from the same call;
+compiler intake itself grants no numerical or effect qualification.
 
 The staged profile is `standalone-effect-kernel`. Existing compile-signature
 v1/v2 represents the actual input/result roster, including empty lists. Its
