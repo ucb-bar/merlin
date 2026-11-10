@@ -117,6 +117,19 @@ def test_atomic_result_reuse_requires_closed_private_exactly_once_snapshot(tmp_p
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("dtype,kind", [("f32", "assign"), ("f64", "assign"), ("f64", "addf")])
+@pytest.mark.parametrize("private,changed", [(True, 1), (False, 0)])
+def test_floating_atomic_snapshot_keeps_private_effect_and_old_value(tmp_path, dtype, kind, private, changed):
+    text = atomic_source(private=private).replace("i32", dtype).replace("memref.atomic_rmw addi", f"memref.atomic_rmw {kind}")
+    text = text.replace(f"arith.constant 1:{dtype}", f"arith.constant 1.0:{dtype}")
+    text = text.replace(f"arith.addi", "arith.addf")
+    report, rewritten = rewrite(tmp_path, text)
+    assert f"OK loop_tensor_destinations {changed}" in report
+    assert rewritten.count("memref.atomic_rmw") == 1
+    assert "no_inline" in rewritten
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
 @pytest.mark.parametrize("shape,init_read,opaque,changed", [
     ("4", False, False, 1), ("17", False, False, 1),
     ("4", True, False, 1), ("0", False, False, 0),

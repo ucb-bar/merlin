@@ -596,6 +596,46 @@ def test_atomic_staging_retains_v3_source_contract_and_thirty_bit_cost(tmp_path)
     assert (target / "source/memory-admission.json").read_bytes() == (source / "memory-admission.json").read_bytes()
 
 
+@pytest.mark.parametrize("change", [None, "f32", "integer", "ftz", "rounding", "kind", "legacy"])
+def test_f64_atomic_add_retains_its_operation_specific_numeric_contract(tmp_path, change):
+    from copy import deepcopy
+    from merlin.frontends.kernel_atomic_evidence import checked_atomic_effects
+    source = tmp_path / "capture"
+    atomic_fixture(source, floating=True)
+    admission = json.loads((source / "memory-admission.json").read_text())
+    provenance = json.loads((source / "provenance.json").read_text())
+    memory, records = provenance["memory"], provenance["normalized_operations"]
+    buffers = {b["name"]: b for b in provenance["spec"]["buffers"]}
+    access = admission["accesses"][0]
+    info = access["atomic"]
+    info.update(operation="fadd", standard_kind=0, word_bits=64, value_dtype="f64",
+                numeric_contract="ieee-f64-rne-add")
+    buffers[access["buffer"]]["dtype"] = "f64"
+    if change == "f32":
+        info.update(value_dtype="f32", word_bits=32)
+        buffers[access["buffer"]]["dtype"] = "f32"
+    elif change == "integer":
+        info.pop("value_dtype")
+        info.pop("numeric_contract")
+        buffers[access["buffer"]]["dtype"] = "i64"
+    elif change in ("ftz", "rounding"): info["numeric_contract"] = change
+    elif change == "kind": info["standard_kind"] = 1
+    elif change == "legacy":
+        admission.update(schema="t2m.memory-admission.v3", effect_profile="private-invocation-integer-atomics-v1")
+        memory["effect_profile"] = admission["effect_profile"]
+    records[0]["atomic"] = deepcopy(info)
+    admission["atomic_adaptations"][0].update(info)
+    if change == "integer":
+        admission["atomic_adaptations"][0].pop("value_dtype")
+        admission["atomic_adaptations"][0].pop("numeric_contract")
+    memory["atomic_payload"] = deepcopy(admission["atomic_adaptations"])
+    if change is None:
+        checked_atomic_effects(admission, memory, records, buffers)
+    else:
+        with pytest.raises(ValueError, match="atomic memory"):
+            checked_atomic_effects(admission, memory, records, buffers)
+
+
 @pytest.mark.parametrize("opcode", ["tt.atomic_rmw", "tt.atomic_cas"])
 @pytest.mark.parametrize("change", [None, "ordinary", "lost-old-value", "fill", "lost-value"])
 def test_isolated_atomic_event_requires_effect_profile_value_and_old_result(tmp_path, change, opcode):

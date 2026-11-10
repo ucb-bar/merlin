@@ -3,7 +3,9 @@
 EFFECT_PROFILE = "private-invocation-integer-atomics-v1"
 TYPED_EFFECT_PROFILE = "private-invocation-typed-atomics-v2"
 _KINDS = {"and": 2, "or": 14, "xor": 15, "add": 1, "max": 6, "min": 10, "umax": 7, "umin": 11, "exch": 3,
-          "cas": "compare-exchange"}
+          "cas": "compare-exchange", "fadd": 0}
+_FLOAT_CONTRACTS = {("exch", "f32"): "bitwise-exchange", ("exch", "f64"): "bitwise-exchange",
+                    ("fadd", "f64"): "ieee-f64-rne-add"}
 
 
 def _payload(info):
@@ -40,8 +42,11 @@ def checked_atomic_effects(admission, memory, records, buffers):
                 or buffer.get("dtype") != dtype
                 or word and (profile != TYPED_EFFECT_PROFILE or floating or info.get("operation") == "cas"
                     or info.get("word_bits") not in (32, 64) or info["word_view"] != expected_view)
-                or floating and (profile != TYPED_EFFECT_PROFILE or info.get("operation") != "exch"
-                    or dtype != "f" + str(info.get("word_bits")) or info.get("numeric_contract") != "bitwise-exchange")
+                or floating and (profile != TYPED_EFFECT_PROFILE
+                    or (info.get("operation"), dtype) not in _FLOAT_CONTRACTS
+                    or dtype != "f" + str(info.get("word_bits"))
+                    or info.get("numeric_contract") != _FLOAT_CONTRACTS.get((info.get("operation"), dtype)))
+                or not floating and info.get("operation") == "fadd"
                 or not floating and ("value_dtype" in info or "numeric_contract" in info)
                 or info.get("word_bits") not in ((16, 32, 64) if info.get("operation") == "cas" else (32, 64))
                 or info.get("operation") not in _KINDS or info.get("standard_kind") != _KINDS[info["operation"]]

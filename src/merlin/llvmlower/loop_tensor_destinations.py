@@ -120,7 +120,9 @@ def _ltd_scalar_body(op, *, fresh_seed, private_atomics=False):
         if name == 'memref.atomic_rmw':
             if (not private_atomics or not fresh_seed or len(inner.operands) < 2 or inner.regions
                     or not _ltd_private_root(inner.operands[1]) or len(inner.results) != 1
-                    or str(inner.results[0].type) not in ('i32', 'i64')
+                    or (str(inner.results[0].type) not in ('i32', 'i64')
+                        and (str(inner.results[0].type) not in ('f32', 'f64')
+                             or ir.IntegerAttr(inner.attributes['kind']).value not in (0, 3)))
                     or inner.operands[0].type != inner.results[0].type
                     or any(not isinstance(v.type, ir.IndexType) for v in tuple(inner.operands)[2:])):
                 return False
