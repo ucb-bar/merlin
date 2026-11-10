@@ -45,10 +45,14 @@ def main():
     parser.add_argument("--memory-qualification", type=Path)
     parser.add_argument("--native-cache", type=Path)
     parser.add_argument("--compact-trace", action="store_true")
+    parser.add_argument("--program-residency", action="store_true",
+                        help="opt-in generic-session persistent-IMEM functional qualification")
     parser.add_argument("--input-overrides", type=Path, help="generated predecessor inputs, keyed input_N")
     parser.add_argument("--input-bindings", type=Path, help="JSON producer application/execution and typed output-to-input bindings")
     parser.add_argument("--execution-output", type=Path, help="separate mutable execution artifacts from compiled package")
     args = parser.parse_args()
+    if args.program_residency and args.backend == "cycle":
+        parser.error("program residency qualification requires a functional backend")
     if args.max_instructions <= 0:
         parser.error("max-instructions must be positive")
     if args.backend == "qualified_native":
@@ -152,6 +156,9 @@ def main():
             execution_qualification = selected["execution_metadata"]
     elif args.compact_trace:
         parser.error("compact traces currently require the functional backend")
+    if args.program_residency:
+        from resident_runtime import ResidentFunctionalModelRuntime
+        runtime_type = ResidentFunctionalModelRuntime
     runtime = runtime_type(args.atlas_root.resolve(), args.model_root.resolve(), images, execution_root / "execution",
                            image_plans=plans, memory_bytes=max(262144, record.get("io_memory_bytes") or 0), **options)
     library_path = Path(record.get("host_library", "application/c-package/capsule.so"))
@@ -204,6 +211,9 @@ def main():
                "outputs": [{"dtype": value.dtype.str, "shape": list(value.shape),
                             "sha256": sha256(value.tobytes()).hexdigest()} for value in outputs],
                "independent_comparison": "PENDING", "hardware_qualification": "PENDING"}
+    if args.program_residency:
+        receipt["program_residency"] = execution["program_residency"]
+        receipt["control_flow_adapter"] = execution["control_flow_adapter"]
     if record.get("execution_host_math"):
         receipt["execution_host_math"] = record["execution_host_math"]
         receipt["functional_validation_only"] = True

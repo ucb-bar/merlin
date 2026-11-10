@@ -91,6 +91,95 @@ Select qualified execution with `--backend qualified_native --native-qualificati
 "$NATIVE_CACHE"`. It authenticates both receipts and retains the same default
 1,000,000-instruction limit per launch; missing qualification refuses.
 
+## Qualification-only combined loop, cache and residency gate
+
+The optional residency example is a qualification bridge, selected only by
+`execute_graph.py --program-residency` with a functional backend. Generated
+packages do not include or enable it. The recipe uses `resident_runtime.py`,
+`program_residency.py`, `program_residency_bridge.c`, and
+`examples/atlas/program_session.h`. The generic Merlin C session owns retention
+policy; Atlas supplies physical IMEM primitives. The bridge explicitly prepares
+its separate qualification host and exclusively owns that endpoint. Platform
+resets must use `atlas_slots_reset_completed` to invalidate its retained handles.
+The bridge decodes and executes the complete persistent IMEM from reset PC zero,
+including the selected JAL delay slot. This is functional qualification, with hardware and timing gates separate.
+
+The reset-entry trampoline adds two executed instructions per resident launch
+beyond the body's proven instruction bound. No static proof currently combines
+that overhead with the body bound. Only the runtime instruction cap enforces the
+1,000,000-instruction policy for the combined launch. Keep
+`--max-instructions 1000000`; a launch that reaches the cap without halting fails.
+
+For the fixed64 gate, first prepare the authenticated whole-model capture,
+precision policy, rotary archive/equality receipt, source inputs and snapshot
+using [the host-rotary recipe](../../rotary-host/README.md). Use a fresh
+`$COMPILED` and `$EXECUTION`. Run from the Merlin repository root, with `$TOOLS`
+set as above, `$ROTARY_TOOLS=examples/atlas/rotary-host`, and the compiler/model
+interpreters and qualification paths set for those environments:
+
+```sh
+nice -n 10 "$COMPILER_PYTHON" -m merlin.targetgen.cli native-compile \
+  --engine merlin_native --support atlas --snapshot "$SNAPSHOT" \
+  --target-source "$ATLAS_ROOT" --compile-inputs "$STAGED" \
+  --application --already-quantized --application-parameters external \
+  --application-name capsule --application-memory-bytes 536870912 \
+  --io-memory-bytes 67108864 --abi auto --mode diagnostic \
+  --materialization-cache --region-materialization-cache \
+  --application-region-loop --deterministic-receipts \
+  --out "$COMPILED/application" \
+  --status-file "$COMPILED/compile-status.json"
+nice -n 10 "$COMPILER_PYTHON" "$TOOLS/prepare_live_execution.py" \
+  --compiled "$COMPILED" --capture "$CAPTURE" --staged "$STAGED" \
+  --snapshot "$SNAPSHOT" --atlas-root "$ATLAS_ROOT" \
+  --boundary-source "$BOUNDARY" \
+  --expected-boundary-source-sha256 "$BOUNDARY_SHA256" --inputs "$INPUTS" \
+  --functional-validation \
+  --execution-host-math-archive "$ROTARY_TOOLS/out/execution-host-math/libcore-math-execution-host.a" \
+  --execution-host-math-equivalence "$ROTARY_TOOLS/out/execution-host-math/equivalence-receipt.json" \
+  --execution-host-math-rv64-output "$ROTARY_TOOLS/out/rv64-rotary.bin"
+nice -n 10 "$MODEL_PYTHON" "$TOOLS/execute_graph.py" \
+  --compiled "$COMPILED" --atlas-root "$ATLAS_ROOT" --model-root "$MODEL_ROOT" \
+  --backend qualified_native --native-qualification "$ARITHMETIC_QUALIFICATION" \
+  --memory-qualification "$MEMORY_QUALIFICATION" --native-cache "$NATIVE_CACHE" \
+  --program-residency --max-instructions 1000000 --compact-trace \
+  --execution-output "$EXECUTION"
+```
+
+Packaging independently replays `native-verify`, including the loop option
+recorded in the manifest. The counted C driver still invokes every original
+wrapper and binding. The two materialization caches affect compilation;
+`--deterministic-receipts` selects reproducible receipt metadata explicitly, and
+`--native-cache` holds qualified execution support. None of these options retains
+operand writes. Check the manifest's loop selection, compile-status cache records,
+and execution residency counters when recording the combined gate.
+
+Authenticate the independent reference's source inputs and parameters as in the
+host-rotary gate, then compare every raw BF16 output word. For its fixed64 head
+`expected.npz`, set `$REFERENCE_OUTPUTS` and run:
+
+```sh
+nice -n 10 "$MODEL_PYTHON" - "$EXECUTION/actual.npz" "$REFERENCE_OUTPUTS" <<'PYTHON'
+from hashlib import sha256
+import sys
+import numpy as np
+
+with np.load(sys.argv[1], allow_pickle=False) as archive:
+    actual = archive["output_0"].copy()
+with np.load(sys.argv[2], allow_pickle=False) as archive:
+    expected = archive["output_0"].copy()
+if actual.dtype != np.uint16 or expected.dtype != np.uint16:
+    raise SystemExit("expected raw BF16 words")
+if actual.shape != expected.shape or actual.shape != (1, 64, 32000):
+    raise SystemExit("fixed64 output shape differs")
+if not np.array_equal(actual, expected):
+    raise SystemExit("independent output differs")
+digest = sha256(actual.tobytes()).hexdigest()
+if digest != "b81d4a7eb71d12ca9a1a601a1ddecb7d0354be968a1143f235acea7761e3aeba":
+    raise SystemExit("fixed64 output digest differs")
+print("PASS", digest)
+PYTHON
+```
+
 ## Saved-boundary regression
 
 Install matching Merlin, model2MLIR, and atlas-mlir checkouts in the compiler

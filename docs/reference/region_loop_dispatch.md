@@ -67,3 +67,11 @@ compile API, independently replays it, and compiles and executes its normal
 invocation for all 22 recorded trips. It also checks the handoff sources and
 refuses a changed publication option. This synthetic gate is separate from any
 whole-model numerical qualification.
+
+The [qualification-only residency recipe](../../examples/atlas/whole-model/unchanged_fx/README.md#qualification-only-combined-loop-cache-and-residency-gate)
+combines the counted C driver, opt-in compilation caches and the example
+persistent-IMEM functional bridge. The residency trampoline adds two executed
+instructions per launch beyond the body's proven bound. The combined bound is
+not statically proven; only the runtime cap enforces the 1,000,000-instruction
+policy for that qualification. This does not establish a whole-model result
+until the complete authenticated run and independent output comparison pass.
