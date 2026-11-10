@@ -10,8 +10,9 @@ FEATURE = "lower_atomic_word_views"
 MARKER = "__merlin_atomic_word_views__"
 
 from .atomic_float_add import SUPPORT as _FLOAT_SUPPORT
+from .atomic_word_compare_exchange import SUPPORT as _WORD_CAS_SUPPORT
 
-SUPPORT = _FLOAT_SUPPORT + r'''
+SUPPORT = _FLOAT_SUPPORT + _WORD_CAS_SUPPORT + r'''
 _WORD_OPS = {'arith.addi': 'add', 'arith.andi': 'and', 'arith.ori': 'or', 'arith.xori': 'xor',
              'arith.maxsi': 'max', 'arith.minsi': 'min', 'arith.maxui': 'umax', 'arith.minui': 'umin'}
 
@@ -21,12 +22,14 @@ def _word_match(op):
         return None
     if (floating_add := _float_add_match(op)) is not None:
         return floating_add
+    if (word_cas := _word_cas_match(op)) is not None:
+        return word_cas
     if (len(op.operands) != 2 or len(op.results) != 1 or len(op.regions) != 1
             or len(op.regions[0].blocks) != 1):
         raise ValueError('word atomics require one typed rank-one atomic region')
     floating = str(op.results[0].type)
-    if floating not in ('f32', 'f64') or str(op.operands[0].type) != 'memref<?x' + floating + '>':
-        raise ValueError('word atomics require identity-layout default-space f32/f64 storage')
+    if floating not in ('f16', 'f32', 'f64') or str(op.operands[0].type) != 'memref<?x' + floating + '>':
+        raise ValueError('word atomics require identity-layout default-space f16/f32/f64 storage')
     width = int(floating[1:])
     integer = ir.IntegerType.get_signless(width, context=op.context)
     block = op.regions[0].blocks[0]
@@ -41,11 +44,11 @@ def _word_match(op):
         if value == block.arguments[0]:
             op.verify()
             return (*op.operands, None, width, 'identity')
-        if value.type == block.arguments[0].type and not (isinstance(value, ir.OpResult) and value.owner.operation.block == block):
+        if width != 16 and value.type == block.arguments[0].type and not (isinstance(value, ir.OpResult) and value.owner.operation.block == block):
             op.verify()
             return (*op.operands, value, width, 'exchange-float')
         raise ValueError('atomic assignment must retain an outside floating scalar')
-    if (len(operations) == 2 and operations[0].name == 'arith.constant' and not operations[0].operands
+    if (width != 16 and len(operations) == 2 and operations[0].name == 'arith.constant' and not operations[0].operands
             and len(operations[0].results) == 1 and operations[0].results[0].type == block.arguments[0].type
             and operations[1].name == 'memref.atomic_yield'
             and tuple(operations[1].operands) == tuple(operations[0].results)):
@@ -65,6 +68,8 @@ def _word_match(op):
             op.verify()
             return (*op.operands, None, width, 'identity')
         raise ValueError('atomic identity requires exact inverse current-word bitcasts')
+    if width == 16:
+        raise ValueError('f16 word storage requires exact compare/exchange or current-word identity')
     if len(operations) == 4:
         viewed, updated, stored, terminal = operations
         if (not cast(viewed, block.arguments[0], integer) or updated.name not in _WORD_OPS
@@ -99,6 +104,8 @@ def _word_match(op):
 
 def _word_source(symbol, width, kind):
     import json
+    if kind == 'cas-word' or width == 16 and kind == 'identity':
+        return _word_cas_source(symbol, width, identity=kind == 'identity')
     if width == 32 and kind == 'fadd-ftz':
         return _float_add_source(symbol)
     if width == 32 and kind == 'ftz-identity':
@@ -135,6 +142,8 @@ def _word_source(symbol, width, kind):
 def _word_helper_equal(op, symbol, module):
     # This grants synchronous borrowing only. Reconstruct from the actual
     # primitive/type, never the symbol spelling, source tag or saved plan.
+    if _word_cas_helper_equal(op, symbol, module):
+        return True
     block = op.regions[0].blocks[0]
     signature = ir.FunctionType(ir.TypeAttr(op.attributes['function_type']).value)
     if len(signature.results) != 1 or str(signature.results[0]) not in ('f32', 'f64'):

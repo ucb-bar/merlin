@@ -728,6 +728,76 @@ def test_word_event_bindings_use_complete_inlined_source_context(tmp_path, chang
             checked_word_stages(*args)
 
 
+@pytest.mark.parametrize("width", [16, 32, 64])
+@pytest.mark.parametrize("change", [None, "missing", "formal", "storage", "capture", "opcode"])
+def test_word_cas_template_formals_bind_the_original_floating_storage(tmp_path, width, change):
+    from copy import deepcopy
+    from merlin.frontends.kernel_word_evidence import checked_word_stages
+    source = tmp_path / "capture"
+    word_fixture(source, isolated=True)
+    stage = json.loads((source / "word-stage.json").read_text())
+    provenance = json.loads((source / "provenance.json").read_text())
+    memory = provenance["memory"]
+    memory["effect_profile"] = "private-invocation-typed-atomics-v2"
+    binding = stage["events"]["bindings"][0]
+    view = {"storage_dtype": f"f{width}", "value_dtype": f"i{width}", "element_bits": width,
+            "address_units": "equal-width-elements"}
+    binding.update(opcode="tt.atomic_cas", input_types=[f"!tt.ptr<f{width}>", "tensor<2xi64>", *[f"tensor<2xi{width}>"] * 2],
+        result_types=[f"tensor<2xi{width}>"], word_view=view)
+    binding["template_input_types"] = [f"!tt.ptr<i{width}>", *binding["input_types"][1:]]
+    memory["atomic_payload"] = [{"source_ids": binding["source_ids"], "word_view": deepcopy(view)}]
+    if change == "missing": binding.pop("template_input_types")
+    elif change == "formal": binding["template_input_types"][0] = binding["input_types"][0]
+    elif change == "storage": binding["input_types"][0] = binding["template_input_types"][0]
+    elif change == "capture": binding["template_input_types"][2] = "i1"
+    elif change == "opcode": binding["opcode"] = "tt.atomic_rmw"
+    args = (stage, (source / "word-input.mlir").read_bytes(), (source / "word-tensor.mlir").read_bytes(),
+            memory, {record["id"] for record in provenance["normalized_operations"]})
+    if change is None:
+        checked_word_stages(*args)
+    else:
+        with pytest.raises(ValueError, match="CAS template"):
+            checked_word_stages(*args)
+
+
+@pytest.mark.parametrize("width", [16, 32, 64])
+@pytest.mark.parametrize("change", [None, "legacy-source", "profile", "dtype", "source", "mask", "payload", "storage", "units", "kind", "bits"])
+def test_word_cas_effect_custody_keeps_comparison_and_storage_contract(tmp_path, width, change):
+    from copy import deepcopy
+    from merlin.frontends.kernel_atomic_evidence import checked_atomic_effects
+    source = tmp_path / "capture"
+    atomic_fixture(source, word=True)
+    admission = json.loads((source / "memory-admission.json").read_text())
+    provenance = json.loads((source / "provenance.json").read_text())
+    memory, records = provenance["memory"], provenance["normalized_operations"]
+    buffers = {b["name"]: b for b in provenance["spec"]["buffers"]}
+    access, payload = admission["accesses"][0], admission["atomic_adaptations"][0]
+    info = access["atomic"]
+    info.update(operation="cas", standard_kind="compare-exchange", word_bits=width,
+        word_view={"storage_dtype": f"f{width}", "value_dtype": f"i{width}", "element_bits": width,
+                   "address_units": "equal-width-elements"})
+    access.update(opcode="tt.atomic_cas", mask="unmasked")
+    buffers[access["buffer"]]["dtype"] = f"f{width}"
+    if change == "profile": memory["effect_profile"] = "private-invocation-integer-atomics-v1"
+    elif change == "dtype": buffers[access["buffer"]]["dtype"] = f"i{width}"
+    elif change == "mask": access["mask"] = "source-per-lane"
+    elif change == "storage": info["word_view"]["storage_dtype"] = "f64" if width != 64 else "f32"
+    elif change == "units": info["word_view"]["address_units"] = "bytes"
+    elif change == "kind": info["standard_kind"] = 1
+    elif change == "bits": info["word_bits"] = 8
+    payload.update(deepcopy(info), payload="standard-memref-generic-integer-word-compare-exchange-with-original-returned-old-value",
+                   inactive_old_value="no-inactive-lanes")
+    if change == "payload": payload["payload"] = "standard-memref-generic-integer-word-update-with-original-returned-old-value"
+    records[0].update(opcode="tt.atomic_rmw" if change == "source" else "tt.atomic_cas", atomic=deepcopy(info))
+    if change != "legacy-source": records[0]["atomic"].pop("word_view")
+    memory["atomic_payload"] = deepcopy(admission["atomic_adaptations"])
+    if change in (None, "legacy-source"):
+        checked_atomic_effects(admission, memory, records, buffers)
+    else:
+        with pytest.raises(ValueError, match="atomic memory"):
+            checked_atomic_effects(admission, memory, records, buffers)
+
+
 @pytest.mark.parametrize("change", [None, "cas-mask", "cas-source", "cas-access"])
 def test_cas_staging_keeps_declared_comparison_operation_and_unmasked_access(tmp_path, change):
     source, target = tmp_path / "capture", tmp_path / "compiler"

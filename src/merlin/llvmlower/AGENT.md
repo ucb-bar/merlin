@@ -60,6 +60,16 @@ without converting NaN payloads through host-language floats. Validate complete
 closed bodies before mutation; unknown effects and unused extra arithmetic do
 not gain permission through this normalization.
 
+The word feature also recognizes exact integer compare/select regions on
+f16/f32/f64 storage. Compare original integer words, retain unchanged current
+bits on failure and return the original old word. Its internal helper returns
+an integer, avoiding scalar half floating ABI conversions. Exact local integer
+constants may be hoisted only after the entire body is validated. Current-word
+identities remain atomic RMWs; f16 identity helpers also return integer words.
+Other f16 word arithmetic/assignments are unqualified. Borrowing reconstructs
+the complete current helper, including orders, strides, linkage and returned
+value; a name or provenance tag grants no permission.
+
 That same explicit feature recognizes closed IEEE f32/f64 and FTZ f32 addition from actual
 arithmetic and result NaN quieting. FTZ also retains input/result flushing. The native helper
 uses an aligned atomic acquire load and acq_rel/acquire CAS retry loop; it

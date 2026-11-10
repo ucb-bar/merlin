@@ -17,7 +17,8 @@ def _payload(info):
     if info.get("numeric_contract") == "f32-rne-sign-preserving-ftz-add":
         return "standard-memref-generic-f32-ftz-add-with-original-returned-old-value"
     if "word_view" in info:
-        return "standard-memref-generic-integer-word-update-with-original-returned-old-value"
+        return ("standard-memref-generic-integer-word-compare-exchange-with-original-returned-old-value" if info["operation"] == "cas"
+                else "standard-memref-generic-integer-word-update-with-original-returned-old-value")
     return ("standard-memref-generic-compare-exchange-with-original-returned-old-value" if info["operation"] == "cas"
             else "standard-memref-atomic-rmw-with-original-returned-old-value")
 
@@ -51,8 +52,8 @@ def checked_atomic_effects(admission, memory, records, buffers):
             dtype = expected_view["storage_dtype"]
         if (not isinstance(info, dict) or not candidates or any(c != info and c != primitive for c in candidates)
                 or buffer.get("dtype") != dtype
-                or word and (profile != TYPED_EFFECT_PROFILE or floating or info.get("operation") == "cas"
-                    or info.get("word_bits") not in (32, 64) or info["word_view"] != expected_view)
+                or word and (profile != TYPED_EFFECT_PROFILE or floating
+                    or info.get("word_bits") not in ((16, 32, 64) if info.get("operation") == "cas" else (32, 64)) or info["word_view"] != expected_view)
                 or floating and (profile != TYPED_EFFECT_PROFILE
                     or (info.get("operation"), dtype) not in _FLOAT_CONTRACTS
                     or dtype != "f" + str(info.get("word_bits"))

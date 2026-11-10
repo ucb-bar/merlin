@@ -77,7 +77,15 @@ def checked_word_stages(stage, source, output, memory, inventory):
         if "word_view" in binding or any(v is not None for v in views):
             view = binding.get("word_view")
             if (memory.get("effect_profile") != "private-invocation-typed-atomics-v2"
-                    or binding["opcode"] != "tt.atomic_rmw" or not isinstance(view, dict) or not views
+                    or binding["opcode"] not in ("tt.atomic_rmw", "tt.atomic_cas") or not isinstance(view, dict) or not views
                     or any(v != view for v in views)):
                 raise ValueError("source-word event view differs from its typed atomic storage contract")
+        if "template_input_types" in binding or binding["opcode"] == "tt.atomic_cas" and "word_view" in binding:
+            types, view = binding.get("template_input_types"), binding.get("word_view", {})
+            if (binding["opcode"] != "tt.atomic_cas" or not isinstance(types, list)
+                    or len(types) != len(binding["input_types"])
+                    or types[1:] != binding["input_types"][1:]
+                    or types[0] != "!tt.ptr<" + str(view.get("value_dtype")) + ">"
+                    or binding["input_types"][0] != "!tt.ptr<" + str(view.get("storage_dtype")) + ">"):
+                raise ValueError("source-word CAS template differs from its declared storage/view input types")
         symbols.add(name)

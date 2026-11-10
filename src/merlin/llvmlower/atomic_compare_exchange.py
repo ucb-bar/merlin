@@ -95,9 +95,10 @@ def _cas_rewrite(ctx, module, *, word_views=False):
     plans = []
     for op in operations:
         if (word_views and op.name == 'memref.generic_atomic_rmw' and op.results
-                and str(op.results[0].type) in ('f32', 'f64')):
+                and str(op.results[0].type) in ('f16', 'f32', 'f64')):
             memory, index, value, width, kind = _word_match(op)
-            plans.append((op, memory, index, () if value is None else (value,), width, 'word', kind))
+            values = value if kind == 'cas-word' else () if value is None else (value,)
+            plans.append((op, memory, index, values, width, 'word', kind))
         elif (match := _cas_match(op)) is not None:
             memory, index, comparison, value, width = match
             plans.append((op, memory, index, (comparison, value), width, 'cas', 'cas'))
@@ -114,6 +115,15 @@ def _cas_rewrite(ctx, module, *, word_views=False):
     symbols = {ir.StringAttr(op.attributes['sym_name']).value for op in module.body.operations if 'sym_name' in op.attributes}
     helpers = {}
     for op, memory, index, values, width, family, kind in plans:
+        if family == 'word' and kind == 'cas-word':
+            captured = []
+            for value in values:
+                if isinstance(value, ir.Operation):
+                    with ctx, ir.InsertionPoint(op):
+                        constant = value.clone()
+                    value = constant.results[0]
+                captured.append(value)
+            values = tuple(captured)
         if family == 'word' and (kind == 'constant-float' or kind.startswith('constant-int:')):
             with ctx, ir.InsertionPoint(op):
                 constant = values[0].clone()
@@ -138,10 +148,15 @@ def _cas_rewrite(ctx, module, *, word_views=False):
                 name = item if isinstance(item, str) else item.name
                 if name.startswith('prov.'):
                     attributes[name] = op.attributes[name]
+            integer_result = family == 'word' and (kind == 'cas-word' or width == 16 and kind == 'identity')
+            result_type = ir.IntegerType.get_signless(width) if integer_result else op.results[0].type
             call = ir.Operation.create('func.call', operands=[memory, index, *values],
-                results=[op.results[0].type], attributes={'callee': ir.FlatSymbolRefAttr.get(helpers[key]),
+                results=[result_type], attributes={'callee': ir.FlatSymbolRefAttr.get(helpers[key]),
                     **attributes})
-        op.results[0].replace_all_uses_with(call.results[0])
+            returned = call.results[0]
+            if integer_result:
+                returned = ir.Operation.create('arith.bitcast', operands=[returned], results=[op.results[0].type], attributes=attributes).results[0]
+        op.results[0].replace_all_uses_with(returned)
         op.erase()
     module.operation.verify()
     print('OK integer_compare_exchange', len(plans), flush=True)
