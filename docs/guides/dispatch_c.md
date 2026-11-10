@@ -18,7 +18,9 @@ The checks use quadratic runtime work but linear source size, avoiding a large
 unrolled validation function for models with hundreds of parameters. Dispatch
 calls themselves remain explicit calls to compiled implementations.
 The driver calls compiled CPU and device wrappers in graph order and uses the
-program's temporary-buffer offsets. It has no allocator, operator interpreter,
+program's temporary-buffer offsets. The default driver needs no allocator;
+optional [counted loops](../reference/region_loop_dispatch.md) use invocation-local
+heap storage for their call table. The driver has no operator interpreter,
 startup code or platform driver. The application owns the final executable.
 
 ## Compile and bind operations
