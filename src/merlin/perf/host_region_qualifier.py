@@ -7,7 +7,6 @@ The receipt does not upgrade a reduced check into a full-shape equivalence theor
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 from time import monotonic
@@ -129,21 +128,6 @@ _SOURCE_WITNESS_KINDS = (
     "fanout",
     "chain",
 )
-
-
-def _ranked_source_witness_options(candidates):
-    """Try every supported mechanism on the best changed task before the next task.
-
-    Each extractor currently parses the source module. Grouping by mechanism made a large graph pay
-    one full parse for every changed task before reaching its likely pointwise mechanism. Task-major
-    order preserves the payload/integer-work ranking and bounds the common successful path to at most
-    one pass through the extractor set.
-    """
-    return (
-        (kind, row)
-        for row in sorted(candidates, key=lambda candidate: candidate[0], reverse=True)
-        for kind in _SOURCE_WITNESS_KINDS
-    )
 
 
 def _bounded_source_witness_options(candidates, *, max_ranked_tasks: int = 1):

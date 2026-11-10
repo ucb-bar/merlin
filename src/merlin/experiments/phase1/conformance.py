@@ -445,42 +445,6 @@ def _call_index(calls: list[ToolCall], predicate) -> int | None:
     return next((i for i, call in enumerate(calls) if call.succeeded and predicate(call)), None)
 
 
-def _literal_string_list(text: str) -> list[str] | None:
-    """Find a printed non-empty Python list/tuple/set of strings in a tool result."""
-    candidates = [text.strip(), *(line.strip() for line in reversed(text.splitlines()))]
-    # EVERY BALANCED BRACKETED REGION, not the span from the first "[" to the last "]". That span is a
-    # single candidate that silently swallows everything between two commands' outputs: measured
-    # 2026-09-05 on gemmini arm-4 g4p1, `derived_levers` printed a clean 7-string list and the agent
-    # went on, in the SAME composed command, to print a facts blob ending in another "]" -- so the
-    # span ran from the levers list through the facts JSON, parsed as nothing, and the corroboration
-    # returned None for work that had plainly happened. Scanning each balanced region instead means an
-    # extra bracket later in the output cannot hide an earlier valid list.
-    depth, opened = 0, -1
-    for pos, ch in enumerate(text):
-        if ch == "[":
-            if depth == 0:
-                opened = pos
-            depth += 1
-        elif ch == "]" and depth:
-            depth -= 1
-            if depth == 0 and opened >= 0:
-                candidates.append(text[opened : pos + 1])
-    for candidate in candidates:
-        if not candidate:
-            continue
-        try:
-            value = ast.literal_eval(candidate)
-        except (ValueError, SyntaxError):
-            continue
-        if (
-            isinstance(value, (list, tuple, set))
-            and value
-            and all(isinstance(item, str) and item.strip() for item in value)
-        ):
-            return list(value)
-    return None
-
-
 def _derived_levers_evidence(call: ToolCall) -> bool:
     return "derived" in _discovery_calls(call)
 

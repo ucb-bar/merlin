@@ -12,6 +12,7 @@ located by token, its parameter list split, and each ``<type> <name><dims>`` par
 field by field. A parameter the scanner cannot read is not skipped silently — it is reported by
 :func:`parse_signature`, which returns the unreadable text alongside the shape.
 """
+
 from __future__ import annotations
 
 import json
@@ -59,7 +60,7 @@ def _entry_params(text: str) -> str | None:
             k = _space_run(text, j + len(_ENTRY_NAME))
             close = text.find(")", k + 1) if text.startswith("(", k) else -1
             if close != -1:
-                return text[k + 1:close]
+                return text[k + 1 : close]
         at = text.find(_ENTRY_RETURN, at + 1)  # an unclosed list is not the entry point; keep looking
     return None
 
@@ -75,7 +76,7 @@ def _param_at(params: str, start: int) -> tuple[tuple[str, str, list[int]], int]
     if tname == start:
         return None
     i = _space_run(params, tname)
-    if i == tname:                                  # the separator between type and name
+    if i == tname:  # the separator between type and name
         return None
     pname = _word_run(params, i)
     if pname == i:
@@ -93,7 +94,7 @@ def _param_at(params: str, start: int) -> tuple[tuple[str, str, list[int]], int]
             b += 1
         c = _space_run(params, b)
         if b == a or not params.startswith("]", c):
-            break                                   # not a constant dimension: stop the run
+            break  # not a constant dimension: stop the run
         dims.append(int(params[a:b]))
         j = c + 1
     if not dims:
@@ -116,7 +117,7 @@ def parse_signature(text: str) -> tuple[str, str, dict[str, object], tuple[str, 
     i = 0
     while i < len(params):
         got = _param_at(params, i)
-        if got is None:                             # not a parameter here: step one char and retry
+        if got is None:  # not a parameter here: step one char and retry
             i += 1
             continue
         param, end = got
@@ -151,12 +152,6 @@ def parse_signature(text: str) -> tuple[str, str, dict[str, object], tuple[str, 
     return "matmul", dtype, shape, tuple(skipped)
 
 
-def _parse_signature(text: str) -> tuple[str, str, dict[str, object]]:
-    """Return (op, dtype, shape) parsed from the ``void test(...)`` signature."""
-    op, dtype, shape, _unreadable = parse_signature(text)
-    return op, dtype, shape
-
-
 _KERNEL_STEM, _KERNEL_EXT = "kernel_", ".c"
 _HEX = frozenset("0123456789abcdef")
 
@@ -170,10 +165,10 @@ def kernel_hash(name: str) -> str | None:
     """
     if not name.endswith(_KERNEL_EXT):
         return None
-    stem = name[:-len(_KERNEL_EXT)]
+    stem = name[: -len(_KERNEL_EXT)]
     at = stem.find(_KERNEL_STEM)
     while at != -1:
-        digits = stem[at + len(_KERNEL_STEM):]
+        digits = stem[at + len(_KERNEL_STEM) :]
         if digits and all(ch in _HEX for ch in digits):
             return digits
         at = stem.find(_KERNEL_STEM, at + 1)
@@ -209,8 +204,14 @@ def _manifest_index(manifest: Path) -> dict[str, dict]:
 #: Ledger ``outcome`` -> whether the attempt was kept. Values not listed here are recorded verbatim and
 #: counted as attempted-but-unclassified, never quietly folded into "failed": an outcome vocabulary that
 #: grows without this map noticing would silently shrink the denominator of the base rate below.
-_LEDGER_KEPT = {"improved": True, "regressed": False, "compile_error": False,
-                "incorrect": False, "no_change": False, "correct_no_gain": False}
+_LEDGER_KEPT = {
+    "improved": True,
+    "regressed": False,
+    "compile_error": False,
+    "incorrect": False,
+    "no_change": False,
+    "correct_no_gain": False,
+}
 
 
 def ledger_rows(repo: str) -> "Iterator[dict]":
@@ -238,7 +239,7 @@ def ledger_rows(repo: str) -> "Iterator[dict]":
         try:
             row = json.loads(line)
         except ValueError:
-            continue                 # a malformed line is skipped, and counted by ledger_summary
+            continue  # a malformed line is skipped, and counted by ledger_summary
         if isinstance(row, dict):
             yield row
 
@@ -251,14 +252,17 @@ def ledger_summary(repo: str) -> dict:
     """
     counts: dict[str, int] = {}
     for row in ledger_rows(repo):
-        counts[str(row.get("outcome") or "unknown")] = counts.get(
-            str(row.get("outcome") or "unknown"), 0) + 1
+        counts[str(row.get("outcome") or "unknown")] = counts.get(str(row.get("outcome") or "unknown"), 0) + 1
     total = sum(counts.values())
     kept = sum(n for o, n in counts.items() if _LEDGER_KEPT.get(o) is True)
     unclassified = sum(n for o, n in counts.items() if o not in _LEDGER_KEPT)
-    return {"total": total, "outcomes": dict(sorted(counts.items())),
-            "improved": kept, "unclassified": unclassified,
-            "improvement_rate": (kept / total) if total else None}
+    return {
+        "total": total,
+        "outcomes": dict(sorted(counts.items())),
+        "improved": kept,
+        "unclassified": unclassified,
+        "improvement_rate": (kept / total) if total else None,
+    }
 
 
 def ledger_search_steps(repo: str, *, target: str) -> "Iterator[object]":
@@ -277,11 +281,11 @@ def ledger_search_steps(repo: str, *, target: str) -> "Iterator[object]":
         correct = bool(row.get("correct"))
         yield SearchStep(
             axis=f"autocomp:{row.get('strategy_num') or 'S?'}",
-            category=None,               # the ledger has no CCA axis, so it has no category
-            action_class="HEURISTIC",    # an LLM-proposed source transform, not a typed compiler lever
+            category=None,  # the ledger has no CCA axis, so it has no category
+            action_class="HEURISTIC",  # an LLM-proposed source transform, not a typed compiler lever
             target_seam=f"autocomp:{target}:{row.get('run') or '?'}",
             intended_facet={},
-            achieved=False,              # no intended-vs-emitted audit exists for these rows
+            achieved=False,  # no intended-vs-emitted audit exists for these rows
             residual=[],
             correctness_ok=correct,
             speedup=(row.get("speedup") if correct else None),
@@ -315,8 +319,14 @@ def ingest_autocomp(repo: str, target: str, limit: int | None = None) -> Iterato
         except ValueError:
             rel = str(path)
         yield NormalizedKernel(
-            source="autocomp", target=target, path=rel, op=op, dtype=dtype,
-            shape=shape, raw_text=text, meta=meta,
+            source="autocomp",
+            target=target,
+            path=rel,
+            op=op,
+            dtype=dtype,
+            shape=shape,
+            raw_text=text,
+            meta=meta,
         )
         count += 1
         if limit is not None and count >= limit:

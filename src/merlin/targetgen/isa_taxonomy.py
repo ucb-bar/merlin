@@ -160,16 +160,6 @@ def _isa_def_path(te) -> Path | None:
     return None
 
 
-def _example_kernels(te) -> list[Path]:
-    """The shipped worked example kernels (``<hwbringup>/example_kernel/*.S``) — the reference instruction
-    SEQUENCES a real program uses, from which per-op required classes are derived."""
-    hw = getattr(te, "hwbringup_set", None)
-    if not hw:
-        return []
-    d = _resolve(str(hw)) / "example_kernel"
-    return sorted(d.glob("*.S")) if d.is_dir() else []
-
-
 def derive_isa_taxonomy(te, *, model_ext: str | None = None, timeout: int = 120) -> Taxonomy:
     """Introspect the target's ISA definition in the MODEL venv → {by_class, by_mnemonic, asm_mnemonics}.
 

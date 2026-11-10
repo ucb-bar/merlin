@@ -569,25 +569,6 @@ def check_schema_usage(errors):
             errors.append(f"dead schema (no reference in src/merlin): src/merlin/resources/schemas/{name}.schema.yaml")
 
 
-def _prose_lines(src):
-    """Line numbers occupied by DOCSTRINGS, which are prose and not a path reference.
-
-    A string that is a bare expression statement is documentation; every other string literal is code
-    (``Path("experiments")`` is a real violation and must stay one). Returns an empty set when the file
-    does not parse, so an unparsable file is scanned exactly as before rather than silently exempted."""
-    import ast
-
-    try:
-        tree = ast.parse(src)
-    except SyntaxError:
-        return set()
-    lines = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
-            lines.update(range(node.value.lineno, (node.value.end_lineno or node.value.lineno) + 1))
-    return lines
-
-
 # A string naming ``experiments`` as a path component is a read of that layout UNLESS the code uses it
 # as something other than a path. These are the non-path uses, recognised by the SHAPE of the call, not
 # by matching the word: a string predicate tests a declared-path prefix, argparse names a subcommand.

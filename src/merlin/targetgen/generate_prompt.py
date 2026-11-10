@@ -363,32 +363,6 @@ def _grading_model(te) -> str:
     return _GRADE_FLOAT if has_float else _GRADE_INTEGER
 
 
-def _corpus_uses_independent_float_goldens(te) -> bool:
-    """True iff any capsule under the declared corpus (+ its discovered siblings) carries an INDEPENDENT
-    float golden — the exact signal the grader keys on. Derived from the corpus, never a target name; IO
-    failures degrade to the integer model (the conservative default the shared skeleton has always used)."""
-    import yaml
-
-    from merlin.common.paths import repo_root
-
-    from .golden_provenance import selected_independent_float_golden
-
-    root = repo_root()
-    corpora = [te.capsule_corpus] if te.capsule_corpus else []
-    corpora += [root / rel.rstrip("/") for rel in te.corpus_siblings()]
-    for corpus in corpora:
-        if not corpus or not corpus.is_dir():
-            continue
-        for capy in sorted(corpus.glob("*/capsule.yaml")):
-            try:
-                cap = yaml.safe_load(capy.read_text(encoding="utf-8")) or {}
-            except (OSError, yaml.YAMLError):
-                continue
-            if selected_independent_float_golden(cap, capy.parent):
-                return True
-    return False
-
-
 # DRAM address contract — selected by the HARNESS'S address model (see _dram_contract). This is the
 # FIXED-PRELOAD model: a self-hosted-ISA (external_backend) target graded on the program oracle, which
 # preloads each tensor at a DECLARED base, so the emitted kernel must target those exact addresses.

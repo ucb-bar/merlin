@@ -228,7 +228,9 @@ class SharedEntry:
             self._projection_bytes = 0
 
 
-def shared_entry_verification(workspace: Path, bundle: dict, *, repo: Path, diagnostics: dict | None = None) -> SharedEntry | None:
+def shared_entry_verification(
+    workspace: Path, bundle: dict, *, repo: Path, diagnostics: dict | None = None
+) -> SharedEntry | None:
     """Verify the snapshot once for a grade's scopes, or ``None`` when no live guard can protect reuse.
 
     The guard is armed BEFORE the payload is hashed, so the digest describes bytes the
@@ -427,23 +429,6 @@ def _scanned_roster(members):
     return tuple(("/".join(parts), kind, size) for parts, _, kind, size in members)
 
 
-def _member_roster(root, members):
-    # Retain this internal helper's caller-supplied membership and ordering.
-    result = []
-    for path in members:
-        metadata = path.stat(follow_symlinks=False)
-        if stat.S_ISLNK(metadata.st_mode):
-            raise RuntimeError("bundle input snapshot contains an indirect path")
-        if stat.S_ISREG(metadata.st_mode):
-            kind, size = "file", metadata.st_size
-        elif stat.S_ISDIR(metadata.st_mode):
-            kind, size = "directory", None
-        else:
-            raise RuntimeError("bundle input snapshot contains a special file")
-        result.append((path.relative_to(root).as_posix(), kind, size))
-    return tuple(result)
-
-
 def _issue(*, root, marker_bytes, repo, policy_bytes, members, roster_guard, document, leases):
     issued = _Verification()
     issued.process, issued.thread = os.getpid(), threading.current_thread()
@@ -459,8 +444,12 @@ def _issue(*, root, marker_bytes, repo, policy_bytes, members, roster_guard, doc
 
 @contextlib.contextmanager
 def verified_snapshot_scope(
-    workspace: Path, bundle: dict, *, repo: Path,
-    entry: SharedEntry | None = None, guarded_exit: bool = False,
+    workspace: Path,
+    bundle: dict,
+    *,
+    repo: Path,
+    entry: SharedEntry | None = None,
+    guarded_exit: bool = False,
 ):
     """Batch payload reads for one protected operation.
 
@@ -543,10 +532,16 @@ def verified_snapshot_scope(
             if _policy_bytes(bundle) != original_policy or (root / MARKER).read_bytes() != marker_bytes:
                 raise RuntimeError("original snapshot scope policy or marker changed")
             final = None
-            if (reused_entry and request_entry is entry
-                    and workspace.is_absolute() and workspace.resolve() == workspace
-                    and repo.is_absolute() and repo.resolve() == repo and root.resolve() == root
-                    and entry.reusable(root, repo, original_policy)):
+            if (
+                reused_entry
+                and request_entry is entry
+                and workspace.is_absolute()
+                and workspace.resolve() == workspace
+                and repo.is_absolute()
+                and repo.resolve() == repo
+                and root.resolve() == root
+                and entry.reusable(root, repo, original_policy)
+            ):
                 # The guard was armed before the admitted hash. Watches cover
                 # files (including outside hardlink writes), directories and
                 # mount topology. They are sticky-invalid across all workers.
@@ -616,10 +611,16 @@ def _payload_content(members):
         # verification rechecks every borrowed lease after all slower reads.
         if read_lease_digest.enabled():
             ordered = list(ordered)
-            reusable = read_lease_digest.reuse([
-                path for _, (parts, path, kind, size) in ordered
-                if kind == "file" and parts != (MARKER,) and size >= minimum_lease_bytes
-            ]) or {}
+            reusable = (
+                read_lease_digest.reuse(
+                    [
+                        path
+                        for _, (parts, path, kind, size) in ordered
+                        if kind == "file" and parts != (MARKER,) and size >= minimum_lease_bytes
+                    ]
+                )
+                or {}
+            )
         else:
             reusable = {}
         for index, (parts, path, kind, size) in ordered:
@@ -687,10 +688,17 @@ def verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict
         if (root / MARKER).read_bytes() != issued.marker_bytes:
             raise RuntimeError("original snapshot scope marker changed")
         guard = getattr(issued, "roster_guard", None)
-        if (workspace.is_absolute() and workspace.resolve() == workspace
-            and repo.is_absolute() and repo.resolve() == repo and root.resolve() == root
-            and guard is not None and guard.unchanged()):
+        if (
+            workspace.is_absolute()
+            and workspace.resolve() == workspace
+            and repo.is_absolute()
+            and repo.resolve() == repo
+            and root.resolve() == root
+            and guard is not None
+            and guard.unchanged()
+        ):
             from .cpu_pool import shared_compute_pool
+
             with shared_compute_pool():
                 read_lease_digest.validate(getattr(issued, "leases", None))
             return json.loads(issued.marker_bytes)

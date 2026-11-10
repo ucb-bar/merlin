@@ -76,12 +76,6 @@ def _hex_tokens(text: str) -> list[int]:
     return out
 
 
-def _first_hex(text: str) -> int | None:
-    """The first ``0x…`` hex token in ``text``, or None. Thin view over :func:`_hex_tokens`."""
-    toks = _hex_tokens(text)
-    return toks[0] if toks else None
-
-
 def _dram_addrs_from_memory_map(md_text: str) -> list[int] | None:
     """Parse a markdown memory-map table for the DRAM region's ADDRESSES. A row is
     ``| <label> | <start> ~ <end> |``; the DRAM region is the row whose label carries the word ``DRAM``

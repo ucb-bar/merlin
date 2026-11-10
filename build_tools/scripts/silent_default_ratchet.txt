@@ -82,7 +82,6 @@ packages/merlin-experiments/src/merlin/experiments/phase1/audit.py::AnswerAudit.
 packages/merlin-experiments/src/merlin/experiments/phase1/audit.py::AnswerAudit.audit_transcript::swallowed-error::Exception
 packages/merlin-experiments/src/merlin/experiments/phase1/conformance.py::_tool_calls::swallowed-error::Exception
 packages/merlin-experiments/src/merlin/experiments/phase1/conformance.py::_python_call_names::swallowed-error::SyntaxError
-packages/merlin-experiments/src/merlin/experiments/phase1/conformance.py::_literal_string_list::swallowed-error::ValueError/SyntaxError
 packages/merlin-experiments/src/merlin/experiments/phase1/conformance.py::_vendored_xdsl_hashes::swallowed-error::OSError
 packages/merlin-experiments/src/merlin/experiments/phase1/feedback/brief.py::_load_verdicts::swallowed-error::ValueError/OSError/JSONDecodeError
 packages/merlin-experiments/src/merlin/experiments/phase1/feedback/certification.py::_l3_instruction_counts::swallowed-error::Exception
