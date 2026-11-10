@@ -142,6 +142,11 @@ memory protocol and public ABI while selecting upstream's source-word address
 stage. Additional `word-input.mlir`, `word-tensor.mlir` and `word-stage.json`
 members bind its exact input/output and pass sequence, including the supported
 64-bit offset option. Staging validates/copies these records and checks declared
+computation pipelines: both the retained sequence and its exact additional
+`math-expand-ops{ops=rsqrt}` pass are recognized. Unfiltered/different math
+expansions, duplicate passes and changed offset widths refuse. These alternatives
+do not change receipt schemas or the byte-bound event reconstruction obligation.
+Staging checks declared
 function access intent against admission. Logical-grid annotations retain the
 same intent through producer model-call inlining. This custody check establishes
 neither source equivalence nor numerical qualification and supplies no source

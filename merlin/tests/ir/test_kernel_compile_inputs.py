@@ -382,7 +382,7 @@ def test_rehashed_invalid_mutable_contract_never_publishes(tmp_path, change):
     assert not target.exists()
 
 
-def word_fixture(root, change=None, *, isolated=False):
+def word_fixture(root, change=None, *, isolated=False, math_expansion=None):
     """Source-policy byte custody only; this is not an execution oracle."""
     from xdsl.dialects.builtin import StringAttr
     from merlin.xdsl_dialects._common import text
@@ -393,6 +393,8 @@ def word_fixture(root, change=None, *, isolated=False):
     word_input, word_tensor = b"original typed integer word operations", b"signed i64 pointer offset stage"
     pipeline = ["--triton-to-unstructured=offset-bit-width=64",
         "--triton-arith-to-linalg=pids-to-func-args=false tt-to-func-func=false", "--remove-dead-values", "--canonicalize"]
+    if math_expansion is not None:
+        pipeline.insert(2, math_expansion)
     stage = {"schema": "t2m.triton-shared-stage.v1", "stage": "source-word-tensor", "stage_completed": True,
         "command": ["optimizer", *pipeline, "source.ttir"], "artifacts": {
             "source.ttir": record(word_input), "lowered.mlir": record(word_tensor)}}
@@ -482,6 +484,19 @@ def test_rehashed_inconsistent_source_word_policy_never_publishes(tmp_path, chan
     with pytest.raises(ValueError, match="source-word"):
         stage_compile_inputs(source, target)
     assert not target.exists()
+
+
+@pytest.mark.parametrize("isolated", [False, True])
+@pytest.mark.parametrize("expansion", ["--math-expand-ops=ops=rsqrt", "--math-expand-ops", "--math-expand-ops=ops=sin"])
+def test_word_pipeline_admits_only_the_selected_reciprocal_root_expansion(tmp_path, isolated, expansion):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    word_fixture(source, isolated=isolated, math_expansion=expansion)
+    if expansion == "--math-expand-ops=ops=rsqrt":
+        assert stage_compile_inputs(source, target)["payload_profile"] == "shared-source-word-buffer"
+    else:
+        with pytest.raises(ValueError, match="source-word"):
+            stage_compile_inputs(source, target)
+        assert not target.exists()
 
 
 def test_isolated_word_stages_retain_intermediates_without_evaluator_values(tmp_path, monkeypatch):

@@ -58,6 +58,9 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   pre-CSE memory-effects stage. V1 evidence keeps its original scope and cost.
   The source-word buffer profile also retains exact word-stage input/output
   evidence and validates its explicit pass sequence and function access intent.
+  Both retained legacy pipelines and the exact additional
+  `math-expand-ops{ops=rsqrt}` computation pipeline are admitted; unfiltered or
+  different math expansions remain refused. This grants stage custody only.
   V2 word evidence embeds isolated-event input/output, typed source bindings,
   arithmetic-only parent input and both actual native reports. Staging checks
   their byte chain, optimizer identity and declared inventory; producer-side
