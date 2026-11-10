@@ -20,6 +20,8 @@ Implicit casts in named contractions require the official
 `linalg-generalize-named-ops` pass at this selected native seam, after complete
 candidate validation. Recollect casts after generalization; never edit a named
 operation's canonical scalar body. Portable named contractions remain intact.
+Generalized fills retain scalar FP8 transport through `linalg.generic`; the
+complete recursive body still rejects unqualified FP8 arithmetic and calls.
 
 `lower_scalar_diagnostics` materializes standard scalar/string `vector.print`
 after ownership checks and includes length-aware assertions. Keep fixed scalar

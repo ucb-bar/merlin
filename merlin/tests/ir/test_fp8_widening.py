@@ -99,6 +99,30 @@ def test_invalid_whole_module_refuses_before_generalizing_named_contraction(tmp_
     rewrite(tmp_path, named_program("f8E4M3FN", "f8E5M2", bad=True), "refuse")
 
 
+@pytest.mark.skipif(not available(), reason="existing native compiler required")
+@pytest.mark.parametrize("source", FORMATS)
+def test_generalized_fill_keeps_scalar_fp8_transport_with_contractions(tmp_path, source):
+    program = named_program(source, "f8E5M2").replace(
+        "%r=linalg.matmul",
+        f"%filled=linalg.fill ins(%z:{source}) outs(%a:tensor<3x4x{source}>)->tensor<3x4x{source}> %r=linalg.matmul",
+    )
+    rewrite(tmp_path, program, "pass", casts=2)
+
+
+@pytest.mark.skipif(not available(), reason="existing native compiler required")
+@pytest.mark.parametrize("call", [False, True])
+def test_scalar_generic_transport_does_not_hide_unqualified_body_operations(tmp_path, call):
+    body = "%v=func.call @unknown(%x):(f8E4M3FN)->f8E4M3FN" if call else "%v=arith.addf %x,%x:f8E4M3FN"
+    generic = f"""%bad=linalg.generic {{indexing_maps=[affine_map<(i,j)->()>,affine_map<(i,j)->(i,j)>],iterator_types=["parallel","parallel"]}}
+      ins(%z:f8E4M3FN) outs(%a:tensor<3x4xf8E4M3FN>) {{
+        ^bb0(%x:f8E4M3FN,%unused:f8E4M3FN): {body} linalg.yield %v:f8E4M3FN
+      }}->tensor<3x4xf8E4M3FN>"""
+    program = named_program("f8E4M3FN", "f8E5M2").replace("%r=linalg.matmul", generic + " %r=linalg.matmul")
+    if call:
+        program = program.replace("module {", "module {func.func private @unknown(f8E4M3FN)->f8E4M3FN ")
+    rewrite(tmp_path, program, "refuse")
+
+
 def test_source_seam_preserves_all_callbacks_and_runs_once():
     calls, rewrites = [], []
     scope = {"_run_stages": lambda *args: calls.append(args)}
