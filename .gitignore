@@ -394,3 +394,7 @@ merlin/tests/data/lit/.lit_test_times.txt
 /examples/gemmini/phase2/el4_20261018/runtime_transport_experiment/
 /experiments/phase2_drafts/evidence-handoff.json
 /experiments/reference-data/joint-ready-epoch/
+
+# Retained Atlas investigation and restoration provenance.
+!/out/artifacts/handoff/atlas-target-investigation-20261109/README.md
+!/out/artifacts/handoff/atlas-target-restoration-20261110/README.md
