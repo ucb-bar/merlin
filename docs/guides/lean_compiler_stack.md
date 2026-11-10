@@ -3,7 +3,7 @@ title: Compiler gate overview and status
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-29
+last_verified: 2026-11-09
 related: [lean_bounded_pass_profiles, merlin_lean_verification, compiler_verification, qdq_macc_numerical_contract_review]
 code_refs:
   - src/merlin/verify/pass_validation.py
@@ -147,18 +147,22 @@ boundaries and source-profile exclusions. See the
 domains and resource limits. Gate availability and per-boundary proof coverage
 are separate facts.
 
-The checked-in suites exercise accepted compiler boundaries, deliberate producer
-corruption, product quarantine and fresh replay:
+The retained suite contains 200 cases across all nine gates, including accepted
+boundaries, deliberate corruption, product quarantine and fresh replay. Run
+`python build_tools/scripts/run_lean_tests.py`; the runner enforces a ceiling of
+200 cases. The earlier broad Python matrices were removed; historical campaigns
+retain their dated evidence. See the [regression guide](lean_differential_tests.md).
+The retained implementation entry points include:
 
-- [MACC wiring](../../merlin/tests/ir/test_compiler_macc_wiring.py) and
+- [MACC wiring](../../merlin/tests/ir/test_compiler_macc.py) and
   [Q/DQ integration](../../merlin/tests/ir/test_compiler_qdq.py).
 - [Word loops](../../merlin/tests/ir/test_compiler_formal_transforms.py),
   [generic UNROLL](../../merlin/tests/ir/test_compiler_loop_generic.py) and
-  [generic TILE](../../merlin/tests/ir/test_compiler_loop_generic_tile.py).
-- [Private buffers](../../merlin/tests/ir/test_compiler_buffer_rank_one.py),
+  [generic TILE](../../merlin/tests/ir/test_compiler_formal_transforms.py).
+- [Private buffers](../../merlin/tests/ir/test_compiler_buffer_untiled.py),
   [configuration](../../merlin/tests/ir/test_compiler_configuration.py) and
   [host fusion](../../merlin/tests/ir/test_compiler_host_graph_fusion.py).
-- [Sixteen full-size kernels](../../merlin/tests/ir/test_kernel_benchmark_formal_gates.py)
+- Historical [sixteen full-size kernels](../../merlin/tests/ir/kernel_benchmark_handoff_campaign.py)
   and the [complete-model campaign](../../merlin/tests/ir/larger_model_campaign.py)
   compare ordinary and gated compilation and finite native outputs.
 

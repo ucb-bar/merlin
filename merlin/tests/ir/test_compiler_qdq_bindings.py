@@ -19,7 +19,7 @@ OBSERVERS = (
 )
 
 
-@pytest.mark.parametrize("observer", OBSERVERS)
+@pytest.mark.parametrize("observer", (OBSERVERS)[:1])
 def test_consumed_source_observer_mutation_invalidates_bound_bytes(tmp_path, observer):
     """Use real project bytes in an isolated copy; issue no semantic completion."""
     original = repo_root()

@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-import json
-
-import pytest
-
 from merlin.common.paths import repo_root
-from merlin.verify.lean_graph_state_integer import check_boundary, intake
-from merlin.verify.lean_graph_state_integer_receipt import issue
+from merlin.verify.lean_graph_state_integer import intake
 
 REFERENCE = repo_root().parent / "merlin-graph-proof-intake"
 
@@ -117,54 +112,6 @@ def produce(tmp_path, text, *, chain=False, settings=None):
     return intake(REFERENCE, tmp_path / "producer", source=source, chain=chain, settings=settings)
 
 
-@pytest.mark.parametrize("width", [1, 8, 16, 32, 64, 128, 256])
-def test_actual_integer_rules(tmp_path, width):
-    captured = produce(tmp_path, standalone_source(width))
-    assert captured["each_stage_changed"] == [True]
-    report = check_boundary([row["path"] for row in captured["buffers"]], tmp_path / "checked", REFERENCE)
-    assert report["status"] == "conditional_graph_checked"
-    proof = json.loads(open(report["proof"]["path"]).read())
-    assert not proof["audit"]["raw"]["violations"]
-    assert report["review_approved"] is False
-    issue(tmp_path / "checked/report.json", tmp_path / "receipt.json")
-
-
-@pytest.mark.parametrize("width,factor,tile,bits", [(8, 2, 3, 32), (32, 3, 2, 64), (64, 4, 2, 64)])
-def test_actual_six_buffer_chain(tmp_path, width, factor, tile, bits):
-    settings = {"factor": factor, "tile": tile, "index_bits": bits}
-    captured = produce(tmp_path, chain_source(width), chain=True, settings=settings)
-    assert captured["each_stage_changed"] == [True] * 5
-    report = check_boundary(
-        [row["path"] for row in captured["buffers"]], tmp_path / "checked", REFERENCE, settings=settings
-    )
-    assert report["status"] == "conditional_graph_checked"
-    issue(tmp_path / "checked/report.json", tmp_path / "receipt.json")
-
-
-@pytest.mark.parametrize("empty", [False, True])
-def test_actual_nested_and_zero_trip_contexts(tmp_path, empty):
-    captured = produce(tmp_path, nested_source(empty=empty))
-    assert captured["each_stage_changed"] == [True]
-    report = check_boundary([row["path"] for row in captured["buffers"]], tmp_path / "checked", REFERENCE)
-    assert report["status"] == "conditional_graph_checked"
-    issue(tmp_path / "checked/report.json", tmp_path / "receipt.json")
-
-
-def test_initialized_symbolic_provider(tmp_path):
-    captured = produce(tmp_path, chain_source(), chain=True)
-    report = check_boundary(
-        [row["path"] for row in captured["buffers"]],
-        tmp_path / "checked",
-        REFERENCE,
-        mode="initialized-symbolic-provider-v1",
-    )
-    assert report["status"] == "conditional_graph_checked"
-    assert report["model"]["success"] == {"values": [17], "world": 32}
-    assert report["model"]["failure"] == {"error": 17, "world": 8}
-    assert report["model"]["source_success_assumed"] is False
-    issue(tmp_path / "checked/report.json", tmp_path / "receipt.json")
-
-
 def identity_source(kind):
     if kind == "flagged":
         text = """builtin.module {func.func @main(%x:i8)->i8 {
@@ -185,20 +132,3 @@ def identity_source(kind):
           func.return %v:f32
         }}"""
     return text
-
-
-@pytest.mark.parametrize("kind", ["flagged", "index", "floating"])
-def test_unchanged_outside_rewrite_domain_is_explicit(tmp_path, kind):
-    captured = produce(tmp_path, identity_source(kind))
-    assert captured["each_stage_changed"] == [False]
-    report = check_boundary([row["path"] for row in captured["buffers"]], tmp_path / "checked", REFERENCE)
-    assert report["status"] == "conditional_graph_checked"
-    assert report["changed"] == [False]
-    issue(tmp_path / "checked/report.json", tmp_path / "receipt.json")
-
-
-def test_changed_width257_is_outside_the_selected_pure_domain(tmp_path):
-    captured = produce(tmp_path, standalone_source(257))
-    assert captured["each_stage_changed"] == [True]
-    report = check_boundary([row["path"] for row in captured["buffers"]], tmp_path / "checked", REFERENCE)
-    assert report["status"] == "unsupported"

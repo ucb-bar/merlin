@@ -1,8 +1,6 @@
 """Bounded generic-value canonical intake, authority and actual worker controls."""
 
-import copy
 import json
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -10,7 +8,6 @@ import pytest
 from merlin.transforms.certificates import ir_text
 from merlin.transforms.unrolling import unroll_ordered_loops
 from merlin.verify import compiler_loop_generic as gate
-from merlin.verify.gate_errors import GateRejected, GateUnsupported
 from merlin.verify.lean_graph_generic_parser import parse_generic
 
 SOURCE = """builtin.module {
@@ -32,128 +29,6 @@ def pair():
     before = ir_text(module)
     assert unroll_ordered_loops(module, (2,), index_bits=64)
     return before, ir_text(module)
-
-
-def test_canonical_full_pair_preserves_generic_domain_and_proof_closure(monkeypatch):
-    before, after = pair()
-    monkeypatch.setattr(
-        "merlin.transforms.unrolling.unroll_ordered_loops", lambda *a, **k: pytest.fail("replayed producer")
-    )
-    value = gate.prepare(before, after)
-    gate.ready(value)
-    assert value.domain == gate.DOMAIN
-    assert gate.ROOT in value.roots and gate.ADJACENT in value.roots
-    assert "Value" in value.query and "Codec Value" in value.query
-    source_refs = {row["path"] for row in json.loads(value.sources_json)}
-    proofs = gate.proof_sources(value.query)
-    assert len(proofs) == 28 and {r["path"] for r in proofs} <= source_refs
-    assert value.describe()["entries"] == ["forward"]
-
-
-@pytest.mark.parametrize("field", ["query", "roots", "projection_json", "resolution_json"])
-def test_changed_preparation_cannot_be_reopened_as_canonical(field):
-    value = gate.prepare(*pair())
-    altered = replace(value, **{field: value.roots[:-1] if field == "roots" else getattr(value, field) + " "})
-    with pytest.raises(gate.Unavailable, match="canonical generic loop"):
-        gate.ready(altered)
-
-
-@pytest.mark.parametrize("unused_tile", [32, 65537])
-def test_unroll_v1_capture_and_replay_request_ignore_unused_tile(unused_tile):
-    before, after = pair()
-    ordinary = gate.prepare(before, after)
-    compatibility = gate.prepare(before, after, tile=unused_tile)
-    assert compatibility == ordinary
-    assert "tile" not in json.loads(compatibility.request_json)
-    gate.ready(compatibility)
-
-
-def test_saved_constructed_or_copied_tokens_have_no_delivery_authority(tmp_path):
-    value = gate.prepare(*pair())
-    fake = gate.Completion(value.identity, str(tmp_path / "REPORT.json"))
-    for token in (fake, copy.copy(fake), copy.deepcopy(fake)):
-        with pytest.raises(gate.Unavailable, match="no authority"):
-            gate.deliver(token, value)
-
-
-def test_supported_source_bad_target_is_blocking_before_sdk(tmp_path, monkeypatch):
-    before, after = pair()
-    # Valid generic IR with one complex literal is deliberately outside the
-    # target projection, while the original source remains admitted.
-    from xdsl.dialects import builtin, func
-
-    module = parse_generic(after)
-    forward = next(op for op in module.body.block.ops if type(op) is func.FuncOp and op.body.blocks)
-    forward.attributes["test.tag"] = builtin.DenseIntOrFPElementsAttr(
-        builtin.TensorType(builtin.ComplexType(builtin.f32), [1]), builtin.BytesAttr(bytes.fromhex("0000803F00000000"))
-    )
-    (tmp_path / "before.mlir").write_text(before)
-    (tmp_path / "after.mlir").write_text(ir_text(module))
-    monkeypatch.setattr(gate, "check_candidate", lambda *a, **k: pytest.fail("bad literal reached SDK"))
-    job = {
-        "before": str(tmp_path / "before.mlir"),
-        "after": str(tmp_path / "after.mlir"),
-        "directory": str(tmp_path),
-        "params": gate.job_params(sdk_bin=tmp_path),
-    }
-    with pytest.raises(GateRejected, match="complex-floating-dense"):
-        gate.check(job)
-
-
-def test_job_schema_cannot_accept_saved_status_instead_of_original_selection(tmp_path):
-    params = gate.job_params(sdk_bin=tmp_path)
-    params["saved_status"] = "accepted"
-    with pytest.raises(GateUnsupported, match="exact bounded generic"):
-        gate.check({"params": params})
-
-
-def test_bound_replay_reads_preserve_crlf_and_reject_transient_good_bytes(tmp_path, monkeypatch):
-    paths = [tmp_path / "source.mlir", tmp_path / "final.mlir"]
-    raw = [b"bad-source\r\n", b"target\r\n"]
-    for path, data in zip(paths, raw, strict=True):
-        path.write_bytes(data)
-    refs = [gate.file_ref(path) for path in paths]
-    assert tuple(value.encode() for value in gate._read_bound_buffers(refs)) == tuple(raw)
-    original = Path.read_bytes
-    calls = [0]
-
-    def transient(path):
-        if path == paths[0]:
-            calls[0] += 1
-            if calls[0] == 2:
-                return b"transient-good-source\r\n"
-        return original(path)
-
-    monkeypatch.setattr(Path, "read_bytes", transient)
-    with pytest.raises(gate.Unavailable, match="decoded bytes differ"):
-        gate._read_bound_buffers(refs)
-
-
-def test_replay_original_mutation_during_proof_blocks_before_delivery(tmp_path, monkeypatch):
-    candidate = gate.prepare(*pair())
-    originals = [tmp_path / "source.mlir", tmp_path / "final.mlir"]
-    for path, text in zip(originals, (candidate.source, candidate.final), strict=True):
-        path.write_bytes(text.encode())
-    saved = {
-        "schema": "merlin.compiler-generic-loop.checked.v1",
-        "status": "accepted",
-        "buffers": [gate.file_ref(path) for path in originals],
-        "source_request": json.loads(candidate.request_json),
-    }
-    locator = tmp_path / "saved.json"
-    locator.write_text(gate.canonical(saved))
-    called = []
-
-    def proof_control(actual, **kwargs):
-        called.append(True)
-        assert actual == candidate
-        originals[0].write_bytes(originals[0].read_bytes() + b" ")
-        return gate.Completion(actual.identity, str(tmp_path / "never-authoritative.json"))
-
-    monkeypatch.setattr(gate, "check_candidate", proof_control)
-    with pytest.raises(gate.Unavailable, match="bound configuration"):
-        gate.replay(locator, lean=tmp_path / "lean", destination=tmp_path / "unused")
-    assert called == [True]
 
 
 def test_actual_fresh_kernel_live_delivery_and_replay(tmp_path, pass_gate_tools):

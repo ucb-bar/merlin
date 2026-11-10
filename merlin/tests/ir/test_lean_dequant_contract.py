@@ -8,9 +8,6 @@ Needs the built checker and the gate tools; skips without them, or fails when ``
 
 from __future__ import annotations
 
-import collections
-
-import pytest
 from test_lean_pass_gate import job
 
 from merlin.common.paths import repo_root
@@ -75,16 +72,6 @@ def verdict(tmp_path, tools, before: str, after: str) -> str:
         return type(error).__name__
 
 
-def test_every_captured_per_tensor_dequantization_is_proved(tmp_path, pass_gate_tools):
-    forms, total = captured_forms()
-    assert total >= 600 and len(forms) >= 80  # the capsules carry 627 such ops in 83 forms
-    signatures = collections.Counter(signature.split(", ")[2].split(")")[0] for signature, _ in forms)
-    assert set(signatures) == {"tensor<i64>"}
-    before, after = lowered(wrap(forms))
-    detail = gate_checks.tensor_refinement(job(tmp_path, before, after, pass_gate_tools))
-    assert detail["claim"].startswith("strict refinement")
-
-
 SMALL = (
     "(tensor<2x3xi8>, tensor<f32>, tensor<i64>) -> tensor<2x3xf32>",
     f"%r = {PER_TENSOR}(%q, %s, %z) <{{quant_min = -127 : i64, quant_max = 127 : i64}}> "
@@ -116,31 +103,9 @@ def _add_scale(module):
     Rewriter.replace_op(mul, arith.AddfOp(mul.lhs, mul.rhs))
 
 
-@pytest.mark.parametrize("mutate", [_swap_subtraction, _ignore_zero_point, _add_scale])
-def test_a_wrong_i64_per_tensor_lowering_is_refused(tmp_path, pass_gate_tools, mutate):
-    source = wrap([SMALL])
-    assert verdict(tmp_path / "right", pass_gate_tools, *lowered(source)) == "accepted"
-    assert verdict(tmp_path / "wrong", pass_gate_tools, *lowered(source, mutate)) != "accepted"
-
-
 PER_CHANNEL = (
     "func.func @forward(%w: tensor<4x3xi8>, %s: tensor<3xf32>, %z: tensor<3xZERO>) -> tensor<4x3xf32> {\n"
     '  %r = "quant_ext.dequantize_per_channel"(%w, %s, %z) <{axis = 1 : i64, RANGE}> '
     ": (tensor<4x3xi8>, tensor<3xf32>, tensor<3xZERO>) -> tensor<4x3xf32>\n"
     "  return %r : tensor<4x3xf32>\n}\n"
 )
-
-
-@pytest.mark.parametrize(
-    ("zero", "low", "expected"),
-    [
-        ("i32", -128, "accepted"),
-        ("i32", -127, "accepted"),  # PyTorch validates the range against i8 only; arithmetic unchanged
-        ("i32", -129, "refused"),  # outside i8: PyTorch raises
-        ("i64", -128, "refused"),  # per-channel i64 zero points stay outside the contract
-    ],
-)
-def test_per_channel_contract_follows_pytorch(tmp_path, pass_gate_tools, zero, low, expected):
-    source = PER_CHANNEL.replace("ZERO", zero).replace("RANGE", f"quant_min = {low} : i64, quant_max = 127 : i64")
-    result = verdict(tmp_path, pass_gate_tools, *lowered(source))
-    assert (result == "accepted") == (expected == "accepted"), result

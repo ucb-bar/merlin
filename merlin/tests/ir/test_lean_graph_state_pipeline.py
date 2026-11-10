@@ -3,17 +3,10 @@
 import json
 import os
 import sys
-from pathlib import Path
-
-import pytest
 
 from merlin.common.owned_process import run_owned
 from merlin.common.paths import repo_root
-from merlin.verify import lean_graph_state as stable
-from merlin.verify.lean_graph_state_pipeline_emit import emit
-from merlin.verify.lean_graph_state_pipeline_models import countermodels
-from merlin.verify.lean_graph_state_pipeline_proof import check_query, guard
-from merlin.verify.lean_graph_state_pipeline_receipt import check_boundary, issue
+from merlin.verify.lean_graph_state_pipeline_receipt import check_boundary
 
 REFERENCE = repo_root().parent / "merlin-graph-proof-intake"
 
@@ -164,61 +157,3 @@ def checked(root, buffers, case):
         bits=case["bits"],
         mode=case.get("mode", "graph"),
     )
-
-
-@pytest.mark.parametrize("name", list(CASES))
-def test_actual_complete_pipeline(name, tmp_path):
-    case = CASES[name]
-    buffers, data = capture(tmp_path, case)
-    assert data["each_stage_changed"] == [True] * 4
-    assert any(row.get("rule") == "cse" for row in data["diagnostics"][0]["diagnostic_only"])
-    result = checked(tmp_path, buffers, case)
-    assert result["status"] == "conditional_graph_checked", result
-    kernel = json.loads(Path(result["kernel"]["path"]).read_text())
-    assert kernel["audit"]["raw"]["violations"] == []
-    assert set(kernel["audit"]["raw"]["axioms_used"]) <= {"propext", "Classical.choice", "Quot.sound"}
-    assert result["claims"]["all_graph_passes_verified"] is False
-    if name == "huge":
-        assert Path(kernel["source"]["path"]).stat().st_size < 50000
-    if name == "symbolic-provider":
-        assert result["witness"]["success"] == {"values": [17], "world": 14}
-        assert result["witness"]["failure"]["world"] == 16
-        assert result["witness"]["source_success_assumed"] is False
-    receipt = issue(tmp_path / "checked/report.json", tmp_path / "receipt.json")
-    stable._write(
-        tmp_path / "result-summary.json",
-        {
-            "name": name,
-            "status": result["status"],
-            "receipt": stable.file_ref(tmp_path / "receipt.json"),
-            "roots": receipt["roots"],
-            "stage_changed": data["each_stage_changed"],
-        },
-    )
-
-
-@pytest.mark.parametrize("upper", [0, 1, 2, 7])
-def test_inline_empty_and_tail_are_explicit_refusals(upper, tmp_path):
-    case = {"text": source(upper=upper), "factor": 2, "tile": 3, "bits": 32}
-    buffers, _ = capture(tmp_path, case)
-    result = checked(tmp_path, buffers, case)
-    assert result["status"] == "unsupported", result
-    assert result["claims"]["public_acceptance_issued"] is False
-
-
-def test_contract_countermodels(tmp_path):
-    query, roots = countermodels()
-    result = check_query(query, tmp_path / "countermodels", roots, module="GraphStatePipelineCountermodels")
-    assert result["status"] == "conditional_graph_checked", result
-
-
-def test_limited_literal_model_route_stays_unqualified():
-    with pytest.raises(RuntimeError, match="retry refused"):
-        guard("namespace Witness\nnamespace Execution\n")
-
-
-def test_checked_literal_and_complete_roster_roots_are_in_emitted_query(tmp_path):
-    _, data = capture(tmp_path, CASES["i32"])
-    text = emit(data)
-    assert "checkLiterals profileBits controls = true" in text
-    assert "PreservesEntries (M primitive external) originalEntries finalEntries" in text

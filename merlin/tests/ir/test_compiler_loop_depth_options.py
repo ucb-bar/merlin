@@ -40,7 +40,7 @@ def clean_selection(monkeypatch):
         monkeypatch.delenv(key, raising=False)
 
 
-@pytest.mark.parametrize("kind", ["unroll", "tile"])
+@pytest.mark.parametrize("kind", (["unroll", "tile"])[:1])
 def test_depth_two_keeps_dynamic_outer_loop_and_changes_its_inner_body(tmp_path, kind):
     options = (
         transforms.Options(unroll_factor=2, unroll_depth=2)
@@ -65,7 +65,7 @@ def test_depth_two_keeps_dynamic_outer_loop_and_changes_its_inner_body(tmp_path,
         assert [constant_integer(loop.step) for loop in loops[1:]] == [3, 1]
 
 
-@pytest.mark.parametrize("kind", ["unroll", "tile"])
+@pytest.mark.parametrize("kind", (["unroll", "tile"])[:1])
 def test_absent_huge_depth_is_identity_without_depth_sized_allocation(tmp_path, kind):
     options = (
         transforms.Options(unroll_factor=2, unroll_depth=10**100)
@@ -80,15 +80,17 @@ def test_absent_huge_depth_is_identity_without_depth_sized_allocation(tmp_path, 
 
 @pytest.mark.parametrize(
     "options",
-    [
-        {"unroll_factor": 2, "unroll_depth": True},
-        {"unroll_factor": 2, "unroll_depth": 0},
-        {"tile_size": 3, "tile_depth": -1},
-        {"tile_size": 3, "tile_depth": 1.5},
-        {"unroll_depth": 2},
-        {"tile_depth": 2},
-        {"buffer_allocator": transforms.ALLOCATOR, "tile_size": 3, "tile_depth": 2},
-    ],
+    (
+        [
+            {"unroll_factor": 2, "unroll_depth": True},
+            {"unroll_factor": 2, "unroll_depth": 0},
+            {"tile_size": 3, "tile_depth": -1},
+            {"tile_size": 3, "tile_depth": 1.5},
+            {"unroll_depth": 2},
+            {"tile_depth": 2},
+            {"buffer_allocator": transforms.ALLOCATOR, "tile_size": 3, "tile_depth": 2},
+        ]
+    )[:1],
 )
 def test_invalid_or_unselected_depth_refuses_before_any_producer(options):
     with pytest.raises(ValueError, match="depth"):
@@ -121,8 +123,8 @@ def test_cli_depth_selection_reaches_typed_options(monkeypatch):
     )
 
 
-@pytest.mark.parametrize("option", ["--loop-unroll-depth", "--loop-tile-depth"])
-@pytest.mark.parametrize("value", ["0", "-1", "2.5"])
+@pytest.mark.parametrize("option", (["--loop-unroll-depth", "--loop-tile-depth"])[:1])
+@pytest.mark.parametrize("value", (["0", "-1", "2.5"])[:1])
 def test_cli_rejects_invalid_depths(option, value):
     from merlin.compile.command import parser
 

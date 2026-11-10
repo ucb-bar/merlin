@@ -30,18 +30,12 @@ target up to date before tests are meaningful.
 Configure the tools as in the
 [tutorial](../../docs/guides/lean_bounded_pass_profiles.md#configure-the-tools)
 (`MERLIN_COMPILER_PYTHON`, `MERLIN_LEAN_SDK_BIN`, `MERLIN_VALIDATE_WORKERS=1`, single-threaded
-Lean/BLAS) and set `MERLIN_LEAN_REQUIRED=1`, so a missing tool fails instead of skipping. Two
-non-obvious inputs:
-
-- The configuration-elision and loop-transform unit tests compare against an original producer
-  checkout at `repo_root().parent / "merlin-graph-proof-intake"`: a detached sibling worktree at
-  `4499eebb959c0f92cefd92cc6d80646ba66474ed` (the revision the qualification workers pin; reachable
-  from `origin/feat/megaphase`). Without it they fail with an unavailable producer or
-  `No module named 'merlin.transforms'`.
-- `test_lean_checked.py` skips unless `MERLIN_LEAN_TOOLCHAIN` names a toolchain manifest. An
-  SDK-only manifest fails with `unknown module prefix 'Merlin'`; the manifest also needs Merlin's
-  Lean library. `python -m merlin.verify.lean_cli prepare-toolchain` with that library as an extra
-  `--library-root` is the likely route, not yet confirmed.
+Lean/BLAS) and set `MERLIN_LEAN_REQUIRED=1`, so a missing tool fails instead of skipping.
+Run `python build_tools/scripts/run_lean_tests.py` from the repository root. The
+explicit roster in `merlin/tests/data/lean_suite.json` contains 200 cases; the
+runner refuses collection above 200. The superseded broad Python suites were
+removed. The complete Lean library, native regression modules and proof audit
+remain enabled. See [the regression guide](../../docs/guides/lean_differential_tests.md).
 
 ## Layout
 

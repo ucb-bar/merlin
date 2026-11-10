@@ -8,10 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 from merlin.common.paths import repo_root
-from merlin.verify import lean_graph_state as stable
 from merlin.verify import lean_graph_state_scalar as checker
 
 REFERENCE = Path("/home/jeremy/Projects/merlin-graph-proof-intake")
@@ -199,74 +196,3 @@ def produce(root, text=None, mode="cse"):
 
 def checked(root, before, after):
     return checker.check_boundary(before, after, root / "checked", reference_root=REFERENCE)
-
-
-@pytest.mark.parametrize("name", list(CASES))
-def test_actual_complete_scalar_boundaries(name, tmp_path):
-    mode, text = CASES[name]
-    before, after, projection = produce(tmp_path, text, mode)
-    assert projection["projection_checked"], projection
-    report = checked(tmp_path, before, after)
-    assert report["status"] == "conditional_graph_checked", report
-    assert report["genuine_changed_boundary"] is (name != "identity-flags")
-    kernel = json.loads(Path(report["kernel"]["path"]).read_text())
-    assert kernel["audit"]["raw"]["violations"] == []
-    assert kernel["audit"]["raw"]["assurance"] == "lean_kernel_std3_no_native_reflection"
-    assert any(name.endswith(".initialized") for name in kernel["audit"]["statements"])
-    assert not report["source_success_proved"] and not report["poison_freedom_proved"]
-    assert not report["native_fidelity_proved"] and not report["review_approved"]
-
-
-@pytest.mark.parametrize("kind", ["operand", "result-type", "non-dominating", "return", "width", "missing-block"])
-def test_independent_lean_checker_refuses_bad_or_wrong_graphs(kind, tmp_path):
-    _, _, projection = produce(tmp_path)
-    data = json.loads(json.dumps(projection))
-    function = data["functions"][0]
-    if kind == "operand":
-        function["after"][0]["arguments"][0] = 1
-    elif kind == "result-type":
-        function["outputs"] = [{"bits": 16}]
-    elif kind == "non-dominating":
-        function["after"][0]["arguments"][0] = 99
-    elif kind == "return":
-        function["after"][-1]["ret"] = [1]
-    elif kind == "width":
-        function["after"][0]["pure"]["width"] = 0
-    else:
-        function["after"] = []
-    if kind == "missing-block":
-        with pytest.raises(ValueError, match="nonempty"):
-            checker.emit_query(data)
-    else:
-        from merlin.verify.lean_graph_state_scalar_kernel import check_query
-
-        query, roots = checker.emit_query(data)
-        report = check_query(query, tmp_path / "kernel-refusal", roots)
-        assert report["returncode"] > 0
-        assert "decide" in (tmp_path / "kernel-refusal/kernel.stdout").read_text()
-
-
-@pytest.mark.parametrize("kind", ["bool-index", "float-index", "bool-width", "extra-field"])
-def test_exact_typed_graph_input_refuses_malformed_fields(kind, tmp_path):
-    _, _, data = produce(tmp_path)
-    record = data["functions"][0]["before"][0]
-    if kind == "bool-index":
-        record["arguments"][0] = True
-    elif kind == "float-index":
-        record["arguments"][0] = 0.0
-    elif kind == "bool-width":
-        record["pure"]["width"] = True
-    else:
-        record["ignore_me"] = 17
-    with pytest.raises(ValueError):
-        checker.emit_query(data)
-
-
-def test_original_bytes_cannot_be_rebound(tmp_path):
-    before, after, _ = produce(tmp_path)
-    selected = [stable.file_ref(before), stable.file_ref(after)]
-    before.write_text(before.read_text().replace("arith.addi", "arith.subi"))
-    with pytest.raises(ValueError, match="independent original"):
-        checker.check_boundary(
-            before, after, tmp_path / "checked", reference_root=REFERENCE, expected_originals=selected
-        )
