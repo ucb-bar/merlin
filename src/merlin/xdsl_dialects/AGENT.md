@@ -21,6 +21,8 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
   constants, with an optional `ml-dtypes` codec. The shared parser registry
   retains type identity with cooperating readers. Numeric operations, buffer
   ABIs and native/target legalization require their own executable contracts.
+  Cooperating readers also remove false dense splats using complete element
+  bytes, retaining mixed signed zeros while preserving existing NaN handling.
 - `standard_bufferization.py` checks standard tensor materialization by compatible
   shape/element types independently of memref layout, retaining upstream result
   and access-attribute rules. The binding grants no aliasing or placement proof.
