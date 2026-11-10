@@ -45,6 +45,7 @@ def _dealloc_passes(sink: bool | None = None) -> list[str]:
     passes = [
         "ownership-based-buffer-deallocation",
         "buffer-deallocation-simplification",
+        "canonicalize",
         "bufferization-lower-deallocations",
     ]
     # Aggregate bufferization.dealloc ops can keep hundreds of otherwise-dead allocations

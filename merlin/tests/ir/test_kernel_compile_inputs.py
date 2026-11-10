@@ -622,6 +622,40 @@ def test_isolated_atomic_event_requires_effect_profile_value_and_old_result(tmp_
             checked_word_stages(*args)
 
 
+@pytest.mark.parametrize("change", [None, "missing-context", "wrong-view"])
+def test_word_event_bindings_use_complete_inlined_source_context(tmp_path, change):
+    from copy import deepcopy
+    from merlin.frontends.kernel_word_evidence import checked_word_stages
+    source = tmp_path / "capture"
+    word_fixture(source, isolated=True)
+    stage = json.loads((source / "word-stage.json").read_text())
+    provenance = json.loads((source / "provenance.json").read_text())
+    memory = provenance["memory"]
+    memory["effect_profile"] = "private-invocation-typed-atomics-v2"
+    ordinary = stage["events"]["bindings"][0]
+    ordinary.update(opcode="tt.store", source_ids=["store", "caller"], result_types=[])
+    view = {"storage_dtype": "f32", "value_dtype": "i32", "element_bits": 32,
+            "address_units": "equal-width-elements"}
+    first = deepcopy(ordinary)
+    first.update(symbol="atomic1", opcode="tt.atomic_rmw", source_ids=["atomic", "caller"],
+        input_types=["!tt.ptr<f32>", "tensor<2xi64>", "tensor<2xi32>"],
+        result_types=["tensor<2xi32>"], word_view=view)
+    second = deepcopy(first)
+    second.update(symbol="atomic2", source_ids=["atomic", "other-caller"])
+    stage["events"]["bindings"].extend([first, second])
+    memory["atomic_payload"] = [{"source_ids": b["source_ids"], "word_view": deepcopy(view)}
+                                for b in (first, second)]
+    if change == "missing-context": memory["atomic_payload"][1]["source_ids"] = ["atomic"]
+    elif change == "wrong-view": memory["atomic_payload"][1]["word_view"]["storage_dtype"] = "f64"
+    args = (stage, (source / "word-input.mlir").read_bytes(), (source / "word-tensor.mlir").read_bytes(),
+            memory, {"store", "caller", "atomic", "other-caller"})
+    if change is None:
+        checked_word_stages(*args)
+    else:
+        with pytest.raises(ValueError, match="typed atomic storage contract"):
+            checked_word_stages(*args)
+
+
 @pytest.mark.parametrize("change", [None, "cas-mask", "cas-source", "cas-access"])
 def test_cas_staging_keeps_declared_comparison_operation_and_unmasked_access(tmp_path, change):
     source, target = tmp_path / "capture", tmp_path / "compiler"

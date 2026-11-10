@@ -73,7 +73,7 @@ def checked_word_stages(stage, source, output, memory, inventory):
                 or binding.get("fill") not in ("unchanged", "source-mask-select-after-zero-filled-load")):
             raise ValueError("source-word event binding differs from the declared source/type inventory")
         views = [p.get("word_view") for p in memory.get("atomic_payload", [])
-                 if set(p.get("source_ids", [])) & set(binding["source_ids"])]
+                 if set(p.get("source_ids", [])) == set(binding["source_ids"])]
         if "word_view" in binding or any(v is not None for v in views):
             view = binding.get("word_view")
             if (memory.get("effect_profile") != "private-invocation-typed-atomics-v2"

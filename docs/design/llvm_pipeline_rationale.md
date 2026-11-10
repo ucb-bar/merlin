@@ -40,13 +40,20 @@ outer allocation freed inside repeating control flow. A canonicalization before
 result-to-output-parameter conversion also exposes loop-carried result storage
 so the caller's output can be used directly.
 
-Upstream's composite ``buffer-deallocation-pipeline`` is NOT usable here: it interleaves
-``canonicalize``, and at this point in the RVV pipeline the module still holds ``vector.mask``
-regions that have not been through ``lower-vector-mask``. Canonicalization sinks a constant into
-one of those regions, which then fails its own verifier (``'vector.mask' op expects only one
-operation to mask``) — whisper_tiny hits it, deepjscc does not. So the three passes are named
-individually and the cleanup is left to the ``canonicalize``/``cse`` the pipeline already runs at
-the end, after the vector ops have been lowered.
+Run ``canonicalize`` between deallocation simplification and lowering. Invariant
+false ownership flags carried through structured loops otherwise become opaque
+runtime deallocation-helper results. The lifetime checker correctly refuses a
+potential free of an outer allocation inside a repeating loop. Canonicalization
+exposes the constant flags and erases those inactive frees before lowering;
+the lifetime check remains enabled for real placement errors.
+
+The passes remain individually scheduled after ``lower-vector-mask`` in the RVV
+pipeline. Historically, running upstream's composite
+``buffer-deallocation-pipeline`` while ``vector.mask`` regions remained let its
+canonicalization sink a constant into a region requiring exactly one masked
+operation. The current ordering permits ownership canonicalization without that
+verifier failure; the later canonicalization before liveness sinking remains
+necessary to expose active frees.
 
 ``MERLIN_NO_DEALLOC`` restores the previous behavior for an A/B — it exists because this changes
 generated code for every model, and the honest way to defend "numerics unchanged" is to be able

@@ -85,7 +85,7 @@ def _stages(text: str) -> list[str]:
 def test_the_legacy_sinking_stage_can_be_disabled_for_comparison(monkeypatch):
     """The A/B controls preserve the frozen upstream pass list."""
     monkeypatch.delenv("MERLIN_SINK_DEALLOCS", raising=False)
-    assert P._dealloc_passes() == ["ownership-based-buffer-deallocation", "buffer-deallocation-simplification", LOWER]
+    assert P._dealloc_passes() == ["ownership-based-buffer-deallocation", "buffer-deallocation-simplification", "canonicalize", LOWER]
     for text in (
         P._upstream_pipeline(),
         P._parallel_pipeline(),
@@ -131,6 +131,35 @@ def test_the_canonicalize_runs_between_the_lowering_and_the_sink(monkeypatch):
 
 
 # --- what the stage does to the IR -----------------------------------------------------------
+
+
+@m2m
+def test_false_loop_carried_ownership_is_removed_before_lowering():
+    """An invariant false flag must not become an opaque conditional free in a loop."""
+    source = """module {
+      func.func @forward(%out: memref<8xi32>, %n: index, %value: i32) {
+        %false = arith.constant false
+        %zero = arith.constant 0 : index
+        %one = arith.constant 1 : index
+        %a = memref.alloc() : memref<8xi32>
+        %unused = scf.for %i = %zero to %n step %one iter_args(%owned = %false) -> i1 {
+          memref.store %value, %a[%zero] : memref<8xi32>
+          bufferization.dealloc (%a : memref<8xi32>) if (%owned)
+          scf.yield %owned : i1
+        }
+        memref.copy %a, %out : memref<8xi32> to memref<8xi32>
+        memref.dealloc %a : memref<8xi32>
+        return
+      }
+    }"""
+    opaque = P.apply_passes(source, "buffer-deallocation-simplification," + LOWER)
+    assert opaque.count("memref.dealloc") == 2
+    assert any("repeating control flow" in error for error in P.dealloc_placement_violations(opaque))
+    stages = P._dealloc_passes(sink=False)
+    out = P.apply_passes(source, ",".join(stages[stages.index("buffer-deallocation-simplification"):]))
+    assert out.count("memref.dealloc") == 1
+    assert "memref.copy" in out and "scf.for" in out
+    assert P.dealloc_placement_violations(out) == []
 
 
 @m2m
