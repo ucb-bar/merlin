@@ -4,11 +4,16 @@ EFFECT_PROFILE = "private-invocation-integer-atomics-v1"
 TYPED_EFFECT_PROFILE = "private-invocation-typed-atomics-v2"
 _KINDS = {"and": 2, "or": 14, "xor": 15, "add": 1, "max": 6, "min": 10, "umax": 7, "umin": 11, "exch": 3,
           "cas": "compare-exchange", "fadd": 0}
-_FLOAT_CONTRACTS = {("exch", "f32"): "bitwise-exchange", ("exch", "f64"): "bitwise-exchange",
-                    ("fadd", "f64"): "ieee-f64-rne-add"}
+_FLOAT_CONTRACTS = {("exch", "f32"): ("bitwise-exchange",), ("exch", "f64"): ("bitwise-exchange",),
+                    ("fadd", "f64"): ("ieee-f64-rne-add",),
+                    ("fadd", "f32"): ("ieee-f32-rne-add", "f32-rne-sign-preserving-ftz-add")}
 
 
 def _payload(info):
+    if info.get("numeric_contract") == "ieee-f32-rne-add":
+        return "standard-memref-generic-f32-quiet-add-with-original-returned-old-value"
+    if info.get("numeric_contract") == "f32-rne-sign-preserving-ftz-add":
+        return "standard-memref-generic-f32-ftz-add-with-original-returned-old-value"
     if "word_view" in info:
         return "standard-memref-generic-integer-word-update-with-original-returned-old-value"
     return ("standard-memref-generic-compare-exchange-with-original-returned-old-value" if info["operation"] == "cas"
@@ -18,6 +23,8 @@ def _payload(info):
 def checked_atomic_effects(admission, memory, records, buffers):
     profile = TYPED_EFFECT_PROFILE if admission.get("schema") == "t2m.memory-admission.v4" else EFFECT_PROFILE
     if (admission.get("effect_profile") != profile or memory.get("effect_profile") != profile
+            or admission.get("f32_atomic_add") not in (None, "ieee", "ftz")
+            or memory.get("f32_atomic_add") not in (None, "ieee", "ftz")
             or admission.get("address_policy") != "source-words-offset64"
             or not isinstance(admission.get("atomic_adaptations"), list)
             or admission["atomic_adaptations"] != memory.get("atomic_payload")):
@@ -45,8 +52,11 @@ def checked_atomic_effects(admission, memory, records, buffers):
                 or floating and (profile != TYPED_EFFECT_PROFILE
                     or (info.get("operation"), dtype) not in _FLOAT_CONTRACTS
                     or dtype != "f" + str(info.get("word_bits"))
-                    or info.get("numeric_contract") != _FLOAT_CONTRACTS.get((info.get("operation"), dtype)))
+                    or info.get("numeric_contract") not in _FLOAT_CONTRACTS.get((info.get("operation"), dtype), ()))
                 or not floating and info.get("operation") == "fadd"
+                or floating and info.get("operation") == "fadd" and dtype == "f32"
+                    and (admission.get("f32_atomic_add") != memory.get("f32_atomic_add")
+                         or info.get("numeric_contract") != {"ieee": "ieee-f32-rne-add", "ftz": "f32-rne-sign-preserving-ftz-add"}.get(admission.get("f32_atomic_add")))
                 or not floating and ("value_dtype" in info or "numeric_contract" in info)
                 or info.get("word_bits") not in ((16, 32, 64) if info.get("operation") == "cas" else (32, 64))
                 or info.get("operation") not in _KINDS or info.get("standard_kind") != _KINDS[info["operation"]]

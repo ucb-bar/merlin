@@ -1,14 +1,17 @@
-"""Exact integer RMW regions on floating logical storage, default-off lowering.
+"""Exact atomic regions on floating logical storage, default-off lowering.
 
 The exported program keeps standard atomic regions. Native legalization performs
-one integer LLVM atomic on the same storage word, preserving NaN/zero bits and
-avoiding whole-buffer conversion or an unnecessarily expanded compare/swap loop.
+one integer LLVM RMW for word updates, preserving NaN/zero bits. Closed f32
+addition uses a checked atomic-load/CAS retry loop retaining the scalar numeric
+body. Both paths avoid whole-buffer conversion and keep borrowing/lifetime checks.
 """
 
 FEATURE = "lower_atomic_word_views"
 MARKER = "__merlin_atomic_word_views__"
 
-SUPPORT = r'''
+from .atomic_f32_add import SUPPORT as _F32_SUPPORT
+
+SUPPORT = _F32_SUPPORT + r'''
 _WORD_OPS = {'arith.addi': 'add', 'arith.andi': 'and', 'arith.ori': 'or', 'arith.xori': 'xor',
              'arith.maxsi': 'max', 'arith.minsi': 'min', 'arith.maxui': 'umax', 'arith.minui': 'umin'}
 
@@ -16,6 +19,8 @@ _WORD_OPS = {'arith.addi': 'add', 'arith.andi': 'and', 'arith.ori': 'or', 'arith
 def _word_match(op):
     if op.name != 'memref.generic_atomic_rmw':
         return None
+    if (floating_add := _f32_add_match(op)) is not None:
+        return floating_add
     if (len(op.operands) != 2 or len(op.results) != 1 or len(op.regions) != 1
             or len(op.regions[0].blocks) != 1):
         raise ValueError('word atomics require one typed rank-one atomic region')
@@ -94,6 +99,12 @@ def _word_match(op):
 
 def _word_source(symbol, width, kind):
     import json
+    if width == 32 and kind == 'fadd-ftz':
+        return _f32_add_source(symbol)
+    if width == 32 and kind == 'ftz-identity':
+        return _f32_add_source(symbol, identity=True)
+    if width == 32 and kind in ('ieee-quiet-identity', 'fadd-ieee-quiet'):
+        return _f32_add_source(symbol, identity=kind == 'ieee-quiet-identity', ieee=True)
     if width not in (32, 64) or kind not in (*_WORD_OPS.values(), 'xchg', 'identity', 'exchange-float'):
         raise ValueError('unqualified native word atomic operation or width')
     result = """module {
@@ -131,10 +142,14 @@ def _word_helper_equal(op, symbol, module):
     width = int(str(signature.results[0])[1:])
     if len(block.arguments) == 2:
         kinds = ('identity',)
+        if width == 32 and any(_f32_add_helper_equal(op, symbol, module, identity=True, ieee=ieee) for ieee in (False, True)):
+            return True
     elif len(block.arguments) == 3 and str(block.arguments[2].type) == 'i' + str(width):
         kinds = (*_WORD_OPS.values(), 'xchg')
     elif len(block.arguments) == 3 and block.arguments[2].type == signature.results[0]:
         kinds = ('exchange-float',)
+        if width == 32 and any(_f32_add_helper_equal(op, symbol, module, ieee=ieee) for ieee in (False, True)):
+            return True
     else:
         return False
     atomics = [item for item in _cas_walk(op) if item.name == 'llvm.atomicrmw']
@@ -172,5 +187,5 @@ def ensure_registered():
     from .impr_features import ImprFeature, known, register
     if FEATURE not in known():
         register(ImprFeature(name=FEATURE, action_class="PASS", edit_pipeline=edit_pipeline,
-            description="Lower exact integer word updates on floating storage and integer CAS to checked native atomics; default off."))
+            description="Lower exact word updates, f32 IEEE/FTZ addition and integer CAS to checked native atomics; default off."))
     return FEATURE

@@ -60,6 +60,16 @@ without converting NaN payloads through host-language floats. Validate complete
 closed bodies before mutation; unknown effects and unused extra arithmetic do
 not gain permission through this normalization.
 
+That same explicit feature recognizes closed f32 IEEE/FTZ addition from actual
+arithmetic and result NaN quieting. FTZ also retains input/result flushing. The native helper
+uses an aligned atomic acquire load and acq_rel/acquire CAS retry loop; it
+returns the original old word. Canonical addition by negative zero may become
+an FTZ/quieting identity, including inverse bitcast pairs. Retain its RMW effect
+and explicit quieting. Reconstruct the entire current helper for borrowing;
+changed masks, arithmetic, orders, byte strides, linkage, returns or captures
+grant nothing. IEEE f32 retains subnormals and explicit result quieting through
+the same native boundary. Standard f64 addf retains its ordinary native path.
+
 Mixed borrowed composition retains distinct live ordinary descriptor and plural
 writer owners for one exact source epoch. Disjoint ABI rows, original effect
 objects/callbacks and every native observer remain required; either owner's
