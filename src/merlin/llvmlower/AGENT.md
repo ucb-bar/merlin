@@ -51,6 +51,11 @@ storage support grants no FP8 arithmetic, numeric cast or target policy.
 `reuse_loop_tensor_destinations` may expose complete after-region `scf.while`
 destinations only when `scf.condition` forwards every before-argument unchanged
 in position and type. Computed/permuted condition state grants no seed facts.
+An initial restricted tensor import from actual private allocation may receive
+an explicit independent value copy before the loop. Construct the candidate
+detached and attach it only after the complete producer/capture proof succeeds;
+unknown roots, unrestricted imports and effects grant no seed ownership.
+Keep zero-trip values and every native alias/lifetime check unchanged.
 The readonly-capture extension still requires an independently synthesized seed
 and actual readonly entry storage; native bufferization and lifetime checks
 remain authoritative. Preserve original conditions and zero-trip semantics.

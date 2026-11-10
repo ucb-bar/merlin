@@ -309,6 +309,39 @@ def test_tensor_reads_require_entry_values_or_separate_private_snapshots(tmp_pat
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("options,restricted,mixed,changed", [
+    ({}, True, False, 2), ({}, True, True, 2), ({}, False, False, 0),
+    ({"unknown_owner": True}, True, False, 0), ({"opaque": True}, True, False, 0),
+    ({"write": True}, True, False, 0),
+])
+def test_private_imported_carried_seed_is_copied_only_after_complete_proof(tmp_path, options, restricted, mixed, changed):
+    program = read_source(private=True, tensor_read=True, fresh=False, **options)
+    program = program.replace("iter_args(%old=%x)", "iter_args(%old=%snapshot)")
+    if not restricted:
+        program = program.replace("%snapshot=bufferization.to_tensor %base restrict:",
+                                  "%snapshot=bufferization.to_tensor %base:")
+    if mixed:
+        program = program.replace("%sum=arith.addf %in,%v:f32", """%wide=arith.extf %in:f32 to f64
+              %other=arith.extf %v:f32 to f64
+              %wide_sum=arith.addf %wide,%other:f64
+              %sum=arith.truncf %wide_sum:f64 to f32""")
+    stdout, output = rewrite(tmp_path, program)
+    assert f"OK loop_tensor_destinations {changed}" in stdout
+    assert ('prov.op = "seed-private-carried-value"' in output) == bool(changed)
+    assert "bufferization.to_tensor" in output and "tensor.extract" in output
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("state,changed", [("identity", 2), ("computed", 0), ("permuted", 0)])
+def test_private_imported_while_seed_requires_unchanged_condition_state(tmp_path, state, changed):
+    program = read_source(private=True, tensor_read=True, fresh=False, while_state=state)
+    program = program.replace("(%before=%x,", "(%before=%snapshot,")
+    stdout, output = rewrite(tmp_path, program)
+    assert f"OK loop_tensor_destinations {changed}" in stdout
+    assert ('prov.op = "seed-private-carried-value"' in output) == bool(changed)
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
 @pytest.mark.parametrize("state,options,changed", [
     ("identity", {}, 1), ("identity", {"generalize": True}, 1),
     ("identity", {"constant": True}, 1), ("identity", {"fresh": False}, 0),

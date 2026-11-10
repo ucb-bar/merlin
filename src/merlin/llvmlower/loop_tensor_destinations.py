@@ -369,9 +369,9 @@ def _ltd_destination_plan(ctx, value, block, terminal, position, previous, incom
     return plan
 
 
-def _ltd_copy_state(ctx, terminal, position, source, destination):
+def _ltd_identity_copy(ctx, anchor, source, destination, *, detached=False):
     type_ = ir.RankedTensorType(source.type)
-    with ctx, terminal.location, ir.InsertionPoint(terminal):
+    with ctx, anchor.location:
         identity = ir.AffineMapAttr.get(ir.AffineMap.get_identity(len(type_.shape)))
         attributes = {
             'indexing_maps': ir.ArrayAttr.get([identity, identity]),
@@ -379,16 +379,40 @@ def _ltd_copy_state(ctx, terminal, position, source, destination):
             'operandSegmentSizes': ir.DenseI32ArrayAttr.get([1, 1]),
         }
         for name in ('prov.source_ids', 'prov.original_ops', 'prov.region_id'):
-            if name in terminal.attributes:
-                attributes[name] = terminal.attributes[name]
+            if name in anchor.attributes:
+                attributes[name] = anchor.attributes[name]
         attributes['prov.family'] = ir.StringAttr.get('loop-state')
         attributes['prov.op'] = ir.StringAttr.get('copy-selected-state')
         copy = ir.Operation.create('linalg.generic', operands=[source, destination],
-                                   results=[source.type], attributes=attributes, regions=1)
+                                   results=[source.type], attributes=attributes, regions=1,
+                                   ip=False if detached else ir.InsertionPoint(anchor))
         body = ir.Block.create_at_start(copy.regions[0], [type_.element_type, type_.element_type])
         with ir.InsertionPoint(body):
             ir.Operation.create('linalg.yield', operands=[body.arguments[0]])
-        terminal.operands[position] = copy.results[0]
+        return copy
+
+
+def _ltd_copy_state(ctx, terminal, position, source, destination):
+    terminal.operands[position] = _ltd_identity_copy(ctx, terminal, source, destination).results[0]
+
+
+def _ltd_private_seed(ctx, loop, incoming):
+    # A restricted import from actual private storage supplies values, not a
+    # fresh carried destination. Offer an explicit independent copy, then run
+    # the complete producer/capture proof against it before attaching anything.
+    # Entry/unknown/escaping roots gain no ownership premise from this helper.
+    if (not isinstance(incoming, ir.OpResult) or not isinstance(incoming.type, ir.RankedTensorType)
+            or any(n <= 0 for n in ir.RankedTensorType(incoming.type).shape)):
+        return None
+    owner = incoming.owner.operation
+    if (owner.name != 'bufferization.to_tensor' or len(owner.operands) != 1
+            or 'restrict' not in owner.attributes or not _ltd_private_root(owner.operands[0])):
+        return None
+    with ctx, loop.location:
+        empty = ir.Operation.create('tensor.empty', results=[incoming.type], ip=False)
+        copy = _ltd_identity_copy(ctx, loop, incoming, empty.results[0], detached=True)
+        copy.attributes['prov.op'] = ir.StringAttr.get('seed-private-carried-value')
+    return empty, copy
 
 
 def _ltd_reuse(ctx, module):
@@ -401,8 +425,23 @@ def _ltd_reuse(ctx, module):
         inside = {loop, *_ltd_walk(loop)}
         for position, (incoming, previous, result) in enumerate(edges):
             plan = _ltd_destination_plan(ctx, result, block, terminal, position, previous, incoming, inside, claimed)
+            seed = None
+            if plan is None and not _ltd_fresh_seed(incoming):
+                seed = _ltd_private_seed(ctx, loop, incoming)
+                if seed is not None:
+                    plan = _ltd_destination_plan(ctx, result, block, terminal, position, previous,
+                                                 seed[1].results[0], inside, claimed)
             if plan is None:
+                if seed is not None:
+                    seed[1].erase()
+                    seed[0].erase()
                 continue
+            if seed is not None:
+                point = ir.InsertionPoint(loop)
+                point.insert(seed[0])
+                point.insert(seed[1])
+                loop.operands[position + (3 if loop.name == 'scf.for' else 0)] = seed[1].results[0]
+                changed += 1
             for action in plan:
                 if action[0] == 'generic':
                     op, destination = action[1:]
