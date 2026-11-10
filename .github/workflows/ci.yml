@@ -215,6 +215,12 @@ jobs:
       - name: pass-obligation report (advisory; no capsule logs in CI)
         continue-on-error: true
         run: uv run --no-sync python build_tools/scripts/check_pass_obligations.py
+      - name: execute the five public interactive tutorials
+        run: >-
+          uv run --no-sync --with 'nbclient>=0.11,<0.12'
+          --with 'ipykernel>=7,<8' --with 'ipywidgets>=8.1,<9'
+          python build_tools/scripts/check_tutorials.py
+          --output out/build/python/ci/tutorials
       - name: complete test collection budget (150 parameterized cases maximum)
         run: >-
           uv run --no-sync python build_tools/scripts/check_test_budget.py

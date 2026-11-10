@@ -3,7 +3,7 @@ title: Core dialects
 kind: reference
 status: current
 owner: ir
-last_verified: 2026-07-14
+last_verified: 2026-11-09
 related: [dialects, contracts, lowering_pipeline]
 code_refs: [src/merlin/xdsl_dialects]
 ---
@@ -25,7 +25,15 @@ Dialect namespaces are bare — no `m` prefix and no `merlin.` prefix. Ops read
 `contract.assume`, `schedule.place`, `interface.resident_pack`, `runtime.submit`,
 `dse.candidate`.
 
-## Pipeline
+## Roles and lowering boundaries
+
+The diagram below describes the roles of the representations. It is not a claim
+that every public compile route materializes every dialect in this order. Some
+routes use typed Python planning records and invoke a selected OOT provider directly.
+Start with the [scheduling guide](../guides/scheduling.md) and its
+[interactive notebook](../../examples/tutorials/03_scheduling.ipynb) to inspect the
+actual `schedule` operations and their current consumers.
+
 
 ```
 linalg / tensor / scf / vector / affine
@@ -47,8 +55,14 @@ pipeline: it records candidates and measured variant results; it never lowers.
 Each core dialect is prototyped first in xDSL under
 `src/merlin/xdsl_dialects/{contract,schedule,interface,runtime,dse}.py` and
 promoted to a stable MLIR/C++ plane (**not yet built** — see `docs/design/compiler_plane.md`)
-once the syntax is stable, has verifier tests, and has at least one lowering. See
-`docs/xdsl.md`.
+once the syntax is stable, has verifier tests, and has at least one lowering. See the
+[xDSL reference](xdsl.md).
+
+`merlin.sched.ir` is a different representation: Python records with canonical
+`mk` kernel text for counted loops, instruction calls and effects. Shared counted
+block scheduling lives in `compiler/schedule/`. Neither is automatically an
+xDSL `schedule` operation or the upstream MLIR Transform dialect; their adapters
+and lowering obligations are explicit. The tutorial shows these boundaries.
 
 ## What is intentionally *not* a dialect yet
 

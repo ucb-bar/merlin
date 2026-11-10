@@ -28,6 +28,10 @@ passes, graph/scheduling representations and host code generation. It reuses the
 native Phase 1 loop for correctness and performance work together. An available
 API is not evidence that an authored compiler consumes it or improves performance.
 
+For an executable introduction, use the [interactive tutorials](../../examples/tutorials/README.md).
+They connect software declarations and facts to generated coverage, scheduling,
+transformation legality and CCA feedback, using the actual APIs on small inputs.
+
 Local development can start without a full campaign or FPGA. Follow repository
 instructions and [development setup](getting_started.md), then choose a boundary:
 

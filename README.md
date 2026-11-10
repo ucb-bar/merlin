@@ -51,6 +51,7 @@ See [setup and prerequisites](docs/guides/getting_started.md).
 | Task | Start here |
 | --- | --- |
 | Compile and run a small input | [First example](examples/quickstart/README.md) |
+| Explore specs, RTL facts, test generation, scheduling, transformations and CCA | [Interactive tutorials](examples/tutorials/README.md) |
 | Compile a model or use a target | [Examples](examples/README.md), [setup](docs/guides/getting_started.md) |
 | Add a compiler transformation | [Contributor entry points](docs/guides/compiler_contributions.md), [shared pass library](docs/reference/shared_compiler_passes.md) |
 | Add or select an OOT backend | [Target integration](docs/guides/adding_a_target.md), [backend resolution](docs/guides/target_resolution.md) |

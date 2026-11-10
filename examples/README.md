@@ -1,5 +1,10 @@
 # Examples
 
+Explore the current APIs with the [interactive tutorials](tutorials/README.md):
+software specs and RTL facts, test generation, scheduling, transformations and CCA.
+Each uses a small authored input and runs without hardware; the guides distinguish
+structural checks from full numerical or target-execution qualification.
+
 Start with [quickstart](quickstart/README.md): a checked-in MLIR input, real
 compilation to scalar C, the equivalent Python call, and optional native Linux
 execution. It needs only Python 3.12+ and the compiler extra for compilation;
