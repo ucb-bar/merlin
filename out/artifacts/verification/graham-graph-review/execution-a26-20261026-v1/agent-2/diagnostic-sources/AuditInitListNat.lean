@@ -1,5 +1,0 @@
-import InitListNat
-#check DiagnosticReprInitListNat.witness_value
-#print axioms DiagnosticReprInitListNat.witness_value
-#print axioms DiagnosticReprInitListNat.instReprPayload
-#eval repr DiagnosticReprInitListNat.witness

@@ -1,3 +1,0 @@
-'Merlin.GraphState.Integer.compose_suffix' depends on axioms: [propext]
-'Merlin.GraphState.Integer.entries_cons' depends on axioms: [propext]
-'Merlin.GraphState.Integer.index_model_typing' depends on axioms: [propext, Quot.sound]

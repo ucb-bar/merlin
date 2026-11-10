@@ -1,3 +1,0 @@
-'Merlin.GraphState.Integer.typed_success' depends on axioms: [propext]
-'Merlin.GraphState.Integer.provider_typed' depends on axioms: [propext]
-'Merlin.GraphState.Integer.loop_constant' depends on axioms: [propext, Quot.sound]

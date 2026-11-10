@@ -1,1 +1,0 @@
-{"each_stage_changed": [true], "lean_checked": false}

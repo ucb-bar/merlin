@@ -1,1 +1,0 @@
-'Merlin.GraphState.Scalar.checkTypes_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
