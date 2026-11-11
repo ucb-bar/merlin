@@ -230,4 +230,6 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 ## Uncategorized (needs front-matter or relocation to artifacts/)
 
 - [reference/llvm_loop_organization.md](reference/llvm_loop_organization.md)
+- [reference/materialization_cache.md](reference/materialization_cache.md)
 - [reference/prepared_softmax_interval.md](reference/prepared_softmax_interval.md)
+- [reference/region_loop_dispatch.md](reference/region_loop_dispatch.md)
