@@ -24,6 +24,13 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   `derived_compile_inputs.py` keeps parent FX and normalized TTIR correspondence separate,
   checks receipt-bound compiler members, and excludes evaluator values and digests from its staged view.
   Staging grants byte custody only, never source equivalence or numeric admission.
+  `kernel_allocation_evidence.py` independently validates optional allocation
+  source capsules: original TTIR, native-normalized/generic input, original
+  argument bindings and source-only stage fingerprints. Copy only their exact
+  compiler roster into standalone and derived-model staging. Reject evaluator
+  fields in the stage projection, broken byte links and authority grants;
+  retain legacy pointer packages without a capsule. Descriptor-origin bindings
+  require a complete capsule. Custody grants no source equivalence or aliases.
   `kernel_compile_inputs.py` separately stages standalone functional tensor kernels,
   including explicit observable-effect receipts. ABI v6 permits void entries
   only under `effect_only: true`, with readonly inputs and no discarded writes.

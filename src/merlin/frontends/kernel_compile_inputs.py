@@ -15,6 +15,7 @@ from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, IntegerAttr, String
 from xdsl.dialects.func import FuncOp
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.frontends.kernel_allocation_evidence import checked_allocation_sources
 from merlin.frontends.kernel_shape_abi import validate_dimensions
 from merlin.xdsl_dialects._common import text
 
@@ -151,6 +152,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
     if provenance.get("profile", "shared-functional-tensor") != receipt["profile"]:
         raise ValueError("kernel receipt and memory provenance profiles differ")
     memory_members = _checked_memory_members(checked, provenance)
+    memory_members.update(checked_allocation_sources(checked, provenance, ttir))
     if spec.get("schema") not in tuple("t2m.shared-tensor-abi.v" + str(i) for i in range(1, 7)):
         raise ValueError("unsupported standalone tensor ABI")
     effect_only = spec["schema"] == "t2m.shared-tensor-abi.v6"
@@ -262,7 +264,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
     # Project compiler provenance, excluding numeric admission/evaluator reports.
     fields = ("schema", "profile", "abi_difference", "correspondence", "emitted_operations", "intent", "memory",
               "mlir_sha256", "optimizer", "pipeline", "source_operations", "source_sha256", "spec",
-              "transformations", "normalized_operations", "original_attributes", "original_blocks")
+              "transformations", "normalized_operations", "original_attributes", "original_blocks", "source_argument_binding")
     correspondence = {"schema": "merlin.kernel-source-correspondence.v1", "producer": "triton2MLIR",
                       "input_model_sha256": digest(raw), "staged_model_sha256": digest(staged),
                       "source_provenance_sha256": digest(provenance_raw), "source_entry": spec["entry"],

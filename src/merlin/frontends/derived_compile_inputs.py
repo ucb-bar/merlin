@@ -20,6 +20,7 @@ from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, IntegerAttr, String
 from xdsl.dialects.func import FuncOp
 
 from merlin.frontends.derived_runtime_arguments import checked_runtime_call_shapes
+from merlin.frontends.kernel_allocation_evidence import checked_allocation_sources
 from merlin.frontends.kernel_compile_inputs import _checked_memory_members, _checked_word_intent
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.xdsl_dialects._common import text as module_text
@@ -126,6 +127,7 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
                   for name in ("model.mlir", "source.ttir", "spec.json", "provenance.json")}
         provenance, spec = json.loads(kernel["provenance.json"]), json.loads(kernel["spec.json"])
         kernel.update(_checked_memory_members(lambda name: checked(directory + "/" + name), provenance))
+        kernel.update(checked_allocation_sources(lambda name: checked(directory + "/" + name), provenance, kernel["source.ttir"]))
         runtime_shapes = []
         selected_calls = [call for call in calls if call["implementation_sha256"] == digest]
         if spec.get("runtime_scalars") or any(call.get("tensor_views") for call in selected_calls):
