@@ -13,6 +13,9 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   fields and effects; its native software implementation is a separate gate.
   Standard materialization accepts compatible strided destinations with the same
   shape/element rules and writable/restrict/result checks as native MLIR.
+  The standard SCF binding retains execute-region `no_inline` and all source
+  attributes through custom parsing. Losing these fields can change later
+  ownership preparation; never replace that preservation with a lifetime bypass.
 - `linalg_named_regions.py` reuses the selected native parser/printer when a
   partial xDSL reader builds an invalid implicit named region. Retain the named
   operation, exact types/maps/attributes and source semantics; do not invent

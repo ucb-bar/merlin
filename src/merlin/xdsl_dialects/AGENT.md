@@ -17,6 +17,11 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
   property and enum missing from the partial Python reader. Native MLIR owns
   implicit mixed-type regions; this binding grants no new arithmetic policy or
   generalization. Keep explicit generic regions and named operation identities.
+- `standard_scf.py` retains every execute-region attribute in both custom and
+  generic syntax, including the native unit `no_inline` field. Its custom printer
+  retains void terminators and provenance. Ordinary unmarked inlining delegates
+  to xDSL; marked regions remain until an explicit lowering. The field grants no
+  purity, borrowing or lifetime fact. Preserve entry/block/result verification.
 - `standard_vector.py` binds the native optional scalar/string source and
   punctuation fields of `vector.print`. Retain its observable stdout effect;
   this binding grants no purity, buffer aliasing, physical replication or

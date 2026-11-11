@@ -129,7 +129,7 @@ def make_context():
     from xdsl.dialects.math import Math
     from ..xdsl_dialects.standard_memref import memref_dialect
     from ..xdsl_dialects.standard_vector import vector_dialect
-    from xdsl.dialects.scf import Scf
+    from ..xdsl_dialects.standard_scf import scf_dialect
     from xdsl.dialects.tensor import Tensor
 
     # Teach the parser the fp8 element types (and let them satisfy arith/math's float constraints)
@@ -142,7 +142,7 @@ def make_context():
     register_fp8_float_constraints()
 
     ctx = Context(allow_unregistered=True)
-    for d in (Builtin, Func, Arith, linalg_dialect(), Tensor, Scf, Math, Cf, memref_dialect(), layout_bufferization_dialect(), vector_dialect()):
+    for d in (Builtin, Func, Arith, linalg_dialect(), Tensor, scf_dialect(), Math, Cf, memref_dialect(), layout_bufferization_dialect(), vector_dialect()):
         ctx.load_dialect(d)
     from ..xdsl_dialects.standard_tensor import register_parallel_tensor_ops
 
