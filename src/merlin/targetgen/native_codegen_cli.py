@@ -102,7 +102,16 @@ def add_native_codegen_commands(sub, handlers):
     native_compile.add_argument(
         "--application-state", help="source-bound JSON mapping state inputs, updates and initialization"
     )
-    native_compile.add_argument("--already-quantized", action="store_true", help="preserve authored codes and exponent data through the selected application provider")
+    native_compile.add_argument(
+        "--already-quantized",
+        action="store_true",
+        help="preserve authored codes and exponent data through the selected application provider",
+    )
+    native_compile.add_argument(
+        "--application-common-values",
+        action="store_true",
+        help="common identical pure application values before partitioning",
+    )
     native_compile.add_argument("--application-name", default="application", help="C application namespace")
     native_compile.add_argument(
         "--application-parameters",
@@ -243,7 +252,16 @@ def add_native_codegen_commands(sub, handlers):
         default="embedded",
         help="same model parameter storage used during application compilation",
     )
-    native_verify.add_argument("--already-quantized", action="store_true", help="replay authored code/exponent intake with no numeric conversion")
+    native_verify.add_argument(
+        "--already-quantized",
+        action="store_true",
+        help="replay authored code/exponent intake with no numeric conversion",
+    )
+    native_verify.add_argument(
+        "--application-common-values",
+        action="store_true",
+        help="replay pure-value commoning before application partitioning",
+    )
     native_verify.add_argument("--target-source", help="selected target source for application C replay")
     verify_source = native_verify.add_mutually_exclusive_group(required=True)
     verify_source.add_argument("--request", help="original typed semantic kernel JSON")
