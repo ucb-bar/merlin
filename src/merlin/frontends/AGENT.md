@@ -88,6 +88,12 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   storage dtype. One source event may select integer and floating roots;
   a CAS template's logical pointer formal does not replace its storage capture.
   Primitive effect checks and producer reconstruction remain separate gates.
+  Explicit byte-word atomic bindings separately retain actual i8 captures and
+  integer template formals, one logical byte order, word size/alignment and
+  byte/word address units. Independently match source primitives, complete byte
+  guard tiles, actual storage and payload declarations; equal-width word-view
+  permission cannot authorize this relation. Producer recipe reconstruction,
+  executable ownership and numeric/source equivalence remain separate gates.
   V3 memory admission additionally retains the explicit private-invocation
   integer atomic contract, or the explicit v4 typed profile with bitwise f32/f64
   exchange and integer RMWs on equal-width floating storage, thirty-bit ownership fragments and source operation/

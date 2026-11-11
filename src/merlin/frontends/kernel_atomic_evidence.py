@@ -10,6 +10,8 @@ _FLOAT_CONTRACTS = {("exch", "f32"): ("bitwise-exchange",), ("exch", "f64"): ("b
 
 
 def _payload(info):
+    if "byte_view" in info:
+        return "standard-byte-backed-word-atomic-with-original-returned-old-value"
     if info.get("numeric_contract") == "ieee-f64-rne-add-quiet-nans":
         return "standard-memref-generic-f64-quiet-add-with-original-returned-old-value"
     if info.get("numeric_contract") == "ieee-f32-rne-add":
@@ -45,11 +47,29 @@ def checked_atomic_effects(admission, memory, records, buffers):
         dtype = info.get("value_dtype") if floating else "i" + str(info.get("word_bits")) if isinstance(info, dict) else None
         word = isinstance(info, dict) and "word_view" in info
         # Accept the original primitive or the exact legacy enriched record.
-        primitive = {key: value for key, value in info.items() if key != "word_view"} if word else info
+        byte = isinstance(info, dict) and "byte_view" in info
+        primitive = {key: value for key, value in info.items() if key not in ("word_view", "byte_view")} if word or byte else info
         expected_view = {"storage_dtype": "f" + str(info.get("word_bits")), "value_dtype": "i" + str(info.get("word_bits")),
             "element_bits": info.get("word_bits"), "address_units": "equal-width-elements"} if word else None
         if word:
             dtype = expected_view["storage_dtype"]
+        if byte:
+            bits, order = info.get("word_bits"), admission.get("byte_order")
+            expected_byte = {"storage_dtype": "i8", "value_dtype": "i" + str(bits), "word_bits": bits,
+                "byte_order": order, "address_units": "signed-i64-bytes",
+                "template_address_units": "word-elements-after-active-alignment",
+                "alignment_bytes": bits // 8 if type(bits) is int else None}
+            if (profile != TYPED_EFFECT_PROFILE or floating or word or type(bits) is not int or bits not in (16, 32, 64)
+                    or order not in ("little", "big") or memory.get("byte_order") != order
+                    or access.get("mask") not in ("unmasked", "source-per-lane")
+                    or not isinstance(info["byte_view"], dict)
+                    or any(type(info["byte_view"].get(key)) is not int for key in ("word_bits", "alignment_bytes"))
+                    or not isinstance(access.get("guard_tile"), list)
+                    or any(type(n) is not int for n in access.get("guard_tile", []))
+                    or info["byte_view"] != expected_byte
+                    or access.get("guard_tile") != [*access.get("tile", []), expected_byte["alignment_bytes"]]):
+                raise ValueError("byte atomic evidence differs from its complete word/byte ownership contract")
+            dtype = "i8"
         if (not isinstance(info, dict) or not candidates or any(c != info and c != primitive for c in candidates)
                 or buffer.get("dtype") != dtype
                 or word and (profile != TYPED_EFFECT_PROFILE or floating

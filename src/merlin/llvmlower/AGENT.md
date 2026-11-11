@@ -129,6 +129,8 @@ reconstructs the complete current pointer helper and checks its actual private
 integer-only scalar callee; it grants no source/numeric equivalence. Changed
 memory effects, calls, linkage, visibility, strides or ordering lose permission.
 The feature composes with word/CAS legalization at one bufferization seam;
+loop destination reuse may immediately precede that same integer-region seam
+and must preserve all runner callbacks and ownership/lifetime checks.
 legacy CAS selection keeps its original closed profile. This supplies no TTIR
 byte-atomic admission, alias/initialization proof or accelerator qualification.
 

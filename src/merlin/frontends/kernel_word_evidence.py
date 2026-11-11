@@ -31,6 +31,9 @@ def _native(stage, name, flags, source, output, *, alternative_flags=()):
 
 
 def _storage_type(payload):
+    if "byte_view" in payload:
+        view = payload["byte_view"]
+        return view.get("storage_dtype") if isinstance(view, dict) else None
     if "word_view" in payload:
         view = payload["word_view"]
         return view.get("storage_dtype") if isinstance(view, dict) else None
@@ -64,6 +67,13 @@ def checked_word_stages(stage, source, output, memory, inventory):
     event_tool = events["native_stage"].get("optimizer", {}).get("sha256")
     if not isinstance(event_tool, str) or len(event_tool) != 64 or event_tool != compute["native_stage"].get("optimizer", {}).get("sha256"):
         raise ValueError("source-word event and computation stages used different optimizers")
+    byte_views = [binding["byte_view"] for binding in events["bindings"]
+                  if isinstance(binding, dict) and "byte_view" in binding]
+    if (("byte_order" in events) != bool(byte_views)
+            or byte_views and (events["byte_order"] not in ("little", "big")
+                or memory.get("byte_order") != events["byte_order"]
+                or any(not isinstance(view, dict) or view.get("byte_order") != events["byte_order"] for view in byte_views))):
+        raise ValueError("source-word byte templates lack one explicit consistent byte order")
     symbols = set()
     for binding in events["bindings"]:
         if not isinstance(binding, dict):
@@ -83,7 +93,15 @@ def checked_word_stages(stage, source, output, memory, inventory):
                 or binding.get("opcode") == "tt.atomic_cas" and len(binding["input_types"]) != 4
                 or binding.get("fill") not in ("unchanged", "source-mask-select-after-zero-filled-load")):
             raise ValueError("source-word event binding differs from the declared source/type inventory")
-        if "template_input_types" in binding or binding["opcode"] == "tt.atomic_cas" and "word_view" in binding:
+        if "byte_view" in binding:
+            types, view = binding.get("template_input_types"), binding["byte_view"]
+            if (not atomic or memory.get("effect_profile") != "private-invocation-typed-atomics-v2"
+                    or not isinstance(view, dict) or not isinstance(types, list)
+                    or len(types) != len(binding["input_types"]) or types[1:] != binding["input_types"][1:]
+                    or binding["input_types"][0] != "!tt.ptr<i8>"
+                    or types[0] != "!tt.ptr<" + str(view.get("value_dtype")) + ">" or "word_view" in binding):
+                raise ValueError("source-word byte template differs from its declared storage/word input types")
+        elif "template_input_types" in binding or binding["opcode"] == "tt.atomic_cas" and "word_view" in binding:
             types, view = binding.get("template_input_types"), binding.get("word_view", {})
             if (binding["opcode"] != "tt.atomic_cas" or not isinstance(view, dict) or not isinstance(types, list)
                     or len(types) != len(binding["input_types"])
@@ -100,6 +118,10 @@ def checked_word_stages(stage, source, output, memory, inventory):
         if atomic and context and not storage:
             raise ValueError("source-word event view differs from its typed atomic storage contract")
         views = [p.get("word_view") for p in storage]
+        byte_payloads = [p.get("byte_view") for p in storage]
+        if "byte_view" in binding or any(v is not None for v in byte_payloads):
+            if not byte_payloads or any(v != binding.get("byte_view") for v in byte_payloads):
+                raise ValueError("source-word byte template differs from its typed atomic storage contract")
         if "word_view" in binding or any(v is not None for v in views):
             view = binding.get("word_view")
             if (memory.get("effect_profile") != "private-invocation-typed-atomics-v2"

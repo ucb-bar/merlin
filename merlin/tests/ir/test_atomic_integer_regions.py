@@ -150,3 +150,22 @@ def test_selected_atomic_features_share_one_bufferization_seam():
             "one-shot-bufferize{bufferize-function-boundaries}",
             "buffer-deallocation-pipeline",
         ]
+
+
+def test_loop_destination_seam_preserves_integer_region_lowering_and_callbacks():
+    from merlin.llvmlower.loop_tensor_destinations import PRELUDE
+
+    calls = []
+    scope = {"_run_stages": lambda *args: calls.append(args)}
+    exec(PRELUDE, scope)
+    scope["_ltd_reuse"] = lambda *args: calls.append("reuse")
+    scope["_run_stages"](None, None,
+        "canonicalize,__merlin_loop_tensor_destinations__,__merlin_integer_atomic_regions__,one-shot-bufferize{bufferize-function-boundaries}",
+        3, ("mid",), ("late",), ("post",), ("pre",))
+    assert calls[0][2:] == ("canonicalize", 0, (), (), (), ("pre",))
+    assert calls[1] == "reuse"
+    assert calls[2][2:] == ("__merlin_integer_atomic_regions__,one-shot-bufferize{bufferize-function-boundaries}",
+                           3, ("mid",), ("late",), ("post",), ())
+    with pytest.raises(ValueError, match="immediately precede"):
+        scope["_run_stages"](None, None,
+            "__merlin_loop_tensor_destinations__,__merlin_integer_atomic_regions__,canonicalize,one-shot-bufferize{}", 0)
