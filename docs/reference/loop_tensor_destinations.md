@@ -113,6 +113,14 @@ actual Merlin library. Destination reuse preserves that fusion while ordinary
 bufferization and post-deallocation lifetime verification remain mandatory.
 The same integration now also retains pointer/accumulator `while` state and
 final pointer observations over changing runtime counts, including zero.
+
+When atomic legalization is selected, destination reuse precedes its one
+immediately pre-bufferization marker. Both feature application orders retain
+that contiguous group: destination analysis, atomic preparation, bufferization
+and ownership, then restored atomic helpers before liveness. Duplicate, moved
+or multiple atomic seams refuse. The registered scalar pipeline and explicitly
+composed pipelines share this ordering; no feature registration order can split
+atomic preparation from its ownership suffix.
 Nested pointer branches, pointer-returning helper inlining, `for`/`while` state,
 and conditional row reductions now also execute through the actual Merlin
 library path over independent empty/tail domains, choices and iteration counts.

@@ -587,10 +587,22 @@ def bind_runner(source, *, selected):
 
 
 def edit_pipeline(passes):
+    from .atomic_compare_exchange import MARKER as CAS_MARKER
+    from .atomic_integer_regions import MARKER as REGION_MARKER
+    from .atomic_word_views import MARKER as WORD_MARKER
+
     positions = [i for i, name in enumerate(passes) if name.startswith("one-shot-bufferize{")]
     if len(positions) != 1 or MARKER in passes:
         raise ValueError("loop tensor destinations require one unmodified bufferization seam")
     at = positions[0]
+    atomic = [i for i, name in enumerate(passes) if name in (CAS_MARKER, REGION_MARKER, WORD_MARKER)]
+    if atomic:
+        if len(atomic) != 1 or atomic[0] != at - 1:
+            raise ValueError("loop tensor destinations require one contiguous atomic bufferization seam")
+        # Destination reuse must see the original atomic regions. Keep the
+        # atomic runner and its bufferization/ownership suffix together even
+        # when registered feature edits were applied before this one.
+        at = atomic[0]
     return [*passes[:at], MARKER, *passes[at:]]
 
 

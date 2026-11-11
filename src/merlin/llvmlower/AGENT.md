@@ -73,6 +73,10 @@ result before edits. Retarget only complete unused-init generics; captured or
 closed pure computed values may use an explicit identity value copy into the
 carried destination. Preserve reduction/init semantics and all branch order.
 Unknown effects/captures and library calls grant no copy/reuse permission.
+Its pipeline edit precedes the sole contiguous atomic preparation marker when
+present, independently of feature application order. Never split atomic
+preparation from bufferization/ownership or relax helper restoration/liveness.
+Duplicate or moved atomic seams refuse before editing.
 An unused-init full parallel generic may establish a fresh carried seed from
 numeric tensor inputs and qualified readonly/private scalar reads only after
 recursively proving its output seed independent. This grants no ownership of
