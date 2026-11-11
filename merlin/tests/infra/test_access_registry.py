@@ -548,12 +548,16 @@ def test_installed_grader_is_unreadable_in_real_bwrap(tmp_path, isolated_policy)
     exposed = subprocess.run([*base, *read], capture_output=True, text=True, check=True)
     assert exposed.stdout.strip() == "PRIVATE"  # negative control: the actual bind exposes wheel bytes
     protected = subprocess.run(
-        [*BW.apply_answer_masks(base, AS.answer_surfaces(isolated_policy)), *read],
+        [*BW.apply_answer_masks(base, AS.answer_surfaces(isolated_policy)), "--", sys.executable, "-c",
+         "import pathlib,sys\ntry:\n print(pathlib.Path(sys.argv[1]).read_text())\n"
+         "except PermissionError:\n print('MASK_DENIED')\n", str(grader)],
         capture_output=True,
         text=True,
         check=True,
     )
-    assert protected.stdout.strip() == ""
+    # A nodev bind mount can deny opening the /dev/null mask instead of returning
+    # EOF. Both hide the bytes; other failures still fail this test.
+    assert protected.stdout.strip() in {"", "MASK_DENIED"}
 
 
 def test_non_filesystem_active_namespace_is_refused(tmp_path, monkeypatch):
