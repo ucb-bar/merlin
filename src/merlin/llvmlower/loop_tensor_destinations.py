@@ -47,7 +47,8 @@ def _ltd_fresh_seed(value):
             identity = ir.AffineMap.get_identity(len(ir.RankedTensorType(value.type).shape))
         maps = tuple(ir.ArrayAttr(op.attributes['indexing_maps']))
         return (ir.AffineMapAttr(maps[-1]).value == identity
-                and all(str(it) == '#linalg.iterator_type<parallel>' for it in ir.ArrayAttr(op.attributes['iterator_types']))
+                and all(str(it) == '#linalg.iterator_type<parallel>'
+                        for it in ir.ArrayAttr(op.attributes['iterator_types']))
                 # The recursively checked unused output seed is independent.
                 # Tensor inputs and qualified readonly/private scalar captures
                 # supply values without granting their storage ownership.
@@ -79,7 +80,8 @@ def _ltd_private_root(value):
     root = value
     while isinstance(root, ir.OpResult):
         op = root.owner.operation
-        if op.name in ('memref.cast', 'memref.subview', 'memref.reinterpret_cast', 'memref.collapse_shape', 'memref.expand_shape'):
+        if op.name in ('memref.cast', 'memref.subview', 'memref.reinterpret_cast',
+                       'memref.collapse_shape', 'memref.expand_shape', 'memref.view'):
             root = op.operands[0]
             continue
         if op.name == 'memref.alloc':
@@ -95,7 +97,8 @@ def _ltd_separate_read_root(value):
 def _ltd_tensor_read_root(value):
     while isinstance(value, ir.OpResult):
         op = value.owner.operation
-        if op.name in ('tensor.cast', 'tensor.extract_slice', 'tensor.collapse_shape', 'tensor.expand_shape', 'tensor.reshape'):
+        if op.name in ('tensor.cast', 'tensor.extract_slice', 'tensor.collapse_shape',
+                       'tensor.expand_shape', 'tensor.reshape'):
             value = op.operands[0]
             continue
         if op.name == 'bufferization.to_tensor':
@@ -117,7 +120,12 @@ def _ltd_scalar_body(op, *, fresh_seed, private_atomics=False):
                     or not _ltd_private_root(inner.operands[0])):
                 return False
             try:
-                match = _word_match(inner) if str(inner.results[0].type) in ('f16', 'f32', 'f64') else _cas_match(inner)
+                if str(inner.results[0].type) in ('f16', 'f32', 'f64'):
+                    match = _word_match(inner)
+                elif '_region_match' in globals():
+                    match = _region_match(inner)
+                else:
+                    match = _cas_match(inner)
                 if match is None:
                     return False
             except (ValueError, KeyError, IndexError):
@@ -133,16 +141,66 @@ def _ltd_scalar_body(op, *, fresh_seed, private_atomics=False):
                     or any(not isinstance(v.type, ir.IndexType) for v in tuple(inner.operands)[2:])):
                 return False
             continue
-        if name == 'memref.load':
+        if name in ('memref.load', 'memref.dim'):
             if (not fresh_seed or not inner.operands or not _ltd_separate_read_root(inner.operands[0])
                     or inner.regions or len(inner.results) != 1 or not _ltd_numeric(inner.results[0].type)
                     or any(not isinstance(v.type, ir.IndexType) for v in tuple(inner.operands)[1:])):
                 return False
             continue
+        if name in ('memref.cast', 'memref.subview', 'memref.reinterpret_cast', 'memref.collapse_shape',
+                    'memref.expand_shape', 'memref.view'):
+            if (not private_atomics or not fresh_seed or len(inner.results) != 1 or inner.regions
+                    or not _ltd_private_root(inner.results[0])
+                    or any(not _ltd_numeric(v.type) for v in tuple(inner.operands)[1:])):
+                return False
+            continue
+        if name == 'cf.assert':
+            if (not private_atomics or not fresh_seed or len(inner.operands) != 1
+                    or str(inner.operands[0].type) != 'i1' or inner.results or inner.regions):
+                return False
+            continue
         if name == 'tensor.extract':
-            if (not fresh_seed or not inner.operands or not _ltd_tensor_read_root(inner.operands[0])
+            if (not fresh_seed or not inner.operands
+                    or not (_ltd_tensor_read_root(inner.operands[0])
+                            or private_atomics and _ltd_snapshot_tensor_value(inner.operands[0]))
                     or inner.regions or len(inner.results) != 1 or not _ltd_numeric(inner.results[0].type)
                     or any(not isinstance(v.type, ir.IndexType) for v in tuple(inner.operands)[1:])):
+                return False
+            continue
+        if name in ('tensor.empty', 'tensor.from_elements'):
+            if (not private_atomics or not fresh_seed or inner.regions or len(inner.results) != 1
+                    or not isinstance(inner.results[0].type, ir.RankedTensorType)):
+                return False
+            type_ = ir.RankedTensorType(inner.results[0].type)
+            if (tuple(type_.shape) != (1,) or not _ltd_numeric(type_.element_type)
+                    or (name == 'tensor.empty' and inner.operands)
+                    or (name == 'tensor.from_elements' and
+                        (len(inner.operands) != 1 or inner.operands[0].type != type_.element_type))):
+                return False
+            continue
+        if name == 'scf.execute_region':
+            if not private_atomics or not fresh_seed or not _ltd_nested_snapshot(inner):
+                return False
+            continue
+        if name == 'linalg.generic':
+            if not private_atomics or not fresh_seed or not _ltd_atomic_snapshot(inner):
+                return False
+            continue
+        if name == 'scf.yield' and inner.block.owner.operation.name == 'scf.execute_region':
+            if not private_atomics or not fresh_seed or not _ltd_nested_snapshot(inner.block.owner.operation):
+                return False
+            continue
+        if name == 'scf.for':
+            # Guard byte loops have no carried state. Keep their conditions,
+            # effects and assertions; this recognizes values, not event motion.
+            if (not private_atomics or not fresh_seed or len(inner.operands) != 3 or inner.results
+                    or any(not isinstance(v.type, ir.IndexType) for v in inner.operands)
+                    or len(inner.regions) != 1 or len(inner.regions[0].blocks) != 1):
+                return False
+            body = inner.regions[0].blocks[0]
+            terminal = tuple(body.operations)[-1].operation
+            if (len(body.arguments) != 1 or not isinstance(body.arguments[0].type, ir.IndexType)
+                    or terminal.name != 'scf.yield' or terminal.operands):
                 return False
             continue
         if name == 'scf.if':
@@ -153,14 +211,40 @@ def _ltd_scalar_body(op, *, fresh_seed, private_atomics=False):
                 if len(region.blocks) != 1 or region.blocks[0].arguments:
                     return False
                 terminal = tuple(region.blocks[0].operations)[-1].operation
-                if terminal.name != 'scf.yield' or tuple(v.type for v in terminal.operands) != tuple(v.type for v in inner.results):
+                if (terminal.name != 'scf.yield'
+                        or tuple(v.type for v in terminal.operands) != tuple(v.type for v in inner.results)):
                     return False
             continue
-        if name.split('.')[0] not in ('arith', 'math') and name not in ('linalg.yield', 'linalg.index', 'scf.yield', 'tensor.yield', 'memref.atomic_yield'):
+        if name.split('.')[0] not in ('arith', 'math') and name not in (
+                'linalg.yield', 'linalg.index', 'scf.yield', 'tensor.yield', 'memref.atomic_yield'):
             return False
         if inner.regions or any(not _ltd_numeric(v.type) for v in (*inner.operands, *inner.results)):
             return False
     return True
+
+
+def _ltd_nested_snapshot(op):
+    if op.name != 'scf.execute_region' or len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
+        return False
+    operations = tuple(op.regions[0].blocks[0].operations)
+    return (len(operations) == 2 and _ltd_atomic_snapshot(operations[0].operation)
+            and _ltd_scalar_body(operations[0].operation, fresh_seed=True, private_atomics=True))
+
+
+def _ltd_snapshot_tensor_value(value):
+    # Scalar extraction may consume a checked computed tensor. Captures of
+    # the enclosing snapshot still pass _ltd_copy_safe's complete dependency
+    # closure; this predicate grants no ownership to the tensor's storage.
+    if not isinstance(value, ir.OpResult) or not isinstance(value.type, ir.RankedTensorType):
+        return False
+    op = value.owner.operation
+    if not _ltd_numeric(ir.RankedTensorType(value.type).element_type):
+        return False
+    if op.name == 'scf.execute_region':
+        return _ltd_nested_snapshot(op)
+    return (op.name == 'linalg.generic' and 'library_call' not in op.attributes
+            and len(op.results) == 1 and op.operands and _ltd_fresh_seed(op.operands[-1])
+            and _ltd_scalar_body(op, fresh_seed=True, private_atomics=_ltd_atomic_snapshot(op)))
 
 
 def _ltd_carried_edges(loop):
@@ -245,7 +329,7 @@ def _ltd_copy_safe(value, incoming, inside, seen):
     op = value.owner.operation
     if op not in inside:
         return True
-    if op.name == 'memref.load':
+    if op.name in ('memref.load', 'memref.dim'):
         return (len(op.results) == 1 and _ltd_numeric(value.type) and _ltd_fresh_seed(incoming)
                 and _ltd_separate_read_root(op.operands[0])
                 and all(_ltd_copy_safe(v, incoming, inside, seen) for v in tuple(op.operands)[1:]))
@@ -261,7 +345,8 @@ def _ltd_copy_safe(value, incoming, inside, seen):
             if len(region.blocks) != 1 or region.blocks[0].arguments:
                 return False
             terminal = tuple(region.blocks[0].operations)[-1].operation
-            if (terminal.name != 'scf.yield' or tuple(v.type for v in terminal.operands) != tuple(v.type for v in op.results)
+            if (terminal.name != 'scf.yield'
+                    or tuple(v.type for v in terminal.operands) != tuple(v.type for v in op.results)
                     or not _ltd_copy_safe(terminal.operands[index], incoming, inside, seen)):
                 return False
         return True
@@ -273,11 +358,13 @@ def _ltd_copy_safe(value, incoming, inside, seen):
         return (len(operations) == 2 and _ltd_atomic_snapshot(operations[0].operation)
                 and _ltd_copy_safe(operations[0].results[0], incoming, inside, seen))
     def numeric(type_):
-        return _ltd_numeric(ir.RankedTensorType(type_).element_type) if isinstance(type_, ir.RankedTensorType) else _ltd_numeric(type_)
+        return _ltd_numeric(ir.RankedTensorType(type_).element_type
+                            if isinstance(type_, ir.RankedTensorType) else type_)
     if any(not numeric(v.type) for v in (*op.operands, *op.results)):
         return False
     tensor_values = ('tensor.empty', 'tensor.cast', 'tensor.extract', 'tensor.extract_slice', 'tensor.insert',
-                     'tensor.insert_slice', 'tensor.collapse_shape', 'tensor.expand_shape', 'tensor.reshape', 'tensor.splat')
+                     'tensor.insert_slice', 'tensor.collapse_shape', 'tensor.expand_shape',
+                     'tensor.reshape', 'tensor.splat')
     if op.name.split('.')[0] in ('arith', 'math') or op.name in tensor_values:
         if op.regions:
             return False
@@ -344,13 +431,15 @@ def _ltd_destination_plan(ctx, value, block, terminal, position, previous, incom
                 return [('copy', terminal, position, value, previous)]
             return [] if owner.operands[-1] == previous else [('generic', owner, previous)]
     if owner.name == 'scf.if' and owner.block == block and _ltd_late_destination(ctx, previous, owner):
-        return [('copy', terminal, position, value, previous)] if _ltd_copy_safe(value, incoming, inside, set()) else None
+        return ([('copy', terminal, position, value, previous)]
+                if _ltd_copy_safe(value, incoming, inside, set()) else None)
     if (owner.name != 'scf.if' or owner.block != block or len(owner.operands) != 1
             or str(owner.operands[0].type) != 'i1' or len(owner.regions) != 2):
         # Keep non-overwrite producers (including reductions/init reads)
         # intact and materialize their complete value. Close the producer DAG
         # against hidden captures/effects before using a carried destination.
-        return [('copy', terminal, position, value, previous)] if _ltd_copy_safe(value, incoming, inside, set()) else None
+        return ([('copy', terminal, position, value, previous)]
+                if _ltd_copy_safe(value, incoming, inside, set()) else None)
     result_index = tuple(owner.results).index(value)
     plan = []
     for region in owner.regions:
@@ -375,7 +464,8 @@ def _ltd_identity_copy(ctx, anchor, source, destination, *, detached=False):
         identity = ir.AffineMapAttr.get(ir.AffineMap.get_identity(len(type_.shape)))
         attributes = {
             'indexing_maps': ir.ArrayAttr.get([identity, identity]),
-            'iterator_types': ir.ArrayAttr.get([ir.Attribute.parse('#linalg.iterator_type<parallel>')] * len(type_.shape)),
+            'iterator_types': ir.ArrayAttr.get(
+                [ir.Attribute.parse('#linalg.iterator_type<parallel>')] * len(type_.shape)),
             'operandSegmentSizes': ir.DenseI32ArrayAttr.get([1, 1]),
         }
         for name in ('prov.source_ids', 'prov.original_ops', 'prov.region_id'):
@@ -503,5 +593,6 @@ def ensure_registered():
     from .impr_features import ImprFeature, known, register
     if FEATURE not in known():
         register(ImprFeature(name=FEATURE, action_class="PASS", edit_pipeline=edit_pipeline,
-            description="Reuse completely overwritten parallel tensor loop destinations before native alias analysis; default off."))
+            description=("Reuse completely overwritten parallel tensor loop destinations "
+                         "before native alias analysis; default off.")))
     return FEATURE

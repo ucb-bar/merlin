@@ -95,6 +95,20 @@ Retain the complete event and boundary; never clone/move the atomic or retarget
 its output. External/unknown targets, shared seeds, extra effects and opaque
 calls grant no permission. Native alias/lifetime checks remain mandatory.
 
+Byte-word atomic snapshots may follow a standard `memref.view` to an actual
+private allocation, with descriptor dimensions and fail-stop assertions retained
+at the original event. Validate the complete pure integer update with the
+integer-region matcher; a failed closed-CAS match cannot authorize a body by
+itself. Only the already computed tensor value may feed a destination copy.
+The event, assertions, alias and output seed stay unchanged. External roots,
+shared seeds, unknown effects and unqualified updates retain their refusal;
+this grants no readonly, ownership, escape or source-equivalence premise.
+Nested unit-tensor snapshots require the same exact no-inline envelope and
+recursive body checks. Standard private-view metadata, numeric one-element
+construction/extraction and void index guard loops retain every original
+operation. Computed tensor reads require a checked numeric producer and complete
+enclosing capture closure; opaque producers and shared inner seeds still refuse.
+
 `preserve_bfloat_transport` is an explicit native legalization after complete
 LLVM conversion. Only scalar BF16 loads/stores, constants, exact bitcasts,
 selects and CFG word transport become i16. Keep opaque pointers, two-byte GEP

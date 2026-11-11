@@ -44,10 +44,12 @@ def source(*, shape="4", init_read=False, opaque=False, later_use=False, reverse
     }}"""
 
 
-def rewrite(tmp_path, text):
+def rewrite(tmp_path, text, *, atomic_support=False):
+    from merlin.llvmlower.atomic_compare_exchange import SUPPORT
+
     original, output, script = (tmp_path / name for name in ("original.mlir", "rewritten.mlir", "rewrite.py"))
     original.write_text(text)
-    script.write_text("from torch_mlir import ir\nimport sys\n_run_stages = None\n" + PRELUDE + """
+    script.write_text("from torch_mlir import ir\nimport sys\n_run_stages = None\n" + (SUPPORT if atomic_support else "") + PRELUDE + """
 with ir.Context() as ctx:
     module = ir.Module.parse(open(sys.argv[1]).read())
     module.operation.verify()
