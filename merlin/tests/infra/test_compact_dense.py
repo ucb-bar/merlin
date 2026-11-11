@@ -96,6 +96,17 @@ def schedule(p, r, s, *, dtypes=("i8", "i8", "i32"), **kwargs):
     )
 
 
+@pytest.mark.parametrize("dtype", ["fp16", "f16"])
+def test_half_precision_storage_has_two_byte_operands(dtype):
+    p, r, s = fixture(widths=(2, 2, 4))
+    result = schedule(p, r, s, dtypes=(dtype, dtype, "f32"))
+    assert result is not None
+    result.revalidate()
+    assert tuple(arg.dtype for arg in result.kernel.args) == (dtype, dtype, "f32")
+    with pytest.raises(ValueError, match="width"):
+        schedule(replace(p, lhs_bytes=1), r, s, dtypes=(dtype, dtype, "f32"))
+
+
 @pytest.mark.parametrize("order", [("m", "n"), ("n", "m")])
 @pytest.mark.parametrize("peeled", [False, True])
 def test_tails_reuse_and_independent_execution(order, peeled):
