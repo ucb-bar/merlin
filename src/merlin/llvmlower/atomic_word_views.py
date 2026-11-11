@@ -183,6 +183,9 @@ def _word_helper_equal(op, symbol, module):
 
 def edit_pipeline(passes):
     from .atomic_compare_exchange import edit_pipeline as edit_cas, MARKER as CAS_MARKER
+    from .atomic_integer_regions import MARKER as REGION_MARKER
+    if REGION_MARKER in passes:
+        return edit_cas(passes)
     if CAS_MARKER in passes:
         at = passes.index(CAS_MARKER)
         if (passes.count(CAS_MARKER) != 1 or MARKER in passes or at + 1 == len(passes)

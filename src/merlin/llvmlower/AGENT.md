@@ -119,6 +119,19 @@ replacement. Integer binary-rational native checks cover all 65,536 words
 against sixteen partners, with computed NaNs checked by class and uncomputed
 word transport qualified separately. This is host arithmetic evidence only.
 
+`lower_integer_atomic_regions` is a separate default-off native feature for
+bounded, pure scalar integer atomic bodies on identity-layout i16/i32/i64 memory.
+Validate every operation, scalar capture, live result and modular arithmetic
+before edits. Preserve the complete update as a private internal scalar callee;
+the borrowing helper uses an atomic acquire load and acq_rel/acquire CAS retry.
+Retain/restore both bodies through the existing ownership seam. Borrowing
+reconstructs the complete current pointer helper and checks its actual private
+integer-only scalar callee; it grants no source/numeric equivalence. Changed
+memory effects, calls, linkage, visibility, strides or ordering lose permission.
+The feature composes with word/CAS legalization at one bufferization seam;
+legacy CAS selection keeps its original closed profile. This supplies no TTIR
+byte-atomic admission, alias/initialization proof or accelerator qualification.
+
 `lower_integer_compare_exchange` is an explicit native legalization for closed
 i16/i32/i64 generic atomic comparison/select regions on rank-one identity-layout
 default-space buffers. Its private synchronous helper exposes the memref borrowing

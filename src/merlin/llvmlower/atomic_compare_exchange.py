@@ -8,12 +8,13 @@ memref live across one LLVM cmpxchg, with no escaping pointer or allocation.
 
 import ast
 
+from .atomic_integer_regions import SUPPORT as _REGION_SUPPORT
 from .atomic_word_views import SUPPORT as _WORD_SUPPORT
 
 FEATURE = "lower_integer_compare_exchange"
 MARKER = "__merlin_integer_compare_exchange__"
 
-SUPPORT = _WORD_SUPPORT + r"""
+SUPPORT = _WORD_SUPPORT + _REGION_SUPPORT + r"""
 _CAS_GENERATED = []
 _CAS_PENDING = []
 
@@ -88,7 +89,7 @@ def _cas_match(op):
     return (*op.operands, comparison, value, int(width[1:]))
 
 
-def _cas_rewrite(ctx, module, *, word_views=False):
+def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
     if _CAS_PENDING:
         raise ValueError('previous atomic helpers were not restored')
     operations = tuple(_cas_walk(module.operation))
@@ -99,6 +100,9 @@ def _cas_rewrite(ctx, module, *, word_views=False):
             memory, index, value, width, kind = _word_match(op)
             values = value if kind == 'cas-word' else () if value is None else (value,)
             plans.append((op, memory, index, values, width, 'word', kind))
+        elif integer_regions and op.name == 'memref.generic_atomic_rmw' and str(op.results[0].type) in ('i16', 'i32', 'i64'):
+            memory, index, captures, width = _region_match(op)
+            plans.append((op, memory, index, captures, width, 'integer-region', str(len(plans))))
         elif (match := _cas_match(op)) is not None:
             memory, index, comparison, value, width = match
             plans.append((op, memory, index, (comparison, value), width, 'cas', 'cas'))
@@ -135,9 +139,19 @@ def _cas_rewrite(ctx, module, *, word_views=False):
             while (symbol := prefix + '_' + str(ordinal)) in symbols:
                 ordinal += 1
             symbols.add(symbol)
-            source = _cas_source(symbol, width) if family == 'cas' else _word_source(symbol, width, kind)
+            if family == 'integer-region':
+                update_symbol = symbol + '_update'
+                while update_symbol in symbols:
+                    update_symbol += '_'
+                symbols.add(update_symbol)
+                update = _region_update(ctx, op, update_symbol, values)
+                module.body.append(update)
+                _CAS_GENERATED.append(update)
+                source = _region_source(symbol, width, update_symbol, tuple(str(value.type) for value in values))
+            else:
+                source = _cas_source(symbol, width) if family == 'cas' else _word_source(symbol, width, kind)
             helper = ir.Module.parse(source, context=ctx)
-            function = tuple(helper.body.operations)[0].operation
+            function = tuple(helper.body.operations)[-1 if family == 'integer-region' else 0].operation
             function.detach_from_parent()
             module.body.append(function)
             _CAS_GENERATED.append(function)
@@ -218,6 +232,9 @@ def _cas_checked_calls(module):
         if _word_helper_equal(op, symbol, module):
             accepted.add(symbol)
             continue
+        if _region_helper_equal(op, symbol, module, functions, duplicates):
+            accepted.add(symbol)
+            continue
         if len(block.arguments) != 4 or not any(item.operation.name == 'llvm.cmpxchg' for item in block.operations):
             continue
         type_ = str(block.arguments[2].type)
@@ -280,7 +297,7 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(), p
 '''
 
 
-def bind_runner(source, *, selected, word_views=False):
+def bind_runner(source, *, selected, word_views=False, integer_regions=False):
     if not selected:
         return source
     calls = [node for node in ast.parse(source).body if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
@@ -288,7 +305,11 @@ def bind_runner(source, *, selected, word_views=False):
     if len(calls) != 1:
         raise ValueError("compare/exchange requires one native stage runner call")
     prelude = PRELUDE
-    if word_views:
+    if integer_regions:
+        from .atomic_integer_regions import MARKER as REGION_MARKER
+        prelude = prelude.replace("marker = '" + MARKER + "'", "marker = '" + REGION_MARKER + "'").replace(
+            '_cas_rewrite(ctx, module)', '_cas_rewrite(ctx, module, word_views=' + repr(word_views) + ', integer_regions=True)')
+    elif word_views:
         from .atomic_word_views import MARKER as WORD_MARKER
         prelude = prelude.replace("marker = '" + MARKER + "'", "marker = '" + WORD_MARKER + "'").replace(
             '_cas_rewrite(ctx, module)', '_cas_rewrite(ctx, module, word_views=True)')
@@ -301,8 +322,14 @@ def bind_runner(source, *, selected, word_views=False):
 
 
 def edit_pipeline(passes):
+    from .atomic_integer_regions import MARKER as REGION_MARKER
     from .atomic_word_views import MARKER as WORD_MARKER
     positions = [i for i, name in enumerate(passes) if name.startswith("one-shot-bufferize{")]
+    if REGION_MARKER in passes:
+        if (len(positions) == 1 and passes.count(REGION_MARKER) == 1 and MARKER not in passes and WORD_MARKER not in passes
+                and passes.index(REGION_MARKER) == positions[0] - 1):
+            return list(passes)
+        raise ValueError("atomic legalization requires one unmodified bufferization seam")
     if WORD_MARKER in passes:
         if (len(positions) == 1 and passes.count(WORD_MARKER) == 1 and MARKER not in passes
                 and passes.index(WORD_MARKER) == positions[0] - 1):
