@@ -111,7 +111,7 @@ def write_observation(directory, *, arguments, sources, max_bytes):
     roster, data = [], bytearray()
     for arg in arguments:
         payload = arg["data"]
-        if type(payload) is not bytes or not payload or len(data) + len(payload) > max_bytes:
+        if type(payload) is not bytes or len(data) + len(payload) > max_bytes:
             raise ValueError("readonly input observation exceeds its complete byte budget")
         row = {k: v for k, v in arg.items() if k != "data"}
         row.update(
@@ -179,7 +179,7 @@ def revalidate_observation(record):
             or arg["frame"] != f"readonly_arg_{arg['original_index']}"
             or arg["access"] != "readonly_during_forward"
             or type(arg["bytes"]) is not int
-            or arg["bytes"] <= 0
+            or arg["bytes"] < 0
             or arg["expected_offset"] != cursor
         ):
             raise ValueError("readonly input observation argument roster changed")
@@ -207,9 +207,14 @@ def verify_observed_inputs(record, outputs, frames):
         if frame is None or (frame.rows, frame.cols, frame.word_bytes, frame.signed) != (1, count, 1, False):
             raise ValueError("readonly input observation lacks an exact complete byte frame")
         words = remaining.pop(name, None)
-        if words is None or len(words) != 1 or len(words[0]) != count:
+        if count == 0:
+            if words != []:
+                raise ValueError("empty readonly input observation has unexpected payload")
+            actual = b""
+        elif words is None or len(words) != 1 or len(words[0]) != count:
             raise ValueError("readonly input observation has incomplete argument values")
-        actual = bytes(words[0])
+        else:
+            actual = bytes(words[0])
         start = arg["expected_offset"]
         if actual != expected[start : start + count]:
             raise ValueError(f"readonly input argument {arg['original_index']} changed during forward")
@@ -243,7 +248,7 @@ def setup_readback(cgen, model_dir, info, compilation, full, indices, max_bytes)
         from .whole_model_readback import render_outputs_header
 
         (cgen / "model_outputs.h").write_text(
-            render_outputs_header(_out_specs(model_dir / "model.mlir")), encoding="utf-8"
+            render_outputs_header(info["outputs"] if "runtime_invocation_abi" in info else _out_specs(model_dir / "model.mlir")), encoding="utf-8"
         )
     if indices:
         require_observation_selection(info.get("readonly_input_observation"), indices=indices, max_bytes=max_bytes)

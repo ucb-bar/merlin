@@ -78,6 +78,13 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
 - Whole-model `spike_model` build identity includes the actual linked device and
   matrix object bytes in link order, after compiling them and before emitting the
   harness marker. Paths are not identity. Final ELF hashes remain authoritative.
+- Optional `runtime_signature` reuses typed runtime descriptor/native-scalar
+  generation for dynamic programs. Bind `runtime-abi.json` into preparation and
+  image identity; retain unchanged source MLIR and independent ownership checks.
+  Invocation values size/embed runtime storage only, not source specialization.
+  Full readback uses those checked concrete output descriptors. Complete empty
+  input observations still require explicit zero-byte frames; a missing frame
+  is not evidence that an empty argument was observed.
 - The ordinary device build checks the complete routed kernel/precision roster
   and the caller's selected granularity before building or linking device work.
   Active device routes require an explicitly selected `LinkedElfAdmissionService`

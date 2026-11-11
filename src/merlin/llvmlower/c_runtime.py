@@ -241,6 +241,7 @@ def generate(
     weights_source: str | Path | None = None,
     readonly_input_indices: tuple[int, ...] = (),
     max_readonly_input_bytes: int = 1 << 20,
+    runtime_signature: str | Path | None = None,
 ) -> dict:
     """Emit the runtime-driving artifacts for a captured model into ``out_dir``.
 
@@ -312,7 +313,18 @@ def generate(
             if path.is_file()
         )
         readonly_sources = snapshot_sources(source_paths)
-    sig = parse_forward_signature(model_dir / "model.mlir")
+    runtime_abi = None
+    if runtime_signature is not None:
+        from .runtime_invocation import resolve
+        if entry_projection is not None:
+            raise ValueError("runtime invocation ABI cannot use an entry weight projection")
+        runtime_abi = resolve(model_dir / "model.mlir", runtime_signature, inputs_npz)
+        sig = [(row["shape"], row["dtype"]) for row in runtime_abi["inputs"]]
+        if readonly_input_indices:
+            readonly_sources.extend(snapshot_sources([runtime_signature, Path(__file__).with_name("runtime_invocation.py")]))
+        (out_dir / "runtime-abi.json").write_text(json.dumps(runtime_abi, indent=2, sort_keys=True) + "\n")
+    else:
+        sig = parse_forward_signature(model_dir / "model.mlir")
     if any(i >= len(sig) for i in readonly_input_indices):
         raise ValueError("readonly input index is outside the original capture arguments")
     man = json.loads((model_dir / "weights.safetensors.manifest.json").read_text())
@@ -368,7 +380,8 @@ def generate(
 
     stub_zero_offsets: dict[int, int] = {}  # byte length -> offset of a shared zero region
 
-    out_specs = _out_specs(model_dir / "model.mlir")
+    out_specs = ([(row["shape"], row["dtype"]) for row in runtime_abi["outputs"]] if runtime_abi is not None
+                 else _out_specs(model_dir / "model.mlir"))
     out_shape, out_dt = out_specs[0]
 
     # manifest input name -> inputs.npz tuple order. Prefer the per-model
@@ -431,6 +444,10 @@ def generate(
         else:
             arr = np.ascontiguousarray(inputs[f"in{n_in}"])
             n_in += 1
+        if runtime_abi is not None and dt == "bf16":
+            # The runtime ABI uses original u16 words, unlike legacy model
+            # archives. A bit-container projection preserves every encoding.
+            arr = (arr.astype(np.uint32) << 16).view(np.float32)
         io_decls.append(f"static {C_OF[dt]} merlin_in_{i}[] = {{{_embed_array(arr, dt)}}};")
         embedded_arrays[i] = (arr, dt)
         static_io_bytes += _storage_nbytes(arr, dt)
@@ -668,7 +685,7 @@ def generate(
             kind, offset, rank, shape, elem, dtype = rows[runtime_index]
             size = prod(shape) * elem
             observed_bytes += size
-            if size <= 0 or observed_bytes > max_readonly_input_bytes:
+            if size < 0 or observed_bytes > max_readonly_input_bytes:
                 raise ValueError("readonly input observation exceeds its complete byte budget")
             if kind == "MERLIN_WEIGHT":
                 for other, other_runtime in descriptor_index.items():
@@ -869,6 +886,10 @@ def generate(
         f"extern void _mlir_ciface_{ciface_name}({decl});",
         f"void {invoke_name}(void **d) {{ _mlir_ciface_{ciface_name}({call}); }}",
     ]
+    if runtime_abi is not None:
+        from .runtime_invocation import call_bridge
+        scalar_types = {i: row["dtype"] for i, row in enumerate(runtime_abi["inputs"]) if row["kind"] == "scalar"}
+        call_c = call_bridge(scalar_types, len(rows), ciface_name=ciface_name, invoke_name=invoke_name)
 
     weight_digest = hashlib.sha256()
     sources = (blob, appended) if weight_storage == "streamed" else (bytes(blob), bytes(appended))
@@ -935,6 +956,8 @@ def generate(
     }
     if readonly_observation is not None:
         info["readonly_input_observation"] = readonly_observation
+    if runtime_abi is not None:
+        info["runtime_invocation_abi"] = runtime_abi
     if entry_projection is not None:
         info["entry_projection"] = {
             "original_arguments": len(entry_projection.argument_table.entries),

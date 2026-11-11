@@ -57,6 +57,16 @@ one-byte C storage. Loop destination/lifetime proofs recognize these as value
 types; unknown effects and invalid allocation generations still refuse. This
 storage support grants no FP8 arithmetic, numeric cast or target policy.
 
+Optional `runtime_signature` selects compiler-staged shape/scalar declarations
+for native typed program invocation. `runtime_invocation` reopens actual entry
+types and runtime archives, checks dimensions/bounds/storage, and sizes caller
+descriptors without rewriting MLIR arguments or payload. Keep native scalars
+by value through the real C prototype; private descriptor storage is transport
+only. Pin the runtime ABI separately from compiler members. BF16 inputs use
+exact source words; plain `ScalarArg.from_storage` avoids Python float rounding
+and preserves signaling NaNs. Neither API supplies alias, numeric or ownership
+permission. Legacy model generation remains unchanged without this selection.
+
 `reuse_loop_tensor_destinations` may expose complete after-region `scf.while`
 destinations only when `scf.condition` forwards every before-argument unchanged
 in position and type. Computed/permuted condition state grants no seed facts.

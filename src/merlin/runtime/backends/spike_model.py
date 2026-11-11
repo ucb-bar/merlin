@@ -314,6 +314,7 @@ def build(
     weights_source: str | Path | None = None,
     execution_memory_map: MemoryMapBinding | None = None,
     execution_memory_reservations: tuple[MemoryReservation, ...] = (),
+    runtime_signature: str | Path | None = None,
 ) -> dict:
     """Build a whole-model bare-metal ELF and return its paths, memory and identity.
 
@@ -887,10 +888,13 @@ def build(
             ),
             **({"weights_source": weights_source} if weights_source is not None else {}),
             **projection_options,
+            **({"runtime_signature": runtime_signature} if runtime_signature is not None else {}),
         )
     from ..input_observation import setup_readback
 
     setup_readback(cgen, model_dir, info, compilation, full_readback, readonly_input_indices, max_readonly_input_bytes)
+    if runtime_signature is not None:
+        compilation.bind_preparation("runtime_invocation_abi", cgen / "runtime-abi.json")
     if output_sha256 and info.get("out_dt") != "f32":
         raise SpikeModelError("full-output SHA256 evidence requires f32 output")
     storage_policy = getattr(device, "intermediate_storage", None)
@@ -1112,6 +1116,8 @@ def build(
     # Observability switches change the emitted image (merlin.runtime.whole_model_readback).
     if full_readback:
         _hh.update(b"full_readback=True")
+    if runtime_signature is not None:
+        _hh.update(json.dumps(info["runtime_invocation_abi"], sort_keys=True).encode())
     if readonly_input_indices:
         require_observation_selection(
             info["readonly_input_observation"], indices=readonly_input_indices, max_bytes=max_readonly_input_bytes

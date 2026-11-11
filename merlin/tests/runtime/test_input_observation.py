@@ -321,6 +321,8 @@ def test_actual_builder_registers_driver_observation_before_first_compile(
     tools = (toolchain.clang(), toolchain.m2m_python(), spike.gcc_path())
     if not all(path.is_file() for path in tools):
         pytest.skip("ordinary upstream and cross compiler required for preparation-order regression")
+    if bitcode and not tools[0].with_name("llvm-as").is_file():
+        pytest.skip("selected LLVM assembler required for bitcode preparation-order regression")
     capture, work = tmp_path / "capture", tmp_path / "build"
     capture.mkdir()
     (capture / "model.mlir").write_text("""module {

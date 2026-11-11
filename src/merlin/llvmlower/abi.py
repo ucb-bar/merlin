@@ -51,15 +51,35 @@ class ScalarArg:
     be wrapped in a descriptor.
     """
 
-    __slots__ = ("value", "dtype")
+    __slots__ = ("value", "dtype", "_storage")
 
     def __init__(self, value, dtype: str):
         self.value, self.dtype = value, dtype
+        self._storage = None
+
+    @classmethod
+    def from_storage(cls, storage, dtype: str):
+        """Copy exact native scalar words without a Python floating conversion.
+
+        The raw form keeps ``value=None``; ``to_ctype`` supplies the original
+        word, including signaling NaNs, signed zeros and wide integers.
+        """
+        ct = _SCALAR_CTYPE.get(dtype)
+        if ct is None or not isinstance(storage, (bytes, bytearray, memoryview)):
+            raise ValueError("native scalar storage needs a supported dtype and bytes")
+        raw = bytes(storage)
+        if len(raw) != ctypes.sizeof(ct) or dtype == "i1" and raw not in (b"\x00", b"\x01"):
+            raise ValueError("native scalar storage differs from its exact ABI width/value")
+        result = cls(None, dtype)
+        result._storage = raw
+        return result
 
     def to_ctype(self):
         ct = _SCALAR_CTYPE.get(self.dtype)
         if ct is None:
             raise ValueError(f"unsupported scalar arg dtype {self.dtype}")
+        if self._storage is not None:
+            return ct.from_buffer_copy(self._storage)
         return ct(int(self.value) if self.dtype.startswith("i") else float(self.value))
 
 
