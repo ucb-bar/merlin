@@ -10,6 +10,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
+#include "half_extend.h"
 
 /* math.rsqrt lowers (via convert-math-to-libm) to rsqrtf/rsqrt, which are NOT in
  * standard libm/newlib. Provide them (reciprocal sqrt). */

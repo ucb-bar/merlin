@@ -11,6 +11,11 @@ The **Merlin C runtime**: a generic, data-driven driver that executes a compiled
 
 ## What belongs here
 
+- `fixed_decimal.h` formats IEEE binary64 words as exact nearest-even fixed-six
+  diagnostics, including signed zero, subnormals, extrema and signed NaNs.
+  Integer scaling and division change no source arithmetic or FP environment.
+  Callers supply 320 output bytes. This transport grants no general printf,
+  numerical cast, source-effect or target qualification.
 - `chain_guest.c` — generated-table-driven retained-object chain execution. It carries actual
   state, measures the selected invocation callback, and explicitly selects full binary outputs
   or complete all-element comparison against pinned references. It contains no model schedule

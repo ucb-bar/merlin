@@ -7,6 +7,11 @@ Merlin-owned C implementations of the MLIR runtime symbols the lowered model cal
 ## What belongs here
 
 - `mlir_runtime.c` — `memrefCopy` (the strided copy `memref.copy` lowers to) plus the non-standard math symbols the libm lowering needs (`rsqrtf`/`rsqrt`). Pure, freestanding C; no target assumptions.
+- `half_extend.h` supplies the typed compiler-rt `__extendhfsf2` ABI when the
+  selected C compiler supports binary16. Its pinned LLVM specialization retains
+  all finite/subnormal/zero and nonfinite words, without recursively calling a
+  half conversion. Preserve the accompanying LLVM license and header source
+  dependency in host/target compilation observations.
 
 ## What does not belong here
 

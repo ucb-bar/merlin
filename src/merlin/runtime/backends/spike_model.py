@@ -1064,6 +1064,7 @@ def build(
             *h.glob("*.h"),
             *h.glob("*.S"),
             runtime_dir() / "abi/mlir_runtime.c",
+            *runtime_dir().joinpath("abi").glob("*.h"),
         ]
     )
     _hh.update(_source_digest(_rt_srcs).encode("utf-8"))
@@ -1084,7 +1085,7 @@ def build(
     compilation.run(
         [*runtime_compiler, "-c", runtime_dir() / "abi/mlir_runtime.c", "-o", runtime_object],
         runner=_run,
-        inputs=[runtime_dir() / "abi/mlir_runtime.c"],
+        inputs=[runtime_dir() / "abi/mlir_runtime.c", runtime_dir() / "abi/half_extend.h"],
         output=runtime_object,
     )
     runtime_compiler_record = {

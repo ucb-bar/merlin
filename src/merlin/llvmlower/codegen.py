@@ -187,7 +187,7 @@ def build_host_shared(ll_path: str | Path, out_so: str | Path, *, source_lowerin
     runtime = mlir_runtime_c()
     run(
         [host_cc, "-O2", "-fPIC", "-c", str(runtime), "-o", rt_o],
-        inputs=(runtime,),
+        inputs=(runtime, runtime.with_name("half_extend.h")),
         outputs=(rt_o,),
         stage="runtime_object",
     )
