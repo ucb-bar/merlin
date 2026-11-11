@@ -31,6 +31,10 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   fields in the stage projection, broken byte links and authority grants;
   retain legacy pointer packages without a capsule. Descriptor-origin bindings
   require a complete capsule. Custody grants no source equivalence or aliases.
+  `kernel_typed_storage.py` independently derives private byte-plane shapes and
+  per-public-result guard costs for explicit typed storage transport. Public
+  dtypes/shapes stay unchanged. Check the exact profile/function marker and
+  maximum/vector costs; declarations grant no packing or source-equivalence proof.
   `kernel_compile_inputs.py` separately stages standalone functional tensor kernels,
   including explicit observable-effect receipts. ABI v6 permits void entries
   only under `effect_only: true`, with readonly inputs and no discarded writes.

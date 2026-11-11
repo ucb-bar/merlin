@@ -17,6 +17,7 @@ from xdsl.dialects.func import FuncOp
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.frontends.kernel_allocation_evidence import checked_allocation_sources
 from merlin.frontends.kernel_shape_abi import validate_dimensions
+from merlin.frontends.kernel_typed_storage import checked_guard_costs, storage_spec
 from merlin.xdsl_dialects._common import text
 
 
@@ -60,7 +61,7 @@ def _checked_memory_members(checked, provenance):
             or stage.get("artifacts", {}).get("lowered.mlir") != record(names[2])):
         raise ValueError("kernel memory report does not bind its input/output")
     if guarded:
-        spec = provenance.get("spec")
+        spec = storage_spec(provenance)
         if not isinstance(spec, dict) or not isinstance(spec.get("buffers"), list):
             raise ValueError("guarded memory evidence lacks its logical buffer ABI")
         arguments = ([{"kind": "extent", "buffer": b["name"]} for b in spec["buffers"]]
@@ -242,12 +243,12 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
     if observable:
         signature["effect_abi"] = "source-encoded-observable-effects; evaluator-outcome-excluded"
     if receipt["profile"] in ("shared-guarded-buffer", "shared-source-word-buffer"):
-        contract = entry.attributes.get("prov.memory_guard_bytes_per_result_element")
         admission = json.loads(memory_members["memory-admission.json"])
         cost = admission["guard_storage_bytes_per_output_element"]
-        if not isinstance(contract, IntegerAttr) or contract.value.data != cost:
-            raise ValueError("guarded kernel lacks its declared scratch storage contract")
-        signature["guard_storage_bytes_per_result_element"] = cost
+        costs = checked_guard_costs(entry, provenance, cost)
+        signature["guard_storage_bytes_per_result_element"] = max(costs, default=cost)
+        if "typed_storage_transport" in provenance:
+            signature["guard_storage_bytes_by_result_element"] = costs
         if receipt["profile"] == "shared-source-word-buffer":
             _checked_word_intent(entry, memory_members)
     if scalars:
@@ -264,7 +265,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
     # Project compiler provenance, excluding numeric admission/evaluator reports.
     fields = ("schema", "profile", "abi_difference", "correspondence", "emitted_operations", "intent", "memory",
               "mlir_sha256", "optimizer", "pipeline", "source_operations", "source_sha256", "spec",
-              "transformations", "normalized_operations", "original_attributes", "original_blocks", "source_argument_binding")
+              "transformations", "normalized_operations", "original_attributes", "original_blocks", "source_argument_binding", "typed_storage_transport")
     correspondence = {"schema": "merlin.kernel-source-correspondence.v1", "producer": "triton2MLIR",
                       "input_model_sha256": digest(raw), "staged_model_sha256": digest(staged),
                       "source_provenance_sha256": digest(provenance_raw), "source_entry": spec["entry"],

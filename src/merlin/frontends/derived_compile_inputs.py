@@ -151,17 +151,18 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
                 raise ValueError("guarded derived kernel lacks one typed entry")
             if provenance["profile"] == "shared-source-word-buffer":
                 _checked_word_intent(entries[0], kernel)
-            contract = entries[0].attributes.get("prov.memory_guard_bytes_per_result_element")
             types = list(entries[0].function_type.outputs)
             cost = json.loads(kernel["memory-admission.json"])["guard_storage_bytes_per_output_element"]
-            if (not isinstance(contract, IntegerAttr) or contract.value.data != cost or len(types) != len(outputs)
+            from merlin.frontends.kernel_typed_storage import checked_guard_costs
+            costs = checked_guard_costs(entries[0], provenance, cost)
+            if (len(types) != len(outputs)
                     or any(not isinstance(t, TensorType) or len(t.get_shape()) != len(b["shape"])
                            or any((actual >= 0 if isinstance(expected, str) else actual != expected)
                                   for actual, expected in zip(t.get_shape(), b["shape"], strict=True))
                            or str(t.get_element_type()) != b["dtype"] for t, b in zip(types, outputs))):
                 raise ValueError("guarded derived kernel scratch differs from its typed results")
-            guard_storage += (cost * sum(math.prod(shape[b["name"]]) for shape in runtime_shapes for b in outputs)
-                if runtime_shapes else cost * sum(math.prod(b["shape"]) for b in outputs) * sum(
+            guard_storage += (sum(cost * math.prod(shape[b["name"]]) for shape in runtime_shapes for cost, b in zip(costs, outputs, strict=True))
+                if runtime_shapes else sum(cost * math.prod(b["shape"]) for cost, b in zip(costs, outputs, strict=True)) * sum(
                     call["implementation_sha256"] == digest for call in calls))
             if not 0 <= guard_storage < 2**63:
                 raise ValueError("guarded derived kernel scratch exceeds its i64 domain")
