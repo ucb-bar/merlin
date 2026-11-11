@@ -61,7 +61,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [Independent scalar lane schedules](reference/independent_scalar_lanes.md) — `current`, verified 2026-10-07 · owner: core — see also: [prepared_operand_owners](reference/prepared_operand_owners.md)
 - [Independent source FMA batch permission](reference/source_fma_batch.md) — `draft`, verified 2026-10-06 · owner: compiler
 - [Length-aware literal diagnostics](reference/literal_diagnostics.md) — `current`, verified 2026-11-10 · owner: ir — see also: [effect_kernel_intake](reference/effect_kernel_intake.md), [lowering_pipeline](reference/lowering_pipeline.md)
-- [Loop-carried tensor destination reuse](reference/loop_tensor_destinations.md) — `current`, verified 2026-11-09 · owner: llvmlower — see also: [architecture](reference/architecture.md), [lowering_pipeline](reference/lowering_pipeline.md)
+- [Loop-carried tensor destination reuse](reference/loop_tensor_destinations.md) — `current`, verified 2026-11-11 · owner: llvmlower — see also: [architecture](reference/architecture.md), [lowering_pipeline](reference/lowering_pipeline.md)
 - [Lowering pipeline](reference/lowering_pipeline.md) — `current`, verified 2026-10-08 · owner: ir — see also: [core_dialects](reference/core_dialects.md), [llvm_integration](guides/llvm_integration.md)
 - [merlin/ layout — what goes where](reference/merlin_layout.md) — `current`, verified 2026-07-14 · owner: core — see also: [repo_structure](reference/repo_structure.md), [architecture](reference/architecture.md)
 - [Native full-value output readback](reference/native_output_readback.md) — `current`, verified 2026-10-09 · owner: targetgen — see also: [runtime](reference/runtime.md), [experiment_abi](reference/experiment_abi.md)

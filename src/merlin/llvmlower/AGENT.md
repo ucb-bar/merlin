@@ -85,7 +85,10 @@ allocations disjoint from an independently synthesized seed; this grants no
 readonly, release or escaping-alias fact. Close loop-local scalar capture
 producers and qualified padding/conditional/tensor-import values recursively.
 Scalar `tensor.extract` read captures require an independent seed and an actual
-entry tensor/view or restricted import from the qualified private roots. CFG
+entry tensor/view, restricted import from the qualified private roots, or a
+recursively checked complete unused-init pure producer/dense literal/fill.
+Computed read values supply no ownership of their input buffers. Init-dependent,
+effectful, library-backed and unknown producers grant no read-root fact. CFG
 phi tensors and unknown snapshot owners grant no independence or reuse fact.
 An exactly-once `scf.execute_region no_inline` may supply an integer atomic
 snapshot to that value dependency closure when it contains only one unused-init

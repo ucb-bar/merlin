@@ -101,6 +101,11 @@ def _ltd_tensor_read_root(value):
                        'tensor.expand_shape', 'tensor.reshape'):
             value = op.operands[0]
             continue
+        if op.name in ('linalg.generic', 'linalg.fill', 'arith.constant'):
+            # A checked complete value producer supplies readable tensor state
+            # independently of the loop's fresh destination. Its recursively
+            # closed body/init proof grants no ownership of its input buffers.
+            return _ltd_fresh_seed(value)
         if op.name == 'bufferization.to_tensor':
             return (len(op.operands) == 1 and 'restrict' in op.attributes
                     and _ltd_separate_read_root(op.operands[0]))

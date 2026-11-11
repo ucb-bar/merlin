@@ -164,12 +164,14 @@ def test_old_state_reads_and_permutations_finish_before_destination_updates(tmp_
         assert output.index("memref.store") < output.index('prov.op = "copy-selected-state"')
 
 
-def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True, write=False, opaque=False, constant=False, while_state=None, outside_read=False, private=False, unknown_owner=False, tensor_read=False, tensor_view=False, read_seed=False, seed_init_read=False):
+def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True, write=False, opaque=False, constant=False, while_state=None, outside_read=False, private=False, unknown_owner=False, tensor_read=False, tensor_view=False, read_seed=False, seed_init_read=False, computed=None):
     marker = "read_only" if readonly else ""
     seed = "%seed" if fresh else "%x"
     declaration = "func.func private @observe()" if opaque else ""
     if unknown_owner:
         declaration += "func.func private @allocate()->memref<4xf32>"
+    if computed == "unknown":
+        declaration += "func.func private @compute(f32)->f32"
     extra = "func.call @observe() : () -> ()" if opaque else ""
     store = "memref.store %v, %mutable[%i] : memref<4xf32>" if write else ""
     read = "%v = memref.load %view[%i] : memref<?xf32>"
@@ -183,11 +185,37 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
             scf.yield %r:f32
           }} else {{ {extra} scf.yield %zero:f32 }}"""
     tensor_import = ""
+    seed_read = "%loaded=memref.load %view[%i]:memref<?xf32>"
     if tensor_read:
         tensor_source, tensor_type = "%x", "tensor<4xf32>"
         if private or unknown_owner:
             tensor_source = "%snapshot"
             tensor_import = "%snapshot=bufferization.to_tensor %base restrict:memref<4xf32> to tensor<4xf32>"
+        if computed:
+            if computed == "constant":
+                tensor_import += "\n%computed=arith.constant dense<3.0>:tensor<4xf32>"
+            elif computed == "fill":
+                tensor_import += "\n%computed_empty=tensor.empty():tensor<4xf32>\n%computed=linalg.fill ins(%zero:f32) outs(%computed_empty:tensor<4xf32>)->tensor<4xf32>"
+            else:
+                body = {"init": "%v=arith.addf %a,%init:f32", "unknown": "%v=func.call @compute(%a):(f32)->f32",
+                        "effect": "%v=arith.addf %a,%zero:f32\nmemref.store %v,%mutable[%c0]:memref<4xf32>"}.get(computed, "%v=arith.addf %a,%zero:f32")
+                library = 'library_call="unknown",' if computed == "library" else ""
+                tensor_import += f'''\n%computed_empty=tensor.empty():tensor<4xf32>
+                  %computed=linalg.generic {{{library}indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
+                    ins({tensor_source}:tensor<4xf32>) outs(%computed_empty:tensor<4xf32>) {{^bb0(%a:f32,%init:f32):
+                      {body}
+                      linalg.yield %v:f32
+                    }}->tensor<4xf32>'''
+                if computed == "nested":
+                    tensor_import += '''\n%nested=linalg.generic {indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}
+                      ins(%x:tensor<4xf32>) outs(%computed_empty:tensor<4xf32>) {^bb0(%a:f32,%init:f32):
+                        %i=linalg.index 0:index
+                        %prior=tensor.extract %computed[%i]:tensor<4xf32>
+                        %v=arith.addf %a,%prior:f32
+                        linalg.yield %v:f32
+                      }->tensor<4xf32>'''
+            tensor_source = "%nested" if computed == "nested" else "%computed"
+            seed_read = f"%loaded=tensor.extract {tensor_source}[%i]:tensor<4xf32>"
         if tensor_view:
             tensor_import += f"\n%tensor_view=tensor.cast {tensor_source}:{tensor_type} to tensor<?xf32>"
             tensor_source, tensor_type = "%tensor_view", "tensor<?xf32>"
@@ -207,7 +235,7 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
         fill = f'''%seed=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
           ins(%x:tensor<4xf32>) outs(%empty:tensor<4xf32>) {{^bb0(%a:f32,%init:f32):
             %i=linalg.index 0:index
-            %loaded=memref.load %view[%i]:memref<?xf32>
+            {seed_read}
             %value=arith.addf %a,%loaded:f32
             {read_init}
             linalg.yield {yielded}:f32
@@ -259,6 +287,22 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
         return {returned}:tensor<4xf32>
       }}
     }}"""
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("computed,changed", [("pure", 1), ("nested", 1), ("constant", 1), ("fill", 1),
+                                            ("init", 0), ("unknown", 0), ("effect", 0), ("library", 0)])
+@pytest.mark.parametrize("while_state", [None, "identity"], ids=["for", "while"])
+def test_computed_tensor_reads_require_complete_closed_value_producers(tmp_path, computed, changed, while_state):
+    original = read_source(tensor_read=True, tensor_view=True, computed=computed, read_seed=True, while_state=while_state)
+    stdout, output = rewrite(tmp_path, original)
+    assert f"OK loop_tensor_destinations {changed}" in stdout
+    assert output.count("tensor.extract") == original.count("tensor.extract")
+    assert output.count("linalg.generic") == original.count("linalg.generic")
+    if computed == "effect":
+        assert output.count("memref.store") == original.count("memref.store")
+    if computed == "unknown":
+        assert output.count("func.call") == original.count("func.call")
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")

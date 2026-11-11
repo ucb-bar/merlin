@@ -3,7 +3,7 @@ title: Loop-carried tensor destination reuse
 kind: reference
 status: current
 owner: llvmlower
-last_verified: 2026-11-09
+last_verified: 2026-11-11
 related: [architecture, lowering_pipeline]
 code_refs:
   - src/merlin/llvmlower/loop_tensor_destinations.py
@@ -29,13 +29,19 @@ linalg index/yield operations. A second closed profile also permits scalar
 `bufferization.to_buffer` over an actual function-entry tensor argument, or an
 actual private `memref.alloc`, with numeric `scf.if` branches. The loop seed must then be independently synthesized:
 an empty tensor, dense literal, scalar fill, or its complete pure generalized
-form. Tensor-fed seeds, CFG phi arguments, unknown memory roots, writes and
+form. Complete unused-init generics may establish seeds from numeric tensor
+inputs after recursively checking their independent destination. Init-dependent
+seeds, CFG phi arguments, unknown memory roots, writes and
 opaque calls do not qualify for that read extension. Private allocations supply
 disjointness from that independent seed, not a readonly fact or release authority.
 Every nested branch and
 operation is checked; no capture, effect or arithmetic changes. Loop-local
 `tensor.extract` captures may read actual function-entry tensor values through
-standard tensor views, or restricted imports from the qualified private roots.
+standard tensor views, restricted imports from the qualified private roots,
+or recursively checked complete pure tensor producers/dense literals/fills.
+Computed read roots retain their original evaluation and grant no ownership of
+their input buffers. Unknown/effectful/library-backed and init-dependent
+producers remain outside this read profile.
 The independent seed remains required; function CFG phi arguments and unknown
 snapshot owners do not qualify. This recognizes tensor views recovered by native
 canonicalization without weakening lifetime or effect checks. Loop-local
@@ -124,3 +130,15 @@ non-equivalent conditions and mismatched state. The conditional read-only/fresh
 case also appears in `Dialect/Bufferization/Transforms/one-shot-bufferize-allow-return-allocs.mlir`.
 This feature exposes value destinations before that analysis; it does not
 replace upstream alias handling or relax post-deallocation lifetime verification.
+
+Complete model captures additionally exercise scalar reads of a preceding
+computed model tensor feeding coupled integer loop state. Recursively checking
+that readable value lets the existing destination/copy mechanism retain the
+original recurrence without fresh ownership on every iteration. Two i32/i64
+models preserve learned weights and all six results through actual native
+execution, including empty calls; the i64 model also qualifies through the
+public binding CLI. Sixteen
+focused positive/refusal cases cover for/while state, views, nested producers,
+constants/fills, init reads, effects, calls and library markers. The 107-case
+destination suite passes with the native toolchain; post-deallocation and alias
+checks remain enabled.
