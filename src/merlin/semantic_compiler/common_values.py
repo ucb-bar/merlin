@@ -14,6 +14,11 @@ from .model import SemanticNode
 SCHEMA = "merlin.common_pure_values.v1"
 
 
+def semantic_attributes(node):
+    """Provenance traces do not change logical values or dense element order."""
+    return tuple((key, value) for key, value in node.attrs if not key.startswith("prov."))
+
+
 def common_pure_values(source, *, groups=()):
     """Share pure values, preserving supplied atomic provider regions.
 
@@ -57,7 +62,7 @@ def common_pure_values(source, *, groups=()):
                         record = item.record()
                         del record["id"]
                         record["inputs"] = [aliases.get(key, key) for key in item.inputs]
-                        record["attrs"] = {key: value for key, value in item.attrs if not key.startswith("prov.")}
+                        record["attrs"] = dict(semantic_attributes(item))
                         records.append(record)
                     key = json.dumps(records, sort_keys=True, separators=(",", ":"), allow_nan=False)
                     equivalent_group = available.get(key) if not public.intersection(group) else None

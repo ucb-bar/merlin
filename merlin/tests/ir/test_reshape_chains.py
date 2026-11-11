@@ -16,6 +16,7 @@ from merlin.semantic_compiler.model import (
 from merlin.semantic_compiler.reference import TensorValue, evaluate_graph
 from merlin.semantic_compiler.reshape_chains import compose_reshape_chains, verify_reshape_chains
 from merlin.semantic_compiler.source_preparation import (
+    append_common_preparation,
     append_reshape_preparation,
     preparation_counts,
     preparation_filename,
@@ -42,7 +43,6 @@ def test_transitive_composition_matches_every_bf16_encoding():
     assert evaluate_graph(source, inputs) == evaluate_graph(result, inputs)
     assert verify_reshape_chains(result, receipt) == source
     assert compose_reshape_chains(result)[0] == result
-    assert preparation_counts(receipt) == {"source_reshape_rewrites": 1, "source_removed_reshapes": 2}
 
 
 def test_other_consumers_and_repeated_public_outputs_are_preserved():
@@ -61,12 +61,26 @@ def test_other_consumers_and_repeated_public_outputs_are_preserved():
     assert verify_reshape_chains(result, receipt) == source
 
 
+@pytest.mark.parametrize("attribute", ["prov.fqn", "prov.layout"])
+def test_provenance_is_transparent_and_preserved_in_replay(attribute):
+    source = graph()
+    source = replace(source, nodes=tuple(
+        replace(node, attrs=((attribute, node.id),)) if node.op == "reshape" else node
+        for node in source.nodes
+    ))
+    result, record = compose_reshape_chains(source)
+    assert [node.id for node in result.nodes] == ["x", "c"]
+    assert result.node("c").attrs == ((attribute, "c"),)
+    assert result.node("c").inputs == ("x",)
+    assert verify_reshape_chains(result, record) == source
+
+
 @pytest.mark.parametrize("change", ["attribute", "map", "type", "policy", "count", "transpose", "gather", "copy"])
 def test_nontransparent_parent_is_not_bypassed(change):
     source = graph()
     parent = source.node("a")
     if change == "attribute":
-        parent = replace(parent, attrs=(("prov.layout", "physical"),))
+        parent = replace(parent, attrs=(("layout", "physical"),))
     elif change == "map":
         parent = replace(parent, index_maps=(IndexMap(1, ((0,), (0,)), (0, 0)), pointwise_identity_maps(1, 1)[0]))
     elif change in {"type", "policy", "count"}:
@@ -147,7 +161,8 @@ def test_both_opt_in_passes_replay_in_order_and_legacy_default_stays_unchanged()
     )
     default, old = prepare_source(source)
     assert default == source
-    result, record = prepare_source(source, common_values=True, compose_reshapes=True)
+    result, common = append_common_preparation(default, old, groups=())
+    result, record = append_reshape_preparation(result, common)
     assert record["schema"] == "merlin.source_preparation.v5"
     assert record["prepared"]["schema"] == "merlin.source_preparation.v4"
     assert preparation_counts(record)["source_common_values"] == 1
@@ -162,14 +177,18 @@ def test_both_opt_in_passes_replay_in_order_and_legacy_default_stays_unchanged()
     ]:
         with pytest.raises(ValueError):
             verify_source_preparation(result, {**record, field: value})
-    with pytest.raises(ValueError, match="Boolean"):
-        prepare_source(source, compose_reshapes=1)
     with pytest.raises(ValueError, match="supplied source"):
         append_reshape_preparation(result, old)
 
 
-def test_standalone_receipt_is_admitted_by_preparation_verifier():
+def test_only_wrapped_receipts_are_admitted_by_preparation_verifier():
     source = graph()
     result, record = compose_reshape_chains(source)
-    assert verify_source_preparation(result, record) == source
-    assert preparation_filename(record) == "source-preparation.json"
+    with pytest.raises(ValueError):
+        verify_source_preparation(result, record)
+    prepared, old = prepare_source(source)
+    result, wrapped = append_reshape_preparation(prepared, old)
+    assert verify_source_preparation(result, wrapped) == source
+    assert preparation_filename(wrapped) == "source-preparation.json"
+    assert preparation_counts(wrapped)["source_reshape_rewrites"] == 1
+    assert preparation_counts(wrapped)["source_removed_reshapes"] == 2

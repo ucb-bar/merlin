@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from hashlib import sha256
 from pathlib import Path
 
@@ -18,10 +18,13 @@ class CodegenOptions:
     program_size_limit_bytes: int | None = None
     tuning_profile: dict | None = None
     io_memory_bytes: int | None = None
+    exact_float_unroll: bool = False
 
     def __post_init__(self):
         if self.reduction_unroll not in ("auto", *(str(i) for i in FACTORS)):
             raise ValueError("reduction unroll must be auto, 1, 2, 4 or 8")
+        if type(self.exact_float_unroll) is not bool:
+            raise ValueError("exact float unroll must be Boolean")
         size = self.program_size_limit_bytes
         if size is not None and (type(size) is not int or size <= 0):
             raise ValueError("program size budget must be a positive integer")
@@ -29,6 +32,13 @@ class CodegenOptions:
             check_profile(self.tuning_profile)
         if self.io_memory_bytes is not None and (type(self.io_memory_bytes) is not int or self.io_memory_bytes <= 0):
             raise ValueError("device I/O memory window must have a positive byte size")
+
+    def identity_record(self):
+        """Return the identity fields, omitting exact_float_unroll while it is false."""
+        record = asdict(self)
+        if not self.exact_float_unroll:
+            del record["exact_float_unroll"]
+        return record
 
 
 def check_profile(profile):
@@ -97,6 +107,7 @@ def options_from_args(args):
         getattr(args, "program_size_limit_bytes", None),
         json.loads(Path(path).read_text()) if path else None,
         getattr(args, "io_memory_bytes", None),
+        getattr(args, "exact_float_unroll", False),
     )
 
 

@@ -1,6 +1,6 @@
 """Compose dense logical reshapes while preserving every element's exact bits.
 
-Only adjacent, unannotated reshape operations are transparent. This removes
+Only adjacent reshapes without semantic attributes are transparent. This removes
 redundant logical movement; it does not create physical aliases or authorize
 in-place writes to a caller's input.
 """
@@ -8,6 +8,7 @@ in-place writes to a caller's input.
 from dataclasses import replace
 from math import prod
 
+from .common_values import semantic_attributes
 from .model import SemanticNode
 
 SCHEMA = "merlin.reshape_chains.v1"
@@ -18,7 +19,7 @@ def _plain_reshape(node, parent):
         node.op == "reshape"
         and node.effect == "pure"
         and len(node.inputs) == 1
-        and not node.attrs
+        and not semantic_attributes(node)
         and not node.index_maps
         and (node.type.dtype, node.type.numerical_policy) == (parent.type.dtype, parent.type.numerical_policy)
         and prod(node.type.shape) == prod(parent.type.shape)
@@ -29,7 +30,7 @@ def compose_reshape_chains(source):
     """Bypass complete dense reshapes and erase only newly unused intermediates.
 
     Public results, other consumers and all source input/constant ports retain
-    their identities. Transposes, gathers, casts, attributes and physical views
+    their identities. Transposes, gathers, casts, semantic attributes and physical views
     are not admitted by this transform.
     """
     if source.physical_extents or source.boundary_layouts or source.output_layouts:

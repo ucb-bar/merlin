@@ -124,15 +124,10 @@ earlier preparation sequence; historical receipts and default behavior stay fixe
 Application commoning preserves the provider's checked region groups atomically:
 never common only one sibling result or split a selected fused region.
 
-`reshape_chains.py` composes adjacent, unannotated dense logical reshapes with
+`reshape_chains.py` composes adjacent dense logical reshapes with only provenance attributes and
 identical dtype, numerical policy and element count. Remove only bypassed
 intermediates that have no remaining users and are not public outputs; preserve
 every boundary and constant binding. Do not treat gathers, transposes, casts or
 allocated physical layouts as transparent. Source-preparation v5 appends this
 optional pass after ordinary preparation and optional atomic value commoning.
 Retain original positions/nodes and replay both composition and liveness checks.
-
-`operand_reuse.py` plans complete immutable operand residency within a declared
-reuse scope. Callers establish invariance and supply capacity and expansion
-limits; the plan grants no arithmetic reordering or physical alias. Keep target
-allocation, initialization, instruction budgets and emitted schedules in OOT.

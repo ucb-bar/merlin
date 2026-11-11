@@ -8,45 +8,13 @@ _LEGACY_SCHEMA = "merlin.source_preparation.v1"
 SCHEMA = "merlin.source_preparation.v2"
 _VIEWS_SCHEMA = "merlin.source_preparation.v3"
 _COMMON_SCHEMA = "merlin.source_preparation.v4"
-_COMMON_TRANSFORM = "merlin.common_pure_values.v1"
 _RESHAPES_SCHEMA = "merlin.source_preparation.v5"
-_RESHAPES_TRANSFORM = "merlin.reshape_chains.v1"
 
 
-def prepare_source(
-    source, *, constant_math_policy=None, include_tensor_constants=True, common_values=False, compose_reshapes=False
-):
+def prepare_source(source, *, constant_math_policy=None, include_tensor_constants=True):
     """Prepare exact indexing before separately selected numerical changes."""
     from .affine_views import fuse_affine_views
 
-    if type(common_values) is not bool:
-        raise ValueError("common_values must be Boolean")
-    if type(compose_reshapes) is not bool:
-        raise ValueError("compose_reshapes must be Boolean")
-    if compose_reshapes:
-        source, prepared = prepare_source(
-            source,
-            constant_math_policy=constant_math_policy,
-            include_tensor_constants=include_tensor_constants,
-            common_values=common_values,
-        )
-        return append_reshape_preparation(source, prepared)
-    if common_values:
-        from .common_values import common_pure_values
-
-        original = source
-        source, prepared = prepare_source(
-            source, constant_math_policy=constant_math_policy, include_tensor_constants=include_tensor_constants
-        )
-        source, common = common_pure_values(source)
-        return source, {
-            "schema": _COMMON_SCHEMA,
-            "before_digest": original.digest(),
-            "after_digest": source.digest(),
-            "common_values": common,
-            "prepared": prepared,
-            "limits": prepared.get("limits", []),
-        }
     original = source
     source, views = fuse_affine_views(source)
     source, numerical = _prepare_numerical_source(
@@ -109,6 +77,23 @@ def _prepare_numerical_source(source, *, constant_math_policy=None, include_tens
     }
 
 
+def append_common_preparation(source, prepared, *, groups):
+    """Append pure-value commoning with the provider's checked atomic groups."""
+    from .common_values import common_pure_values
+
+    if prepared.get("after_digest") != source.digest():
+        raise ValueError("common preparation does not follow the supplied source")
+    source, common = common_pure_values(source, groups=groups)
+    return source, {
+        "schema": _COMMON_SCHEMA,
+        "before_digest": prepared["before_digest"],
+        "after_digest": source.digest(),
+        "prepared": prepared,
+        "common_values": common,
+        "limits": prepared.get("limits", []),
+    }
+
+
 def append_reshape_preparation(source, prepared):
     """Append exact reshape composition to an existing preparation receipt."""
     from .reshape_chains import compose_reshape_chains
@@ -128,10 +113,6 @@ def append_reshape_preparation(source, prepared):
 
 def verify_source_preparation(source, record):
     """Reconstruct the source and replay stage order, limits and numerical policy."""
-    if isinstance(record, dict) and record.get("schema") == _RESHAPES_TRANSFORM:
-        from .reshape_chains import verify_reshape_chains
-
-        return verify_reshape_chains(source, record)
     if isinstance(record, dict) and record.get("schema") == _RESHAPES_SCHEMA:
         from .reshape_chains import verify_reshape_chains
 
@@ -148,10 +129,6 @@ def verify_source_preparation(source, record):
         if original.digest() != record["before_digest"]:
             raise ValueError("source preparation reshape original changed")
         return original
-    if isinstance(record, dict) and record.get("schema") == _COMMON_TRANSFORM:
-        from .common_values import verify_common_pure_values
-
-        return verify_common_pure_values(source, record)
     if isinstance(record, dict) and record.get("schema") == _COMMON_SCHEMA:
         from .common_values import verify_common_pure_values
 
@@ -227,23 +204,19 @@ def preparation_filename(record):
         _LEGACY_SCHEMA,
         _VIEWS_SCHEMA,
         _COMMON_SCHEMA,
-        _COMMON_TRANSFORM,
         _RESHAPES_SCHEMA,
-        _RESHAPES_TRANSFORM,
     }
     return "source-preparation.json" if composite else "source-constant-folding.json"
 
 
 def preparation_counts(record):
-    if record.get("schema") == _RESHAPES_TRANSFORM:
-        return {
-            "source_reshape_rewrites": sum(not row["removed"] for row in record["changes"]),
-            "source_removed_reshapes": sum(row["removed"] for row in record["changes"]),
-        }
     if record.get("schema") == _RESHAPES_SCHEMA:
-        return {**preparation_counts(record["prepared"]), **preparation_counts(record["reshapes"])}
-    if record.get("schema") == _COMMON_TRANSFORM:
-        return {"source_common_values": sum(row["replacement"] is not None for row in record["changes"])}
+        changes = record["reshapes"]["changes"]
+        return {
+            **preparation_counts(record["prepared"]),
+            "source_reshape_rewrites": sum(not row["removed"] for row in changes),
+            "source_removed_reshapes": sum(row["removed"] for row in changes),
+        }
     if record.get("schema") == _COMMON_SCHEMA:
         return {
             **preparation_counts(record["prepared"]),

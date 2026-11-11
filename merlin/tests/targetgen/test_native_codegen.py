@@ -142,3 +142,31 @@ def test_malformed_profiles_cannot_select_a_variant(changed):
         value["variants"].pop()
     with pytest.raises(ValueError):
         CodegenOptions(tuning_profile=value)
+
+
+@pytest.mark.parametrize("value", [0, 1, None, "true"])
+def test_exact_float_unrolling_requires_a_boolean(value):
+    with pytest.raises(ValueError, match="Boolean"):
+        CodegenOptions(exact_float_unroll=value)
+
+
+def test_exact_float_unrolling_is_explicit_and_scoped():
+    from argparse import Namespace
+    from merlin.targetgen.cli import build_parser
+
+    assert options_from_args(Namespace()).exact_float_unroll is False
+    parser = build_parser()
+    for command, flags in (
+        ("native-compile", ["--engine", "merlin_native", "--support", "synthetic", "--snapshot", "snapshot",
+                            "--request", "request", "--target-source", "target", "--abi", "auto",
+                            "--mode", "diagnostic", "--out", "output"]),
+        ("native-verify", ["--engine", "merlin_native", "--snapshot", "snapshot", "--request", "request",
+                           "--mode", "diagnostic", "--artifact", "artifact", "--out", "output"]),
+        ("native-profile", ["--support", "synthetic", "--snapshot", "snapshot", "--target-source", "target",
+                            "--runner-command", "runner.json", "--request", "request", "--out", "output"]),
+    ):
+        assert options_from_args(parser.parse_args([command, *flags])).exact_float_unroll is False
+        selected = options_from_args(parser.parse_args([command, *flags, "--exact-float-unroll"]))
+        with codegen_options(selected):
+            assert current_codegen_options().exact_float_unroll is True
+        assert current_codegen_options().exact_float_unroll is False

@@ -102,11 +102,7 @@ def add_native_codegen_commands(sub, handlers):
     native_compile.add_argument(
         "--application-state", help="source-bound JSON mapping state inputs, updates and initialization"
     )
-    native_compile.add_argument(
-        "--already-quantized",
-        action="store_true",
-        help="preserve authored codes and exponent data through the selected application provider",
-    )
+    native_compile.add_argument("--already-quantized", action="store_true", help="preserve authored codes and exponent data through the selected application provider")
     native_compile.add_argument(
         "--application-common-values",
         action="store_true",
@@ -161,6 +157,9 @@ def add_native_codegen_commands(sub, handlers):
     native_compile.add_argument("--reduction-unroll", choices=("auto", "1", "2", "4", "8"), default="auto")
     native_compile.add_argument("--tuning-profile", help="measured profile for this exact compilation")
     native_compile.add_argument("--program-size-limit-bytes", type=int, help="optional smaller device code budget")
+    native_compile.add_argument(
+        "--exact-float-unroll", action="store_true", help="opt into exact cast and negation tile unrolling"
+    )
     add_io_memory_argument(native_compile)
     native_compile.add_argument("--target-source", required=True, help="selected target source checkout")
     native_compile.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
@@ -183,6 +182,9 @@ def add_native_codegen_commands(sub, handlers):
     profile.add_argument("--abi", default="auto")
     profile.add_argument("--search-limits")
     profile.add_argument("--program-size-limit-bytes", type=int)
+    profile.add_argument(
+        "--exact-float-unroll", action="store_true", help="opt into exact cast and negation tile unrolling"
+    )
     profile.add_argument("--objective", choices=("device_cycles", "warm_host_ticks"), default="device_cycles")
     profile.add_argument("--runner-timeout", type=int, default=300)
     profile.set_defaults(func=profile_command)
@@ -255,11 +257,7 @@ def add_native_codegen_commands(sub, handlers):
         default="embedded",
         help="same model parameter storage used during application compilation",
     )
-    native_verify.add_argument(
-        "--already-quantized",
-        action="store_true",
-        help="replay authored code/exponent intake with no numeric conversion",
-    )
+    native_verify.add_argument("--already-quantized", action="store_true", help="replay authored code/exponent intake with no numeric conversion")
     native_verify.add_argument(
         "--application-common-values",
         action="store_true",
@@ -294,5 +292,8 @@ def add_native_codegen_commands(sub, handlers):
     native_verify.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
     native_verify.add_argument("--artifact", required=True, help="published native compilation directory")
     native_verify.add_argument("--out", required=True, help="verification status JSON outside the artifact")
+    native_verify.add_argument(
+        "--exact-float-unroll", action="store_true", help="opt into exact cast and negation tile unrolling"
+    )
     add_io_memory_argument(native_verify)
     native_verify.set_defaults(func=handlers["native_verify"])

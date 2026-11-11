@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from time import perf_counter
 from typing import Any, Callable, MutableMapping
@@ -114,7 +114,7 @@ def materialization_key(
         "request": canonical_request_record(request, source_identity_policy=source_identity_policy),
         "source_identity_policy": source_identity_policy,
         "target_choice": target_choice,
-        "codegen_options": asdict(options),
+        "codegen_options": options.identity_record(),
         "compilation_identity": compilation_identity,
     })
     return MaterializationKey(sha256(identity).hexdigest(), identity)

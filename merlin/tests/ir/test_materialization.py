@@ -79,8 +79,18 @@ class MaterializationIdentityTest(unittest.TestCase):
         self.assertNotEqual(key(source), key(source, target_choice={"provider": "other"}))
         self.assertNotEqual(key(source), key(source, compilation_identity={"snapshot": "snapshot-2"}))
         for options in (CodegenOptions(reduction_unroll="2"), CodegenOptions(program_size_limit_bytes=1024),
-                        CodegenOptions(io_memory_bytes=2048)):
+                        CodegenOptions(io_memory_bytes=2048), CodegenOptions(exact_float_unroll=True)):
             self.assertNotEqual(key(source), key(source, options=options))
+
+    def test_default_codegen_record_retains_legacy_fields(self):
+        import json
+        default = json.loads(key(request()).identity)["codegen_options"]
+        self.assertEqual(default, {
+            "reduction_unroll": "auto", "program_size_limit_bytes": None,
+            "tuning_profile": None, "io_memory_bytes": None,
+        })
+        selected = json.loads(key(request(), options=CodegenOptions(exact_float_unroll=True)).identity)
+        self.assertIs(selected["codegen_options"]["exact_float_unroll"], True)
 
     def test_attribute_string_values_are_not_renamed(self):
         source = request()

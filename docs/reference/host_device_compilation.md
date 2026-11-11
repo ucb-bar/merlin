@@ -114,7 +114,8 @@ selected device-visible range and supply the required memory synchronization.
 values after ordinary source preparation and before final region partitioning.
 Use the same option with `native-verify --application`. It is off by default.
 The Python transform is `merlin.semantic_compiler.common_values.common_pure_values`;
-`prepare_source(..., common_values=True)` also supports unbundled semantic graphs.
+`source_preparation.append_common_preparation(source, prepared, groups=groups)`
+appends its receipt with checked atomic groups; use `groups=()` for unbundled graphs.
 
 Equality includes ordered operands, result types and numerical policies, index
 maps and every attribute except `prov.*` provenance. Different scales, rounding
@@ -143,13 +144,13 @@ not a proof of its target arithmetic.
 dense logical reshapes. Use the same option with `native-verify --application`.
 It is off by default and can follow `--application-common-values`. The Python
 entry points are `reshape_chains.compose_reshape_chains` and
-`prepare_source(..., compose_reshapes=True)` in `merlin.semantic_compiler`.
+`source_preparation.append_reshape_preparation(source, prepared)` in `merlin.semantic_compiler`.
 
 For example, `[B,T,H] -> [B*T*H] -> [B,T,heads,head_dim]` becomes a single reshape
 when both original operations preserve element count, dtype, numerical policy
 and dense element order. The intermediate remains if another operation uses it
 or it is a public output. All input ports, constants and ordered public outputs
-keep their identities. Attributes and index maps prevent composition; gathers,
+keep their identities. Non-provenance attributes and index maps prevent composition; gathers,
 transposes, casts and already allocated views remain outside the pass.
 
 This removes redundant logical copies without introducing physical aliases.

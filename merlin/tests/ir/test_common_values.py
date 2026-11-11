@@ -8,7 +8,9 @@ import pytest
 from merlin.semantic_compiler.common_values import common_pure_values, verify_common_pure_values
 from merlin.semantic_compiler.model import KernelRequest, SemanticNode, TensorType, pointwise_identity_maps
 from merlin.semantic_compiler.reference import TensorValue, evaluate_graph
-from merlin.semantic_compiler.source_preparation import preparation_counts, prepare_source, verify_source_preparation
+from merlin.semantic_compiler.source_preparation import (
+    append_common_preparation, preparation_counts, prepare_source, verify_source_preparation,
+)
 
 
 def graph():
@@ -44,13 +46,14 @@ def test_transitive_commoning_matches_independent_float_reference():
     assert common_pure_values(result)[0] == result
 
 
-def test_provenance_is_preserved_in_replay_without_granting_numeric_equivalence():
+@pytest.mark.parametrize("attribute", ["prov.fqn", "prov.layout"])
+def test_provenance_is_preserved_in_replay_without_granting_numeric_equivalence(attribute):
     source = graph()
-    nodes = tuple(replace(n, attrs=(*n.attrs, ("prov.fqn", n.id))) if n.effect == "pure" else n for n in source.nodes)
+    nodes = tuple(replace(n, attrs=(*n.attrs, (attribute, n.id))) if n.effect == "pure" else n for n in source.nodes)
     source = replace(source, nodes=nodes)
     result, receipt = common_pure_values(source)
     assert "b" not in {n.id for n in result.nodes}
-    assert dict(result.node("a").attrs)["prov.fqn"] == "a"
+    assert dict(result.node("a").attrs)[attribute] == "a"
     assert verify_common_pure_values(result, receipt) == source
 
 
@@ -120,21 +123,22 @@ def test_opt_in_preparation_replays_without_changing_legacy_default():
     source = graph()
     default, old = prepare_source(source)
     assert "b" in {n.id for n in default.nodes}
-    result, receipt = prepare_source(source, common_values=True)
+    result, receipt = append_common_preparation(default, old, groups=())
     assert receipt["schema"] == "merlin.source_preparation.v4"
     assert preparation_counts(receipt)["source_common_values"] == 2
     assert verify_source_preparation(result, receipt) == source
     assert verify_source_preparation(default, old) == source
-    with pytest.raises(ValueError, match="Boolean"):
-        prepare_source(source, common_values=1)
+    with pytest.raises(ValueError, match="supplied source"):
+        append_common_preparation(result, old, groups=())
 
 
-def test_standalone_receipt_and_composite_tampering():
+def test_only_wrapped_receipts_are_accepted_by_preparation_verifier():
     source = graph()
     result, receipt = common_pure_values(source)
-    assert verify_source_preparation(result, receipt) == source
-    assert preparation_counts(receipt) == {"source_common_values": 2}
-    result, receipt = prepare_source(source, common_values=True)
+    with pytest.raises(ValueError):
+        verify_source_preparation(result, receipt)
+    prepared, old = prepare_source(source)
+    result, receipt = append_common_preparation(prepared, old, groups=())
     for field, value in [
         ("before_digest", "0" * 64),
         ("limits", ["unknown"]),
@@ -156,7 +160,11 @@ def sibling_graph():
 
 def test_sibling_regions_are_shared_atomically_and_replay():
     source, groups = sibling_graph()
-    result, receipt = common_pure_values(source, groups=groups)
+    source = replace(source, outputs=("a", "ae", "out"), output_storages=("external",) * 3)
+    prepared, old = prepare_source(source)
+    result, wrapped = append_common_preparation(prepared, old, groups=groups)
+    receipt = wrapped["common_values"]
+    assert verify_source_preparation(result, wrapped) == source
     assert result.node("out").inputs == ("a", "ae")
     assert {n.id for n in result.nodes} == {"x", "y", "a", "ae", "out"}
     assert verify_common_pure_values(result, receipt) == source
