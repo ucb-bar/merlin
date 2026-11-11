@@ -12,8 +12,7 @@ from pathlib import Path
 from typing import Any
 
 
-class InvalidLinalgPattern(ValueError):
-    pass
+from .linalg_errors import InvalidLinalgPattern
 
 
 @dataclass(frozen=True)
