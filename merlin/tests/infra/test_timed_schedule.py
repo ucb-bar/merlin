@@ -35,6 +35,23 @@ def project(call):
 CAPACITIES = {"read:0": 1, "read:1": 1, "write:0": 1, "write:1": 1}
 
 
+def test_issue_pair_projection_checks_spacing_overlap_and_unknown_rules():
+    from merlin.compile.scheduling.timed_schedule import make_timing_plan, verify_issue_timing_plan
+
+    kernel = Kernel("pair", (), (read(0), write(0)))
+    def check(starts, distance=3, overlaps=()):
+        decision = make_timing_plan(kernel, starts, model_identity="pair-model", clock="cycles", overlaps=overlaps)
+        return verify_issue_timing_plan(kernel, decision, model_identity="pair-model", clock="cycles",
+                                        completion=lambda call: 5, distance=lambda a, b: distance)
+    assert check((0, 3), overlaps=((0, 1, "require"),)) == ((0, 3), (5, 8))
+    with pytest.raises(ValueError, match="distance violated"):
+        check((0, 2))
+    with pytest.raises(ValueError, match="overlap"):
+        check((0, 5), overlaps=((0, 1, "require"),))
+    with pytest.raises(ValueError, match="unknown"):
+        check((0, 5), distance=None)
+
+
 def plan(kernel, starts, *, complete=None, overlap=None):
     ops, handles = [], []
     for i in range(len(kernel.body)):
