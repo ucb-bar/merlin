@@ -55,10 +55,10 @@ def _header(line: str) -> tuple[str, int, int, int, bool, int]:
     name = parts[2]
     if not name or not name.isascii() or not all(char.isalnum() or char == "_" for char in name):
         raise OutBinError("invalid OUT_BIN output name")
-    rows = _decimal(parts[3], "rows", positive=True)
-    cols = _decimal(parts[4], "cols", positive=True)
+    rows = _decimal(parts[3], "rows")
+    cols = _decimal(parts[4], "cols")
     width = _decimal(parts[5], "word bytes", positive=True)
-    count = _decimal(parts[7], "payload bytes", positive=True)
+    count = _decimal(parts[7], "payload bytes")
     if width not in (1, 2, 4, 8) or parts[6] not in ("s", "u"):
         raise OutBinError("unsupported OUT_BIN container format")
     if count != rows * cols * width:
@@ -121,7 +121,11 @@ def _parse_binary_console(
                     int.from_bytes(payload[index : index + width], "little", signed=signed)
                     for index in range(0, count, width)
                 ]
-                outputs[name] = [words[row * cols : (row + 1) * cols] for row in range(rows)]
+                # Empty frames retain geometry in BinaryFrame. Do not allocate
+                # an arbitrarily large list of empty rows for a zero-column frame.
+                outputs[name] = (
+                    [words[row * cols : (row + 1) * cols] for row in range(rows)] if count else []
+                )
             else:
                 outputs[name] = []  # Preserve duplicate-name checks without materializing values.
             frames[name] = BinaryFrame(name, rows, cols, width, signed)

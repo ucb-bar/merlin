@@ -29,6 +29,24 @@ def test_raw_frame_roundtrips_nul_newline_magic_and_non_utf8() -> None:
     assert metrics == {"cycles": 7}
 
 
+def test_empty_frame_requires_checksum_end_and_done():
+    raw = _frame(b"")
+    assert parse_binary_console(raw) == ({"out": []}, {"cycles": 7})
+    # A zero-column frame cannot induce allocation proportional to its row count.
+    assert parse_binary_console(raw.replace(b"out 1 0", b"out 18446744073709551615 0"))[0] == {"out": []}
+    for damaged in (
+        raw.replace(b"cbf29ce484222325", b"0000000000000000"),
+        raw.replace(b"OUT_BIN_END v1 cbf29ce484222325\n", b""),
+        raw[:-5],
+        raw.replace(b" 1 0 1 u 0", b" 1 1 1 u 0"),
+        raw.replace(b" 1 0 1 u 0", b" 1 0 1 u 1"),
+        raw.replace(b" 1 0 1 u 0", b" -1 0 1 u 0"),
+        raw[:-5] + raw,
+    ):
+        with pytest.raises(OutBinError):
+            parse_binary_console(damaged)
+
+
 def test_explicit_terminal_restoration_preserves_all_bytes_and_original_crlf():
     payload = bytes(range(256)) + b"\r\n\r\r\n\nOUT_BIN_END\x00"
     original = _frame(payload)

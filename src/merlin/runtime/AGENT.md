@@ -150,6 +150,11 @@ the per-backend adapters under `backends/`.
   exact length-delimited raw payloads without text-decoding their NUL/non-UTF-8
   contents, checks the transport checksum, and requires END/DONE and a closed
   output roster before the unchanged numerical checker sees actual values.
+  Zero-element frames retain their nonnegative row/column geometry and the
+  checksum of an empty payload; END/DONE remain mandatory. Whole-model decoding
+  checks that geometry against the complete declared result shape, including
+  zero trailing dimensions. Empty transport does not grant an empty-output ABI
+  to callers whose own roster contract requires positive extents.
 - `out_packet.py` reuses the binary codec for closed in-memory full-value packets,
   bounded by a caller-owned typed output roster. Packet DONE is wire closure only;
   native completion and numerical comparison remain independent obligations.

@@ -59,6 +59,16 @@ def output_name(index: int) -> str:
     return f"out{int(index)}"
 
 
+def _output_geometry(shape: Sequence[int]) -> tuple[int, int]:
+    dims = [int(d) for d in shape]
+    if any(d < 0 for d in dims):
+        raise ReadbackError("full readback requires nonnegative static output dimensions")
+    rows = 1
+    for d in dims[:-1]:
+        rows *= d
+    return rows, dims[-1] if dims else 1
+
+
 def render_outputs_header(out_specs: Sequence[tuple[Sequence[int], str]]) -> str:
     """``model_outputs.h``: name, rows, cols, element width, signedness and byte count per result."""
     if not out_specs:
@@ -68,15 +78,10 @@ def render_outputs_header(out_specs: Sequence[tuple[Sequence[int], str]]) -> str
         if dtype not in _FORMAT:
             raise ReadbackError(f"result {index} has dtype {dtype!r}, which full readback cannot carry")
         width, signed = _FORMAT[dtype]
-        dims = [int(d) for d in shape]
-        count = 1
-        for d in dims:
-            count *= d
-        if count < 1:
-            raise ReadbackError(f"result {index} has no elements")
-        col = dims[-1] if dims else 1
+        row, col = _output_geometry(shape)
+        count = row * col
         names.append(f'"{output_name(index)}"')
-        rows.append(str(count // col))
+        rows.append(str(row))
         cols.append(str(col))
         widths.append(str(width))
         signs.append("'s'" if signed else "'u'")
@@ -402,6 +407,9 @@ def decode_outputs(
         frame = frames[name]
         if frame.word_bytes != width or bool(frame.signed) != signed:
             raise ReadbackError(f"result {index}'s frame format differs from its declared dtype {dtype}")
+        rows, cols = _output_geometry(shape)
+        if (frame.rows, frame.cols) != (rows, cols):
+            raise ReadbackError(f"result {index}'s frame geometry differs from its declared shape")
         words = np.asarray(outputs[name], dtype=np.int64 if signed else np.uint64).reshape(-1)
         if dtype in FLOAT_BITS:
             raw = words.astype(np.dtype(FLOAT_BITS[dtype]))

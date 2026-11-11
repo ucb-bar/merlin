@@ -62,6 +62,36 @@ def test_the_output_table_states_every_result():
         W.render_outputs_header([([2], "complex64")])
 
 
+def test_empty_results_retain_each_declared_shape_and_dtype():
+    values = [np.empty(shape, dtype=np.int64) for shape in ((0, 8), (3, 0), (2, 0, 7), (0,))]
+    specs = [(list(value.shape), "i64") for value in values]
+    header = W.render_outputs_header(specs)
+    assert "MERLIN_OUTPUT_ROWS[4] = {0, 3, 0, 1}" in header
+    assert "MERLIN_OUTPUT_COLS[4] = {8, 0, 7, 0}" in header
+    assert "MERLIN_OUTPUT_BYTES[4] = {0ULL, 0ULL, 0ULL, 0ULL}" in header
+    console = b"".join(_frame(f"out{i}", value, 8, True) for i, value in enumerate(values)) + b"DONE\n"
+    outputs, _, frames = out_bin.parse_binary_console_details(console)
+    decoded = W.decode_outputs(outputs, frames, specs)
+    assert [(value.shape, value.dtype, value.size) for value in decoded] == [
+        (value.shape, value.dtype, 0) for value in values
+    ]
+    with pytest.raises(W.ReadbackError, match="geometry differs"):
+        W.decode_outputs(outputs, frames, [([8, 0], "i64"), *specs[1:]])
+
+
+@pytest.mark.parametrize("shape", [[-1, 0], [0, -1], [-2, -2]])
+def test_dynamic_or_negative_output_dimensions_are_refused(shape):
+    with pytest.raises(W.ReadbackError, match="nonnegative static"):
+        W.render_outputs_header([(shape, "i32")])
+
+
+def test_equal_element_counts_do_not_authorize_different_frame_geometry():
+    console = _frame("out0", np.arange(6, dtype=np.int32).reshape(2, 3), 4, True) + b"DONE\n"
+    outputs, _, frames = out_bin.parse_binary_console_details(console)
+    with pytest.raises(W.ReadbackError, match="geometry differs"):
+        W.decode_outputs(outputs, frames, [([3, 2], "i32")])
+
+
 _ROUTED = [
     {"symbol": "dev_0", "group": 4},
     {"symbol": "dev_1", "group": 7},
