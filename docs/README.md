@@ -95,7 +95,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [Runtime](reference/runtime.md) — `current`, verified 2026-11-11 · owner: runtime — see also: [zephyr](guides/zephyr.md)
 - [RVV kernel-mining methodology](reference/rvv_kernel_mining_methodology.md) — `current`, verified 2026-07-19 · owner: kernels — see also: [kernel_mining](guides/kernel_mining.md), [dse](guides/dse.md)
 - [Scalar and string diagnostic materialization](reference/scalar_diagnostics.md) — `current`, verified 2026-11-10 · owner: ir — see also: [literal_diagnostics](reference/literal_diagnostics.md), [effect_kernel_intake](reference/effect_kernel_intake.md), [lowering_pipeline](reference/lowering_pipeline.md)
-- [Scalar BF16 elementwise legalization](reference/bfloat_elementwise.md) — `current`, verified 2026-11-10 · owner: ir — see also: [architecture](reference/architecture.md), [triton_frontend](design/triton_frontend.md)
+- [Scalar BF16 elementwise legalization](reference/bfloat_elementwise.md) — `current`, verified 2026-11-11 · owner: ir — see also: [architecture](reference/architecture.md), [triton_frontend](design/triton_frontend.md)
 - [Scalar observations in tensor lanes](reference/source_scalar_carrier_lane_publication.md) — `current`, verified 2026-10-08 · owner: ir — see also: [lowering_pipeline](reference/lowering_pipeline.md)
 - [Scalar pointwise FMA and division loop scheduling](reference/scalar_pointwise_unroll.md) — `current`, verified 2026-10-06 · owner: llvmlower
 - [Scalar pointwise lane packets](reference/scalar_pointwise_packets.md) — `current`, verified 2026-10-06 · owner: llvmlower

@@ -122,8 +122,10 @@ selects and CFG word transport become i16. Keep opaque pointers, two-byte GEP
 sizes, descriptor ABI, effects and attributes unchanged. Obtain constant words
 through upstream APFloat bitcast folding, never Python floats. BF16 arithmetic,
 scalar function ABIs, vectors and incomplete conversion refuse before edits.
-Arithmetic casts remain the upstream arith-expand obligation; this feature
-grants no floating-point emulation, fast-math or hardware mapping policy.
+Its pipeline edit inserts the upstream BF16/F32 cast expansion before LLVM
+arithmetic conversion, retaining one existing valid expansion and refusing
+duplicate/late copies. The final transport checker stays strict; this grants no
+floating-point emulation, fast-math, other cast or hardware mapping policy.
 
 `emulate_bfloat_elementwise` is a separate, explicit scalar add/sub/mul/min/max/div/sqrt
 implementation. Reuse upstream arith emulation and rounding casts while

@@ -126,7 +126,15 @@ def bind_runner(source, *, selected):
 def edit_pipeline(passes):
     if (passes.count("convert-arith-to-llvm") != 1 or passes.count("convert-cf-to-llvm") != 1 or MARKER in passes):
         raise ValueError("BF16 transport requires one unmodified complete LLVM seam")
-    return [*passes, MARKER]
+    expansion = "arith-expand{include-bf16=true}"
+    arithmetic = passes.index("convert-arith-to-llvm")
+    if expansion in passes:
+        if passes.count(expansion) != 1 or passes.index(expansion) >= arithmetic:
+            raise ValueError("BF16 arithmetic cast expansion must precede LLVM arithmetic conversion")
+        return [*passes, MARKER]
+    # Expand real arithmetic casts with the upstream implementation before
+    # converting the remaining control-flow/load/store transport to i16.
+    return [*passes[:arithmetic], expansion, *passes[arithmetic:], MARKER]
 
 
 def ensure_registered():

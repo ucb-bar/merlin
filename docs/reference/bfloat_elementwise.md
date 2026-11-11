@@ -3,7 +3,7 @@ title: "Scalar BF16 elementwise legalization"
 kind: reference
 status: current
 owner: ir
-last_verified: 2026-11-10
+last_verified: 2026-11-11
 related: [architecture, triton_frontend]
 code_refs:
   - src/merlin/llvmlower/bfloat_elementwise.py
@@ -52,6 +52,15 @@ only remaining scalar word transport as i16. Its original refusals for BF16
 arithmetic, vector transport and by-value BF16 function ABIs remain active.
 Ownership, lifetime, allocation, public signature and complete-LLVM checks also
 remain active. No opaque runtime helper or changed buffer ABI is introduced.
+
+The transport feature's pipeline edit now inserts that upstream BF16/F32 cast
+expansion before `convert-arith-to-llvm`, including in the default scalar
+whole-model route. It retains one existing correctly placed expansion and
+refuses duplicate or late copies. Previously only callers supplying their own
+expanded pipeline met this prerequisite; the ordinary route reached the strict
+transport checker with an unexpanded `llvm.fpext`. Actual default lowering and
+whole-model RISC-V execution now exercise this composition. This supplies no
+additional arithmetic, by-value/vector ABI or unsupported cast permission.
 
 Native tests exercise positive scalar division/sqrt, idempotence, unchanged
 refusals and the explicit runner seam, alongside the existing transport

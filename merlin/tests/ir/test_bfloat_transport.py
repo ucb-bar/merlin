@@ -107,9 +107,36 @@ def test_pipeline_requires_one_seam(passes):
 
 def test_pipeline_and_runner_keep_checked_boundary():
     original = ["canonicalize", "convert-cf-to-llvm", "convert-arith-to-llvm"]
-    assert edit_pipeline(original) == [*original, MARKER]
+    assert edit_pipeline(original) == [*original[:-1], "arith-expand{include-bf16=true}", original[-1], MARKER]
     source = "_run_stages(ctx, module, pipeline, 0)\n"
     assert bind_runner(source, selected=False) == source
     assert "BF16 transport marker was not consumed" in bind_runner(source, selected=True)
     with pytest.raises(ValueError, match="one native stage runner"):
         bind_runner("pass\n", selected=True)
+
+
+def test_existing_cast_expansion_is_retained_once_and_late_expansion_refuses():
+    expansion = "arith-expand{include-bf16=true}"
+    original = [expansion, "convert-arith-to-llvm", "convert-cf-to-llvm"]
+    assert edit_pipeline(original) == [*original, MARKER]
+    for invalid in ([*original, expansion], ["convert-arith-to-llvm", expansion, "convert-cf-to-llvm"]):
+        with pytest.raises(ValueError, match="must precede"):
+            edit_pipeline(invalid)
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+def test_default_native_feature_expands_arithmetic_before_word_transport(tmp_path):
+    from merlin.llvmlower.bfloat_transport import FEATURE
+    from merlin.llvmlower.pipeline import lower_to_llvm_ir
+    source = '''module {func.func @forward(%input:memref<1xbf16>,%output:memref<1xf32>,%raw:memref<1xi16>) {
+      %index=arith.constant 0:index
+      %value=memref.load %input[%index]:memref<1xbf16>
+      %expanded=arith.extf %value:bf16 to f32
+      %word=arith.bitcast %value:bf16 to i16
+      memref.store %expanded,%output[%index]:memref<1xf32>
+      memref.store %word,%raw[%index]:memref<1xi16>
+      return
+    }}'''
+    llvm = lower_to_llvm_ir(source, workdir=tmp_path, features=frozenset({FEATURE}), timeout=30)
+    assert "fpext bfloat" not in llvm
+    assert "define " in llvm
