@@ -7,13 +7,24 @@ never imports the producer frontend or evaluator.
 
 import math
 
-from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, FloatAttr, IntegerAttr, StringAttr, TensorType, f64, i1, i64
+from xdsl.dialects.builtin import (
+    ArrayAttr,
+    DictionaryAttr,
+    FloatAttr,
+    IntegerAttr,
+    NoneAttr,
+    StringAttr,
+    TensorType,
+    f64,
+    i1,
+    i64,
+)
 from xdsl.dialects.func import CallOp, FuncOp
 
 from .kernel_shape_abi import validate_dimensions
 
 
-def checked_runtime_call_shapes(parent_module, spec, record):
+def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=False):
     def refuse():
         raise ValueError("derived runtime kernel binding disagrees with its original typed call")
 
@@ -37,6 +48,8 @@ def checked_runtime_call_shapes(parent_module, spec, record):
     call = parent_calls[ordinal]
     identity, attributes, operands = (call.attributes.get(name) for name in
         ("prov.kernel", "prov.kernel_args", "prov.kernel_operands"))
+    if attributes is None and not scalars:
+        attributes = DictionaryAttr({})
     declarations = {op.sym_name.data: op for op in parent_module.ops if isinstance(op, FuncOp)}
     callee = call.callee.root_reference.data
     declaration = declarations.get(callee)
@@ -104,11 +117,34 @@ def checked_runtime_call_shapes(parent_module, spec, record):
         refuse()
     by_name = dict(zip(schema_names, call.arguments, strict=True))
 
-    def matches(type_, buffer):
-        return (isinstance(type_, TensorType) and list(type_.get_shape()) == shapes[buffer["name"]]
-                and str(type_.get_element_type()) == buffer["dtype"])
-
-    if (any(not matches(by_name[mapping[b["name"]]].type, b) for b in inputs)
-            or any(not matches(value.type, outputs[name]) for value, name in zip(call.results, result_order, strict=True))):
+    view_policy = record.get("tensor_views")
+    if view_policy is not None and (tensor_views is not True or view_policy != "dense-row-major-v1"):
         refuse()
+    expected_views = []
+
+    def matches(type_, buffer, *, argument=None):
+        if not isinstance(type_,TensorType) or str(type_.get_element_type()) != buffer["dtype"]:
+            return False
+        source_shape = shapes[buffer["name"]]
+        if view_policy is not None and (not isinstance(type_.encoding, NoneAttr)
+                                       or any(n < 0 for n in type_.get_shape())):
+            return False
+        if list(type_.get_shape()) == source_shape:
+            return True
+        if view_policy is None or math.prod(type_.get_shape()) != math.prod(source_shape):
+            return False
+        expected_views.append({"kind":"dense-tensor-input-view" if argument is not None else "dense-tensor-result-view",
+            **({"argument":argument} if argument is not None else {}),"name":buffer["name"],"caller_type":str(type_),
+            "concrete_kernel_type":str(TensorType(type_.get_element_type(),source_shape)),"policy":view_policy})
+        return True
+
+    if (any(not matches(by_name[mapping[b["name"]]].type, b, argument=index) for index, b in enumerate(inputs))
+            or any(not matches(value.type, outputs[name])
+                   for value, name in zip(call.results, result_order, strict=True))):
+        refuse()
+    if view_policy is not None:
+        adaptations = record.get("argument_adaptations")
+        if (not isinstance(adaptations,list) or [item for item in adaptations if isinstance(item,dict)
+                and item.get("kind") in ("dense-tensor-input-view","dense-tensor-result-view")] != expected_views):
+            refuse()
     return shapes

@@ -53,6 +53,14 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   each call's concrete cost independently. Zero extents contribute zero; costs
   must fit i64. No evaluator archive/digest or producer-only shape claim supplies
   these facts. The evaluator budgets scratch separately from final outputs.
+  Dense model value views require `t2m.model-kernel-binding.v2` and its explicit
+  `t2m.captured-dense-tensor-views.v1` profile. Reopen each original typed parent
+  call, including static kernels, and independently check the exact element
+  type, unencoded static extents, equal element count and complete view records.
+  Derive scratch from the kernel dimensions after captured scalar checks; zero
+  and rank-zero parent values retain their real counts. This grants logical
+  row-major reshaping only, with no physical stride, alias, mutation, ownership
+  or numerical permission. Keep legacy v1 behavior and evaluator exclusion.
   V2 memory admission checks the sticky reader/writer protocol and derives
   metadata word count/cost from the maximum logical grid, retaining the explicit
   pre-CSE memory-effects stage. V1 evidence keeps its original scope and cost.

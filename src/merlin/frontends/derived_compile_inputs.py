@@ -19,10 +19,10 @@ from pathlib import Path
 from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, IntegerAttr, StringAttr, TensorType, i1
 from xdsl.dialects.func import FuncOp
 
+from merlin.frontends.derived_runtime_arguments import checked_runtime_call_shapes
+from merlin.frontends.kernel_compile_inputs import _checked_memory_members, _checked_word_intent
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.xdsl_dialects._common import text as module_text
-from merlin.frontends.kernel_compile_inputs import _checked_memory_members, _checked_word_intent
-from merlin.frontends.derived_runtime_arguments import checked_runtime_call_shapes
 
 
 def _sha(raw: bytes) -> str:
@@ -61,7 +61,8 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
     weights = {name: checked(name) for name in ("weights.safetensors", "weights.safetensors.manifest.json")}
     bindings_raw = checked("kernel-bindings.json")
     bindings = json.loads(bindings_raw)
-    if bindings.get("schema") != "t2m.model-kernel-binding.v1" or bindings.get("mlir_sha256") != _sha(raw):
+    if (bindings.get("schema") not in ("t2m.model-kernel-binding.v1", "t2m.model-kernel-binding.v2")
+            or bindings.get("mlir_sha256") != _sha(raw)):
         raise ValueError("derived source correspondence does not bind the current model")
     parent_raw = checked("parent/capture_receipt.json")
     parent = json.loads(parent_raw)
@@ -109,6 +110,13 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
             or {call.get("implementation_sha256") for call in calls} != set(implementations)
             or len({call.get("id") for call in calls}) != len(calls)):
         raise ValueError("derived kernel call correspondence is incomplete or ambiguous")
+    tensor_views = bindings["schema"] == "t2m.model-kernel-binding.v2"
+    if (tensor_views and (bindings.get("tensor_view_binding_profile") != "t2m.captured-dense-tensor-views.v1"
+                        or not any(call.get("tensor_views") == "dense-row-major-v1" for call in calls))
+            or not tensor_views and ("tensor_view_binding_profile" in bindings
+                                     or any("tensor_views" in call for call in calls))
+            or any(call.get("tensor_views") not in (None,"dense-row-major-v1") for call in calls)):
+        raise ValueError("derived tensor views require the explicit v2 binding and known view policy")
     guard_storage, runtime_ordinals = 0, set()
     for digest, directory in implementations.items():
         relative = _relative(directory)
@@ -119,17 +127,17 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
         provenance, spec = json.loads(kernel["provenance.json"]), json.loads(kernel["spec.json"])
         kernel.update(_checked_memory_members(lambda name: checked(directory + "/" + name), provenance))
         runtime_shapes = []
-        if spec.get("runtime_scalars"):
-            if bindings.get("argument_binding_profile") != "t2m.captured-runtime-arguments.v1":
+        selected_calls = [call for call in calls if call["implementation_sha256"] == digest]
+        if spec.get("runtime_scalars") or any(call.get("tensor_views") for call in selected_calls):
+            if (spec.get("runtime_scalars")
+                    and bindings.get("argument_binding_profile") != "t2m.captured-runtime-arguments.v1"):
                 raise ValueError("derived runtime kernel arguments require their explicit binding profile")
-            for call in calls:
-                if call["implementation_sha256"] != digest:
-                    continue
+            for call in selected_calls:
                 ordinal = call.get("parent_call_ordinal")
                 if type(ordinal) is not int or ordinal in runtime_ordinals:
                     raise ValueError("derived runtime kernel call correspondence is ambiguous")
                 runtime_ordinals.add(ordinal)
-                runtime_shapes.append(checked_runtime_call_shapes(parent_module, spec, call))
+                runtime_shapes.append(checked_runtime_call_shapes(parent_module, spec, call, tensor_views=tensor_views))
         if provenance.get("profile") in ("shared-guarded-buffer", "shared-source-word-buffer"):
             outputs = [b for b in spec["buffers"] if b["effect"] != "read"]
             if not runtime_shapes and any(not b.get("shape") or any(type(n) is not int or n <= 0 for n in b["shape"]) for b in outputs):
