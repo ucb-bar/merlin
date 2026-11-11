@@ -67,3 +67,18 @@ def test_selected_mlir_verifies_exact_readonly_layout(tmp_path):
         timeout=10,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_custom_attribute_dictionary_uses_native_position(tmp_path):
+    from merlin.llvmlower import toolchain
+    original = source().replace("read_only :", 'read_only {prov.op = "logical-view"} :')
+    module = parse_mlir_text(original)
+    module.verify()
+    printed = text(module)
+    assert 'read_only {prov.op = "logical-view"} :' in printed
+    path = tmp_path / "custom-layout.mlir"
+    path.write_text(printed)
+    result = subprocess.run([str(toolchain.mlir_translate().with_name("mlir-opt")), str(path), "--verify-each"],
+        capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    parse_mlir_text(printed).verify()

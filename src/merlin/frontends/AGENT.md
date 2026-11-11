@@ -13,6 +13,12 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   fields and effects; its native software implementation is a separate gate.
   Standard materialization accepts compatible strided destinations with the same
   shape/element rules and writable/restrict/result checks as native MLIR.
+- `linalg_named_regions.py` reuses the selected native parser/printer when a
+  partial xDSL reader builds an invalid implicit named region. Retain the named
+  operation, exact types/maps/attributes and source semantics; do not invent
+  casts or generalize the payload. Explicit invalid source still fails native
+  verification, and the restored complete module must pass Python verification.
+  Valid generic regions and ordinary same-type operations remain unchanged.
 - `facts.py` — lifting the inventory to contract-level reuse facts, driving the core pipeline with real model shapes, residency-variant DSE measurement.
 - `compile_inputs.py` stages compiler-only Torch captures and explicitly derived tensor models.
   `compiler_constants.py` requires complete source-bound lifted constant bindings

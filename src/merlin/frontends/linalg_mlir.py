@@ -98,7 +98,7 @@ def layout_bufferization_dialect():
         tensor = operand_def(builtin.TensorType | builtin.UnrankedTensorType)
         memref = result_def(builtin.MemRefType | builtin.UnrankedMemRefType)
         read_only = opt_prop_def(builtin.UnitAttr)
-        assembly_format = "$tensor (`read_only` $read_only^)? `:` attr-dict type($tensor) `to` type($memref)"
+        assembly_format = "$tensor (`read_only` $read_only^)? attr-dict `:` type($tensor) `to` type($memref)"
 
         def verify_(self):
             source, result = self.tensor.type, self.memref.type
@@ -125,7 +125,7 @@ def make_context():
     from xdsl.dialects.builtin import Builtin
     from xdsl.dialects.cf import Cf
     from xdsl.dialects.func import Func
-    from xdsl.dialects.linalg import Linalg
+    from ..xdsl_dialects.standard_linalg import linalg_dialect
     from xdsl.dialects.math import Math
     from ..xdsl_dialects.standard_memref import memref_dialect
     from ..xdsl_dialects.standard_vector import vector_dialect
@@ -142,7 +142,7 @@ def make_context():
     register_fp8_float_constraints()
 
     ctx = Context(allow_unregistered=True)
-    for d in (Builtin, Func, Arith, Linalg, Tensor, Scf, Math, Cf, memref_dialect(), layout_bufferization_dialect(), vector_dialect()):
+    for d in (Builtin, Func, Arith, linalg_dialect(), Tensor, Scf, Math, Cf, memref_dialect(), layout_bufferization_dialect(), vector_dialect()):
         ctx.load_dialect(d)
     from ..xdsl_dialects.standard_tensor import register_parallel_tensor_ops
 
@@ -160,6 +160,7 @@ def parse_mlir_text(text: str, ctx=None):
     from ..common.dense_float_ir import DenseFloatParser
     from ..common.ir_lock import IR_LOCK
 
+    original_text = text
     text = strip_paren_results(text)
     # THE serialization point for xDSL parsing, held here rather than at call sites because the call
     # sites are not discoverable by inspection: locking the two obvious ones in `build_app` still left
@@ -169,7 +170,11 @@ def parse_mlir_text(text: str, ctx=None):
     # of seconds against builds and simulations that take minutes, so the cost of serializing here is
     # small and the alternative is a build whose success depends on scheduling.
     with IR_LOCK:
-        return DenseFloatParser(ctx or make_context(), text).parse_module()
+        context = ctx or make_context()
+        module = DenseFloatParser(context, text).parse_module()
+        from .linalg_named_regions import restore_named_regions
+
+        return restore_named_regions(module, original_text, context)
 
 
 def parse_mlir_file(path: str | Path, ctx=None, *, source_text: str | None = None):

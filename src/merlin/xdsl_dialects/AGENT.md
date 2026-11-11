@@ -13,6 +13,10 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
 - `standard_tensor.py` binds standard `scf.forall`, `scf.forall.in_parallel` and
   `tensor.parallel_insert_slice` when upstream xDSL lacks them. These are standard
   operations, not target mapping or new Merlin semantics; native lowering owns complete legality.
+- `standard_linalg.py` retains the standard named-matmul signed/unsigned cast
+  property and enum missing from the partial Python reader. Native MLIR owns
+  implicit mixed-type regions; this binding grants no new arithmetic policy or
+  generalization. Keep explicit generic regions and named operation identities.
 - `standard_vector.py` binds the native optional scalar/string source and
   punctuation fields of `vector.print`. Retain its observable stdout effect;
   this binding grants no purity, buffer aliasing, physical replication or
