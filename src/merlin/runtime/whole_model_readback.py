@@ -71,8 +71,6 @@ def _output_geometry(shape: Sequence[int]) -> tuple[int, int]:
 
 def render_outputs_header(out_specs: Sequence[tuple[Sequence[int], str]]) -> str:
     """``model_outputs.h``: name, rows, cols, element width, signedness and byte count per result."""
-    if not out_specs:
-        raise ReadbackError("the forward has no result to read back")
     names, rows, cols, widths, signs, sizes = [], [], [], [], [], []
     for index, (shape, dtype) in enumerate(out_specs):
         if dtype not in _FORMAT:

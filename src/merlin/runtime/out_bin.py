@@ -74,7 +74,7 @@ def _checksum(payload: bytes) -> int:
 
 
 def _parse_binary_console(
-    data: bytes, *, decode_values: bool = True,
+    data: bytes, *, decode_values: bool = True, require_done: bool = True,
 ) -> tuple[dict[str, list[list[int]]], dict[str, int], dict[str, BinaryFrame], bytes]:
     if type(data) is not bytes:
         raise OutBinError("OUT_BIN requires raw console bytes")
@@ -142,13 +142,13 @@ def _parse_binary_console(
             if parts != ["DONE"] or done:
                 raise OutBinError("duplicate or malformed DONE")
             done = True
-    if not done:
+    if require_done and not done:
         raise OutBinError("OUT_BIN run did not reach DONE")
     return outputs, metrics, frames, bytes(external)
 
 
 def parse_binary_console_details(
-    data: bytes,
+    data: bytes, *, require_done: bool = True,
 ) -> tuple[dict[str, list[list[int]]], dict[str, int], dict[str, BinaryFrame]]:
     """Decode complete binary frames, metrics and DONE from raw simulator stdout.
 
@@ -156,14 +156,14 @@ def parse_binary_console_details(
     Unrelated simulator lines are allowed; other output transports are not.
     """
 
-    outputs, metrics, frames, _external = _parse_binary_console(data)
+    outputs, metrics, frames, _external = _parse_binary_console(data, require_done=require_done)
     return outputs, metrics, frames
 
 
-def binary_console_diagnostics(data: bytes) -> bytes:
+def binary_console_diagnostics(data: bytes, *, require_done: bool = True) -> bytes:
     """Return only text outside validated raw payloads for RTL diagnostics."""
 
-    return _parse_binary_console(data, decode_values=False)[3]
+    return _parse_binary_console(data, decode_values=False, require_done=require_done)[3]
 
 
 def restore_onlcr_console(data: bytes) -> bytes:

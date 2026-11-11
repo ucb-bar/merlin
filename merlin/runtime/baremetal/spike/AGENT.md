@@ -25,6 +25,14 @@ Merlin-owned bare-metal harness for running command buffers on **spike** as a mu
 
 ## Invariants
 
+- Optional source-effect observation brackets the actual C-interface call and
+  buffers source stdio in a caller-bounded byte frame. Literal NUL, Unicode and
+  protocol-like text remain payload. A checked source abort emits its stream
+  and readonly-input observations, then exits distinctly without result frames
+  or normal DONE. Capacity/format/phase errors and traps cannot become asserts.
+  The opt-in formatter supports the declared integer and fixed-six binary64
+  diagnostic profile; unknown conversions refuse. Default harness output and
+  abort behavior remain unchanged without the explicit selection.
 - `crt.S` must: install the fail-fast trap handler **before** anything else, enable `mstatus.VS`, give each hart its own stack, and release secondary harts only after `.bss` is cleared (`boot_ready`) — removing any of these reintroduces silent hangs or races.
 - Keep the matmul kernel in hand-written assembly: GCC 13.2's vsetvl fusion miscompiles mixed-EEW RVV *intrinsics* (e32m4 config fused to e8m1 → `vsext.vf4` becomes illegal). Do not rewrite with intrinsics without verifying on the actual toolchain.
 - Epilogue semantics in generated drivers must match `merlin/python/merlin/runtime/tensor.py` exactly (rounding arithmetic shift, saturating i8 clamp).

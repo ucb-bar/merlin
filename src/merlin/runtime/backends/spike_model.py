@@ -315,6 +315,7 @@ def build(
     execution_memory_map: MemoryMapBinding | None = None,
     execution_memory_reservations: tuple[MemoryReservation, ...] = (),
     runtime_signature: str | Path | None = None,
+    effect_observation_bytes: int | None = None,
 ) -> dict:
     """Build a whole-model bare-metal ELF and return its paths, memory and identity.
 
@@ -328,6 +329,10 @@ def build(
     returned precision and needs caller numerical qualification; errno and FP
     exceptions are not preserved. ``math_archive_symbols`` requests byte-pinned
     actual-link supplier traces, not source-call or numerical qualification.
+
+    ``effect_observation_bytes`` selects bounded source-stdio/outcome observation
+    for an explicit runtime signature and complete readback. It grants no
+    expected outcome or source-effect implementation permission.
 
     ``output_dump_cap`` bounds post-timing raw first-output values;
     ``output_sha256`` hashes all first-output f32 little-endian bytes after timing.
@@ -511,6 +516,10 @@ def build(
     from ..input_observation import require_observation_selection, validate_selection
 
     validate_selection(readonly_input_indices, max_readonly_input_bytes)
+    if effect_observation_bytes is not None and (
+            type(effect_observation_bytes) is not int or not 0 < effect_observation_bytes <= 4 << 20
+            or runtime_signature is None or not full_readback):
+        raise ValueError("source effect observation requires bounded bytes, runtime signature and full readback")
     if readonly_input_indices and not full_readback:
         raise ValueError("readonly input observation requires full readback")
     if not isinstance(output_sha256, bool):
@@ -889,7 +898,14 @@ def build(
             **({"weights_source": weights_source} if weights_source is not None else {}),
             **projection_options,
             **({"runtime_signature": runtime_signature} if runtime_signature is not None else {}),
+            **({"observe_effects": True} if effect_observation_bytes is not None else {}),
         )
+    if effect_observation_bytes is not None:
+        info["effect_observation"] = {"schema": "merlin.source-effect-observation.v1",
+            "max_bytes": effect_observation_bytes, "stdout_frame": "source_stdout", "assertion_exit_code": 134}
+        info["static_io_bytes"] += effect_observation_bytes + 32
+        (cgen / "effect-observation.json").write_text(json.dumps(info["effect_observation"], sort_keys=True) + "\n")
+        compilation.bind_preparation("source_effect_observation", cgen / "effect-observation.json")
     from ..input_observation import setup_readback
 
     setup_readback(cgen, model_dir, info, compilation, full_readback, readonly_input_indices, max_readonly_input_bytes)
@@ -1119,6 +1135,8 @@ def build(
         _hh.update(b"full_readback=True")
     if runtime_signature is not None:
         _hh.update(json.dumps(info["runtime_invocation_abi"], sort_keys=True).encode())
+    if effect_observation_bytes is not None:
+        _hh.update(json.dumps(info["effect_observation"], sort_keys=True).encode())
     if readonly_input_indices:
         require_observation_selection(
             info["readonly_input_observation"], indices=readonly_input_indices, max_bytes=max_readonly_input_bytes
@@ -1178,14 +1196,18 @@ def build(
             + (["-DMERLIN_OUTPUT_SHA256"] if output_sha256 else [])
             + (["-DMERLIN_FULL_READBACK"] if full_readback else [])
             + (["-DMERLIN_READONLY_INPUT_OBSERVATION"] if readonly_input_indices else [])
+            + (["-DMERLIN_EFFECT_OBSERVATION"] if effect_observation_bytes is not None else [])
             + (["-DMERLIN_GROUP_PROFILE"] if group_profile else []),
         ),
         "mlir_rt.o": (runtime_dir() / "abi/mlir_runtime.c", []),
         "crt.o": (h / "crt.S", []),
         "console.o": (console_src, console_defs),
-        "libc_min.o": (h / "libc_min.c", []),
+        "libc_min.o": (h / "libc_min.c", ["-DMERLIN_EFFECT_OBSERVATION"] if effect_observation_bytes is not None else []),
         "malloc.o": (h / "merlin_malloc.c", addr_defs),
     }
+    if effect_observation_bytes is not None:
+        units["source_stdio.o"] = (h / "printf_min.c", ["-DMERLIN_EFFECT_OBSERVATION", "-DMERLIN_PRINTF_FORMAT_ONLY", "-I", str(rt)])
+        units["source_effects.o"] = (h / "effect_observation.c", [f"-DMERLIN_EFFECT_BYTES={effect_observation_bytes}"])
     if op_profile:
         units["op_prof.o"] = (rt / "merlin_op_prof.c", prof_defs)
     profile_link_flags: list[str] = []
@@ -1218,6 +1240,9 @@ def build(
                         if readonly_input_indices and obj == "model_main.o"
                         else []
                     ),
+                    *([h / "effect_observation.h"] if effect_observation_bytes is not None and obj in (
+                        "source_stdio.o", "source_effects.o", "libc_min.o") else []),
+                    *([rt / "fixed_decimal.h"] if effect_observation_bytes is not None and obj == "source_stdio.o" else []),
                 ],
                 output=work / obj,
             )
@@ -1368,43 +1393,23 @@ def run(
     timeout: int = 3600,
     vlen: int | None = None,
 ) -> dict[str, Any]:
-    """Run the ELF on spike; parse the HTIF output. Returns {outputs, metrics, console}.
+    """Run the ELF and parse its console, refusing every nonzero process exit.
 
-    ``mem_bytes`` must cover 0x80000000 .. weights_base + weights size (use the value
-    returned by :func:`build`).
-
-    ``vlen`` MUST match the vector length the image was BUILT for, and this is not a preference.
-    ``-march=...zvl<N>b`` makes the compiler emit scalable-vector spill slots whose addresses are computed
-    from ``vlenb`` READ AT RUN TIME (`csrr a1, vlenb` then a shift and an add). If the simulator reports a
-    different ``vlenb``, every such slot lands at the wrong offset -- MEASURED on deepjscc int8: a
-    ``vs1r.v`` spill computed as ``sp + 328 + 16*vlenb + 2384`` is 256 bytes off between VLEN 128 and 256,
-    and at the wrong length it writes over the memref descriptors sitting nearby.
-    The bare ``rv64gcv`` in the default ISA string is VLEN=128, so an image built with ``vlen=256`` and run
-    without this argument was silently running at half the declared width; matching them took the same
-    model 602k copies further to 2.37M. Pass the ``vlen`` you passed to :func:`build`, or read it back from
-    that call's result.
+    Memory must cover the image layout, and vlen must match the build. Scalable
+    vector spill addresses depend on the runtime vector length; a mismatch can
+    overwrite neighboring descriptors rather than merely change performance.
     """
     if vlen is not None:
         want = f"zvl{int(vlen)}b"
         if want not in isa:
             isa = f"{isa}_{want}"
     cmd = [_spike.spike_path(), f"--isa={isa}", f"-p{harts}", f"-m{hex(DRAM_BASE)}:{hex(mem_bytes)}", str(elf)]
-    # Capture BYTES and decode leniently. `text=True` raises UnicodeDecodeError on the first invalid byte
-    # and takes the WHOLE console with it -- and an image that is failing is exactly the one that emits
-    # stray bytes, so the log was being destroyed precisely when it was needed. A replacement character in
-    # a garbled region is strictly better than losing every OUT/METRIC/DONE line that preceded it.
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, timeout=timeout)
-    console = (proc.stdout or b"").decode("utf-8", errors="replace") + (proc.stderr or b"").decode(
-        "utf-8", errors="replace"
-    )
-    if proc.returncode != 0:
-        raise SpikeModelError(
-            f"spike exited {proc.returncode} even though it may have printed OUT/DONE:\n{console[-2000:]}"
-        )
-    return parse_console(console)
+    from ._model_console_process import run_text
+
+    return run_text(cmd, timeout=timeout, error_type=SpikeModelError, parse_console=parse_console, label="spike")
 
 
-def run_raw(
+def run_process(
     elf: str | Path,
     *,
     harts: int = 1,
@@ -1412,12 +1417,12 @@ def run_raw(
     isa: str = "rv64gcv_zfh_zvfh",
     timeout: int = 3600,
     vlen: int | None = None,
-) -> bytes:
-    """Run the ELF on the plain functional simulator and return its stdout BYTES, unparsed.
+) -> subprocess.CompletedProcess:
+    """Observe an actual simulator process, retaining nonzero exits and raw streams.
 
-    The full-readback console (:mod:`merlin.runtime.whole_model_readback`) carries raw payload bytes,
-    which a text decode would replace; this is :func:`run` without the decode. A state the image
-    declares (its DRAM span) wins over ``mem_bytes``."""
+    This supplies no interpretation of a failure as a source assertion. Timeouts
+    still raise; consumers need a separate checked invocation/outcome protocol.
+    """
     if vlen is not None:
         want = f"zvl{int(vlen)}b"
         if want not in isa:
@@ -1425,7 +1430,13 @@ def run_raw(
     span = declared_memory(elf)
     memory = f"-m{hex(span[0])}:{hex(span[1])}" if span else f"-m{hex(DRAM_BASE)}:{hex(mem_bytes)}"
     cmd = [_spike.spike_path(), f"--isa={isa}", f"-p{harts}", memory, str(elf)]
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, timeout=timeout)
+    return subprocess.run([str(c) for c in cmd], capture_output=True, timeout=timeout)
+
+
+def run_raw(elf: str | Path, *, harts: int = 1, mem_bytes: int = 1 << 30,
+            isa: str = "rv64gcv_zfh_zvfh", timeout: int = 3600, vlen: int | None = None) -> bytes:
+    """Return raw full-readback bytes; every nonzero simulator exit still refuses."""
+    proc = run_process(elf, harts=harts, mem_bytes=mem_bytes, isa=isa, timeout=timeout, vlen=vlen)
     if proc.returncode != 0:
         tail = (proc.stdout or b"")[-2000:].decode("utf-8", errors="replace")
         raise SpikeModelError(f"spike exited {proc.returncode}:\n{tail}")
@@ -1455,45 +1466,6 @@ def build_and_run(
     # length mis-places every scalable-vector spill slot; see run()'s docstring.
     result = run(elf, harts=harts, mem_bytes=mem_bytes or b["mem_bytes"], timeout=timeout, vlen=b.get("vlen"))
     result["quantization_policy"] = b.get("quantization_policy")
-    if reference is not None:
-        if result["output_dtype"] == "i1":
-            ref = np.asarray(reference).ravel()
-            pref = np.asarray(result["prefix"])
-            if ref.dtype != np.bool_:
-                raise SpikeModelError("Boolean output requires an exact bool reference; coercion is forbidden")
-            if pref.dtype != np.bool_ or np.any(pref.view(np.uint8) > 1) or np.any(ref.view(np.uint8) > 1):
-                raise SpikeModelError("Boolean output/reference must retain canonical bool wire bytes")
-            complete = pref.size == ref.size
-            mismatch = int(np.count_nonzero(pref.view(np.uint8) != ref.view(np.uint8))) if complete else None
-            result.update(ok=complete and mismatch == 0, mismatched_elements=mismatch, comparison="exact_i1")
-            result["elf"] = str(elf)
-            return result
-        if result["output_dtype"] == "i64":
-            ref = np.asarray(reference).ravel()
-            if ref.dtype != np.int64:
-                raise SpikeModelError("integer output requires an exact int64 reference; float coercion is forbidden")
-            pref = np.asarray(result["prefix"])
-            if pref.dtype != np.int64:
-                raise SpikeModelError("integer output prefix must retain its exact int64 wire dtype")
-            complete = ref.size == pref.size
-            mismatch = int(np.count_nonzero(pref != ref[: pref.size])) if ref.size >= pref.size else None
-            result.update(ok=complete and mismatch == 0, mismatched_elements=mismatch, comparison="exact_i64")
-            result["elf"] = str(elf)
-            return result
-        ref = np.asarray(reference, dtype=np.float32).ravel()
-        pref = np.asarray(result["prefix"])
-        if result["output_dtype"] != "f32" or pref.dtype != np.float32:
-            raise SpikeModelError("floating output prefix must retain its float32 wire dtype")
-        k = len(pref)
-        rel = float(np.abs(pref - ref[:k]).max()) / max(1e-9, float(np.abs(ref[:k]).max()))
-        cos = float((pref @ ref[:k]) / (np.linalg.norm(pref) * np.linalg.norm(ref[:k]) + 1e-12))
-        ok = cos > 0.9999 and rel < 1e-4
-        result.update(rel=rel, cos=cos, ok=ok)
-        # digest checks for large outputs (LM logits): argmax per row must match torch.
-        if result["argmax"] is not None and ref.size % result["argmax"].size == 0:
-            last = ref.size // result["argmax"].size
-            ref_argmax = ref.reshape(-1, last).argmax(1)
-            result["argmax_match"] = bool(np.array_equal(result["argmax"], ref_argmax))
-            result["ok"] = ok and result["argmax_match"]
-    result["elf"] = str(elf)
-    return result
+    from ._model_console_process import compare_prefix
+
+    return compare_prefix(result, reference, elf, error_type=SpikeModelError)

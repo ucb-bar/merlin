@@ -91,6 +91,15 @@ static merlin_descriptor_t DESCS[MERLIN_N_ARGS];
 #ifdef MERLIN_READONLY_INPUT_OBSERVATION
 #include "readonly_inputs.h"
 #endif
+#ifdef MERLIN_EFFECT_OBSERVATION
+/* The source call may stop before main's normal post-return observations. */
+void merlin_effect_failure_inputs(void) {
+#ifdef MERLIN_READONLY_INPUT_OBSERVATION
+  merlin_capture_readonly_inputs();
+  merlin_emit_readonly_inputs();
+#endif
+}
+#endif
 
 int main(int hart) {
   if (hart != 0) {

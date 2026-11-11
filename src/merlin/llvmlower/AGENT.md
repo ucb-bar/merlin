@@ -66,6 +66,12 @@ only. Pin the runtime ABI separately from compiler members. BF16 inputs use
 exact source words; plain `ScalarArg.from_storage` avoids Python float rounding
 and preserves signaling NaNs. Neither API supplies alias, numeric or ownership
 permission. Legacy model generation remains unchanged without this selection.
+The selected runtime signature also admits an actual void entry. Keep its
+result roster empty; no placeholder tensor or output allocation is permitted.
+Runtime archives bind exact argument ordinals and require a complete input
+manifest; legacy model-name aliases must not redirect these arguments.
+Optional `observe_effects` brackets the real typed source call only after
+scalar transport is ready. Those markers supply no expected outcome.
 
 `reuse_loop_tensor_destinations` may expose complete after-region `scf.while`
 destinations only when `scf.condition` forwards every before-argument unchanged

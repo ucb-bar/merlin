@@ -42,7 +42,7 @@ def resolve(model, contract_path, arguments, *, max_bytes=64 << 20):
         raise ValueError("runtime invocation requires one defined forward entry")
     function = entries[0]
     inputs, outputs = tuple(function.function_type.inputs), tuple(function.function_type.outputs)
-    if len(inputs) != len(contract["inputs"]) or len(outputs) != len(contract["outputs"]) or not outputs:
+    if len(inputs) != len(contract["inputs"]) or len(outputs) != len(contract["outputs"]):
         raise ValueError("runtime invocation contract differs from the complete program signature")
     scalars, words = {}, []
     with np.load(arguments, allow_pickle=False) as archive:
@@ -120,7 +120,7 @@ def resolve(model, contract_path, arguments, *, max_bytes=64 << 20):
         "scalars": words, "mlir_argument_specialization": "not-performed"}
 
 
-def call_bridge(scalars, count, *, ciface_name, invoke_name):
+def call_bridge(scalars, count, *, ciface_name, invoke_name, observe_effects=False):
     """Use private scalar storage, preserving the real typed MLIR C prototype."""
     declarations, arguments, loads = [], [], []
     for i in range(count):
@@ -135,6 +135,9 @@ def call_bridge(scalars, count, *, ciface_name, invoke_name):
         arguments.append(f"scalar_{i}")
     return ["/* Generated native scalar argument bridge; no MLIR argument rewriting. */",
         '#include "merlin_model.h"', "#include <string.h>",
+        *(["extern void merlin_effect_begin(void);", "extern void merlin_effect_return(void);"] if observe_effects else []),
         f"extern void _mlir_ciface_{ciface_name}({','.join(declarations)});",
         f"void {invoke_name}(void **d) {{", *loads,
-        f"  _mlir_ciface_{ciface_name}({','.join(arguments)});", "}"]
+        *(["  merlin_effect_begin();"] if observe_effects else []),
+        f"  _mlir_ciface_{ciface_name}({','.join(arguments)});",
+        *(["  merlin_effect_return();"] if observe_effects else []), "}"]

@@ -73,6 +73,24 @@ def test_static_signature_v1_keeps_ordinal_native_scalar_fields(tmp_path):
     assert all(word["name"] is None for word in plan["scalars"])
 
 
+def test_runtime_input_names_do_not_select_legacy_model_aliases(tmp_path):
+    root = example(tmp_path / "source")
+    manifest = json.loads((root / "weights.safetensors.manifest.json").read_text())
+    manifest["0"]["name"] = "state"
+    (root / "weights.safetensors.manifest.json").write_text(json.dumps(manifest))
+    generate(root, tmp_path / "generated", root / "inputs.npz", runtime_signature=root / "signature.json",
+             readonly_input_indices=(0, 1, 2, 3))
+
+
+def test_runtime_signature_cannot_ignore_an_argument_archive_for_a_weight(tmp_path):
+    root = example(tmp_path / "source")
+    manifest = json.loads((root / "weights.safetensors.manifest.json").read_text())
+    manifest["0"]["kind"] = "param"
+    (root / "weights.safetensors.manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="complete positional input manifest"):
+        generate(root, tmp_path / "generated", root / "inputs.npz", runtime_signature=root / "signature.json")
+
+
 @pytest.mark.parametrize("tensor", ('tensor<?xi64, "opaque">', 'tensor<1x1x1x1x1x1x1x1x1xi64>'))
 def test_runtime_transport_refuses_unimplemented_layouts_and_rank(tmp_path, tensor):
     root = example(tmp_path / "source")

@@ -7,19 +7,31 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "htif.h"
+#ifdef MERLIN_EFFECT_OBSERVATION
+#include "effect_observation.h"
+#endif
 
 /* Upstream MLIR assertion lowering uses these libc symbols. Keep failure
  * paths linkable even when host optimization does not eliminate assertions.
  * This console ABI also supports the non-HTIF bare-metal backends. */
 int puts(const char *s) {
+#ifdef MERLIN_EFFECT_OBSERVATION
+  merlin_effect_puts(s);
+  merlin_effect_putc('\n');
+#else
   htif_puts(s);
   htif_putc('\n');
+#endif
   return 0;
 }
 
 __attribute__((noreturn)) void abort(void) {
+#ifdef MERLIN_EFFECT_OBSERVATION
+  merlin_effect_abort();
+#else
   htif_puts("FATAL: model assertion abort\n");
   htif_exit(0x901);
+#endif
 }
 
 /* may_alias permits moving arbitrary tensor bytes through aligned word loads.

@@ -72,6 +72,8 @@
     "merlin/runtime/baremetal/out_bin_memory.h",
     "merlin/runtime/baremetal/spike/console_uart.c",
     "merlin/runtime/baremetal/spike/crt.S",
+    "merlin/runtime/baremetal/spike/effect_observation.c",
+    "merlin/runtime/baremetal/spike/effect_observation.h",
     "merlin/runtime/baremetal/spike/htif.c",
     "merlin/runtime/baremetal/spike/htif.h",
     "merlin/runtime/baremetal/spike/libc_min.c",

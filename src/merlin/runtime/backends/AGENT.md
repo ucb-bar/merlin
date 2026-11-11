@@ -85,6 +85,13 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
   Full readback uses those checked concrete output descriptors. Complete empty
   input observations still require explicit zero-byte frames; a missing frame
   is not evidence that an empty argument was observed.
+- Optional `effect_observation_bytes` binds a bounded source-stdio observer and
+  actual invocation/return-or-assertion markers. Account for its static storage,
+  pin the runtime headers, and retain post-call input observations on an abort.
+  `run_process` preserves raw stdout/stderr and a nonzero simulator exit without
+  interpreting it; `run_raw` continues refusing every nonzero exit. Source
+  assertions require their separate checked phase/byte/outcome protocol, never
+  an arbitrary trap, diagnostic text or exit code alone.
 - The ordinary device build checks the complete routed kernel/precision roster
   and the caller's selected granularity before building or linking device work.
   Active device routes require an explicitly selected `LinkedElfAdmissionService`

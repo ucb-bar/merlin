@@ -242,6 +242,7 @@ def generate(
     readonly_input_indices: tuple[int, ...] = (),
     max_readonly_input_bytes: int = 1 << 20,
     runtime_signature: str | Path | None = None,
+    observe_effects: bool = False,
 ) -> dict:
     """Emit the runtime-driving artifacts for a captured model into ``out_dir``.
 
@@ -313,6 +314,8 @@ def generate(
             if path.is_file()
         )
         readonly_sources = snapshot_sources(source_paths)
+    if type(observe_effects) is not bool or observe_effects and runtime_signature is None:
+        raise ValueError("effect observation requires an explicit runtime signature")
     runtime_abi = None
     if runtime_signature is not None:
         from .runtime_invocation import resolve
@@ -328,6 +331,9 @@ def generate(
     if any(i >= len(sig) for i in readonly_input_indices):
         raise ValueError("readonly input index is outside the original capture arguments")
     man = json.loads((model_dir / "weights.safetensors.manifest.json").read_text())
+    if runtime_abi is not None and (set(man) != {str(i) for i in range(len(sig))}
+            or any(row.get("kind") != "input" for row in man.values())):
+        raise ValueError("runtime signature requires a complete positional input manifest")
     weights_path = model_dir / "weights.safetensors"
     if manifest_requires_weight_blob(man):
         if not weights_path.is_file():
@@ -382,7 +388,7 @@ def generate(
 
     out_specs = ([(row["shape"], row["dtype"]) for row in runtime_abi["outputs"]] if runtime_abi is not None
                  else _out_specs(model_dir / "model.mlir"))
-    out_shape, out_dt = out_specs[0]
+    out_shape, out_dt = out_specs[0] if out_specs else ([], "void")
 
     # manifest input name -> inputs.npz tuple order. Prefer the per-model
     # input_order.json the capture emits (authoritative — e.g. openvla's
@@ -434,7 +440,11 @@ def generate(
             begin, _ = hdr[meta["weight"]]["data_offsets"]
             rows.append(("MERLIN_WEIGHT", begin, len(shape), shape, elem, dt))
             continue
-        if meta["kind"] == "buffer":
+        if runtime_abi is not None:
+            # The checked standalone contract is positional. Legacy model
+            # name aliases must not redirect a source argument named state.
+            arr = np.ascontiguousarray(inputs[f"in{i}"])
+        elif meta["kind"] == "buffer":
             arr = buffer_array(name)
         elif name.startswith("c_lifted_tensor_"):
             arr = np.ascontiguousarray(extra[lifted_names[li]])
@@ -732,7 +742,7 @@ def generate(
         f"#define MERLIN_SESSION_STEPS {session_steps}",
         f"#define MERLIN_HAS_SESSION_CORRECTNESS {1 if correctness_values is not None else 0}",
         f"#define MERLIN_HAS_SESSION_QUALITY {1 if quality_values is not None else 0}",
-        f"#define MERLIN_OUT_ELEMS {int(np.prod(out_shape))}",
+        f"#define MERLIN_OUT_ELEMS {int(np.prod(out_shape)) if out_specs else 0}",
         f"#define MERLIN_OUT_LASTDIM {out_shape[-1] if out_shape else 1}",
         f"#define MERLIN_OUT_IS_F32 {int(out_dt == 'f32')}",
         f"#define MERLIN_OUT_IS_I64 {int(out_dt == 'i64')}",
@@ -889,7 +899,8 @@ def generate(
     if runtime_abi is not None:
         from .runtime_invocation import call_bridge
         scalar_types = {i: row["dtype"] for i, row in enumerate(runtime_abi["inputs"]) if row["kind"] == "scalar"}
-        call_c = call_bridge(scalar_types, len(rows), ciface_name=ciface_name, invoke_name=invoke_name)
+        call_c = call_bridge(scalar_types, len(rows), ciface_name=ciface_name, invoke_name=invoke_name,
+                             observe_effects=observe_effects)
 
     weight_digest = hashlib.sha256()
     sources = (blob, appended) if weight_storage == "streamed" else (bytes(blob), bytes(appended))

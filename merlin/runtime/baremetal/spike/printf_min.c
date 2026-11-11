@@ -10,6 +10,13 @@
 #include <stddef.h>
 
 #include "htif.h"
+#ifdef MERLIN_EFFECT_OBSERVATION
+#include "effect_observation.h"
+#include "fixed_decimal.h"
+#include <string.h>
+#define htif_putc merlin_effect_putc
+#define htif_puts merlin_effect_puts
+#endif
 
 static void put_unsigned(unsigned long long v, unsigned base) {
   char digits[24];
@@ -62,12 +69,27 @@ int vprintf(const char *fmt, va_list ap) {
       case 'c':
         htif_putc((char)va_arg(ap, int));
         break;
+#ifdef MERLIN_EFFECT_OBSERVATION
+      case 'f': {
+        double value = va_arg(ap, double);
+        uint64_t bits;
+        char text[320];
+        memcpy(&bits, &value, sizeof(bits));
+        merlin_binary64_fixed6(text, bits);
+        htif_puts(text);
+        break;
+      }
+#endif
       case '%':
         htif_putc('%');
         break;
       default:
+#ifdef MERLIN_EFFECT_OBSERVATION
+        merlin_effect_format_error();
+#else
         for (const char *q = start; q <= p && *q; q++) htif_putc(*q);
         if (!*p) return 0;
+#endif
         break;
     }
   }
@@ -82,17 +104,21 @@ int printf(const char *fmt, ...) {
   return 0;
 }
 
+#ifndef MERLIN_PRINTF_FORMAT_ONLY
 int puts(const char *s) {
   htif_puts(s);
   htif_putc('\n');
   return 0;
 }
+#endif
 
 int putchar(int c) {
   htif_putc((char)c);
   return c;
 }
 
+#ifndef MERLIN_PRINTF_FORMAT_ONLY
 void exit(int code) { htif_exit(code); }
 
 void abort(void) { htif_exit(134); }
+#endif

@@ -12,6 +12,12 @@ the per-backend adapters under `backends/`.
 
 ## What belongs here
 
+- `effect_observation` decodes an explicitly selected invocation/outcome and a
+  complete source-stdout byte frame separately from tensor/input frames. Source
+  bytes cannot impersonate control markers. A returning call requires DONE;
+  an assertion outcome forbids DONE/results and needs its selected process exit.
+  Keep missing/truncated/duplicate phases, transport errors and traps refused.
+  This is functional process evidence, not source equivalence or timing proof.
 - `captured_constants` verifies pinned source state bytes without interpretation
   or packing. `CaptureConstantTable` reuses immutable compiler-owned blobs;
   the streaming reader stays bounded independently. Both validate complete
