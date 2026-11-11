@@ -1,0 +1,152 @@
+{
+  "schema": "merlin.compiler_library_selection.v1",
+  "review_id": "shared-floating-passes-v1",
+  "public_modules": [
+    "merlin.frontends.linalg_float_graph",
+    "merlin.frontends.linalg_text",
+    "merlin.transforms.ordered_float_dense",
+    "merlin.transforms.dense_planning",
+    "merlin.compile.scheduling.compact_dense",
+    "merlin.compile.scheduling.dense_tile_ir",
+    "merlin.compile.scheduling.timed_schedule",
+    "merlin.runtime.fp8_formats",
+    "merlin.runtime.packed_float",
+    "merlin.semantic_compiler.model",
+    "merlin.sched.ir.kernel",
+    "merlin.sched.ir.expr",
+    "merlin.sched.isa.model",
+    "merlin.xdsl_dialects.schedule",
+    "merlin.xdsl_dialects._common"
+  ],
+  "sources": [
+    {
+      "module": "merlin.common.ir_lock",
+      "path": "src/merlin/common/ir_lock.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.block_schedule",
+      "path": "src/merlin/compile/scheduling/block_schedule.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.compact_dense",
+      "path": "src/merlin/compile/scheduling/compact_dense.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.compact_verification",
+      "path": "src/merlin/compile/scheduling/compact_verification.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.dense_tile_ir",
+      "path": "src/merlin/compile/scheduling/dense_tile_ir.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.memory_effects",
+      "path": "src/merlin/compile/scheduling/memory_effects.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.timed_schedule",
+      "path": "src/merlin/compile/scheduling/timed_schedule.py"
+    },
+    {
+      "module": "merlin.frontends.linalg_bf16_add",
+      "path": "src/merlin/frontends/linalg_bf16_add.py"
+    },
+    {
+      "module": "merlin.frontends.linalg_bf16_mul",
+      "path": "src/merlin/frontends/linalg_bf16_mul.py"
+    },
+    {
+      "module": "merlin.frontends.linalg_bf16_relu",
+      "path": "src/merlin/frontends/linalg_bf16_relu.py"
+    },
+    {
+      "module": "merlin.frontends.linalg_errors",
+      "path": "src/merlin/frontends/linalg_errors.py"
+    },
+    {
+      "module": "merlin.frontends.linalg_float_graph",
+      "path": "src/merlin/frontends/linalg_float_graph.py"
+    },
+    {
+      "module": "merlin.frontends.linalg_fp8_cast",
+      "path": "src/merlin/frontends/linalg_fp8_cast.py"
+    },
+    {
+      "module": "merlin.frontends.linalg_text",
+      "path": "src/merlin/frontends/linalg_text.py"
+    },
+    {
+      "module": "merlin.runtime.fp8_formats",
+      "path": "src/merlin/runtime/fp8_formats.py"
+    },
+    {
+      "module": "merlin.runtime.packed_float",
+      "path": "src/merlin/runtime/packed_float.py"
+    },
+    {
+      "module": "merlin.sched.codegen",
+      "path": "src/merlin/sched/codegen/__init__.py"
+    },
+    {
+      "module": "merlin.sched.ir",
+      "path": "src/merlin/sched/ir/__init__.py"
+    },
+    {
+      "module": "merlin.sched.ir.expr",
+      "path": "src/merlin/sched/ir/expr.py"
+    },
+    {
+      "module": "merlin.sched.ir.kernel",
+      "path": "src/merlin/sched/ir/kernel.py"
+    },
+    {
+      "module": "merlin.sched.ir.parse",
+      "path": "src/merlin/sched/ir/parse.py"
+    },
+    {
+      "module": "merlin.sched.isa.model",
+      "path": "src/merlin/sched/isa/model.py"
+    },
+    {
+      "module": "merlin.semantic_compiler.model",
+      "path": "src/merlin/semantic_compiler/model.py"
+    },
+    {
+      "module": "merlin.transforms.dense_planning",
+      "path": "src/merlin/transforms/dense_planning.py"
+    },
+    {
+      "module": "merlin.transforms.ordered_float_dense",
+      "path": "src/merlin/transforms/ordered_float_dense.py"
+    },
+    {
+      "module": "merlin.xdsl_dialects._common",
+      "path": "src/merlin/xdsl_dialects/_common.py"
+    },
+    {
+      "module": "merlin.xdsl_dialects.contract",
+      "path": "src/merlin/xdsl_dialects/contract.py"
+    },
+    {
+      "module": "merlin.xdsl_dialects.fp8",
+      "path": "src/merlin/xdsl_dialects/fp8.py"
+    },
+    {
+      "module": "merlin.xdsl_dialects.schedule",
+      "path": "src/merlin/xdsl_dialects/schedule.py"
+    }
+  ],
+  "empty_namespaces": [
+    "merlin",
+    "merlin.common",
+    "merlin.compile",
+    "merlin.compile.scheduling",
+    "merlin.frontends",
+    "merlin.runtime",
+    "merlin.sched",
+    "merlin.sched.isa",
+    "merlin.semantic_compiler",
+    "merlin.transforms",
+    "merlin.xdsl_dialects"
+  ]
+}

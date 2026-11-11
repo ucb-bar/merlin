@@ -9,6 +9,7 @@ target `atlas`; provider identity and hardware configuration are separate inputs
 - [Hand-authored Atlas MLIR reference](https://github.com/ucb-bar/atlas-mlir/tree/handwritten-implementation): the OOT machine dialect, passes, and [numbered MLP/attention handoff examples](https://github.com/ucb-bar/atlas-mlir/tree/5485aa0aaeca222e1c158507460db06a621eeba4/examples/handoff) from Atlas MLIR through LLVM MLIR, LLVM IR, assembly, and ELF.
 - [Phase 0 guide](phase0/README.md) and [public recipe](phase0/recipe.yaml): derive tests, then prepare and review the resulting corpus.
 - [Phase 1 guide](phase1/README.md): supplied compiler-authoring inputs and functional experiment requirements.
+- [Shared-pass preflight](shared-passes.md): main-based source/graph lowering, isolated compiler-library export, numeric storage, timing checks and model execution without an agent loop.
 - [Phase 2 handoff](phase2/README.md): select frozen compiler evidence and the existing optimization templates.
 - [Whole-model entrypoints](whole-model/README.md): capture/lowering inspection and separate deployment prerequisites.
 - [Artifact navigation](artifacts/README.md): raw CIRCT facts, actual consumer views, coverage and capsule lineage.

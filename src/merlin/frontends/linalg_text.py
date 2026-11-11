@@ -100,5 +100,3 @@ def parse_mlir_text(text: str, ctx=None):
     # small and the alternative is a build whose success depends on scheduling.
     with IR_LOCK:
         return Parser(ctx or make_context(), text).parse_module()
-
-
