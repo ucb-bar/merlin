@@ -19,7 +19,7 @@ from pathlib import Path
 from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, IntegerAttr, StringAttr, TensorType, i1
 from xdsl.dialects.func import FuncOp
 
-from merlin.frontends.derived_runtime_arguments import checked_runtime_call_shapes
+from merlin.frontends.derived_runtime_arguments import checked_runtime_call_shapes, checked_source_layout_call
 from merlin.frontends.kernel_allocation_evidence import checked_allocation_sources
 from merlin.frontends.kernel_compile_inputs import _checked_memory_members, _checked_word_intent
 from merlin.frontends.linalg_mlir import parse_mlir_text
@@ -119,6 +119,11 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
             or any(call.get("tensor_views") not in (None,"dense-row-major-v1") for call in calls)):
         raise ValueError("derived tensor views require the explicit v2 binding and known view policy")
     guard_storage, runtime_ordinals = 0, set()
+    source_layout_profile = bindings.get("source_layout_binding_profile")
+    source_layout_present = any("source_layout_specialization" in kernel for kernel in bindings["kernels"].values())
+    if ((source_layout_present and source_layout_profile != "t2m.captured-source-layout.v1")
+            or not source_layout_present and "source_layout_binding_profile" in bindings):
+        raise ValueError("derived source layouts require the explicit captured source-layout profile")
     for digest, directory in implementations.items():
         relative = _relative(directory)
         if len(relative.parts) != 2 or relative.parts[0] != "kernels":
@@ -130,6 +135,8 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
         kernel.update(checked_allocation_sources(lambda name: checked(directory + "/" + name), provenance, kernel["source.ttir"]))
         runtime_shapes = []
         selected_calls = [call for call in calls if call["implementation_sha256"] == digest]
+        for call in selected_calls:
+            checked_source_layout_call(parent_module, provenance, call, source_layout_profile)
         if spec.get("runtime_scalars") or any(call.get("tensor_views") for call in selected_calls):
             if (spec.get("runtime_scalars")
                     and bindings.get("argument_binding_profile") != "t2m.captured-runtime-arguments.v1"):

@@ -75,6 +75,12 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   these facts. The evaluator budgets scratch separately from final outputs.
   Dense model value views require `t2m.model-kernel-binding.v2` and its explicit
   `t2m.captured-dense-tensor-views.v1` profile. Reopen each original typed parent
+  call. Optional semantic source-layout selections additionally require
+  `t2m.captured-source-layout.v1`: bind all source geometry options to distinct
+  original scalar attributes with exact types/values. Neither producer records
+  nor a different source selection can substitute for the captured call.
+  These checks grant custody, not GPU equivalence or consumer placement.
+  For dense views, reopen the original typed parent
   call, including static kernels, and independently check the exact element
   type, unencoded static extents, equal element count and complete view records.
   Derive scratch from the kernel dimensions after captured scalar checks; zero

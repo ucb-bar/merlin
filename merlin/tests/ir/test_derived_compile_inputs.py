@@ -61,6 +61,29 @@ def capture_fixture(root):
     return receipt
 
 
+@pytest.mark.parametrize("selection,profile", [(True, None), (True, "unknown"),
+    (False, "t2m.captured-source-layout.v1"), (False, None)])
+def test_rehashed_source_layout_profile_cannot_bypass_staging(tmp_path, selection, profile):
+    capture, staged = tmp_path / "capture", tmp_path / "compiler"
+    receipt = capture_fixture(capture)
+    binding = json.loads((capture / "kernel-bindings.json").read_bytes())
+    if selection:
+        provenance = next(iter(binding["kernels"].values()))
+        provenance["source_layout_specialization"] = {"schema": "t2m.source-map-layout.v1"}
+        raw = encoded(provenance)
+        (capture / "kernels/0/provenance.json").write_bytes(raw)
+        receipt["artifacts"]["kernels/0/provenance.json"] = record(raw)
+    if not selection or profile is not None:
+        binding["source_layout_binding_profile"] = profile
+    raw = encoded(binding)
+    (capture / "kernel-bindings.json").write_bytes(raw)
+    receipt["artifacts"]["kernel-bindings.json"] = record(raw)
+    (capture / "capture_receipt.json").write_bytes(encoded(receipt))
+    with pytest.raises(ValueError, match="explicit captured source-layout profile"):
+        stage_compile_inputs(capture, staged)
+    assert not staged.exists()
+
+
 def test_derived_staging_preserves_both_graphs_and_excludes_evaluator_values_and_digests(tmp_path, monkeypatch):
     capture, staged = tmp_path / "capture", tmp_path / "compiler"
     receipt = capture_fixture(capture)

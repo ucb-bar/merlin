@@ -7,6 +7,49 @@ from merlin.frontends.derived_runtime_arguments import checked_runtime_call_shap
 from merlin.frontends.linalg_mlir import parse_mlir_text
 
 
+@pytest.mark.parametrize("damage", [None, "profile", "selection", "missing", "name", "attribute", "type",
+    "identity", "ordinal", "call-attributes", "boolean", "unknown", "extra", "declaration"])
+def test_source_grouping_selection_is_bound_to_original_typed_call(damage):
+    from xdsl.dialects.builtin import DictionaryAttr, IntegerAttr, StringAttr, i32, i64
+    from merlin.frontends.derived_runtime_arguments import checked_source_layout_call
+    module, _, record = example()
+    call = next(op for op in module.walk() if isinstance(op, CallOp))
+    selection = {"target": "source:architecture", "num_warps": 4, "threads_per_warp": 32, "num_ctas": 1}
+    values = {"source_" + key: StringAttr(value) if isinstance(value, str) else IntegerAttr(value, i64)
+              for key, value in selection.items()}
+    call.attributes["prov.kernel_args"] = DictionaryAttr(values)
+    record["model_call_attributes"] = {k: str(v) for k, v in call.attributes.items()}
+    record["source_layout_bindings"] = {key: {"schema_argument": "source_" + key, "attribute": str(values["source_" + key])}
+                                        for key in selection}
+    provenance = {"source_layout_specialization": {"schema": "t2m.source-map-layout.v1", "source_options": selection}}
+    profile = "t2m.captured-source-layout.v1"
+    if damage == "profile": profile = None
+    elif damage == "selection": selection["num_warps"] = 8
+    elif damage == "missing": record["source_layout_bindings"].pop("target")
+    elif damage == "name": record["source_layout_bindings"]["target"]["schema_argument"] = "absent"
+    elif damage == "attribute": record["source_layout_bindings"]["target"]["attribute"] = "another source"
+    elif damage == "type":
+        call.attributes["prov.kernel_args"] = DictionaryAttr({**values, "source_num_warps": IntegerAttr(4, i32)})
+        record["model_call_attributes"] = {k: str(v) for k, v in call.attributes.items()}
+    elif damage == "identity": record["kernel"] = "another::kernel"
+    elif damage == "ordinal": record["parent_call_ordinal"] = 1
+    elif damage == "call-attributes": record["model_call_attributes"] = {}
+    elif damage == "boolean": selection["num_warps"] = True
+    elif damage == "unknown": provenance["source_layout_specialization"]["schema"] = "unknown"
+    elif damage == "extra": record["source_layout_bindings"]["target"]["grant"] = True
+    elif damage == "declaration":
+        declaration = list(module.ops)[1]
+        declaration.attributes["prov.kernel"] = StringAttr("another::kernel")
+    if damage is None:
+        checked_source_layout_call(module, provenance, record, profile)
+        checked_source_layout_call(module, {}, {}, None)
+        with pytest.raises(ValueError, match="lack a source specialization"):
+            checked_source_layout_call(module, {}, record, profile)
+    else:
+        with pytest.raises(ValueError, match="source layout disagrees"):
+            checked_source_layout_call(module, provenance, record, profile)
+
+
 def example(m=3, n=2, *, rows=None, columns=None, dtype="f32", result_n=None):
     rows = f"{m}:i64" if rows is None else rows
     columns = f"{n}:i64" if columns is None else columns

@@ -24,6 +24,64 @@ from xdsl.dialects.func import CallOp, FuncOp
 from .kernel_shape_abi import validate_dimensions
 
 
+def checked_source_layout_call(parent_module, provenance, record, profile):
+    """Check semantic source geometry against compiler-owned parent scalars.
+
+    This grants byte/argument custody, not source equivalence or placement.
+    Layout mathematics and all executable bodies retain their own checks.
+    """
+    witness = provenance.get("source_layout_specialization")
+    if witness is None:
+        if "source_layout_bindings" in record:
+            raise ValueError("source layout bindings lack a source specialization")
+        return
+
+    def refuse():
+        raise ValueError("derived source layout disagrees with its original typed call")
+
+    if not isinstance(witness, dict) or witness.get("schema") != "t2m.source-map-layout.v1":
+        refuse()
+    selection, bindings = witness.get("source_options"), record.get("source_layout_bindings")
+    keys = {"target", "num_warps", "threads_per_warp", "num_ctas"}
+    if (profile != "t2m.captured-source-layout.v1" or not isinstance(selection, dict) or set(selection) != keys
+            or not isinstance(bindings, dict) or set(bindings) != keys
+            or not isinstance(selection["target"], str) or not 1 <= len(selection["target"]) <= 128
+            or any(type(selection[k]) is not int or not 1 <= selection[k] <= 1024
+                   or selection[k] & (selection[k] - 1) for k in keys - {"target"})
+            or math.prod(selection[k] for k in keys - {"target"}) > 65536):
+        refuse()
+    calls = [op for op in parent_module.walk() if isinstance(op, CallOp)]
+    ordinal = record.get("parent_call_ordinal")
+    if type(ordinal) is not int or not 0 <= ordinal < len(calls):
+        refuse()
+    call = calls[ordinal]
+    attributes = call.attributes.get("prov.kernel_args")
+    declarations = {op.sym_name.data: op for op in parent_module.ops if isinstance(op, FuncOp)}
+    declaration = declarations.get(call.callee.root_reference.data)
+    if (not isinstance(attributes, DictionaryAttr)
+            or call.attributes.get("prov.kernel") != StringAttr(record.get("kernel", ""))
+            or declaration is None or declaration.body.blocks
+            or declaration.attributes.get("prov.kernel") != call.attributes.get("prov.kernel")
+            or call.callee.root_reference.data != record.get("callee")
+            or record.get("model_call_attributes") != {k: str(v) for k, v in call.attributes.items()}):
+        refuse()
+    names = []
+    for key, value in selection.items():
+        item = bindings[key]
+        if not isinstance(item, dict) or set(item) != {"schema_argument", "attribute"}:
+            refuse()
+        name = item["schema_argument"]
+        if not isinstance(name, str):
+            refuse()
+        attribute = attributes.data.get(name)
+        expected = StringAttr(value) if isinstance(value, str) else IntegerAttr(value, i64)
+        if attribute != expected or str(attribute) != item["attribute"]:
+            refuse()
+        names.append(name)
+    if len(set(names)) != len(names):
+        refuse()
+
+
 def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=False):
     def refuse():
         raise ValueError("derived runtime kernel binding disagrees with its original typed call")
