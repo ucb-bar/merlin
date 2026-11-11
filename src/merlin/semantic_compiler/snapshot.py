@@ -39,6 +39,7 @@ _NATIVE_SOURCE_FILES = (
     "affine_views.py",
     "common_values.py",
     "reshape_chains.py",
+    "operand_reuse.py",
     "allocate.py",
     "constant_indexing.py",
     "constant_folding.py",
