@@ -6,7 +6,8 @@ from merlin.targetgen.cli import _native_compile_report_with_options, build_pars
 
 
 @pytest.mark.parametrize("command", ["native-compile", "native-verify"])
-def test_commoning_selection_is_opt_in_on_both_entrypoints(command):
+@pytest.mark.parametrize("option", ["common_values", "compose_reshapes"])
+def test_commoning_selection_is_opt_in_on_both_entrypoints(command, option):
     parser = build_parser()
     flags = [
         command,
@@ -30,11 +31,13 @@ def test_commoning_selection_is_opt_in_on_both_entrypoints(command):
         flags += ["--artifact", "artifact"]
     else:
         flags += ["--abi", "auto"]
-    assert parser.parse_args(flags).application_common_values is False
-    assert parser.parse_args([*flags, "--application-common-values"]).application_common_values is True
+    attribute = "application_" + option
+    assert getattr(parser.parse_args(flags), attribute) is False
+    assert getattr(parser.parse_args([*flags, "--application-" + option.replace("_", "-")]), attribute) is True
 
 
-def test_nonapplication_compile_refuses_the_flag_before_loading_support(monkeypatch):
+@pytest.mark.parametrize("option", ["common-values", "compose-reshapes"])
+def test_nonapplication_compile_refuses_the_flag_before_loading_support(monkeypatch, option):
     parser = build_parser()
     args = parser.parse_args(
         [
@@ -55,7 +58,7 @@ def test_nonapplication_compile_refuses_the_flag_before_loading_support(monkeypa
             "out",
             "--request",
             "request",
-            "--application-common-values",
+            "--application-" + option,
         ]
     )
 
@@ -64,7 +67,7 @@ def test_nonapplication_compile_refuses_the_flag_before_loading_support(monkeypa
 
     monkeypatch.setattr("merlin.semantic_compiler.target_binding.load_native_target_binding", unexpected)
     report = _native_compile_report_with_options(args)
-    assert "--application-common-values requires --application" in str(report)
+    assert "--application-" + option + " requires --application" in str(report)
 
 
 @pytest.mark.parametrize("selected", [False, True])

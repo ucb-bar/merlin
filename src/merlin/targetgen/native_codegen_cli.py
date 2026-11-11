@@ -112,6 +112,9 @@ def add_native_codegen_commands(sub, handlers):
         action="store_true",
         help="common identical pure application values before partitioning",
     )
+    native_compile.add_argument(
+        "--application-compose-reshapes", action="store_true", help="compose exact dense application reshape chains"
+    )
     native_compile.add_argument("--application-name", default="application", help="C application namespace")
     native_compile.add_argument(
         "--application-parameters",
@@ -261,6 +264,9 @@ def add_native_codegen_commands(sub, handlers):
         "--application-common-values",
         action="store_true",
         help="replay pure-value commoning before application partitioning",
+    )
+    native_verify.add_argument(
+        "--application-compose-reshapes", action="store_true", help="replay dense application reshape composition"
     )
     native_verify.add_argument("--target-source", help="selected target source for application C replay")
     verify_source = native_verify.add_mutually_exclusive_group(required=True)

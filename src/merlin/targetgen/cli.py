@@ -754,6 +754,8 @@ def _native_compile_report_with_options(args: argparse.Namespace) -> dict:
             raise ValueError("--already-quantized requires --application")
         if getattr(args, "application_common_values", False) and not getattr(args, "application", False):
             raise ValueError("--application-common-values requires --application")
+        if getattr(args, "application_compose_reshapes", False) and not getattr(args, "application", False):
+            raise ValueError("--application-compose-reshapes requires --application")
         if getattr(args, "application_state", None) and not getattr(args, "application", False):
             raise ValueError("--application-state requires --application")
         if getattr(args, "application_parameters", "embedded") != "embedded" and not args.application:
@@ -1155,6 +1157,8 @@ def _native_verify_with_options(args: argparse.Namespace) -> int:
     try:
         if getattr(args, "application_common_values", False) and not getattr(args, "application", False):
             raise ValueError("--application-common-values requires --application")
+        if getattr(args, "application_compose_reshapes", False) and not getattr(args, "application", False):
+            raise ValueError("--application-compose-reshapes requires --application")
         if getattr(args, "application_state", None):
             raise ValueError("--application-state requires --application")
         if getattr(args, "application_parameters", "embedded") != "embedded":

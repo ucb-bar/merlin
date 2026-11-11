@@ -122,6 +122,10 @@ def _source(args, binding, target_identity):
             "common_values": common,
             "limits": folding.get("limits", []),
         }
+    if getattr(args, "application_compose_reshapes", False):
+        from merlin.semantic_compiler.source_preparation import append_reshape_preparation
+
+        source, folding = append_reshape_preparation(source, folding)
     if declaration is not None:
         state = declaration.bind(source, parameters)
     model_parameters = bind_application_parameters(directory, staged, source) if external else None
