@@ -9,7 +9,7 @@ from merlin.llvmlower.toolchain import available,compiler_python
 
 
 @pytest.mark.skipif(not available(),reason="existing native compiler environment required")
-@pytest.mark.parametrize("change",["positive","sqrt","tensor-constant","log","mixed-log","add","vector","tensor","call","fastmath"])
+@pytest.mark.parametrize("change",["positive","sqrt","tensor-constant","log","mixed-log","add","sub","mul","neg","vector","tensor","call","fastmath"])
 def test_native_emulation_and_unchanged_refusals(tmp_path,change):
     expressions = {
         "positive":"%r=arith.divf %x,%y:bf16",
@@ -18,6 +18,9 @@ def test_native_emulation_and_unchanged_refusals(tmp_path,change):
         "log":"%r=math.log %x:bf16",
         "mixed-log":"%good=arith.divf %x,%y:bf16 %r=math.log %good:bf16",
         "add":"%r=arith.addf %x,%y:bf16",
+        "sub":"%r=arith.subf %x,%y:bf16",
+        "mul":"%r=arith.mulf %x,%y:bf16",
+        "neg":"%r=arith.negf %x:bf16",
         "vector":"%r=arith.divf %x,%y:vector<2xbf16>",
         "tensor":"%r=arith.divf %x,%y:tensor<2xbf16>",
         "call":"%r=func.call @unknown(%x):(bf16)->bf16",
@@ -34,14 +37,16 @@ def test_native_emulation_and_unchanged_refusals(tmp_path,change):
 with ir.Context():
     module=ir.Module.parse(open(sys.argv[1]).read())
     before=str(module)
-    if sys.argv[2] in ('positive','sqrt','tensor-constant'):
+    if sys.argv[2] in ('positive','sqrt','tensor-constant','add','sub','mul'):
         assert _bf_elementwise(module)==1
         assert _bf_elementwise(module)==0
         assert 'arith.extf' in str(module) and 'arith.truncf' in str(module)
         assert '-> bf16' in str(module)
         for op in _bfe_walk(module.operation):
-            if op.name in ('arith.divf','math.sqrt'):
+            if op.name in ('arith.divf','math.sqrt','arith.addf','arith.subf','arith.mulf'):
                 assert all(str(value.type)=='f32' for value in (*op.operands,*op.results))
+            if sys.argv[2] in ('add','sub','mul') and op.name in ('arith.extf','arith.truncf'):
+                assert 'fastmath' not in op.attributes or op.attributes['fastmath'] == ir.Attribute.parse('#arith.fastmath<none>')
         module.operation.verify()
     else:
         try: _bf_elementwise(module)

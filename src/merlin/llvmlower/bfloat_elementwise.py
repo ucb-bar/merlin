@@ -1,16 +1,19 @@
 """Explicit scalar BF16 math legalization without changing tensor storage.
 
 Reuse upstream arith-emulate-unsupported-floats and arith-expand for the
-qualified min/max/div operations and exact casts. Scalar sqrt uses the same
-extend/compute/truncate boundary; BF16 has eight significand bits, so f32
-precision resolves its rounding midpoint. Transport stays a separate feature.
+qualified min/max/div operations and exact casts. Scalar add/sub/mul/sqrt use
+an extend/compute/truncate boundary after every source operation, with neutral
+cast flags so later operations cannot contract across BF16 rounding. BF16's
+eight significand bits fit exact products in f32; addition's discarded far
+operand cannot cross a BF16 midpoint. Transport stays a separate feature.
 """
 
 import ast
 
 FEATURE = "emulate_bfloat_elementwise"
 MARKER = "__merlin_bfloat_elementwise__"
-OPERATIONS = frozenset({"arith.maxnumf","arith.minnumf","arith.maximumf","arith.minimumf","arith.divf","math.sqrt"})
+OPERATIONS = frozenset({"arith.maxnumf","arith.minnumf","arith.maximumf","arith.minimumf","arith.divf","math.sqrt",
+                        "arith.addf", "arith.subf", "arith.mulf"})
 
 SUPPORT = r'''
 def _bfe_walk(op):
@@ -27,7 +30,8 @@ def _bf_elementwise(module):
         module.operation.verify()
         bf16,f32 = ir.BF16Type.get(),ir.F32Type.get()
         operations = tuple(_bfe_walk(module.operation))
-        supported = {'arith.maxnumf','arith.minnumf','arith.maximumf','arith.minimumf','arith.divf','math.sqrt'}
+        supported = {'arith.maxnumf','arith.minnumf','arith.maximumf','arith.minimumf','arith.divf','math.sqrt',
+                     'arith.addf','arith.subf','arith.mulf'}
         transport = {'arith.constant','arith.bitcast','arith.extf','arith.truncf','arith.select',
             'memref.load','memref.store','tensor.extract','tensor.insert','tensor.yield','linalg.yield','linalg.fill',
             'func.return','scf.if','scf.for','scf.while','scf.yield','scf.condition','cf.br','cf.cond_br'}
@@ -55,11 +59,15 @@ def _bf_elementwise(module):
             plans.append(op)
         # Validate the entire module before changing any source operation.
         for op in plans:
-            if op.name != 'math.sqrt':
+            if op.name not in ('math.sqrt','arith.addf','arith.subf','arith.mulf'):
                 continue
             with ir.InsertionPoint(op):
-                widened = ir.Operation.create('arith.extf',results=[f32],operands=[op.operands[0]],loc=op.location)
-                root = ir.Operation.create('math.sqrt',results=[f32],operands=[widened.results[0]],
+                widened = [ir.Operation.create('arith.extf',results=[f32],operands=[operand],loc=op.location).results[0]
+                           for operand in op.operands]
+                # Keep a real BF16 rounding boundary after each source op.
+                # Upstream's general emulator marks its casts `contract`;
+                # these strict arithmetic wrappers use neutral cast flags.
+                root = ir.Operation.create(op.name,results=[f32],operands=widened,
                     attributes=dict(op.attributes),loc=op.location)
                 narrowed = ir.Operation.create('arith.truncf',results=[bf16],operands=[root.results[0]],loc=op.location)
             op.results[0].replace_all_uses_with(narrowed.results[0])
@@ -112,5 +120,5 @@ def ensure_registered():
     from .impr_features import ImprFeature,known,register
     if FEATURE not in known():
         register(ImprFeature(name=FEATURE,action_class="PASS",edit_pipeline=edit_pipeline,
-            description="Explicit scalar BF16 min/max/div/sqrt via f32 arithmetic and RNE casts; storage ABI unchanged."))
+            description="Explicit scalar BF16 add/sub/mul/min/max/div/sqrt via f32 arithmetic and RNE casts; storage ABI unchanged."))
     return FEATURE

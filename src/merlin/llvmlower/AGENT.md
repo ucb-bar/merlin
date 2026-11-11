@@ -104,13 +104,20 @@ scalar function ABIs, vectors and incomplete conversion refuse before edits.
 Arithmetic casts remain the upstream arith-expand obligation; this feature
 grants no floating-point emulation, fast-math or hardware mapping policy.
 
-`emulate_bfloat_elementwise` is a separate, explicit scalar min/max/div/sqrt
+`emulate_bfloat_elementwise` is a separate, explicit scalar add/sub/mul/min/max/div/sqrt
 implementation. Reuse upstream arith emulation and rounding casts while
 preserving BF16 storage and raw transport. Inspect actual operations and types;
 unknown arithmetic/calls, vector/tensor arithmetic and nonneutral flags refuse
 before edits. Its initial source marker must be consumed exactly once, with
 all existing runner callbacks, ownership and lifetime checks retained. It
 grants no by-value BF16 ABI, alternate FP environment or accelerator support.
+Add/sub/mul/sqrt use neutral extend/compute/truncate casts after each original
+operation. Upstream `EmulateUnsupportedFloats.cpp` and its tests at LLVM
+`a47bddccec30255619bb8c37fa59700e661d4e66` instead mark casts `contract`;
+the strict wrapper preserves intermediate BF16 rounding and forbids fused
+replacement. Integer binary-rational native checks cover all 65,536 words
+against sixteen partners, with computed NaNs checked by class and uncomputed
+word transport qualified separately. This is host arithmetic evidence only.
 
 `lower_integer_compare_exchange` is an explicit native legalization for closed
 i16/i32/i64 generic atomic comparison/select regions on rank-one identity-layout
