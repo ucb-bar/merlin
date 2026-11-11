@@ -49,7 +49,7 @@ Latency remains the objective; suggestions invite legal variants rather than
 prescribing a target-specific schedule.
 
 Native acceptance is retained under
-`out/artifacts/retained/hardware-models/scoped-resources-20261023`. The public probe's old,
+`out/artifacts/archive/refactor-2026-11/retained/hardware-models/scoped-resources-20261023`. The public probe's old,
 new-disabled and new-enabled estimates all equal 354 cycles, with identical
 functional output and feature counts. This is observer neutrality evidence,
 not timing accuracy or calibration evidence. One wall-time sample was 17.91s

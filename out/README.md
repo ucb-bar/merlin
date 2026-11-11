@@ -1,26 +1,26 @@
 # Generated output
 
-This directory contains outputs, not Merlin's source or experiment definitions.
-Start experiments from [the catalog](../experiments/README.md).
+Everything under `out/` is generated and ignored by Git, except these four READMEs.
+Source, experiment definitions and curated inputs never live here.
 
-| Directory | Use it for |
+| Directory | Holds |
 | --- | --- |
-| [runs/](runs/README.md) | Experiment execution records: inputs, logs, grades, checkpoints and accounting |
-| [artifacts/](artifacts/README.md) | Named products: reports, measurements, published packages and paper assets |
-| [build/](build/README.md) | Build trees, tool environments, agent workspaces and disposable diagnostics |
+| [runs/](runs/README.md) | Experiment runs: inputs, logs, grades, checkpoints, accounting |
+| [artifacts/](artifacts/README.md) | Named products: reports, measurements, packages, figures, caches |
+| [build/](build/README.md) | Build trees, tool environments and agent workspaces |
 
-Tools resolve this root through `merlin.common.paths`; `MERLIN_OUT_ROOT` can place
-it outside the checkout. Do not create another top-level output directory.
+Tools find this root through `merlin.common.paths` (`out_dir()`, `runs_dir()`,
+`artifacts_dir()`, `build_dir()`); `MERLIN_OUT_ROOT` moves it outside the checkout.
+Do not add a fourth directory.
 
-To understand existing output without changing it:
+Inspect before changing anything:
 
 ```sh
-merlin storage layout
-merlin storage experiments
+merlin storage layout        # where things are, and anything undeclared
+merlin storage experiments   # storage per experiment group
+merlin storage report        # what it costs, including duplicated bytes
 ```
 
-The [storage contract](../src/merlin/resources/contracts/storage.yaml) owns product categories;
-the [storage guide](../docs/guides/12-experiments.md) explains inspection and cleanup.
-Reports and frozen manifests may cite old paths. Do not manually rename those
-directories, infer liveness from age, or delete a run because its name looks stale.
-Organization and retention commands default to dry runs; inspect their plan first.
+Reports and manifests quote paths under `out/`. Do not rename directories by hand
+or delete by age; `merlin storage organize` and `merlin storage prune` default to dry
+runs and keep citations working.

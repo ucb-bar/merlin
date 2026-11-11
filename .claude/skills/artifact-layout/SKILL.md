@@ -45,7 +45,7 @@ natural axis — do not force a hardware target where it doesn't apply:
 | `recaptures/<model>_<dtype>/` | model+dtype (PURGEABLE) | capture harness |
 | `perf-bench/<target>/`, `capsule-bench/<target>/` | target | experiment reports |
 | `targets/<target>/<package_id>/` | **target** backend | `merlin-rvv-mine/-autotune`, `merlin-targetgen` (codegen packages) |
-| `presentation/`, `cache/`, `selfcheck/` | topic / ns / target | misc |
+| `presentation/`, `cache/`, `probes/`, `archive/` | topic / ns | misc (full list: `storage.yaml`) |
 
 `out/runs/<target>/<suite>/<run-id>/` is for aet experiment runs (target-centric). `out/build/` for compiler output.
 

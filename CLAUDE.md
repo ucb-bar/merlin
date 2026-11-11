@@ -148,23 +148,14 @@ Root names come from `merlin.common.paths` — `out_dir()` / `runs_dir()` / `art
 - **`out/artifacts/`** — every other generated product, organized **concern-first** (each tool/concern
   owns a subtree and uses ITS OWN axis — target for compiler/mining/experiments, workload for the
   three DSE tools, model for recaptures/measurements, framework for kernel-index, cross-cutting for
-  ceiling/compare). Concerns: `dse-guidance/`, `dse/`, `design-pressure/`, `kernel-mining/<target>/`,
-  `kernel-index/<framework>/`, `optimization-surface/<target>/`, `ceiling/`, `compare/`,
-  `measurements/<substrate>/<model>/<exp>_v<ver>_<TS>_<sha>/` (substrate = `k1_spacemit` /
-  `firesim_<bitstream>` / `baremetal_<verilator-design>` / `zephyr_<design>` / `spike_<config>`,
-  via `new_measurement(...)`), `recaptures/`, `perf-bench/<target>/`, `capsule-bench/<target>/`,
-  `targets/<target>/`, `presentation/`, `cache/`, `selfcheck/`. Also `delivery/` (bundles shipped
-  outside the repo), `applications/<target>/`, `audits/` (readiness studies), `protocols/` (frozen
-  experiment protocols), `verification/<target>/`, `target-evolution/<target>/`, `source-data/<model>/`,
-  `rvv-development-corpus/<target>/`, `agentic-report/`, `handoff/`, `targetgen-evals/<target>/`,
-  `experiments/<target>/dashboard/` (tracking pages drawn from a run's own records), `perf-studies/` (ledgers,
-  calibration, settling, counters, ablations beside the campaign), `archive/` (still cited, no longer active), and
-  `probes/` (one-off diagnostics — a standing concern and an afternoon's debugging should not be
-  neighbours at the same level).
+  ceiling/compare). Measurements are keyed `measurements/<substrate>/<model>/...` via
+  `new_measurement(...)` (substrate = `k1_spacemit` / `firesim_<bitstream>` / `spike_<config>` / ...).
+  `archive/` holds products kept only because something cites them; `probes/` holds one-off
+  diagnostics. `out/artifacts/README.md` lists where common products live.
 
   **The roster is data, not prose.** `src/merlin/resources/contracts/storage.yaml` declares the three roots, every
-  concern with what it holds, and where a directory that predates the roster belongs; this section is
-  a restatement of it and a test holds the two together. A concern list that lived in code drifted to
+  concern with what it holds, and where a directory that predates the roster belongs; it is the only
+  list (do not restate it here). A concern list that lived in code drifted to
   52 undeclared directories against 16 declared ones before anyone noticed, so adding a concern is a
   reviewed edit to that file, and `merlin-storage organize` folds a stray one into place — moving the
   directory and leaving a relative symlink, because a product's path is quoted in manifests and

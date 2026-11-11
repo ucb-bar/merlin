@@ -56,7 +56,6 @@ out_roots:
 # time it is created rather than a cleanup fifty concerns later.
 concerns:
   agentic-report: Anatomy and coverage reports for agent-driven capsule sessions.
-  applications: Per-target application studies above the kernel level.
   archive: Products kept because something still cites them, whose concern is no longer active.
   audits: Readiness and preflight studies -- what would block a campaign if it were launched now.
   cache: Regenerable working caches, purgeable by convention. See cache_dir().
@@ -67,12 +66,14 @@ concerns:
   design-pressure: Design-pressure DSE products, per workload.
   dse: Design-space exploration products, per workload.
   dse-guidance: Guidance derived from DSE, per workload.
+  documentation: Generated CLI, module and schema references (build_tools/docs/).
   experiments: Experiment-tracking views drawn from a run's own records -- the self-contained HTML
     dashboard of a run or a target at experiments/<target>/dashboard/. Regenerable; never evidence.
   handoff: Bundles handed to a collaborator, with the note that goes with them.
   kernel-index: Kernel index, per framework.
   kernel-mining: Mined kernels, per target.
   measurements: Measurements keyed by substrate and model. See new_measurement().
+  model-inputs: Public model inputs and calibration sets prepared by `merlin.model_check inputs-prepare`, per target.
   optimization-surface: Optimization-surface products, per target.
   perf-bench: The performance campaign's products, per target.
   perf-studies: Standing performance instrumentation beside the campaign -- ledgers, calibration,
@@ -84,10 +85,8 @@ concerns:
     corpus releases, per target, at protocols/<target>/phase0-<TS>-<sha7>/.
   recaptures: Model recaptures (PURGEABLE). See recaptures_dir().
   rvv-development-corpus: The RVV development corpus, per target.
-  selfcheck: Output of the repository self-check.
   source-data: Model source data held for reproduction, per model.
   target-evolution: How a target's derived contract changed over time, per target.
-  targetgen-evals: Curated evaluation tables for the target generator, per target.
   targets: Codegen packages minted for a target, the phase-2 champions exported from a run's best
     tag at targets/<target>/champions/<package_id>/, and the generated targets/<target>/INDEX.yaml.
     See the artifact-layout skill.
@@ -183,6 +182,11 @@ cited_evidence:
   extra_roots: []
 
 folds:
+  # Concerns retired from the roster because nothing writes them any more.
+  - {from: artifacts/applications, into: artifacts/archive/applications}
+  - {from: artifacts/selfcheck, into: artifacts/archive/selfcheck}
+  - {from: artifacts/targetgen-evals, into: artifacts/archive/targetgen-evals}
+
   - {from: audits, into: artifacts/audits}
   - {from: analysis, into: artifacts/audits}          # merges: both hold readiness studies
   - {from: protocols, into: artifacts/protocols}

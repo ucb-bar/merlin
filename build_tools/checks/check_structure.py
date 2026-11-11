@@ -141,7 +141,7 @@ REQUIRED_BENCHMARKS = [
 
 # Directories whose contents are gitignored / exempt from the AGENT.md walk.
 # out/ is the single gitignored generated-output root (out/{runs,artifacts,build}; see CLAUDE.md
-# "Generated-output convention"); only its top-level AGENT.md skeletons are tracked.
+# "Generated-output convention"); only out/README.md and the three root READMEs are tracked.
 # generated_targets/ is retired (folded into out/artifacts/targets/, no symlink).
 SKIP_DIRS = {
     ".git",

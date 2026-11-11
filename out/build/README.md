@@ -1,16 +1,10 @@
 # Build and working state
 
-Generated build trees, tool environments, buildable out-of-tree packages, test
-scratch space and agent workspaces live here. Source belongs in `src/`,
-`packages/`, `build_tools/` or its out-of-tree repository, never in a build tree.
+Disposable and rebuildable state: `cmake/` compiler builds, `python/` distribution
+builds and install checks, `toolchains/` baseline toolchains, `generated/` buildable
+out-of-tree target repositories, `agent-workspaces/` active compiler-authoring
+workspaces.
 
-Common owners include `cmake/` for compiler builds, `python/` for distribution
-builds and install checks, `generated/` for generated buildable target trees, and
-`agent-workspaces/` for active compiler-authoring workspaces. A workspace may have
-frozen input siblings and an active lease; being beneath `build/` does not make
-it safe to delete while a run exists.
-
-Preserve release/qualification logs needed to reproduce results. Use the
-[storage guide](../../docs/guides/12-experiments.md) and supported dry-run commands
-before reclamation. Most contents are ignored; tracked README/AGENT files describe
-the layout rather than storing build implementation.
+Being under `build/` does not make something safe to delete: an agent workspace can
+have frozen input siblings and an active lease. Use `merlin storage prune` (dry run
+by default) rather than deleting by hand.

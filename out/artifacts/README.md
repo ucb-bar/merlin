@@ -1,22 +1,34 @@
 # Generated products
 
-Products are grouped by concern, then the axis that matters for that concern
-(target, model, workload or framework). The complete category list and legacy-path
-mappings live in [storage.yaml](../../src/merlin/resources/contracts/storage.yaml), not this index.
+Products are grouped by **concern**, then by the axis that concern cares about
+(target, model, workload or framework). The list of concerns is data, in
+[storage.yaml](../../src/merlin/resources/contracts/storage.yaml); a directory it
+does not declare is flagged by `merlin storage layout` and the artifact-layout check.
 
-Common starting points:
+Write through `merlin.common.artifacts`, never a hand-built path:
 
-| Look for | Category |
+- `new_product(topic, version=..., target=...)` creates
+  `<concern>/<target>/v<ver>/<concern>_<target>_v<ver>_<TS>_<sha7>/` with a
+  `manifest.yaml` and a relative `latest` link.
+- `new_measurement(substrate, model, experiment, version=...)` creates
+  `measurements/<substrate>/<model>/...`; the substrate names the execution
+  environment (`k1_spacemit`, `firesim_<bitstream>`, `spike_<config>`, ...).
+- `cache_dir(ns)` gives `cache/<ns>/`, purgeable by definition.
+- `recaptures_dir()` gives the model captures (large, regenerable; the golden
+  `*_ref.npz` references are the part worth keeping).
+
+Places worth knowing:
+
+| Look for | Concern |
 | --- | --- |
-| Compiler-generation reports | `capsule-bench/`, `agentic-report/` |
-| Optimization results and measured performance | `perf-bench/`, `measurements/` |
-| Generated target packages | `targets/` |
-| Paper/talk figures and supporting products | `presentation/` |
-| Readiness and qualification evidence | `audits/` |
+| Compiler-generation results | `capsule-bench/`, `agentic-report/` |
+| Measured performance | `perf-bench/`, `perf-studies/`, `measurements/` |
+| Generated target packages and exported champions | `targets/<target>/` |
+| Board hand-off bundles (`build_tools/deploy/make_delivery.py`) | `delivery/` |
+| Frozen experiment protocols | `protocols/` |
+| Paper and talk figures | `presentation/` |
 | One-off investigations | `probes/` |
+| Kept only because something cites it | `archive/` |
 
-Curated source inputs belong in `experiments/reference-data/`, not here. Buildable
-trees and environments belong in `out/build/`; experiment execution belongs in
-`out/runs/`. Do not treat every artifact as a disposable cache: manifests, citations
-and retention pins can require keeping it. Use `merlin storage layout` to inspect
-placement and the [storage guide](../../docs/guides/12-experiments.md) before cleanup.
+Exported champions under `targets/<target>/champions/` and sealed phase-0 releases
+under `protocols/` are retention-pinned; never edit them by hand.

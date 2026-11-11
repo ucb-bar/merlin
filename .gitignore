@@ -15,200 +15,17 @@ selfcheck_out/
 /.claude/settings.local.json
 /.claude/projects/
 
-# --- Single-root generated-output convention (see CLAUDE.md "Generated-output convention") ---
-# All generated output lives under a single top-level out/ with subdirs out/{runs,artifacts,build}:
-#   out/runs/      = aet experiment runs
-#   out/artifacts/ = all other generated products (measurements, caches, recaptures, plots, ...)
-#   out/build/     = compiled trees, baseline toolchains, OOT codegen
-# Ignore ALL contents, but KEEP the tracked skeletons (AGENT.md / README.md / .gitkeep) and the
-# curated, non-regenerable files re-included by the explicit negations below. Regenerable output
-# (build products, run outputs, caches, recaptures, traces) stays ignored — never pushed.
+# --- Generated output (CLAUDE.md "Generated-output convention") ---
+# Everything under out/ is generated and ignored. Only the four root READMEs are tracked.
 /out/**
 !/out/
-!/out/**/
-!/out/**/AGENT.md
-!/out/**/README.md
-!/out/**/.gitkeep
-
-# GUARD: those three negations are depth-UNBOUNDED, so a vendored AGENT.md/README.md sitting deep
-# inside a generated build tree (a cmake-out/third-party/ vendor dir, a baseline toolchain clone)
-# would be un-ignored too and could be swept into a commit by a plain `git add -A`. Re-ignore the
-# bulk trees wholesale — the curated skeleton never lives inside one.
-/out/build/baselines/**
-/out/build/python/**
-/out/build/agent-workspaces/**
-/out/build/*-install-check/**
-/out/build/upstreams/**
-/out/build/worktrees/**
-/out/**/cmake-out/**
-/out/**/third-party/**
-/out/**/third_party/**
-/out/**/node_modules/**
-/out/**/.venv/**
-# Same class, observed in the wild: agent submission trees under out/runs/ vendor a whole xdsl
-# checkout (…/submission/mlir_oot/vendor/xdsl/…) and drop QA scratch beside it. Both carry their own
-# README.md/AGENT.md, which the depth-unbounded negations above would otherwise un-ignore.
-/out/**/vendor/**
-/out/**/_qa_work/**
-# Handoff products contain generated reports and machine-specific reproduction
-# notes. Curated integration records live in experiments/reference-data/.
-/out/artifacts/handoff/**
-
-# The generated OOT target packages under out/build/generated/ (minted by merlin.targetgen; the
-# hand-authored source of truth is experiments/reference-data/target-inputs/<target>/) are fully regenerable. Don't track their
-# empty doc-only skeletons — on a fresh clone they'd be a directory tree of AGENT.md/README.md
-# placeholders describing content that isn't there. out/build/generated/{AGENT,README}.md already
-# document the dir's purpose. Re-ignore the whole per-target subtree.
-/out/build/generated/*/**
-# CPU-host campaign workspaces contain agent-authored README files.  They are generated treatment
-# output, not repository source; re-ignore the whole per-cell build tree after the depth-unbounded
-# README/AGENT skeleton exceptions above.  Otherwise creating cell 0 changes the frozen Git identity
-# and invalidates the remaining randomized cells.
-/out/build/cpu-host-compiler/*/**
-
-# GUARD (regenerable concern subtrees): recaptures/ (per-model captures), measurements/ (per-run
-# substrate dumps), selfcheck/ and cache/ each grow one fully-regenerable/purgeable subtree per
-# model/run. Re-ignore everything BELOW each concern root so a generator that drops a nested
-# README.md/AGENT.md can't be un-ignored by the depth-unbounded !/out/**/{AGENT,README}.md negations
-# above and swept into a commit by `git add -A`. The `*/` skips the concern root, so the concern's
-# own top-level AGENT.md/.gitkeep stay tracked. Adding a new model/measurement needs no .gitignore edit.
-/out/artifacts/recaptures/*/**
-/out/artifacts/measurements/*/**
-/out/artifacts/selfcheck/*/**
-/out/artifacts/cache/*/**
-# Diagnostic probes and isolated wheel installations are generated, including
-# their rendered README/AGENT files; skeleton exceptions must not expose them.
-/out/artifacts/probes/*/**
-# Fresh diagnostic derivations and failed runs generate per-capsule README files.
-# Keep their entire run trees local; only selected source docs belong in Git.
-/out/artifacts/diagnostics/*/**
-# Generated protocol/review bundles contain rendered README files too. They are
-# never curated source docs, even though out's skeleton rule un-ignores README.md.
-/out/artifacts/protocols/*/**
-/out/build/*-installed*/**
-# Local authoring instructions are not part of the public Atlas example.
-/examples/atlas/artifacts/AGENT.md
-# Same idiom, four concern roots that were missed: delivery/ (per-bitstream/per-model delivery trees,
-# 26 GB in one of them), publish/ (per-package clone/ trees), runs/ (per-target aet run trees) and
-# model-comparison/ (per-version report products). Each grows nested README.md/AGENT.md that the
-# depth-unbounded negations re-exposed — 428 files were surfacing as untracked before this.
-/out/artifacts/delivery/*/**
-/out/build/publish/*/**
-/out/runs/*/**
-/out/artifacts/model-comparison/*/**
-
-# Generated narrative reports remain local artifacts. Public source documentation
-# belongs under docs/ or examples/, never under out/.
-/out/artifacts/kernel-mining/rvv/*.md
-/out/artifacts/compare/*.md
-!/out/artifacts/compare/AGENT.md
-/out/artifacts/presentation/*.md
-!/out/artifacts/presentation/AGENT.md
-
-# --- capsule-bench / perf-bench / targetgen-evals: keep machine-readable
-#     technical evidence where explicitly selected, but not rendered reports,
-#     operator notes, or local histories. ---
-!/out/artifacts/capsule-bench/gemmini/*
-!/out/artifacts/perf-bench/gemmini/*
-!/out/artifacts/targetgen-evals/gemmini/*
-/out/artifacts/capsule-bench/gemmini/*.md
-/out/artifacts/perf-bench/gemmini/*.md
-/out/artifacts/targetgen-evals/gemmini/*.md
-# regenerable / raw within the concern roots (re-ignored: logs, renderable posters, generator
-# scripts, raw metric dumps):
-/out/artifacts/capsule-bench/gemmini/*.log
-/out/artifacts/capsule-bench/gemmini/*.py
-/out/artifacts/capsule-bench/gemmini/CANARY_RESULTS.txt
-# point-in-time freeze snapshot: leaks a machine-absolute toolchain path + names retired paths — not
-# part of the curated results story:
-/out/artifacts/capsule-bench/gemmini/capsule_bench_v0_freeze_manifest.yaml
-/out/artifacts/perf-bench/gemmini/*.log
-/out/artifacts/perf-bench/gemmini/*.html
-/out/artifacts/perf-bench/gemmini/prescreen_mutation_demo.json
-/out/artifacts/targetgen-evals/gemmini/metrics.csv
-# per-run archives, figures, recovered nested-session transcripts (raw / large) — never tracked:
-/out/artifacts/capsule-bench/gemmini/abc4_archive/**
-/out/artifacts/capsule-bench/gemmini/abc4_analysis/**
-# (reports/** is a later match than the !/out/**/{README,AGENT}.md skeleton negations above, so it
-# also re-ignores any stray README.md/AGENT.md dropped inside these raw archive subtrees.)
-/out/artifacts/capsule-bench/gemmini/reports/**
-/out/artifacts/perf-bench/gemmini/reports/**
-/out/artifacts/capsule-bench/gemmini/e2e_smoke/**
-# The leave-one-family-out split definitions NAME held-out capsules (7 of them), so unlike the other
-# aggregated ledgers in this concern root they are an answer key, not part of the results story.
-/out/artifacts/capsule-bench/gemmini/leave_one_family_out.json
-# --- per-run archive subtrees under ANY concern root are raw dumps (agent workspaces, vendored
-#     compiler trees, .o/.elf/.gz), never the curated story. Measured 2026-09-13: ~1,500 files /
-#     ~200 MB force-added under capsule-bench/{atlas,radiance} and perf-bench/gemmini/<run>/ on
-#     09-02..09-08. The concern's OWN top-level files stay negatable above; everything one level
-#     deeper is re-ignored here (a later match than the depth-unbounded README/AGENT negations, so
-#     stray skeleton files inside a dump stay ignored too). Two run dirs are pytest FIXTURES read by
-#     hard asserts and are re-included by name; a new fixture needs its own reviewed line. ---
-/out/artifacts/capsule-bench/*/*/**
-/out/artifacts/perf-bench/*/*/**
-# read by tests/targetgen/test_radiance_application_family_audit.py (coverage.json etc.)
-!/out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/**
-# read by tests/runtime/test_gsim_result_page.py (only the verifier; the cases/ dumps stay out)
-!/out/artifacts/capsule-bench/radiance/l3_result_page_v2_20260908/verify.py
-# Both local rendered READMEs are generated reports; keep the technical receipts.
-/out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/README.md
-/out/artifacts/capsule-bench/radiance/l3_result_page_v2_20260908/README.md
-
-# DSE reference evidence moved byte-for-byte to experiments/reference-data/dse/case_study.
-# Fresh analyses below out/ are generated state, never another copy of the committed reference.
-/out/artifacts/dse-guidance/case_study/**/*.png
-/out/artifacts/dse-guidance/case_study/**/*.svg
-/out/artifacts/dse-guidance/case_study/**/*.pdf
-/out/artifacts/dse-guidance/case_study/**/*.jpg
-/out/artifacts/dse-guidance/case_study/**/*.jpeg
-/out/artifacts/dse-guidance/case_study/**/*.html
-/out/artifacts/dse-guidance/case_study/**/*.log
-# regenerable FX-graph dumps (produced by experiments/benchmarks/dse_guidance/dump_exported_fx.py)
-/out/artifacts/dse-guidance/case_study/**/exported_fx/*.txt
-
-# --- out/artifacts/targets/ : generated target packages (codegen products).
-#     Only hand-authored reference baselines and reviewed technical source inputs
-#     are tracked. Promoted compiler payloads belong in an OOT repository or a
-#     frozen run, not in the Merlin source tree. ---
-# Override the skeleton idiom's global README/AGENT un-ignore inside targets/ so fork docs are NOT
-# picked up (they are regenerable); tracking is re-granted only by the explicit negations after.
-/out/artifacts/targets/**/README.md
-/out/artifacts/targets/**/AGENT.md
-!/out/artifacts/targets/AGENT.md
-!/out/artifacts/targets/rvv/hand_v0/**
-!/out/artifacts/targets/rvv/hand_v0_int8/**
-!/out/artifacts/targets/rvv/impr_tuned_*/**
-# A target descriptor's FROZEN host lane must be readable from the sandbox workspace, which is built
-# from tracked content -- an untracked package resolves to nothing there and the run dies in setup
-# before the agent starts. Track exactly the files the descriptor pins in `requires_paths` (the
-# schedule + knobs + manifest that ARE the codegen), never the package's regenerable measurement runs.
-!/out/artifacts/targets/rvv/rvv_tuned_*/manifest.yaml
-!/out/artifacts/targets/rvv/rvv_tuned_*/schedule.mlir
-!/out/artifacts/targets/rvv/rvv_tuned_*/knobs.yaml
-# hand-authored reference baselines for other targets that tests load (keep suite reproducible)
-!/out/artifacts/targets/gemmini/hand_v0/**
-!/out/artifacts/targets/radiance/hand_v0/**
-!/out/artifacts/targets/saturn_vec/hand_v0/**
-!/out/artifacts/targets/muon/reference_v0/**
-/out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/**
-# hand-owned capability RESIDUAL side-inputs (the intent+prose the RTL facts can't ground) that
-# capability_manifests.manifest_for derives each target's contract from — the source of truth for the
-# discovered manifest set (rvv/mx_gemmini/radiance/atlas). Tracked; the generated target_contract.yaml
-# beside them stays ignored.
-!/out/artifacts/targets/*/contracts/residual.yaml
-# never track compiled OOT build trees or bytecode even under a negated baseline (these win: last match)
-/out/artifacts/targets/**/mlir_oot/build/
-/out/artifacts/targets/**/__pycache__/
-# a vendored xdsl checkout inside a codegen package is a build INPUT (450 files, re-installable),
-# never a product; measured tracked once under gemmini_xdsl_rtl_v0/mlir_oot/xdsl/.
-/out/**/mlir_oot/xdsl/**
-/out/**/vendor/xdsl/**
-# compiled / archived outputs never belong in the curated story (no negated tree carried any of
-# these when this was added; a fixture that needs one must negate it explicitly BELOW this block).
-/out/**/*.gz
-/out/**/*.o
-/out/**/*.elf
-/out/**/*.bin
+!/out/README.md
+!/out/runs/
+!/out/runs/README.md
+!/out/artifacts/
+!/out/artifacts/README.md
+!/out/build/
+!/out/build/README.md
 
 # --- RTL facts are a GENERATED artifact, never hand-tracked. Our CIRCT/mlc tooling EXTRACTS them
 #     from the target's RTL on demand (merlin.targetgen.rtl.facts.ensure_facts ->
@@ -348,14 +165,6 @@ tmp
 !/experiments/studies/targetgen_evals/datasets/*/golden/expected_contract.yaml
 !/experiments/studies/targetgen_evals/datasets/*/golden/expected_dialect_features.yaml
 
-# dse-guidance case study: the generated tables are re-included by the negation above, but these two
-# subtrees are session working material (slide triage, positioning memos, one-off validation scripts)
-# that no tool produces or reads -- they are not artifacts.
-/out/artifacts/dse-guidance/case_study/final_presentation_pass/**
-/out/artifacts/dse-guidance/case_study/manual_validation/**
-# Point-in-time agent run notes: addressed to the operator, and they link private vaults / accounts.
-/out/artifacts/perf-bench/*/AUTONOMOUS_RUN_SUMMARY.md
-/out/artifacts/capsule-bench/*/AGENTIC_AB_RUNBOOK.md
 # llvm-lit writes a per-suite timing cache next to the tests on every run. It is scheduling state, not
 # a test input, and it reappears the moment anyone runs the suite -- so without this it shows up as an
 # untracked file in every session and eventually gets swept into someone's commit.
@@ -371,7 +180,6 @@ tests/data/lit/.lit_test_times.txt
 /experiments/studies/voyager_h2h/PLANE_B.md
 
 # Local generated results and retired deployment records are not source inputs.
-/out/**
 /experiments/reference-data/el4-performance-contribution/
 /experiments/reference-data/compiler-construction-20261023/
 /experiments/reference-data/readiness-execution-20261023/

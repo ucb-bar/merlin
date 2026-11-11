@@ -1,15 +1,13 @@
 # Experiment runs
 
-Runs are grouped as `<target>/<suite>/<run-id>/`. Start with a run's recorded
-definition, environment and native-engine paths rather than guessing its purpose
-from a timestamp. AET records accounting; phase engines own grades and checkpoints.
-An orchestration exit code alone is not a compiler correctness or speedup result.
+One directory per run: `<target>/<suite>/<run-id>/`, with `run_record.json` as the
+source of truth. Run ids are timestamp-first (`<UTC-TS>_<method>_seed<NNN>_<sha7>`).
+Create runs only through `merlin.common.artifacts.start_run(..., target=...)`.
 
-Use `merlin experiment status /absolute/path/to/run` for catalog-managed runs.
-Use `merlin storage experiments` to inspect storage across experiment groups.
-Do not rename frozen runs or edit their receipts to reorganize output.
+- `merlin experiment status /absolute/path/to/run` shows a catalog-managed run.
+- `aet runs` (pointed at the `out/` root) lists runs.
+- An orchestration exit code alone is not a correctness or speedup result; read the
+  run's grades and receipts.
 
-New run locations come from the run/storage APIs, not hand-built path strings.
-Historical native runs can have different internal layouts; their recorded paths
-remain authoritative. See the [experiment guide](../../experiments/README.md)
-and [storage guide](../../docs/guides/12-experiments.md).
+Never rename a frozen run or edit its receipts. Historical runs may use other
+internal layouts; their recorded paths stay authoritative.

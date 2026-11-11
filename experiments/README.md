@@ -26,7 +26,7 @@ are not committed defaults. Keep the original model, calibration and independent
 reference selections with the run that produced them.
 
 Previous run payloads and study snapshots are preserved locally under ignored
-`out/artifacts/retained/`. They are available for explicit historical replay with
+`out/artifacts/archive/refactor-2026-11/retained/`. They are available for explicit historical replay with
 their original source snapshot; current workflows never discover them as fresh
 inputs. Some historical captures require unavailable upstream assets and tools.
 
