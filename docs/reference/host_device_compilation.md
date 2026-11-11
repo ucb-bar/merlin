@@ -137,6 +137,29 @@ target admission and emitted-program checks still apply. Providers must describe
 deterministic effect-free semantics accurately; declaring an operation pure is
 not a proof of its target arithmetic.
 
+## Optional dense reshape composition
+
+`native-compile --application --application-compose-reshapes` composes adjacent
+dense logical reshapes. Use the same option with `native-verify --application`.
+It is off by default and can follow `--application-common-values`. The Python
+entry points are `reshape_chains.compose_reshape_chains` and
+`prepare_source(..., compose_reshapes=True)` in `merlin.semantic_compiler`.
+
+For example, `[B,T,H] -> [B*T*H] -> [B,T,heads,head_dim]` becomes a single reshape
+when both original operations preserve element count, dtype, numerical policy
+and dense element order. The intermediate remains if another operation uses it
+or it is a public output. All input ports, constants and ordered public outputs
+keep their identities. Attributes and index maps prevent composition; gathers,
+transposes, casts and already allocated views remain outside the pass.
+
+This removes redundant logical copies without introducing physical aliases.
+The final reshape retains its original output identity and type. Its ordinary
+target lowering still owns storage, transfers, completion and validation.
+Source-preparation v5 records the previous preparation receipt and a
+`merlin.reshape_chains.v1` receipt; verification reconstructs the original graph
+and replays the exact shape and liveness checks. Existing receipt versions and
+default compilation remain unchanged.
+
 ## Pointwise broadcast storage
 
 Source preparation moves exact BF16-to-F32 widening before a complete affine
