@@ -114,8 +114,7 @@ def verify_timed_block(kernel, issue_cycles, *, project, capacities, max_calls=1
     return tuple(cycle + effect.complete for cycle, effect in zip(issue_cycles, effects))
 
 
-def verify_timing_plan(kernel, plan, *, model_identity, clock, project, capacities, max_calls=1024):
-    """Consume typed schedule decisions, rejecting stale or ignored annotations."""
+def _verify_plan(kernel, plan, *, model_identity, clock, check):
     from xdsl.dialects.builtin import StringAttr
     from merlin.xdsl_dialects.schedule import BindOp, OverlapOp, PlanOp, TimeAnnotationOp
 
@@ -155,7 +154,7 @@ def verify_timing_plan(kernel, plan, *, model_identity, clock, project, capaciti
     if set(issues) != set(range(len(kernel.body))):
         raise ValueError("timing plan must assign every actual instruction an issue cycle")
     starts = tuple(issues[i] for i in range(len(kernel.body)))
-    ends = verify_timed_block(kernel, starts, project=project, capacities=capacities, max_calls=max_calls)
+    ends = check(starts)
     if any(ends[i] != value for i, value in completions.items()):
         raise ValueError("completion annotation differs from projected effects")
     for (i, j), mode in overlap.items():
@@ -163,3 +162,64 @@ def verify_timing_plan(kernel, plan, *, model_identity, clock, project, capaciti
         if intersects != (mode == "require"):
             raise ValueError("selected overlap decision is not realized")
     return starts, ends
+
+
+def verify_timing_plan(kernel, plan, *, model_identity, clock, project, capacities, max_calls=1024):
+    """Consume typed decisions with complete memory and capacity projections."""
+    return _verify_plan(kernel, plan, model_identity=model_identity, clock=clock,
+                        check=lambda starts: verify_timed_block(
+                            kernel, starts, project=project, capacities=capacities, max_calls=max_calls))
+
+
+def verify_issue_timing_plan(kernel, plan, *, model_identity, clock, completion, distance, max_calls=1024):
+    """Check actual instruction pair distances and fixed-latency annotations.
+
+    This deliberately establishes only issue spacing. The target must separately
+    check resource reservations, event-driven DMA completion and control flow.
+    Both callbacks consume current Call operands, never candidate-supplied facts.
+    ``distance`` must cover every ordered pair, including zero-distance pairs.
+    """
+    if (type(kernel) is not Kernel or check_structure(kernel) or
+            type(max_calls) is not int or not 0 < len(kernel.body) <= max_calls or
+            any(type(c) is not Call or c.produces is not None or c.awaits or c.unit is not None or
+                c.stages or c.sets or c.assumes for c in kernel.body)):
+        raise ValueError("issue timing requires a bounded plain straight-line kernel")
+
+    def check(starts):
+        ages = tuple(completion(call) for call in kernel.body)
+        if any(type(age) is not int or age <= 0 for age in ages):
+            raise ValueError("unknown fixed-latency completion")
+        for j, later in enumerate(kernel.body):
+            for i, earlier in enumerate(kernel.body[:j]):
+                minimum = distance(earlier, later)
+                if type(minimum) is not int or minimum < 0:
+                    raise ValueError("unknown or invalid pair issue distance")
+                if starts[j] - starts[i] < minimum:
+                    raise ValueError(f"pair issue distance violated between calls {i} and {j}")
+        return tuple(start + age for start, age in zip(starts, ages))
+    return _verify_plan(kernel, plan, model_identity=model_identity, clock=clock, check=check)
+
+
+def make_timing_plan(kernel, starts, *, model_identity, clock, overlaps=()):
+    """Build typed, kernel-bound decisions; callers still run a selected checker."""
+    from xdsl.dialects.builtin import IntegerAttr, StringAttr, i64
+    from xdsl.ir import Block, Region
+    from merlin.xdsl_dialects.schedule import BindOp, HandleType, OverlapOp, PlanOp, TimeAnnotationOp
+
+    if len(starts) != len(kernel.body) or any(type(t) is not int or t < 0 for t in starts):
+        raise ValueError("one nonnegative issue time per instruction required")
+    operations, handles = [], []
+    for index, start in enumerate(starts):
+        bind = BindOp(result_types=[HandleType()], properties={"target": StringAttr(f"call:{index}")})
+        handles.append(bind.handle)
+        operations.extend((bind, TimeAnnotationOp(operands=[bind.handle], properties={
+            "event": StringAttr("issue"), "clock": StringAttr(clock), "cycle": IntegerAttr(start, i64)})))
+    for first, second, mode in overlaps:
+        if any(type(i) is not int or not 0 <= i < len(handles) for i in (first, second)):
+            raise ValueError("overlap index outside kernel")
+        operations.append(OverlapOp(operands=[handles[first], handles[second]], properties={"mode": StringAttr(mode)}))
+    result = PlanOp(properties={"sym_name": StringAttr("timed")}, attributes={
+        "kernel_sha256": StringAttr(kernel.digest()), "timing_model": StringAttr(model_identity)},
+        regions=[Region(Block(operations))])
+    result.verify()
+    return result
