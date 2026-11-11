@@ -51,7 +51,7 @@ def read_ordered_float_dense(source: str, *, entry: str, policy: OrderedFloatPol
     are admitted. The compiler must retain K order and the accumulator format
     across primitive boundaries. Unknown attributes and unused operations fail.
     """
-    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.frontends.linalg_text import parse_mlir_text
 
     _require(type(policy) is OrderedFloatPolicy, "a selected numerical policy is required")
     module = parse_mlir_text(source)
@@ -75,9 +75,31 @@ def read_ordered_float_dense(source: str, *, entry: str, policy: OrderedFloatPol
     _require(tuple(type(op) for op in ops) == (arith.ConstantOp, tensor.EmptyOp, FillOp, GenericOp, func.ReturnOp),
              "expected constant, empty, fill, contraction and return")
     zero, empty, fill, dot, ret = ops
-    _require(all(not op.attributes for op in (zero, empty, fill, ret)), "unknown initializer/return attributes")
+    _require(not ret.attributes and not ret.properties and list(dot.inputs) == list(block.args) and
+             list(dot.outputs) == list(fill.results) and list(ret.operands) == list(dot.results),
+             "operand, initializer or returned result correspondence differs")
+    m, k, n, transposed = recognize_ordered_float_dense(dot, policy=policy)
+    return OrderedFloatDense(sha256(source.encode()).hexdigest(), entry, m, k, n, transposed, policy)
+
+
+def recognize_ordered_float_dense(dot, *, policy: OrderedFloatPolicy):
+    """Check one contraction and its actual initializer; return M, K, N, RHS layout.
+
+    Graph callers retain the SSA operands and must separately bind input domains.
+    No assumption is made that a producer establishes a consumer's domain.
+    """
+    _require(type(policy) is OrderedFloatPolicy, "a selected numerical policy is required")
+    _require(type(dot) is GenericOp and len(dot.inputs) == 2 and len(dot.outputs) == 1 and
+             len(dot.results) == 1, "one two-input tensor contraction required")
+    fill = dot.outputs[0].owner
+    _require(type(fill) is FillOp and len(fill.inputs) == len(fill.outputs) == len(fill.results) == 1,
+             "contraction needs an explicit fill")
+    zero, empty = fill.inputs[0].owner, fill.outputs[0].owner
+    _require(type(zero) is arith.ConstantOp and type(empty) is tensor.EmptyOp,
+             "contraction needs a scalar constant and empty destination")
+    _require(all(not op.attributes for op in (zero, empty, fill)), "unknown initializer/return attributes")
     _require(set(zero.properties) == {"value"} and not empty.properties and
-             set(fill.properties) <= {"operandSegmentSizes"} and not ret.properties,
+             set(fill.properties) <= {"operandSegmentSizes"},
              "unknown initializer/return properties")
     _require(type(zero.value) is builtin.FloatAttr and str(zero.result.type) == policy.accumulator_type,
              "initializer must have the accumulator format")
@@ -91,10 +113,7 @@ def read_ordered_float_dense(source: str, *, entry: str, policy: OrderedFloatPol
     _require(len(fill_body.args) == 2 and len(fill_ops) == 1 and type(fill_ops[0]) is YieldOp and
              list(fill_ops[0].operands) == [fill_body.args[0]] and not fill_ops[0].attributes and
              not fill_ops[0].properties, "fill body must yield its scalar initializer")
-    _require(list(dot.inputs) == list(block.args) and list(dot.outputs) == [fill.results[0]] and
-             list(ret.operands) == list(dot.results) and len(dot.results) == 1,
-             "operand, initializer or returned result correspondence differs")
-    values = (*block.args, empty.results[0], fill.results[0], dot.results[0])
+    values = (*dot.inputs, empty.results[0], fill.results[0], dot.results[0])
     _require(all(type(v.type) is builtin.TensorType and type(v.type.encoding) is builtin.NoneAttr for v in values),
              "ordinary ranked tensors required")
     _require(tuple(str(v.type.element_type) for v in values) ==
@@ -136,4 +155,4 @@ def read_ordered_float_dense(source: str, *, entry: str, policy: OrderedFloatPol
     _require(all(not op.attributes and set(op.properties) <= {"fastmath"} and
                  not getattr(op.properties.get("fastmath"), "data", ()) for op in scalar),
              "scalar flags or attributes would change the recurrence")
-    return OrderedFloatDense(sha256(source.encode()).hexdigest(), entry, m, k, n, transposed, policy)
+    return m, k, n, transposed
