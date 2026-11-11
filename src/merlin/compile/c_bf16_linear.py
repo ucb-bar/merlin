@@ -10,6 +10,10 @@ not a semantic KernelRequest emitter. Its widening rewrite also permits
 contraction, so it cannot establish this policy's separate, ascending-K binary32
 operations. Reuse this C emitter to keep the arithmetic contract explicit.
 
+Either operand may be a single-use pure dimension permutation of a boundary
+tensor. The emitter reads the boundary tensor through that permutation, so no
+permuted copy exists and every product and the K order are unchanged.
+
 SOURCE_POLICY selects separate, ascending-K binary32 operations for either
 accepted source representation. Placement on the host does not select a target
 product-rounding, reduction-tree, or tile-accumulation model.
@@ -20,6 +24,34 @@ from merlin.semantic_compiler.model import IndexMap, TensorType, pointwise_ident
 from .c_sources import c_source_pair
 
 SOURCE_POLICY = "bf16-exact-product-f32-ltr-rne-bf16-rne-v1"
+
+
+def permutation_axes(source, view):
+    """Return the result axis read by each source axis for a pure permutation.
+
+    ``view`` must be a complete, offset-free dimension permutation of
+    ``source`` with an identity write map and unchanged element type: every
+    source element is read exactly once and no value is converted. Anything
+    else, including broadcasts, slices and reversals, returns ``None``.
+    """
+    rank = len(source.type.shape)
+    if (view.op not in {"gather", "transpose"} or view.effect != "pure" or view.inputs != (source.id,)
+            or view.attrs or rank == 0 or len(view.type.shape) != rank or len(view.index_maps) != 2
+            or (source.type.dtype, source.type.numerical_policy) != (view.type.dtype, view.type.numerical_policy)):
+        return None
+    read, write = view.index_maps
+    if (write != pointwise_identity_maps(rank, 1)[-1] or read.loop_rank != rank
+            or len(read.coefficients) != rank or any(read.offsets)):
+        return None
+    axes = []
+    for row, extent in zip(read.coefficients, source.type.shape, strict=True):
+        if len(row) != rank or set(row) - {0, 1} or sum(row) != 1:
+            return None
+        axis = row.index(1)
+        if view.type.shape[axis] != extent or axis in axes:
+            return None
+        axes.append(axis)
+    return tuple(axes)
 
 
 def emit_c(source, name, *, policy=SOURCE_POLICY):
@@ -42,7 +74,7 @@ def emit_c(source, name, *, policy=SOURCE_POLICY):
     attrs_of = lambda node: {key: value for key, value in node.attrs if not key.startswith("prov.")}
     widened = output.op == "f32_to_bf16"
     if widened:
-        if len(pure) != 4 or len(output.inputs) != 1:
+        if len(pure) not in {4, 5, 6} or len(output.inputs) != 1:
             raise ValueError("host BF16 matmul needs a closed widened source chain")
         node = source.node(output.inputs[0])
         if node.op != "source_f32_matmul_unqualified" or len(node.inputs) != 3:
@@ -54,6 +86,7 @@ def emit_c(source, name, *, policy=SOURCE_POLICY):
                     or cast.index_maps != pointwise_identity_maps(2, 1)):
                 raise ValueError("host BF16 matmul widened operand conversion differs")
         lhs, rhs = (source.node(cast.inputs[0]) for cast in casts)
+        readers = casts
         seed = source.node(node.inputs[2])
         if (attrs_of(output) != {"numeric_semantics": "f32-to-bf16-rne-v1"}
                 or output.index_maps != pointwise_identity_maps(2, 1)):
@@ -61,14 +94,32 @@ def emit_c(source, name, *, policy=SOURCE_POLICY):
         allowed_ids = {lhs.id, rhs.id, seed.id, *(cast.id for cast in casts), node.id, output.id}
         arithmetic_dtype = "f32"
     else:
-        if len(pure) != 1:
-            raise ValueError("host BF16 matmul needs one dense logical computation")
         node = output
         if node.op != "source_bf16_matmul_unqualified" or len(node.inputs) != 3:
             raise ValueError("host BF16 matmul operation or ordered inputs differ")
         lhs, rhs, seed = (source.node(key) for key in node.inputs)
+        readers = (node, node)
         allowed_ids = {lhs.id, rhs.id, seed.id, node.id}
         arithmetic_dtype = "bf16"
+    # A pure permutation of a boundary operand is read through its index map
+    # instead of being materialized. Each logical (row, column) element is the
+    # same source element, so every product and the K order are unchanged.
+    views, operands = {}, []
+    for side, value, reader in (("lhs", lhs, readers[0]), ("rhs", rhs, readers[1])):
+        if value.effect == "pure":
+            base = source.node(value.inputs[0]) if len(value.inputs) == 1 else None
+            axes = permutation_axes(base, value) if base is not None else None
+            if (axes is None or value.id in source.outputs or lhs.id == rhs.id
+                    or [item.id for item in source.nodes if value.id in item.inputs] != [reader.id]):
+                raise ValueError("host BF16 matmul operand is not a single-use pure permutation")
+            views[side] = value, base, axes
+            allowed_ids.add(base.id)
+            value = base
+        operands.append(value)
+    if len(pure) != (4 if widened else 1) + len(views):
+        raise ValueError("host BF16 matmul needs a closed widened source chain" if widened
+                         else "host BF16 matmul needs one dense logical computation")
+    lhs_base, rhs_base = operands
     if len(lhs.type.shape) != 2 or len(rhs.type.shape) != 2 or lhs.type.shape[1] != rhs.type.shape[0]:
         raise ValueError("host BF16 matmul requires [M,K] and [K,N]")
     m, k = lhs.type.shape
@@ -77,9 +128,11 @@ def emit_c(source, name, *, policy=SOURCE_POLICY):
             or node.type != TensorType((m, n), arithmetic_dtype, "raw-bit-pattern")
             or seed.type != node.type or any(value.type.dtype != "bf16" or value.type.numerical_policy != "raw-bit-pattern"
                                            for value in (lhs, rhs))
-            or any(value.effect not in {"input", "constant"} or value.inputs or value.index_maps for value in (lhs, rhs, seed))
+            or any(value.effect not in {"input", "constant"} or value.inputs or value.index_maps
+                   for value in (lhs_base, rhs_base, seed))
             or any(key != "input_retention" or value not in {"preserve", "reusable"}
-                   for operand in (lhs, rhs, seed) for key, value in operand.attrs if not key.startswith("prov."))
+                   for operand in (lhs_base, rhs_base, seed) for key, value in operand.attrs
+                   if not key.startswith("prov."))
             or {item.id for item in source.nodes} != allowed_ids):
         raise ValueError("host BF16 matmul source types or effects differ")
     if widened and any(cast.type != TensorType(value.type.shape, "f32", "raw-bit-pattern")
@@ -105,7 +158,7 @@ def emit_c(source, name, *, policy=SOURCE_POLICY):
     for binding in source.constants:
         operand = source.node(binding.node_id)
         encoding = "f32-le-raw" if operand == seed and widened else "bf16-le-raw"
-        if operand not in (lhs, rhs, seed) or binding.encoding != encoding:
+        if operand not in (lhs_base, rhs_base, seed) or binding.encoding != encoding:
             raise ValueError("host BF16 matmul constant encoding differs")
         raw = bytes.fromhex(binding.data_hex)
         width = seed_width if operand == seed else 2
@@ -154,8 +207,8 @@ int PREFIX(void *context,const void *const *inputs,void *const *outputs) {
   for (size_t row=0;row<MDIMu;++row) for (size_t column=0;column<NDIMu;++column) {
     float accumulator=0.0f;
     for (size_t reduction=0;reduction<KDIMu;++reduction) {
-      uint16_t left=PREFIX_load(a+2u*(row*KDIMu+reduction));
-      uint16_t right=PREFIX_load(b+2u*(reduction*NDIMu+column));
+      uint16_t left=PREFIX_load(a+2u*(LEFTINDEX));
+      uint16_t right=PREFIX_load(b+2u*(RIGHTINDEX));
       volatile float product=PREFIX_float(left)*PREFIX_float(right);
       if (!PREFIX_finite(PREFIX_bits(product))) { free(temporary);return -2; }
       volatile float sum=accumulator+product;
@@ -169,15 +222,27 @@ int PREFIX(void *context,const void *const *inputs,void *const *outputs) {
   memcpy(outputs[0],temporary,CSIZEu);free(temporary);return 0;
 }
 """
-    replacements = {"PREFIX": name, "MAXSIZE": str(max(sizes)), "ASIZE": str(sizes[0]), "BSIZE": str(sizes[1]),
+    indices = {"lhs": "row*KDIMu+reduction", "rhs": "reduction*NDIMu+column"}
+    for side, (view, base, axes) in views.items():
+        strides = [0, 0]
+        for axis, extent_after in zip(axes, (base.type.shape[1], 1)):
+            strides[axis] = extent_after
+        loops = ("row", "reduction") if side == "lhs" else ("reduction", "column")
+        indices[side] = "+".join(f"{loop}*{stride}u" for loop, stride in zip(loops, strides))
+    replacements = {"LEFTINDEX": indices["lhs"], "RIGHTINDEX": indices["rhs"], "PREFIX": name, "MAXSIZE": str(max(sizes)), "ASIZE": str(sizes[0]), "BSIZE": str(sizes[1]),
                     "SEEDSIZE": str(sizes[2]), "CSIZE": str(output_size), "MDIM": str(m), "KDIM": str(k), "NDIM": str(n)}
     for token, value in replacements.items():
         implementation = implementation.replace(token, value)
-    return {"source_request_digest": source.digest(), "implementation": name,
-            "inputs": [lhs.id, rhs.id, seed.id], "outputs": [output.id], "arithmetic": "selected-host-bf16-matmul",
-            "numeric_semantics": policy, "placement": "host",
-            "required_c_flags": ["-frounding-math", "-ffp-contract=off"], "required_link_flags": ["-lm"],
-            "domain": "finite BF16 operands, intermediates and result; positive-zero seed; IEEE binary32 RNE with gradual underflow",
-            "weight_codes_or_exponents_changed": False}, c_source_pair(
+    record = {"source_request_digest": source.digest(), "implementation": name,
+              "inputs": [lhs_base.id, rhs_base.id, seed.id], "outputs": [output.id],
+              "arithmetic": "selected-host-bf16-matmul", "numeric_semantics": policy, "placement": "host",
+              "required_c_flags": ["-frounding-math", "-ffp-contract=off"], "required_link_flags": ["-lm"],
+              "domain": "finite BF16 operands, intermediates and result; positive-zero seed; IEEE binary32 RNE with gradual underflow",
+              "weight_codes_or_exponents_changed": False}
+    if views:
+        record["folded_operand_permutations"] = [
+            {"operand": side, "permutation": view.id, "source": base.id, "source_axis_reads": list(axes)}
+            for side, (view, base, axes) in sorted(views.items())]
+    return record, c_source_pair(
                 name, public_headers={}, private_headers={}, sources={"bf16_linear.c": implementation},
                 declarations=f"int {name}(void *,const void *const *,void *const *);\n")

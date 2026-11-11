@@ -8,7 +8,9 @@ import struct
 import pytest
 
 from merlin.compile.c_bf16_linear import SOURCE_POLICY, emit_c
-from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType, pointwise_identity_maps
+from merlin.compile.semantic_regions import extract_semantic_region
+from merlin.semantic_compiler.model import (
+    ConstantBinding, IndexMap, KernelRequest, SemanticNode, TensorType, pointwise_identity_maps)
 
 
 def request(k):
@@ -160,3 +162,136 @@ def test_widened_source_seed_and_policy_refusals(tmp_path):
     changed_cast = replace(source.nodes[3], attrs=(("numeric_semantics", "other"),))
     with pytest.raises(ValueError, match="conversion"):
         emit_c(replace(source, nodes=(*source.nodes[:3], changed_cast, *source.nodes[4:])), "dot", policy=SOURCE_POLICY)
+
+
+def permuted_head_source(m, k, n, *, extra_reader=False, published=False, broadcast=False,
+                         lhs_view=False, rhs_view=True, widened=True):
+    """Linear whose [K,M] activation and/or [N,K] weight is permuted before the contraction.
+
+    ``widened`` selects the bf16_to_f32 source chain; otherwise the permuted
+    operands feed the plain BF16 contraction directly.
+    """
+    bf16, f32 = (lambda shape: TensorType(shape, "bf16", "raw-bit-pattern"),
+                 lambda shape: TensorType(shape, "f32", "raw-bit-pattern"))
+    widen = (("numeric_semantics", "bf16-to-f32-exact-v1"),)
+    identity = pointwise_identity_maps(2, 1)
+    swap = IndexMap(2, ((0, 1), (1, 0)), (0, 0))
+    weight_shape, read = ((k,), IndexMap(2, ((1, 0),), (0,))) if broadcast else ((n, k), swap)
+    left, right = ("xt" if lhs_view else "x"), ("wt" if rhs_view else "w")
+    nodes = [SemanticNode("x", "input", (), bf16((k, m) if lhs_view else (m, k)), effect="input"),
+             SemanticNode("w", "input", (), bf16(weight_shape if rhs_view else (k, n)), effect="input")]
+    if lhs_view:
+        nodes.append(SemanticNode("xt", "transpose", ("x",), bf16((m, k)), index_maps=(swap, identity[-1])))
+    if rhs_view:
+        nodes.append(SemanticNode("wt", "gather" if broadcast else "transpose", ("w",), bf16((k, n)),
+                                  index_maps=(read, identity[-1])))
+    contraction_maps = (IndexMap(3, ((1, 0, 0), (0, 0, 1)), (0, 0)),
+                        IndexMap(3, ((0, 0, 1), (0, 1, 0)), (0, 0)),
+                        IndexMap(3, ((1, 0, 0), (0, 1, 0)), (0, 0)),
+                        IndexMap(3, ((1, 0, 0), (0, 1, 0)), (0, 0)))
+    if widened:
+        nodes += [
+            SemanticNode("xf", "bf16_to_f32", (left,), f32((m, k)), widen, index_maps=identity),
+            SemanticNode("wf", "bf16_to_f32", (right,), f32((k, n)), widen, index_maps=identity),
+            SemanticNode("seed", "constant", (), f32((m, n)), effect="constant"),
+            SemanticNode("dot", "source_f32_matmul_unqualified", ("xf", "wf", "seed"), f32((m, n)),
+                         (("numeric_semantics", "source-f32-mul-add-unqualified-v1"),
+                          ("reduction_order", "unresolved")), index_maps=contraction_maps),
+            SemanticNode("out", "f32_to_bf16", ("dot",), bf16((m, n)), (("numeric_semantics", "f32-to-bf16-rne-v1"),),
+                         index_maps=identity),
+        ]
+    else:
+        nodes += [
+            SemanticNode("seed", "constant", (), bf16((m, n)), effect="constant"),
+            SemanticNode("out", "source_bf16_matmul_unqualified", (left, right, "seed"), bf16((m, n)),
+                         (("numeric_semantics", "source-bf16-mul-add-unqualified-v1"),
+                          ("reduction_order", "unresolved")), index_maps=contraction_maps),
+        ]
+    outputs = ["out"]
+    if extra_reader:
+        nodes.append(SemanticNode("other", "bf16_to_f32", ("wt",), f32((k, n)), widen, index_maps=identity))
+        outputs.append("other")
+    if published:
+        outputs.append("wt")
+    seed = (ConstantBinding("seed", "f32-le-raw", "00" * (4 * m * n)) if widened
+            else ConstantBinding("seed", "bf16-le-raw", "00" * (2 * m * n)))
+    return KernelRequest(tuple(nodes), tuple(outputs), ("external",) * len(outputs),
+                         (("x", "external"), ("w", "external")), "synthetic", constants=(seed,))
+
+
+VIEWS = {"xt", "wt"}
+
+
+def contraction_region(source, *, with_permutation):
+    keys = tuple(node.id for node in source.nodes if node.effect == "pure" and node.id != "other"
+                 and (with_permutation or node.id not in VIEWS))
+    return extract_semantic_region(source, keys)
+
+
+def random_bf16(generator, count):
+    # Finite codes only, including signed zeros and subnormals.
+    return [(generator.getrandbits(1) << 15) | (generator.randint(0, 0x8e) << 7) | generator.getrandbits(7)
+            for _ in range(count)]
+
+
+@pytest.mark.parametrize("widened", [True, False])
+@pytest.mark.parametrize("lhs_view,rhs_view", [(False, True), (True, False), (True, True)])
+@pytest.mark.parametrize("m,k,n", [(1, 1, 1), (3, 37, 5), (2, 64, 9)])
+def test_folded_weight_permutation_matches_materialized_transpose(tmp_path, m, k, n, lhs_view, rhs_view, widened):
+    import random
+
+    source = permuted_head_source(m, k, n, lhs_view=lhs_view, rhs_view=rhs_view, widened=widened)
+    unfolded, folded = (contraction_region(source, with_permutation=flag) for flag in (False, True))
+    folded_record, folded_library = compile_c(tmp_path, k, source=folded)
+    unfolded_record, unfolded_library = compile_c(tmp_path, k, source=unfolded)
+    assert unfolded_record["inputs"] == ["xt" if lhs_view else "x", "wt" if rhs_view else "w", "seed"]
+    assert "folded_operand_permutations" not in unfolded_record
+    assert folded_record["inputs"] == ["x", "w", "seed"]
+    assert folded_record["folded_operand_permutations"] == [
+        {"operand": side, "permutation": view, "source": base, "source_axis_reads": [1, 0]}
+        for side, view, base, present in (("lhs", "xt", "x", lhs_view), ("rhs", "wt", "w", rhs_view)) if present]
+    generator = random.Random(1000 * m + 10 * k + n)
+    statuses = set()
+    for _ in range(16):
+        x, w = random_bf16(generator, m * k), random_bf16(generator, n * k)
+        # Stored [K,M] / [N,K] operands and their materialized [M,K] / [K,N] views.
+        x_view = [x[reduction * m + row] for row in range(m) for reduction in range(k)] if lhs_view else x
+        w_view = [w[column * k + reduction] for reduction in range(k) for column in range(n)] if rhs_view else w
+        seed = memory([0] * ((2 if widened else 1) * m * n))
+        expected, actual = memory([0xdead] * (m * n)), memory([0xbeef] * (m * n))
+        status = call(unfolded_library, [memory(x_view), memory(w_view), seed], expected)
+        assert call(folded_library, [memory(x), memory(w), seed], actual) == status
+        statuses.add(status)
+        if status == 0:
+            assert actual.raw == expected.raw
+        else:
+            assert actual.raw == memory([0xbeef] * (m * n)).raw
+    assert 0 in statuses
+
+
+def test_unfolded_emission_is_unchanged_and_permutation_refusals():
+    source = permuted_head_source(2, 3, 4)
+    _, files = emit_c(contraction_region(source, with_permutation=False), "dot")
+    assert "a+2u*(row*3u+reduction)" in files["dot.c"] and "b+2u*(reduction*4u+column)" in files["dot.c"]
+    _, files = emit_c(contraction_region(source, with_permutation=True), "dot")
+    assert "b+2u*(reduction*1u+column*3u)" in files["dot.c"]
+    for widened in (True, False):
+        both = permuted_head_source(2, 3, 4, lhs_view=True, widened=widened)
+        _, files = emit_c(contraction_region(both, with_permutation=True), "dot")
+        assert "a+2u*(row*1u+reduction*2u)" in files["dot.c"] and "b+2u*(reduction*1u+column*3u)" in files["dot.c"]
+    for changed in (permuted_head_source(2, 3, 4, extra_reader=True), permuted_head_source(2, 3, 4, published=True)):
+        # The escaping permuted tensor is a second region result.
+        with pytest.raises(ValueError, match="ordered inputs differ"):
+            emit_c(contraction_region(changed, with_permutation=True), "dot")
+    region = contraction_region(source, with_permutation=True)
+    shared = replace(region, nodes=(*region.nodes, SemanticNode(
+        "again", "bf16_to_f32", ("wt",), TensorType((3, 4), "f32", "raw-bit-pattern"),
+        (("numeric_semantics", "bf16-to-f32-exact-v1"),), index_maps=pointwise_identity_maps(2, 1))))
+    with pytest.raises(ValueError, match="single-use pure permutation"):
+        emit_c(shared, "dot")
+    with pytest.raises(ValueError, match="single-use pure permutation"):
+        emit_c(contraction_region(permuted_head_source(2, 3, 4, broadcast=True), with_permutation=True), "dot")
+    region = contraction_region(source, with_permutation=True)
+    renamed = tuple(replace(node, op="bf16_neg") if node.id == "wt" else node for node in region.nodes)
+    with pytest.raises(ValueError, match="single-use pure permutation"):
+        emit_c(replace(region, nodes=renamed), "dot")
