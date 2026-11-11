@@ -49,11 +49,16 @@ def _source(args, binding, target_identity):
         source_translators = getattr(adapter, "source_operation_translators", None)
         if callable(source_translators):
             source_translators = source_translators()
-        if not isinstance(source_translators, dict) or not source_translators or any(
-            not isinstance(name, str) or not callable(translator)
-            for name, translator in source_translators.items()
+        if (
+            not isinstance(source_translators, dict)
+            or not source_translators
+            or any(
+                not isinstance(name, str) or not callable(translator) for name, translator in source_translators.items()
+            )
         ):
-            raise NativeCompilationError("unsupported_semantics", "selected support has no already-quantized source translators")
+            raise NativeCompilationError(
+                "unsupported_semantics", "selected support has no already-quantized source translators"
+            )
     state_path = getattr(args, "application_state", None)
     declaration = None
     if state_path:
@@ -66,7 +71,8 @@ def _source(args, binding, target_identity):
         )
     external = getattr(args, "application_parameters", "embedded") == "external"
     parameters = load_lifted_argument_bytes(
-        directory, staged,
+        directory,
+        staged,
         **({"kinds": ("constant", "buffer"), "max_bytes": 64 * 1024 * 1024} if external else {}),
     )
     state_arguments = {port.argument_index for port in declaration.ports} if declaration else set()
@@ -90,12 +96,32 @@ def _source(args, binding, target_identity):
         )
     try:
         source, folding = prepare_source(
-            source, constant_math_policy=(staged.precision_policy or {}).get("source_constant_math")
+            source,
+            constant_math_policy=(staged.precision_policy or {}).get("source_constant_math"),
         )
     except MathUnavailable as error:
         raise NativeCompilationError(error.status, str(error)) from error
     if folding.get("limits"):
         raise NativeCompilationError("resource_limit", json.dumps(folding["limits"], sort_keys=True))
+    if getattr(args, "application_common_values", False):
+        from merlin.compile.application_plan import application_plan
+        from merlin.compile.semantic_regions import outline_semantic_regions
+        from merlin.semantic_compiler.common_values import common_pure_values
+
+        plan = application_plan(source, adapter)
+        outlined = outline_semantic_regions(source, entry=staged.entry, plan=plan)
+        groups = tuple(
+            tuple(node.id for node in region.nodes if node.effect == "pure") for _, region in outlined.regions
+        )
+        source, common = common_pure_values(source, groups=groups)
+        folding = {
+            "schema": "merlin.source_preparation.v4",
+            "before_digest": folding["before_digest"],
+            "after_digest": source.digest(),
+            "prepared": folding,
+            "common_values": common,
+            "limits": folding.get("limits", []),
+        }
     if declaration is not None:
         state = declaration.bind(source, parameters)
     model_parameters = bind_application_parameters(directory, staged, source) if external else None
@@ -139,8 +165,12 @@ def compile_application_report(args, *, binding, snapshot, limits, write_status)
             _, current, _, current_state, current_folding, current_parameters = _source(
                 args, binding, snapshot.profile.target_identity
             )
-            if (current.digest() != source.digest() or current_state != state or current_folding != folding
-                    or current_parameters != parameters):
+            if (
+                current.digest() != source.digest()
+                or current_state != state
+                or current_folding != folding
+                or current_parameters != parameters
+            ):
                 raise ValueError("staged application inputs changed during compilation")
         except (OSError, ValueError, RuntimeError, KeyError, TypeError, ImportError, UnicodeError) as error:
             if destination.exists():

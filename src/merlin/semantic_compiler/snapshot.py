@@ -37,6 +37,7 @@ def _hash_file(path: Path) -> str:
 _NATIVE_SOURCE_FILES = (
     "__init__.py",
     "affine_views.py",
+    "common_values.py",
     "allocate.py",
     "constant_indexing.py",
     "constant_folding.py",
@@ -97,6 +98,7 @@ _FRONTEND_SOURCE_FILES = (
     "linalg_extremum_patterns.py",
 )
 _SHARED_SOURCE_FILES = (
+    "compile/application_plan.py",
     "compile/counted_loop.py",
     "capture/safetensors.py",
     "compile/semantic_regions.py",
@@ -104,6 +106,7 @@ _SHARED_SOURCE_FILES = (
     "runtime/fp8_formats.py",
     "semantic_compiler/buffer_allocation.py",
     "targetgen/native_codegen_cli.py",
+    "targetgen/native_application.py",
     "xdsl_dialects/_common.py",
     "xdsl_dialects/fp8.py",
 )
