@@ -36,6 +36,8 @@ def _guard_layout(spec, version2, *, atomics=False):
 
 
 def _checked_memory_members(checked, provenance):
+    from .kernel_literal_evidence import checked_trace_literal_words
+    checked_trace_literal_words(provenance)
     profile = provenance.get("profile", "shared-functional-tensor")
     if profile == "shared-functional-tensor":
         return {}

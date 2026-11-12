@@ -39,7 +39,7 @@ def _checked_protection(copied, source_entry):
     native = json.loads(copied["allocation-native-print.json"])
     original = copied["allocation-original.ttir"]
     if (
-        set(report)
+        set(report) - {"literal_conversions"}
         != {
             "schema",
             "source_entry",
@@ -67,8 +67,11 @@ def _checked_protection(copied, source_entry):
         or not isinstance(report["source_graph"]["blocks"], list)
         or not isinstance(report.get("fp8_conversions"), list)
         or not isinstance(report.get("assembly_conversions"), list)
+        or "literal_conversions" in report and (not isinstance(report["literal_conversions"], list) or not report["literal_conversions"])
     ):
         raise ValueError("allocation source protection differs from its original/generic/protected custody")
+    from .kernel_literal_evidence import checked_literal_words
+    checked_literal_words(report["source_graph"]["operations"], report.get("literal_conversions", []))
     if (
         set(native)
         != {

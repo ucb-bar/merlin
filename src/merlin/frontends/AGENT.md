@@ -57,6 +57,13 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   per-public-result guard costs for explicit typed storage transport. Public
   dtypes/shapes stay unchanged. Check the exact profile/function marker and
   maximum/vector costs; declarations grant no packing or source-equivalence proof.
+  `kernel_literal_evidence.py` independently checks exact IEEE source-literal
+  declarations for scalar/tensor/vector f16/BF16/f32/f64 constants. Bind storage
+  words, dtype, shape, NaN count and primitive spelling to the complete source
+  inventory, including protected allocation sources. Check tensor profiles before
+  their memory-evidence early return. Custody grants no source equivalence or
+  arithmetic semantics; executable integer constants/bitcasts remain ordinary
+  compiler input, and evaluator data remains excluded.
   `kernel_compile_inputs.py` separately stages standalone functional tensor kernels,
   including explicit observable-effect receipts. ABI v6 permits void entries
   only under `effect_only: true`, with readonly inputs and no discarded writes.
