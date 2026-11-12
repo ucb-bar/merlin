@@ -15,6 +15,7 @@ from merlin.development.backend.authoring_conformance import (
 from merlin.development.backend.authoring_session import AuthoringSession
 from merlin.development.backend.feedback import grade_reuse as GR
 from merlin.development.backend.feedback import lifecycle as FL
+from merlin.development.backend.feedback import private_full_models as PFM
 from merlin.development.backend.providers import execution as EX
 from merlin.targetgen import experiment_tokens as ET
 
@@ -112,7 +113,7 @@ def run_legacy_continuous(session: AuthoringSession) -> int:
     # FINAL AUTHORITATIVE GRADE: the background grades are progress reports on a moving workspace;
     # the run's verdict is a grade of the submission as the session left it.
     progress.verdict = session.grade(workspace, run_dir, state["tick"] + 1, options.no_oracle, options.qa_timeout)
-    if context.target == "gemmini" and options.experiment == "full":  # target-ok: Gemmini scope
+    if PFM.declares_full_models(context.descriptor) and options.experiment == "full":
         from merlin.development.backend import oot_history as _OH
 
         _OH.verify_turn_end(run_dir, workspace / "submission", progress.verdict.get("oot_commit"))
@@ -332,7 +333,7 @@ def run_rounds(session: AuthoringSession) -> int | None:
                 inputs=session.grading_inputs,
                 grade_callback=session.grade,
             )
-        if context.target == "gemmini" and options.experiment == "full":  # target-ok: Gemmini scope
+        if PFM.declares_full_models(context.descriptor) and options.experiment == "full":
             from merlin.development.backend import oot_history as _OH
 
             _OH.verify_turn_end(run_dir, workspace / "submission", progress.verdict.get("oot_commit"))

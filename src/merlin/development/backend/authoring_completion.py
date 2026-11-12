@@ -150,17 +150,15 @@ def complete(session: AuthoringSession) -> int:
     # On convergence, give the agent ONE bounded turn to finalize its own REPORT.md/docs to the
     # VERIFIED result (the relaunch design means the converging round's agent never saw the passing
     # verdict, so its self-reported status lags by one round). Guarantees the frozen report matches.
+    from merlin.development.backend.feedback import private_full_models as PFM
+
     finalize = None
-    if (
-        session.authoring_complete()
-        and context.target == "gemmini"  # target-ok: Gemmini scope
-        and options.experiment == "full"
-    ):
+    if session.authoring_complete() and PFM.declares_full_models(context.descriptor) and options.experiment == "full":
         # A report-finalize turn and the driver's status-line stamp change submission bytes after the
         # last agent-source OOT commit. The model task asks for the report during authoring; preserve
         # that exact tree for the official grade and record the visible model status here.
         finalize = {
-            "skipped": "gemmini model report belongs to the agent's final authoring tree",  # target-ok: Gemmini scope
+            "skipped": f"{context.target} model report belongs to the agent's final authoring tree",
             "visible_model_status_line": _verified_status_line(progress.verdict),
             "status_line_stamped_by_driver": False,
         }
@@ -324,7 +322,7 @@ def complete(session: AuthoringSession) -> int:
             run_dir,
             validation_scope=getattr(options, "validation_scope", "full"),
             descriptor=context.descriptor,
-            require_model_check=context.target == "gemmini",  # target-ok: Gemmini scope
+            require_model_check=PFM.declares_full_models(context.descriptor),
             required_models=PFM.requirements_for(context.descriptor),
             required_programs=PFM.program_requirements_for(context.descriptor),
             execution_gate=PFX.gate_for(

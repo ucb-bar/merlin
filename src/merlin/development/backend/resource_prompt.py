@@ -169,9 +169,9 @@ def append_resource_guidance(
 ) -> None:
     """Append before provenance, including when a treatment supplied its own task."""
     task = Path(ws) / "TASK.md"
-    if task.read_text().startswith(
-        "# Phase 1: Gemmini compiler for complete models"  # target-ok: selected Gemmini full-model Phase 1 path
-    ):
+    from merlin.development.backend.task_staging import is_full_model_task
+
+    if is_full_model_task(task.read_text()):
         from merlin.development.backend import joint_control
 
         joint = joint_control.selected() is not None

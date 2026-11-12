@@ -308,10 +308,13 @@ def run_engine(
     rtl_config: str | None,
     rtl_facts_sha256: str | None,
     capture_bytes: bool = False,
+    declared_machine: bool = False,
 ) -> dict[str, Any]:
     """Run one linked ELF on ``engine`` through the target backend; ``{console, wall_s, engine}``.
 
-    ``capture_bytes`` keeps a full-readback console's raw payload bytes intact.
+    ``capture_bytes`` keeps a full-readback console's raw payload bytes intact. ``declared_machine``
+    runs a whole-model Spike image on the machine its program declaration names (its ``board``)
+    instead of the simulator's default machine.
 
     An RTL engine is cited against the ambient selected facts, which must be the ones the static gate
     built against (same digest, same config), and its citation is revalidated around the run."""
@@ -360,12 +363,10 @@ def run_engine(
         revalidate()
         started = time.monotonic()
         bounded = _selected_run_timeout(backend, engine, timeout_s, deadline)
-        if engine == "spike" and target == "gemmini":  # target-ok: Selected whole-model machine.
+        if engine == "spike" and declared_machine:
             run_declared = getattr(backend, "run_declared_model_elf", None)
             if not callable(run_declared):
-                raise ExecutionGateError(
-                    "selected backend cannot run the linked model's declared machine"
-                )  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+                raise ExecutionGateError("selected backend cannot run the linked model's declared machine")
             console = run_declared(elf, timeout=bounded, capture_bytes=capture_bytes)
         else:
             options = {"private_max_cycles": max_cycles} if private_bound_gsim else {}
@@ -815,6 +816,7 @@ def _execute_program(
         rtl_config=build.get("accelerator_rtl_config"),
         rtl_facts_sha256=build.get("accelerator_rtl_facts_sha256"),
         capture_bytes=True,
+        declared_machine=entry.get("board") is not None,
     )
     if file_sha256(elf) != expected:
         raise ExecutionGateError("the linked ELF changed during execution")

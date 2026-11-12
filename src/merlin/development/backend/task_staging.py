@@ -317,8 +317,19 @@ def task_runtime_scope_block(te, sandbox: str, *, context: InvocationContext, sc
     )
 
 
+def full_model_task_heading(target: str) -> str:
+    """First line of the full-model Phase 1 charter, naming the selected target."""
+    return f"# Phase 1: {target[:1].upper()}{target[1:]} compiler for complete models"
+
+
+def is_full_model_task(text: str) -> bool:
+    """Whether a staged TASK.md is the full-model Phase 1 charter."""
+    first = text.split("\n", 1)[0]
+    return first.startswith("# Phase 1: ") and first.endswith(" compiler for complete models")
+
+
 def full_model_task(config: TaskStagingConfig, sandbox: str, scope: dict) -> str:
-    """The Gemmini Phase 1 charter, with no unenforced process checklist."""
+    """The full-model Phase 1 charter, with no unenforced process checklist."""
     names = resolved_tools(
         config.bundle_id, bundle_dir=config.bundle_dir, add_tools=config.add_tools, drop_tools=config.drop_tools
     )
@@ -326,7 +337,9 @@ def full_model_task(config: TaskStagingConfig, sandbox: str, scope: dict) -> str
     from merlin.development.backend import joint_control
 
     joint = joint_control.selected()
-    body = """# Phase 1: Gemmini compiler for complete models
+    body = (
+        full_model_task_heading(config.context.target)
+        + """
 
 Build the compiler in `submission/` from the empty starting directory. The required programs are:
 
@@ -388,7 +401,8 @@ error policy.
   A pending reply includes a `wait --job-id` command.
 
 Selected treatment tools:
-"""  # target-ok: the selected Gemmini full-model task names its target
+"""
+    )
     body += tools or "- No additional treatment tools are selected."
     body += """
 
@@ -410,7 +424,7 @@ Selected treatment tools:
 Lead with a table of all six programs: model, program, compile/link, numerics, and census.
 Report capsule RTL status separately. Then name the submission path, test artifacts, and remaining failures. Report only
 measured results.
-"""  # target-ok: this is the selected Gemmini full-model task text
+"""
     if joint:
         body = (
             body.replace(
@@ -471,9 +485,7 @@ measured results.
         load_target_experiment(config.context.descriptor), sandbox, context=config.context, scope=scope
     )
     if len(body.encode("utf-8")) > 10_000:
-        raise RuntimeError(
-            "Gemmini full-model task exceeds its 10 KB pre-resource budget"  # target-ok: selected full-model path
-        )
+        raise RuntimeError(f"{config.context.target} full-model task exceeds its 10 KB pre-resource budget")
     # The selected common-substrate profile (scheduling API discovery, preservation policy) is
     # launch-specific like the resources appended after this budget, and the full-model task is the
     # only TASK.md this path writes; without it the author never learns which scheduling catalog exists.
@@ -619,11 +631,9 @@ def _build_task(
             return
     _te = partial(load_target_experiment, context.descriptor)
     _manifest = partial(load_capability_manifest, context.target)
-    if (
-        context.target == "gemmini"  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
-        and arm == "merlin_assisted"
-        and experiment == "full"
-    ):
+    from merlin.development.backend.feedback import private_full_models as PFM
+
+    if PFM.declares_full_models(context.descriptor) and arm == "merlin_assisted" and experiment == "full":
         body = full_model_task(config, sandbox, task_scope)
         (ws / "TASK.md").write_text(body)
         shutil.copy(ws / "TASK.md", run_dir / "TASK.md")

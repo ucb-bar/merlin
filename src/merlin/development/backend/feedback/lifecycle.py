@@ -20,6 +20,7 @@ from typing import Protocol
 from merlin.common.paths import module_source_path
 from merlin.development.backend.compiler_library import join_background, library_thread
 from merlin.development.backend.context import InvocationContext, context_argv
+from merlin.development.backend.feedback import private_full_models as PFM
 from merlin.targetgen import tool_registry as _TR
 
 FIRST_BACKGROUND_TICK = 900
@@ -111,7 +112,7 @@ def start_brokers(ws: Path, config: BrokerConfig):
     broker_specs = [
         (spec.module, spec.log, spec.channel)
         for spec in _TR.COMMON_BROKERS
-        if spec.channel != ".model_check_channel" or config.context.target == "gemmini"  # target-ok: full-model
+        if spec.channel != ".model_check_channel" or PFM.declares_full_models(config.context.descriptor)
     ]
     # Brokered TOOLS (the ISA assembler/disassembler/linter; the two mandated CCA calls) are part of the
     # arm's TREATMENT, so which ones start is read from the bundle's resolved tool set rather than from

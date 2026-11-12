@@ -1049,22 +1049,14 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             model_check_official = model_check_background.result()
         except Exception as exc:  # noqa: BLE001 -- unchanged official gate failures remain incomplete
             model_check_official = {"passed": False, "reason": f"{type(exc).__name__}: {exc}"}
-    elif (
-        context.target == "gemmini"  # target-ok: Explicit Gemmini full-model Phase 1 gate.
-        and required_full_models
-        and private_models_complete
-        and a.private_full_model_spec is not None
-    ):
+    elif required_full_models and private_models_complete and a.private_full_model_spec is not None:
         from merlin.development.backend.feedback import model_check_official as MCO
 
         try:
             model_check_official = MCO.run_gate(pkg, run_dir, required_full_programs, mode="fast", model_workers=3)
         except Exception as exc:  # noqa: BLE001 -- an incomplete host gate never certifies a run
             model_check_official = {"passed": False, "reason": f"{type(exc).__name__}: {exc}"}
-    model_check_complete = (
-        context.target != "gemmini"  # target-ok: Explicit Gemmini full-model Phase 1 gate.
-        or model_check_official.get("passed") is True
-    )
+    model_check_complete = not required_full_models or model_check_official.get("passed") is True
     public_resources_complete = (
         public_resources.get("required") is False or public_resources.get("resource_complete") is True
     )
@@ -1134,11 +1126,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "hidden": hidden_phase,
         **({"hidden_capsule_validation": hidden_policy} if functional_hidden else {}),
         "private_full_models": private_models,
-        **(
-            {"model_check_official": model_check_official}
-            if context.target == "gemmini"  # target-ok: Explicit Gemmini full-model Phase 1 gate.
-            else {}
-        ),
+        **({"model_check_official": model_check_official} if required_full_models else {}),
         "public_codegen_resources": public_resources,
         **(
             {

@@ -178,6 +178,11 @@ def _public_failure_reason(exc: Exception) -> str:
     return f"{kind}: {exc}"
 
 
+def declares_full_models(descriptor: str | Path) -> bool:
+    """Whether the target declares a required private full-model roster (the full-model Phase 1 flow)."""
+    return bool(requirements_for(descriptor))
+
+
 def requirements_for(descriptor: str | Path) -> tuple[str, ...]:
     """Read the target's required full-model identities, without private input paths."""
     if not Path(descriptor).is_file():
