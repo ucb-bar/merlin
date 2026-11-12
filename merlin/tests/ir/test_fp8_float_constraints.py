@@ -63,6 +63,27 @@ def test_builtin_float_casts_are_unaffected():
     _roundtrip(_cast("extf", "f16", "f32"))
 
 
+@pytest.mark.parametrize("dtype", ["f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ", "f32", "i8"])
+def test_custom_named_fill_builds_its_real_scalar_region_in_fresh_reader(dtype):
+    import subprocess
+    import sys
+
+    source = f"""module {{func.func @f(%value:{dtype})->tensor<4x{dtype}> {{
+      %empty=tensor.empty():tensor<4x{dtype}>
+      %filled=linalg.fill ins(%value:{dtype}) outs(%empty:tensor<4x{dtype}>)->tensor<4x{dtype}>
+      return %filled:tensor<4x{dtype}>
+    }}}}"""
+    script = """import sys
+from merlin.frontends.linalg_mlir import parse_mlir_text
+module=parse_mlir_text(sys.argv[1])
+module.verify()
+fill=next(op for op in module.walk() if op.name=='linalg.fill')
+assert tuple(fill.regions[0].block.last_op.operands)==(fill.regions[0].block.args[0],)
+"""
+    result = subprocess.run([sys.executable, "-c", script, source], capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+
+
 @pytest.mark.parametrize("fp8", ["f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ"])
 def test_the_math_dialect_accepts_fp8_too(fp8):
     """`math` has its own `floatingPointLike`. Patching only `arith` leaves math ops refusing fp8."""
@@ -177,6 +198,7 @@ def test_all_fp8_words_survive_dense_and_scalar_constants(fp8):
 def test_format_interpretations_stay_distinct(fp8, max_word, max_value, nan_word, negative_zero):
     pytest.importorskip("ml_dtypes")
     import math
+
     from merlin.xdsl_dialects.fp8 import _FP8_BY_NAME
 
     type_ = _FP8_BY_NAME[fp8]

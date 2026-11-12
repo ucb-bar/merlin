@@ -68,7 +68,9 @@ if HAS_XDSL:
                 )
                 # ReduceOp's custom printer omits its attribute dictionary entirely.
                 # Keep source provenance and transform contracts on reductions too.
-                if (op.name in {"linalg.yield", "linalg.reduce"} and op.attributes) or attributed_declaration:
+                if (
+                    op.name in {"linalg.yield", "tensor.yield", "linalg.reduce"} and op.attributes
+                ) or attributed_declaration:
                     self.print_generic_format = True
                 try:
                     super().print_op(op)

@@ -10,6 +10,10 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
 - `_common.py` (shared enums/guards), `contract.py`, `schedule.py`, `interface.py`, `runtime.py`, `dse.py`.
 - `_common.text` prints dense floating constants as raw-byte strings so xDSL and
   upstream MLIR retain bit patterns, including infinities, NaN payloads and signed zeros.
+  Attributed standard tensor/Linalg yields use generic syntax because xDSL's
+  shared custom yield printer places attributes before operands. Retain the
+  actual operand, type and complete provenance when native readers reconstruct
+  mixed-type named regions.
 - `standard_tensor.py` binds standard `scf.forall`, `scf.forall.in_parallel` and
   `tensor.parallel_insert_slice` when upstream xDSL lacks them. These are standard
   operations, not target mapping or new Merlin semantics; native lowering owns complete legality.
@@ -32,6 +36,8 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
   ABIs and native/target legalization require their own executable contracts.
   Cooperating readers also remove false dense splats using complete element
   bytes, retaining mixed signed zeros while preserving existing NaN handling.
+  Extend the complete float union captured by Linalg's abstract named-operation
+  builder too; custom FP8 fills must construct their real scalar region.
 - `standard_bufferization.py` checks standard tensor materialization by compatible
   shape/element types independently of memref layout, retaining upstream result
   and access-attribute rules. The binding grants no aliasing or placement proof.

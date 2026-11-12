@@ -15,9 +15,9 @@ from ._common import HAS_XDSL
 FP8_TYPE_NAMES = ("f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ")
 
 if HAS_XDSL:
+    import sys
     from dataclasses import fields, is_dataclass
     from importlib import import_module
-    import sys
 
     from xdsl.dialects import builtin
     from xdsl.ir import ParametrizedAttribute
@@ -108,7 +108,8 @@ if HAS_XDSL:
                 # Numeric equality cannot collapse distinct signed-zero words.
                 # Keep the old NaN classification; only remove false splats.
                 return (
-                    bool(raw) and len(raw) % size == 0
+                    bool(raw)
+                    and len(raw) % size == 0
                     and raw.count(raw[:size]) == len(raw) // size
                     and previous_splat(self)
                 )
@@ -161,6 +162,7 @@ if HAS_XDSL:
             "xdsl.dialects.arith",
             "xdsl.dialects.math",
             "xdsl.dialects.linalg.ops",
+            "xdsl.dialects.linalg.abstract_ops",
         ):
             module = import_module(name)
             if hasattr(module, "AnyFloat"):

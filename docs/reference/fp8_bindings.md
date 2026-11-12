@@ -36,7 +36,10 @@ replace its source payload. Encoding from a different format uses numeric
 conversion; the raw word is reused only for its original format.
 
 The reader extends complete xDSL float constraints, including their flattened
-dense-constant copies. Integer and restricted float constraints retain their
+dense-constant copies and the union captured by Linalg's abstract named-operation
+builder. Custom FP8 fills therefore construct their actual scalar regions in
+either reader, without depending on another producer's process-global imports.
+Integer and restricted float constraints retain their
 original meaning. This grammar/verification binding grants no permission to
 execute a numeric operation or erase an effect. The parser registry is shared
 with triton2MLIR when both independent readers occupy one interpreter, so
@@ -46,6 +49,10 @@ import order cannot produce different Python types for the same MLIR spelling.
 all four types, all 256 words in each format, scalar/dense serialization,
 distinct finite/NaN/zero interpretations and nonfloat refusals. triton2MLIR
 also checks both import orders and native MLIR parse/print byte preservation.
+Attributed `tensor.yield` operations print in generic syntax, retaining their
+values, types and complete provenance while avoiding xDSL's incompatible custom
+attribute order. Native reconstruction of mixed-type named regions can then
+re-read the whole module, including padded FP8 tensors.
 Validation uses xDSL 0.68 and the existing native SDK's xDSL 0.65, with
 ml_dtypes 0.6.0. No LLVM or Triton rebuild is needed.
 
