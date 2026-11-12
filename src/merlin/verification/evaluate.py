@@ -97,7 +97,7 @@ def _finish_lowering(interface_module, tc):
 def _static(interface_module) -> tuple[bool, str]:
     """FileCheck the structural obligations over the module's printed form."""
     from merlin.common.paths import repo_root
-    from merlin.verify.tools import find_filecheck
+    from merlin.verification.tools import find_filecheck
     from merlin.xdsl_dialects import _common
 
     fc = find_filecheck()
@@ -427,7 +427,7 @@ def _write_product(rec: dict[str, Any]) -> Path:
         "verification",
         version=1,
         sources=[
-            f"fault corpus: merlin.verify.faults.CORPUS ({len(rec['faults'])} seeded faults)",
+            f"fault corpus: merlin.verification.faults.CORPUS ({len(rec['faults'])} seeded faults)",
             f"program under test: merlin.xdsl_dialects.lowering.pipeline.lower_repeated_rhs_matmul"
             f"(m={shape['m']}, k={shape['k']}, n={shape['n']}, reuse={shape['reuse']})",
             "static layer checks: tests/data/lit/core/materialize_interface_residency.mlir",
@@ -467,7 +467,7 @@ for _compat_definition in (
     main,
     _write_product,
 ):
-    _compat_definition.__module__ = "merlin.verify.evaluate"
+    _compat_definition.__module__ = "merlin.verification.evaluate"
 del _compat_definition
 
 if __name__ == "__main__":

@@ -293,5 +293,5 @@ for _compat_definition in (
     verify_transformation,
     qualify_receipt,
 ):
-    _compat_definition.__module__ = "merlin.verify.receipts"
+    _compat_definition.__module__ = "merlin.verification.receipts"
 del _compat_definition

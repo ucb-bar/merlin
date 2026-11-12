@@ -125,7 +125,7 @@ def emit_header(
             lines.append(f"#define {mac}_MASK {mask:#010x}u")
         lines.append("")
     lines += [
-        "/* The kernel ABI (merlin.kernels.matrix_shim): define exactly this, under the name kernels.yaml gives. */",
+        "/* The kernel ABI (merlin.compiler.lower.matrix): define exactly this, under the name kernels.yaml gives. */",
         f"#define {prefix}_KERNEL(name) " + ABI_SIGNATURE.format(function="name"),
         "",
         f"#endif /* {guard} */",

@@ -2,7 +2,7 @@
 
 The build is Merlin's ordinary whole-model build (``compile_saved_model``, ``run="none"``, full readback,
 group profile) with the submission as the device package, routed exactly as a full-model qualification
-routes it (every source-admitted group, :func:`merlin.compile.route_before_build.plan_before_build`).
+routes it (every source-admitted group, :func:`merlin.compiler.planning.model.plan_before_build`).
 
 A new input needs no re-lowering. The build records every compile and link command it ran
 (``build/compilation_recipe.json``); the inputs live only in the generated ``cgen/model_io.h``, which

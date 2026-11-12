@@ -235,7 +235,7 @@ def attach_debug_lines(records, occurrences, root):
 
 def compile_declared(root, recipe, artifacts):
     """Return (derived artifacts, per-build records, diagnostics); originals are only read."""
-    from merlin.compile.analysis.artifact_reader import PinnedELF, open_ordinary
+    from merlin.analysis.artifact_reader import PinnedELF, open_ordinary
 
     from .reference_database_analysis import elf_function_symbols
 

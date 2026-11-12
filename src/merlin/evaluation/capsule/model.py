@@ -168,7 +168,7 @@ def _grade_model_capsule_inline(
             _plane = run_dialect_plane(parse_mlir_file(linalg_path), n_harts=1, target=target)
             result["pass_obligations"] = _plane.stats
 
-        from merlin.compile_cli import compile_model
+        from merlin.cli.compile_workload import compile_model
 
         # `dtype` is the capsule's compile_dtype (an RVV compile mode). The capsule ALSO declares the
         # exact datapath format in operation.attributes.dtype -- pass that for routing so a demand is

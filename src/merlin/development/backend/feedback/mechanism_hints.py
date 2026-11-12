@@ -177,7 +177,7 @@ def adapter_contract(row, selection):
     """
     module = str(row.get("api", ""))
     prefix = (
-        "merlin.compiler.schedule." if module.startswith("merlin.compiler.schedule.") else "merlin.compile.scheduling."
+        "merlin.compiler.schedule." if module.startswith("merlin.compiler.schedule.") else "merlin.compiler.schedule."
     )
     if module == prefix + "dense_array_retention":
         capability = "array_weight_retention"

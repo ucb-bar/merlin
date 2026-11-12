@@ -178,7 +178,7 @@ def paths(
         ("sandbox_claude_home", "merlin.targetgen.sandbox.claude_home"),
         ("source_discovery_helper", "merlin.common.source_membership"),
         ("provider_selection", "merlin.targetgen.target_registry"),
-        ("provider_identity", "merlin.targetgen.providers"),
+        ("provider_identity", "merlin.compiler.backend.load"),
         ("provider_plugins", "merlin.targetgen.plugins"),
         ("provider_loaded_ownership", "merlin.runtime.backends.base"),
         ("python_regex_scanner", "merlin.common.regex_scan"),
@@ -230,7 +230,7 @@ def paths(
         ("quantization_recipe_cli", "merlin.compiler.quantization.cli"),
         ("quantization_admission", "merlin.compiler.quantization.admission"),
         ("quantization_capture_projection", "merlin.compiler.quantization.torchao.recipes"),
-        ("quantization_methodology", "merlin.targetgen.quant_methodology"),
+        ("quantization_methodology", "merlin.compiler.quantization.methodology"),
         ("numerical_recipe_policy", "merlin.targetgen.quant_recipe_policy"),
         ("quantization_output_path", "merlin.targetgen.output_path"),
         ("quantization_formats", "merlin.common.quant_formats"),
@@ -255,12 +255,10 @@ def paths(
         ("capsule_source_identity", "merlin.evaluation.capsule.source"),
     ):
         inputs[f"phase1:startup:{key}"] = str(_source(module).resolve())
-    # Pin the compatibility file too, independently of whether its exact module
-    # alias was already imported. find_spec(alias) can then name the real owner.
-    compatibility = _source("merlin.targetgen").parent / "instruction_semantics.py"
-    if compatibility.is_symlink() or not compatibility.is_file():
-        raise SpecError("phase-1 instruction compatibility source is absent or symlinked")
-    inputs["phase1:startup:instruction_semantics"] = str(compatibility.resolve())
+    instructions = _source("merlin.target.spec.instructions")
+    if instructions.is_symlink() or not instructions.is_file():
+        raise SpecError("phase-1 instruction semantics source is absent or symlinked")
+    inputs["phase1:startup:instruction_semantics"] = str(instructions.resolve())
     try:
         table = json.loads(startup["provenance_binding"].read_text())["entrypoints"]["capsule_bench"]
         if not isinstance(table, dict) or "default" not in table:
@@ -268,31 +266,6 @@ def paths(
         relatives = [_relative_entrypoint(value) for value in table.values()]
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise SpecError("phase-1 native entrypoint binding is invalid") from exc
-    # Pin compatibility leaves separately from actual implementation owners.
-    legacy_compile = _source("merlin.compile").parent
-    for name in (
-        "model_execution_inputs",
-        "materialized_model_inputs",
-        "route_before_build",
-        "complete_group_routing",
-        "model_coverage",
-        "model_preflight",
-        "model_interface",
-        "owned_host_model",
-        "owned_shared_source",
-        "owned_spatial_source",
-        "completed_model_link",
-        "scalar_host_qualification",
-    ):
-        alias = legacy_compile / (name + ".py")
-        if alias.is_symlink() or not alias.is_file():
-            raise SpecError("saved-model compatibility source is absent or indirect")
-        inputs[f"phase1:startup:saved_model_alias:{name}"] = str(alias)
-    for name in ("mesh", "mesh_backend", "mesh_model", "mesh_reference"):
-        alias = legacy_compile / (name + ".py")
-        if alias.is_symlink() or not alias.is_file():
-            raise SpecError("mesh compatibility source is absent or indirect")
-        inputs[f"phase1:startup:mesh_alias:{name}"] = str(alias)
 
     root = Path(repo).resolve()
     if descriptor is not None and Path(descriptor).is_file():

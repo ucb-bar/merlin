@@ -32,7 +32,7 @@ under `examples/`.
 To inspect the three package roots in the same Python environment that runs Merlin:
 
 ```sh
-python -c 'from merlin.common.paths import module_source_path as p; print("core_package_root:", p("merlin").parent); print("experiments_package_root:", p("merlin.experiments").parent); print("experiments_namespace_root:", p("merlin.targetgen.capsule_runner").parent.parent)'
+python -c 'from merlin.common.paths import module_source_path as p; print("core_package_root:", p("merlin").parent); print("experiments_package_root:", p("merlin.experiments").parent); print("experiments_namespace_root:", p("merlin.evaluation.capsule.runner").parent.parent)'
 ```
 
 A wheel installation may share one `merlin` directory for core and extension

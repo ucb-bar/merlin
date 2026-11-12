@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-from ..spec import SpecError
+from merlin.experiments.definition import SpecError
 
 
 def private_json(path: Path, document: dict) -> None:

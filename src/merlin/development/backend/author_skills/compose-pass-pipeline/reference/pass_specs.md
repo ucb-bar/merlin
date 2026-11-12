@@ -7,7 +7,7 @@ workspace may hold a subset or an edited copy: rerun the script on your own tree
 
 ## Entry-point stage orders (`compile_trace.declare`)
 
-- `frontend` via `merlin.compile_cli` (merlin.compile_cli): capture
+- `frontend` via `merlin.cli.compile_workload` (merlin.cli.compile_workload): capture
 - `codegen` via `merlin.compiler.build.shared` (merlin.compiler.build.shared): object -> link
 - `llvm` via `merlin.llvmlower.lower_model` (merlin.llvmlower.lower): input -> source-recomputed -> host-graph-optimized -> host-row-scheduled -> host-padding-gather-forwarded -> host-destination-reused -> host-rounding-selected -> host-permutation-forwarded -> host-pointwise-fused -> host-tensor-preparations-shared -> operation-profiled -> <*PREPROCESS_STAGES> -> upstream -> upstream-scheduled -> llvm-translated -> llvm-dialect -> llvm-normalized -> llvm-final
 - `whole-model` via `merlin.perf.whole_model_build.build` (merlin.perf.whole_model_build): passes -> statement -> group_objects -> extract -> render_kernels -> program_build -> memory_map -> oracle_join

@@ -302,6 +302,6 @@ def materialize_row_major_k_slices(
 
 
 # Preserve published exception and record pickle spellings.
-OrderedKTilingError.__module__ = "merlin.semantic_compiler.ordered_k_tiling"
-RowMajorKSlice.__module__ = "merlin.semantic_compiler.ordered_k_tiling"
-OrderedKTiling.__module__ = "merlin.semantic_compiler.ordered_k_tiling"
+OrderedKTilingError.__module__ = "merlin.compiler.transforms.contraction_k"
+RowMajorKSlice.__module__ = "merlin.compiler.transforms.contraction_k"
+OrderedKTiling.__module__ = "merlin.compiler.transforms.contraction_k"

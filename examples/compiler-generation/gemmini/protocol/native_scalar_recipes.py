@@ -15,8 +15,8 @@ from pathlib import Path
 import yaml
 
 from merlin.common.paths import repo_root
-from merlin.targetgen import quant_methodology as M
-from merlin.targetgen import quant_recipe as Q
+from merlin.compiler.quantization import capabilities as Q
+from merlin.compiler.quantization import methodology as M
 
 
 def scalar_recipe(source: dict, methodology: dict, output_path: dict, *, model: str) -> dict:

@@ -233,4 +233,4 @@ def assemble_pointwise_output(plan: PointwiseTiling, payload: bytes) -> bytes:
 
 
 # Retain the published record spelling across the implementation move.
-PointwiseTiling.__module__ = "merlin.semantic_compiler.pointwise_tiling"
+PointwiseTiling.__module__ = "merlin.compiler.transforms.pointwise"

@@ -7,24 +7,20 @@ Compiler candidates cannot choose acceptance thresholds or replace their grader.
 
 The former `verify` implementations now live here, including SMT translation,
 Lean checking/toolchain intake, emitted-program obligations and their mathematical
-resources in `lean/Merlin`. Historical `merlin.verify.*` imports are exact module
-aliases with the same live completion state. Current callers and the two installed
+resources in `lean/Merlin`. Current callers and the two installed
 verification commands select these owners; archived source profiles stay exact.
-Optional historical plots/replay remain research-owned in the legacy namespace.
 Preserve actual semantic source closure, tool pins and independent live completion;
 moving files never admits saved results or changes acceptance policy.
 
 `partition.py` reconstructs complete original SSA from actual outlined calls.
 Keep its algorithm and refusal conditions unchanged during ownership migration.
-Old imports may alias this owner; receipts must identify the actual verifier
-source rather than a compatibility module. Retain historical record spellings.
+Receipts must identify the actual verifier source. Retain historical record spellings.
 
 `outline_ir.py` checks pure outlining by exact typed SSA beta-equivalence.
 `scalar_ir.py` proves actual pure scalar-integer before/after IR with QF_BV;
 unsupported operations abstain. `split_reduction.py` checks only the declared
 signed-width accumulation algebra, not emitted kernels. Keep their acceptance,
-refusal, parser/tool identities and explicit limitations unchanged. The legacy
-`merlin.verify` modules are exact aliases and retain record/exception spellings.
+refusal, parser/tool identities and explicit limitations unchanged.
 
 `packing_types.py` owns the original typed allocation/effect premises.
 `packing_ir.py` checks actual LLVM pointer uses, allocation lifetimes and alignment;

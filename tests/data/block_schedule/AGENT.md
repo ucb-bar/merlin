@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Recorded instruction streams that hold `merlin.compile.scheduling` to the hand-written Gemmini
+Recorded instruction streams that hold `merlin.compiler.schedule` to the hand-written Gemmini
 package variants it was lifted from, on a checkout where those packages are absent.
 
 ## What belongs here

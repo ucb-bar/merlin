@@ -18,8 +18,7 @@ from merlin.development.backend.reference_inputs import (
     _relative,
     stage_references,
 )
-
-from ..spec import SpecError
+from merlin.experiments.definition import SpecError
 
 SCHEMA = "operator.allowed_reference_sources.v2"
 

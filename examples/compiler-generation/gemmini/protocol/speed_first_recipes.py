@@ -14,7 +14,7 @@ from pathlib import Path
 import yaml
 
 from merlin.common.paths import repo_root
-from merlin.targetgen import quant_methodology as M
+from merlin.compiler.quantization import methodology as M
 from merlin.targetgen import quant_recipe_policy as P
 
 

@@ -8,7 +8,7 @@ from merlin.compiler.frontend.inputs import load_compile_inputs, stage_compile_i
 
 
 def test_c_parameter_binding_does_not_freeze_mutable_state(tmp_path):
-    from merlin.compile.c_parameters import freeze_c_arguments
+    from merlin.compiler.lower.c.parameters import freeze_c_arguments
 
     capture, staged = (tmp_path / "capture", tmp_path / "compiler")
     _write_weighted_capture(capture)

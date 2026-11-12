@@ -18,10 +18,6 @@ Preserve unknowns and exact refusal conditions. Static sites are not dynamic
 execution counts; observer results do not establish accelerator arithmetic,
 completion, memory visibility, numerical correctness or timing qualification.
 
-Old `merlin.compile.analysis` and applicable `merlin.kernels` paths are temporary
-exact module identities. Fresh record and pickle paths are canonical here;
-historical replay uses its frozen source environment. Do not introduce a
-permanent legacy module label or widen an SDK grant merely to support relocation.
 
 `dse/` contains research consumers rather than observation SDK components. Its
 scoped instructions allow analysis of compiler/kernel choices without exposing

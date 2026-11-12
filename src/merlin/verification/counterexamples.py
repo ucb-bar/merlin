@@ -121,7 +121,7 @@ def write_profile(path: Path, entries: list[dict], *, provenance: dict | None = 
             {
                 "provenance": dict(
                     provenance or {},
-                    generator="merlin.verify.counterexamples",
+                    generator="merlin.verification.counterexamples",
                     note=(
                         "shapes refuted by SMT translation validation; the stimulus is the "
                         "corpus's deterministic fill, not the solver's values"
@@ -178,5 +178,5 @@ for _compat_definition in (
     write_profile,
     write_evidence,
 ):
-    _compat_definition.__module__ = "merlin.verify.counterexamples"
+    _compat_definition.__module__ = "merlin.verification.counterexamples"
 del _compat_definition

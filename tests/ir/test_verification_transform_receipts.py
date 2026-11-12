@@ -26,7 +26,7 @@ from verification_witnesses.transform_receipts import (
 @pytest.mark.usefixtures("explicit_test_target")
 @pytestmark
 def test_real_transform_receipt_proves_and_replays_exact_artifacts(boundary, pair):
-    from merlin.verify.receipts import TransformReceipt, qualify_receipt, verify_transformation
+    from merlin.verification.receipts import TransformReceipt, qualify_receipt, verify_transformation
 
     (source, target) = pair()
     (translator, digest) = _tool()
@@ -50,7 +50,7 @@ def test_real_transform_receipt_proves_and_replays_exact_artifacts(boundary, pai
 def test_source_mutation_invalidates_an_old_receipt_and_yields_counterexample():
     from xdsl.dialects.builtin import IntegerAttr, i32
 
-    from merlin.verify.receipts import qualify_receipt, verify_transformation
+    from merlin.verification.receipts import qualify_receipt, verify_transformation
 
     (source, target) = _source_pair()
     (translator, digest) = _tool()
@@ -72,7 +72,7 @@ def test_source_mutation_invalidates_an_old_receipt_and_yields_counterexample():
 @pytest.mark.usefixtures("explicit_test_target")
 @pytestmark
 def test_bare_tensor_empty_never_produces_a_qualified_receipt():
-    from merlin.verify.receipts import qualify_receipt, verify_transformation
+    from merlin.verification.receipts import qualify_receipt, verify_transformation
     from merlin.xdsl_dialects.lowering.pipeline import lower_repeated_rhs_matmul
 
     legacy = lower_repeated_rhs_matmul(reuse=2, m=2, k=2, n=2, target="toy_npu")
@@ -93,7 +93,7 @@ def test_bare_tensor_empty_never_produces_a_qualified_receipt():
 @pytest.mark.usefixtures("explicit_test_target")
 @pytestmark
 def test_backend_mutation_refutes_and_changed_digest_cannot_qualify():
-    from merlin.verify.receipts import qualify_receipt, verify_transformation
+    from merlin.verification.receipts import qualify_receipt, verify_transformation
 
     (source, target) = _backend_pair()
     (translator, digest) = _tool()
@@ -102,7 +102,7 @@ def test_backend_mutation_refutes_and_changed_digest_cannot_qualify():
     )
     assert old.verified
     changed = copy.deepcopy(target)
-    from merlin.verify.faults import CB_CORPUS
+    from merlin.verification.faults import CB_CORPUS
 
     next((f for f in CB_CORPUS if f.name == "cb_swapped_matmul_operands")).mutate(changed)
     current = verify_transformation(
@@ -116,9 +116,9 @@ def test_backend_mutation_refutes_and_changed_digest_cannot_qualify():
 @pytest.mark.usefixtures("explicit_test_target")
 @pytestmark
 def test_wrong_tool_pin_and_solver_unknown_never_qualify(monkeypatch):
-    from merlin.verify import refine
-    from merlin.verify.receipts import qualify_receipt, verify_transformation
-    from merlin.verify.smt_export import Verdict
+    from merlin.verification import refine
+    from merlin.verification.receipts import qualify_receipt, verify_transformation
+    from merlin.verification.smt_export import Verdict
 
     (source, target) = _source_pair()
     (translator, _) = _tool()
@@ -140,7 +140,7 @@ def test_float_source_is_explicitly_unsupported():
     from xdsl.dialects.func import FuncOp, ReturnOp
     from xdsl.ir import Block, Region
 
-    from merlin.verify.receipts import verify_transformation
+    from merlin.verification.receipts import verify_transformation
 
     (_, target) = _source_pair()
     tensor_type = TensorType(f32, [2, 2])

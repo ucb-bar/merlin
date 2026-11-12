@@ -41,7 +41,8 @@ def _curated(target_name: str) -> dict[str, Any] | None:
     """
     import yaml
 
-    from ..providers import contained_resource
+    from merlin.compiler.backend.load import contained_resource
+
     from ..target_registry import resolve
 
     selected = resolve(target_name)

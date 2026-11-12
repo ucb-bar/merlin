@@ -297,7 +297,7 @@ def assemble_row_major_mn_outputs(
 
 
 # Preserve published exception and record pickle spellings.
-OrderedMNTilingError.__module__ = "merlin.semantic_compiler.ordered_mn_tiling"
-RowMajorMatrixSlice.__module__ = "merlin.semantic_compiler.ordered_mn_tiling"
-MatrixTile.__module__ = "merlin.semantic_compiler.ordered_mn_tiling"
-OrderedMNTiling.__module__ = "merlin.semantic_compiler.ordered_mn_tiling"
+OrderedMNTilingError.__module__ = "merlin.compiler.transforms.contraction_mn"
+RowMajorMatrixSlice.__module__ = "merlin.compiler.transforms.contraction_mn"
+MatrixTile.__module__ = "merlin.compiler.transforms.contraction_mn"
+OrderedMNTiling.__module__ = "merlin.compiler.transforms.contraction_mn"

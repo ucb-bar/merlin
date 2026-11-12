@@ -29,7 +29,7 @@ import yaml
 from merlin.benchharness import hash_tree
 from merlin.development.backend.optimization.prompt import PerfCell, PerfPromptContractError
 from merlin.perf.fork import ForkPoint, candidate_states, check_invariants, fork_from
-from merlin.targetgen import oot_runner
+from merlin.targetgen import package_runtime as oot_runner
 from merlin.targetgen.oracle_schedule import CapsuleState, Verdict
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import toolchain as TC

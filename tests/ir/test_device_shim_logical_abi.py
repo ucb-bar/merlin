@@ -260,7 +260,7 @@ def test_a_two_result_group_passes_both_results_and_runs_exactly(tmp_path, nativ
         "matmuls": [{"lhs": "A0", "out": "Y0", "M": 3}, {"lhs": "A1", "out": "Y1", "M": 5, "epilogue": ["relu"]}],
     }
     sym = "merlin_dev_gemmini_0"
-    from merlin.compile.mesh import _mesh_tile_binding
+    from merlin.runtime.mesh import _mesh_tile_binding
     from merlin.targetgen import corpus_spec as CS
 
     buffers, why = DS.logical_buffers(CS.build(dict(entry), _mesh_tile_binding("gemmini", "int8", "i32"))[1])

@@ -74,7 +74,7 @@ def _selected_external_facts(target: str) -> tuple[bool, Path | None]:
     bytes (:func:`_derived_for_selected`). No provider digest or hardware qualification is inferred
     from its location. Invalid selected resources fail closed.
     """
-    from merlin.targetgen.providers import contained_resource
+    from merlin.compiler.backend.load import contained_resource
     from merlin.targetgen.target_registry import resolve
 
     selected = resolve(target)

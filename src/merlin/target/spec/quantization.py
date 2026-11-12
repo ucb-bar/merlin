@@ -163,7 +163,7 @@ def validate_quantization_declarations(spec: Mapping) -> list[dict]:
         raise ValueError(f"quantization has unknown fields {sorted(unknown)}")
     semantic_extensions(spec)
     if "methodology" in declaration:
-        from merlin.targetgen.quant_methodology import validate as validate_methodology
+        from merlin.compiler.quantization.methodology import validate as validate_methodology
 
         validate_methodology(declaration["methodology"])
     operation_ids = {row.get("id") for row in spec.get("operations") or [] if isinstance(row, Mapping)}

@@ -22,7 +22,7 @@ from merlin.evaluation.capsule.tier import TierResult as TierResult
 from merlin.targetgen import completion_order_gate as _CO_GATE
 from merlin.targetgen import tier_policy as _tier_policy
 from merlin.targetgen.capsule_common import _cat
-from merlin.targetgen.oot_runner import CertFailure
+from merlin.targetgen.package_runtime import CertFailure
 from merlin.targetgen.provenance import toolchain_shas
 
 

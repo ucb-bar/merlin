@@ -15,6 +15,7 @@ import yaml
 
 from merlin.common.paths import module_source_path
 from merlin.common.source_membership import python_members
+from merlin.compiler.backend.load import ProviderRole, read_provider
 from merlin.development.backend.optimization import contracts as C
 from merlin.development.backend.optimization import portfolio_launch as LAUNCH
 from merlin.development.backend.optimization import portfolio_worker as WORKER
@@ -22,7 +23,6 @@ from merlin.development.backend.optimization import qualification_policy as Q
 from merlin.development.backend.optimization.portfolio_options import parse_invocation
 from merlin.experiments import frozen_python as FP
 from merlin.experiments import source_snapshot as SNAP
-from merlin.targetgen.providers import ProviderRole, read_provider
 from merlin.targetgen.target_experiment import load_target_experiment
 
 MODULE = "merlin.development.backend.optimization.portfolio_cli"

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from .spec import SpecError
+from merlin.experiments.definition import SpecError
 
 # This is a navigation projection of frozen records, not another evidence store.
 # Keep private profiles, holdout catalogs, and implementation inventories out of

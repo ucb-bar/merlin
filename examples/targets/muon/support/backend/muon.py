@@ -906,7 +906,7 @@ def _build_cache_key(kind: str, target: str, inputs: dict) -> "str | None":
         from merlin.targetgen.contract.toolchain import mlir_bin
 
         here = Path(__file__).resolve().parent
-        front_owner = module_source_path("merlin.llvmlower.pipeline")
+        front_owner = module_source_path("merlin.compiler.lower.native.pipeline")
         backend_sources = python_members(here, label="Muon backend")
         frontend_sources = python_members(front_owner.parent, label="LLVM lowering")
         if not backend_sources or front_owner.resolve() not in frontend_sources.values():
@@ -943,7 +943,7 @@ def compile_mlir_forkfree(
     the operands and calls the kernel (cross-object ``R_RISCV_CALL``); both objects are transcoded to the
     target's fixed-format words (reloc-preserving) and the fork-free linker resolves the call against the
     from-source BSP. No clang-muon anywhere. Returns the ELF path."""
-    from merlin.llvmlower.pipeline import lower_to_llvm_ir
+    from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
     from merlin.targetgen import build_cache as _bc
     from merlin.targetgen.contract.toolchain import mlir_bin
     from merlin.targetgen.isa_model import isa_model_from_encoding

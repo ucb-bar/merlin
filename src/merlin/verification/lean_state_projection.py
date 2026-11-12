@@ -453,5 +453,5 @@ for _compat_definition in (
     derive_effect_schedule,
     _typed_equivalent,
 ):
-    _compat_definition.__module__ = "merlin.verify.lean_state_projection"
+    _compat_definition.__module__ = "merlin.verification.lean_state_projection"
 del _compat_definition

@@ -8,9 +8,9 @@ import pytest
 
 from merlin.transforms.certificates import ir_text, parse_ir
 from merlin.transforms.planning import blocks_in
-from merlin.verify import lean_checked as CHECK
-from merlin.verify.lean_contract import LeanToolchain, LeanTransformReceipt, coverage_policy_record
-from merlin.verify.lean_state_effects import EffectScheduleContract
+from merlin.verification import lean_checked as CHECK
+from merlin.verification.lean_contract import LeanToolchain, LeanTransformReceipt, coverage_policy_record
+from merlin.verification.lean_state_effects import EffectScheduleContract
 
 
 def _contract():

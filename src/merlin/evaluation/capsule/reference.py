@@ -11,7 +11,7 @@ from merlin.runtime.reference import reference_outputs
 from merlin.runtime.simulator import simulate
 from merlin.targetgen import capsule_golden as CG
 from merlin.targetgen.capsule_common import _cat
-from merlin.targetgen.oot_runner import CertFailure
+from merlin.targetgen.package_runtime import CertFailure
 
 
 def check_reference(capsule, paths, policy, required, evidence, inputs):

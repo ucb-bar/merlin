@@ -7,8 +7,7 @@ import hashlib
 import json
 
 from merlin.common.digest import is_sha256
-
-from ..spec import SpecError
+from merlin.experiments.definition import SpecError
 
 SCHEMA = "merlin.corpus.accelerator_scope.v1"
 

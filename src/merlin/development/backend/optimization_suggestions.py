@@ -88,7 +88,7 @@ ABSTRACTIONS = [
         "region_and_preparation",
         [
             "merlin.compiler.transforms.multioutput",
-            "merlin.compile.scheduling.shared_input_groups",
+            "merlin.compiler.schedule.shared_input_groups",
             "merlin.llvmlower.prepared_operand_schedule",
         ],
         "Existing restricted region matchers and preparation planning/install APIs; "
@@ -96,13 +96,13 @@ ABSTRACTIONS = [
     ),
     (
         "compact_instruction_schedule",
-        ["merlin.sched.ir.kernel", "merlin.compile.scheduling.compact_dense", "merlin.compile.scheduling.llvm_program"],
+        ["merlin.sched.ir.kernel", "merlin.compiler.schedule.compact_dense", "merlin.compiler.schedule.llvm_program"],
         "Existing Kernel and counted-loop emission route; consume the transformed result, "
         "preserve dependencies and tails.",
     ),
     (
         "finite_schedule",
-        ["merlin.compile.scheduling.schedule_pipeline"],
+        ["merlin.compiler.schedule.schedule_pipeline"],
         "Existing finite-region pipeline with effect/storage/encoding adapters; do not unroll large graphs to use it.",
     ),
     (

@@ -28,7 +28,7 @@ Packages may also declare the optional `emit_analysis_bundle` command. It accept
 prints the target artifact on stdout in one compiler process. Host analysis feature-detects it;
 certification and packages without it continue to use the four required entrypoints above.
 
-The Merlin runner (`python -m merlin.targetgen.oot_runner`) then certifies:
+The Merlin runner (`python -m merlin.targetgen.package_runtime`) then certifies:
 
 ```
 interface.mlir --(package)--> command_buffer.json --> reference_outputs(cb) == simulate(cb)   [L0, always]

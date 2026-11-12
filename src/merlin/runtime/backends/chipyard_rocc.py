@@ -158,7 +158,7 @@ def _provider_root() -> Path:
 
 
 def _isa_headers_spec() -> Path:
-    from merlin.targetgen.providers import contained_resource
+    from merlin.compiler.backend.load import contained_resource
 
     reference = _plugin().get("isa_headers")
     if not isinstance(reference, str) or not reference:

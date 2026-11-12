@@ -466,5 +466,5 @@ for _compat_definition in (
     prove_input_preparation,
     _prove,
 ):
-    _compat_definition.__module__ = "merlin.verify.conv_input_preparation"
+    _compat_definition.__module__ = "merlin.verification.conv_input_preparation"
 del _compat_definition

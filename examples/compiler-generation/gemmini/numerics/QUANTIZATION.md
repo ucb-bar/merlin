@@ -202,7 +202,7 @@ Attention is float in every r53b capture. The recipe family `activation_contract
 variant of any derived static per-tensor integer recipe with:
 
 ```sh
-python -m merlin.targetgen.quant_recipe activation-contractions IN.json OUT.json
+python -m merlin.compiler.quantization.capabilities activation-contractions IN.json OUT.json
 ```
 
 Under this family, `spell_attention` in `_recipe_quantizer.py` rewrites each fused SDPA call as two

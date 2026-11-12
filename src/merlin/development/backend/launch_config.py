@@ -39,7 +39,7 @@ import jsonschema
 import yaml
 
 from merlin.common.digest import sha256_bytes, sha256_file
-from merlin.experiments.spec import SpecError, read_yaml
+from merlin.experiments.definition import SpecError, read_yaml
 
 LAUNCH_SCHEMA = "merlin.phase1.launch_config.v1"
 RELEASE_SCHEMA = "merlin.phase0.release_config.v1"

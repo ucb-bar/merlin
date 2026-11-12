@@ -79,7 +79,7 @@ def validate_pipeline(pipeline):
 
 
 def ensure_registered():
-    from .shared_feature_registry import ImprFeature, known, register
+    from merlin.compiler.selection.shared import ImprFeature, known, register
 
     if FEATURE not in known():
         register(

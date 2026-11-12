@@ -11,7 +11,7 @@ from merlin.evaluation.capsule.bundle import _model_runtime_bundle as _model_run
 from merlin.evaluation.capsule.diagnostics import _candidate_exception_diagnostic as _candidate_exception_diagnostic
 from merlin.evaluation.capsule.identity import CONTRACT_VERSION
 from merlin.targetgen.capsule_common import make_run_paths, run_entrypoints
-from merlin.targetgen.oot_runner import Package, build_package, integrity_scan, load_package
+from merlin.targetgen.package_runtime import Package, build_package, integrity_scan, load_package
 
 
 def _grade_candidate_model_capsule_inline(capsule, *, target, timeout, package_dir, context, pkg=None):

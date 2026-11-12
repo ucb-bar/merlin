@@ -19,8 +19,8 @@ def test_actual_chunk_forward_ir_has_byte_bound_proof(chunk_ops: int) -> None:
     import pickle
     from pathlib import Path
 
+    from merlin.verification import scalar_ir as legacy
     from merlin.verification import scalar_ir as owner
-    from merlin.verify import scalar_ir as legacy
 
     assert legacy is owner
     assert legacy.UnsupportedScalarIR is owner.UnsupportedScalarIR
@@ -33,7 +33,7 @@ def test_actual_chunk_forward_ir_has_byte_bound_proof(chunk_ops: int) -> None:
     receipt = verify_scalar_transform(before, after)
     assert receipt.status == "verified", receipt.reason
     assert receipt.verifier_sha256 == hashlib.sha256(Path(owner.__file__).read_bytes()).hexdigest()
-    assert receipt.__class__.__module__ == "merlin.verify.scalar_ir"
+    assert receipt.__class__.__module__ == "merlin.verification.scalar_ir"
     assert pickle.loads(pickle.dumps(receipt)) == receipt
     assert receipt.source_sha256 != receipt.target_sha256
     assert receipt.input_types == ("i32",)

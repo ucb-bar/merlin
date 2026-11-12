@@ -3,7 +3,7 @@
 Measured on one attempt: the compiler defaulted an internal string policy to its slower value (a
 full-device fence after every output tile) and carried the faster alternative behind the same switch,
 but never compared the two; nothing pointed at the switch. A choice declared in
-``submission/TUNING_KNOBS.json`` (:mod:`merlin.compile.tuning_knobs`) is timed value by value on idle
+``submission/TUNING_KNOBS.json`` (:mod:`merlin.compiler.selection.knobs`) is timed value by value on idle
 CPUs (:mod:`.idle_tuning`), so the lint names undeclared ones.
 
 Detection reads the source with :mod:`ast` and never imports or edits it:
@@ -38,7 +38,7 @@ _CACHE: dict[str, tuple[tuple, dict]] = {}
 
 HOW = (
     "Declare a candidate to have idle CPUs time each value: replace the read with "
-    '`knob("NAME", default=DEFAULT, values=(...))` from merlin.compile.tuning_knobs and declare it in '
+    '`knob("NAME", default=DEFAULT, values=(...))` from merlin.compiler.selection.knobs and declare it in '
     "submission/TUNING_KNOBS.json (skill ab-library-pass, step 3); once declared, idle tuning measures "
     "every value on the cases with the most headroom."
 )

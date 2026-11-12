@@ -148,7 +148,7 @@ def proved_stream(
     ``max_steps`` bounds scalar steps per attempt (about 0.3M steps/s on one core);
     ``max_runs`` bounds the affine-run record and ``max_entries`` the decoded stream.
     """
-    from merlin.compile.analysis.riscv_machine import finite_control_counts
+    from merlin.analysis.riscv_machine import finite_control_counts
     from merlin.kernels.decoded_effects import decode_stream
 
     context = context or {}
@@ -263,7 +263,7 @@ ARGUMENT_REGISTERS = tuple("a" + str(index) for index in range(8))
 
 def transfer_edges(body, start, stop, occurrence_id):
     """Static call and candidate tail transfers leaving one span, decoded from its own bytes."""
-    from merlin.compile.analysis.riscv_machine import MASK, decode_cpu
+    from merlin.analysis.riscv_machine import MASK, decode_cpu
 
     edges = []
     for index, row in enumerate(body):
@@ -348,7 +348,7 @@ def interprocedural_contexts(regions, edges, *, machine=None):
     from merlin.kernels.machine_evidence import lifter_call
 
     if machine is None:
-        from merlin.compile.analysis import riscv_machine as machine
+        from merlin.analysis import riscv_machine as machine
     summarize = getattr(machine, "summarize_function", None)
     summaries, sites, resolved, active = {}, {}, {}, set()
     entries = [edge for edge in edges if edge.get("callee_id") is not None and not edge.get("target_offset")]
@@ -499,8 +499,8 @@ def interprocedural_contexts(regions, edges, *, machine=None):
 
 
 def machine_regions(root, artifact, *, facts, decoder, structure=None, stream_max_steps=STREAM_MAX_STEPS):
-    from merlin.compile.analysis.artifact_reader import PinnedELF, open_ordinary
-    from merlin.compile.analysis.riscv_machine import region_index
+    from merlin.analysis.artifact_reader import PinnedELF, open_ordinary
+    from merlin.analysis.riscv_machine import region_index
     from merlin.development.backend.feedback import reference_analysis as analysis
     from merlin.perf.pc_instruction_listing import normalized_text
 

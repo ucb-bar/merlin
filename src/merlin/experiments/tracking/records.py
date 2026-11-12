@@ -1079,7 +1079,7 @@ def run_summary(
 
     run_dir = Path(run_dir).expanduser()
     if not run_dir.is_dir():
-        from ..spec import SpecError
+        from merlin.experiments.definition import SpecError
 
         raise SpecError(f"not a run directory: {run_dir}")
     now = (clock or time.time)() if now is None else now

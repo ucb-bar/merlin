@@ -56,9 +56,9 @@ def linux_image(tmp_path):
 def test_native_linux_arguments_affinity_streams_and_cli_status(linux_image, monkeypatch, capsys):
     import base64
 
+    from merlin.cli.service import run_main
     from merlin.compiler.backend import service
     from merlin.runtime import linux
-    from merlin.service_cli import run_main
 
     before = os.sched_getaffinity(0)
     harts = min(2, len(before))
@@ -115,7 +115,7 @@ def test_native_linux_timeout_terminates_its_spawned_process_group(linux_image, 
 
 
 def test_multi_product_compilation_and_cli_share_request_and_refuse_bad_options(tmp_path, monkeypatch, capsys):
-    from merlin.cli import main
+    from merlin.cli.main import main
     from merlin.compiler.backend import service
 
     backend = BinaryBackend()

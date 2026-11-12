@@ -41,7 +41,7 @@ function and monkeypatch identity. Historical SDK inventories remain immutable.
 
 `multioutput.py` owns connected source fanout discovery and checked compilation
 with two live outputs. Its independent semantic checker remains in
-`merlin.compile.scheduling.multioutput_fusion_check`. Pin the actual algorithm,
+`merlin.compiler.schedule.multioutput_fusion_check`. Pin the actual algorithm,
 compatibility alias and existing checker/source roster; the old module aliases
 this owner exactly, including issued-record state. Preserve published record
 pickle spellings. Missing composition permission retains individual lowering.

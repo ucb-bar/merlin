@@ -14,8 +14,8 @@ from xdsl.dialects import tensor
 from xdsl.dialects.linalg.ops import GenericOp, YieldOp
 
 from merlin.compiler.schedule.fusion_semantics import ScalarGraph, UnsupportedElementwise
-from merlin.compiler.schedule.multioutput_fusion import read_source_multioutput
 from merlin.compiler.schedule.pointwise_source import read_pointwise_source
+from merlin.compiler.transforms.multioutput import read_source_multioutput
 from merlin.llvmlower.layout_conformance import _attribute, _metadata, layout_expression
 
 

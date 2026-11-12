@@ -102,7 +102,7 @@ def preflight(document, destination, *, compiler, compiler_sha256, python, mlir_
     import yaml
 
     from merlin.common.proc import run_checked
-    from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
+    from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
 
     compiler = Path(compiler).resolve(strict=True)
     # Keep the selected venv invocation path; resolving its interpreter symlink

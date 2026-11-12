@@ -435,7 +435,7 @@ def build_quantization_contract(
             "reason": None if path is not None else "the selected contract declares no derived output path",
         }
     elif methodology is not None:
-        from merlin.targetgen import quant_methodology as QM
+        from merlin.compiler.quantization import methodology as QM
 
         path = QM.output_path_of(hardware_snapshot.get("contract"))
         body["methodology"] = {

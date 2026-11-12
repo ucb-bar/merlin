@@ -11,7 +11,7 @@ from merlin.evaluation.capsule.source import _capture_compiler_source
 from merlin.runtime import commandbuffer as _CB
 from merlin.targetgen import capsule_golden as CG
 from merlin.targetgen.capsule_common import _cat, run_entrypoints
-from merlin.targetgen.oot_runner import CertFailure
+from merlin.targetgen.package_runtime import CertFailure
 
 
 def emit_program(capsule, package_dir, paths, cfg, contract, timeout, eff_target, pkg, evidence):
@@ -100,7 +100,7 @@ def emit_program(capsule, package_dir, paths, cfg, contract, timeout, eff_target
     # activation. Judged here for the same reason as the obligation above: before anything is
     # spent grading a program that computes something other than what it declares.
     #
-    # The rule is target-independent and lives in merlin.verify; the CAPABILITY is the target's
+    # The rule is target-independent and lives in merlin.verification; the CAPABILITY is the target's
     # own declaration. A backend that declares no readouts leaves the check UNAVAILABLE rather
     # than refusing every capsule -- an undeclared target is not a broken one, and the reason is
     # recorded so "not checked" never reads as "checked and fine".

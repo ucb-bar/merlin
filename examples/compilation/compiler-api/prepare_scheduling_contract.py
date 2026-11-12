@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from merlin.compile.scheduling.selected_contracts import inspect_scheduling_draft, scheduling_spec_draft
+from merlin.compiler.schedule.selected_contracts import inspect_scheduling_draft, scheduling_spec_draft
 
 
 def main():

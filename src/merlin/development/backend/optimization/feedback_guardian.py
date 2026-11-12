@@ -13,9 +13,9 @@ import signal
 import time
 from types import SimpleNamespace
 
+from merlin.common.owned_children import become_child_subreaper, reap_owned_children
 from merlin.development.backend.optimization.contracts import write_json
 from merlin.experiments.execution import _protocol as protocol
-from merlin.experiments.execution.owned_children import become_child_subreaper, reap_owned_children
 
 _WORKER_LEASE = None
 

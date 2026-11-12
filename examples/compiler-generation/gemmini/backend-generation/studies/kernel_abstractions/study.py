@@ -146,7 +146,7 @@ def specs(
         ]
         original = {p: (sha, mod) for p, sha, mod in inherited.members}
         changed = {p: (sha, mod) for p, sha, mod in treatment.members if original.get(p) != (sha, mod)}
-        if set(changed) != {"merlin/compile/scheduling/dense_panel_epochs.py"}:
+        if set(changed) != {"merlin/compiler/schedule/dense_panel_epochs.py"}:
             raise ValueError("the initial seed contrast may add only the dense completion consumer")
         if set(original) - {p for p, _, _ in treatment.members}:
             raise ValueError("seed treatment removed inherited dependencies")

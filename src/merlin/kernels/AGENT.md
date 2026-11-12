@@ -9,9 +9,7 @@ Kernel abstraction mining: ingest -> features -> emit.
 - Files appropriate to the purpose above.
 - Generic analyses that public compiler code needs (contraction shapes and extents, the role
   vocabulary, engine facets, endpoint binding, RoCC/intrinsics decoding, the disassembly
-  tokenizer) live in `merlin.compile.analysis`; `shapes.py`, `roles.py`, `engines.py`,
-  `endpoints.py` and `decode/{rocc,objdump,insn_header}.py` here are compatibility aliases.
-  Do not add new logic to an alias; this package is withheld from a full-compiler author.
+  tokenizer) live in `merlin.analysis`. This package is withheld from a full-compiler author.
 
 ## What does not belong here
 

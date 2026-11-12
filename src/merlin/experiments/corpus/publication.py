@@ -7,8 +7,7 @@ from pathlib import Path
 import yaml
 
 from merlin.development.testgen.claim_boundary import assert_no_claim_capsules, held_out_models
-
-from ..spec import SpecError
+from merlin.experiments.definition import SpecError
 
 
 def require_public_capsules(experiment, roots) -> None:

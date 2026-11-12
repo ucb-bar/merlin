@@ -292,7 +292,7 @@ class ReadoutFacet:
         ``stage`` is in the command-buffer ABI's vocabulary
         (:data:`merlin.runtime.commandbuffer.EPILOGUE_STAGES`), the same words
         ``readout_epilogue_capability`` is declared in. The rule is
-        :func:`merlin.verify.epilogue_applicability.selectors_applying`: a stage is applied when SOME
+        :func:`merlin.verification.epilogue_applicability.selectors_applying`: a stage is applied when SOME
         declared readout applies it, and a readout that applies nothing (the full-width path that
         writes the raw accumulator) contributes nothing, exactly as it should.
 

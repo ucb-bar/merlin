@@ -27,8 +27,8 @@ import yaml
 
 from merlin.common.paths import artifacts_dir, build_dir, checkout_root, targets_dir
 from merlin.common.yaml import safe_load_text
+from merlin.compiler.backend.load import Provider, ProviderRole, read_provider
 
-from .providers import Provider, ProviderRole, read_provider
 from .rtl.facts import rtl_facts_path
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -569,8 +569,9 @@ def load_matrix_contract(name: str) -> dict[str, Any]:
     Reference metadata alone is not a provider selection. Missing declarations or
     resources never fall back to a checkout-global matrix contract.
     """
+    from merlin.compiler.backend.load import ProviderError, contained_resource
+
     from .plugins import resolve_support
-    from .providers import ProviderError, contained_resource
 
     info = resolve_support(name)
     reference = info.load_contract().get("matrix_contract")

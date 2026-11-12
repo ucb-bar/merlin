@@ -109,7 +109,7 @@ def host_compute_row(
     input_preparation=None,
     target=None,
 ) -> dict[str, Any]:
-    """The host-compute audit of one emitted program (:mod:`merlin.verify.host_compute_audit`).
+    """The host-compute audit of one emitted program (:mod:`merlin.verification.host_compute_audit`).
 
     A program that reached a unit is judged: its host code may issue commands, and may not do the
     unit's arithmetic. One that declared itself host-only is reported and not judged. The audit

@@ -140,7 +140,7 @@ def applicability(schedule_text: str, op_counts: dict[str, int]) -> dict:
 def inapplicable_features(features, op_counts: dict[str, int]) -> dict[str, dict]:
     """``{feature name -> applicability}`` for every named feature that CANNOT fire on this module.
 
-    Resolves each feature's own schedule text through :mod:`merlin.llvmlower.impr_features`, so it
+    Resolves each feature's own schedule text through :mod:`merlin.compiler.optimizations.registry`, so it
     stays correct as levers are added and needs no table of its own. Features with no schedule, or
     whose schedule matches by interface rather than by name, are omitted -- this reports only what it
     can actually establish, on the same terms as :func:`applicability`.

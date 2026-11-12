@@ -349,7 +349,7 @@ def ensure_registered() -> str:
     returns False -- an unregistered feature is not an error anyone sees, it is a feature that is
     silently never proposed.
     """
-    from .shared_feature_registry import ImprFeature, known, register
+    from merlin.compiler.selection.shared import ImprFeature, known, register
 
     if FEATURE in known():
         return FEATURE

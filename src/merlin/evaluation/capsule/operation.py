@@ -20,7 +20,7 @@ from merlin.evaluation.capsule.records import ProgramEvidence, ReferenceData
 from merlin.evaluation.capsule.reference import check_reference
 from merlin.evaluation.capsule.trace import check_trace
 from merlin.targetgen.capsule_common import make_run_paths
-from merlin.targetgen.oot_runner import BackendDeclined, CertFailure, InfraFailure, Package
+from merlin.targetgen.package_runtime import BackendDeclined, CertFailure, InfraFailure, Package
 from merlin.targetgen.runner_config import _config_for_target
 
 

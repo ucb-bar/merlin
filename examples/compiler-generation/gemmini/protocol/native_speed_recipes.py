@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from merlin.common.paths import repo_root
-from merlin.targetgen import quant_recipe as Q
+from merlin.compiler.quantization import capabilities as Q
 
 
 def generate(directory: Path) -> dict:

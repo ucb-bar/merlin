@@ -128,7 +128,7 @@ class PortfolioAnalysis:
         """Read bounded exact cache receipts without loading large emitted artifacts."""
         if self.baseline_emission_cache_binding is None:
             return {}
-        from merlin.targetgen import oot_runner as OR
+        from merlin.targetgen import package_runtime as OR
 
         package = OR.load_package(self.session.inputs.optimization_baseline)
         entrypoints = OR.analysis_emission_entrypoints(package)

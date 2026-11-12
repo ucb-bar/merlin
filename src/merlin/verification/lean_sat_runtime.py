@@ -156,5 +156,5 @@ for _compat_definition in (
     runtime_stage,
     runtime_receipt,
 ):
-    _compat_definition.__module__ = "merlin.verify.lean_sat_runtime"
+    _compat_definition.__module__ = "merlin.verification.lean_sat_runtime"
 del _compat_definition

@@ -5,7 +5,7 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compile.dispatch_c import DispatchCall, emit_program_c
+from merlin.compiler.lower.c.dispatch import DispatchCall, emit_program_c
 from merlin.compiler.schedule.arena import ArenaRequirements
 from merlin.runtime.program import build_program
 from merlin.xdsl_dialects.lowering.dispatch_program import Buffer, DispatchProgram, Node

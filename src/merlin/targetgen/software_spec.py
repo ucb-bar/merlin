@@ -80,7 +80,7 @@ def software_spec_path_for_recipe(recipe: str | Path, document: dict | None = No
         provider_name, member = declaration["provider"], declaration["resource"]
         if not isinstance(provider_name, str) or not provider_name.strip() or not isinstance(member, str):
             raise ValueError(f"{source}: invalid software_spec provider selection")
-        from merlin.targetgen.providers import ProviderRole, contained_resource
+        from merlin.compiler.backend.load import ProviderRole, contained_resource
         from merlin.targetgen.target_registry import resolve
 
         selected_provider = resolve(provider_name)

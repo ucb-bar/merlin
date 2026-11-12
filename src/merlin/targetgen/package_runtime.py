@@ -352,7 +352,7 @@ class Package:
     @property
     def provider(self):
         """Optional declared provider metadata; never capability, permission, or trust."""
-        from .providers import read_provider
+        from merlin.compiler.backend.load import read_provider
 
         return read_provider(self.directory)
 

@@ -138,7 +138,7 @@ def lower_model(
     Markers can still perturb downstream allocation and machine optimization.
 
     ``data_layout`` is the target's LLVM data layout, set on the module before translation (see
-    :func:`merlin.llvmlower.pipeline.lower_to_llvm_ir`). ``index_bits`` explicitly binds every LLVM
+    :func:`merlin.compiler.lower.native.pipeline.lower_to_llvm_ir`). ``index_bits`` explicitly binds every LLVM
     index conversion pass and is returned with the effective pipeline in ``stats``. A selected build
     supplies it from its compiler observation; this generic API does not infer a host/runtime ABI.
 

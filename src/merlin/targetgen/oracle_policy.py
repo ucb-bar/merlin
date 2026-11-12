@@ -411,7 +411,7 @@ _DEFAULT_POLICIES = {
 
 
 def _selected_policy(name: str, target):
-    legacy = sys.modules.get("merlin.targetgen.capsule_runner")
+    legacy = sys.modules.get("merlin.evaluation.capsule.runner")
     override = getattr(legacy, name, None) if legacy is not None else None
     if override is not None and override is not _DEFAULT_POLICIES[name]:
         return override(target)
@@ -446,7 +446,7 @@ def describe_l3_engine(target: str, sim_via: str | None = None) -> dict:
     fallback; this function never imports that optional owner to obtain them.
     Engine selection is not proof that an adapter or submitted program can run.
     """
-    legacy = sys.modules.get("merlin.targetgen.capsule_runner")
+    legacy = sys.modules.get("merlin.evaluation.capsule.runner")
     if legacy is None:
         _ensure_sim_metadata_discovered()
     else:
@@ -505,7 +505,7 @@ _DEFAULT_L3_REPORTER = describe_l3_engine
 
 def selected_l3_engine_report(target: str, sim_via: str | None = None) -> dict:
     """Shared report, honoring an already-loaded legacy reporter override."""
-    legacy = sys.modules.get("merlin.targetgen.capsule_runner")
+    legacy = sys.modules.get("merlin.evaluation.capsule.runner")
     override = getattr(legacy, "describe_l3_engine", None)
     if override is not None and override is not _DEFAULT_L3_REPORTER:
         return override(target, sim_via)

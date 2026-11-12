@@ -75,6 +75,45 @@ class BrokerSpec:
     calls: tuple[str, ...] = ()
 
 
+#: The verification-seam checkers granted to the verify arm as exact files (never the package, so the
+#: Lean proof-authoring tools and the automatic checkers stay out of that arm).
+VERIFY_SEAM_SOURCES = (
+    "ablation.py",
+    "cb_semantics.py",
+    "cli.py",
+    "command_orchestration.py",
+    "conv_input_preparation.py",
+    "counterexamples.py",
+    "epilogue_applicability.py",
+    "evaluate.py",
+    "faults.py",
+    "host_call_alignment.py",
+    "host_command_parameters.py",
+    "host_compute_audit.py",
+    "input_copy_batch.py",
+    "input_copy_integer.py",
+    "input_copy_loops.py",
+    "input_copy_storage.py",
+    "lattice.py",
+    "linalg_semantics.py",
+    "llvm_symbols.py",
+    "merlin_iface_semantics.py",
+    "model_coverage.py",
+    "outline_ir.py",
+    "packing.py",
+    "partition.py",
+    "proofs.py",
+    "receipts.py",
+    "refine.py",
+    "scalar_ir.py",
+    "smt_export.py",
+    "smt_ops.py",
+    "smt_semantics.py",
+    "split_reduction.py",
+    "tools.py",
+)
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     """One arm-gated tool: what it grants, how it is reached, and whether it may be ablated alone."""
@@ -211,7 +250,7 @@ TOOLS: dict[str, ToolSpec] = {
             # Synthesized plans resolve the selected support contract at call time.
             # These readers carry identity only; no backend or oracle code.
             f"{_PY}targetgen/corpora.py",
-            f"{_PY}targetgen/providers.py",
+            f"{_PY}compiler/backend/load.py",
             # Provider identity moved; grant only its answer-free source closure.
             f"{_PY}compiler/__init__.py",
             f"{_PY}compiler/backend/__init__.py",
@@ -306,7 +345,7 @@ TOOLS: dict[str, ToolSpec] = {
     # IR, never a golden — and like the eqsat seam it is granted to exactly one arm, for the same reason.
     "verify_seam": ToolSpec(
         "verify_seam",
-        "The compiler-verification seam. `python -m merlin.verify.cli compile --interface <f.mlir> "
+        "The compiler-verification seam. `python -m merlin.verification.cli compile --interface <f.mlir> "
         "--command-buffer <cb.json>` proves whether YOUR emitted command buffer computes what the interface program "
         "specified, for every integer input at that shape: exit 0 verified, 1 refuted with the "
         "counterexample inputs printed, 2 abstained. An abstention is a limit of the checker, not a "
@@ -314,7 +353,7 @@ TOOLS: dict[str, ToolSpec] = {
         "caught, a sweep of the target's derived extent lattice, and `python -m merlin.xdsl_dialects.opt`, "
         "which runs a "
         "single pass on a single module. Advisory only -- it does not gate your submission.",
-        bundle_paths=(f"{_PY}verify/", f"{_PY}xdsl_dialects/opt.py"),
+        bundle_paths=(*(f"{_PY}verification/{name}" for name in VERIFY_SEAM_SOURCES), f"{_PY}xdsl_dialects/opt.py"),
         note="ALLOWED (verify arm): the compiler-verification seam",
         deny_reason="compiler-verification seam (verify arm only)",
     ),
@@ -344,16 +383,16 @@ TOOLS: dict[str, ToolSpec] = {
     ),
     "lean_proof_authoring": ToolSpec(
         "lean_proof_authoring",
-        "Optional interactive Lean transformation tools. Run `python -m merlin.verify.lean_cli --help` "
+        "Optional interactive Lean transformation tools. Run `python -m merlin.verification.lean_cli --help` "
         "for inspect/check on your own before/after IR and the admitted semantic contract. "
         "The installed, pinned Lean toolchain must be available; a missing tool or timeout is not "
         "a proof. You cannot alter admitted semantics or the host-owned formal coverage policy.",
         bundle_paths=(
-            f"{_PY}verify/lean_contract.py",
-            f"{_PY}verify/lean_export.py",
-            f"{_PY}verify/lean_checker.py",
-            f"{_PY}verify/lean_cli.py",
-            f"{_PY}verify/lean/Merlin/Foundation.lean",
+            f"{_PY}verification/lean_contract.py",
+            f"{_PY}verification/lean_export.py",
+            f"{_PY}verification/lean_checker.py",
+            f"{_PY}verification/lean_cli.py",
+            f"{_PY}verification/lean/Merlin/Foundation.lean",
         ),
         note="ALLOWED (Lean authoring arm): checked transformation proof development",
         deny_reason="interactive Lean proof development requires EL6",

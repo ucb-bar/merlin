@@ -40,7 +40,7 @@ def lower_with_functional_baseline(
 ) -> Path:
     """Run the immutable package ABI through K2-K6 and emit only into ``artifact_dir``."""
     from merlin.targetgen import capsule_common as COMMON
-    from merlin.targetgen import oot_runner as OOT
+    from merlin.targetgen import package_runtime as OOT
 
     package = OOT.load_package(functional_base, contract=contract_root)
     OOT.integrity_scan(package)

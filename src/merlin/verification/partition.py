@@ -25,7 +25,7 @@ class PartitionVerification:
 
 
 # Preserve published pickle references while importing the actual checker owner.
-PartitionVerification.__module__ = "merlin.verify.partition"
+PartitionVerification.__module__ = "merlin.verification.partition"
 
 
 def verify_partition(source, partitioned, *, entry: str, symbols: tuple[str, ...]):

@@ -440,7 +440,7 @@ for _compat_definition in (
     emit_counterexamples,
     _write,
 ):
-    _compat_definition.__module__ = "merlin.verify.lattice"
+    _compat_definition.__module__ = "merlin.verification.lattice"
 del _compat_definition
 
 if __name__ == "__main__":

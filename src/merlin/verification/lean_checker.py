@@ -510,5 +510,5 @@ for _compat_definition in (
     _conjunction,
     verify_pipeline_change,
 ):
-    _compat_definition.__module__ = "merlin.verify.lean_checker"
+    _compat_definition.__module__ = "merlin.verification.lean_checker"
 del _compat_definition

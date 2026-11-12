@@ -517,6 +517,6 @@ def validate_normalized_instruction_model(
 
 
 # Keep public callable pickle spellings while their code has one canonical owner.
-normalize_instruction_semantics.__module__ = "merlin.targetgen.instruction_semantics"
-load_instruction_semantics.__module__ = "merlin.targetgen.instruction_semantics"
-validate_normalized_instruction_model.__module__ = "merlin.targetgen.instruction_semantics"
+normalize_instruction_semantics.__module__ = "merlin.target.spec.instructions"
+load_instruction_semantics.__module__ = "merlin.target.spec.instructions"
+validate_normalized_instruction_model.__module__ = "merlin.target.spec.instructions"

@@ -208,13 +208,13 @@ def _invocation(record: dict, stage: str) -> dict:
 def _target_witness(launch, record: dict) -> None:
     import numpy as np
 
-    from merlin.compile.model_execution_inputs import strict_tree_sha256
     from merlin.llvmlower.compilation_recipe import verify_completed_recipe
     from merlin.model_check import full_build as FB
     from merlin.model_check import full_quantized as FQ
     from merlin.model_check import full_reference_cache as RC
     from merlin.model_check import replay as RP
     from merlin.runtime.backends import spike_model
+    from merlin.runtime.modelinputs import strict_tree_sha256
 
     value = _witness(launch, record, "merlin.phase1.infrastructure_target_witness.v1")
     if set(value) != {

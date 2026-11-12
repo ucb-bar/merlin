@@ -30,7 +30,7 @@ class KernelChoice:
 
 @dataclass(frozen=True)
 class PreparedKernel:
-    """What a package's ``build_object`` hands :func:`merlin.kernels.matrix_shim.emit_translation_unit`."""
+    """What a package's ``build_object`` hands :func:`merlin.compiler.lower.matrix.emit_translation_unit`."""
 
     source: str
     function: str

@@ -297,8 +297,8 @@ def execute_dense(kernel, adapter, shape, *, edge, operand_rows, accumulator_row
 
     import numpy as np
 
-    from merlin.compile.scheduling.block_schedule import Compute, Load, Preload, Store
-    from merlin.compile.scheduling.dense_panel_pipeline import DRAIN
+    from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
+    from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
     from merlin.sched.ir import evaluate, instances
 
     m, k, n = shape
@@ -365,7 +365,7 @@ def _worker(compiler, source, output, retention, specialization):
     import target
     from frontend import parse_source
 
-    from merlin.compile.scheduling.ordered_unroll import unroll_checked_result
+    from merlin.compiler.schedule.ordered_unroll import unroll_checked_result
 
     cb = parse_source(source.read_text())
     shape, names = _geometry(cb)

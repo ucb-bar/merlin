@@ -53,5 +53,5 @@ def defined_function(module, symbol):
 
 # Preserve historical object lookup; implementation and completion state live here.
 for _compat_definition in (defined_function,):
-    _compat_definition.__module__ = "merlin.verify.llvm_symbols"
+    _compat_definition.__module__ = "merlin.verification.llvm_symbols"
 del _compat_definition

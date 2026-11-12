@@ -295,6 +295,6 @@ def assemble_looped_mnk_outputs(tiling: LoopedMNKTiling, output: bytes) -> bytes
 
 
 # Preserve published exception and record pickle spellings.
-OrderedMNKTilingError.__module__ = "merlin.semantic_compiler.ordered_mnk_tiling"
-OrderedMNKTiling.__module__ = "merlin.semantic_compiler.ordered_mnk_tiling"
-LoopedMNKTiling.__module__ = "merlin.semantic_compiler.ordered_mnk_tiling"
+OrderedMNKTilingError.__module__ = "merlin.compiler.transforms.contraction_mnk"
+OrderedMNKTiling.__module__ = "merlin.compiler.transforms.contraction_mnk"
+LoopedMNKTiling.__module__ = "merlin.compiler.transforms.contraction_mnk"

@@ -16,9 +16,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
+from merlin.evaluation.capsule.runner import OracleUnavailable, TierResult  # noqa: F401
+
 # re-exported for callers that used MR.discover_capsules / load_capsule / TierResult
 from merlin.targetgen.capsule_common import discover_capsules, load_capsule  # noqa: F401
-from merlin.targetgen.capsule_runner import OracleUnavailable, TierResult  # noqa: F401
 from merlin.targetgen.runner_config import RunnerConfig
 
 from .muon import MuonUnavailable  # noqa: F401
@@ -155,7 +156,7 @@ def run_capsule(
 
     ``target`` is accepted for signature-parity with the shared bench driver but is advisory: the Muon
     config (``_MUON_CONFIG.target``) is authoritative, so this runner never mis-targets."""
-    from merlin.targetgen import capsule_runner as CR
+    from merlin.evaluation.capsule import runner as CR
 
     adapters = _wrap_adapters(oracle_adapters if oracle_adapters is not None else default_adapters())
     return CR.run_capsule(
@@ -182,7 +183,7 @@ def run_suite(
     timeout: int = 600,
     target: str | None = None,
 ) -> list[dict]:
-    from merlin.targetgen import capsule_runner as CR
+    from merlin.evaluation.capsule import runner as CR
 
     adapters = _wrap_adapters(oracle_adapters if oracle_adapters is not None else default_adapters())
     return CR.run_suite(

@@ -10,7 +10,7 @@ is resolved against the library by this skill's test.
 ## Whole program
 
 1. **Front end.** Capture produces a linalg-on-tensors module. Its stage is `capture`
-   (`merlin.compile_cli`).
+   (`merlin.cli.compile_workload`).
 2. **Source and host-graph rewrites** (`linalg`, `host_tensor`). The order is fixed by
    `merlin.llvmlower.lower.STAGES`: source-recomputed, host-graph-optimized, host-row-scheduled,
    host-padding-gather-forwarded, host-destination-reused, host-rounding-selected,

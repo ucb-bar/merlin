@@ -6,7 +6,8 @@ import hashlib
 import json
 from pathlib import Path
 
-from ..spec import SpecError, read_yaml
+from merlin.experiments.definition import SpecError, read_yaml
+
 from .preparation_io import ordinary_tree
 
 

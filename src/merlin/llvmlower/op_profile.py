@@ -23,7 +23,7 @@ elapsed ticks to the PREVIOUS mark's id. So one call per op, not two, and
 ``ticks[i]`` is the cost of top-level op ``i``.
 
 Why one marker per top-level op is safe here. The default K1 RVV pipeline
-(:func:`merlin.llvmlower.pipeline.build_rvv_pipeline`) does **not** run
+(:func:`merlin.compiler.lower.native.pipeline.build_rvv_pipeline`) does **not** run
 ``linalg-fuse-elementwise-ops`` (it is env-gated behind ``MERLIN_FUSE_POST``), so
 interleaving side-effecting calls cannot inhibit a fusion that would otherwise have
 happened. The marks therefore cost a call + ``rdtime`` + two stores each, and change no

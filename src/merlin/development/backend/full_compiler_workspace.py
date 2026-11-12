@@ -64,7 +64,7 @@ SOURCE_ROOTS = (
 MUTABLE_NAMESPACES = tuple("merlin." + p for p in SOURCE_ROOTS) + (
     "merlin.runtime",
     "merlin.targetgen",
-    "merlin.verify",
+    "merlin.verification",
     # Relocated compiler authoring families, not new copy roots. Existing import
     # closure still determines the baseline; stored selections keep their tuple.
     "merlin.compiler.frontend",
@@ -316,7 +316,7 @@ def prepare(repo, destination, *, review_id, modules=None, include_runtime_suppo
         else []
     )
     if modules is None:
-        pending += ["merlin/__init__.py", "merlin/compile_core.py", "merlin/compile_cli.py"]
+        pending += ["merlin/__init__.py", "merlin/compile_core.py", "merlin/cli/compile_workload.py"]
         pending += [name.replace(".", "/") + ".py" for name in PUBLIC_HELPERS]
     else:
         if not modules or len(set(modules)) != len(modules):

@@ -45,14 +45,14 @@ from .static import (
 
 
 def main(argv: Sequence[str] | None = None, *, api=None) -> int:
-    """``python -m merlin.targetgen.quant_recipe {activation-contractions|dynamic-contractions|static-planes|
+    """``python -m merlin.compiler.quantization.capabilities {activation-contractions|dynamic-contractions|static-planes|
     shared-grid-sums|native-outputs|site-agreement|activation-observer|gptq-weights} IN OUT``."""
     if api is None:
         api = sys.modules[__name__]
     import argparse
     from pathlib import Path
 
-    parser = argparse.ArgumentParser(prog="python -m merlin.targetgen.quant_recipe")
+    parser = argparse.ArgumentParser(prog="python -m merlin.compiler.quantization.capabilities")
     sub = parser.add_subparsers(dest="command", required=True)
     variant = sub.add_parser("activation-contractions", help=api.with_activation_contractions.__doc__.splitlines()[0])
     variant.add_argument("recipe", type=Path)

@@ -390,6 +390,7 @@ class ComponentEvaluationPool:
         if self._engine_lease is None:
             raise StageGateError("evaluation outer coordinator engine lease is busy")
         self._lease_path = lease_path
+        from merlin.common import owned_children
         from merlin.common import owned_children as core_owned_children
         from merlin.development.backend.optimization import (
             _kernel_resources,
@@ -405,7 +406,6 @@ class ComponentEvaluationPool:
             search_inputs,
             supervised_feedback,
         )
-        from merlin.experiments.execution import owned_children
 
         owners = (
             Path(__file__),

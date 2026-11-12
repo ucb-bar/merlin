@@ -19,7 +19,7 @@ CONVENTIONAL_RTL_TIERS = {"L3", "L4", "L5"}
 
 def conventional_tier_sim() -> dict[str, str]:
     """Return the shared map, retaining explicit legacy evaluator replacements."""
-    legacy = sys.modules.get("merlin.targetgen.capsule_runner")
+    legacy = sys.modules.get("merlin.evaluation.capsule.runner")
     return getattr(legacy, "_TIER_SIM", CONVENTIONAL_TIER_SIM)
 
 
@@ -74,7 +74,7 @@ def runner_config_from_manifest(m) -> RunnerConfig:
 
 def _default_config(target: str, suite: str, dtype: str):
     """The legacy conventional config for a target with no resolvable manifest."""
-    legacy = sys.modules.get("merlin.targetgen.capsule_runner")
+    legacy = sys.modules.get("merlin.evaluation.capsule.runner")
     return RunnerConfig(
         target=target,
         suite=suite,
@@ -98,7 +98,7 @@ def _config_for_target(target: str, suite: str | None, dtype: str):
 
         return runner_config_from_manifest(load_capability_manifest(target))
     except Exception:  # noqa: BLE001 — no resolvable manifest -> legacy default
-        legacy = sys.modules.get("merlin.targetgen.capsule_runner")
+        legacy = sys.modules.get("merlin.evaluation.capsule.runner")
         fallback = getattr(legacy, "_default_config", _DEFAULT_FALLBACK_CONFIG)
         if fallback is _DEFAULT_FALLBACK_CONFIG:
             fallback = _default_config
@@ -110,7 +110,7 @@ _DEFAULT_TARGET_CONFIG = _config_for_target
 
 def selected_runner_config(target: str, suite: str | None, dtype: str):
     """Read shared config without importing evaluation; honor loaded legacy overrides."""
-    legacy = sys.modules.get("merlin.targetgen.capsule_runner")
+    legacy = sys.modules.get("merlin.evaluation.capsule.runner")
     resolver = getattr(legacy, "_config_for_target", _DEFAULT_TARGET_CONFIG)
     if resolver is not _DEFAULT_TARGET_CONFIG:
         return resolver(target, suite, dtype)

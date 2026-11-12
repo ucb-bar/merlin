@@ -157,7 +157,7 @@ def _component_probe(bundle, *, repo=None, schema_path=None):
         negative += [
             "merlin.sched.ir",
             "merlin.transforms.dense_planning",
-            "merlin.compile.scheduling.schedule_ir",
+            "merlin.compiler.schedule.schedule_ir",
             "merlin.targetgen.oot_starterkit.transforms",
         ]
         if profile.level == 2:
@@ -181,7 +181,7 @@ def _component_probe(bundle, *, repo=None, schema_path=None):
             negative += [
                 "merlin.transforms.tensor_views",
                 "merlin.transforms.pipeline",
-                "merlin.compile.scheduling.dense_panel_epochs",
+                "merlin.compiler.schedule.dense_panel_epochs",
                 "merlin.sched.primitives",
             ]
     for name in negative:
@@ -331,7 +331,7 @@ def _grant_checks(te, bundle: dict, tools: tuple[str, ...]) -> list[dict]:
             ):
                 # Fresh profiles retain the historical client as exact leaves;
                 # a directory grant would also expose optional proof authoring.
-                selected_logical = prefix + "verify/cli.py"
+                selected_logical = prefix + "verification/cli.py"
                 candidates = {selected_logical}
             if selected_logical.startswith(prefix):
                 for source in sources:
@@ -512,7 +512,7 @@ def _sandbox_probe(
         ]
     if "lean_proof_authoring" in has:
         lines += [
-            "from merlin.verify import lean_cli, lean_export, lean_checker",
+            "from merlin.verification import lean_cli, lean_export, lean_checker",
             "assert callable(lean_cli.main)",
         ]
     if "xdsl_kit" in has:

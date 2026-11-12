@@ -212,7 +212,7 @@ if HAS_XDSL:
         but it means a `contract.prove` in the IR must not be read as evidence.
 
         Which tokens are backed by evidence is therefore a MEASUREMENT, not a syntactic property:
-        :func:`merlin.verify.proofs.audit_proofs` classifies each token as ``verified`` (a
+        :func:`merlin.verification.proofs.audit_proofs` classifies each token as ``verified`` (a
         verification layer discharged this requirement for the producing pass), ``asserted`` (it
         exists but nothing discharged it) or ``unattributed`` (it names no producer, so nothing
         could). Measured on the reference workload, the baseline is 2 asserted, 0 verified.

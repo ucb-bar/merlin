@@ -74,7 +74,7 @@ WINDOW_MEAN = "window_mean"
 READOUT_DOES_NOT_APPLY = "readout_does_not_apply"
 #: Refusal of a stage on a target that declares no readout epilogue capability at all. UNKNOWN, and
 #: never "applies everything": assuming would put a stage on a store path nobody established applies
-#: it, which is the silent-discard defect :mod:`merlin.verify.epilogue_applicability` exists for.
+#: it, which is the silent-discard defect :mod:`merlin.verification.epilogue_applicability` exists for.
 READOUT_UNDECLARED = "readout_epilogue_undeclared"
 # Round, clamp and cast require an absorbed output scale; an unscaled cast is host work.
 READOUT_REQUIRES_SCALE = "readout_requires_scale"

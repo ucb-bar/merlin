@@ -149,7 +149,7 @@ AUTOMATIC_CHECKER_DATA = (
 # The proof domains of the current substrate (the formal coverage policy version).
 _POLICY_VERSION = "3"
 # The tool registry's compatibility path for the always-public formal coverage policy.
-_LEAN_CONTRACT_GRANT = _PY + "verify/lean_contract.py"
+_LEAN_CONTRACT_GRANT = _PY + "verification/lean_contract.py"
 _OPTIONAL_TOOLS = frozenset({"isa_dialect_generation", "lean_proof_authoring"})
 
 
@@ -443,16 +443,7 @@ def attach_common_substrate(
     automatic = AUTOMATIC_CHECKER_MODULES
     # Deny-by-default isolation admits only these leaves. Parent denials would
     # also hide common leaves, so replace those historical blanket exclusions.
-    bundle["denied"] = [row for row in bundle["denied"] if row.get("path") not in {"merlin/", _PY + "verify/"}]
-    # The historical verification arm granted a directory before Lean modules
-    # existed. Fresh bundles retain those historical tools as exact leaves so
-    # that the new proof-authoring capability cannot leak through that grant.
-    historical_verify = [row for row in bundle["allowed"] if row.get("path") == _PY + "verify/"]
-    for row in historical_verify:
-        bundle["allowed"].remove(row)
-        for source in sorted((python_source_root / "merlin/verify").glob("*.py")):
-            if not source.name.startswith("lean_") and "merlin.verify." + source.stem not in automatic:
-                bundle["allowed"].append({**row, "path": _PY + "verify/" + source.name})
+    bundle["denied"] = [row for row in bundle["denied"] if row.get("path") != "merlin/"]
     for module in (*namespaces, *public, *implementation):
         if any(
             row.get("path") in {_logical(module), str(_source(python_source_root, module))} for row in bundle["allowed"]

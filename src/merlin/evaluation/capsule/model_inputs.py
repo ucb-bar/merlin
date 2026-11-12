@@ -46,7 +46,7 @@ def _resolve_model_host_lane(target: str, dtype: str):
     # ``int8_compute=False`` and the numeric outcome is about a different host program. Dtypes such as
     # fp8 deliberately have no scalar strategy; compile_rvv derives their scalar lane from captured IR,
     # so only a strategy it can decide here is gated here.
-    from merlin import compile_cli as _compile_cli
+    from merlin.cli import compile_workload as _compile_cli
 
     expected_strategy = _compile_cli._DTYPE_STRATEGY.get(dtype)
     if expected_strategy is not None and identity["dtype_strategy"] != expected_strategy:

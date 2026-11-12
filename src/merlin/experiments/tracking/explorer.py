@@ -893,7 +893,7 @@ def compare_phase2(a: Path, b: Path, *, operator_private: bool) -> str:
 
 
 def compare_page(paths_: tuple[Path, Path], now: float, *, operator_private: bool) -> str:
-    from ..spec import SpecError
+    from merlin.experiments.definition import SpecError
 
     a, b = (Path(p).expanduser() for p in paths_)
     for p in (a, b):

@@ -16,9 +16,9 @@ import yaml
 from merlin.evaluation.capsule import eligibility as capsule_eligibility
 from merlin.experiments.corpus.preparation_io import ordinary_tree as ordinary_tree
 from merlin.experiments.corpus.preparation_io import private_json as private_json
+from merlin.experiments.definition import SpecError, read_yaml
 from merlin.targetgen import capsule_common as capsule_capsule_common
 
-from ..spec import SpecError, read_yaml
 from .phase_selection import validate_phase_selections
 from .preparation_generation import (
     _members as _members,

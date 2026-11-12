@@ -4,7 +4,7 @@ from pathlib import Path
 
 from merlin.development.testgen.declarations import from_definition
 from merlin.development.testgen.profiles import compare_public_profiles, load_profile
-from merlin.experiments.spec import SpecError
+from merlin.experiments.definition import SpecError
 
 
 def build(definitions: list[Path]) -> dict:

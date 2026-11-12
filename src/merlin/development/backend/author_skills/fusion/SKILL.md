@@ -40,7 +40,7 @@ The `route` and `entrypoint` fields of a row name the realizer for that opportun
   - Omit any field you cannot establish. The pass then refuses whatever needs that field, which is
     correct.
 - To pick the readout for a set of stages, use
-  `merlin.verify.epilogue_applicability.selectors_applying`. An empty result means fail closed;
+  `merlin.verification.epilogue_applicability.selectors_applying`. An empty result means fail closed;
   never choose by dtype width.
 
 ## 3. Decide the cut per contraction
@@ -77,7 +77,7 @@ use the two-pass `fused_groups` in the reference.
 2. Check numerics: run `agent_selfcheck.py` on the affected cases. In your own checks, use
    stimulus that drives accumulators negative and past the clamp, because a discarded relu
    still passes on non-negative data.
-3. Check stages: `merlin.verify.epilogue_applicability.assess(command_buffer, readouts)` must
+3. Check stages: `merlin.verification.epilogue_applicability.assess(command_buffer, readouts)` must
    return `applied`. Treat `discarded` and `unknown` as refusals.
 4. Check cycles with the `ab-library-pass` skill against the unfused build. Confirm that
    `routed_macs` held and that the host regions shrank.

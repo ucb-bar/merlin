@@ -12,10 +12,10 @@ required_top_level_fields:
   - instructions
 producer: selected OOT support provider
 consumers:
-  - merlin.targetgen.instruction_semantics
+  - merlin.target.spec.instructions
   - merlin.targetgen.semantic_search
 validation_notes: >-
-  Use merlin.targetgen.instruction_semantics.normalize_instruction_semantics for
+  Use merlin.target.spec.instructions.normalize_instruction_semantics for
   nested validation and deterministic input identities. Missing computations,
   effects, memory facts and software-operation links become explicit UNKNOWNs.
   A software-operation link names one SW spec declaration; dtype and rank axes

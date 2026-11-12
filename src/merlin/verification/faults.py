@@ -249,5 +249,5 @@ for _compat_definition in (
     _cb_narrow_output,
     _cb_drop_requant,
 ):
-    _compat_definition.__module__ = "merlin.verify.faults"
+    _compat_definition.__module__ = "merlin.verification.faults"
 del _compat_definition

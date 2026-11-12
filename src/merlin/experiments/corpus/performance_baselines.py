@@ -39,8 +39,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from merlin.development.backend.feedback import reference_baselines as RB
-
-from ..spec import SpecError
+from merlin.experiments.definition import SpecError
 
 #: Display name and kind of the reference labels this repository's operators use; others pass ``--display``.
 KNOWN_SOURCES = {

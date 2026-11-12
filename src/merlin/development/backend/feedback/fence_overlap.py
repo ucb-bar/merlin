@@ -11,7 +11,7 @@ from evidence the self-check and the grade already hold:
 * **static** -- the case's decoded instruction stream (``instruction_trace.json`` beside its
   ``command_buffer.json``, written by the same decoder ``isa_tools.py disasm`` uses). Each instruction
   class takes the roles the target's own compute-endpoint declaration binds to that name in its
-  RTL-derived decode table (:func:`merlin.compile.analysis.compute_endpoints.endpoints_for`); a class
+  RTL-derived decode table (:func:`merlin.analysis.compute_endpoints.endpoints_for`); a class
   the decoder identifies structurally as an architectural fence takes the shared
   ``synchronization`` family (:func:`merlin.targetgen.semantic_families.from_isa_class`). Fences cut
   the stream into epochs; per epoch it counts commands, output-tile readouts and loads, and a load
@@ -33,7 +33,7 @@ from pathlib import Path
 SCHEMA = "merlin.fence_overlap.v1"
 TRACE = "instruction_trace.json"
 BUFFER = "command_buffer.json"
-#: Roles of the closed vocabulary (:mod:`merlin.compile.analysis.instruction_roles`) read here.
+#: Roles of the closed vocabulary (:mod:`merlin.analysis.instruction_roles`) read here.
 LOAD_ROLES = frozenset({"operand_load", "dma"})
 COMPUTE_ROLES = frozenset({"accumulate"})
 READOUT_ROLES = frozenset({"readout", "commit"})

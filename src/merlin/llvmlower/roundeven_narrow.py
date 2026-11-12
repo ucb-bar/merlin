@@ -1,7 +1,7 @@
 """Round-half-to-even then saturate to an integer range, as cheap emitted code.
 
 WHY THIS MODULE EXISTS. Quantizing an activation is `clamp(roundeven(x * inv_scale) + zp, qmin, qmax)`
--- the expression `merlin.llvmlower.passes_xdsl.lower_quant_ext` emits, and the one TorchAO PT2E
+-- the expression `merlin.compiler.frontend.preprocess.lower_quant_ext` emits, and the one TorchAO PT2E
 specifies. A backend whose target dialect lacks a float-to-int instruction has to *build* the
 conversion, and the obvious construction is expensive: reconstruct the IEEE fields, shift by a clamped
 amount, and separately blend two magic-constant cases for the rounding. MEASURED on a whole-model

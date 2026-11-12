@@ -1,8 +1,8 @@
 """A semantics for the ``linalg`` SOURCE module, given by the same lowering-to-``smt`` idea.
 
-This is the source half of translation validation. :mod:`merlin.verify.smt_semantics` encodes the
+This is the source half of translation validation. :mod:`merlin.verification.smt_semantics` encodes the
 ``interface`` program a pass *produced*; this module encodes the ``linalg`` program that pass
-*consumed*. With both, :func:`merlin.verify.refine.validate_pass` states a per-compilation theorem
+*consumed*. With both, :func:`merlin.verification.refine.validate_pass` states a per-compilation theorem
 about the pass itself — *this source and this output compute the same function on every integer
 input at this shape* — rather than the weaker target-vs-respecification claim that comes from
 re-deriving what the pass "should have done" from the function signature.
@@ -308,5 +308,5 @@ for _compat_definition in (
     _generic_matmul,
     encode_linalg,
 ):
-    _compat_definition.__module__ = "merlin.verify.linalg_semantics"
+    _compat_definition.__module__ = "merlin.verification.linalg_semantics"
 del _compat_definition

@@ -91,7 +91,7 @@ def _edit_pipeline(passes, *, lanes=2, broadcast=False, multiplication=False, tw
 
 
 def ensure_registered():
-    from .shared_feature_registry import ImprFeature, known, register
+    from merlin.compiler.selection.shared import ImprFeature, known, register
 
     if BORROWED_FEATURE not in known():
         register(

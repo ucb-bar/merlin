@@ -487,7 +487,7 @@ def select(recipes: Sequence[QuantRecipe]) -> QuantRecipe | None:
 
 
 def _main(argv: Sequence[str] | None = None) -> int:
-    """``python -m merlin.targetgen.quant_recipe {activation-contractions|dynamic-contractions|static-planes|
+    """``python -m merlin.compiler.quantization.capabilities {activation-contractions|dynamic-contractions|static-planes|
     shared-grid-sums|native-outputs|site-agreement|activation-observer|gptq-weights} IN OUT``."""
     from .cli import main
 

@@ -131,7 +131,7 @@ class PortfolioProbes:
         optimization_baseline: bool = False,
     ):
         from merlin.perf.analysis_worker import IsolatedAnalysisWorker, _read_output, run_sandboxed_entrypoint
-        from merlin.targetgen import oot_runner
+        from merlin.targetgen import package_runtime as oot_runner
 
         started = time.monotonic()
         with self.analysis.session.action(candidate) as (_row, owns_action):

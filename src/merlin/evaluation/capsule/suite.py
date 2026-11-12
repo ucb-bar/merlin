@@ -19,7 +19,7 @@ from merlin.evaluation.capsule.model_suite import (
 from merlin.evaluation.capsule.operation import run_capsule
 from merlin.targetgen import tier_policy as _tier_policy
 from merlin.targetgen.capsule_common import NOT_MEASURED_STATUSES
-from merlin.targetgen.oot_runner import build_package, integrity_scan, load_package
+from merlin.targetgen.package_runtime import build_package, integrity_scan, load_package
 
 _CALIBRATION_CAP = 3
 

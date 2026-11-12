@@ -364,8 +364,9 @@ def _plain_word_relation(args: argparse.Namespace) -> int:
 
 def _semantic_search(args: argparse.Namespace) -> int:
     """Inspect real linalg-on-tensors MLIR with a selected instruction model."""
+    from merlin.target.spec.instructions import validate_normalized_instruction_model
+
     from .contract.linalg_iface import parse_linalg_mlir
-    from .instruction_semantics import validate_normalized_instruction_model
     from .semantic_search import SearchLimits, search_linalg_inventory
 
     mlir_raw = Path(args.mlir).read_bytes()

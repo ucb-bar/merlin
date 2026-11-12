@@ -119,5 +119,5 @@ for _compat_definition in (
     normalize_irdl_text,
     normalized_iface_irdl,
 ):
-    _compat_definition.__module__ = "merlin.verify.tools"
+    _compat_definition.__module__ = "merlin.verification.tools"
 del _compat_definition

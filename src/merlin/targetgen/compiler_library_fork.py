@@ -25,7 +25,6 @@ def editable(member):
     # Compiler-side copies never replace independent host checks. Keep grading,
     # provenance, target facts and runtime endpoints on the fixed guest release.
     roots = (
-        "merlin.compile",
         "merlin.compiler",
         "merlin.transforms",
         "merlin.sched",

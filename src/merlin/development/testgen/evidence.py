@@ -748,8 +748,8 @@ def select_evidence(
     if instruction_resource is not None:
         if provider is None or not isinstance(instruction_resource, str) or not instruction_resource.strip():
             raise ValueError("instruction_semantics requires a selected support provider and relative resource")
+        from merlin.compiler.backend.load import contained_resource
         from merlin.target.spec.instructions import normalize_instruction_semantics
-        from merlin.targetgen.providers import contained_resource
 
         selected_instruction_path = contained_resource(provider.base, instruction_resource)
         instruction_semantics_source = observe(selected_instruction_path, "instruction-semantics", required=True)

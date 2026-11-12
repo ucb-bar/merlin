@@ -121,7 +121,7 @@ PUBLIC_MODULES = (
     "merlin.transforms.dense_reduction_layout",
     "merlin.llvmlower.layout_propagation",
     "merlin.compiler.schedule.convolution_input_reuse",
-    "merlin.compiler.schedule.tensor_storage",
+    "merlin.perf.factored_storage",
     "merlin.llvmlower.constant_panel_layout",
     "merlin.compiler.schedule.dense_loaded_sum_composition",
     "merlin.llvmlower.quantized_sum_source",

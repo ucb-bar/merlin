@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Static activation planes: a wide per-tensor activation grid as int8 digit planes -- capture venv.
 
-A recipe's ``static_planes`` block (:func:`merlin.targetgen.quant_recipe.with_static_planes`) gives the
+A recipe's ``static_planes`` block (:func:`merlin.compiler.quantization.capabilities.with_static_planes`) gives the
 activation operand of selected contractions a grid of ``k`` int8 digits with ONE static scale per
 tensor, calibrated by PT2E like any activation edge. With the recipe's int8 activation range
 ``[low, high]`` and ``base = high + 1``, the top digit spans ``[low, high]`` and every lower digit

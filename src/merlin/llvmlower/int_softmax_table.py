@@ -63,7 +63,7 @@ RUNNER_CALL = "if _INT_SOFTMAX_TABLE:\n    _ist_run_and_report(ctx, module)\n"
 
 
 def _feature():
-    from .shared_feature_registry import ImprFeature
+    from merlin.compiler.selection.shared import ImprFeature
 
     return ImprFeature(
         name=FEATURE,
@@ -81,7 +81,7 @@ def _feature():
 
 
 def ensure_registered() -> str:
-    from .shared_feature_registry import known, register
+    from merlin.compiler.selection.shared import known, register
 
     if FEATURE not in known():
         register(_feature())

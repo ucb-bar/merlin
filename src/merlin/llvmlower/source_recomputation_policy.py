@@ -15,8 +15,8 @@ from pathlib import Path
 from weakref import WeakKeyDictionary, ref
 
 from merlin.common.digest import sha256_file
+from merlin.compiler.transforms import recomputation as R
 from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.transforms import recomputation as R
 from merlin.transforms.pipeline_state import PipelineContext
 
 from . import source_recomputation as S

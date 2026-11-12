@@ -38,7 +38,7 @@ def implementation_paths():
                 mlir_query,
             )
         ),
-        *(Path(__file__).with_name(name) for name in ("lower.py", "impr_features.py", "selfcopy.py", "toolchain.py")),
+        *(Path(__file__).with_name(name) for name in ("lower.py", "selfcopy.py", "toolchain.py")),
         Path(__file__).with_name("source_optimization_request.py"),
         Path(__file__).with_name("source_optimization_selection.py"),
         *optimization_sources(),

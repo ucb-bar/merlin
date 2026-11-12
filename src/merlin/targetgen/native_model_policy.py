@@ -14,7 +14,7 @@ from typing import Any
 
 def _policy_bytes(path: Path):
     """Pin the bounded ordinary bytes actually parsed, including ancestor custody."""
-    from merlin.compile.analysis.artifact_reader import identity, open_ordinary
+    from merlin.analysis.artifact_reader import identity, open_ordinary
 
     from .native_model_execution import NativeModelExecutionError
 
@@ -133,9 +133,14 @@ def _frozen_model_policy(capsule_dir: Path, *, target: str, source_bound_groups:
         "expected_instruction_classes": expected,
         **({"instruction_coverage_origin": "capsule_declaration.expected"} if declaration_coverage else {}),
         **({"public_zero_device_demand": True} if public_zero_device_demand else {}),
-        **({"instruction_class_scope": "global reviewed requirements plus independently mandatory "
-                                     "source-bound group work"}
-           if source_bound_groups else {}),
+        **(
+            {
+                "instruction_class_scope": "global reviewed requirements plus independently mandatory "
+                "source-bound group work"
+            }
+            if source_bound_groups
+            else {}
+        ),
     }
 
 

@@ -338,5 +338,5 @@ def qualify_scalar_receipt(
 
 
 # Preserve published exception/record identities through the exact legacy alias.
-UnsupportedScalarIR.__module__ = "merlin.verify.scalar_ir"
-ScalarTransformReceipt.__module__ = "merlin.verify.scalar_ir"
+UnsupportedScalarIR.__module__ = "merlin.verification.scalar_ir"
+ScalarTransformReceipt.__module__ = "merlin.verification.scalar_ir"

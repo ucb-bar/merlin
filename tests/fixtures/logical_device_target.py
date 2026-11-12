@@ -114,8 +114,8 @@ def require_native_tools(*, device=False, host=False):
 
 
 def install(monkeypatch):
-    from merlin.compile import mesh
     from merlin.compiler.selection import mesh as selection_mesh
+    from merlin.runtime import mesh
     from merlin.system import offload
     from merlin.targetgen import readout_facet
     from merlin.targetgen.corpus_spec import CorpusBinding

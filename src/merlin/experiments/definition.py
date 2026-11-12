@@ -246,9 +246,9 @@ for _definition in (
     catalog,
     load_spec,
 ):
-    _definition.__module__ = "merlin.experiments.spec"
+    _definition.__module__ = "merlin.experiments.definition"
 for _member in vars(ExperimentSpec).values():
     _function = _member.fget if isinstance(_member, property) else _member
     if callable(_function) and getattr(_function, "__module__", None) == __name__:
-        _function.__module__ = "merlin.experiments.spec"
+        _function.__module__ = "merlin.experiments.definition"
 del _definition, _member, _function

@@ -39,7 +39,7 @@ def _options(**kwargs: Any) -> views.Options:
 
 def default_destination(opts: views.Options, ctx: views.Context, now: float) -> Path:
     """Where a page goes when ``--out`` is not given: the target's declared dashboard home."""
-    from ..spec import SpecError
+    from merlin.experiments.definition import SpecError
 
     if opts.target is not None:
         return dashboard_dir(opts.target) / ("explorer.html" if opts.explorer or opts.compare else TARGET_PAGE)
@@ -69,7 +69,7 @@ def destination_for(**options: Any) -> Path:
 
 
 def _check_subject(opts: views.Options) -> None:
-    from ..spec import SpecError
+    from merlin.experiments.definition import SpecError
 
     subjects = [opts.run_dir is not None, opts.target is not None, opts.phase0 is not None]
     if opts.compare is not None:
@@ -152,7 +152,7 @@ def isolate(cpus: str | None = None) -> dict[str, Any]:
         for part in cpus.split(","):
             lo, _, hi = part.strip().partition("-")
             if not lo.isdigit() or (hi and not hi.isdigit()):
-                from ..spec import SpecError
+                from merlin.experiments.definition import SpecError
 
                 raise SpecError(f"--cpus takes a list such as 24-31 or 24,26: {cpus!r}")
             chosen.update(range(int(lo), int(hi or lo) + 1))

@@ -207,7 +207,7 @@ def capacity_boundary(compiler_root):
     exec(compile(ast.fix_missing_locations(ast.Module(body=prefix, type_ignores=[])), str(path), "exec"), scope)
     storage = scope["storage"]
     edge, operand_rows, acc_rows = module._geometry()
-    from merlin.compile.scheduling.dense_rhs_residency import plan_dense_rhs_residency
+    from merlin.compiler.schedule.dense_rhs_residency import plan_dense_rhs_residency
 
     kwargs = dict(
         block=edge,
@@ -232,7 +232,7 @@ def capacity_boundary(compiler_root):
                     pin(path),
                     pin(root / "resident.py"),
                     pin(root / "rtl_facts/facts.json"),
-                    pin(Path(importlib.util.find_spec("merlin.compile.scheduling.dense_rhs_residency").origin)),
+                    pin(Path(importlib.util.find_spec("merlin.compiler.schedule.dense_rhs_residency").origin)),
                 ],
             }
         admitted.append(n)
@@ -292,7 +292,7 @@ def same_conv_case(cb, *, batch, spatial, input_channels, output_channels):
     invented per-channel readout coefficients enter this independent fixture.
     The shared window owner verifies the requested input/output relationship.
     """
-    from merlin.compile.scheduling.window_transfer import Window2D
+    from merlin.compiler.schedule.window_transfer import Window2D
 
     result = copy.deepcopy(cb)
     convs = [c for c in result["commands"] if c["opcode"] == "CONV2D"]
@@ -365,7 +365,7 @@ def resize_component(program, *, query, context):
 
 
 def source_contract(cb):
-    from merlin.compile.logical_abi import commit_output_shape
+    from merlin.compiler.ir.logical_abi import commit_output_shape
 
     tensors = copy.deepcopy(cb["tensors"])
     handles = {c["operands"]["dst"]: c["operands"]["src"] for c in cb["commands"] if c["opcode"] == "RES_PACK"}

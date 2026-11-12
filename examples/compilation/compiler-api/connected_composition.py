@@ -6,7 +6,7 @@ An automatic author and an offline compiler use the same returned products.
 The neutral byte-buffer execute() tests are separate from guest code generation.
 
 For caller-owned, synchronous buffers, prefer the shared
-merlin.compile.connected_host.emit_connected_host_c sequence builder below.
+merlin.compiler.lower.connectedhost.emit_connected_host_c sequence builder below.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ def emit_borrowed_connected_c(program, *, emit_stage, symbol, backing_origins):
     output. The C entrypoint preflights all bindings before calling any stage.
     Its status is execution status, never an independent numerical verdict.
     """
-    from merlin.compile.connected_host import emit_connected_host_c
+    from merlin.compiler.lower.connectedhost import emit_connected_host_c
 
     return emit_connected_host_c(program, emit_stage, symbol=symbol, backing_origins=backing_origins)
 

@@ -24,7 +24,7 @@ source-to-target translation validation. A reviewer should read its ``unsat`` as
 computes the declared workload", not as "the pass preserved its input".
 
 :func:`validate_pass` closes that gap: it encodes the ACTUAL ``linalg`` module the pass consumed
-(:mod:`merlin.verify.linalg_semantics`) and validates ``source -> interface`` over shared leaves. Its
+(:mod:`merlin.verification.linalg_semantics`) and validates ``source -> interface`` over shared leaves. Its
 ``unsat`` is a per-compilation theorem about the pass on that one program at that one shape.
 The source encoder requires a defined contraction accumulator, such as an explicit integer
 ``linalg.fill``; a bare ``tensor.empty`` accumulator abstains because MLIR leaves its contents
@@ -38,7 +38,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from merlin.verify import HAS_XDSL
+from merlin.verification import HAS_XDSL
 
 from .smt_export import Verdict, check_module
 from .smt_semantics import Encoder, UnsupportedSemantics, encode_interface
@@ -125,7 +125,7 @@ def validate_pass(
     :func:`validate_interface_module` makes. There the specification is re-derived from the function
     signature — a model of what the pass *should* have done, written by the same people who wrote the
     pass. Here the specification is the pass's own INPUT IR, walked op by op
-    (:func:`merlin.verify.linalg_semantics.encode_linalg`), so the only artifacts in the query are
+    (:func:`merlin.verification.linalg_semantics.encode_linalg`), so the only artifacts in the query are
     the two the compiler actually handled.
 
     Both sides are encoded over THE SAME symbolic leaves. In-tree ``interface.*`` binds by
@@ -377,7 +377,7 @@ def _record(verdict, **shape) -> None:
                 "counterexample": bool(getattr(verdict, "model_values", None)),
             },
             provenance={
-                "source": "merlin.verify.refine.validate_workload",
+                "source": "merlin.verification.refine.validate_workload",
                 "relation": "every commit equals the declared contraction, all inputs",
             },
         )
@@ -434,7 +434,7 @@ def validate_equivalence(spec_cb: dict, agent_cb: dict, *, acc_width: int = 32, 
     A caller measuring coverage must exclude structurally identical pairs, or it will count ``X == X``
     as verification. Measured on the archived corpus, 2,500 of 4,111 submissions were identical to the
     program they were handed, so that exclusion is 61% of the material rather than a corner case; see
-    :func:`merlin.verify.ablation.classify`.
+    :func:`merlin.verification.ablation.classify`.
 
     Abstains (raises :class:`UnsupportedSemantics`) rather than refuting whenever the two sides cannot
     be compared at all — a differing output count or a shape mismatch means they are not the same
@@ -511,5 +511,5 @@ for _compat_definition in (
     OutputContractViolation,
     validate_equivalence,
 ):
-    _compat_definition.__module__ = "merlin.verify.refine"
+    _compat_definition.__module__ = "merlin.verification.refine"
 del _compat_definition

@@ -471,7 +471,7 @@ def pipeline_graph() -> ArtifactGraph:
             "parent_schedule",
             "parent",
             (),
-            (f"{_PY}/llvmlower/impr_features.py", *strategy_sources),
+            (f"{_PY}/compiler/optimizations/registry.py", *strategy_sources),
             "the certified parent package's schedule, reused literally",
         ),
         Node(

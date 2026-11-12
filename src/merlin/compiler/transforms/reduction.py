@@ -157,4 +157,4 @@ def assemble_reduction_output(plan: ReductionTiling, packed: bytes):
 
 
 # Retain the published record spelling across the implementation move.
-ReductionTiling.__module__ = "merlin.semantic_compiler.reduction_tiling"
+ReductionTiling.__module__ = "merlin.compiler.transforms.reduction"

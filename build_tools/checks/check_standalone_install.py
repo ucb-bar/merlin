@@ -45,7 +45,7 @@ class NoOptionalEngines(importlib.abc.MetaPathFinder):
 
 sys.meta_path.insert(0, NoOptionalEngines())
 import merlin
-from merlin.cli import main
+from merlin.cli.main import main
 assert main(["--help"]) == 0
 assert not any(name == "merlin.experiments" or name.startswith("merlin.experiments.") for name in sys.modules)
 print("standalone-cold-import: OK (root help without optional engines)")
@@ -134,7 +134,7 @@ from merlin.targetgen import elf_lanes
 assert elf_lanes.LINKED_ELF_EVIDENCE not in elf_lanes.EXECUTED_LANE_EVIDENCE
 assert set(elf_lanes.EXECUTED_LANE_EVIDENCE) < set(elf_lanes.negative_lane_evidence())
 import sys
-assert "merlin.targetgen.capsule_runner" not in sys.modules
+assert "merlin.evaluation.capsule.runner" not in sys.modules
 print("standalone-install: OK (shared data + entry points, no target data or repo on path)")
 """
 

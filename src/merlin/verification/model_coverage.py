@@ -144,7 +144,7 @@ for _compat_definition in (
     audit_capture,
     main,
 ):
-    _compat_definition.__module__ = "merlin.verify.model_coverage"
+    _compat_definition.__module__ = "merlin.verification.model_coverage"
 del _compat_definition
 
 if __name__ == "__main__":

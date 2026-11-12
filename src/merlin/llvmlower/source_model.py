@@ -156,7 +156,7 @@ class _SourceModelBuild:
             Path(__file__),
             Path(fresh_tensor_writer.__file__),
             Path(borrowed_buffer_calls.__file__),
-            *(Path(__file__).with_name(name) for name in ("dealloc_lifetime.py", "pipeline.py", "lower.py")),
+            *(Path(__file__).with_name(name) for name in ("dealloc_lifetime.py", "lower.py")),
             *pipeline.implementation_paths(),
             *(f.source_file for f in families),
         )

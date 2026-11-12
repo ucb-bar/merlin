@@ -829,5 +829,5 @@ for _legacy_function in (
     _matmul_via_program_oracle,
     _matmul_via_bespoke_sim,
 ):
-    _legacy_function.__module__ = "merlin.compile.mesh"
+    _legacy_function.__module__ = "merlin.runtime.mesh"
 del _legacy_function

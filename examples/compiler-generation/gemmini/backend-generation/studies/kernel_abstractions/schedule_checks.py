@@ -27,7 +27,7 @@ def _llvm(result, output):
     from xdsl.dialects.builtin import ModuleOp, i64
     from xdsl.printer import Printer
 
-    from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter
+    from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
     from merlin.llvmlower.host_builder import FnBuilder
 
     builder, names = FnBuilder([]), {}
@@ -56,17 +56,17 @@ def _llvm(result, output):
 
 def run_schedule_checks(output, *, repo=None):
     from merlin.common.paths import repo_root
-    from merlin.compile.scheduling.compact_dense import emit_compact_dense
-    from merlin.compile.scheduling.dense_panel_pipeline import dense_retained_operand_hoists
-    from merlin.compile.scheduling.dense_ready_readout import schedule_dense_pipeline
-    from merlin.compile.scheduling.dense_segmented_pipeline import verify_dense_segmented_pipeline
-    from merlin.compile.scheduling.pointwise_convolution import pointwise_dense_view
-    from merlin.compile.scheduling.schedule_ir import (
+    from merlin.compiler.schedule.compact_dense import emit_compact_dense
+    from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_operand_hoists
+    from merlin.compiler.schedule.dense_ready_readout import schedule_dense_pipeline
+    from merlin.compiler.schedule.dense_segmented_pipeline import verify_dense_segmented_pipeline
+    from merlin.compiler.schedule.pointwise_convolution import pointwise_dense_view
+    from merlin.compiler.schedule.schedule_ir import (
         dense_schedule_text,
         make_dense_schedule_plan,
         parse_dense_schedule_plan,
     )
-    from merlin.compile.scheduling.window_transfer import Window2D
+    from merlin.compiler.schedule.window_transfer import Window2D
     from merlin.mining.reconstruction_reference import dense_source, dense_source_region
     from merlin.sched.ir import Const, Loop
 

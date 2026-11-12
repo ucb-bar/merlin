@@ -47,8 +47,8 @@ import numpy as np  # noqa: E402
 
 from merlin.common.artifacts import new_product  # noqa: E402
 from merlin.common.paths import _dotenv, repo_root  # noqa: E402
-from merlin.llvmlower.impr_features import PEROP_BLOCK_NAME  # noqa: E402
-from merlin.mining.registry import load_rvv_package  # noqa: E402
+from merlin.compiler.backend.host import load_host_package as load_rvv_package  # noqa: E402
+from merlin.compiler.optimizations.registry import PEROP_BLOCK_NAME  # noqa: E402
 from merlin.runtime import boards, elf_audit  # noqa: E402
 from merlin.runtime.backends import zephyr_model as zm  # noqa: E402
 from merlin.runtime.boards import CONSOLE_HTIF  # noqa: E402
@@ -967,8 +967,8 @@ def build_matrix(
     """
     if not support_target:
         raise ValueError("matrix routing requires an explicit support_target")
+    from merlin.compiler.optimizations.registry import OPU_MATMUL_NAME
     from merlin.kernels.decode import opu as unit_audit
-    from merlin.llvmlower.impr_features import OPU_MATMUL_NAME
     from merlin.targetgen.plugins import load_declared
 
     provider = load_declared(support_target, "matrix_lowering")
@@ -2022,7 +2022,7 @@ def _model_mnemonics(elf: Path) -> list[str] | None:
     look through."""
     import subprocess
 
-    from merlin.compile.analysis import disassembly as OD
+    from merlin.analysis import disassembly as OD
 
     try:
         out = subprocess.run([OD.nm_bin(), str(elf)], capture_output=True, text=True, timeout=300, check=True).stdout

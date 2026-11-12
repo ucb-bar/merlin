@@ -15,7 +15,7 @@ engine), and ``contract_endpoint_kind`` below collapses that set to the PRIMARY 
 question for "which codegen endpoint does the outermost unit want", and the WRONG question for anything
 describing what the silicon can do: measured on the atlas corpus, 62% of its engine-driving expert
 kernels touch a vector engine its contract does not even declare. Before adding a caller that keys on
-the primary kind, check whether the honest answer is the set — see :mod:`merlin.kernels.engines`, which
+the primary kind, check whether the honest answer is the set — see :mod:`merlin.analysis.engine_facets`, which
 maps each kind to the CCA facet that describes it and derives the coarse
 ``runtime.backends.base.TargetClass`` from the whole set. That module also holds the KINDS -> TargetClass
 correspondence this docstring used to assert in prose (five kinds cannot "align with" three tokens by

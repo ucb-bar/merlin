@@ -23,7 +23,7 @@ for this op, verified by running it.
 
 from __future__ import annotations
 
-from merlin.verify import HAS_XDSL
+from merlin.verification import HAS_XDSL
 
 if HAS_XDSL:
     from xdsl.dialects.builtin import IntegerAttr, i64
@@ -114,5 +114,5 @@ else:  # pragma: no cover - import guard
 # Conditional dialect definitions retain their historical pickle lookup too.
 for _compat_definition in (SolverOp, BVConcatOp, BVCmpOp):
     if _compat_definition is not None:
-        _compat_definition.__module__ = "merlin.verify.smt_ops"
+        _compat_definition.__module__ = "merlin.verification.smt_ops"
 del _compat_definition

@@ -493,7 +493,7 @@ MERLIN_COMPILER_PYTHON="$COMPILER_PYTHON" \
 MERLIN_CLANG="$LLVM_BIN/clang-23" \
 MERLIN_MLIR_TRANSLATE="$LLVM_BIN/mlir-translate" \
 MERLIN_OBJDUMP="$LLVM_BIN/llvm-objdump" \
-python -m merlin.targetgen.capsule_runner \
+python -m merlin.evaluation.capsule.runner \
   --package "$COMPILER_PACKAGE" \
   --capsule "$RUN_ROOT/phase0/capsules/layers/SY_int_mm_m8_k32_n32_1a2863611f" \
   --runs-root "$CAPSULE_RUN_ROOT" --target gemmini --timeout 600

@@ -14,7 +14,7 @@ from pathlib import Path
 
 PUBLIC_MODULES = (
     "merlin.compiler.transforms.host",
-    "merlin.compile.host_optimizations",
+    "merlin.compiler.transforms.host",
     "merlin.runtime.host_arithmetic",
     "merlin.runtime.host_fma_packet",
     "merlin.runtime.host_outward",
@@ -37,8 +37,8 @@ IMPLEMENTATION_MODULES = (
     "merlin.compiler.transforms.host_reduction",
     "merlin.compiler.transforms.host_broadcast",
     "merlin.compiler.transforms.host_integer_math",
-    "merlin.llvmlower.host_tensor_rewrites",
-    "merlin.llvmlower.finite_integer_math",
+    "merlin.compiler.transforms.host",
+    "merlin.compiler.transforms.host_integer_math",
     "merlin.llvmlower.llvm_loop_metadata",
     "merlin.llvmlower.source_fma_batch",
     "merlin.llvmlower.late_quant_rne",
@@ -51,7 +51,6 @@ NAMESPACES = (
     "merlin.compiler",
     "merlin.compiler.ir",
     "merlin.compiler.transforms",
-    "merlin.compile",
     "merlin.llvmlower",
     "merlin.runtime",
 )

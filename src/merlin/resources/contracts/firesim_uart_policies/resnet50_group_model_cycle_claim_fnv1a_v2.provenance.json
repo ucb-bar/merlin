@@ -39,7 +39,7 @@
       "merlin.frontends.linalg_mlir": "fbe67ef3e621121779fc419273dd8c84d7b874afe28cedafe17eb9810157b371",
       "merlin.kernels": "ee4e3239939e5fb1d7e2a8e422234ff771e3497f335febfa26f79b092aa4de1b",
       "merlin.kernels.microkernel": "9205d2281755bda3b3b6fec177601313508b5ebc7b9b72ee491d7a0240ddc2d2",
-      "merlin.kernels.shapes": "7e4ba2ebe5e1715dbd65811e1d4c063345dcd9b07c8f802e761e6f1025ad3ffb",
+      "merlin.compiler.ir.contraction_shapes": "7e4ba2ebe5e1715dbd65811e1d4c063345dcd9b07c8f802e761e6f1025ad3ffb",
       "merlin.llvmlower": "8a2a6206e74b555f98b42b04c78f8ad19b96807442e9a54e98a0baaf72bcbf6d",
       "merlin.llvmlower.weights_pack": "b67fa6905b7ca6c705ff84a5c4956bbafae8ab8ab371b51b0c2ea93bb9d2e9c1",
       "merlin.perf": "7fa64446562ce7ddc2ddc407f70a5ef96c79e091aacc271b0580a1016c25e4fd",

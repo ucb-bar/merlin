@@ -20,7 +20,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from merlin.verify import HAS_XDSL, HAS_Z3
+from merlin.verification import HAS_XDSL, HAS_Z3
 
 from .tools import find_mlir_tool
 
@@ -178,5 +178,5 @@ for _compat_definition in (
     solve,
     check_module,
 ):
-    _compat_definition.__module__ = "merlin.verify.smt_export"
+    _compat_definition.__module__ = "merlin.verification.smt_export"
 del _compat_definition

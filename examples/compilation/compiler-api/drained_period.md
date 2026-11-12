@@ -1,6 +1,6 @@
 # Counted blocks with bounded storage/completion checks
 
-`merlin.compile.scheduling.periodic_effects.check_drained_period` checks every
+`merlin.compiler.schedule.periodic_effects.check_drained_period` checks every
 iteration of one existing `Kernel` loop while retaining that loop for ordinary
 C emission. It does not expand emitted code or invent a target instruction.
 The finite verification cost is proportional to the dynamic call count.

@@ -78,7 +78,7 @@ inputs:
   forbidden_reference_prefixes:
   - measured-exo/
   logical_storage_budget_bytes: 134217728
-  common_substrate: merlin.common_compiler_substrate.v13
+  common_substrate: merlin.common_compiler_substrate.v20
   # Preparation runtime: the campaign environment below with these values replaced.
   environment:
     MERLIN_BUNDLE_CAS: ${OPERATOR_TMP}/prepare-cas

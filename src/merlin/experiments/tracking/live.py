@@ -32,7 +32,7 @@ def with_refresh(page: str, seconds: float) -> str:
 
 def check_output(out: Path, inputs: Iterable[Path | None]) -> None:
     """Refuse an output path inside (or equal to) any directory the view reads."""
-    from ..spec import SpecError
+    from merlin.experiments.definition import SpecError
 
     target = Path(out).expanduser().resolve()
     for source in inputs:

@@ -178,7 +178,7 @@ def resolve(target: str, spec: MicrokernelSpec) -> Any:
 
 
 # The contraction a policy is legal FOR is an IR fact, not a micro-kernel decision; its definition
-# lives with the observer that reads it (merlin.compile.analysis.contraction_shapes).
+# lives with the observer that reads it (merlin.compiler.ir.contraction_shapes).
 
 
 def masked_parallel_dims(block: "tuple[int, ...]", extents: "tuple[int, ...]") -> tuple[int, ...]:

@@ -227,7 +227,7 @@ def reviewed_package_sources(additions, source_root):
     """A reviewed name that is a package, not a leaf, selects that package's own initializer.
 
     A reviewed leaf can import a module of a package the previous library does not contain (SDK V24's
-    ``merlin.transforms.head_batching`` imports ``merlin.compile.analysis.contraction_shapes``). The
+    ``merlin.transforms.head_batching`` imports ``merlin.compiler.ir.contraction_shapes``). The
     library's ``merlin`` tree shadows the SDK's, so that package needs its initializer in the library;
     the operator names the package explicitly, exactly like a leaf. Nothing is added implicitly.
     """

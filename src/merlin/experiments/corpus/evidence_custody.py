@@ -37,7 +37,7 @@ from pathlib import Path
 
 import yaml
 
-from ..spec import SpecError
+from merlin.experiments.definition import SpecError
 
 SEAL_SCHEMA = "merlin.evidence_seal.v1"
 REPAIR_SCHEMA = "merlin.evidence_repair.v1"

@@ -362,7 +362,7 @@ def isa_model_for_target(target: str, *, apply_corrections: bool = True) -> IsaM
     # THIRD SOURCE: a RoCC-style accelerator has neither an mlc encoding fact nor a shipped ISA
     # definition, so both paths above return empty and the target reads as "ships no ISA definition"
     # -- which says we looked in two places, not that the ISA is unknown. Its RTL facts carry the
-    # decode table `merlin.kernels.decode.rocc` already disassembles against. Consulted last so a
+    # decode table `merlin.analysis.rocc_commands` already disassembles against. Consulted last so a
     # target with either richer source is unaffected, and still empty when no table exists.
     try:
         from .rtl import facts as _facts
@@ -374,7 +374,7 @@ def isa_model_for_target(target: str, *, apply_corrections: bool = True) -> IsaM
 
 
 #: RISC-V base instruction-word field positions. A property of the 32-bit RISC-V encoding itself --
-#: field WIDTHS, not accelerator values -- and the same layout ``merlin.kernels.decode.rocc``
+#: field WIDTHS, not accelerator values -- and the same layout ``merlin.analysis.rocc_commands``
 #: disassembles against. Every VALUE (which opcode, which funct means what) comes from the target's
 #: own RTL decode table. Nothing here is per-target.
 _RISCV_FIELD_BITS = {
@@ -397,11 +397,11 @@ def isa_model_from_rocc_facts(target: str, facts: "Mapping[str, Any]") -> IsaMod
     ISA definition in the model venv. A RoCC accelerator has neither, so it reports "ships no ISA
     definition" -- which reads as though the ISA were unknown. It is not. The target's RTL facts carry
     ``interfaces.funct_decode_table`` (``custom_opcode`` + ``legal_funct`` + ``names``), the same
-    table :mod:`merlin.kernels.decode.rocc` already disassembles against. This is that third source.
+    table :mod:`merlin.analysis.rocc_commands` already disassembles against. This is that third source.
 
     The instruction word is RISC-V's, so the field POSITIONS come from the base encoding; the opcode
     and every funct value come from this target's decoder. Verified by round-tripping all 26 gemmini
-    mnemonics through ``merlin.kernels.decode.rocc.fields_of``: 26/26 decode back to the same name.
+    mnemonics through ``merlin.analysis.rocc_commands.fields_of``: 26/26 decode back to the same name.
 
     ``xd``/``xs1``/``xs2`` are carried as operand fields and are never identity bits. In RoCC they say
     whether THIS instruction writes rd and reads rs1/rs2, so they vary between instructions of the

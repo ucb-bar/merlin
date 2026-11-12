@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from merlin.verify import HAS_XDSL, HAS_Z3
+from merlin.verification import HAS_XDSL, HAS_Z3
 
 _TRANSLATOR = os.environ.get("MERLIN_VERIFY_TRANSLATOR")
 pytestmark = pytest.mark.skipif(
@@ -93,7 +93,7 @@ def _source_pair():
 
 def _backend_pair():
     from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
-    from merlin.verify.evaluate import _finish_lowering, _lower_to_interface
+    from merlin.verification.evaluate import _finish_lowering, _lower_to_interface
 
     (interface, contract) = _lower_to_interface(2, 2, 2, 2, target=DEFAULT_EXAMPLE_TARGET)
     return (interface, _finish_lowering(interface, contract))

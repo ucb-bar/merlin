@@ -648,8 +648,8 @@ def _support_package_dirs() -> list[Path]:
     propagates: an unknown support mask must not become an empty mask. Candidate
     compiler and host-schedule packages are not support providers.
     """
+    from merlin.compiler.backend.load import ProviderRole
     from merlin.targetgen import target_registry
-    from merlin.targetgen.providers import ProviderRole
 
     roots: set[Path] = set()
     references = target_registry.reference_targets()

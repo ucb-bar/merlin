@@ -222,7 +222,7 @@ def component_vocabulary(ws) -> set | None:
         return None
     names = {str(k) for k in m["commands"]}
     try:
-        from merlin.targetgen.oot_runner import _ENTRYPOINT_ALIASES as _AL
+        from merlin.targetgen.package_runtime import _ENTRYPOINT_ALIASES as _AL
     except Exception:  # noqa: BLE001 -- merlin not importable from the harness: names as declared
         _AL = {}
     return names | {_AL[n] for n in names if n in _AL}

@@ -401,4 +401,4 @@ def ordered_contraction(operation):
 
 
 # Published record spelling remains readable through the exact legacy alias.
-RowNormalizationGroup.__module__ = "merlin.transforms.row_normalization"
+RowNormalizationGroup.__module__ = "merlin.compiler.transforms.row_normalization"

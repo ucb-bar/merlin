@@ -180,7 +180,7 @@ def audit_group(
     payload = (activity.get("load_payload_bytes") or 0) + (activity.get("store_payload_bytes") or 0)
     preparation = None
     if input_preparation is not None and site.placement != HOST:
-        from merlin.verify.conv_input_preparation import prove_input_preparation
+        from merlin.verification.conv_input_preparation import prove_input_preparation
 
         preparation = prove_input_preparation(function, activity, input_preparation, target=target)
         row["input_preparation"] = preparation
@@ -199,7 +199,7 @@ def audit_group(
                 row.update(verdict=UNKNOWN, why="input preparation counts exceed original raw accounting")
                 return row
     if payload > 0 and site.placement != HOST and target is not None:
-        from merlin.verify.host_command_parameters import prove_command_parameters
+        from merlin.verification.host_command_parameters import prove_command_parameters
 
         parameters = prove_command_parameters(function, activity, target=target)
         row["command_parameters"] = parameters
@@ -216,7 +216,7 @@ def audit_group(
         or value_arithmetic > site.elements * budget.value_arithmetic_per_element
         or payload > site.elements * max(site.element_bytes, 1) * budget.payload_bytes_per_element_byte
     ):
-        from merlin.verify.command_orchestration import prove_command_orchestration
+        from merlin.verification.command_orchestration import prove_command_orchestration
 
         orchestration = prove_command_orchestration(
             function, activity, target=target, parameter_loads=budget.command_parameter_loads
@@ -408,5 +408,5 @@ for _compat_definition in (
     HostComputeVeto,
     require_clean,
 ):
-    _compat_definition.__module__ = "merlin.verify.host_compute_audit"
+    _compat_definition.__module__ = "merlin.verification.host_compute_audit"
 del _compat_definition

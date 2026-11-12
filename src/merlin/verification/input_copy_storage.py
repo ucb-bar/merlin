@@ -222,5 +222,5 @@ for _compat_definition in (
     scratch_limit,
     byte_gep_stride,
 ):
-    _compat_definition.__module__ = "merlin.verify.input_copy_storage"
+    _compat_definition.__module__ = "merlin.verification.input_copy_storage"
 del _compat_definition

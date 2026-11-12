@@ -47,10 +47,8 @@ def audit(wheels: list[Path]) -> list[str]:
                 if distribution != "merlin" and name in {
                     "merlin/__init__.py",
                     "merlin/mining/__init__.py",
-                    "merlin/baselines/__init__.py",
                     "merlin/targetgen/__init__.py",
                     "merlin/targetgen/rtl/__init__.py",
-                    "merlin/verify/__init__.py",
                     "merlin/perf/__init__.py",
                     "merlin/kernels/__init__.py",
                 }:

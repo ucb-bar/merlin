@@ -138,7 +138,6 @@ def implementation_paths() -> tuple[Path, ...]:
         dict.fromkeys(
             (
                 Path(__file__).resolve(),
-                Path(__file__).resolve().parents[2] / "compile" / "scheduling" / "multioutput_fusion.py",
                 Path(multioutput_fusion_check.__file__).resolve(),
                 Path(compact_dense_group.__file__).resolve(),
                 Path(dense_float_ir.__file__).resolve(),
@@ -254,7 +253,7 @@ class MultiOutputCompilation:
 # Retain published record spellings for old pickles and retained consumers.
 # Source inspection and live implementation pins identify this canonical owner.
 for _record_type in (MultiOutputSource, MultiOutputCompilation):
-    _record_type.__module__ = "merlin.compile.scheduling.multioutput_fusion"
+    _record_type.__module__ = "merlin.compiler.transforms.multioutput"
 
 
 def compile_source_multioutput(

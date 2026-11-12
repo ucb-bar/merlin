@@ -82,7 +82,7 @@ SOURCE_COMPOSITION_OPTIONS = (
     "op_profile",
 )
 COMPOSITION_TEXT = (
-    "Compositions: the library's composition catalog (`merlin.compile.composition_catalog."
+    "Compositions: the library's composition catalog (`merlin.compiler.passes.composition."
     "composition_capabilities`) covers producer -> consumer chains: a product feeding bias, scale, "
     "activation, requantization or a pool, residual adds, sibling products sharing an input and per-head "
     f"slices. `{COMPOSITION_COMMAND}` lists the routes that apply to one case, each with its catalog rows, "

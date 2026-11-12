@@ -244,5 +244,5 @@ for _compat_definition in (
     _post_tested,
     copy_regions,
 ):
-    _compat_definition.__module__ = "merlin.verify.input_copy_loops"
+    _compat_definition.__module__ = "merlin.verification.input_copy_loops"
 del _compat_definition

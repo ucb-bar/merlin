@@ -1,6 +1,6 @@
 """What does the formal layer buy over the dynamic grade we already run?
 
-This is an ABLATION, not a coverage report. The seeded fault matrix in :mod:`merlin.verify.evaluate`
+This is an ABLATION, not a coverage report. The seeded fault matrix in :mod:`merlin.verification.evaluate`
 already answers "does the checker work". The question here is different and is the one a reviewer
 asks: on artifacts this project has *already produced and already graded*, does proving equivalence
 find anything the numeric check did not? It needs no agent, no capsule generation and no spend --
@@ -13,7 +13,7 @@ every input is an archived capsule-bench submission sitting under ``out/runs/``.
   differ -- but every value it produces is drawn from ``{0, 1, 2, 3}``: four of the 256 i8 values, all
   non-negative. Sign handling, i8 saturation, accumulator overflow and negative-operand paths are
   therefore not exercised, by construction rather than by oversight.
-* The FORMAL layer (:func:`merlin.verify.refine.validate_equivalence`) proves the submitted buffer
+* The FORMAL layer (:func:`merlin.verification.refine.validate_equivalence`) proves the submitted buffer
   denotes the same function as the interface program it was handed, for *every* input at that shape.
 
 The hypothesis is that the second finds defects in the gap left by the first. It is falsifiable: if
@@ -40,7 +40,7 @@ report breaks abstentions out by reason so the coverage limit is a number rather
 
 Run it::
 
-    .venv/bin/python -m merlin.verify.ablation --timeout-ms 15000 --workers 6 --write
+    .venv/bin/python -m merlin.verification.ablation --timeout-ms 15000 --workers 6 --write
 """
 
 from __future__ import annotations
@@ -268,8 +268,8 @@ def _alarm(seconds: int):
 
 def check_unit(unit_str: str, timeout_ms: int, wall_seconds: int = 90) -> dict[str, Any]:
     """Verdict for one unit. Never raises: a crash here must not take the population down."""
-    from merlin.verify.refine import OutputContractViolation, validate_equivalence
-    from merlin.verify.smt_semantics import UnsupportedSemantics
+    from merlin.verification.refine import OutputContractViolation, validate_equivalence
+    from merlin.verification.smt_semantics import UnsupportedSemantics
 
     unit = Path(unit_str)
     t0 = time.time()
@@ -396,7 +396,7 @@ def write_pin(path: Path, pool: list[str]) -> None:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        "# merlin.verify.ablation population pin\n"
+        "# merlin.verification.ablation population pin\n"
         f"# {len(pool)} units enumerated {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n"
         + "\n".join(pool)
         + "\n",
@@ -637,7 +637,7 @@ def main(argv: list[str] | None = None) -> int:
             target="all",
             sources=[
                 f"{rec['population_total']} archived capsule-bench submissions under out/runs",
-                "formal: merlin.verify.refine.validate_equivalence",
+                "formal: merlin.verification.refine.validate_equivalence",
                 "dynamic: capsule_result.json numeric tier",
             ],
             notes=(
@@ -673,7 +673,7 @@ for _compat_definition in (
     render,
     main,
 ):
-    _compat_definition.__module__ = "merlin.verify.ablation"
+    _compat_definition.__module__ = "merlin.verification.ablation"
 del _compat_definition
 
 if __name__ == "__main__":

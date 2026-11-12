@@ -23,7 +23,7 @@ def _edit_pipeline(passes: list[str]) -> list[str]:
 
 
 def ensure_registered() -> str:
-    from .shared_feature_registry import ImprFeature, known, register
+    from merlin.compiler.selection.shared import ImprFeature, known, register
 
     if FEATURE not in known():
         register(

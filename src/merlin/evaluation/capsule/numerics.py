@@ -7,7 +7,7 @@ from merlin.evaluation.capsule.diagnostics import _readback_refusal as _readback
 from merlin.runtime.backends import base as _backends_mod
 from merlin.targetgen import capsule_golden as CG
 from merlin.targetgen.capsule_common import _cat, _flat
-from merlin.targetgen.oot_runner import CertFailure
+from merlin.targetgen.package_runtime import CertFailure
 
 DID_NOT_HALT_PLANE = "program_did_not_halt"
 

@@ -98,22 +98,22 @@ inputs:
   # the earlier withholding release under its
   # pre-merge number (inventory 20, substrate v13); those numbers now name the V20 carried-event roster.
   library_version: 23
-  common_substrate: merlin.common_compiler_substrate.v16
+  common_substrate: merlin.common_compiler_substrate.v20
   # Exact additional generic leaves relative to the pinned previous_library.
   # Listing these explicitly keeps SDK expansion reviewable; no package-wide grant.
   reviewed_modules:
   - merlin.sched.ir.events
-  - merlin.compile.scheduling.scf_carried_events
+  - merlin.compiler.schedule.scf_carried_events
   - merlin.sched.primitives.event_loops
   - merlin.common.stat_memo
   - merlin.sched.primitives.loop_handles
-  - merlin.compile.scheduling.completion_streams
-  - merlin.compile.scheduling.configuration_motion
-  - merlin.compile.scheduling.spatial_max_stripes
-  - merlin.compile.logical_abi
-  - merlin.compile.scheduling.convolution_exploration
-  - merlin.compile.scheduling.dense_panel_epochs
+  - merlin.compiler.schedule.completion_streams
+  - merlin.compiler.schedule.configuration_motion
+  - merlin.compiler.schedule.spatial_max_stripes
+  - merlin.compiler.ir.logical_abi
+  - merlin.compiler.schedule.convolution_exploration
+  - merlin.compiler.schedule.dense_panel_epochs
   - merlin.transforms.evaluated_exploration
   - merlin.transforms.shape_policy
-  - merlin.compile.scheduling.pointwise_convolution
-  - merlin.compile.scheduling.batched_dense
+  - merlin.compiler.schedule.pointwise_convolution
+  - merlin.compiler.schedule.batched_dense

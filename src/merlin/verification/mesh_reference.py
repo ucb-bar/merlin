@@ -195,7 +195,7 @@ for _legacy_function in (
     _accum_rel_tolerance,
     _reference_on_datapath,
 ):
-    _legacy_function.__module__ = "merlin.compile.mesh_reference"
+    _legacy_function.__module__ = "merlin.verification.mesh_reference"
 del _legacy_function
 
 
@@ -203,5 +203,5 @@ for _legacy_function in (
     _int8_chain_policy,
     _int8_chain_step,
 ):
-    _legacy_function.__module__ = "merlin.compile.mesh_model"
+    _legacy_function.__module__ = "merlin.runtime.mesh_model"
 del _legacy_function

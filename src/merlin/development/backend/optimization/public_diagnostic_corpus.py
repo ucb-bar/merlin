@@ -59,7 +59,7 @@ def _exclusion_implementation():
             "merlin.common.strict_json",
             "merlin.targetgen.contract.linalg_iface",
             "merlin.targetgen.component_program",
-            "merlin.verify.merlin_iface_semantics",
+            "merlin.verification.merlin_iface_semantics",
         )
     )
     functions = []

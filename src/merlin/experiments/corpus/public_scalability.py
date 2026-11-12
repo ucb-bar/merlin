@@ -8,8 +8,7 @@ from pathlib import Path
 
 from merlin.common.digest import is_sha256, sha256_bytes, sha256_file
 from merlin.common.strict_json import loads
-
-from ..spec import SpecError
+from merlin.experiments.definition import SpecError
 
 SCHEMA = "merlin.corpus.public_scalability.v1"
 STAGED = "merlin.corpus.public_scalability.staged.v1"
@@ -24,9 +23,13 @@ def _host_control(cap, directory):
 
     screen = cap.get("software_screen") or {}
     source = cap.get("linalg_mlir") or cap.get("interface_mlir")
-    if (not selected_host_leaf(cap) or (cap.get("semantic") or {}).get("must_accelerate") is not False
-            or not isinstance(source, str) or Path(source).name != source
-            or screen.get("program_sha256") != sha256_file(directory / source)):
+    if (
+        not selected_host_leaf(cap)
+        or (cap.get("semantic") or {}).get("must_accelerate") is not False
+        or not isinstance(source, str)
+        or Path(source).name != source
+        or screen.get("program_sha256") != sha256_file(directory / source)
+    ):
         raise SpecError("selected host control lacks source-bound exclusive Merlin host placement")
 
 
@@ -67,8 +70,11 @@ def read(path: Path, *, target: str) -> dict:
     for row in doc["members"]:
         if (
             type(row) is not dict
-            or set(row) not in ({"member", "sha256", "source_group", "split"},
-                                {"member", "sha256", "source_group", "split", "execution_role"})
+            or set(row)
+            not in (
+                {"member", "sha256", "source_group", "split"},
+                {"member", "sha256", "source_group", "split", "execution_role"},
+            )
             or type(row["member"]) is not str
         ):
             raise SpecError("public scalability member pin is malformed")
@@ -145,8 +151,9 @@ def stage(path: Path, destination: Path, *, te, private_roots=()) -> dict:
     directories = [source / member for member in record["members"]]
     _validate_host_sources([(str(p), p) for p in directories], [(str(p), p) for p in private_roots])
     require_public_capsules(te, directories)
-    require_accelerator_placement([source / member for member, row in record["members"].items()
-                                   if row.get("execution_role") != HOST_CONTROL])
+    require_accelerator_placement(
+        [source / member for member, row in record["members"].items() if row.get("execution_role") != HOST_CONTROL]
+    )
     if destination.exists() or destination.is_symlink():
         raise SpecError("public scalability requires a fresh release directory")
     destination.mkdir(mode=0o700)

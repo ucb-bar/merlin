@@ -9,8 +9,8 @@ from pathlib import Path
 
 import yaml
 
+from merlin.compiler.quantization.capabilities import digest
 from merlin.model_check import models as MD
-from merlin.targetgen.quant_recipe import digest
 
 
 def selected_input_manifest(spec_path: Path, spec: dict, selected: Path | None) -> Path:

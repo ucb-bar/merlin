@@ -338,5 +338,5 @@ for _compat_definition in (
     derive_effect_schedule,
     effect_semantic_identity,
 ):
-    _compat_definition.__module__ = "merlin.verify.lean_state_effects"
+    _compat_definition.__module__ = "merlin.verification.lean_state_effects"
 del _compat_definition

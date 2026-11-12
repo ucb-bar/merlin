@@ -290,5 +290,5 @@ for _compat_definition in (
     _parameter_slice,
     _prove,
 ):
-    _compat_definition.__module__ = "merlin.verify.command_orchestration"
+    _compat_definition.__module__ = "merlin.verification.command_orchestration"
 del _compat_definition

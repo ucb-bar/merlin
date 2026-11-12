@@ -11,7 +11,7 @@ from merlin.targetgen import trace_check as TCK
 from merlin.targetgen.capsule_common import _cat
 from merlin.targetgen.contract import schemas
 from merlin.targetgen.elf_lanes import ACCELERATOR_LANE as _ACCELERATOR_LANE
-from merlin.targetgen.oot_runner import CertFailure
+from merlin.targetgen.package_runtime import CertFailure
 from merlin.targetgen.rocc import decode as RD
 
 

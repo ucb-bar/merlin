@@ -541,7 +541,7 @@ class BoundRoCCBackend:
         return from_contract(self._data()["contract"])
 
     def build_source_paths(self):
-        from merlin.compiler.schedule import tensor_storage
+        from merlin.perf import factored_storage as tensor_storage
         from merlin.perf import storage_encoding
         from merlin.runtime import (
             captured_constants,

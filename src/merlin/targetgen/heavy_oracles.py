@@ -18,7 +18,7 @@ from pathlib import Path
 
 from merlin.common.paths import ext_path, target_env_name
 from merlin.evaluation.capsule.adapters import OracleUnavailable
-from merlin.targetgen import oot_runner as capsule_oot_runner
+from merlin.targetgen import package_runtime as capsule_oot_runner
 
 from .contract import compile as oot_compile
 

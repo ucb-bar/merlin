@@ -109,7 +109,7 @@ AUTHOR_WITHHELD_PREFIXES = (
     # host-model build reaches the bare-metal builder lazily. In the public tree each could only fail or
     # report nothing. The generic analyses the withheld packages held live in merlin.analysis
     # and stay public.
-    "merlin.compile.baremetal_model",
+    "merlin.model",
     # Exact canonical closure of the original saved-model operator workflow.
     # Build/run/reference decomposition does not expose its private authority.
     "merlin.model",
@@ -117,7 +117,7 @@ AUTHOR_WITHHELD_PREFIXES = (
     "merlin.compiler.build.modeloptions",
     "merlin.runtime.model",
     "merlin.verification.model",
-    "merlin.compile.scalar_host_qualification",
+    "merlin.verification.scalar_host",
     "merlin.verification.scalar_host",
     "merlin.llvmlower.host_policy",
     "merlin.sched.expressiveness",
@@ -197,7 +197,7 @@ MODULE_ACCESS = (
     _module("merlin.evaluation", "grader", directory=True),
     # Independent mesh gates/references are not candidate compiler source grants.
     _module("merlin.verification.mesh", "grader"),
-    _module("merlin.verification.mesh_reference", "oracle", aliases=("merlin.compile.mesh_reference",)),
+    _module("merlin.verification.mesh_reference", "oracle", aliases=("merlin.verification.mesh_reference",)),
     _module("merlin.perf.analysis_worker", "grader"),
     _module("merlin.perf.command_recorder", "grader"),
     # The whole-model build reads a model capsule's golden and recomputes its oracle; the rest of the
@@ -380,7 +380,7 @@ MODULE_ACCESS = (
     _module("merlin.targetgen.model_slice_export", "grader"),
     _module("merlin.targetgen.group_capsules", "grader"),
     _module(
-        "merlin.targetgen.capsule_runner",
+        "merlin.evaluation.capsule.runner",
         "grader",
         aliases=(
             "merlin.targetgen.oracle_policy",
@@ -395,7 +395,7 @@ MODULE_ACCESS = (
     _module("merlin.targetgen.capsule_dram", "grader"),
     _module("merlin.targetgen.capsule_source_identity", "grader", aliases=("merlin.evaluation.capsule.source",)),
     _module(
-        "merlin.targetgen.oot_runner",
+        "merlin.targetgen.package_runtime",
         "grader",
         aliases=("merlin.targetgen.package_runtime", "merlin.targetgen.package_certification"),
     ),

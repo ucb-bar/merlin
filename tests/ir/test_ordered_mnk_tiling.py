@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType
-from merlin.semantic_compiler.ordered_mnk_tiling import (
+from merlin.compiler.transforms.contraction_mnk import (
     assemble_row_major_mnk_outputs,
     materialize_row_major_mnk_inputs,
     partition_ordered_matmul_mnk,
 )
+from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType
 
 
 def _source(m: int, n: int, k: int) -> KernelRequest:

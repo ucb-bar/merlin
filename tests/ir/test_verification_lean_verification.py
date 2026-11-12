@@ -23,7 +23,7 @@ def test_missing_tool_and_forged_report_never_prove():
     assert result.status == "unavailable"
     forged = replace(result, status="verified")
     assert not accepted_receipt(forged, BEFORE, AFTER)
-    assert not hasattr(__import__("merlin.verify.lean_contract", fromlist=["issue"]), "issue")
+    assert not hasattr(__import__("merlin.verification.lean_contract", fromlist=["issue"]), "issue")
 
 
 def test_real_lean_checks_actual_scalar_pair_and_rejects_wrong_pair(real_toolchain):
@@ -42,7 +42,7 @@ def test_real_lean_checks_actual_scalar_pair_and_rejects_wrong_pair(real_toolcha
 
 
 def test_real_unapproved_axiom_does_not_create_completion(real_toolchain):
-    from merlin.verify.lean_checker import _check_generated
+    from merlin.verification.lean_checker import _check_generated
 
     unproved = verify_scalar_transform(BEFORE, AFTER, entry="kernel", toolchain=None)
     query = "import Merlin.Foundation\naxiom injected : False\ntheorem merlin_transform : False := injected\n#print axioms merlin_transform\n"

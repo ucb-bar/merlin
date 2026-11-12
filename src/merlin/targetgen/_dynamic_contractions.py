@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Integer contractions with run-time scales on non-reduction axes -- runs INSIDE the capture venv.
 
-A recipe's ``dynamic`` block (:func:`merlin.targetgen.quant_recipe.with_dynamic_contractions`) selects
+A recipe's ``dynamic`` block (:func:`merlin.compiler.quantization.capabilities.with_dynamic_contractions`) selects
 contraction families whose operands are quantized at RUN TIME rather than with a calibrated static scale.
 This module rewrites each selected contraction of an exported graph into its integer form, written in
 ordinary ATen operations the capture already lowers. Three general mechanisms, none named after a layer:
@@ -279,6 +279,7 @@ def _int_matmul(emit: Emitter, lhs: Any, rhs: Any, *, output_transform=None) -> 
     batch = list(a.shape[:-2])
     if list(b.shape[:-2]) != batch:
         raise ValueError("a dynamic contraction needs equal batch extents on both operands")
+
     def product(a, b):
         acc = emit(aten._int_mm.default, a, b)
         return output_transform(acc) if output_transform is not None else acc
@@ -289,10 +290,7 @@ def _int_matmul(emit: Emitter, lhs: Any, rhs: Any, *, output_transform=None) -> 
     m, k, n = int(a.shape[-2]), int(a.shape[-1]), int(b.shape[-1])
     lhs3 = emit(aten.reshape.default, lhs, [count, m, k])
     rhs3 = emit(aten.reshape.default, rhs, [count, k, n])
-    slices = [
-        product(emit(aten.select.int, lhs3, 0, i), emit(aten.select.int, rhs3, 0, i))
-        for i in range(count)
-    ]
+    slices = [product(emit(aten.select.int, lhs3, 0, i), emit(aten.select.int, rhs3, 0, i)) for i in range(count)]
     return emit(aten.reshape.default, emit(aten.stack.default, slices, 0), [*batch, m, n])
 
 

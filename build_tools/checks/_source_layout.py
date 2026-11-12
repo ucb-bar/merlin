@@ -86,8 +86,25 @@ def module_alias(path: Path, root: Path) -> tuple[str, Path] | None:
     return (owner, target) if target != path.resolve() and target.is_relative_to(root.resolve()) else None
 
 
+_SOURCE_MOVES = json.loads((Path(__file__).with_name("source_moves.json")).read_text(encoding="utf-8"))
+
+
+def moved_from(prefix: str) -> list[str]:
+    """Current paths of the files ``source_moves.json`` records as moved out of ``prefix``.
+
+    A gate whose scope named the old location keeps covering the same files after the move.
+    """
+    return sorted(current for current, former in _SOURCE_MOVES.items() if former.startswith(prefix))
+
+
 def policy_path(path: str) -> str:
-    """Stable debt identity for the same merlin module, including shared-namespace distributions."""
+    """Stable debt identity for the same merlin module, including shared-namespace distributions.
+
+    ``source_moves.json`` records files moved by a reorganization (current path -> path before the
+    move), so a move never resets the debt recorded against the file.
+    """
+    if path in _SOURCE_MOVES:
+        return policy_path(_SOURCE_MOVES[path])
     preparation = {
         "src/merlin/evaluation/w8a8_execution.py": "build_tools/scripts/make_w8a8_golden.py",
         "src/merlin/evaluation/w8a8_eager.py": "build_tools/scripts/make_w8a8_independent_golden.py",
@@ -378,6 +395,11 @@ def python_files(root: Path, roots: tuple[str, ...]) -> list[Path]:
     out: list[Path] = []
     seen: set[Path] = set()
     for base in candidates:
+        if base.is_file():  # a scope may name one moved module rather than a package
+            if base.suffix == ".py" and base.resolve() not in seen:
+                seen.add(base.resolve())
+                out.append(base.relative_to(root))
+            continue
         for directory, subdirs, files in os.walk(base):
             subdirs[:] = sorted(
                 name

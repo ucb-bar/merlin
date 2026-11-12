@@ -91,7 +91,6 @@ def implementation_sources():
     return (
         (__name__, Path(__file__)),
         (row_normalization_source.__name__, Path(row_normalization_source.__file__)),
-        ("merlin.transforms.row_normalization", Path(__file__).parents[2] / "transforms/row_normalization.py"),
         (row_normalization_check.__name__, Path(row_normalization_check.__file__)),
         (pipeline.__name__, Path(pipeline.__file__)),
         (pipeline_state.__name__, Path(pipeline_state.__file__)),
@@ -398,4 +397,4 @@ def fuse_row_normalizations(
 
 
 # Preserve issued/public record pickle names across the owner migration.
-RowNormalizationRewrite.__module__ = "merlin.transforms.row_normalization"
+RowNormalizationRewrite.__module__ = "merlin.compiler.transforms.row_normalization"

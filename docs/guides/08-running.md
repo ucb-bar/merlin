@@ -7,7 +7,7 @@ last_verified: 2026-11-09
 related: [07-building, 10-compiler-generation, ../reference/repo_structure]
 code_refs:
   - src/merlin/api.py
-  - src/merlin/service_cli.py
+  - src/merlin/cli/service.py
   - src/merlin/compiler/artifact.py
   - src/merlin/runtime/service.py
   - src/merlin/runtime/linux.py

@@ -717,7 +717,7 @@ def assemble_index_tree(
 
 def _export_role(sel: ChampionSelection):
     """Read declared ownership; never turn support/schedule data into a compiler."""
-    from .providers import ProviderError, ProviderRole, read_provider
+    from merlin.compiler.backend.load import ProviderError, ProviderRole, read_provider
 
     try:
         provider = read_provider(sel.package_dir)
@@ -1007,7 +1007,7 @@ def record_certification(
             "certification": certification,
             "certified_by_run": rungs[0]["run_id"] or None,
             "certified_at": utc_stamp(),
-            "certified_by": "merlin.targetgen.oot_runner.certify",
+            "certified_by": "merlin.targetgen.package_runtime.certify",
             # The tier is the weakest rung's, not the strongest: a package is only as certified as its
             # least-certified covered rung, and quoting the best one is how a headline outruns its
             # evidence.

@@ -152,7 +152,7 @@ def rewrite_prepared_file(prepared: "Any", work: "Any" = None) -> Path:
 
 
 def _feature():
-    from .shared_feature_registry import ImprFeature
+    from merlin.compiler.selection.shared import ImprFeature
 
     return ImprFeature(
         name=FEATURE,
@@ -184,7 +184,7 @@ def _feature():
 def ensure_registered() -> str:
     """Register the feature if it is not already. Idempotent, so importing from several entry points
     is safe. Returns the feature name."""
-    from .shared_feature_registry import known, register
+    from merlin.compiler.selection.shared import known, register
 
     if FEATURE not in known():
         register(_feature())

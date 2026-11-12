@@ -167,7 +167,7 @@ def run_source() -> str:
 
 
 def _feature():
-    from .shared_feature_registry import ImprFeature
+    from merlin.compiler.selection.shared import ImprFeature
 
     return ImprFeature(
         name=FEATURE,
@@ -188,7 +188,7 @@ def _feature():
 
 
 def ensure_registered() -> str:
-    from .shared_feature_registry import known, register
+    from merlin.compiler.selection.shared import known, register
 
     if FEATURE not in known():
         register(_feature())

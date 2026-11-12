@@ -10,8 +10,10 @@ import copy
 from pathlib import Path
 from typing import Any
 
+from merlin.compiler.backend.host import HostPackage as RvvPackage
+from merlin.compiler.backend.host import load_host_package as load_rvv_package
+
 from ..common.yaml import write_yaml
-from .registry import RvvPackage, load_rvv_package
 
 
 def mint_run_id(target: str, version: int, depth: int, timestamp: str) -> str:

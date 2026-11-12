@@ -2,7 +2,7 @@
 
 `out/build/toolchains/openmp/libomp.a` is the LLVM OpenMP runtime cross-built **static** for the SpacemiT K1 board
 (riscv64-unknown-linux-gnu, `rv64gcv`, `lp64d`, glibc). It provides the `__kmpc_*` symbols the
-**multicore lowering** emits (`merlin.llvmlower.pipeline._parallel_pipeline`:
+**multicore lowering** emits (`merlin.compiler.lower.native.pipeline._parallel_pipeline`:
 `convert-linalg-to-parallel-loops` → `convert-scf-to-openmp` → `convert-openmp-to-llvm`).
 Linking it lets the model's parallel loops fan across the board's 8 cores
 (`OMP_NUM_THREADS=8`, set by `merlin.mining.k1.run_on_k1`).

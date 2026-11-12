@@ -7,7 +7,7 @@ package that would rather restate its own program (canonicalize a chain of casts
 whatever transform it can prove preserves the function) has no way to ask for it. This module is that
 way, and nothing more: it runs the package's OWN declared passes, over the package's OWN interpreter,
 through the exact entrypoint mechanism every other package call already uses
-(:func:`merlin.targetgen.oot_runner.run_entrypoint`) -- never by importing or executing package code
+(:func:`merlin.targetgen.package_runtime.run_entrypoint`) -- never by importing or executing package code
 in this process.
 
 **Declaration is data, not code.** A package's ``manifest.yaml`` may carry a top-level

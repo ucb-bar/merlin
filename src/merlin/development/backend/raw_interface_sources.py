@@ -22,7 +22,7 @@ ENTRIES = (
     "merlin.targetgen.oot_starterkit.iface",
 )
 SUPPORT = (
-    "merlin.compile.logical_abi",
+    "merlin.compiler.ir.logical_abi",
     "merlin.xdsl_dialects.fp8",
     "merlin.xdsl_dialects._common",
     "merlin.common.ir_lock",
@@ -33,7 +33,6 @@ PACKAGES = (
     "merlin.targetgen",
     "merlin.targetgen.contract",
     "merlin.targetgen.oot_starterkit",
-    "merlin.compile",
     "merlin.xdsl_dialects",
     "merlin.common",
 )

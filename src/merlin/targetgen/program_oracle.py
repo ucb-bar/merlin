@@ -128,7 +128,8 @@ def _run_emit_helper(
 
 def _program_emitter(target: str) -> tuple[Path, list[str]]:
     """Resolve a subprocess helper without importing target code into the host interpreter."""
-    from .providers import ProviderRole, contained_resource
+    from merlin.compiler.backend.load import ProviderRole, contained_resource
+
     from .target_registry import resolve
 
     try:

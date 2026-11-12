@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Activation contractions with STATIC per-head scales -- runs INSIDE the capture venv.
 
-The ``static_heads`` mode of a recipe's ``dynamic`` block (:func:`merlin.targetgen.quant_recipe.
+The ``static_heads`` mode of a recipe's ``dynamic`` block (:func:`merlin.compiler.quantization.capabilities.
 with_dynamic_contractions`) uses the block's mechanisms with scales fixed at capture time, so each device
 call (one per head) reads ONE scale per operand, the form a readout applies itself:
 
@@ -362,8 +362,9 @@ def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, 
 
             def narrow(acc):
                 scaled = emit(aten.mul.Tensor, emit(aten.to.dtype, acc, torch.float32), 1.0 / qmax)
-                return emit(torch.ops.quantized_decomposed.quantize_per_tensor.default,
-                            scaled, 1.0, 0, low, high, torch.int8)
+                return emit(
+                    torch.ops.quantized_decomposed.quantize_per_tensor.default, scaled, 1.0, 0, low, high, torch.int8
+                )
 
             acc = DC._int_matmul(emit, plane, other, output_transform=narrow if native else None)
             out = acc.meta["val"]
@@ -389,8 +390,11 @@ def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, 
         **row,
         "scales": "static_heads",
         "shift_folded": folded,
-        **({"output_dtype": "int8", "probability_form": "normalized", "output_grid": "value_operand"}
-           if site.get("native_context") else {}),
+        **(
+            {"output_dtype": "int8", "probability_form": "normalized", "output_grid": "value_operand"}
+            if site.get("native_context")
+            else {}
+        ),
         **({"operand_encoding": "bounded_residual"} if residual_digits else {}),
     }
 

@@ -8,9 +8,9 @@ from pathlib import Path
 
 import yaml
 
+from merlin.experiments.definition import SpecError
 from merlin.targetgen import conformance
 
-from ..spec import SpecError
 from .preparation import _members, source_run
 
 

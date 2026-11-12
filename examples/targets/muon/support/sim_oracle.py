@@ -1,7 +1,7 @@
 """Muon cyclotron sim-oracle plugin — the OUT-OF-TREE home of the bespoke SIMT grading oracle.
 
 Declared by the muon target contract as ``plugin.sim_oracle`` and loaded by
-:func:`merlin.targetgen.capsule_runner._ensure_sim_oracles_discovered` (as ``merlin._oot_sim_oracles.muon``)
+:func:`merlin.evaluation.capsule.runner._ensure_sim_oracles_discovered` (as ``merlin._oot_sim_oracles.muon``)
 through the SAME reference/OOT plugin discovery the runtime backends use. Importing this module registers
 the ``cyclotron`` bespoke-sim oracle so a target that declares ``toolchain.sim_via == cyclotron`` (a
 self-hosted SIMT core, e.g. radiance) routes to it — WITHOUT capsule_runner carrying a hardcoded

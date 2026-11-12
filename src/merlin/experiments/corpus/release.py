@@ -16,7 +16,8 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ..spec import SpecError, read_yaml
+from merlin.experiments.definition import SpecError, read_yaml
+
 from .preparation import (
     admission,
     assemble,

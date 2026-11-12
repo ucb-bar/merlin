@@ -10,7 +10,7 @@ written to catch a compiler that accelerates an inadmissible family could never 
 is exactly what a complete instruction stream can establish. For host-issued targets the linked ELF is
 that stream; for self-hosted targets it is the oracle-declared ``.program`` word stream. The ELF scan
 closes the hole the IR-level decoder leaves open —
-:func:`merlin.targetgen.capsule_runner.accelerator_lane_violated` reads emitted
+:func:`merlin.evaluation.capsule.runner.accelerator_lane_violated` reads emitted
 ``llvm.inline_asm`` ops, so an accelerator instruction emitted as a raw ``.word``/``.insn`` datum
 decodes as silence. The declared-program scan instead uses the target's discovered ISA roles, without
 guessing another target's host opcode. Both are STRENGTHENINGS of the gate, not ways around it.
@@ -19,7 +19,7 @@ guessing another target's host opcode. Both are STRENGTHENINGS of the gate, not 
 proof it EXECUTED, so this evidence can never credit a REQUIRED lane — a required lane judged only from
 an ELF stays unmeasured and its capsule stays ``incomplete``. The rung is admissible for the negative
 direction only, which is why it is named separately from
-:data:`merlin.targetgen.capsule_runner.EXECUTED_LANE_EVIDENCE` (whose members mean "something ran")
+:data:`merlin.evaluation.capsule.runner.EXECUTED_LANE_EVIDENCE` (whose members mean "something ran")
 rather than being folded into it.
 
 **Scope of the scan: sections the linker marked executable.** Instructions live in ``SHF_EXECINSTR``
@@ -44,7 +44,7 @@ import struct
 from dataclasses import dataclass, field
 from pathlib import Path
 
-#: The linked executable the operator path emits, by the name :mod:`merlin.targetgen.oot_runner` gives it.
+#: The linked executable the operator path emits, by the name :mod:`merlin.targetgen.package_runtime` gives it.
 PACKAGE_ELF_NAME = "package_kernel.elf"
 
 #: An oracle declares the exact executed non-ELF word stream with this suffix.
@@ -546,7 +546,7 @@ def lane_report_from_elf(capsule: dict, elf_path, *, target: str) -> dict | None
     """A ``lane_report``-shaped verdict for the operator path, judged from the linked ELF.
 
     Returns ``None`` when the capsule declares no lanes -- same contract as
-    :func:`merlin.targetgen.capsule_runner.lane_report`, whose keys and per-lane ``evidence`` mapping
+    :func:`merlin.evaluation.capsule.runner.lane_report`, whose keys and per-lane ``evidence`` mapping
     this mirrors so both ends of the grade read one shape.
 
     Only the accelerator lane can be judged here, and only negatively. Every other declared lane -- and

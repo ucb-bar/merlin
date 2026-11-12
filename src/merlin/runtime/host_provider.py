@@ -273,7 +273,7 @@ def prepare_host_provider(builder, context, *, inspector):
     if builder is None:
         return (), None
     if type(builder) is MethodType:
-        from merlin.llvmlower.shared_pointwise_routing import resolve_pointwise_provider
+        from merlin.llvmlower.shared_source_routing import resolve_pointwise_provider
 
         builder = resolve_pointwise_provider(builder, context)
         if builder is None:

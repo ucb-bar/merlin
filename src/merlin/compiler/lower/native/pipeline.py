@@ -90,7 +90,7 @@ def implementation_paths() -> tuple[Path, ...]:
         Path(__file__),
         *(Path(import_module(name).__file__) for name in owners),
         *optimization_sources(),
-        module_source_path("merlin").parent / "llvmlower/impr_features.py",
+        module_source_path("merlin").parent / "compiler/optimizations/registry.py",
     )
 
 

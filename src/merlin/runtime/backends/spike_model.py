@@ -24,6 +24,8 @@ from merlin.common import proc as _proc
 from merlin.common.digest import sha256_file
 from merlin.common.mlir_query import parse_scope
 from merlin.common.paths import runtime_dir
+from merlin.llvmlower.host_transform_dispatch import HostLLVMTransformError as SpikeModelError
+from merlin.llvmlower.host_transform_dispatch import _transform_host_ir
 
 from ...llvmlower import c_runtime, toolchain
 from ...llvmlower import target_data_layout as target_data_layout
@@ -57,8 +59,6 @@ from ._model_elf_metadata import (
 from ._model_elf_metadata import (
     declared_memory as declared_memory,
 )
-from ._model_host_transform import SpikeModelError as SpikeModelError
-from ._model_host_transform import _transform_host_ir as _transform_host_ir
 from ._model_memory_layout import (
     _CODE_RESERVE_FIXED as _CODE_RESERVE_FIXED,
 )

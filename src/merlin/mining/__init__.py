@@ -17,6 +17,14 @@ from pkgutil import extend_path
 
 __path__ = extend_path(__path__, __name__)
 
-from .registry import RvvPackage, default_run, load_rvv_package
+from merlin.compiler.backend.host import (
+    HostPackage as RvvPackage,
+)
+from merlin.compiler.backend.host import (
+    default_run,
+)
+from merlin.compiler.backend.host import (
+    load_host_package as load_rvv_package,
+)
 
 __all__ = ["RvvPackage", "load_rvv_package", "default_run"]

@@ -28,7 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from merlin.verify import HAS_XDSL
+from merlin.verification import HAS_XDSL
 
 #: Element widths we can encode, by MLIR type spelling.
 _INT_WIDTH = {"i8": 8, "i16": 16, "i32": 32, "i64": 64}
@@ -442,5 +442,5 @@ for _compat_definition in (
     Encoded,
     encode_interface,
 ):
-    _compat_definition.__module__ = "merlin.verify.smt_semantics"
+    _compat_definition.__module__ = "merlin.verification.smt_semantics"
 del _compat_definition

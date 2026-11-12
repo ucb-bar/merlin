@@ -9,7 +9,7 @@ specific requirements must actually hold.
 Use the same API offline or from the selected compiler library:
 
 ```python
-from merlin.compile.scheduling.selected_contracts import (
+from merlin.compiler.schedule.selected_contracts import (
     scheduling_spec_draft, inspect_scheduling_draft, read_scheduling_contracts,
 )
 

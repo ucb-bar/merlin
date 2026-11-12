@@ -41,8 +41,9 @@ def _edit_pipeline(passes: list[str]) -> list[str]:
 
 
 def ensure_registered() -> str:
+    from merlin.compiler.selection.shared import ImprFeature, known, register
+
     from .scalar_contraction import _OUTPUTS_FEATURES
-    from .shared_feature_registry import ImprFeature, known, register
 
     if FEATURE not in known():
         register(

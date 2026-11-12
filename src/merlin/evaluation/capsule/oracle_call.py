@@ -22,8 +22,13 @@ from merlin.evaluation.capsule.records import OracleAttempt
 from merlin.evaluation.capsule.tier import TierResult as TierResult
 from merlin.targetgen import partial_console as _partial_console
 from merlin.targetgen.capsule_common import _cat
-from merlin.targetgen.oot_runner import INFRASTRUCTURE_PLANE, CertFailure, InfraCategory, InfraFailure
-from merlin.targetgen.package_runtime import NotMeasuredFailure
+from merlin.targetgen.package_runtime import (
+    INFRASTRUCTURE_PLANE,
+    CertFailure,
+    InfraCategory,
+    InfraFailure,
+    NotMeasuredFailure,
+)
 from merlin.targetgen.tier_integrity import CERT_NOT_MEASURED
 
 

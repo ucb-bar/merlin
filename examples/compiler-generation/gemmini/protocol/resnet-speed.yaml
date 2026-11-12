@@ -12,7 +12,7 @@ candidate:
   file_sha256: 59d220417544e018901ca39399ba1a3d368df63e9eaffc26c8761b7a5bc1bc29
   recipe_sha256: b36a5b401eb934bfe17529a6c9519ee877f199891ca8bcafa6a4bb6758785817
   extension: shared_grid_operand_sum_v1
-  regenerate: python -m merlin.targetgen.quant_recipe shared-grid-sums examples/compiler-generation/gemmini/protocol/recipes/resnet50.json examples/compiler-generation/gemmini/protocol/recipes/resnet50-shared-grid-sums.json
+  regenerate: python -m merlin.compiler.quantization.capabilities shared-grid-sums examples/compiler-generation/gemmini/protocol/recipes/resnet50.json examples/compiler-generation/gemmini/protocol/recipes/resnet50-shared-grid-sums.json
 arithmetic:
   inputs_and_output: One shared symmetric signed INT8 grid per closed residual site, calibrated jointly.
   reference: clamp_INT8_of_exact_integer_sum_with_optional_ReLU_then_restore_shared_real_scale

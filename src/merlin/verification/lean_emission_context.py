@@ -703,5 +703,5 @@ for _compat_definition in (
     observe_emission,
     observe_object,
 ):
-    _compat_definition.__module__ = "merlin.verify.lean_emission_context"
+    _compat_definition.__module__ = "merlin.verification.lean_emission_context"
 del _compat_definition

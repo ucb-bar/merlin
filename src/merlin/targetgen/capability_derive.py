@@ -271,7 +271,7 @@ def _from_isa_roles(
 class EngineEvidence:
     """One rung's verdict that a target has a given engine, with the literal observation."""
 
-    engine: str  # a CCA facet name (see merlin.kernels.engines.ENGINE_FACET)
+    engine: str  # a CCA facet name (see merlin.analysis.engine_facets.ENGINE_FACET)
     source: str  # which rung: isa_role | rtl_facts
     evidence: str  # the literal thing observed
 

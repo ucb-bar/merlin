@@ -117,5 +117,5 @@ for _compat_definition in (
     IssuedEmission,
     EmissionProducts,
 ):
-    _compat_definition.__module__ = "merlin.verify.lean_emission_products"
+    _compat_definition.__module__ = "merlin.verification.lean_emission_products"
 del _compat_definition

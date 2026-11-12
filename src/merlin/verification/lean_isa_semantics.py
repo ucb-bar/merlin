@@ -252,5 +252,5 @@ for _compat_definition in (
     validate_semantic_inputs,
     reconstruct_isa_semantics,
 ):
-    _compat_definition.__module__ = "merlin.verify.lean_isa_semantics"
+    _compat_definition.__module__ = "merlin.verification.lean_isa_semantics"
 del _compat_definition

@@ -169,8 +169,8 @@ def _recipe_derivation(
     ]
     selected_raw = selected_file.read_bytes() if not candidates and variant is None else None
     if selected_raw is not None and "numerical_selection" in json.loads(selected_raw):
+        from merlin.compiler.quantization import methodology as quant_methodology
         from merlin.development.backend.feedback.private_numerical_recipe import recompute
-        from merlin.targetgen import quant_methodology
 
         quantization = json.loads(artifacts["software/quantization-contract.json"])
         method = (evidence.software_spec.get("quantization") or {}).get("methodology")

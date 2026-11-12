@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from ..spec import SpecError
+from merlin.experiments.definition import SpecError
 
 
 def bind_generated_corpus(te, generated: Path, *, generated_only: bool):

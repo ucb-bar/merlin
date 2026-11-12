@@ -66,9 +66,9 @@ EVIDENCE_ROOTS: tuple[str, ...] = (
     # Which hardware a result is about, and where a product was written.
     "src/merlin/common/provenance.py",
     "src/merlin/common/artifacts.py",
-    # Verification: preserve this declared scope while following exact compatibility
-    # aliases to their actual implementations. Unrelated new owners are not added implicitly.
-    "src/merlin/verify",
+    # Verification: the implementations the retired ``merlin.verify`` aliases resolved to
+    # (recorded in ``source_moves.json``). Unrelated new owners are not added implicitly.
+    *_source_layout.moved_from("src/merlin/verify/"),
     # Phase 1: the controller modules that PRODUCE a verdict -- grading, certification, promotion,
     # freeze, the audit and the conformance check -- not the providers, brokers or task staging that
     # merely carry one.
@@ -378,11 +378,6 @@ def scan() -> list[Finding]:
 def _debt_key(key: str) -> str:
     """Compare the same finding across an exact implementation relocation."""
     path, separator, finding = key.partition("::")
-    if path.startswith("src/merlin/verification/"):
-        former = "src/merlin/verify/" + path.removeprefix("src/merlin/verification/")
-        alias = _source_layout.module_alias(ROOT / former, ROOT)
-        if alias is not None and alias[1] == (ROOT / path).resolve():
-            path = former
     return _source_layout.policy_path(path) + separator + finding
 
 

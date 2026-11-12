@@ -104,7 +104,7 @@ def rewrite_prepared_file(prepared: "str | Path", work: "str | Path | None" = No
 
 
 def ensure_registered() -> str:
-    from .shared_feature_registry import ImprFeature, known, register
+    from merlin.compiler.selection.shared import ImprFeature, known, register
 
     if FEATURE not in known():
         register(

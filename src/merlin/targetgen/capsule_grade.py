@@ -35,6 +35,8 @@ from merlin.perf import gate_phase as _GATE_PHASE
 from merlin.perf import lowering_coverage as _LOWERING_COVERAGE
 from merlin.targetgen import capsule_common as capsule_capsule_common
 from merlin.targetgen import elf_lanes as capsule_elf_lanes
+from merlin.targetgen.package_runtime import INFRASTRUCTURE_PLANE as OOT_INFRASTRUCTURE_PLANE
+from merlin.targetgen.package_runtime import CertFailure, build_package, integrity_scan, load_package
 
 from . import coverage_report as CV
 from . import tier_integrity as _TIER_INTEGRITY
@@ -45,8 +47,6 @@ from .capsule_perf_ledger import _activity_source as _activity_source
 from .capsule_perf_ledger import emit_perf_ledger as _emit_perf_ledger
 from .corpora import source_experiment_env
 from .elf_lanes import native_host_execution
-from .oot_runner import INFRASTRUCTURE_PLANE as OOT_INFRASTRUCTURE_PLANE
-from .oot_runner import CertFailure, build_package, integrity_scan, load_package
 from .trace_check import requirements_complete as _trace_requirements_complete
 
 

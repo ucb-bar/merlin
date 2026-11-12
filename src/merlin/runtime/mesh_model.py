@@ -276,5 +276,5 @@ for _legacy_function in (
     run_int8_chain_on_mesh,
     _int8_chain_reference,
 ):
-    _legacy_function.__module__ = "merlin.compile.mesh_model"
+    _legacy_function.__module__ = "merlin.runtime.mesh_model"
 del _legacy_function

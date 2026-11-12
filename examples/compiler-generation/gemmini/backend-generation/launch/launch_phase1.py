@@ -85,10 +85,10 @@ def _source_preflight_inputs(launch):
     """Reopen the gate's selected source inputs and compiler-owned index premise."""
     import yaml
 
-    from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
     from merlin.development.backend.feedback import private_control_support as control
     from merlin.development.backend.feedback import private_full_model_execution as execution
     from merlin.development.backend.feedback import private_full_models as models
+    from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
 
     spec = launch.path(launch.document["inputs"]["private_full_model_spec"])
     descriptor = launch.path(launch.document["inputs"]["descriptor"])
@@ -163,10 +163,10 @@ def source_preparation(launch, prep: Path) -> dict:
     """Reuse only this preparation's exact source-only check, never candidate credit."""
     import hashlib
 
-    from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
     from merlin.development.backend.feedback import private_full_models as models
     from merlin.development.backend.feedback import private_source_freeze as freeze
     from merlin.development.backend.feedback import private_source_preflight_parallel as preflight
+    from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
 
     identity, native = _source_preflight_inputs(launch)
     key = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

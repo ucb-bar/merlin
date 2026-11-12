@@ -6,8 +6,7 @@ import yaml
 
 from merlin.common.digest import is_sha256, sha256_bytes, sha256_file
 from merlin.common.strict_json import loads
-
-from ..spec import SpecError
+from merlin.experiments.definition import SpecError
 
 SCHEMA = "merlin.corpus.public_supplement.v1"
 

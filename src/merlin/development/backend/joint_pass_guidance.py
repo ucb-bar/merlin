@@ -335,7 +335,7 @@ and applied/no-match/unsupported/unknown; do not call an unimplemented route
 hardware unsupported. Compare complete-region costs, including boundaries, only
 when scope and numerical contracts match; unknown model cost is not a gain.
 
-If `merlin.compile.fusion_workflow` is present in the selected public API inventory,
+If `merlin.compiler.planning.explore` is present in the selected public API inventory,
 `discover` records these source opportunities and native fanout-reader refusals.
 `realize_adjacent` returns the checked Kernel and remaining temporary objects;
 feed both to ordinary allocation/emission. `realize_shared_input` returns actual

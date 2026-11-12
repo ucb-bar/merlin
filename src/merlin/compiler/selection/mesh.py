@@ -107,5 +107,5 @@ for _legacy_function in (
     _mesh_tile_binding,
     tile_builder_op,
 ):
-    _legacy_function.__module__ = "merlin.compile.mesh"
+    _legacy_function.__module__ = "merlin.runtime.mesh"
 del _legacy_function

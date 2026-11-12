@@ -253,4 +253,4 @@ def plan_streamed_k_reduction(
 
 
 # Preserve published exception and record pickle spellings.
-StreamedMNKTiling.__module__ = "merlin.semantic_compiler.streamed_mnk_tiling"
+StreamedMNKTiling.__module__ = "merlin.compiler.transforms.panels"

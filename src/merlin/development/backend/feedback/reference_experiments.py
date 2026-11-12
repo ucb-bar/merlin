@@ -920,7 +920,7 @@ def _prior_guidance(packet, context, current_compiler_sha256):
         library_guidance=dict(
             inventory="OPTIMIZATION_SUGGESTIONS.json",
             skill=".agents/skills/pass-library/SKILL.md",
-            scheduling_api="merlin.compile.scheduling.schedule_ir",
+            scheduling_api="merlin.compiler.schedule.schedule_ir",
             reference_analysis="python agent_selfcheck.py --reference-analysis inventory; "
             "use lift with reference-kernels/FILE or candidate with "
             "submission/build/CASE/kernel.dis (build with inspect-kernel --out first)",

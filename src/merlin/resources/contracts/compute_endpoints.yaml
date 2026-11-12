@@ -1,7 +1,7 @@
 # Compute endpoints — how software drives each target's compute datapath, and what each instruction DOES.
 #
 # Generalizes matrix_units.yaml (which described exactly one endpoint) to every endpoint the tree can
-# mine. One block per endpoint; the role vocabulary is merlin.kernels.roles, which is CLOSED.
+# mine. One block per endpoint; the role vocabulary is merlin.analysis.instruction_roles, which is CLOSED.
 #
 # What this file is NOT: an encoding table. No opcode, funct, register field or address appears here.
 # Encodings are DERIVED from each target's own sources at run time — the RTL funct_decode_table, the

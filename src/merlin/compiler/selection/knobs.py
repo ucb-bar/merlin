@@ -13,7 +13,7 @@ declare the entry and its allowed values in ``TUNING_KNOBS.json`` at the tree ro
 
 The compiler reads the current value where it makes the choice::
 
-    from merlin.compile.tuning_knobs import knob
+    from merlin.compiler.selection.knobs import knob
     if knob("readout_overlap", default="off", values=("off", "on")) == "on":
         ...apply the pass...
 
@@ -30,7 +30,7 @@ declaration, raises :class:`KnobError` rather than silently compiling something 
 Which tree. :func:`knob` reads the tree given as ``root``, else the one set with :func:`use_root`,
 else the nearest directory holding ``TUNING_KNOBS.json`` at or above the running program
 (``sys.argv[0]``), else at or above this module's own copy. Without a declaration it returns
-``default``. ``python -m merlin.compile.tuning_knobs check TREE`` validates a tree and lists every
+``default``. ``python -m merlin.compiler.selection.knobs check TREE`` validates a tree and lists every
 single-knob change; ``set TREE name=value`` writes declared values (for example into a copied tree).
 """
 
@@ -401,7 +401,9 @@ def _parse_assignment(text: str):
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m merlin.compile.tuning_knobs", description=__doc__.split("\n")[0])
+    parser = argparse.ArgumentParser(
+        prog="python -m merlin.compiler.selection.knobs", description=__doc__.split("\n")[0]
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     checking = commands.add_parser("check", help="validate a tree's declaration and list single-knob changes")
     checking.add_argument("tree")

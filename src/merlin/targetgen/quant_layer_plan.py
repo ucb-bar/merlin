@@ -1,6 +1,6 @@
 """Which of a model's layers the target's own numeric form covers, and why each other one does not.
 
-A recipe (:mod:`merlin.targetgen.quant_recipe`) says what numeric form a target's datapath
+A recipe (:mod:`merlin.compiler.quantization.capabilities`) says what numeric form a target's datapath
 implements. It says it once, for the target. A model is not one layer, and the answer is not the
 same for all of them: a recipe that holds one scale per output channel still cannot place a layer
 whose weight has no output-channel axis, and a block scale of 32 cannot tile a layer with 24 inputs.
@@ -49,7 +49,7 @@ SCHEMA = "quant_layer_plan_v1"
 DEVICE = "device"
 HOST = "host"
 
-#: The recipe families, spelled as :mod:`merlin.targetgen.quant_recipe` spells them. Repeated rather
+#: The recipe families, spelled as :mod:`merlin.compiler.quantization.capabilities` spells them. Repeated rather
 #: than imported: this module is read from the capture venv, which has no merlin on its path.
 CONTRACTION = "contraction"
 OPERAND_SUM = "operand_sum"

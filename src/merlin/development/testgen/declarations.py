@@ -6,8 +6,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from merlin.experiments.definition import engine_definitions
-from merlin.experiments.spec import ExperimentSpec, SpecError, catalog, load_spec
+from merlin.experiments.definition import ExperimentSpec, SpecError, catalog, engine_definitions, load_spec
 
 
 @dataclass(frozen=True)

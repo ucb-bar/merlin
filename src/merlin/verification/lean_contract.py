@@ -236,5 +236,5 @@ for _compat_definition in (
     LeanToolchain,
     LeanTransformReceipt,
 ):
-    _compat_definition.__module__ = "merlin.verify.lean_contract"
+    _compat_definition.__module__ = "merlin.verification.lean_contract"
 del _compat_definition

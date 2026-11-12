@@ -484,5 +484,5 @@ for _compat_definition in (
     discard_emission_chain,
     reopen_emission_custody,
 ):
-    _compat_definition.__module__ = "merlin.verify.lean_emission_chain"
+    _compat_definition.__module__ = "merlin.verification.lean_emission_chain"
 del _compat_definition

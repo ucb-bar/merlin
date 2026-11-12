@@ -1,7 +1,7 @@
 """Derived Phase 0 stage: the target's instruction-ROLE taxonomy and the experiment's declared policy.
 
 A rule such as "no hardware loop-descriptor instructions" is a statement in the closed role vocabulary
-(:mod:`merlin.kernels.roles`), never a list of instruction names: which instructions carry a role is a
+(:mod:`merlin.analysis.instruction_roles`), never a list of instruction names: which instructions carry a role is a
 fact about the target, derived from its own RTL-derived encoding table through its declared compute
 endpoints (:func:`merlin.perf.task_instruction_evidence.target_instruction_facts`). Phase 0 derives
 that taxonomy once, resolves the experiment's ``prohibited_instruction_roles`` against it, and records

@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 
 from merlin.common.digest import sha256_file
-from merlin.experiments.spec import SpecError
+from merlin.experiments.definition import SpecError
 from merlin.runtime.kernel_call_timing import from_contract
 
 

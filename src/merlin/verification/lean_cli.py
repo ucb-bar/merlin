@@ -275,7 +275,7 @@ for _compat_definition in (
     prepare_toolchain,
     main,
 ):
-    _compat_definition.__module__ = "merlin.verify.lean_cli"
+    _compat_definition.__module__ = "merlin.verification.lean_cli"
 del _compat_definition
 
 if __name__ == "__main__":

@@ -254,7 +254,7 @@ class RecomputationPlan:
 # Both import paths resolve to these same classes; source inspection and live
 # implementation pins still resolve to this canonical implementation file.
 for _record_type in (RecomputationPermissions, RecomputationBudgets, RecomputationPlan):
-    _record_type.__module__ = "merlin.transforms.recomputation"
+    _record_type.__module__ = "merlin.compiler.transforms.recomputation"
 
 
 def plan_source_recomputation(module, context, permissions, budgets):

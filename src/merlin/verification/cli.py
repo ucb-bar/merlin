@@ -352,7 +352,7 @@ for _compat_definition in (
     cmd_split_reduction,
     main,
 ):
-    _compat_definition.__module__ = "merlin.verify.cli"
+    _compat_definition.__module__ = "merlin.verification.cli"
 del _compat_definition
 
 if __name__ == "__main__":

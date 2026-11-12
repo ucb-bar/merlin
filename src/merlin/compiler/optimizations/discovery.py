@@ -40,8 +40,6 @@ def _single_name_lever_modules() -> "dict[str, str]":
 
         found: dict[str, str] = {}
         for src in sorted(module_source_path("merlin.llvmlower").parent.glob("*.py")):
-            if src.name == "impr_features.py":
-                continue
             try:
                 tree = _ast.parse(src.read_text(encoding="utf-8"))
             except (OSError, SyntaxError):

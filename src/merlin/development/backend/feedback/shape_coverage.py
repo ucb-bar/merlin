@@ -30,7 +30,7 @@ _SHAPE_HARNESS_MODULES = (
     "merlin.targetgen.package_runtime",
     "merlin.targetgen.contract.schemas",
     "merlin.targetgen.artifact_scale",
-    "merlin.verify.lean_emission_context",
+    "merlin.verification.lean_emission_context",
     "merlin.development.backend.feedback.compiler_profile_runtime",
     "merlin.development.backend.brokers.compiler_call_channel",
     "merlin.development.backend.optimization.campaign",

@@ -67,7 +67,7 @@ def add_arguments(ap: argparse.ArgumentParser, *, list_stages: bool = True) -> N
 
 def _load_pipelines() -> None:
     """Import every module that declares a pipeline, so the declarations are present."""
-    import merlin.compile_cli  # noqa: F401 -- frontend
+    import merlin.cli.compile_workload  # noqa: F401 -- frontend
     import merlin.llvmlower.codegen  # noqa: F401 -- object, link
     import merlin.llvmlower.lower  # noqa: F401 -- llvm route (with its xDSL rewrites)
     import merlin.perf.whole_model_build  # noqa: F401 -- whole-model builder

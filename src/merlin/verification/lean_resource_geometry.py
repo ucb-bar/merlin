@@ -28,7 +28,7 @@ SCOPE = (
     "sequential_instruction_and_result_free_event_reads",
 )
 _SOURCE_MODULES = (
-    "merlin.verify.lean_resource_geometry",
+    "merlin.verification.lean_resource_geometry",
     "merlin.transforms.resource_allocation",
     "merlin.transforms.analysis_memory",
     "merlin.transforms.analysis_types",
@@ -364,5 +364,5 @@ for _compat_definition in (
     _statement,
     lean_resource_query,
 ):
-    _compat_definition.__module__ = "merlin.verify.lean_resource_geometry"
+    _compat_definition.__module__ = "merlin.verification.lean_resource_geometry"
 del _compat_definition

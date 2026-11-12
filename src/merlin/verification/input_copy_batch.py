@@ -394,5 +394,5 @@ for _compat_definition in (
     execute,
     _execute_chunk,
 ):
-    _compat_definition.__module__ = "merlin.verify.input_copy_batch"
+    _compat_definition.__module__ = "merlin.verification.input_copy_batch"
 del _compat_definition

@@ -320,5 +320,5 @@ def qualify_outline_receipt(receipt: OutlineTransformReceipt, source: bytes, tar
 
 
 # Preserve published exception/record identities through the exact legacy alias.
-UnsupportedOutlineIR.__module__ = "merlin.verify.outline_ir"
-OutlineTransformReceipt.__module__ = "merlin.verify.outline_ir"
+UnsupportedOutlineIR.__module__ = "merlin.verification.outline_ir"
+OutlineTransformReceipt.__module__ = "merlin.verification.outline_ir"

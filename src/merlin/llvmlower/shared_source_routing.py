@@ -185,7 +185,7 @@ class SharedSourceRouting:
                 module_source_path(name)
                 for name in (
                     __name__,
-                    "merlin.llvmlower.shared_pointwise_routing",
+                    "merlin.llvmlower.shared_source_routing",
                     "merlin.llvmlower.fresh_tensor_writer",
                     "merlin.llvmlower.borrowed_buffer_calls",
                     "merlin.runtime.host_provider",

@@ -85,5 +85,5 @@ def extended_obligations(change) -> tuple[list[str], list[str]]:
 
 # Preserve historical object lookup; implementation and completion state live here.
 for _compat_definition in (extended_obligations,):
-    _compat_definition.__module__ = "merlin.verify.lean_obligations"
+    _compat_definition.__module__ = "merlin.verification.lean_obligations"
 del _compat_definition

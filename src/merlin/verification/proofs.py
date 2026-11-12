@@ -80,14 +80,3 @@ def summarize(proofs: list[Proof]) -> dict[str, int]:
     for p in proofs:
         counts[p.status] = counts.get(p.status, 0) + 1
     return counts
-
-
-# Preserve historical object lookup; implementation and completion state live here.
-for _compat_definition in (
-    Proof,
-    _prop,
-    audit_proofs,
-    summarize,
-):
-    _compat_definition.__module__ = "merlin.verify.proofs"
-del _compat_definition

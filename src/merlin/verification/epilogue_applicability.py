@@ -400,5 +400,5 @@ for _compat_definition in (
     selectors_applying,
     assess,
 ):
-    _compat_definition.__module__ = "merlin.verify.epilogue_applicability"
+    _compat_definition.__module__ = "merlin.verification.epilogue_applicability"
 del _compat_definition

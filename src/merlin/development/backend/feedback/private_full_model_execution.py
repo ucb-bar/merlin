@@ -563,7 +563,7 @@ def host_execution_outputs(capture: Path, workdir: Path, *, receipt: Mapping[str
 
     options: dict[str, Any] = {}
     if receipt is not None:
-        from merlin.mining.registry import load_rvv_package
+        from merlin.compiler.backend.host import load_host_package as load_rvv_package
         from merlin.runtime import modelinputs as model_inputs
 
         inputs = receipt.get("inputs") or {}

@@ -4,7 +4,7 @@
 A target's output path (:mod:`merlin.targetgen.output_path`) says what its contraction unit does to
 an accumulator on the way out: a value preloaded into the accumulator, a rectifier in the accumulator
 or the scaled domain, a conversion, ONE scale per readout command covering ``columns_per_scale``
-columns, a rounding, a clamp, a window maximum. :mod:`merlin.targetgen.quant_methodology` derives a
+columns, a rounding, a clamp, a window maximum. :mod:`merlin.compiler.quantization.methodology` derives a
 recipe's ``epilogue`` block from that path and the target's declared methodology. This module makes
 the quantized graph compute exactly that arithmetic:
 
@@ -133,8 +133,14 @@ def _set_attr(module: Any, target: str, tensor: Any) -> None:
 class Epilogue:
     """One recipe's epilogue: annotation, recovery and the post-conversion rewrite."""
 
-    def __init__(self, block: Mapping[str, Any], *, activation_spec: Any,
-                 recovery: Mapping[str, Any] | None = None, residual: Any = None):
+    def __init__(
+        self,
+        block: Mapping[str, Any],
+        *,
+        activation_spec: Any,
+        recovery: Mapping[str, Any] | None = None,
+        residual: Any = None,
+    ):
         import torch
 
         aten = torch.ops.aten
@@ -216,8 +222,7 @@ class Epilogue:
         readers = self._terminal_readers(last)
         if readers and all(
             quantized_reader(reader, source)
-            or (self.residual is not None
-                and source in self.residual.annotation_inputs(reader, self.activation))
+            or (self.residual is not None and source in self.residual.annotation_inputs(reader, self.activation))
             for reader, source in readers
         ):
             return REQUANT
@@ -240,8 +245,14 @@ class Epilogue:
         operators = {"linear": torch.ops.aten.linear.default, "conv2d": torch.ops.aten.conv2d.default}
         if node.target not in {operators[name] for name in policy["operators"]}:
             return False
-        views = (*self.views, torch.ops.aten.t.default, torch.ops.aten.transpose.int,
-                 torch.ops.aten.permute.default, torch.ops.aten.detach.default, torch.ops.aten.alias.default)
+        views = (
+            *self.views,
+            torch.ops.aten.t.default,
+            torch.ops.aten.transpose.int,
+            torch.ops.aten.permute.default,
+            torch.ops.aten.detach.default,
+            torch.ops.aten.alias.default,
+        )
         pending, readers, seen = [last], [], set()
         while pending:
             value = pending.pop()
@@ -256,8 +267,12 @@ class Epilogue:
         adds = (torch.ops.aten.add.Tensor, torch.ops.aten.add_.Tensor)
         for reader in readers:
             schema = getattr(reader.target, "_schema", None)
-            if reader.op != "call_function" or schema is None or any(
-                argument.alias_info is not None and argument.alias_info.is_write for argument in schema.arguments
+            if (
+                reader.op != "call_function"
+                or schema is None
+                or any(
+                    argument.alias_info is not None and argument.alias_info.is_write for argument in schema.arguments
+                )
             ):
                 return False
             if policy["reader_policy"] == "non_add_compute" and reader.target in adds:
@@ -315,8 +330,10 @@ class Epilogue:
         for member in absorbed:
             member.meta["quantization_annotation"] = QuantizationAnnotation(
                 input_qspec_map=self.residual.annotation_inputs(member, self.activation)
-                if self.residual is not None else {},
-                output_qspec=output if member is last else None, _annotated=True
+                if self.residual is not None
+                else {},
+                output_qspec=output if member is last else None,
+                _annotated=True,
             )
         self.sites.append(
             {
@@ -516,8 +533,11 @@ class Epilogue:
             node = by_name.get(site["node"])
             # Selected residual ownership changed observer placement. A failure
             # must refuse, rather than silently restore an unrelated arithmetic.
-            residual = self.residual.rewrite_site(gm, node, by_name.get(site["last"]), site, self.block) \
-                if self.residual is not None else None
+            residual = (
+                self.residual.rewrite_site(gm, node, by_name.get(site["last"]), site, self.block)
+                if self.residual is not None
+                else None
+            )
             if residual is not None:
                 done.append({**site, **residual, "status": "rewritten"})
                 continue
@@ -695,8 +715,11 @@ class Epilogue:
         rewritten = [s for s in self.sites if s.get("status") == "rewritten"]
         return {
             "schema": SCHEMA,
-            **({"output_quantization": self.block["output_quantization"]}
-               if "output_quantization" in self.block else {}),
+            **(
+                {"output_quantization": self.block["output_quantization"]}
+                if "output_quantization" in self.block
+                else {}
+            ),
             "patterns": len(self.sites),
             "rewritten": len(rewritten),
             "by_exit": {e: sum(1 for s in rewritten if s["exit"] == e) for e in (REQUANT, ACCUMULATOR)},

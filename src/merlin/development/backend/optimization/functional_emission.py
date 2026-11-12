@@ -45,7 +45,7 @@ def functional_emission_guard(
     """
     from merlin.development.backend import corpus_inputs
     from merlin.development.backend.optimization import functional_guard_execution as guard_execution
-    from merlin.targetgen import oot_runner as OR  # noqa: PLC0415
+    from merlin.targetgen import package_runtime as OR  # noqa: PLC0415
     from merlin.targetgen import trace_check as TCK  # noqa: PLC0415
     from merlin.targetgen.rocc import decode as RD  # noqa: PLC0415
 

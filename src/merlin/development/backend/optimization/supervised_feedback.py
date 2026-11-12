@@ -16,6 +16,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from merlin.benchharness import hash_tree
+from merlin.common import owned_children
 from merlin.development.backend.optimization.contracts import StageGateError, mapping_file, sha256_file, write_json
 from merlin.development.backend.optimization.feedback_guardian import run_feedback_guardian
 from merlin.development.backend.optimization.feedback_protocol import (
@@ -26,7 +27,6 @@ from merlin.development.backend.optimization.feedback_protocol import (
 )
 from merlin.development.backend.optimization.portfolio_launch import acquire_host_resource_lease
 from merlin.experiments.execution import _protocol as protocol
-from merlin.experiments.execution import owned_children
 
 # Keep parent handles when no actual cleanup/reaping proof closes their lifetime.
 # These are not a release capability or a background service.

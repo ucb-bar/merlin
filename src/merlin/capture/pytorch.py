@@ -104,7 +104,7 @@ class PytorchRefSource:
 
         ``env`` is the model's OWN declared loader environment (:func:`model_capture_env`) and ``python``
         the interpreter it pins (:func:`model_capture_python`). ``recipe`` is a ``quant_recipe_v1``
-        mapping derived from the TARGET (:mod:`merlin.targetgen.quant_recipe`); with one, the model is
+        mapping derived from the TARGET (:mod:`merlin.compiler.quantization.capabilities`); with one, the model is
         quantized under it and ``scheme`` is not consulted. Both used to be ignored here, and a real
         network is not capturable without them: a loader that refuses to invent inputs unless told which
         stream to use raised, and a loader whose dependency lives only in its own venv raised

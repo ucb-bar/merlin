@@ -49,7 +49,7 @@ def cost_model_artifact(target: str) -> Path | None:
 
 def _cost_model_resource(target: str, member: str) -> Path | None:
     """Read only the selected support's model; optional absence is not fallback permission."""
-    from merlin.targetgen.providers import contained_resource  # noqa: PLC0415
+    from merlin.compiler.backend.load import contained_resource  # noqa: PLC0415
     from merlin.targetgen.target_registry import resolve  # noqa: PLC0415
 
     if not target:

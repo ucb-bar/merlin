@@ -391,5 +391,5 @@ for _legacy_function in (
     _mesh_layer_id,
     _mesh_invocation_id,
 ):
-    _legacy_function.__module__ = "merlin.compile.mesh_backend"
+    _legacy_function.__module__ = "merlin.runtime.mesh_backend"
 del _legacy_function

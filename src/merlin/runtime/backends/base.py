@@ -34,10 +34,10 @@ class TargetClass(str, Enum):
 
     The members are DERIVED, in the sense that matters: which class a target is follows from the
     compute ENGINES it declares, and that relationship lives in one place --
-    :data:`merlin.kernels.engines.TARGET_CLASS_OF_ENGINE` -- rather than being restated here in a
+    :data:`merlin.analysis.engine_facets.TARGET_CLASS_OF_ENGINE` -- rather than being restated here in a
     comment. ``targetgen.families`` used to assert in prose that the compute-unit kinds were "aligned
     with" this enum; five kinds cannot align with three tokens by inspection, so it is now a check
-    (:func:`merlin.kernels.engines.check_class_map_is_total`).
+    (:func:`merlin.analysis.engine_facets.check_class_map_is_total`).
 
     The enum itself stays, because a backend genuinely declares its class when it registers and that
     is a fact about the backend. What is derived is the correspondence, so the two cannot drift.

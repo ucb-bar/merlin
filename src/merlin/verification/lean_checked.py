@@ -287,5 +287,5 @@ for _compat_definition in (
     verify_authored_transform,
     accepted_authored_receipt,
 ):
-    _compat_definition.__module__ = "merlin.verify.lean_checked"
+    _compat_definition.__module__ = "merlin.verification.lean_checked"
 del _compat_definition

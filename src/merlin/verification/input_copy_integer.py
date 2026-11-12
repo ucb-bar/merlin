@@ -188,5 +188,5 @@ for _compat_definition in (
     _flags,
     integer,
 ):
-    _compat_definition.__module__ = "merlin.verify.input_copy_integer"
+    _compat_definition.__module__ = "merlin.verification.input_copy_integer"
 del _compat_definition

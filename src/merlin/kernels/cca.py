@@ -4,12 +4,12 @@
 
 NOT RVV-specific. A region carries a ``backend`` tag and only the relevant **facets** are populated.
 Which facets those are is a property of the target's ENGINES, not of its name: a target is a SET of
-compute engines (see :mod:`merlin.kernels.engines`), and each engine-scoped facet is populated exactly
+compute engines (see :mod:`merlin.analysis.engine_facets`), and each engine-scoped facet is populated exactly
 when the target has that engine. Measured: 62% of atlas's engine-driving expert kernels touch its
 vector engine, so describing it by one facet because it is "an NPU" would leave most of its corpus
 unexpressed.
 
-ENGINE-SCOPED — populated per :func:`merlin.kernels.engines.facet_families_for`:
+ENGINE-SCOPED — populated per :func:`merlin.analysis.engine_facets.facet_families_for`:
 - ``vector`` (a lane engine: RVV, or an accelerator's VPU): SEW, LMUL, VL strategy, tail.
 - ``spatial`` (an array engine, systolic OR outer-product): PE-array dims, dataflow, accumulator
   residency. The two datapaths share this facet and differ in ``dataflow``'s VALUE.

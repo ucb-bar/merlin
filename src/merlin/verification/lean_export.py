@@ -199,5 +199,5 @@ for _compat_definition in (
     export_scalar,
     equivalence_query,
 ):
-    _compat_definition.__module__ = "merlin.verify.lean_export"
+    _compat_definition.__module__ = "merlin.verification.lean_export"
 del _compat_definition

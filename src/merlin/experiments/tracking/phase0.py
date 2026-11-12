@@ -571,7 +571,7 @@ def summary(root: Path, *, operator_private: bool = False, now: float | None = N
 
     root = Path(root).expanduser()
     if not root.is_dir():
-        from ..spec import SpecError
+        from merlin.experiments.definition import SpecError
 
         raise SpecError(f"not a Phase 0 directory: {root}")
     inventory = R.Inventory()

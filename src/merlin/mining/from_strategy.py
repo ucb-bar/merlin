@@ -13,7 +13,7 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-from .registry import RvvPackage
+from merlin.compiler.backend.host import HostPackage as RvvPackage
 
 _LEGACY_SUPPORT = "rvv"
 

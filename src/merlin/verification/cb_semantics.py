@@ -576,5 +576,5 @@ for _compat_definition in (
     _width_of,
     encode_command_buffer,
 ):
-    _compat_definition.__module__ = "merlin.verify.cb_semantics"
+    _compat_definition.__module__ = "merlin.verification.cb_semantics"
 del _compat_definition

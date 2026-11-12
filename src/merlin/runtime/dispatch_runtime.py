@@ -972,7 +972,7 @@ def execute(
                 _recorded = (locals().get("_obs") or {}).get("decline")
                 if not _recorded:
                     try:
-                        from ..compile_cli import _MESH_REFUSAL
+                        from merlin.cli.compile_workload import _MESH_REFUSAL
 
                         _recorded = _MESH_REFUSAL.get("reason")
                     except Exception:  # noqa: BLE001

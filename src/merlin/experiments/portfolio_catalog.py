@@ -8,8 +8,7 @@ import sys
 from pathlib import Path
 
 from merlin.common.paths import module_source_path
-
-from .spec import SpecError
+from merlin.experiments.definition import SpecError
 
 MODULE = "merlin.development.backend.optimization.portfolio_cli"
 PREFIX = "phase2:portfolio:"

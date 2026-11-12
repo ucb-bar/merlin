@@ -10,6 +10,7 @@ build tools can load it by path.
 from __future__ import annotations
 
 _MOVED = {
+    "merlin.compile.scheduling.multioutput_fusion": "merlin.compiler.transforms.multioutput",
     "merlin.verify": "merlin.verification",
     "merlin.verify.epilogue_applicability": "merlin.verification.epilogue_applicability",
     "merlin.compile": "merlin.compiler",

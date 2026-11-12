@@ -31,7 +31,7 @@ def selected_build_observation(host_package: Path, catalog: Path, board: str, ta
     module. The linked-build verifier requires the *entire* observation to
     match the actual post-preparation compiler receipt.
     """
-    from merlin.mining.registry import load_rvv_package
+    from merlin.compiler.backend.host import load_host_package as load_rvv_package
     from merlin.runtime.backends.spike_model import selected_model_compiler_plan
     from merlin.runtime.boards import load_boards
 

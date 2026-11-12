@@ -490,7 +490,7 @@ def program(
     """``group`` as a generator entry in device form. Raises ``NoCapsuleForm`` with the reason.
 
     ``extents`` is the module's contraction-extent table
-    (:func:`merlin.compile.analysis.contraction_shapes.contraction_extents`); a caller stating every
+    (:func:`merlin.compiler.ir.contraction_shapes.contraction_extents`); a caller stating every
     group of one module passes it, because without it each call walks the whole module again
     (quadratic in the model: 69% of a 1551-group statement's time)."""
     from merlin.runtime.commandbuffer import EPILOGUE_STAGES

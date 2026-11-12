@@ -124,7 +124,7 @@ def capture_recipe_candidates(
             elif methodology is not None:
                 # The target's declared methodology over the derived output path. A recipe it cannot derive
                 # stays ``underivable`` with the reasons, never the hardware-only recipe it replaces.
-                from merlin.targetgen import quant_methodology as QM
+                from merlin.compiler.quantization import methodology as QM
 
                 declared, path = methodology["declaration"], methodology.get("output_path")
                 row["recipe"] = QM.derive(recipe, declared, path)

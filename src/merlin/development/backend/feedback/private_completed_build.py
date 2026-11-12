@@ -292,7 +292,7 @@ def _producer(selection, *, populate=False):
 def _builder_paths(snapshot, release):
     """Use the selected producer's exact implementation layout, never today's SDK."""
     if "src/merlin/model.py" not in release["files"]:
-        return (snapshot / "src/merlin/compile/baremetal_model.py",)
+        return (snapshot / "src/merlin/model.py",)
     relatives = (
         "src/merlin/model.py",
         "src/merlin/compiler/build/modeloptions.py",

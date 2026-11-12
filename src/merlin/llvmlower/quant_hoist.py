@@ -800,7 +800,7 @@ def apply(module, activation_args, load_arg):
 def ensure_registered() -> str:
     """Register the feature (idempotent). Eager at import of `impr_features`, and reachable from its
     `_try_lazy_register` name hook so the lowering SUBPROCESS resolves it too."""
-    from . import shared_feature_registry as F
+    from merlin.compiler.selection import shared as F
 
     if FEATURE not in F.known():
         F.register(

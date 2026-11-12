@@ -109,4 +109,4 @@ def verify_split_reduction(
 
 
 # Preserve published exception/record identities through the exact legacy alias.
-SplitReductionVerdict.__module__ = "merlin.verify.split_reduction"
+SplitReductionVerdict.__module__ = "merlin.verification.split_reduction"

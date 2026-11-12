@@ -71,7 +71,7 @@ def run_sandboxed_entrypoint(
     The same helper can serve short-probe compilation. Inside an analysis worker, children
     share its process group so its single wall-clock deadline also terminates compilers.
     """
-    from merlin.targetgen import oot_runner as OR
+    from merlin.targetgen import package_runtime as OR
 
     if timeout_s <= 0:
         raise TimeoutError("compiler wall-clock budget exhausted")
@@ -289,7 +289,7 @@ def _worker(request_path: Path) -> int:
     def emit_pair(
         package: Any, interface: Path, unused_scratch: Path, tag: str, timeout_s: int
     ) -> tuple[int, str, str]:
-        from merlin.targetgen import oot_runner as OR
+        from merlin.targetgen import package_runtime as OR
 
         scratch = Path(request["scratch"]) / tag
         scratch.mkdir()

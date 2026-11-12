@@ -348,5 +348,5 @@ for _compat_definition in (
     prove_command_parameters,
     _prove,
 ):
-    _compat_definition.__module__ = "merlin.verify.host_command_parameters"
+    _compat_definition.__module__ = "merlin.verification.host_command_parameters"
 del _compat_definition

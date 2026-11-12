@@ -66,7 +66,7 @@ probes, not a host admission. The selected MLIR `arith.maximumf` gives positive
 zero priority over negative zero, whereas PyTorch CPU `amax` may retain the
 first zero sign; a strict mismatch must remain a failed numerical check.
 
-Use the existing `merlin.compile.scalar_host_qualification` command with an explicit
+Use the existing `merlin.verification.scalar_host` command with an explicit
 scalar package, board catalog and pinned DTS. That checker requires bit-identical
 saved-capture outputs: a mismatch must remain a mismatch. Sine/cosine library
 implementations may differ; do not loosen the checker or substitute easy inputs

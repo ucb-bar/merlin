@@ -182,5 +182,5 @@ for _compat_definition in (
     merlin_iface_signature,
     encode_merlin_iface,
 ):
-    _compat_definition.__module__ = "merlin.verify.merlin_iface_semantics"
+    _compat_definition.__module__ = "merlin.verification.merlin_iface_semantics"
 del _compat_definition

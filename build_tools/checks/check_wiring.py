@@ -76,7 +76,7 @@ INSTRUMENTED = tuple(
     f"{prefix}/{package}"
     for prefix in ("src/merlin", "merlin/python/merlin")
     for package in ("perf", "targetgen", "verify")
-) + ("src/merlin/experiments/evaluation",)
+) + ("src/merlin/experiments/evaluation", *_source_layout.moved_from("src/merlin/verify/"))
 #: Where a production importer may live.
 PRODUCTION = (
     "tools/benchmarks",

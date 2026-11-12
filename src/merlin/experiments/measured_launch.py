@@ -14,8 +14,7 @@ from pathlib import Path
 
 from merlin.common.paths import module_source_path
 from merlin.common.source_membership import SourceMembershipError, python_members
-
-from .spec import SpecError
+from merlin.experiments.definition import SpecError
 
 MODULE = "merlin.development.backend.optimization.chia_envelope_cli"
 COORDINATOR = "merlin.development.backend.optimization.checkpoint_cli"

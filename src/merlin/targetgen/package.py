@@ -4,7 +4,7 @@ THE PROBLEM THIS IS FOR. Merlin has two loaders that each take a directory and h
 
 * :func:`merlin.runtime.backends.base._load_oot_backend` wants ``contracts/target_contract.yaml`` with
   a ``plugin.backend`` naming a module that self-registers;
-* :func:`merlin.targetgen.oot_runner.load_package` wants ``manifest.yaml`` (experiment ABI v0.1), an
+* :func:`merlin.targetgen.package_runtime.load_package` wants ``manifest.yaml`` (experiment ABI v0.1), an
   executable tool, and four subprocess ``commands``.
 
 Each loader discovers a mismatch by failing somewhere inside itself — a ``KeyError``,

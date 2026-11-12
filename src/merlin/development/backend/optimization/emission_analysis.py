@@ -32,7 +32,7 @@ from merlin.perf.agent_guidance import guidance_for_emission_analysis, inspect_c
 from merlin.perf.execution_policy import FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS, ITERATION_MAX_SECONDS
 
 if TYPE_CHECKING:
-    from merlin.targetgen import oot_runner as OR
+    from merlin.targetgen import package_runtime as OR
 
 
 def seed_baseline_emission_cache_from_run(
@@ -45,7 +45,7 @@ def seed_baseline_emission_cache_from_run(
     compiler_api_schema: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
     """Import only exact successful baseline-emission bytes from a prior host-owned run."""
-    from merlin.targetgen import oot_runner as OR
+    from merlin.targetgen import package_runtime as OR
 
     seed_run = Path(seed_run).resolve()
     if seed_run.is_symlink() or not seed_run.is_dir():
@@ -434,7 +434,7 @@ def analyze_whole_model_emission(
         contraction_placement,
         prepare_captured_source,
     )
-    from merlin.targetgen import oot_runner as OR  # noqa: PLC0415
+    from merlin.targetgen import package_runtime as OR  # noqa: PLC0415
     from merlin.targetgen import trace_check as TCK  # noqa: PLC0415
     from merlin.targetgen.rocc import decode as RD  # noqa: PLC0415
 
@@ -1228,7 +1228,7 @@ def global_iteration_readiness(document: Mapping[str, Any]) -> dict[str, Any]:
 
 def emit_pair(package: OR.Package, interface: Path, scratch: Path, tag: str, timeout_s: int) -> tuple[int, str, str]:
     """One capsule's emitted artifacts under one compiler: (rc, lowered LLVM, command buffer)."""
-    from merlin.targetgen import oot_runner as OR  # noqa: PLC0415
+    from merlin.targetgen import package_runtime as OR  # noqa: PLC0415
 
     buffer_path = scratch / f"cb_{tag}.json"
     rows = []

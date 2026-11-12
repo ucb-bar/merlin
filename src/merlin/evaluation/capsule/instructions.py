@@ -1,7 +1,7 @@
 """The experiment's prohibited instruction roles, applied to a graded capsule's program.
 
 A run may declare instruction roles its candidate programs must not use (``prohibited_instruction_roles``,
-a statement in the closed vocabulary of :mod:`merlin.compile.analysis.instruction_roles`). Which
+a statement in the closed vocabulary of :mod:`merlin.analysis.instruction_roles`). Which
 instructions carry such a role is the target's derived instruction facts, never a list written here
 (:mod:`merlin.perf.isa_prohibition`). This module holds the capsule grader's side of that rule, kept out
 of :mod:`.operation` so the runner only calls it.

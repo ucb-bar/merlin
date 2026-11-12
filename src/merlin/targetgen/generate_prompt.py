@@ -1138,7 +1138,7 @@ def _enforced_workflow(
 SHARED_PASS_PROMPT_APIS = (
     "merlin.transforms.pipeline_state",
     "merlin.sched.ir.kernel",
-    "merlin.compile.scheduling.schedule_pipeline",
+    "merlin.compiler.schedule.schedule_pipeline",
 )
 
 # SDK26 exposes the relocated schedule owner. Frozen v1 contracts retain the

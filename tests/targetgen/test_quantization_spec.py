@@ -2,12 +2,13 @@ from copy import deepcopy
 
 import pytest
 
-from merlin.targetgen import quant_recipe, readout_facet, software_spec
-from merlin.targetgen.quantization_spec import (
+from merlin.compiler.quantization import capabilities as quant_recipe
+from merlin.compiler.quantization.admission import (
     build_quantization_contract,
     capture_recipe_candidates,
     validate_quantization_declarations,
 )
+from merlin.targetgen import readout_facet, software_spec
 
 
 def test_mx_software_spec_keeps_three_formats_separate_and_epilogues_on_host():

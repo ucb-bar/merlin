@@ -22,8 +22,7 @@ from merlin.development.testgen.profiles import selected_software_spec_path, syn
 from merlin.development.testgen.program_admission import entry_refusal_is_final
 from merlin.development.testgen.software_screen import diagnostic_entry, intersect_requirement, screen_entry
 from merlin.development.testgen.typed_scope import typed_required_instances
-from merlin.experiments.definition import engine_definitions
-from merlin.experiments.spec import load_spec
+from merlin.experiments.definition import engine_definitions, load_spec
 from merlin.targetgen import application_inventory, conformance, corpus_synth, target_registry
 from merlin.targetgen.rtl.facts import observed_facts
 from merlin.targetgen.target_experiment import load_target_experiment

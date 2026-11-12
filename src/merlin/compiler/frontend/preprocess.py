@@ -76,12 +76,10 @@ def implementation_paths() -> tuple[Path, ...]:
 
     owners = (repairs, provenance, casts, linalg, dead, matmul)
     selected = (globals()[name] for _, _, name in _PREPROCESS)
-    legacy = Path(__file__).parents[2] / "llvmlower" / "passes_xdsl.py"
     return tuple(
         dict.fromkeys(
             (
                 Path(__file__),
-                *((legacy,) if legacy.is_file() else ()),
                 *(Path(owner.__file__) for owner in owners),
                 *(Path(function.__code__.co_filename) for function in selected),
             )

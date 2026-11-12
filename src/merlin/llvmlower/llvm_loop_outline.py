@@ -18,7 +18,7 @@ MERGE_FEATURE = "outline_llvm_loops_merge_identical"
 
 
 def ensure_registered() -> str:
-    from .shared_feature_registry import ImprFeature, known, register
+    from merlin.compiler.selection.shared import ImprFeature, known, register
 
     if FEATURE not in known():
         register(

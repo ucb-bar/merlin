@@ -83,7 +83,7 @@ quantization:
     accumulator_dtype: i32
     scale_encoding: fp32
     eligible_operations: from_facts
-  # How every model is quantized for this target (merlin.targetgen.quant_methodology). Each hardware
+  # How every model is quantized for this target (merlin.compiler.quantization.methodology). Each hardware
   # value is the word from_output_path: it is read from the selected contract's derived output path,
   # never written here. Per-model changes exist only as reviewed model_variants rows.
   methodology:
