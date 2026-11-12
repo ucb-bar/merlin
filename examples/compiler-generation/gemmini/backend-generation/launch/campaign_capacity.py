@@ -110,13 +110,6 @@ def command_ownership(argv):
         run_id = _value(arguments, "--run-id")
         if run_id:
             controllers.add(("native", run_id))
-    if kind == "script":
-        path = Path(entry)
-        if path.name == "run.py" and path.parent.name == "kernel_abstractions":
-            if arguments and arguments[0] == "launch" and _value(arguments, "--config"):
-                controllers.add(("family", _value(arguments, "--config")))
-            elif arguments and arguments[0] == "evaluate":
-                return controllers, False, True
     codex = kind == "codex" and "exec" in arguments
     operator = kind == "physical_operator" or (kind == "script" and Path(entry).name in OPERATOR_ENTRYPOINTS)
     return controllers, codex, operator
