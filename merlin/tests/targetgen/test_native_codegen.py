@@ -150,23 +150,93 @@ def test_exact_float_unrolling_requires_a_boolean(value):
         CodegenOptions(exact_float_unroll=value)
 
 
+@pytest.mark.parametrize("value", [0, -1, True, 1.5, "100"])
+def test_execution_instruction_limit_requires_positive_integer(value):
+    with pytest.raises(ValueError, match="execution instruction limit"):
+        CodegenOptions(execution_instruction_limit=value)
+
+
+def test_execution_budget_is_separate_from_stored_program_budget():
+    from argparse import Namespace
+
+    original = current_codegen_options().identity_record()
+    assert "execution_instruction_limit" not in original
+    selected = options_from_args(Namespace(execution_instruction_limit=9_000_000, program_size_limit_bytes=8192))
+    with codegen_options(selected):
+        assert current_codegen_options().execution_instruction_limit == 9_000_000
+        assert current_codegen_options().program_size_limit_bytes == 8192
+        assert current_codegen_options().identity_record() != original
+    assert current_codegen_options().identity_record() == original
+
+
 def test_exact_float_unrolling_is_explicit_and_scoped():
     from argparse import Namespace
+
     from merlin.targetgen.cli import build_parser
 
     assert options_from_args(Namespace()).exact_float_unroll is False
     parser = build_parser()
     for command, flags in (
-        ("native-compile", ["--engine", "merlin_native", "--support", "synthetic", "--snapshot", "snapshot",
-                            "--request", "request", "--target-source", "target", "--abi", "auto",
-                            "--mode", "diagnostic", "--out", "output"]),
-        ("native-verify", ["--engine", "merlin_native", "--snapshot", "snapshot", "--request", "request",
-                           "--mode", "diagnostic", "--artifact", "artifact", "--out", "output"]),
-        ("native-profile", ["--support", "synthetic", "--snapshot", "snapshot", "--target-source", "target",
-                            "--runner-command", "runner.json", "--request", "request", "--out", "output"]),
+        (
+            "native-compile",
+            [
+                "--engine",
+                "merlin_native",
+                "--support",
+                "synthetic",
+                "--snapshot",
+                "snapshot",
+                "--request",
+                "request",
+                "--target-source",
+                "target",
+                "--abi",
+                "auto",
+                "--mode",
+                "diagnostic",
+                "--out",
+                "output",
+            ],
+        ),
+        (
+            "native-verify",
+            [
+                "--engine",
+                "merlin_native",
+                "--snapshot",
+                "snapshot",
+                "--request",
+                "request",
+                "--mode",
+                "diagnostic",
+                "--artifact",
+                "artifact",
+                "--out",
+                "output",
+            ],
+        ),
+        (
+            "native-profile",
+            [
+                "--support",
+                "synthetic",
+                "--snapshot",
+                "snapshot",
+                "--target-source",
+                "target",
+                "--runner-command",
+                "runner.json",
+                "--request",
+                "request",
+                "--out",
+                "output",
+            ],
+        ),
     ):
         assert options_from_args(parser.parse_args([command, *flags])).exact_float_unroll is False
         selected = options_from_args(parser.parse_args([command, *flags, "--exact-float-unroll"]))
         with codegen_options(selected):
             assert current_codegen_options().exact_float_unroll is True
         assert current_codegen_options().exact_float_unroll is False
+        selected = options_from_args(parser.parse_args([command, *flags, "--execution-instruction-limit", "9000000"]))
+        assert selected.execution_instruction_limit == 9_000_000

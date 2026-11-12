@@ -80,29 +80,38 @@ def add_native_codegen_commands(sub, handlers):
         "--application", action="store_true", help="compile every supported region of a staged capture"
     )
     native_compile.add_argument(
-        "--materialization-cache", action="store_true",
+        "--materialization-cache",
+        action="store_true",
         help="opt in to invocation-local exact application tool output reuse; verification stays fresh",
     )
     native_compile.add_argument(
-        "--region-materialization-cache", action="store_true",
+        "--region-materialization-cache",
+        action="store_true",
         help="opt in to checked canonical application region reuse; off by default",
     )
     native_compile.add_argument(
-        "--no-materialization-cache", action="store_true",
+        "--no-materialization-cache",
+        action="store_true",
         help="disable both application reuse options, including explicit opt-ins",
     )
     native_compile.add_argument(
-        "--deterministic-receipts", action="store_true",
+        "--deterministic-receipts",
+        action="store_true",
         help="opt in to target deterministic application receipts; off by default",
     )
     native_compile.add_argument(
-        "--application-region-loop", action="store_true",
+        "--application-region-loop",
+        action="store_true",
         help="opt in to a counted dispatch loop when the complete application plan proves a repeated body",
     )
     native_compile.add_argument(
         "--application-state", help="source-bound JSON mapping state inputs, updates and initialization"
     )
-    native_compile.add_argument("--already-quantized", action="store_true", help="preserve authored codes and exponent data through the selected application provider")
+    native_compile.add_argument(
+        "--already-quantized",
+        action="store_true",
+        help="preserve authored codes and exponent data through the selected application provider",
+    )
     native_compile.add_argument(
         "--application-common-values",
         action="store_true",
@@ -158,6 +167,11 @@ def add_native_codegen_commands(sub, handlers):
     native_compile.add_argument("--tuning-profile", help="measured profile for this exact compilation")
     native_compile.add_argument("--program-size-limit-bytes", type=int, help="optional smaller device code budget")
     native_compile.add_argument(
+        "--execution-instruction-limit",
+        type=int,
+        help="optional per-launch executed-instruction budget, separate from stored program size",
+    )
+    native_compile.add_argument(
         "--exact-float-unroll", action="store_true", help="opt into exact cast and negation tile unrolling"
     )
     add_io_memory_argument(native_compile)
@@ -182,6 +196,9 @@ def add_native_codegen_commands(sub, handlers):
     profile.add_argument("--abi", default="auto")
     profile.add_argument("--search-limits")
     profile.add_argument("--program-size-limit-bytes", type=int)
+    profile.add_argument(
+        "--execution-instruction-limit", type=int, help="optional per-launch executed-instruction budget"
+    )
     profile.add_argument(
         "--exact-float-unroll", action="store_true", help="opt into exact cast and negation tile unrolling"
     )
@@ -242,7 +259,8 @@ def add_native_codegen_commands(sub, handlers):
     native_verify.add_argument("--engine", choices=("merlin_native",), required=True)
     native_verify.add_argument("--snapshot", required=True)
     native_verify.add_argument(
-        "--no-materialization-cache", action="store_true",
+        "--no-materialization-cache",
+        action="store_true",
         help="compatibility option; application verification always executes every tool fresh",
     )
     native_verify.add_argument(
@@ -257,7 +275,11 @@ def add_native_codegen_commands(sub, handlers):
         default="embedded",
         help="same model parameter storage used during application compilation",
     )
-    native_verify.add_argument("--already-quantized", action="store_true", help="replay authored code/exponent intake with no numeric conversion")
+    native_verify.add_argument(
+        "--already-quantized",
+        action="store_true",
+        help="replay authored code/exponent intake with no numeric conversion",
+    )
     native_verify.add_argument(
         "--application-common-values",
         action="store_true",
@@ -292,6 +314,9 @@ def add_native_codegen_commands(sub, handlers):
     native_verify.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
     native_verify.add_argument("--artifact", required=True, help="published native compilation directory")
     native_verify.add_argument("--out", required=True, help="verification status JSON outside the artifact")
+    native_verify.add_argument(
+        "--execution-instruction-limit", type=int, help="per-launch executed-instruction budget used for compilation"
+    )
     native_verify.add_argument(
         "--exact-float-unroll", action="store_true", help="opt into exact cast and negation tile unrolling"
     )

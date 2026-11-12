@@ -770,6 +770,7 @@ def _native_compile_report_with_options(args: argparse.Namespace) -> dict:
                 ("reduction_unroll", options.reduction_unroll != "auto"),
                 ("tuning_profile", options.tuning_profile is not None),
                 ("program_size_limit_bytes", options.program_size_limit_bytes is not None),
+                ("execution_instruction_limit", options.execution_instruction_limit is not None),
                 ("io_memory_bytes", options.io_memory_bytes is not None),
             )
             if active

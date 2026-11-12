@@ -19,12 +19,17 @@ class CodegenOptions:
     tuning_profile: dict | None = None
     io_memory_bytes: int | None = None
     exact_float_unroll: bool = False
+    execution_instruction_limit: int | None = None
 
     def __post_init__(self):
         if self.reduction_unroll not in ("auto", *(str(i) for i in FACTORS)):
             raise ValueError("reduction unroll must be auto, 1, 2, 4 or 8")
         if type(self.exact_float_unroll) is not bool:
             raise ValueError("exact float unroll must be Boolean")
+        if self.execution_instruction_limit is not None and (
+            type(self.execution_instruction_limit) is not int or self.execution_instruction_limit <= 0
+        ):
+            raise ValueError("execution instruction limit must be a positive integer")
         size = self.program_size_limit_bytes
         if size is not None and (type(size) is not int or size <= 0):
             raise ValueError("program size budget must be a positive integer")
@@ -34,10 +39,12 @@ class CodegenOptions:
             raise ValueError("device I/O memory window must have a positive byte size")
 
     def identity_record(self):
-        """Return the identity fields, omitting exact_float_unroll while it is false."""
+        """Preserve historical identities when optional choices are absent."""
         record = asdict(self)
         if not self.exact_float_unroll:
             del record["exact_float_unroll"]
+        if self.execution_instruction_limit is None:
+            del record["execution_instruction_limit"]
         return record
 
 
@@ -108,6 +115,7 @@ def options_from_args(args):
         json.loads(Path(path).read_text()) if path else None,
         getattr(args, "io_memory_bytes", None),
         getattr(args, "exact_float_unroll", False),
+        getattr(args, "execution_instruction_limit", None),
     )
 
 
