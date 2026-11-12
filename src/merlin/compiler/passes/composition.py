@@ -49,7 +49,7 @@ def composition_capabilities(*, selected_modules=None):
                 "original_head_batch_request",
                 (
                     "merlin.llvmlower.head_source_route.HeadBatchSourceRoute",
-                    "merlin.compile.owned_host_model.OwnedHostModelCompiler",
+                    "merlin.compiler.build.owned.OwnedHostModelCompiler",
                 ),
                 consumer="optional independent_heads, whole_head_batches and shared_rhs_row_views Booleans in ordinary "
                 "source_composition.json",
@@ -74,9 +74,9 @@ def composition_capabilities(*, selected_modules=None):
                 "independent_head_and_plane_products",
                 (
                     "merlin.transforms.head_batching.plan_independent_head_batching",
-                    "merlin.compile.scheduling.batched_dense.BatchMatrixView",
-                    "merlin.compile.scheduling.batched_dense.BatchedDenseProblem",
-                    "merlin.compile.scheduling.batched_dense.counted_batched_dense_products",
+                    "merlin.compiler.schedule.batched_dense.BatchMatrixView",
+                    "merlin.compiler.schedule.batched_dense.BatchedDenseProblem",
+                    "merlin.compiler.schedule.batched_dense.counted_batched_dense_products",
                     "merlin.llvmlower.logical_borrowed_batch_abi.emit_borrowed_batch_translation_unit",
                     "merlin.llvmlower.integer_batched_matmul_calls.lower_integer_batched_matmul_program",
                 ),
@@ -110,7 +110,7 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "whole_model_source_coverage_and_work",
                 (
-                    "merlin.compile.model_coverage.plan_model_coverage",
+                    "merlin.compiler.planning.coverage.plan_model_coverage",
                     "merlin.perf.model_group_work.summarize_group_work",
                 ),
                 consumer="current source groups, descriptive shape profiles and original SSA boundaries",
@@ -126,11 +126,11 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "source_fusion_exploration",
                 (
-                    "merlin.compile.fusion_workflow.discover",
-                    "merlin.compile.fusion_workflow.plan_materialization_frontier",
-                    "merlin.compile.fusion_workflow.realize_candidate",
-                    "merlin.compile.fusion_workflow.evaluate_fusions",
-                    "merlin.compile.fusion_workflow.compare_region_costs",
+                    "merlin.compiler.planning.explore.discover",
+                    "merlin.compiler.planning.explore.plan_materialization_frontier",
+                    "merlin.compiler.planning.explore.realize_candidate",
+                    "merlin.compiler.planning.explore.evaluate_fusions",
+                    "merlin.compiler.planning.explore.compare_region_costs",
                 ),
                 consumer="registered passes and ordinary emission of the actual returned product",
                 stage="bounded_source_discovery_and_existing_realizers",
@@ -145,7 +145,7 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "checked_pointwise_fusion",
                 (
-                    "merlin.compile.scheduling.fusion.plan_fusion",
+                    "merlin.compiler.schedule.fusion.plan_fusion",
                     "merlin.compiler.transforms.multioutput.compile_source_multioutput",
                 ),
                 consumer="actual checked Kernel or guarded compilation images enter ordinary target emission",
@@ -156,10 +156,10 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "connected_source_execution",
                 (
-                    "merlin.compile.connected_regions.plan_connected_region",
-                    "merlin.compile.connected_regions.compile_connected_region",
-                    "merlin.compile.connected_runtime.ConnectedProgram",
-                    "merlin.compile.connected_host.emit_connected_host_c",
+                    "merlin.compiler.lower.connected.plan_connected_region",
+                    "merlin.compiler.lower.connected.compile_connected_region",
+                    "merlin.runtime.connected.ConnectedProgram",
+                    "merlin.compiler.lower.connectedhost.emit_connected_host_c",
                     "merlin.xdsl_dialects.lowering.global_plan.GlobalPlan",
                     "merlin.xdsl_dialects.lowering.global_plan.verify_global_plan",
                     "merlin.xdsl_dialects.lowering.global_plan_emission.emit_global_plan",
@@ -251,7 +251,7 @@ def composition_capabilities(*, selected_modules=None):
                 "sibling_original_host_route",
                 (
                     "merlin.llvmlower.sibling_source_route.SiblingSourceRoute",
-                    "merlin.compile.owned_host_model.OwnedHostModelCompiler",
+                    "merlin.compiler.build.owned.OwnedHostModelCompiler",
                 ),
                 consumer="OwnedHostModelCompiler.compile(sibling_source=original_typed_route)",
                 access="original_host_owner",
@@ -268,9 +268,9 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "member_projection_views",
                 (
-                    "merlin.compile.scheduling.projection_views.plan_shared_projection_views",
-                    "merlin.compile.scheduling.shared_input_groups.find_shared_input_groups",
-                    "merlin.compile.scheduling.shared_input_schedule.schedule_shared_input",
+                    "merlin.compiler.schedule.projection_views.plan_shared_projection_views",
+                    "merlin.compiler.schedule.shared_input_groups.find_shared_input_groups",
+                    "merlin.compiler.schedule.shared_input_schedule.schedule_shared_input",
                 ),
                 consumer="original tensor pointers/pitches and actual complete target rectangles",
                 stage="source_checked_virtual_index_mapping",
@@ -280,9 +280,9 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "original_projection_work_identity",
                 (
-                    "merlin.compile.scheduling.projection_provenance.shared_projection_provenance",
-                    "merlin.compile.scheduling.projection_provenance.projection_compute_member",
-                    "merlin.compile.scheduling.projection_provenance.projection_ir_attributes",
+                    "merlin.compiler.schedule.projection_provenance.shared_projection_provenance",
+                    "merlin.compiler.schedule.projection_provenance.projection_compute_member",
+                    "merlin.compiler.schedule.projection_provenance.projection_ir_attributes",
                 ),
                 consumer="actual member-bound PRELOAD/COMPUTE sites retain original typed root identities",
                 stage="source_to_interface_to_actual_device_work",
@@ -300,7 +300,7 @@ def composition_capabilities(*, selected_modules=None):
                 (
                     "merlin.llvmlower.connected_spatial.group_connected_spatial",
                     "merlin.llvmlower.connected_spatial_route.ConnectedSpatialRoute",
-                    "merlin.compile.owned_host_model.OwnedHostModelCompiler",
+                    "merlin.compiler.build.owned.OwnedHostModelCompiler",
                 ),
                 consumer="OwnedHostModelCompiler.compile(connected_spatial=original_typed_route)",
                 access="original_host_owner",
@@ -317,10 +317,10 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "bounded_spatial_packing_and_rolling",
                 (
-                    "merlin.compile.scheduling.spatial_producer.PackedSpatialProducerPlan",
-                    "merlin.compile.scheduling.rolling_spatial.propose_rolling_spatial_choices",
-                    "merlin.compile.scheduling.rolling_spatial.emit_rolling_spatial_producer",
-                    "merlin.compile.scheduling.rolling_window.materialize_rolling_window",
+                    "merlin.compiler.schedule.spatial_producer.PackedSpatialProducerPlan",
+                    "merlin.compiler.schedule.rolling_spatial.propose_rolling_spatial_choices",
+                    "merlin.compiler.schedule.rolling_spatial.emit_rolling_spatial_producer",
+                    "merlin.compiler.schedule.rolling_window.materialize_rolling_window",
                     "merlin.llvmlower.convolution_packing.emit_nhwc_halo_panel",
                 ),
                 consumer="actual counted row/cache/panel transfers and existing dense producer emission",
@@ -330,7 +330,7 @@ def composition_capabilities(*, selected_modules=None):
             ),
             row(
                 "bounded_spatial_max_strips",
-                ("merlin.compile.scheduling.spatial_max_stripes.plan_striped_spatial_max",),
+                ("merlin.compiler.schedule.spatial_max_stripes.plan_striped_spatial_max",),
                 consumer="counted staging and pooled output commands through the selected target adapter",
                 access="additional_compiler_sources",
                 stage="source_window_and_private_capacity_planning",
@@ -343,11 +343,11 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "private_intermediate_storage",
                 (
-                    "merlin.compile.scheduling.temporary_storage.allocate_temporary_storage",
+                    "merlin.compiler.schedule.temporary_storage.allocate_temporary_storage",
                     "merlin.llvmlower.fresh_tensor_writer.rewrite_fresh_tensor_writers",
                     "merlin.llvmlower.private_workspace_pool.pool_private_writer_workspaces",
                     "merlin.llvmlower.weight_prepack.prepacked_bundle",
-                    "merlin.compile.compiler_observations.install_prepared_observed",
+                    "merlin.compiler.observations.install_prepared_observed",
                 ),
                 consumer="actual source owners, checked temporary placements and exact immutable preparation bytes",
                 stage="storage_and_preparation_transform",
@@ -397,8 +397,8 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "ordered_quantization_boundaries",
                 (
-                    "merlin.compile.scheduling.spatial_readout.prove_spatial_readout",
-                    "merlin.compile.scheduling.spatial_readout_cache.propose_spatial_readout_cache",
+                    "merlin.compiler.schedule.spatial_readout.prove_spatial_readout",
+                    "merlin.compiler.schedule.spatial_readout_cache.propose_spatial_readout_cache",
                     "merlin.llvmlower.quantized_affine_pair.propose_exact_affine_pair",
                     "merlin.llvmlower.quantized_affine_pair.prove_ordered_loaded_sum",
                 ),
@@ -412,10 +412,10 @@ def composition_capabilities(*, selected_modules=None):
                 (
                     "merlin.transforms.pass_exploration.explore_candidates",
                     "merlin.transforms.pass_exploration.rank_performance_variants",
-                    "merlin.compile.scheduling.loop_schedule.tile_loop_nest_transforms",
-                    "merlin.compile.scheduling.loop_schedule.partition_counted_loop",
-                    "merlin.compile.scheduling.scf_commands.materialize_scf_commands",
-                    "merlin.compile.scheduling.scf_commands.emit_scf_commands",
+                    "merlin.compiler.schedule.loop_schedule.tile_loop_nest_transforms",
+                    "merlin.compiler.schedule.loop_schedule.partition_counted_loop",
+                    "merlin.compiler.schedule.scf_commands.materialize_scf_commands",
+                    "merlin.compiler.schedule.scf_commands.emit_scf_commands",
                     "merlin.sched.ir.Loop",
                 ),
                 consumer="registered real transforms, actual checked Kernel/SCF and target callbacks",
@@ -431,8 +431,8 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "qualified_configuration_motion",
                 (
-                    "merlin.compile.scheduling.configuration_motion.promote_configuration_writes",
-                    "merlin.compile.scheduling.configuration_motion.verify_configuration_motion",
+                    "merlin.compiler.schedule.configuration_motion.promote_configuration_writes",
+                    "merlin.compiler.schedule.configuration_motion.verify_configuration_motion",
                 ),
                 consumer="actual retained Kernel feeds ordinary configuration cleanup and emission",
                 access="additional_compiler_sources",
@@ -458,9 +458,9 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "independent_completion_stream_fusion",
                 (
-                    "merlin.compile.scheduling.completion_streams.fuse_completion_streams",
-                    "merlin.compile.scheduling.completion_streams.CompletionEffectsAdapter",
-                    "merlin.compile.scheduling.completion_streams.CompletionEffectEnvelope",
+                    "merlin.compiler.schedule.completion_streams.fuse_completion_streams",
+                    "merlin.compiler.schedule.completion_streams.CompletionEffectsAdapter",
+                    "merlin.compiler.schedule.completion_streams.CompletionEffectEnvelope",
                 ),
                 consumer="actual checked Kernel and SCF with original ordered event recurrences and drains",
                 access="additional_compiler_sources",

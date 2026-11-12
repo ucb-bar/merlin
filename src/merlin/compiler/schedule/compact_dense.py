@@ -176,7 +176,6 @@ class CompactDenseResult:
     output_readout: object = None
     checked_readout: str | None = None
     uses_schedule_ir: bool = False
-    schedule_library_version: int = 27
 
     def revalidate(self):
         from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
@@ -202,8 +201,7 @@ class CompactDenseResult:
         if (
             stamp is None
             or self.kernel.digest() != stamp.source_sha256
-            or _digest(_dense_library_sources(self.uses_schedule_ir, self.schedule_library_version))
-            != stamp.context.library
+            or _digest(_dense_library_sources()) != stamp.context.library
             or type(self.index_bits) is not int
             or self.index_bits != self.checked_index_bits
             or stamp.context.execution is None
@@ -627,8 +625,7 @@ def schedule_compact_dense(
     elif source_identity is not None:
         raise ValueError("dense source identity requires an explicit schedule plan")
     # Source custody names the current SDK independently of loop-transform legality.
-    schedule_library_version = 27
-    sources = _dense_library_sources(decision is not None, schedule_library_version)
+    sources = _dense_library_sources()
     checked_selection = None if selected_contracts is None else _digest(selected_contracts.record())
     binding = (
         None
@@ -741,7 +738,7 @@ def schedule_compact_dense(
                 raise ValueError("dense selected output readout changed during compilation; replan")
             if _digest(selected_contracts.record()) != checked_selection:
                 raise ValueError("dense selected RTL/software contracts changed during compilation; replan")
-        if sources != _dense_library_sources(decision is not None, schedule_library_version):
+        if sources != _dense_library_sources():
             raise ValueError("dense shared library changed during compilation; replan")
 
     def emit(block):
@@ -870,7 +867,6 @@ def schedule_compact_dense(
                 output_readout,
                 checked_readout,
                 decision is not None,
-                schedule_library_version,
             )
 
 
@@ -881,11 +877,7 @@ def _digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def _dense_library_sources(uses_schedule_ir=False, schedule_library_version=27):
-    if uses_schedule_ir:
-        from merlin.compiler.schedule.library_sources import shared_library_sources
-
-        return shared_library_sources(version=schedule_library_version)
+def _dense_library_sources():
     from merlin.compiler.schedule.schedule_pipeline import shared_library_sources
 
     return shared_library_sources()

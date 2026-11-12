@@ -285,7 +285,7 @@ def records(prefix):
                 prefix + name
                 for name in (
                     "dense_panel_pipeline.DenseRetainedReductionAdmission",
-                    "dense_contracts.DenseTiledIntegerReadout",
+                    "dense_panel_contracts.DenseTiledIntegerReadout",
                     "dense_panel_readout.batch_dense_panel_initializers",
                     "dense_panel_readout.batch_dense_panel_readouts",
                     "dense_panel_pipeline.verify_dense_retained_reduction",

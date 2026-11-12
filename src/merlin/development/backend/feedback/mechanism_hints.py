@@ -135,7 +135,7 @@ def _prerequisites(row):
         name = (
             "array_weight_retention" if str(row["api"]).endswith(".dense_array_retention") else "exact_final_wide_loads"
         )
-        capability = next(c for c in scheduling_capabilities(23)["capabilities"] if c["name"] == name)
+        capability = next(c for c in scheduling_capabilities()["capabilities"] if c["name"] == name)
         checks.extend(capability["requires"])
         binding = adapter_contract(row, {})
         if binding:
@@ -145,7 +145,7 @@ def _prerequisites(row):
 
         capability = next(
             c
-            for c in scheduling_capabilities(17)["capabilities"]
+            for c in scheduling_capabilities()["capabilities"]
             if c["name"] == "source_exact_quantized_spatial_readout_cache"
         )
         checks.extend(capability["requires"])
@@ -157,7 +157,7 @@ def _prerequisites(row):
 
         capability = next(
             c
-            for c in scheduling_capabilities(23)["capabilities"]
+            for c in scheduling_capabilities()["capabilities"]
             if c["name"] == "source_qualified_convolution_readout_epochs"
         )
         checks.extend(capability["requires"])

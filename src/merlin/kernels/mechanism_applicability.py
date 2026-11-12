@@ -366,12 +366,13 @@ def stream_effects(analysis, structure, stream, *, evidence_id=None):
     return derive_effects(analysis, structure, evidence_id=evidence_id, **options).get("facts") or {}
 
 
-def applicability(reference, candidate, *, shape=None, geometry=None, geometry_reason=None, structure=None, version=24):
+def applicability(reference, candidate, *, shape=None, geometry=None, geometry_reason=None, structure=None):
     """Differences, routes per difference with admission, and missing capabilities. Never ranked."""
     from merlin.compiler.schedule.api_catalog import capability_effects
+    from merlin.compiler.schedule.library_sources import CURRENT_SDK_VERSION
 
     differences = mechanism_differences(reference, candidate, structure=structure)
-    routes = capability_effects(version)
+    routes = capability_effects()
     family = _family(shape)
     out, missing = [], []
     for row in differences:
@@ -430,7 +431,9 @@ def applicability(reference, candidate, *, shape=None, geometry=None, geometry_r
         partial_recipe=partial_recipe(out),
         candidate_shape=dict(value=shape, family=family, source="author_declared" if shape else "not_supplied"),
         selected_geometry=geometry if geometry is not None else dict(status="unknown", reason=geometry_reason),
-        catalog=dict(api="merlin.compile.scheduling.api_catalog:capability_effects", inventory_version=version),
+        catalog=dict(
+            api="merlin.compiler.schedule.api_catalog:capability_effects", inventory_version=CURRENT_SDK_VERSION
+        ),
         ordering="differences in fixed effect order; routes in catalog order; nothing is ranked",
         choice="selecting, composing and implementing a route is the author's work",
         semantic_equivalence="unknown",

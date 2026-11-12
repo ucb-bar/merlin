@@ -77,7 +77,7 @@ def records(prefix):
         {
             "name": "selected_logical_kernel_argument_binding",
             "symbols": [
-                "merlin.compile.logical_abi." + name
+                "merlin.compiler.ir.logical_abi." + name
                 for name in (
                     "logical_abi",
                     "logical_abi_from_document",
@@ -152,8 +152,8 @@ def records(prefix):
         {
             "name": "bounded_declared_settings_cycle_selection",
             "symbols": [
-                "merlin.compile.tuning_knobs.KnobSettings",
-                "merlin.compile.tuning_knobs.bounded_settings",
+                "merlin.compiler.selection.knobs.KnobSettings",
+                "merlin.compiler.selection.knobs.bounded_settings",
                 "merlin.transforms.tuning_selection.KnobTrial",
                 "merlin.transforms.tuning_selection.unique_emissions",
                 "merlin.transforms.tuning_selection.select_settings",

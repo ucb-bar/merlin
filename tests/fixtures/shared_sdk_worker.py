@@ -362,7 +362,7 @@ for name, module in tuple(sys.modules.items()):
         origins[name] = str(path)
         assert all(Path(p).resolve().is_relative_to(bundle) for p in getattr(module, "__path__", ()))
 manifest = json.loads((bundle / "shared-library.json").read_text())
-sources = shared_library_sources(version=manifest.get("inventory_version", 6))
+sources = shared_library_sources(version=manifest["inventory_version"])
 assert sources == {member["module"]: member["sha256"] for member in manifest["members"] if member["module"] is not None}
 result = {
     "schema": "merlin.shared_sdk_execution.v1",

@@ -896,23 +896,8 @@ def main(
                 try:
                     if common_service is None:
                         raise FileNotFoundError("versioned common transformation tooling was not admitted for this run")
-                    if r["action"] == "common-check" and common_service.profile.get("common_substrate") not in (
-                        "merlin.common_compiler_substrate.v3",
-                        "merlin.common_compiler_substrate.v4",
-                        "merlin.common_compiler_substrate.v5",
-                        "merlin.common_compiler_substrate.v6",
-                        "merlin.common_compiler_substrate.v7",
-                        "merlin.common_compiler_substrate.v8",
-                        "merlin.common_compiler_substrate.v9",
-                        "merlin.common_compiler_substrate.v10",
-                        "merlin.common_compiler_substrate.v11",
-                        "merlin.common_compiler_substrate.v12",
-                        "merlin.common_compiler_substrate.v13",
-                        "merlin.common_compiler_substrate.v14",
-                        "merlin.common_compiler_substrate.v15",
-                        "merlin.common_compiler_substrate.v16",
-                        "merlin.common_compiler_substrate.v17",
-                    ):
+                    if r["action"] == "common-check":
+                        # The current common substrate admits no common check on this channel.
                         raise FileNotFoundError("common check was not admitted by the original compiler profile")
                     proof_root = a.compiler_bundle_manifest.parent / "common-transform-work"
                     proof_root.mkdir(mode=0o700, exist_ok=True)

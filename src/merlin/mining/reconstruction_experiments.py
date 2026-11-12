@@ -175,12 +175,12 @@ def _captured_library_routes(goal):
         "dispatch.n_fences": ("checked_dense_pipeline_entry", "final_k_causal_accumulator_readout_frontier"),
         "dispatch.config_fraction": ("declared_persistent_scalar_state_in_scf",),
     }.get(goal, ())
-    catalog = scheduling_capabilities(24)
+    catalog = scheduling_capabilities()
     selected = {row["name"]: row for row in catalog["capabilities"]}
     return [
         dict(
             capability=name,
-            catalog="merlin.compile.scheduling.api_catalog:scheduling_capabilities",
+            catalog="merlin.compiler.schedule.api_catalog:scheduling_capabilities",
             symbols=selected[name]["symbols"],
             authority=catalog["authority"],
         )

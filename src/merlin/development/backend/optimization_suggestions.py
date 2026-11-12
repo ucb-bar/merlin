@@ -362,7 +362,7 @@ def select(catalog, *, capabilities, public_modules, workload=None, limit=12):
 
 def _selected_bindings(catalog, inventory, workspace):
     """Project only owners present in the exact selected public source inventory."""
-    from merlin.compiler.schedule.library_sources import canonical_module
+    from merlin.development.backend.catalog_owners import current_owner
 
     selected = {row["module"] for row in inventory["public_modules"]}
     names = {row["compiler"]["module"] for row in catalog["mechanisms"]}
@@ -370,7 +370,7 @@ def _selected_bindings(catalog, inventory, workspace):
     bindings = {}
     library = Path(workspace) / "submission/compiler_library"
     for original in sorted(names):
-        current = canonical_module(original)
+        current = current_owner(original)
         if current == original or current not in selected:
             continue
         relative = Path(*current.split(".")).with_suffix(".py")

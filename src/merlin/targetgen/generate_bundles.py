@@ -487,49 +487,14 @@ def generate_bundles(
 
             if python_source_root is None:
                 raise ValueError("common substrate requires the selected Python source root")
-            from .tool_profile import (
-                COMMON_SUBSTRATE_V3,
-                COMMON_SUBSTRATE_V4,
-                COMMON_SUBSTRATE_V5,
-                COMMON_SUBSTRATE_V6,
-                COMMON_SUBSTRATE_V7,
-                COMMON_SUBSTRATE_V8,
-                COMMON_SUBSTRATE_V9,
-                COMMON_SUBSTRATE_V10,
-                COMMON_SUBSTRATE_V11,
-                COMMON_SUBSTRATE_V12,
-                COMMON_SUBSTRATE_V13,
-                COMMON_SUBSTRATE_V14,
-                COMMON_SUBSTRATE_V15,
-                COMMON_SUBSTRATE_V16,
-                COMMON_SUBSTRATE_V17,
+            attach_common_substrate(
+                out[bid],
+                version=common_substrate,
+                python_source_root=python_source_root,
+                lean_toolchain_manifest=lean_toolchain_manifest,
+                host_index_bits=host_index_bits,
+                public_codegen_resource_policy=selected_policy,
             )
-
-            if common_substrate not in {
-                COMMON_SUBSTRATE_V3,
-                COMMON_SUBSTRATE_V4,
-                COMMON_SUBSTRATE_V5,
-                COMMON_SUBSTRATE_V6,
-                COMMON_SUBSTRATE_V7,
-                COMMON_SUBSTRATE_V8,
-                COMMON_SUBSTRATE_V9,
-                COMMON_SUBSTRATE_V10,
-                COMMON_SUBSTRATE_V11,
-                COMMON_SUBSTRATE_V12,
-                COMMON_SUBSTRATE_V13,
-                COMMON_SUBSTRATE_V14,
-                COMMON_SUBSTRATE_V15,
-                COMMON_SUBSTRATE_V16,
-                COMMON_SUBSTRATE_V17,
-            }:
-                attach_common_substrate(
-                    out[bid],
-                    version=common_substrate,
-                    python_source_root=python_source_root,
-                    lean_toolchain_manifest=lean_toolchain_manifest,
-                    host_index_bits=host_index_bits,
-                    public_codegen_resource_policy=selected_policy,
-                )
         elif lean_toolchain_manifest is not None:
             raise ValueError("selected Lean tooling requires the versioned common compiler substrate")
         if python_source_root is not None:
@@ -538,54 +503,6 @@ def generate_bundles(
             _select_llvm_grant(out[bid], llvm_toolchain_root)
         if selected_facts is not None:
             _select_rtl_facts_grant(out[bid], te, selected_facts[0])
-        if common_substrate in {
-            "merlin.common_compiler_substrate.v3",
-            "merlin.common_compiler_substrate.v4",
-            "merlin.common_compiler_substrate.v5",
-            "merlin.common_compiler_substrate.v6",
-            "merlin.common_compiler_substrate.v7",
-            "merlin.common_compiler_substrate.v8",
-            "merlin.common_compiler_substrate.v9",
-            "merlin.common_compiler_substrate.v10",
-            "merlin.common_compiler_substrate.v11",
-            "merlin.common_compiler_substrate.v12",
-            "merlin.common_compiler_substrate.v13",
-            "merlin.common_compiler_substrate.v14",
-            "merlin.common_compiler_substrate.v15",
-            "merlin.common_compiler_substrate.v16",
-            "merlin.common_compiler_substrate.v17",
-        }:
-            # The common generated task is the sole authoring instruction owner.
-            # Legacy target task directories remain operator inputs, not grants.
-            legacy_task = te.experiment_resource("task") + "/"
-            out[bid]["allowed"] = [row for row in out[bid]["allowed"] if row.get("path") != legacy_task]
-            out[bid]["host_inputs"].append(
-                {"path": legacy_task, "note": "retained task text for release custody; never a candidate grant"}
-            )
-            # Resolve original semantic inputs only after ordinary source/facts
-            # grants have reached their final canonical selected locations.
-            software = [
-                row["path"]
-                for row in out[bid]["host_inputs"]
-                if row.get("note") == "selected software semantics; not hardware evidence"
-            ]
-            if len(software) > 1:
-                raise ValueError("common formal semantics have ambiguous original software inputs")
-            selected_software = Path(software[0]) if software else None
-            if selected_software is not None and not selected_software.is_absolute():
-                selected_software = (te._source_root() / selected_software).resolve()
-            attach_common_substrate(
-                out[bid],
-                version=common_substrate,
-                python_source_root=python_source_root,
-                lean_toolchain_manifest=lean_toolchain_manifest,
-                host_index_bits=host_index_bits,
-                software_spec_path=selected_software,
-                facts_path=selected_facts[0] / "facts.json" if selected_facts else None,
-                target=te.target,
-                public_codegen_resource_policy=selected_policy,
-            )
-            _select_python_grants(out[bid], python_source_root)
     return out
 
 
@@ -966,43 +883,11 @@ def _main(argv: list[str] | None = None) -> int:
         help="absolute ordinary directory containing the selected Phase 0 facts.json",
     )
     ap.add_argument("--list-tools", action="store_true", help="print the tool catalog and exit")
-    from .tool_profile import (
-        COMMON_SUBSTRATE_V1,
-        COMMON_SUBSTRATE_V2,
-        COMMON_SUBSTRATE_V3,
-        COMMON_SUBSTRATE_V4,
-        COMMON_SUBSTRATE_V5,
-        COMMON_SUBSTRATE_V6,
-        COMMON_SUBSTRATE_V7,
-        COMMON_SUBSTRATE_V8,
-        COMMON_SUBSTRATE_V9,
-        COMMON_SUBSTRATE_V10,
-        COMMON_SUBSTRATE_V11,
-        COMMON_SUBSTRATE_V12,
-        COMMON_SUBSTRATE_V13,
-        COMMON_SUBSTRATE_V14,
-        COMMON_SUBSTRATE_V15,
-    )
+    from .tool_profile import CURRENT_COMMON_SUBSTRATE
 
     ap.add_argument(
         "--common-substrate",
-        choices=(
-            COMMON_SUBSTRATE_V1,
-            COMMON_SUBSTRATE_V2,
-            COMMON_SUBSTRATE_V3,
-            COMMON_SUBSTRATE_V4,
-            COMMON_SUBSTRATE_V5,
-            COMMON_SUBSTRATE_V6,
-            COMMON_SUBSTRATE_V7,
-            COMMON_SUBSTRATE_V8,
-            COMMON_SUBSTRATE_V9,
-            COMMON_SUBSTRATE_V10,
-            COMMON_SUBSTRATE_V11,
-            COMMON_SUBSTRATE_V12,
-            COMMON_SUBSTRATE_V13,
-            COMMON_SUBSTRATE_V14,
-            COMMON_SUBSTRATE_V15,
-        ),
+        choices=(CURRENT_COMMON_SUBSTRATE,),
         help="select versioned common transforms and strict covered-domain verification for a fresh release",
     )
     ap.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")

@@ -739,11 +739,11 @@ def main(argv: list[str] | None = None) -> int:
 
     prepare.add_argument(
         "--common-substrate",
-        choices=tuple(f"merlin.common_compiler_substrate.v{version}" for version in range(1, 21)),
+        choices=(CURRENT_COMMON_SUBSTRATE,),
         default=CURRENT_COMMON_SUBSTRATE,
-        help="fresh preparation uses SDK27; older selectors require their explicit frozen source release",
+        help="the current common substrate; retired substrates are refused",
     )
-    prepare.add_argument("--python-source-root", type=Path, help="explicit frozen compiler SDK source root")
+    prepare.add_argument("--python-source-root", type=Path, help="explicit reviewed current compiler SDK source root")
     prepare.add_argument("--public-scalability", type=Path, help="required separate Spike-only public suite selector")
     prepare.add_argument("--public-supplement", type=Path, help="pinned operator-requested public test selection JSON")
     prepare.add_argument("--host-index-bits", type=int, help="reviewed index width of the selected host ABI")

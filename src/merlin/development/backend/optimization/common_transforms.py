@@ -11,25 +11,6 @@ from merlin.development.backend.optimization.contracts import StageGateError
 
 ACTION = "common-transform"
 CHECK_ACTION = "common-check"
-CHECK_SUBSTRATE = "merlin.common_compiler_substrate.v3"
-_CHECK_SUBSTRATES = (
-    CHECK_SUBSTRATE,
-    "merlin.common_compiler_substrate.v4",
-    "merlin.common_compiler_substrate.v5",
-    "merlin.common_compiler_substrate.v6",
-    "merlin.common_compiler_substrate.v7",
-    "merlin.common_compiler_substrate.v8",
-    "merlin.common_compiler_substrate.v9",
-    "merlin.common_compiler_substrate.v10",
-    "merlin.common_compiler_substrate.v11",
-    "merlin.common_compiler_substrate.v12",
-    "merlin.common_compiler_substrate.v13",
-    "merlin.common_compiler_substrate.v14",
-    "merlin.common_compiler_substrate.v15",
-    "merlin.common_compiler_substrate.v16",
-    "merlin.common_compiler_substrate.v19",
-    "merlin.common_compiler_substrate.v20",
-)
 
 
 def action() -> BrokerAction:
@@ -55,7 +36,9 @@ def check_action() -> BrokerAction:
 
 
 def supports_check(profile) -> bool:
-    return isinstance(profile, dict) and profile.get("common_substrate") in _CHECK_SUBSTRATES
+    from merlin.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE
+
+    return isinstance(profile, dict) and profile.get("common_substrate") == CURRENT_COMMON_SUBSTRATE
 
 
 def services(frozen_functional, *, candidate: Path, work_root: Path):

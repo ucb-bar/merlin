@@ -795,7 +795,7 @@ class _SourceModelBuild:
         self.observe_native(tuple(Path(path) for path in retained), True)
 
     def build(self, context):
-        from merlin.compiler.schedule.library_sources import LIBRARY_MODULES
+        from merlin.compiler.schedule.library_sources import library_modules
         from merlin.runtime.host_provider import HostProviderBuild, HostProviderObject
 
         self.revalidate()
@@ -867,7 +867,7 @@ class _SourceModelBuild:
                     f.selection.selected_contracts.software_path,
                 )
             ),
-            *(Path(importlib.import_module(name).__file__) for name in LIBRARY_MODULES),
+            *(Path(importlib.import_module(name).__file__) for name in library_modules()),
         )
         pins = (*self.pins, *((path.resolve(), sha256_file(path)) for path in paths))
         numerical, effects = results[0].numerical_witness_sha256, results[0].effect_witness_sha256

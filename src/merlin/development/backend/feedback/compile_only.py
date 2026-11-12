@@ -100,45 +100,9 @@ def _request_snapshot_entry(owner):
 
 def _verified_substrate(owner):
     """Whether this profile's operations verify the frozen input snapshot."""
-    from merlin.targetgen.tool_profile import (
-        COMMON_SUBSTRATE_V3,
-        COMMON_SUBSTRATE_V4,
-        COMMON_SUBSTRATE_V5,
-        COMMON_SUBSTRATE_V6,
-        COMMON_SUBSTRATE_V7,
-        COMMON_SUBSTRATE_V8,
-        COMMON_SUBSTRATE_V9,
-        COMMON_SUBSTRATE_V10,
-        COMMON_SUBSTRATE_V11,
-        COMMON_SUBSTRATE_V12,
-        COMMON_SUBSTRATE_V13,
-        COMMON_SUBSTRATE_V14,
-        COMMON_SUBSTRATE_V15,
-        COMMON_SUBSTRATE_V16,
-        COMMON_SUBSTRATE_V17,
-        COMMON_SUBSTRATE_V19,
-        COMMON_SUBSTRATE_V20,
-    )
+    from merlin.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE
 
-    return owner.profile.get("common_substrate") in {
-        COMMON_SUBSTRATE_V3,
-        COMMON_SUBSTRATE_V4,
-        COMMON_SUBSTRATE_V5,
-        COMMON_SUBSTRATE_V6,
-        COMMON_SUBSTRATE_V7,
-        COMMON_SUBSTRATE_V8,
-        COMMON_SUBSTRATE_V9,
-        COMMON_SUBSTRATE_V10,
-        COMMON_SUBSTRATE_V11,
-        COMMON_SUBSTRATE_V12,
-        COMMON_SUBSTRATE_V13,
-        COMMON_SUBSTRATE_V14,
-        COMMON_SUBSTRATE_V15,
-        COMMON_SUBSTRATE_V16,
-        COMMON_SUBSTRATE_V17,
-        COMMON_SUBSTRATE_V19,
-        COMMON_SUBSTRATE_V20,
-    }
+    return owner.profile.get("common_substrate") == CURRENT_COMMON_SUBSTRATE
 
 
 @contextmanager
@@ -600,10 +564,6 @@ def _observe(
         common_service._verify()
         original_profile = common_service.profile
         emission_selection = None
-        if original_profile.get("common_substrate") == "merlin.common_compiler_substrate.v3":
-            from merlin.verification.lean_emission_chain import EmissionChainSelection
-
-            emission_selection = EmissionChainSelection(common_service)
         if type(timeout_s) is not int or not 1 <= timeout_s <= 600:
             raise ValueError("compile-only aggregate deadline must be 1..600 seconds")
         candidate, contract, facts_path, work_root = map(Path, (candidate, contract, facts_path, work_root))

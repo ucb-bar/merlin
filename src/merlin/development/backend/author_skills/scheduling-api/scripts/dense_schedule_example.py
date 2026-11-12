@@ -28,7 +28,7 @@ def _library(path: str | None) -> None:
         sys.path.insert(0, str(root.resolve()))
 
 
-def selected_inventory(default: int = 19) -> int:
+def selected_inventory(default: int = 27) -> int:
     """The scheduling inventory of the selected SDK release (its ``shared-library.json`` on ``sys.path``).
 
     This is the number TASK.md names in ``scheduling_capabilities(N)``. Without a selected release on the

@@ -562,7 +562,7 @@ def roster(inventory: int, library: str | None) -> tuple[str, tuple[str, ...]]:
 def catalog_rows(modules) -> dict[str, dict]:
     from merlin.compiler.schedule.api_catalog import scheduling_capabilities
 
-    catalog = scheduling_capabilities(26)["composition"]
+    catalog = scheduling_capabilities()["composition"]
     for row in catalog["capabilities"]:
         required = {symbol.rsplit(".", 1)[0] for symbol in row["symbols"]}
         missing = None if modules is None else sorted(required - set(modules))
@@ -640,7 +640,7 @@ def describe(route_id: str, evidence, *, rows=None, imports=None, skills: str = 
     return out
 
 
-def report(case=None, *, workspace=".", inventory=26, library=None) -> dict:
+def report(case=None, *, workspace=".", inventory=27, library=None) -> dict:
     workspace = Path(workspace)
     try:
         label, modules = roster(inventory, library)
@@ -689,7 +689,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0], epilog="See reference/composition.md.")
     ap.add_argument("--case", default=None, help="a public test case name (its folder under the workspace)")
     ap.add_argument("--ws", default=".", help="workspace root (default: current directory)")
-    ap.add_argument("--inventory", type=int, default=26, help="library inventory when no editable library exists")
+    ap.add_argument("--inventory", type=int, default=27, help="library inventory when no editable library exists")
     ap.add_argument("--library", default=None, help="editable compiler library (default: submission/compiler_library)")
     a = ap.parse_args(argv)
     root = Path(a.library) if a.library else Path(a.ws) / "submission" / "compiler_library"

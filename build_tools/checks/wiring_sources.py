@@ -64,7 +64,7 @@ def _staged_rtl_sources(root: Path, tree: ast.AST) -> set[str]:
         }
         <= loader_forms
         or not {
-            "tool_sources = _tool_sources(root, tools, withhold=withhold)",
+            "tool_sources = _tool_sources(root, tools)",
             "sources.update(tool_sources)",
             "before = {relative: _read(root, relative) for relative in dict.fromkeys(sources.values())}",
             "payload = before[selected_source]",

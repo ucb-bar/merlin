@@ -99,8 +99,10 @@ def bind(
     manifest = launch.path(document["inputs"]["bundle_manifest"])
     bundle = yaml.safe_load(manifest.read_text())
     sdk = bundle.get("compiler_tool_profile") if isinstance(bundle, dict) else None
-    if not isinstance(sdk, dict) or sdk.get("common_substrate") != "merlin.common_compiler_substrate.v6":
-        raise ValueError("selected successor corpus requires the explicit V6 compiler tool profile")
+    from merlin.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE
+
+    if not isinstance(sdk, dict) or sdk.get("common_substrate") != CURRENT_COMMON_SUBSTRATE:
+        raise ValueError("selected successor corpus requires the current compiler tool profile")
     sdk_manifest = launch.path(document["runtime_pins"]["shared_sdk_manifest"]["path"])
     if sdk.get("shared_scheduling_library") != json.loads(sdk_manifest.read_bytes()):
         raise ValueError("selected SDK export differs from the corpus compiler profile")

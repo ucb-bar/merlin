@@ -24,10 +24,11 @@ def route_kind(row, convolution=False):
 def _capabilities(module):
     """Shared library capabilities about reuse or wide transfer whose symbols live in a selected module."""
     from merlin.compiler.schedule.api_catalog import scheduling_capabilities
+    from merlin.development.backend.catalog_owners import current_owner
 
     found = []
-    version = 26 if module.startswith("merlin.compiler.schedule.") else 23
-    for capability in scheduling_capabilities(version)["capabilities"]:
+    module = current_owner(module)
+    for capability in scheduling_capabilities()["capabilities"]:
         words = str(capability.get("name", "")).split("_")
         if any(str(symbol).rsplit(".", 1)[0] == module for symbol in capability.get("symbols", ())) and any(
             word.startswith(_REUSE_WORDS) for word in words

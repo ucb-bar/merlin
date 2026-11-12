@@ -38,7 +38,7 @@ def prepare(
     public_supplement=None,
     public_program_suite=None,
     host_capability_selection=None,
-    common_substrate="merlin.common_compiler_substrate.v8",
+    common_substrate="merlin.common_compiler_substrate.v20",
     source_run=None,
     phase1_policy_descriptor=None,
     author_profile=None,
@@ -48,19 +48,9 @@ def prepare(
     operand_protocol_revision=None,
     cca_bank=None,
 ):
-    if common_substrate not in (
-        "merlin.common_compiler_substrate.v8",
-        "merlin.common_compiler_substrate.v9",
-        "merlin.common_compiler_substrate.v10",
-        "merlin.common_compiler_substrate.v11",
-        "merlin.common_compiler_substrate.v12",
-        "merlin.common_compiler_substrate.v13",
-        "merlin.common_compiler_substrate.v14",
-        "merlin.common_compiler_substrate.v15",
-        "merlin.common_compiler_substrate.v16",
-        "merlin.common_compiler_substrate.v17",
-    ):
-        raise ValueError("source refresh requires an explicitly supported reviewed common substrate")
+    from merlin.targetgen.tool_profile import require_current_substrate
+
+    require_current_substrate(common_substrate)
     previous, output, sdk = Path(previous), Path(output), Path(sdk)
     old = json.loads((previous / "private/preparation.json").read_bytes())
     assembly, scaffold = old["assembly"], old["scaffolding"]
@@ -201,20 +191,9 @@ def main():
     )
     p.add_argument(
         "--common-substrate",
-        default="merlin.common_compiler_substrate.v8",
-        choices=(
-            "merlin.common_compiler_substrate.v8",
-            "merlin.common_compiler_substrate.v9",
-            "merlin.common_compiler_substrate.v10",
-            "merlin.common_compiler_substrate.v11",
-            "merlin.common_compiler_substrate.v12",
-            "merlin.common_compiler_substrate.v13",
-            "merlin.common_compiler_substrate.v14",
-            "merlin.common_compiler_substrate.v15",
-            "merlin.common_compiler_substrate.v16",
-            "merlin.common_compiler_substrate.v17",
-        ),
-        help="explicit prospective source epoch; default preserves the existing V8 profile",
+        default="merlin.common_compiler_substrate.v20",
+        choices=("merlin.common_compiler_substrate.v20",),
+        help="explicit prospective source epoch; only the current common substrate is supported",
     )
     p.add_argument(
         "--host-capability-spec", type=Path, help="Exact reviewed support source for the existing host package"

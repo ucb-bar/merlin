@@ -61,43 +61,10 @@ def _original_entry(admission, target, build_service):
 def _original_context(admission, entry):
     from merlin.common import bundle_snapshot as bwrap
 
-    from .tool_profile import (
-        COMMON_SUBSTRATE_V3,
-        COMMON_SUBSTRATE_V4,
-        COMMON_SUBSTRATE_V5,
-        COMMON_SUBSTRATE_V6,
-        COMMON_SUBSTRATE_V7,
-        COMMON_SUBSTRATE_V8,
-        COMMON_SUBSTRATE_V9,
-        COMMON_SUBSTRATE_V10,
-        COMMON_SUBSTRATE_V11,
-        COMMON_SUBSTRATE_V12,
-        COMMON_SUBSTRATE_V13,
-        COMMON_SUBSTRATE_V14,
-        COMMON_SUBSTRATE_V15,
-        COMMON_SUBSTRATE_V19,
-        COMMON_SUBSTRATE_V20,
-    )
+    from .tool_profile import require_current_substrate
 
     admission.verify()
-    if admission.profile["common_substrate"] not in {
-        COMMON_SUBSTRATE_V3,
-        COMMON_SUBSTRATE_V4,
-        COMMON_SUBSTRATE_V5,
-        COMMON_SUBSTRATE_V6,
-        COMMON_SUBSTRATE_V7,
-        COMMON_SUBSTRATE_V8,
-        COMMON_SUBSTRATE_V9,
-        COMMON_SUBSTRATE_V10,
-        COMMON_SUBSTRATE_V11,
-        COMMON_SUBSTRATE_V12,
-        COMMON_SUBSTRATE_V13,
-        COMMON_SUBSTRATE_V14,
-        COMMON_SUBSTRATE_V15,
-        COMMON_SUBSTRATE_V19,
-        COMMON_SUBSTRATE_V20,
-    }:
-        raise ValueError("host choices require the original substrate V3 profile")
+    require_current_substrate(admission.profile["common_substrate"])
     row = admission.profile["semantic_inputs"]["software_spec"]
     if row is None:
         raise ValueError("host choices have no original reviewed software permissions")

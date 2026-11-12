@@ -278,7 +278,7 @@ def reference(source, image, weights, bias) -> dict:
     return out
 
 
-def recipe(facts=None, inventory=22, library=None, workspace_bytes=None) -> dict:
+def recipe(facts=None, inventory=27, library=None, workspace_bytes=None) -> dict:
     S = _support()
     caps = S.capacities(facts)
     found = discover(inventory, library)
@@ -332,7 +332,7 @@ def main(argv=None) -> int:
         description=__doc__.splitlines()[0], epilog="See the heavy-pass-recipes skill, reference/composition.md."
     )
     ap.add_argument("--facts", default=None, help="RTL facts JSON (default: rtl_facts/facts.json if present)")
-    ap.add_argument("--inventory", type=int, default=22, help="library inventory when no editable library is present")
+    ap.add_argument("--inventory", type=int, default=27, help="library inventory when no editable library is present")
     ap.add_argument(
         "--workspace-bytes",
         type=int,

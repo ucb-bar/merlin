@@ -876,26 +876,20 @@ def _stage_capability_contract(
 
 
 def compiler_source_selection(common_substrate=None, python_source_root=None):
-    """Select fresh SDK27 or validate an explicitly selected frozen shared release."""
+    """Select current SDK sources or validate an explicitly selected reviewed current release."""
     from merlin.common.paths import python_source_dir
-    from merlin.targetgen.tool_profile import _SHARED_SUBSTRATES, CURRENT_COMMON_SUBSTRATE, substrate_inventory
+    from merlin.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE, require_current_substrate
 
     version = CURRENT_COMMON_SUBSTRATE if common_substrate is None else common_substrate
-    substrate_inventory(version)  # Unknown versions refuse before output creation.
+    require_current_substrate(version)  # Retired or unknown versions refuse before output creation.
     root = python_source_dir() if python_source_root is None else Path(python_source_root)
     if not root.is_absolute() or root.resolve() != root or not root.is_dir():
         raise SpecError("compiler source selection requires an existing canonical absolute directory")
     if python_source_root is None:
-        if version != CURRENT_COMMON_SUBSTRATE:
-            raise SpecError(
-                "legacy compiler selection requires its explicit frozen source root or archived environment"
-            )
         return version, root
-    if version not in _SHARED_SUBSTRATES:
-        raise SpecError("this legacy compiler selection must run in its original archived environment")
     from merlin.targetgen.tool_profile_shared import reviewed_shared_manifest
 
-    reviewed_shared_manifest(root, version=_SHARED_SUBSTRATES[version])
+    reviewed_shared_manifest(root)
     return version, root
 
 
@@ -946,9 +940,7 @@ def scaffold(
 
         tools = tuple(dict.fromkeys(tool for arm in arms for tool in tool_registry.ARM_TOOLS[arm]))
         selected_root = private / "compiler-sdk"
-        generated_sdk = prepare_shared_source_release(
-            selected_root, python_source_root=compiler_root, tools=tools, version=27
-        )
+        generated_sdk = prepare_shared_source_release(selected_root, python_source_root=compiler_root, tools=tools)
         compiler_root = selected_root.resolve(strict=True)
     experiment.mkdir(parents=True)
     inputs = {}

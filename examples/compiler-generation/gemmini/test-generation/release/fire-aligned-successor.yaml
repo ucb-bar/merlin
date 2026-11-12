@@ -19,7 +19,7 @@ prepare:
   - EL4
   selected_variants:
   - public_v0
-  common_substrate: merlin.common_compiler_substrate.v6
+  common_substrate: merlin.common_compiler_substrate.v20
   python_source_root: ${SDK_SOURCE}
   host_index_bits: 64
   kernel_timing_selection:

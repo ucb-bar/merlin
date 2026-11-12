@@ -166,16 +166,16 @@ def _symbol(root: Path, path: str, symbol: str, seen=frozenset()) -> dict:
 
 def current_binding(compiler: dict, root: Path = ROOT) -> dict:
     """Render current public owners without rewriting issued catalog records."""
-    path = root / "src/merlin/compiler/schedule/library_sources.py"
+    path = root / "src/merlin/development/backend/catalog_owners.py"
     spec = importlib.util.spec_from_file_location("_pass_library_source_owner", path)
     if spec is None or spec.loader is None:
         raise ValueError("current compiler source owner is unavailable")
     owner = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(owner)
-    canonical_module = owner.canonical_module
+    current_owner = owner.current_owner
 
     result = dict(compiler)
-    module = canonical_module(result.get("module", ""))
+    module = current_owner(result.get("module", ""))
     if module != result.get("module"):
         path = Path("src", *module.split(".")).with_suffix(".py").as_posix()
         if not (root / path).is_file():

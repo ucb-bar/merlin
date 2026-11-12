@@ -147,23 +147,8 @@ def _dispatch(service, request, request_id, *, deadline, proof_root, package_sha
     started = time.time_ns()
     try:
         remaining = _validate_request(request, request_id, deadline)
-        if request["action"] == "common-check" and service.profile["common_substrate"] not in (
-            "merlin.common_compiler_substrate.v3",
-            "merlin.common_compiler_substrate.v4",
-            "merlin.common_compiler_substrate.v5",
-            "merlin.common_compiler_substrate.v6",
-            "merlin.common_compiler_substrate.v7",
-            "merlin.common_compiler_substrate.v8",
-            "merlin.common_compiler_substrate.v9",
-            "merlin.common_compiler_substrate.v10",
-            "merlin.common_compiler_substrate.v11",
-            "merlin.common_compiler_substrate.v12",
-            "merlin.common_compiler_substrate.v13",
-            "merlin.common_compiler_substrate.v14",
-            "merlin.common_compiler_substrate.v15",
-            "merlin.common_compiler_substrate.v16",
-            "merlin.common_compiler_substrate.v17",
-        ):
+        if request["action"] == "common-check":
+            # The current common substrate admits no common check on this channel.
             raise FileNotFoundError("common check was not admitted by the original compiler profile")
         method = service.check if request["action"] == "common-check" else service.apply
         body = method(request["transform"], work_root=proof_root, timeout_s=remaining)

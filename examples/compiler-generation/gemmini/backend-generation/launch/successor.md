@@ -72,7 +72,7 @@ release.prepare(
     phase1_policy_descriptor=Path(PHASE1_POLICY_DESCRIPTOR),
     lean_toolchain_manifest=Path(LEAN_TOOLCHAIN_MANIFEST), host_index_bits=64,
     kernel_timing_selection=(Path(KERNEL_TIMING_CONTRACT), KERNEL_TIMING_SHA256),
-    common_substrate="merlin.common_compiler_substrate.v6",
+    common_substrate="merlin.common_compiler_substrate.v20",
     python_source_root=Path(SDK_SOURCE),
 )
 ```
@@ -81,7 +81,7 @@ Use `private_baseline=Path(PRIVATE_HIDDEN_ROOT)` only when the selected source
 requires an independently bound hidden cohort. Inspect the prepared release,
 review its actual digest, then call ordinary `corpus seal` with that digest,
 reviewer and review note. No preparation helper seals on the operator's behalf.
-Omitting the new substrate/source options preserves historical V3 preparation.
+Omitting the substrate selects the current one; retired substrates are refused.
 
 The selected bundle's `compiler_tool_profile` publishes the exact generic API,
 implementation and automatic-checker inventories and source digests. The normal

@@ -204,83 +204,15 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
 
 
 def _reconcile_public_software_denial(te, bundle, paths, *, spec, source_freeze, source_root):
-    """Keep a reviewed common-tool semantics declaration public, never model data."""
-    from merlin.development.backend.feedback import private_source_freeze
-    from merlin.experiments.corpus.numeric_policy import numeric_profile_path
-    from merlin.runtime.modelinputs import file_sha256
-    from merlin.targetgen.software_spec import software_spec_path_for_recipe, validate_software_spec
-    from merlin.targetgen.tool_profile import (
-        COMMON_SUBSTRATE_V2,
-        COMMON_SUBSTRATE_V3,
-        COMMON_SUBSTRATE_V6,
-        COMMON_SUBSTRATE_V7,
-        COMMON_SUBSTRATE_V8,
-        COMMON_SUBSTRATE_V9,
-        COMMON_SUBSTRATE_V10,
-        COMMON_SUBSTRATE_V11,
-        COMMON_SUBSTRATE_V12,
-        COMMON_SUBSTRATE_V13,
-        COMMON_SUBSTRATE_V14,
-        COMMON_SUBSTRATE_V15,
-        verify_tool_profile,
-    )
+    """Validate the bundle's compiler profile; private software denials stay unchanged.
 
-    profile = verify_tool_profile(bundle)
-    if profile is None or profile.get("common_substrate") not in {
-        COMMON_SUBSTRATE_V2,
-        COMMON_SUBSTRATE_V3,
-        COMMON_SUBSTRATE_V6,
-        COMMON_SUBSTRATE_V7,
-        COMMON_SUBSTRATE_V8,
-        COMMON_SUBSTRATE_V9,
-        COMMON_SUBSTRATE_V10,
-        COMMON_SUBSTRATE_V11,
-        COMMON_SUBSTRATE_V12,
-        COMMON_SUBSTRATE_V13,
-        COMMON_SUBSTRATE_V14,
-        COMMON_SUBSTRATE_V15,
-    }:
-        return paths
-    root = te._source_root().absolute()
-    recipe = numeric_profile_path(te.numeric_profile, repo=root)
-    if recipe is None:
-        return paths
-    selected = software_spec_path_for_recipe(recipe)
-    if selected is None:
-        return paths
-    grants = [
-        bwrap.resolve_grant(row["path"], root).absolute()
-        for row in bundle.get("allowed", [])
-        if row.get("mode") == "ro" and row.get("note") == "admitted software semantics"
-    ]
-    if not grants:
-        return paths
-    if len(grants) != 1:
-        raise ValueError("public software declaration has ambiguous grants")
-    granted = grants[0]
-    resolved = private_source_freeze.verify(spec, source_freeze, root=source_root, target=te.target)
-    copies = [
-        copy for (original, field), copy in resolved.items() if original == str(granted) and field == "software_spec"
-    ]
-    if not copies:
-        return paths
-    if any(original == str(granted) and field != "software_spec" for original, field in resolved):
-        raise ValueError("public software declaration has a private non-software role")
-    if any(path.is_symlink() or any(parent.is_symlink() for parent in path.parents) for path in (selected, granted)):
-        raise ValueError("public software declaration is indirect")
-    digest = file_sha256(selected)
-    if file_sha256(granted) != digest:
-        raise ValueError("reviewed public software declaration differs from selected semantics")
-    if any(file_sha256(copy) != digest for copy in copies):
-        raise ValueError("public software declaration differs from authenticated private source")
-    document = yaml.safe_load(granted.read_bytes())
-    checked = validate_software_spec(document, target=te.target, source=granted)
-    if checked.get("status") != "reviewed":
-        raise ValueError("public software declaration is not reviewed")
-    # The exact already-reviewed grant authorizes these semantics bytes. Only
-    # its original software-role spelling is removed; frozen copies and all
-    # capture/weight/golden/archive directories retain their private denials.
-    return [row for row in paths if not (row.get("path") == str(granted) and row.get("kind") == "file")]
+    Only retired common substrates reopened a reviewed software declaration as a
+    public input. The current substrate keeps every private denial as selected.
+    """
+    from merlin.targetgen.tool_profile import verify_tool_profile
+
+    verify_tool_profile(bundle)
+    return paths
 
 
 def prepare_bundle(
